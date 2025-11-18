@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="lam_alef-ar.fina" format="2">
+	<advance width="672"/>
+	<outline>
+		<component base="lam-ar.medi" xOffset="256"/>
+		<component base="alef-ar.fina"/>
+	</outline>
+</glyph>

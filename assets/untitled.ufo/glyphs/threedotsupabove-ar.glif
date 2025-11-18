@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="threedotsupabove-ar" format="2">
+	<outline>
+		<contour>
+			<point x="88" y="656" type="curve"/>
+			<point x="132" y="656"/>
+			<point x="168" y="692"/>
+			<point x="168" y="736" type="curve"/>
+			<point x="168" y="780"/>
+			<point x="132" y="816"/>
+			<point x="88" y="816" type="curve"/>
+			<point x="44" y="816"/>
+			<point x="8" y="780"/>
+			<point x="8" y="736" type="curve"/>
+			<point x="8" y="692"/>
+			<point x="44" y="656"/>
+		</contour>
+		<contour>
+			<point x="376" y="656" type="curve"/>
+			<point x="420" y="656"/>
+			<point x="456" y="692"/>
+			<point x="456" y="736" type="curve"/>
+			<point x="456" y="780"/>
+			<point x="420" y="816"/>
+			<point x="376" y="816" type="curve"/>
+			<point x="332" y="816"/>
+			<point x="296" y="780"/>
+			<point x="296" y="736" type="curve"/>
+			<point x="296" y="692"/>
+			<point x="332" y="656"/>
+		</contour>
+		<contour>
+			<point x="232" y="864" type="curve"/>
+			<point x="276" y="864"/>
+			<point x="312" y="900"/>
+			<point x="312" y="944" type="curve"/>
+			<point x="312" y="988"/>
+			<point x="276" y="1024"/>
+			<point x="232" y="1024" type="curve"/>
+			<point x="188" y="1024"/>
+			<point x="152" y="988"/>
+			<point x="152" y="944" type="curve"/>
+			<point x="152" y="900"/>
+			<point x="188" y="864"/>
+		</contour>
+	</outline>
+</glyph>

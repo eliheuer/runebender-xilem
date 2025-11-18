@@ -1,0 +1,30 @@
+# Runebender Xilem
+
+A font editor built with [Xilem](https://github.com/linebender/xilem), a Rust UI framework from the [Linebender](https://linebender.org/) ecosystem. This is a port of an earlier font editor called [Runebender](https://github.com/linebender/runebender) from [Druid](https://github.com/linebender/druid) to [Xilem](https://github.com/linebender/xilem).
+
+**Status**: Very alpha and actively under development.
+
+## Building from source
+
+Make sure [Rust](https://rust-lang.org/) is installed on your system, clone the repository and build/run the application:
+
+```bash
+git clone https://github.com/eliheuer/runebender-xilem.git
+cd runebender-xilem
+cargo run
+```
+
+## Usage
+
+**Open a specific UFO file directly:**
+```bash
+cargo run -- assets/untitled.ufo
+```
+
+## Contributing
+
+Contributions are welcome! Make a PRs or issue, but keep in mind this project is very early and things can change quickly. If anyone besides Eli become a regular contributor to this we can move it off my personal Github to a new org.
+
+## License
+
+Apache-2.0
