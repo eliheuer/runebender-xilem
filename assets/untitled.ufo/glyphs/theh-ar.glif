@@ -2,8 +2,4 @@
 <glyph name="theh-ar" format="2">
 	<unicode hex="062B"/>
 	<advance width="600"/>
-	<outline>
-		<component base="behDotless-ar"/>
-		<component base="threedotsupabove-ar"/>
-	</outline>
 </glyph>

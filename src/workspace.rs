@@ -228,12 +228,85 @@ impl Workspace {
     }
 
     /// Save the UFO back to disk
-    ///
-    /// TODO: This needs to convert our internal data back to norad format
-    #[allow(dead_code)]
     pub fn save(&self) -> Result<()> {
-        // For now, just a placeholder
-        // We'd need to convert our data back to norad types and save
-        anyhow::bail!("Save not yet implemented")
+        // Load the original font to preserve metadata we don't edit
+        let mut font = Font::load(&self.path)
+            .with_context(|| format!("Failed to load UFO for saving: {:?}", self.path))?;
+
+        // Update all glyphs in the default layer
+        let default_layer = font.default_layer_mut();
+
+        for (name, glyph) in &self.glyphs {
+            let norad_glyph = Self::to_norad_glyph(glyph);
+
+            // Remove old glyph and insert updated one
+            if default_layer.contains_glyph(name) {
+                default_layer.remove_glyph(name);
+            }
+            default_layer.insert_glyph(norad_glyph);
+        }
+
+        // Save back to disk
+        font.save(&self.path)
+            .with_context(|| format!("Failed to save UFO to {:?}", self.path))?;
+
+        Ok(())
+    }
+
+    /// Convert our internal Glyph to norad Glyph
+    fn to_norad_glyph(glyph: &Glyph) -> NoradGlyph {
+        let mut norad_glyph = NoradGlyph::new(&glyph.name);
+        norad_glyph.width = glyph.width;
+        if let Some(height) = glyph.height {
+            norad_glyph.height = height;
+        }
+
+        // Convert codepoints
+        for &cp in &glyph.codepoints {
+            norad_glyph.codepoints.insert(cp);
+        }
+
+        // Convert contours
+        norad_glyph.contours = glyph
+            .contours
+            .iter()
+            .map(Self::to_norad_contour)
+            .collect();
+
+        norad_glyph
+    }
+
+    /// Convert our internal Contour to norad Contour
+    fn to_norad_contour(contour: &Contour) -> norad::Contour {
+        let points = contour
+            .points
+            .iter()
+            .map(Self::to_norad_point)
+            .collect();
+        norad::Contour::new(points, None, None)
+    }
+
+    /// Convert our internal ContourPoint to norad ContourPoint
+    fn to_norad_point(pt: &ContourPoint) -> norad::ContourPoint {
+        norad::ContourPoint::new(
+            pt.x,
+            pt.y,
+            Self::to_norad_point_type(pt.point_type),
+            false, // smooth - we don't track this currently
+            None,  // name
+            None,  // identifier
+            None,  // lib (plist dictionary)
+        )
+    }
+
+    /// Convert our internal PointType to norad PointType
+    fn to_norad_point_type(typ: PointType) -> norad::PointType {
+        match typ {
+            PointType::Move => norad::PointType::Move,
+            PointType::Line => norad::PointType::Line,
+            PointType::OffCurve => norad::PointType::OffCurve,
+            PointType::Curve => norad::PointType::Curve,
+            PointType::QCurve => norad::PointType::QCurve,
+        }
     }
 }

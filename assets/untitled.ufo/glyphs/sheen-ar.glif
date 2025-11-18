@@ -2,8 +2,4 @@
 <glyph name="sheen-ar" format="2">
 	<unicode hex="0634"/>
 	<advance width="600"/>
-	<outline>
-		<component base="seen-ar"/>
-		<component base="threedotsupabove-ar"/>
-	</outline>
 </glyph>

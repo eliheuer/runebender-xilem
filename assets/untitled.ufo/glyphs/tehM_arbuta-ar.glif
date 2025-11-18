@@ -2,8 +2,4 @@
 <glyph name="tehMarbuta-ar" format="2">
 	<unicode hex="0629"/>
 	<advance width="600"/>
-	<outline>
-		<component base="heh-ar"/>
-		<component base="twodotshorizontalabove-ar"/>
-	</outline>
 </glyph>

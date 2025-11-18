@@ -1,8 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <glyph name="beh-ar.medi" format="2">
 	<advance width="416"/>
-	<outline>
-		<component base="behDotless-ar.medi"/>
-		<component base="dotbelow-ar" xOffset="84"/>
-	</outline>
 </glyph>

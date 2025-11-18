@@ -1,8 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <glyph name="thal-ar.fina" format="2">
 	<advance width="476"/>
-	<outline>
-		<component base="dal-ar"/>
-		<component base="dotabove-ar"/>
-	</outline>
 </glyph>

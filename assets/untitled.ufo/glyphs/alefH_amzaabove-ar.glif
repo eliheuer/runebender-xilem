@@ -2,8 +2,4 @@
 <glyph name="alefHamzaabove-ar" format="2">
 	<unicode hex="0623"/>
 	<advance width="224"/>
-	<outline>
-		<component base="alef-ar"/>
-		<component base="hamzaabove-ar"/>
-	</outline>
 </glyph>

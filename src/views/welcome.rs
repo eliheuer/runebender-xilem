@@ -42,8 +42,9 @@ pub fn welcome(
     // Layer welcome UI over interactive editor
     zstack((
         // Background: Interactive editor with demo R glyph
-        editor_view(session_arc, |state: &mut AppState, updated_session| {
+        editor_view(session_arc, |state: &mut AppState, updated_session, _save_requested| {
             // Save changes back to the welcome session so they persist
+            // (save_requested is ignored for the demo session)
             state.welcome_session = Some(updated_session);
         }),
         // Foreground: Welcome UI in upper left (constrained size so it

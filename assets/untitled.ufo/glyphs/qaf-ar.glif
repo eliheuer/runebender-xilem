@@ -2,8 +2,4 @@
 <glyph name="qaf-ar" format="2">
 	<unicode hex="0642"/>
 	<advance width="600"/>
-	<outline>
-		<component base="qafDotless-ar"/>
-		<component base="twodotshorizontalabove-ar"/>
-	</outline>
 </glyph>

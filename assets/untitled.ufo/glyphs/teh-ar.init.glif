@@ -20,6 +20,5 @@
 			<point x="-16" y="16" type="line"/>
 			<point x="0" y="0" type="line"/>
 		</contour>
-		<component base="twodotshorizontalabove-ar" xOffset="76" yOffset="-128"/>
 	</outline>
 </glyph>

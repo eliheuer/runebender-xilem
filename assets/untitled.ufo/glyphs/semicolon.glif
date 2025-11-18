@@ -2,8 +2,4 @@
 <glyph name="semicolon" format="2">
 	<unicode hex="003B"/>
 	<advance width="224"/>
-	<outline>
-		<component base="comma"/>
-		<component base="period" yOffset="448"/>
-	</outline>
 </glyph>

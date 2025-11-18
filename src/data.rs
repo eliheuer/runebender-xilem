@@ -247,6 +247,29 @@ impl AppState {
         let updated_glyph = session.to_glyph();
         workspace.update_glyph(&session.glyph_name, updated_glyph);
     }
+
+    /// Save the current workspace to disk
+    pub fn save_workspace(&mut self) {
+        let workspace = match &self.workspace {
+            Some(w) => w,
+            None => {
+                self.error_message = Some("No workspace to save".to_string());
+                return;
+            }
+        };
+
+        match workspace.save() {
+            Ok(()) => {
+                tracing::info!("Saved: {}", workspace.path.display());
+                self.error_message = None;
+            }
+            Err(e) => {
+                let error = format!("Failed to save: {}", e);
+                tracing::error!("{}", error);
+                self.error_message = Some(error);
+            }
+        }
+    }
 }
 
 /// Implement the Xilem AppState trait

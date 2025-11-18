@@ -25,6 +25,7 @@ cargo run -- assets/untitled.ufo
 
 | Shortcut | Action |
 |----------|--------|
+| `Cmd/Ctrl` + `S` | Save |
 | `Cmd/Ctrl` + `+` or `=` | Zoom in |
 | `Cmd/Ctrl` + `-` | Zoom out |
 | `Cmd/Ctrl` + `0` | Fit glyph to window |

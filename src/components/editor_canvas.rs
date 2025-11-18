@@ -125,6 +125,8 @@ impl EditorWidget {
 #[derive(Debug, Clone)]
 pub struct SessionUpdate {
     pub session: EditSession,
+    /// If true, save the current state to disk
+    pub save_requested: bool,
 }
 
 impl Widget for EditorWidget {
@@ -499,6 +501,7 @@ impl EditorWidget {
 
                 ctx.submit_action::<SessionUpdate>(SessionUpdate {
                     session: self.session.clone(),
+                    save_requested: false,
                 });
             }
         }
@@ -554,6 +557,7 @@ impl EditorWidget {
         // Emit action to notify view of session changes
         ctx.submit_action::<SessionUpdate>(SessionUpdate {
             session: self.session.clone(),
+            save_requested: false,
         });
 
         ctx.release_pointer();
@@ -629,6 +633,7 @@ impl EditorWidget {
                 // change
                 ctx.submit_action::<SessionUpdate>(SessionUpdate {
                     session: self.session.clone(),
+                    save_requested: false,
                 });
 
                 ctx.request_render();
@@ -651,6 +656,7 @@ impl EditorWidget {
                 // change
                 ctx.submit_action::<SessionUpdate>(SessionUpdate {
                     session: self.session.clone(),
+                    save_requested: false,
                 });
 
                 ctx.request_render();
@@ -720,10 +726,11 @@ impl EditorWidget {
 
         // Save (Cmd/Ctrl+S)
         if cmd && matches!(key, Key::Character(c) if c == "s") {
-            tracing::debug!(
-                "💾 Saved: {}",
-                self.session.ufo_path.display()
-            );
+            // Emit save request action
+            ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                session: self.session.clone(),
+                save_requested: true,
+            });
             ctx.set_handled();
             return true;
         }
@@ -1223,12 +1230,15 @@ use xilem::{Pod, ViewCtx};
 
 /// Create an editor view from an edit session with a callback for
 /// session updates
+///
+/// The callback receives the updated session and a boolean indicating
+/// whether save was requested (Cmd+S).
 pub fn editor_view<State, F>(
     session: Arc<EditSession>,
     on_session_update: F,
 ) -> EditorView<State, F>
 where
-    F: Fn(&mut State, EditSession),
+    F: Fn(&mut State, EditSession, bool),
 {
     EditorView {
         session,
@@ -1247,7 +1257,7 @@ pub struct EditorView<State, F> {
 
 impl<State, F> ViewMarker for EditorView<State, F> {}
 
-impl<State: 'static, F: Fn(&mut State, EditSession) + 'static>
+impl<State: 'static, F: Fn(&mut State, EditSession, bool) + 'static>
     View<State, (), ViewCtx> for EditorView<State, F>
 {
     type Element = Pod<EditorWidget>;
@@ -1324,10 +1334,15 @@ impl<State: 'static, F: Fn(&mut State, EditSession) + 'static>
             Some(update) => {
                 tracing::debug!(
                     "[EditorView::message] Handling SessionUpdate, \
-                     calling callback, selection.len()={}",
-                    update.session.selection.len()
+                     calling callback, selection.len()={}, save_requested={}",
+                    update.session.selection.len(),
+                    update.save_requested
                 );
-                (self.on_session_update)(app_state, update.session);
+                (self.on_session_update)(
+                    app_state,
+                    update.session,
+                    update.save_requested,
+                );
                 tracing::debug!(
                     "[EditorView::message] Callback complete, \
                      returning Action(())"

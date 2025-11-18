@@ -2,8 +2,4 @@
 <glyph name="khah-ar" format="2">
 	<unicode hex="062E"/>
 	<advance width="600"/>
-	<outline>
-		<component base="hah-ar"/>
-		<component base="dotabove-ar"/>
-	</outline>
 </glyph>
