@@ -457,6 +457,10 @@ impl EditorWidget {
         use crate::mouse::MouseEvent;
         use crate::tools::{ToolBox, ToolId};
 
+        // Request focus when mouse moves over canvas so keyboard
+        // shortcuts (zoom, etc.) work even after clicking toolbar
+        ctx.request_focus();
+
         let local_pos = ctx.local_position(current.position);
 
         // Create MouseEvent
@@ -1294,6 +1298,7 @@ impl<State: 'static, F: Fn(&mut State, EditSession) + 'static>
             // This allows tool changes and other session updates to
             // take effect
             widget.widget.session = (*self.session).clone();
+
             widget.ctx.request_render();
         }
     }
