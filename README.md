@@ -4,6 +4,8 @@ A font editor built with [Xilem](https://github.com/linebender/xilem), a Rust UI
 
 **Status**: Very alpha and actively under development.
 
+<img width="960" height="663" alt="Image" src="https://github.com/user-attachments/assets/458e37a8-5cb2-4ace-91e1-83e0adfc7cd1" />
+
 ## Building from source
 
 Make sure [Rust](https://rust-lang.org/) is installed on your system, clone the repository and build/run the application:
@@ -17,6 +19,7 @@ cargo run
 ## Usage
 
 **Open a specific UFO file directly:**
+
 ```bash
 cargo run -- assets/untitled.ufo
 ```
@@ -46,3 +49,4 @@ Contributions are welcome! Make a PRs or issue, but keep in mind this project is
 ## License
 
 Apache-2.0
+
