@@ -96,6 +96,10 @@ const CORNER_POINT_OUTER: Color = Color::from_rgb8(0x20, 0x8e, 0x56);
 const OFFCURVE_POINT_INNER: Color = Color::from_rgb8(0xcc, 0x99, 0xff);
 const OFFCURVE_POINT_OUTER: Color = Color::from_rgb8(0x99, 0x00, 0xff);
 
+// Hyperbezier on-curve points (cyan/teal - between smooth blue and offcurve purple)
+const HYPER_POINT_INNER: Color = Color::from_rgb8(0x66, 0xcc, 0xdd);
+const HYPER_POINT_OUTER: Color = Color::from_rgb8(0x00, 0x99, 0xaa);
+
 const SELECTED_POINT_INNER: Color = Color::from_rgb8(0xff, 0xee, 0x55);
 const SELECTED_POINT_OUTER: Color = Color::from_rgb8(0xff, 0xaa, 0x33);
 
@@ -252,6 +256,8 @@ pub mod point {
     pub const CORNER_OUTER: Color = super::CORNER_POINT_OUTER;
     pub const OFFCURVE_INNER: Color = super::OFFCURVE_POINT_INNER;
     pub const OFFCURVE_OUTER: Color = super::OFFCURVE_POINT_OUTER;
+    pub const HYPER_INNER: Color = super::HYPER_POINT_INNER;
+    pub const HYPER_OUTER: Color = super::HYPER_POINT_OUTER;
     pub const SELECTED_INNER: Color = super::SELECTED_POINT_INNER;
     pub const SELECTED_OUTER: Color = super::SELECTED_POINT_OUTER;
 }
@@ -266,9 +272,9 @@ pub mod selection {
 /// Sizes for rendering
 pub mod size {
     /// Radius for smooth on-curve points
-    pub const SMOOTH_POINT_RADIUS: f64 = 4.0;
+    pub const SMOOTH_POINT_RADIUS: f64 = 4.5;
     /// Radius for smooth on-curve points when selected
-    pub const SMOOTH_POINT_SELECTED_RADIUS: f64 = 5.0;
+    pub const SMOOTH_POINT_SELECTED_RADIUS: f64 = 5.5;
 
     /// Half-size for corner on-curve points (square)
     pub const CORNER_POINT_HALF_SIZE: f64 = 3.5;
@@ -279,6 +285,11 @@ pub mod size {
     pub const OFFCURVE_POINT_RADIUS: f64 = 3.0;
     /// Radius for off-curve control points when selected
     pub const OFFCURVE_POINT_SELECTED_RADIUS: f64 = 4.0;
+
+    /// Radius for hyperbezier on-curve points
+    pub const HYPER_POINT_RADIUS: f64 = 4.0;
+    /// Radius for hyperbezier on-curve points when selected
+    pub const HYPER_POINT_SELECTED_RADIUS: f64 = 5.0;
 
     /// Width of path strokes
     pub const PATH_STROKE_WIDTH: f64 = 1.0;

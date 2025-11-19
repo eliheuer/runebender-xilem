@@ -16,8 +16,10 @@ use masonry::vello::Scene;
 pub enum ToolId {
     /// Select and move points
     Select,
-    /// Draw new paths
+    /// Draw new paths (cubic bezier)
     Pen,
+    /// Draw new paths (hyperbezier)
+    HyperPen,
     /// Preview mode (view only)
     Preview,
 }
@@ -51,6 +53,7 @@ pub trait Tool: MouseDelegate<Data = EditSession> {
 pub enum ToolBox {
     Select(select::SelectTool),
     Pen(pen::PenTool),
+    HyperPen(hyper_pen::HyperPenTool),
     Preview(preview::PreviewTool),
 }
 
@@ -64,6 +67,9 @@ impl ToolBox {
                 ToolBox::Select(select::SelectTool::default())
             }
             ToolId::Pen => ToolBox::Pen(pen::PenTool::default()),
+            ToolId::HyperPen => {
+                ToolBox::HyperPen(hyper_pen::HyperPenTool::default())
+            }
             ToolId::Preview => {
                 ToolBox::Preview(preview::PreviewTool::default())
             }
@@ -75,6 +81,7 @@ impl ToolBox {
         match self {
             ToolBox::Select(tool) => tool.id(),
             ToolBox::Pen(tool) => tool.id(),
+            ToolBox::HyperPen(tool) => tool.id(),
             ToolBox::Preview(tool) => tool.id(),
         }
     }
@@ -93,6 +100,9 @@ impl ToolBox {
             ToolBox::Pen(tool) => {
                 tool.paint(scene, session, transform);
             }
+            ToolBox::HyperPen(tool) => {
+                tool.paint(scene, session, transform);
+            }
             ToolBox::Preview(_) => {
                 // Preview tool has no overlays
             }
@@ -104,6 +114,7 @@ impl ToolBox {
         match self {
             ToolBox::Select(tool) => tool.edit_type(),
             ToolBox::Pen(tool) => tool.edit_type(),
+            ToolBox::HyperPen(tool) => tool.edit_type(),
             ToolBox::Preview(tool) => tool.edit_type(),
         }
     }
@@ -117,6 +128,7 @@ impl ToolBox {
         match self {
             ToolBox::Select(tool) => tool.left_down(event, session),
             ToolBox::Pen(tool) => tool.left_down(event, session),
+            ToolBox::HyperPen(tool) => tool.left_down(event, session),
             ToolBox::Preview(tool) => tool.left_down(event, session),
         }
     }
@@ -130,6 +142,7 @@ impl ToolBox {
         match self {
             ToolBox::Select(tool) => tool.left_up(event, session),
             ToolBox::Pen(tool) => tool.left_up(event, session),
+            ToolBox::HyperPen(tool) => tool.left_up(event, session),
             ToolBox::Preview(tool) => tool.left_up(event, session),
         }
     }
@@ -146,6 +159,7 @@ impl ToolBox {
         match self {
             ToolBox::Select(tool) => tool.mouse_moved(event, session),
             ToolBox::Pen(tool) => tool.mouse_moved(event, session),
+            ToolBox::HyperPen(tool) => tool.mouse_moved(event, session),
             ToolBox::Preview(tool) => tool.mouse_moved(event, session),
         }
     }
@@ -162,6 +176,9 @@ impl ToolBox {
                 tool.left_drag_began(event, drag, session);
             }
             ToolBox::Pen(tool) => {
+                tool.left_drag_began(event, drag, session);
+            }
+            ToolBox::HyperPen(tool) => {
                 tool.left_drag_began(event, drag, session);
             }
             ToolBox::Preview(tool) => {
@@ -184,6 +201,9 @@ impl ToolBox {
             ToolBox::Pen(tool) => {
                 tool.left_drag_changed(event, drag, session);
             }
+            ToolBox::HyperPen(tool) => {
+                tool.left_drag_changed(event, drag, session);
+            }
             ToolBox::Preview(tool) => {
                 tool.left_drag_changed(event, drag, session);
             }
@@ -204,6 +224,9 @@ impl ToolBox {
             ToolBox::Pen(tool) => {
                 tool.left_drag_ended(event, drag, session);
             }
+            ToolBox::HyperPen(tool) => {
+                tool.left_drag_ended(event, drag, session);
+            }
             ToolBox::Preview(tool) => {
                 tool.left_drag_ended(event, drag, session);
             }
@@ -218,6 +241,7 @@ impl ToolBox {
         match self {
             ToolBox::Select(tool) => tool.cancel(session),
             ToolBox::Pen(tool) => tool.cancel(session),
+            ToolBox::HyperPen(tool) => tool.cancel(session),
             ToolBox::Preview(tool) => tool.cancel(session),
         }
     }
@@ -258,6 +282,7 @@ impl MouseDelegate for ToolBox {
         match self {
             ToolBox::Select(tool) => tool.left_click(event, data),
             ToolBox::Pen(tool) => tool.left_click(event, data),
+            ToolBox::HyperPen(tool) => tool.left_click(event, data),
             ToolBox::Preview(tool) => tool.left_click(event, data),
         }
     }
@@ -270,6 +295,7 @@ impl MouseDelegate for ToolBox {
         match self {
             ToolBox::Select(tool) => tool.mouse_moved(event, data),
             ToolBox::Pen(tool) => tool.mouse_moved(event, data),
+            ToolBox::HyperPen(tool) => tool.mouse_moved(event, data),
             ToolBox::Preview(tool) => tool.mouse_moved(event, data),
         }
     }
@@ -305,6 +331,7 @@ impl MouseDelegate for ToolBox {
         match self {
             ToolBox::Select(tool) => tool.cancel(data),
             ToolBox::Pen(tool) => tool.cancel(data),
+            ToolBox::HyperPen(tool) => tool.cancel(data),
             ToolBox::Preview(tool) => tool.cancel(data),
         }
     }
@@ -312,6 +339,7 @@ impl MouseDelegate for ToolBox {
 
 // ===== Tool Modules =====
 
+pub mod hyper_pen;
 pub mod pen;
 pub mod preview;
 pub mod select;
