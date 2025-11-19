@@ -912,6 +912,10 @@ fn draw_paths_with_points(
                     transform,
                 );
             }
+            Path::Hyper(hyper) => {
+                // Hyper paths use similar handle drawing to cubic
+                draw_control_handles_hyper(scene, hyper, transform);
+            }
         }
     }
 
@@ -928,6 +932,10 @@ fn draw_paths_with_points(
                     session,
                     transform,
                 );
+            }
+            Path::Hyper(hyper) => {
+                // Hyper paths use similar point drawing to cubic
+                draw_points_hyper(scene, hyper, session, transform);
             }
         }
     }
@@ -1204,6 +1212,104 @@ fn draw_points_quadratic(
     transform: &Affine,
 ) {
     for pt in quadratic.points.iter() {
+        let screen_pos = *transform * pt.point;
+        let is_selected = session.selection.contains(&pt.id);
+
+        match pt.typ {
+            PointType::OnCurve { smooth } => {
+                if smooth {
+                    draw_smooth_point(scene, screen_pos, is_selected);
+                } else {
+                    draw_corner_point(scene, screen_pos, is_selected);
+                }
+            }
+            PointType::OffCurve { .. } => {
+                draw_offcurve_point(scene, screen_pos, is_selected);
+            }
+        }
+    }
+}
+
+/// Draw control handles for a hyper path
+fn draw_control_handles_hyper(
+    scene: &mut Scene,
+    hyper: &crate::hyper_path::HyperPath,
+    transform: &Affine,
+) {
+    let points: Vec<_> = hyper.points.iter().collect();
+    if points.is_empty() {
+        return;
+    }
+
+    // For each point, if it's on-curve, draw handles to adjacent
+    // off-curve points
+    for i in 0..points.len() {
+        let pt = points[i];
+
+        if !pt.is_on_curve() {
+            continue;
+        }
+
+        // Look at the next point (with wrapping for closed paths)
+        let next_i = if i + 1 < points.len() {
+            i + 1
+        } else if hyper.closed {
+            0
+        } else {
+            continue;
+        };
+
+        // Look at the previous point (with wrapping for closed paths)
+        let prev_i = if i > 0 {
+            i - 1
+        } else if hyper.closed {
+            points.len() - 1
+        } else {
+            continue;
+        };
+
+        // Draw handle to next point if it's off-curve
+        if next_i < points.len() && points[next_i].is_off_curve() {
+            let start = *transform * pt.point;
+            let end = *transform * points[next_i].point;
+            let line = kurbo::Line::new(start, end);
+            let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
+            let brush = Brush::Solid(theme::handle::LINE);
+            scene.stroke(
+                &stroke,
+                Affine::IDENTITY,
+                &brush,
+                None,
+                &line,
+            );
+        }
+
+        // Draw handle to previous point if it's off-curve
+        if prev_i < points.len() && points[prev_i].is_off_curve() {
+            let start = *transform * pt.point;
+            let end = *transform * points[prev_i].point;
+            let line = kurbo::Line::new(start, end);
+            let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
+            let brush = Brush::Solid(theme::handle::LINE);
+            scene.stroke(
+                &stroke,
+                Affine::IDENTITY,
+                &brush,
+                None,
+                &line,
+            );
+        }
+    }
+}
+
+/// Draw points for a hyper path
+fn draw_points_hyper(
+    scene: &mut Scene,
+    hyper: &crate::hyper_path::HyperPath,
+    session: &EditSession,
+    transform: &Affine,
+) {
+    for pt in hyper.points.iter() {
         let screen_pos = *transform * pt.point;
         let is_selected = session.selection.contains(&pt.id);
 

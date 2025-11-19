@@ -26,8 +26,7 @@ use crate::components::toolbars::{
 };
 
 /// Available tools in display order
-/// Currently only showing implemented tools: Select, Pen, Preview
-const TOOLBAR_TOOLS: &[ToolId] = &[ToolId::Select, ToolId::Pen, ToolId::Preview];
+const TOOLBAR_TOOLS: &[ToolId] = &[ToolId::Select, ToolId::Pen, ToolId::HyperPen, ToolId::Preview];
 
 /// Edit mode toolbar widget
 pub struct EditModeToolbarWidget {
@@ -50,6 +49,7 @@ impl EditModeToolbarWidget {
         match tool {
             ToolId::Select => select_icon(),
             ToolId::Pen => pen_icon(),
+            ToolId::HyperPen => hyper_pen_icon(),
             ToolId::Preview => preview_icon(),
         }
     }
@@ -294,6 +294,50 @@ fn pen_icon() -> BezPath {
     bez.line_to((152.0, 576.0));
     bez.curve_to((172.0, 602.0), (180.0, 602.0), (200.0, 602.0));
     bez.close_path();
+
+    bez
+}
+
+fn hyper_pen_icon() -> BezPath {
+    // Hyperbezier pen icon - pen tool with a smooth curve indicator
+    // Based on pen icon with an added smooth curve symbol
+    let mut bez = BezPath::new();
+
+    // Pen nib (smaller, shifted up)
+    bez.move_to((200.0, 768.0));
+    bez.line_to((380.0, 768.0));
+    bez.curve_to((395.0, 768.0), (400.0, 764.0), (400.0, 744.0));
+    bez.line_to((400.0, 700.0));
+    bez.curve_to((400.0, 680.0), (395.0, 676.0), (380.0, 676.0));
+    bez.line_to((200.0, 676.0));
+    bez.curve_to((185.0, 676.0), (180.0, 680.0), (180.0, 700.0));
+    bez.line_to((180.0, 744.0));
+    bez.curve_to((180.0, 764.0), (185.0, 768.0), (200.0, 768.0));
+    bez.close_path();
+
+    // Pen body (simplified)
+    bez.move_to((200.0, 624.0));
+    bez.line_to((380.0, 624.0));
+    bez.curve_to((400.0, 624.0), (420.0, 600.0), (440.0, 560.0));
+    bez.line_to((500.0, 420.0));
+    bez.curve_to((510.0, 395.0), (510.0, 380.0), (500.0, 360.0));
+    bez.line_to((400.0, 120.0));
+    bez.curve_to((390.0, 95.0), (380.0, 80.0), (360.0, 80.0));
+    bez.line_to((220.0, 80.0));
+    bez.curve_to((200.0, 80.0), (190.0, 95.0), (180.0, 120.0));
+    bez.line_to((80.0, 360.0));
+    bez.curve_to((70.0, 380.0), (70.0, 395.0), (80.0, 420.0));
+    bez.line_to((140.0, 560.0));
+    bez.curve_to((160.0, 600.0), (180.0, 624.0), (200.0, 624.0));
+    bez.close_path();
+
+    // Smooth curve symbol (S-curve at bottom to indicate hyperbezier)
+    bez.move_to((160.0, 40.0));
+    bez.curve_to((200.0, 40.0), (240.0, 0.0), (290.0, 0.0));
+    bez.curve_to((340.0, 0.0), (380.0, 40.0), (420.0, 40.0));
+    bez.move_to((160.0, 60.0));
+    bez.curve_to((200.0, 60.0), (240.0, 20.0), (290.0, 20.0));
+    bez.curve_to((340.0, 20.0), (380.0, 60.0), (420.0, 60.0));
 
     bez
 }
