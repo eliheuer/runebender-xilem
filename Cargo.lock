@@ -1523,6 +1523,15 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "kurbo"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd85a5776cd9500c2e2059c8c76c3b01528566b7fcbaf8098b55a33fc298849b"
+dependencies = [
+ "arrayvec",
+]
+
+[[package]]
+name = "kurbo"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce9729cc38c18d86123ab736fd2e7151763ba226ac2490ec092d1dd148825e32"
@@ -2246,7 +2255,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3c76095c9a636173600478e0373218c7b955335048c2bcd12dc6a79657649d8"
 dependencies = [
  "color",
- "kurbo",
+ "kurbo 0.12.0",
  "linebender_resource_handle",
  "smallvec",
 ]
@@ -2602,7 +2611,8 @@ name = "runebender"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "kurbo",
+ "kurbo 0.12.0",
+ "kurbo 0.9.5",
  "masonry",
  "norad",
  "parley",
@@ -2610,6 +2620,7 @@ dependencies = [
  "rfd",
  "serde",
  "serde_json",
+ "spline",
  "thiserror 1.0.69",
  "tracing",
  "tracing-subscriber",
@@ -2899,6 +2910,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eda41003dc44290527a59b13432d4a0379379fa074b70174882adfbdfd917844"
 dependencies = [
  "bitflags 2.10.0",
+]
+
+[[package]]
+name = "spline"
+version = "0.3.0"
+source = "git+https://github.com/linebender/spline#83f46cbfebb1f5d6042059c867719c0010073d42"
+dependencies = [
+ "kurbo 0.9.5",
 ]
 
 [[package]]
@@ -3273,7 +3292,7 @@ checksum = "8a57da61c5700db75d28822c56068295055ec216996560af57a5d4a457914d34"
 dependencies = [
  "dpi",
  "keyboard-types",
- "kurbo",
+ "kurbo 0.12.0",
 ]
 
 [[package]]

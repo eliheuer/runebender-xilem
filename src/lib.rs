@@ -12,6 +12,7 @@ use xilem::{EventLoopBuilder, WidgetView, WindowView, Xilem, window};
 mod components;
 mod cubic_path;
 mod data;
+mod hyper_path;
 mod quadratic_path;
 mod edit_session;
 mod edit_types;

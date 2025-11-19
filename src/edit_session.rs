@@ -5,6 +5,7 @@
 
 use crate::components::CoordinateSelection;
 use crate::hit_test::{self, HitTestResult};
+use crate::hyper_path::HyperPath;
 use crate::path::Path;
 use crate::selection::Selection;
 use crate::tools::{ToolBox, ToolId};
@@ -297,6 +298,11 @@ impl EditSession {
                     let points = quadratic.points.make_mut();
                     points.reverse();
                 }
+                Path::Hyper(hyper) => {
+                    let points = hyper.points.make_mut();
+                    points.reverse();
+                    hyper.after_change();
+                }
             }
         }
     }
@@ -431,6 +437,9 @@ impl EditSession {
             Path::Quadratic(quadratic) => {
                 Box::new(quadratic.points.iter())
             }
+            Path::Hyper(hyper) => {
+                Box::new(hyper.points.iter())
+            }
         };
 
         for pt in points_iter {
@@ -459,6 +468,14 @@ impl EditSession {
                 })
                 .collect(),
             Path::Quadratic(quadratic) => quadratic
+                .points()
+                .iter()
+                .map(|pt| {
+                    let screen_pt = viewport.to_screen(pt.point);
+                    (pt.id, screen_pt, pt.is_on_curve())
+                })
+                .collect(),
+            Path::Hyper(hyper) => hyper
                 .points()
                 .iter()
                 .map(|pt| {
@@ -511,6 +528,13 @@ impl EditSession {
             Path::Quadratic(quadratic) => {
                 Self::process_path_segment_iterator(
                     quadratic.iter_segments(),
+                    design_pos,
+                    closest,
+                );
+            }
+            Path::Hyper(hyper) => {
+                Self::process_path_segment_iterator(
+                    hyper.iter_segments(),
                     design_pos,
                     closest,
                 );
@@ -580,6 +604,13 @@ impl EditSession {
                 Path::Quadratic(quadratic) => {
                     Self::collect_adjacent_for_quadratic(
                         quadratic,
+                        selection,
+                        points_to_move,
+                    );
+                }
+                Path::Hyper(hyper) => {
+                    Self::collect_adjacent_for_hyper(
+                        hyper,
                         selection,
                         points_to_move,
                     );
@@ -655,6 +686,40 @@ impl EditSession {
         }
     }
 
+    /// Collect adjacent off-curve points for a hyper path
+    fn collect_adjacent_for_hyper(
+        hyper: &HyperPath,
+        selection: &Selection,
+        points_to_move: &mut std::collections::HashSet<
+            crate::entity_id::EntityId,
+        >,
+    ) {
+        let points: Vec<_> = hyper.points.iter().collect();
+        let len = points.len();
+
+        for i in 0..len {
+            let point = points[i];
+
+            // If this on-curve point is selected, mark its adjacent
+            // off-curve points
+            if point.is_on_curve() && selection.contains(&point.id) {
+                // Check previous point
+                if let Some(prev_i) =
+                    Self::get_previous_index(i, len, hyper.closed)
+                    && prev_i < len && points[prev_i].is_off_curve() {
+                        points_to_move.insert(points[prev_i].id);
+                    }
+
+                // Check next point
+                if let Some(next_i) =
+                    Self::get_next_index(i, len, hyper.closed)
+                    && next_i < len && points[next_i].is_off_curve() {
+                        points_to_move.insert(points[next_i].id);
+                    }
+            }
+        }
+    }
+
     /// Get the previous index in a path (with wrapping for closed
     /// paths)
     fn get_previous_index(
@@ -704,6 +769,11 @@ impl EditSession {
                     let points = quadratic.points.make_mut();
                     Self::move_points_in_list(points, points_to_move, delta);
                 }
+                Path::Hyper(hyper) => {
+                    let points = hyper.points.make_mut();
+                    Self::move_points_in_list(points, points_to_move, delta);
+                    hyper.after_change();
+                }
             }
         }
     }
@@ -742,6 +812,13 @@ impl EditSession {
                 points.retain(|point| !selection.contains(&point.id));
                 points.len() >= 2
             }
+            Path::Hyper(hyper) => {
+                let points = hyper.points.make_mut();
+                points.retain(|point| !selection.contains(&point.id));
+                let len = points.len();
+                hyper.after_change();
+                len >= 2
+            }
         }
     }
 
@@ -755,6 +832,11 @@ impl EditSession {
             Path::Quadratic(quadratic) => {
                 let points = quadratic.points.make_mut();
                 Self::toggle_points_in_list(points, selection);
+            }
+            Path::Hyper(hyper) => {
+                let points = hyper.points.make_mut();
+                Self::toggle_points_in_list(points, selection);
+                hyper.after_change();
             }
         }
     }
@@ -796,6 +878,13 @@ impl EditSession {
                     None
                 }
             }
+            Path::Hyper(hyper) => {
+                if Self::hyper_contains_segment(hyper, segment_info) {
+                    Some(hyper.points.make_mut())
+                } else {
+                    None
+                }
+            }
         }
     }
 
@@ -820,6 +909,21 @@ impl EditSession {
         segment_info: &crate::path_segment::SegmentInfo,
     ) -> bool {
         for seg in quadratic.iter_segments() {
+            if seg.start_index == segment_info.start_index
+                && seg.end_index == segment_info.end_index
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Check if a hyper path contains a specific segment
+    fn hyper_contains_segment(
+        hyper: &HyperPath,
+        segment_info: &crate::path_segment::SegmentInfo,
+    ) -> bool {
+        for seg in hyper.iter_segments() {
             if seg.start_index == segment_info.start_index
                 && seg.end_index == segment_info.end_index
             {

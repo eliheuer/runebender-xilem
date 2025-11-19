@@ -26,8 +26,7 @@ use crate::components::toolbars::{
 };
 
 /// Available tools in display order
-/// Currently only showing implemented tools: Select, Pen, Preview
-const TOOLBAR_TOOLS: &[ToolId] = &[ToolId::Select, ToolId::Pen, ToolId::Preview];
+const TOOLBAR_TOOLS: &[ToolId] = &[ToolId::Select, ToolId::Pen, ToolId::HyperPen, ToolId::Preview];
 
 /// Edit mode toolbar widget
 pub struct EditModeToolbarWidget {
@@ -50,6 +49,7 @@ impl EditModeToolbarWidget {
         match tool {
             ToolId::Select => select_icon(),
             ToolId::Pen => pen_icon(),
+            ToolId::HyperPen => hyper_pen_icon(),
             ToolId::Preview => preview_icon(),
         }
     }
@@ -293,6 +293,37 @@ fn pen_icon() -> BezPath {
     bez.curve_to((68.0, 462.0), (76.0, 472.0), (84.0, 484.0));
     bez.line_to((152.0, 576.0));
     bez.curve_to((172.0, 602.0), (180.0, 602.0), (200.0, 602.0));
+    bez.close_path();
+
+    bez
+}
+
+fn hyper_pen_icon() -> BezPath {
+    // Icon from VirtuaGrotesk F003 (U+F003) - spiral/hyperbezier symbol
+    // Y coordinates flipped to convert from UFO (Y-up) to screen (Y-down)
+    let mut bez = BezPath::new();
+
+    bez.move_to((320.0, 428.0));
+    bez.curve_to((272.0, 428.0), (190.0, 390.0), (190.0, 320.0));
+    bez.curve_to((190.0, 240.0), (234.0, 180.0), (344.0, 180.0));
+    bez.curve_to((464.0, 180.0), (552.0, 264.0), (552.0, 408.0));
+    bez.curve_to((552.0, 490.0), (470.0, 600.0), (314.0, 600.0));
+    bez.curve_to((102.0, 600.0), (0.0, 476.0), (0.0, 322.0));
+    bez.curve_to((0.0, 132.0), (130.0, 0.0), (366.0, 0.0));
+    bez.curve_to((564.0, 0.0), (752.0, 116.0), (752.0, 390.0));
+    bez.curve_to((752.0, 590.0), (648.0, 784.0), (320.0, 784.0));
+    bez.curve_to((192.0, 784.0), (40.0, 756.0), (40.0, 696.0));
+    bez.curve_to((40.0, 662.0), (62.0, 646.0), (96.0, 646.0));
+    bez.curve_to((144.0, 646.0), (172.0, 686.0), (320.0, 686.0));
+    bez.curve_to((542.0, 686.0), (650.0, 560.0), (650.0, 386.0));
+    bez.curve_to((650.0, 244.0), (524.0, 92.0), (366.0, 92.0));
+    bez.curve_to((172.0, 92.0), (102.0, 210.0), (102.0, 322.0));
+    bez.curve_to((102.0, 436.0), (196.0, 508.0), (320.0, 508.0));
+    bez.curve_to((436.0, 508.0), (454.0, 444.0), (454.0, 376.0));
+    bez.curve_to((454.0, 310.0), (404.0, 268.0), (336.0, 268.0));
+    bez.curve_to((296.0, 268.0), (280.0, 290.0), (280.0, 320.0));
+    bez.curve_to((280.0, 360.0), (362.0, 346.0), (362.0, 386.0));
+    bez.curve_to((362.0, 410.0), (350.0, 428.0), (320.0, 428.0));
     bez.close_path();
 
     bez

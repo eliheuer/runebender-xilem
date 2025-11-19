@@ -5,20 +5,22 @@
 
 use crate::cubic_path::CubicPath;
 use crate::entity_id::EntityId;
+use crate::hyper_path::HyperPath;
 use crate::quadratic_path::QuadraticPath;
 use crate::workspace;
 use kurbo::BezPath;
 
 /// A path in a glyph outline
 ///
-/// Supports both cubic and quadratic bezier paths.
-/// HyperPath support can be added later.
+/// Supports cubic, quadratic, and hyperbezier paths.
 #[derive(Debug, Clone)]
 pub enum Path {
     /// A cubic bezier path
     Cubic(CubicPath),
     /// A quadratic bezier path
     Quadratic(QuadraticPath),
+    /// A hyperbezier path (uses spline solver)
+    Hyper(HyperPath),
 }
 
 impl Path {
@@ -27,6 +29,7 @@ impl Path {
         match self {
             Path::Cubic(cubic) => cubic.to_bezpath(),
             Path::Quadratic(quadratic) => quadratic.to_bezpath(),
+            Path::Hyper(hyper) => hyper.to_bezpath(),
         }
     }
 
@@ -36,6 +39,7 @@ impl Path {
         match self {
             Path::Cubic(cubic) => cubic.id,
             Path::Quadratic(quadratic) => quadratic.id,
+            Path::Hyper(hyper) => hyper.id,
         }
     }
 
@@ -45,6 +49,7 @@ impl Path {
         match self {
             Path::Cubic(cubic) => cubic.len(),
             Path::Quadratic(quadratic) => quadratic.len(),
+            Path::Hyper(hyper) => hyper.len(),
         }
     }
 
@@ -54,6 +59,7 @@ impl Path {
         match self {
             Path::Cubic(cubic) => cubic.is_empty(),
             Path::Quadratic(quadratic) => quadratic.is_empty(),
+            Path::Hyper(hyper) => hyper.is_empty(),
         }
     }
 
@@ -63,6 +69,7 @@ impl Path {
         match self {
             Path::Cubic(cubic) => cubic.closed,
             Path::Quadratic(quadratic) => quadratic.closed,
+            Path::Hyper(hyper) => hyper.closed,
         }
     }
 
@@ -72,7 +79,14 @@ impl Path {
         match self {
             Path::Cubic(cubic) => cubic.bounding_box(),
             Path::Quadratic(quadratic) => quadratic.bounding_box(),
+            Path::Hyper(hyper) => hyper.bounding_box(),
         }
+    }
+
+    /// Check if this path is a hyperbezier path
+    #[allow(dead_code)]
+    pub fn is_hyper(&self) -> bool {
+        matches!(self, Path::Hyper(_))
     }
 
     /// Convert from a workspace contour (norad format)
@@ -97,6 +111,7 @@ impl Path {
         match self {
             Path::Cubic(cubic) => cubic.to_contour(),
             Path::Quadratic(quadratic) => quadratic.to_contour(),
+            Path::Hyper(hyper) => hyper.to_contour(),
         }
     }
 }
