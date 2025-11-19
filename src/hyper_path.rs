@@ -175,6 +175,14 @@ impl HyperPath {
 
         // Close the path if needed
         if self.closed && points_vec.len() >= 3 {
+            // Add a spline segment back to the first point to ensure the closing
+            // segment is also a smooth hyperbezier curve
+            spec.spline_to(
+                None,
+                None,
+                to_spline_point(points_vec[0].point),
+                true,
+            );
             spec.close();
         }
 
