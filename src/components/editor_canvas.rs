@@ -1131,6 +1131,33 @@ fn draw_offcurve_point(
     fill_color(scene, &inner_circle, inner_color);
 }
 
+/// Draw a hyperbezier on-curve point as a circle (cyan/teal color)
+fn draw_hyper_point(
+    scene: &mut Scene,
+    screen_pos: Point,
+    is_selected: bool,
+) {
+    let radius = if is_selected {
+        theme::size::HYPER_POINT_SELECTED_RADIUS
+    } else {
+        theme::size::HYPER_POINT_RADIUS
+    };
+
+    let (inner_color, outer_color) = if is_selected {
+        (theme::point::SELECTED_INNER, theme::point::SELECTED_OUTER)
+    } else {
+        (theme::point::HYPER_INNER, theme::point::HYPER_OUTER)
+    };
+
+    // Outer circle (border)
+    let outer_circle = Circle::new(screen_pos, radius + 1.0);
+    fill_color(scene, &outer_circle, outer_color);
+
+    // Inner circle
+    let inner_circle = Circle::new(screen_pos, radius);
+    fill_color(scene, &inner_circle, inner_color);
+}
+
 /// Draw control handles for a quadratic path
 fn draw_control_handles_quadratic(
     scene: &mut Scene,
@@ -1314,12 +1341,9 @@ fn draw_points_hyper(
         let is_selected = session.selection.contains(&pt.id);
 
         match pt.typ {
-            PointType::OnCurve { smooth } => {
-                if smooth {
-                    draw_smooth_point(scene, screen_pos, is_selected);
-                } else {
-                    draw_corner_point(scene, screen_pos, is_selected);
-                }
+            PointType::OnCurve { .. } => {
+                // All hyperbezier on-curve points use the hyper point style
+                draw_hyper_point(scene, screen_pos, is_selected);
             }
             PointType::OffCurve { .. } => {
                 draw_offcurve_point(scene, screen_pos, is_selected);
