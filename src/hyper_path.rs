@@ -138,19 +138,17 @@ impl HyperPath {
 
     /// Rebuild the bezier cache from points using the spline solver
     fn rebuild_bezier(&mut self) {
-        let bez_path = BezPath::new();
+        let num_points = self.points.len();
 
-        if self.points.is_empty() {
-            self.bezier = Arc::new(bez_path);
+        if num_points == 0 {
+            self.bezier = Arc::new(BezPath::new());
             return;
         }
 
-        let points_vec: Vec<&PathPoint> = self.points.iter().collect();
-
         // Need at least 2 points to draw anything
-        if points_vec.len() < 2 {
+        if num_points < 2 {
             // Just a single point - nothing to draw
-            self.bezier = Arc::new(bez_path);
+            self.bezier = Arc::new(BezPath::new());
             return;
         }
 
@@ -159,28 +157,33 @@ impl HyperPath {
         let mut spec = SplineSpec::new();
 
         // Helper to convert Point versions (kurbo 0.12 -> kurbo 0.9)
-        let to_spline_point = |p: Point| -> kurbo_09::Point {
+        #[inline(always)]
+        fn to_spline_point(p: Point) -> kurbo_09::Point {
             kurbo_09::Point::new(p.x, p.y)
-        };
+        }
+
+        // Iterate directly over points without collecting into Vec
+        let mut points_iter = self.points.iter();
 
         // Move to the first point
-        spec.move_to(to_spline_point(points_vec[0].point));
+        let first_point = points_iter.next().unwrap().point;
+        spec.move_to(to_spline_point(first_point));
 
         // Add spline segments for each subsequent point
-        for pt in points_vec.iter().skip(1) {
+        for pt in points_iter {
             // Use spline_to with auto control points (None, None)
             // This lets the solver compute optimal handle positions
             spec.spline_to(None, None, to_spline_point(pt.point), true);
         }
 
         // Close the path if needed
-        if self.closed && points_vec.len() >= 3 {
+        if self.closed && num_points >= 3 {
             // Add a spline segment back to the first point to ensure the closing
             // segment is also a smooth hyperbezier curve
             spec.spline_to(
                 None,
                 None,
-                to_spline_point(points_vec[0].point),
+                to_spline_point(first_point),
                 true,
             );
             spec.close();
@@ -191,8 +194,10 @@ impl HyperPath {
         let spline_bezpath = spline.render();
 
         // Convert from spline's kurbo 0.9 BezPath to our kurbo 0.12 BezPath
+        let elements = spline_bezpath.elements();
         let mut result = BezPath::new();
-        for el in spline_bezpath.elements() {
+
+        for el in elements {
             match el {
                 kurbo_09::PathEl::MoveTo(p) => {
                     result.move_to(Point::new(p.x, p.y));

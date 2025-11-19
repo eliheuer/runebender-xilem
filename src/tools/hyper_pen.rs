@@ -18,7 +18,6 @@ use kurbo::Affine;
 use masonry::vello::Scene;
 use masonry::vello::peniko;
 use std::sync::Arc;
-use tracing;
 
 // ===== Constants =====
 
@@ -100,10 +99,6 @@ impl MouseDelegate for HyperPenTool {
     ) {
         // Check if we're snapped to a curve segment
         if let Some((segment_info, t)) = &self.snapped_segment {
-            tracing::debug!(
-                "HyperPen tool: inserting point on curve at t={}",
-                t
-            );
             data.insert_point_on_segment(segment_info, *t);
             self.snapped_segment = None;
             return;
@@ -113,7 +108,6 @@ impl MouseDelegate for HyperPenTool {
 
         // Check if we're clicking near the first point to close the path
         if self.should_close_path(data, design_pos) {
-            tracing::debug!("HyperPen tool: closing path at first point");
             self.close_path(data);
             return;
         }
@@ -121,11 +115,6 @@ impl MouseDelegate for HyperPenTool {
         // Add a new on-curve point
         // All points in hyperbezier mode are smooth by default
         self.add_point(data, design_pos);
-
-        tracing::debug!(
-            "HyperPen tool: added point at {:?}",
-            design_pos
-        );
     }
 
     fn mouse_moved(
@@ -155,7 +144,6 @@ impl MouseDelegate for HyperPenTool {
         self.active_path_id = None;
         self.drawing = false;
         self.snapped_segment = None;
-        tracing::debug!("HyperPen tool: finished/cancelled");
     }
 }
 
