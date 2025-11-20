@@ -765,6 +765,51 @@ impl EditorWidget {
             return true;
         }
 
+        // Tool switching shortcuts (without modifiers)
+        if !cmd && !shift {
+            let new_tool = match key {
+                Key::Character(c) if c == "v" => {
+                    Some(crate::tools::ToolId::Select)
+                }
+                Key::Character(c) if c == "p" => {
+                    Some(crate::tools::ToolId::Pen)
+                }
+                Key::Character(c) if c == "h" => {
+                    Some(crate::tools::ToolId::HyperPen)
+                }
+                Key::Character(c) if c == "k" => {
+                    Some(crate::tools::ToolId::Knife)
+                }
+                _ => None,
+            };
+
+            if let Some(tool_id) = new_tool {
+                // Cancel current tool
+                let mut tool = std::mem::replace(
+                    &mut self.session.current_tool,
+                    crate::tools::ToolBox::for_id(
+                        crate::tools::ToolId::Select,
+                    ),
+                );
+                self.mouse.cancel(&mut tool, &mut self.session);
+                self.mouse = crate::mouse::Mouse::new();
+
+                // Switch to new tool
+                self.session.current_tool =
+                    crate::tools::ToolBox::for_id(tool_id);
+
+                // Notify toolbar of change
+                ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                    session: self.session.clone(),
+                    save_requested: false,
+                });
+
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
+            }
+        }
+
         false
     }
 
