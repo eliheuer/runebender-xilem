@@ -164,11 +164,11 @@ pub mod panel {
 
 /// Colors for toolbar buttons and icons (generic for all toolbars)
 pub mod toolbar {
-    use super::{Color, BASE_B, BASE_E, BASE_H, BASE_J};
+    use super::{Color, BASE_B, BASE_F, BASE_H, BASE_J};
 
     // Button background colors
     /// Normal button color (unselected, not hovered)
-    pub const BUTTON_UNSELECTED: Color = BASE_E;
+    pub const BUTTON_UNSELECTED: Color = BASE_F;
     /// Button color when hovered
     pub const BUTTON_HOVERED: Color = BASE_H;
     /// Button color when selected

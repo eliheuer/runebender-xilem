@@ -160,19 +160,36 @@ impl Tool for KnifeTool {
                 &line,
             );
 
-            // Draw intersection markers as red dots
+            // Draw intersection markers as green X marks (matching corner points)
             for &intersection in &self.intersections {
                 let screen_pt = session.viewport.to_screen(intersection);
-                let dot = kurbo::Circle::new(
-                    screen_pt,
-                    tool_preview::DOT_RADIUS,
+                let mark_size = 6.0;
+                let green = crate::theme::point::CORNER_INNER;
+                let mark_stroke = Stroke::new(3.0);
+
+                // Draw X (two diagonal lines)
+                let x1 = Line::new(
+                    kurbo::Point::new(screen_pt.x - mark_size, screen_pt.y - mark_size),
+                    kurbo::Point::new(screen_pt.x + mark_size, screen_pt.y + mark_size),
                 );
-                scene.fill(
-                    masonry::vello::peniko::Fill::NonZero,
+                let x2 = Line::new(
+                    kurbo::Point::new(screen_pt.x - mark_size, screen_pt.y + mark_size),
+                    kurbo::Point::new(screen_pt.x + mark_size, screen_pt.y - mark_size),
+                );
+
+                scene.stroke(
+                    &mark_stroke,
                     Affine::IDENTITY,
-                    masonry::vello::peniko::Color::from_rgb8(0xff, 0x00, 0x00),
+                    green,
                     None,
-                    &dot,
+                    &x1,
+                );
+                scene.stroke(
+                    &mark_stroke,
+                    Affine::IDENTITY,
+                    green,
+                    None,
+                    &x2,
                 );
             }
         }

@@ -13,7 +13,6 @@ use masonry::vello::Scene;
 
 use crate::theme::panel::{
     BACKGROUND as COLOR_PANEL,
-    BUTTON_OUTLINE as COLOR_BUTTON_BORDER,
     OUTLINE as COLOR_PANEL_BORDER,
 };
 use crate::theme::size::{
@@ -116,13 +115,7 @@ pub fn paint_button(
     };
     fill_color(scene, &button_rrect, bg_color);
 
-    // Draw button border
-    stroke(
-        scene,
-        &button_rrect,
-        COLOR_BUTTON_BORDER,
-        TOOLBAR_BORDER_WIDTH,
-    );
+    // No button border - just fill color
 }
 
 /// Paint an icon in a toolbar button with state-based coloring
