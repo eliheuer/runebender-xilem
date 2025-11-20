@@ -837,7 +837,7 @@ fn cubic_subsegment(cubic: CubicBez, t_start: f64, t_end: f64) -> CubicBez {
 
 /// Find intersections between a line and a segment
 /// Returns Vec of (segment_t, line_t) pairs
-fn intersect_line_segment(line: Line, segment: &Segment) -> Vec<(f64, f64)> {
+pub(crate) fn intersect_line_segment(line: Line, segment: &Segment) -> Vec<(f64, f64)> {
     match segment {
         Segment::Line(seg_line) => intersect_line_line(line, *seg_line),
         Segment::Cubic(cubic) => intersect_line_cubic(line, *cubic),

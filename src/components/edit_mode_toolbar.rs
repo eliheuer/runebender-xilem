@@ -26,7 +26,7 @@ use crate::components::toolbars::{
 };
 
 /// Available tools in display order
-const TOOLBAR_TOOLS: &[ToolId] = &[ToolId::Select, ToolId::Pen, ToolId::HyperPen, ToolId::Knife, ToolId::Preview];
+const TOOLBAR_TOOLS: &[ToolId] = &[ToolId::Select, ToolId::Pen, ToolId::HyperPen, ToolId::Knife, ToolId::Measure, ToolId::Shapes, ToolId::Preview];
 
 /// Edit mode toolbar widget
 pub struct EditModeToolbarWidget {
@@ -51,6 +51,8 @@ impl EditModeToolbarWidget {
             ToolId::Pen => pen_icon(),
             ToolId::HyperPen => hyper_pen_icon(),
             ToolId::Knife => knife_icon(),
+            ToolId::Measure => measure_icon(),
+            ToolId::Shapes => shapes_icon(),
             ToolId::Preview => preview_icon(),
         }
     }
@@ -552,47 +554,142 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
 
 #[allow(dead_code)]
 fn measure_icon() -> BezPath {
+    // U+E015 - Measure/ruler icon from UFO (flipped vertically for toolbar display)
+    // Y coordinates transformed from UFO space (Y-up) to screen space (Y-down)
     let mut bez = BezPath::new();
-    bez.move_to((0.0, 500.0));
-    bez.line_to((140.0, 500.0));
-    bez.line_to((140.0, 0.0));
-    bez.line_to((0.0, 0.0));
-    bez.line_to((0.0, 500.0));
+
+    // Main diagonal ruler body
+    bez.move_to((520.0, 764.0));
+    bez.line_to((680.0, 604.0));
+    bez.curve_to((696.0, 588.0), (696.0, 574.0), (680.0, 558.0));
+    bez.line_to((136.0, 16.0));
+    bez.curve_to((120.0, 0.0), (106.0, 0.0), (90.0, 16.0));
+    bez.line_to((-70.0, 176.0));
+    bez.curve_to((-86.0, 192.0), (-86.0, 206.0), (-70.0, 222.0));
+    bez.line_to((474.0, 764.0));
+    bez.curve_to((490.0, 780.0), (504.0, 780.0), (520.0, 764.0));
     bez.close_path();
-    bez.move_to((190.0, 0.0));
-    bez.line_to((330.0, 0.0));
-    bez.move_to((190.0, 500.0));
-    bez.line_to((330.0, 500.0));
-    bez.move_to((210.0, 100.0));
-    bez.line_to((310.0, 100.0));
-    bez.line_to((260.0, 10.0));
-    bez.line_to((210.0, 100.0));
+
+    // Tick mark 1
+    bez.move_to((22.0, 238.0));
+    bez.curve_to((10.0, 250.0), (6.0, 250.0), (-6.0, 238.0));
+    bez.line_to((-12.0, 232.0));
+    bez.curve_to((-24.0, 220.0), (-24.0, 216.0), (-12.0, 204.0));
+    bez.line_to((46.0, 146.0));
+    bez.curve_to((58.0, 134.0), (62.0, 134.0), (74.0, 146.0));
+    bez.line_to((80.0, 152.0));
+    bez.curve_to((92.0, 164.0), (92.0, 168.0), (80.0, 180.0));
     bez.close_path();
-    bez.move_to((210.0, 400.0));
-    bez.line_to((310.0, 400.0));
-    bez.line_to((260.0, 490.0));
-    bez.line_to((210.0, 400.0));
+
+    // Tick mark 2
+    bez.move_to((100.0, 318.0));
+    bez.curve_to((88.0, 330.0), (84.0, 330.0), (72.0, 318.0));
+    bez.line_to((66.0, 312.0));
+    bez.curve_to((54.0, 300.0), (54.0, 296.0), (66.0, 284.0));
+    bez.line_to((164.0, 186.0));
+    bez.curve_to((176.0, 174.0), (180.0, 174.0), (192.0, 186.0));
+    bez.line_to((198.0, 192.0));
+    bez.curve_to((210.0, 204.0), (210.0, 208.0), (198.0, 220.0));
     bez.close_path();
-    bez.move_to((260.0, 100.0));
-    bez.line_to((260.0, 400.0));
-    bez.move_to((70.0, 350.0));
-    bez.line_to((140.0, 350.0));
-    bez.move_to((100.0, 400.0));
-    bez.line_to((140.0, 400.0));
-    bez.move_to((50.0, 450.0));
-    bez.line_to((140.0, 450.0));
-    bez.move_to((100.0, 300.0));
-    bez.line_to((140.0, 300.0));
-    bez.move_to((50.0, 250.0));
-    bez.line_to((140.0, 250.0));
-    bez.move_to((70.0, 150.0));
-    bez.line_to((140.0, 150.0));
-    bez.move_to((100.0, 200.0));
-    bez.line_to((140.0, 200.0));
-    bez.move_to((100.0, 100.0));
-    bez.line_to((140.0, 100.0));
-    bez.move_to((50.0, 50.0));
-    bez.line_to((140.0, 50.0));
+
+    // Tick mark 3
+    bez.move_to((180.0, 396.0));
+    bez.curve_to((168.0, 408.0), (164.0, 408.0), (152.0, 396.0));
+    bez.line_to((146.0, 390.0));
+    bez.curve_to((134.0, 378.0), (134.0, 374.0), (146.0, 362.0));
+    bez.line_to((204.0, 304.0));
+    bez.curve_to((216.0, 292.0), (220.0, 292.0), (232.0, 304.0));
+    bez.line_to((238.0, 310.0));
+    bez.curve_to((250.0, 322.0), (250.0, 326.0), (238.0, 338.0));
+    bez.close_path();
+
+    // Tick mark 4
+    bez.move_to((260.0, 476.0));
+    bez.curve_to((248.0, 488.0), (242.0, 488.0), (230.0, 476.0));
+    bez.line_to((226.0, 470.0));
+    bez.curve_to((214.0, 458.0), (214.0, 454.0), (226.0, 442.0));
+    bez.line_to((322.0, 344.0));
+    bez.curve_to((334.0, 332.0), (338.0, 332.0), (350.0, 344.0));
+    bez.line_to((356.0, 350.0));
+    bez.curve_to((368.0, 362.0), (368.0, 366.0), (356.0, 378.0));
+    bez.close_path();
+
+    // Tick mark 5
+    bez.move_to((338.0, 554.0));
+    bez.curve_to((326.0, 566.0), (322.0, 566.0), (310.0, 554.0));
+    bez.line_to((304.0, 550.0));
+    bez.curve_to((292.0, 538.0), (292.0, 532.0), (304.0, 520.0));
+    bez.line_to((362.0, 462.0));
+    bez.curve_to((374.0, 450.0), (378.0, 450.0), (390.0, 462.0));
+    bez.line_to((396.0, 468.0));
+    bez.curve_to((408.0, 480.0), (408.0, 484.0), (396.0, 496.0));
+    bez.close_path();
+
+    // Tick mark 6
+    bez.move_to((418.0, 634.0));
+    bez.curve_to((406.0, 646.0), (402.0, 646.0), (390.0, 634.0));
+    bez.line_to((384.0, 628.0));
+    bez.curve_to((372.0, 616.0), (372.0, 612.0), (384.0, 600.0));
+    bez.line_to((482.0, 502.0));
+    bez.curve_to((494.0, 490.0), (498.0, 490.0), (510.0, 502.0));
+    bez.line_to((516.0, 508.0));
+    bez.curve_to((528.0, 520.0), (528.0, 524.0), (516.0, 536.0));
+    bez.close_path();
+
+    // Tick mark 7
+    bez.move_to((496.0, 714.0));
+    bez.curve_to((484.0, 726.0), (480.0, 726.0), (468.0, 714.0));
+    bez.line_to((462.0, 708.0));
+    bez.curve_to((450.0, 696.0), (450.0, 692.0), (462.0, 680.0));
+    bez.line_to((520.0, 622.0));
+    bez.curve_to((532.0, 610.0), (536.0, 610.0), (548.0, 622.0));
+    bez.line_to((554.0, 626.0));
+    bez.curve_to((566.0, 638.0), (566.0, 644.0), (554.0, 656.0));
+    bez.close_path();
+
+    bez
+}
+
+fn shapes_icon() -> BezPath {
+    // U+E016 - Shapes icon (rounded rect + circle) from UFO (flipped vertically)
+    // Y coordinates transformed: new_y = 768 - old_y
+    let mut bez = BezPath::new();
+
+    // Rounded rectangle contour
+    bez.move_to((460.0, 222.0));  // 768-546
+    bez.line_to((538.0, 222.0));
+    bez.line_to((538.0, 32.0));  // 768-736
+    bez.curve_to((538.0, 12.0), (526.0, 0.0), (506.0, 0.0));
+    bez.line_to((32.0, 0.0));
+    bez.curve_to((12.0, 0.0), (0.0, 12.0), (0.0, 32.0));
+    bez.line_to((0.0, 506.0));  // 768-262
+    bez.curve_to((0.0, 526.0), (12.0, 538.0), (32.0, 538.0));
+    bez.line_to((220.0, 538.0));
+    bez.line_to((220.0, 460.0));  // 768-308
+    bez.line_to((102.0, 460.0));
+    bez.curve_to((86.0, 460.0), (78.0, 452.0), (78.0, 436.0));
+    bez.line_to((78.0, 102.0));  // 768-666
+    bez.curve_to((78.0, 86.0), (86.0, 78.0), (102.0, 78.0));
+    bez.line_to((436.0, 78.0));
+    bez.curve_to((452.0, 78.0), (460.0, 86.0), (460.0, 102.0));
+    bez.close_path();
+
+    // Circle contour (outer)
+    bez.move_to((486.0, 784.0));  // 768-(-16)
+    bez.curve_to((648.0, 784.0), (782.0, 652.0), (782.0, 488.0));  // 768-116, 768-280
+    bez.curve_to((782.0, 324.0), (648.0, 192.0), (486.0, 192.0));  // 768-444, 768-576
+    bez.curve_to((322.0, 192.0), (192.0, 324.0), (192.0, 488.0));
+    bez.curve_to((192.0, 652.0), (322.0, 784.0), (486.0, 784.0));
+    bez.close_path();
+
+    // Circle contour (inner - hole)
+    bez.move_to((486.0, 704.0));  // 768-64
+    bez.curve_to((368.0, 704.0), (270.0, 608.0), (270.0, 488.0));  // 768-160, 768-280
+    bez.curve_to((270.0, 368.0), (368.0, 272.0), (486.0, 272.0));  // 768-400, 768-496
+    bez.curve_to((606.0, 272.0), (702.0, 368.0), (702.0, 488.0));
+    bez.curve_to((702.0, 608.0), (606.0, 704.0), (486.0, 704.0));
+    bez.close_path();
+
     bez
 }
 

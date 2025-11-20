@@ -16,7 +16,7 @@ use crate::theme::panel::{
     OUTLINE as COLOR_PANEL_BORDER,
 };
 use crate::theme::size::{
-    TOOLBAR_BORDER_WIDTH, TOOLBAR_BUTTON_RADIUS, TOOLBAR_ICON_PADDING,
+    PANEL_RADIUS, TOOLBAR_BORDER_WIDTH, TOOLBAR_BUTTON_RADIUS, TOOLBAR_ICON_PADDING,
     TOOLBAR_ITEM_SIZE, TOOLBAR_ITEM_SPACING, TOOLBAR_PADDING,
 };
 use crate::theme::toolbar::{
@@ -77,7 +77,7 @@ pub fn button_rect(index: usize) -> Rect {
 /// Paint the background panel for a toolbar
 pub fn paint_panel(scene: &mut Scene, size: Size) {
     let panel_rect = size.to_rect();
-    let panel_rrect = RoundedRect::from_rect(panel_rect, 8.0);
+    let panel_rrect = RoundedRect::from_rect(panel_rect, PANEL_RADIUS);
 
     // Solid opaque background - darker than buttons but brighter
     // than canvas
@@ -87,7 +87,7 @@ pub fn paint_panel(scene: &mut Scene, size: Size) {
     // artifacts
     let border_inset = TOOLBAR_BORDER_WIDTH / 2.0;
     let inset_rect = panel_rect.inset(-border_inset);
-    let inset_rrect = RoundedRect::from_rect(inset_rect, 8.0);
+    let inset_rrect = RoundedRect::from_rect(inset_rect, PANEL_RADIUS);
     stroke(
         scene,
         &inset_rrect,
@@ -115,7 +115,13 @@ pub fn paint_button(
     };
     fill_color(scene, &button_rrect, bg_color);
 
-    // No button border - just fill color
+    // Draw dark outline around button (same color as icon fill)
+    stroke(
+        scene,
+        &button_rrect,
+        ICON,
+        TOOLBAR_BORDER_WIDTH,
+    );
 }
 
 /// Paint an icon in a toolbar button with state-based coloring

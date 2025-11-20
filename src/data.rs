@@ -228,6 +228,22 @@ impl AppState {
         session.current_tool = crate::tools::ToolBox::for_id(tool_id);
     }
 
+    /// Set the shape type for the shapes tool
+    pub fn set_shape_type(
+        &mut self,
+        shape_type: crate::tools::shapes::ShapeType,
+    ) {
+        let session = match &mut self.editor_session {
+            Some(s) => s,
+            None => return,
+        };
+
+        // Update the shape type if the current tool is the shapes tool
+        if let crate::tools::ToolBox::Shapes(shapes_tool) = &mut session.current_tool {
+            shapes_tool.set_shape_type(shape_type);
+        }
+    }
+
     /// Update the current editor session with new state
     ///
     /// This also syncs the edited glyph back to the workspace so

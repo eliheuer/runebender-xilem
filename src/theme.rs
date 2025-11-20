@@ -348,4 +348,6 @@ pub mod size {
     pub const TOOLBAR_BUTTON_RADIUS: f64 = 6.0;
     /// Border thickness for toolbar buttons and panels
     pub const TOOLBAR_BORDER_WIDTH: f64 = 1.5;
+    /// Rounded corner radius for all panels (toolbars, sidebars, etc.)
+    pub const PANEL_RADIUS: f64 = 11.0;
 }
