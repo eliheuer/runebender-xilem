@@ -4,6 +4,49 @@
 //! The knife tool for cutting paths
 //!
 //! Ported from Runebender Druid implementation.
+//!
+//! ## Known Issues
+//!
+//! ### BUG: Cubic path splitting corrupts unrelated off-curve points
+//!
+//! **Status**: Unresolved (as of 2025-01-19)
+//!
+//! **Symptoms**:
+//! - When cutting a closed cubic path with the knife tool, off-curve control points
+//!   in parts of the outline NOT involved in the cut are sometimes removed or corrupted
+//! - This creates radiating lines and distorted curves in areas far from the cut
+//! - The bug ONLY occurs with cubic curves - paths with only line segments work correctly
+//!
+//! **Example**:
+//! - Cutting through the upper-left corner of a glyph outline causes distortion
+//!   in the lower-right corner
+//! - Debug logs show duplicate on-curve points being added to the split paths
+//!
+//! **Root Cause Investigation**:
+//! The issue appears related to "wraparound cubic segments" in closed paths:
+//! - In closed paths, the last cubic segment wraps back to the first point
+//! - These segments have start_index == end_index
+//! - The control points for wraparound segments are at indices 0 and 1 (before start_index)
+//! - Multiple attempts to fix duplicate point handling have not resolved the issue
+//!
+//! **What Works**:
+//! - Cutting paths composed only of line segments (no curves)
+//! - The knife tool correctly identifies intersection points
+//! - Visual preview (green X marks at intersections) works correctly
+//!
+//! **Attempted Fixes**:
+//! 1. Extracting wraparound control points from cubic geometry instead of array indices
+//! 2. Adding duplicate detection for end points
+//! 3. Adding closing point explicitly for wraparound segments
+//! 4. NOT adding closing point and relying on next segment to add it
+//! 5. Various permutations of the above
+//!
+//! **Next Steps for Future Investigation**:
+//! - Consider rewriting split_path_at_line() to use a different algorithm
+//! - Perhaps build new paths by evaluating segments directly rather than copying points
+//! - Look at how the original Runebender Druid implementation handled this
+//! - Add comprehensive unit tests for wraparound segment handling
+//! - Consider whether the segment iterator itself is producing incorrect wraparound segments
 
 use crate::cubic_path::CubicPath;
 use crate::edit_session::EditSession;
@@ -112,7 +155,7 @@ impl KnifeTool {
                 Path::Cubic(cubic_path) => {
                     for seg_info in cubic_path.iter_segments() {
                         let hits = intersect_line_segment(line, &seg_info.segment);
-                        for (seg_t, line_t) in hits {
+                        for (_seg_t, line_t) in hits {
                             let point = line.eval(line_t);
                             self.intersections.push(point);
                         }
@@ -530,7 +573,19 @@ fn split_path_at_intersections(
     if one_points.first().map(|p| p.point) == one_points.last().map(|p| p.point)
         && one_points.len() > 1
     {
+        tracing::debug!("Removing duplicate endpoint from path one");
         one_points.pop();
+    }
+
+    tracing::debug!("Path 1 has {} points", one_points.len());
+    tracing::debug!("Path 2 has {} points", two_points.len());
+
+    // Log the points for debugging
+    for (i, pt) in one_points.iter().enumerate() {
+        tracing::debug!("  Path1[{}]: {:?} {:?}", i, pt.point, pt.typ);
+    }
+    for (i, pt) in two_points.iter().enumerate() {
+        tracing::debug!("  Path2[{}]: {:?} {:?}", i, pt.point, pt.typ);
     }
 
     // Create the new paths
@@ -541,6 +596,12 @@ fn split_path_at_intersections(
 }
 
 /// Append all points of a segment to the destination
+///
+/// WARNING: This function has a known bug with wraparound cubic segments.
+/// See module-level documentation for details. The wraparound handling below
+/// is an attempted fix that does not fully resolve the issue. When cutting
+/// closed cubic paths, this can corrupt off-curve points in unrelated parts
+/// of the outline.
 fn append_segment_points(
     dest: &mut Vec<PathPoint>,
     points: &[PathPoint],
@@ -549,18 +610,91 @@ fn append_segment_points(
     let start = seg_info.start_index;
     let end = seg_info.end_index;
 
-    // Add start point if not duplicate
+    tracing::debug!(
+        "append_segment_points: start={}, end={}, segment={:?}",
+        start,
+        end,
+        seg_info.segment
+    );
+
+    // BUGGY: Handle wraparound cases first (start == end)
+    // This code attempts to handle wraparound cubic segments in closed paths,
+    // but still causes corruption. See module-level documentation.
+    // For wraparound cases, we need to extract from the cubic geometry
+    if start == end && matches!(seg_info.segment, Segment::Cubic(_)) {
+        // Wraparound case: extract control points from geometry
+        if let Segment::Cubic(cubic) = &seg_info.segment {
+            tracing::debug!(
+                "  Wraparound cubic detected - extracting all points from geometry"
+            );
+
+            // Add start point if not duplicate
+            if dest.last().map(|p| p.point) != Some(cubic.p0) {
+                tracing::debug!(
+                    "  Adding wraparound start point: {:?} type={:?}",
+                    cubic.p0,
+                    points[start].typ
+                );
+                dest.push(PathPoint {
+                    id: EntityId::next(),
+                    point: cubic.p0,
+                    typ: points[start].typ,
+                });
+            } else {
+                tracing::debug!("  Skipping duplicate wraparound start point");
+            }
+
+            // Add control points
+            tracing::debug!(
+                "  Adding control points: p1={:?}, p2={:?}",
+                cubic.p1,
+                cubic.p2
+            );
+            dest.push(PathPoint {
+                id: EntityId::next(),
+                point: cubic.p1,
+                typ: PointType::OffCurve { auto: false },
+            });
+            dest.push(PathPoint {
+                id: EntityId::next(),
+                point: cubic.p2,
+                typ: PointType::OffCurve { auto: false },
+            });
+
+            // Don't add closing point - it's the same as start and will be added by next segment
+            tracing::debug!(
+                "  Wraparound complete - NOT adding closing point (same as start)"
+            );
+            return; // Early return
+        }
+    }
+
+    // Normal case: add start point if not duplicate
     if dest.last().map(|p| p.point) != Some(points[start].point) {
+        tracing::debug!(
+            "  Adding start point [{}]: {:?} type={:?}",
+            start,
+            points[start].point,
+            points[start].typ
+        );
         dest.push(PathPoint {
             id: EntityId::next(),
             point: points[start].point,
             typ: points[start].typ,
         });
+    } else {
+        tracing::debug!("  Skipping duplicate start point");
     }
 
-    // Add intermediate points (for cubic segments)
+    // Normal case: copy points between start and end
     for i in (start + 1)..end {
         if i < points.len() {
+            tracing::debug!(
+                "  Adding intermediate point [{}]: {:?} type={:?}",
+                i,
+                points[i].point,
+                points[i].typ
+            );
             dest.push(PathPoint {
                 id: EntityId::next(),
                 point: points[i].point,
@@ -569,20 +703,28 @@ fn append_segment_points(
         }
     }
 
-    // Add end point
-    if end < points.len() {
+    // Add end point (skip if it's the same as start - wraparound case)
+    if end < points.len() && end != start {
+        tracing::debug!(
+            "  Adding end point [{}]: {:?} type={:?}",
+            end,
+            points[end].point,
+            points[end].typ
+        );
         dest.push(PathPoint {
             id: EntityId::next(),
             point: points[end].point,
             typ: points[end].typ,
         });
+    } else if end == start {
+        tracing::debug!("  Skipping end point (same as start - wraparound)");
     }
 }
 
 /// Append a subsegment (portion of a segment) to the destination
 fn append_subsegment_points(
     dest: &mut Vec<PathPoint>,
-    points: &[PathPoint],
+    _points: &[PathPoint],
     seg_info: &SegmentInfo,
     t_start: f64,
     t_end: f64,
