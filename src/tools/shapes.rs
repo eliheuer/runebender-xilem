@@ -108,12 +108,13 @@ impl MouseDelegate for ShapesTool {
 
     fn left_down(&mut self, event: MouseEvent, _data: &mut EditSession) {
         self.gesture = GestureState::Down(event.pos);
-        tracing::debug!("Shapes tool: mouse down at {:?}", event.pos);
+        // Note: shift_locked is controlled by keyboard events, not mouse events
+        tracing::debug!("Shapes tool: mouse down at {:?}, shift={}", event.pos, self.shift_locked);
     }
 
     fn left_drag_began(
         &mut self,
-        _event: MouseEvent,
+        event: MouseEvent,
         drag: crate::mouse::Drag,
         data: &mut EditSession,
     ) {
@@ -121,30 +122,35 @@ impl MouseDelegate for ShapesTool {
         let start = data.viewport.screen_to_design(drag.start);
         let current = data.viewport.screen_to_design(drag.current);
 
+        // Note: shift_locked is controlled by keyboard events, not mouse events
         self.gesture = GestureState::Begun { start, current };
-        tracing::debug!("Shapes tool: drag began");
+        tracing::debug!("Shapes tool: drag began, shift={}", self.shift_locked);
     }
 
     fn left_drag_changed(
         &mut self,
-        _event: MouseEvent,
+        event: MouseEvent,
         drag: crate::mouse::Drag,
         data: &mut EditSession,
     ) {
         if let GestureState::Begun { start, .. } = self.gesture {
             let current = data.viewport.screen_to_design(drag.current);
+            // Note: shift_locked is controlled by keyboard events, not mouse events
             self.gesture = GestureState::Begun { start, current };
         }
     }
 
     fn left_drag_ended(
         &mut self,
-        _event: MouseEvent,
+        event: MouseEvent,
         drag: crate::mouse::Drag,
         data: &mut EditSession,
     ) {
         if let GestureState::Begun { start, .. } = self.gesture {
             let current = data.viewport.screen_to_design(drag.current);
+
+            // Note: shift_locked is controlled by keyboard events, not mouse events
+            // The final shape uses whatever shift state was set by keyboard
 
             // Get the final rectangle
             let (p0, p1) = self.pts_for_rect(start, current);
@@ -190,6 +196,11 @@ impl ShapesTool {
         self.shape_type
     }
 
+    /// Set the shift-lock state (for keyboard-driven constraint toggling)
+    pub fn set_shift_locked(&mut self, locked: bool) {
+        self.shift_locked = locked;
+    }
+
     /// Get points for rectangle, applying shift-lock constraint if needed
     fn pts_for_rect(&self, start: Point, current: Point) -> (Point, Point) {
         if self.shift_locked {
@@ -200,8 +211,13 @@ impl ShapesTool {
                 start.x + size * delta.x.signum(),
                 start.y + size * delta.y.signum(),
             );
+            tracing::debug!(
+                "pts_for_rect: CONSTRAINED - start={:?}, current={:?}, delta={:?}, size={}, constrained={:?}",
+                start, current, delta, size, constrained
+            );
             (start, constrained)
         } else {
+            tracing::debug!("pts_for_rect: unconstrained - start={:?}, current={:?}", start, current);
             (start, current)
         }
     }

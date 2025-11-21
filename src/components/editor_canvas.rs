@@ -295,7 +295,7 @@ impl Widget for EditorWidget {
         _props: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
-        use masonry::core::keyboard::KeyState;
+        use masonry::core::keyboard::{Key, KeyState};
 
         if let TextEvent::Keyboard(key_event) = event {
             tracing::debug!(
@@ -303,6 +303,15 @@ impl Widget for EditorWidget {
                 key_event.key,
                 key_event.state
             );
+
+            // Handle shift key for shape constraining
+            if let Key::Named(masonry::core::keyboard::NamedKey::Shift) = key_event.key {
+                let shift_pressed = key_event.state == KeyState::Down;
+                if let crate::tools::ToolBox::Shapes(shapes_tool) = &mut self.session.current_tool {
+                    shapes_tool.set_shift_locked(shift_pressed);
+                    ctx.request_render(); // Repaint to update preview
+                }
+            }
 
             // Handle spacebar for temporary preview mode
             if self.handle_spacebar(ctx, key_event) {

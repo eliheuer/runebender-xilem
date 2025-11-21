@@ -186,33 +186,57 @@ impl Widget for ShapesToolbarWidget {
 // --- Icon Definitions ---
 
 fn rectangle_icon() -> BezPath {
-    // Simple rectangle icon - just an outline
+    // U+E018 - Rectangle icon from UFO (flipped vertically)
+    // Y coordinates transformed: new_y = 768 - old_y
     let mut bez = BezPath::new();
 
-    // Rectangle outline (centered, with some padding)
-    let left = 150.0;
-    let right = 618.0;
-    let top = 150.0;
-    let bottom = 618.0;
+    // Outer rectangle (clockwise)
+    bez.move_to((120.0, 620.0));  // 768-148
+    bez.curve_to((120.0, 640.0), (132.0, 652.0), (152.0, 652.0));
+    bez.line_to((616.0, 652.0));
+    bez.curve_to((636.0, 652.0), (648.0, 640.0), (648.0, 620.0));
+    bez.line_to((648.0, 146.0));  // 768-622
+    bez.curve_to((648.0, 126.0), (636.0, 114.0), (616.0, 114.0));
+    bez.line_to((152.0, 114.0));
+    bez.curve_to((132.0, 114.0), (120.0, 126.0), (120.0, 146.0));
+    bez.close_path();
 
-    bez.move_to((left, top));
-    bez.line_to((right, top));
-    bez.line_to((right, bottom));
-    bez.line_to((left, bottom));
+    // Inner rectangle (counter-clockwise to create hole)
+    bez.move_to((546.0, 192.0));  // Start from opposite corner
+    bez.curve_to((562.0, 192.0), (570.0, 200.0), (570.0, 216.0));
+    bez.line_to((570.0, 550.0));  // 768-218
+    bez.curve_to((570.0, 566.0), (562.0, 574.0), (546.0, 574.0));
+    bez.line_to((222.0, 574.0));  // 768-194
+    bez.curve_to((206.0, 574.0), (198.0, 566.0), (198.0, 550.0));
+    bez.line_to((198.0, 216.0));  // 768-552
+    bez.curve_to((198.0, 200.0), (206.0, 192.0), (222.0, 192.0));
     bez.close_path();
 
     bez
 }
 
 fn ellipse_icon() -> BezPath {
-    // Simple ellipse/circle icon
-    // Create a circle using kurbo's ellipse
-    let center = Point::new(384.0, 384.0);
-    let radius = 234.0;
-    let ellipse = kurbo::Ellipse::new(center, (radius, radius), 0.0);
+    // U+E019 - Ellipse icon from UFO (flipped vertically)
+    // Y coordinates transformed: new_y = 768 - old_y
+    let mut bez = BezPath::new();
 
-    // Convert to BezPath using kurbo's Shape trait
-    ellipse.into_path(0.1)
+    // Outer ellipse
+    bez.move_to((384.0, 688.0));  // 768-80
+    bez.curve_to((546.0, 688.0), (680.0, 556.0), (680.0, 392.0));  // 768-212, 768-376
+    bez.curve_to((680.0, 228.0), (546.0, 96.0), (384.0, 96.0));  // 768-540, 768-672
+    bez.curve_to((220.0, 96.0), (90.0, 228.0), (90.0, 392.0));
+    bez.curve_to((90.0, 556.0), (220.0, 688.0), (384.0, 688.0));
+    bez.close_path();
+
+    // Inner ellipse (hole)
+    bez.move_to((384.0, 608.0));  // 768-160
+    bez.curve_to((266.0, 608.0), (168.0, 512.0), (168.0, 392.0));  // 768-256, 768-376
+    bez.curve_to((168.0, 272.0), (266.0, 176.0), (384.0, 176.0));  // 768-496, 768-592
+    bez.curve_to((504.0, 176.0), (600.0, 272.0), (600.0, 392.0));
+    bez.curve_to((600.0, 512.0), (504.0, 608.0), (384.0, 608.0));
+    bez.close_path();
+
+    bez
 }
 
 // --- Xilem View Wrapper ---
@@ -298,7 +322,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
         match message.take_message::<ShapeSelected>() {
             Some(action) => {
                 (self.callback)(app_state, action.0);
-                MessageResult::Nop
+                MessageResult::Action(Action::default())
             }
             None => MessageResult::Stale,
         }
