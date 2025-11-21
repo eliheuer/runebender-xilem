@@ -2,16 +2,16 @@
 
 ## Overview
 
-This document defines an extension to the [Unified Font Object (UFO)](https://unifiedfontobject.org/) specification to support hyperbezier paths. Hyperbezier paths are smooth curves defined by only their on-curve points, with off-curve control points automatically computed to maintain G2 continuity.
+This document defines an extension to the [Unified Font Object (UFO)](https://unifiedfontobject.org/) specification to support hyperbezier paths. Hyperbezier paths in this context are smooth curves defined by only their on-curve points, with off-curve control points automatically computed to maintain G2 continuity. More advanced implementations of this concept can hav toggleable off-curve points, this is what Runebender Druid had, but for simplicity and UX reasons we are only dealing with editable on-curve points for now with all off-curve points in auto mode and hidden from the user. 
 
 ## Motivation
 
-### Why Hyperbeziers?
+### Why on-curve only Hyperbeziers?
 
-Hyperbeziers simplify curve drawing by:
+on-curve only Hyperbeziers simplify curve drawing by:
 1. **Reducing complexity**: Only on-curve points need to be specified
 2. **Automatic smoothness**: The spline solver ensures G2 continuity between segments
-3. **LLM-friendly**: AI models can generate curves by specifying only integer coordinates of on-curve points, without needing to understand bezier control point mathematics
+3. **LLM-friendly**: AI models can generate curves by specifying only integer coordinates of on-curve points, without needing to understand bezier control point mathematics and best practices for smooth curves.
 
 ### Design Goals
 
@@ -25,7 +25,7 @@ This extension is designed to be:
 
 ### Contour Point Representation
 
-Hyperbezier contours are stored in the standard UFO `<contour>` element within a glyph's `.glif` file with an `identifier="hyperbezier"` attribute. Each on-curve point is represented as a `<point>` element with `type="curve"`.
+On-curve only Hyperbezier contours are stored in the standard UFO `<contour>` element within a glyph's `.glif` file with an `identifier="hyperbezier"` attribute. Each on-curve point is represented as a `<point>` element with `type="curve"`.
 
 #### Detection
 
@@ -37,8 +37,6 @@ Hyperbezier contours **MUST** be marked with the `identifier="hyperbezier"` attr
     <!-- ... -->
 </contour>
 ```
-
-**Detection:** Check if the contour's `identifier` attribute contains "hyper"
 
 **Why the identifier is required:**
 - Prevents false positives (regular contours with only line segments would be misidentified)
