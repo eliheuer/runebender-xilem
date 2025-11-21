@@ -120,7 +120,10 @@ impl EditorWidget {
         }
     }
 
-    /// Convert selected hyperbezier paths to cubic bezier paths
+    /// Convert hyperbezier paths to cubic bezier paths
+    ///
+    /// If points are selected, converts only paths containing selected points.
+    /// If no points are selected, converts all hyperbezier paths in the glyph.
     ///
     /// Returns true if any paths were converted.
     fn convert_selected_hyper_to_cubic(&mut self) -> bool {
@@ -128,25 +131,31 @@ impl EditorWidget {
         use std::sync::Arc;
 
         let mut converted = false;
+        let has_selection = !self.session.selection.is_empty();
 
-        // Clone paths, convert any selected hyper paths to cubic
+        // Clone paths, convert hyperbezier paths to cubic
         let mut new_paths = (*self.session.paths).clone();
 
         for path in &mut new_paths {
-            // Check if this path has any selected points
-            let has_selection = match path {
-                Path::Hyper(hyper) => hyper.points().iter().any(|pt| {
-                    self.session.selection.contains(&pt.id)
-                }),
-                _ => false,
+            let should_convert = if has_selection {
+                // If points are selected, only convert paths with selected points
+                match path {
+                    Path::Hyper(hyper) => hyper.points().iter().any(|pt| {
+                        self.session.selection.contains(&pt.id)
+                    }),
+                    _ => false,
+                }
+            } else {
+                // If nothing selected, convert all hyperbezier paths
+                matches!(path, Path::Hyper(_))
             };
 
-            // Convert if it's a hyperbezier with selected points
-            if has_selection {
+            // Convert if needed
+            if should_convert {
                 if let Path::Hyper(hyper) = path {
                     *path = Path::Cubic(hyper.to_cubic());
                     converted = true;
-                    tracing::debug!("Converted hyperbezier path to cubic");
+                    tracing::info!("Converted hyperbezier path to cubic");
                 }
             }
         }
@@ -776,12 +785,15 @@ impl EditorWidget {
         }
 
         // Convert hyperbezier to cubic (Cmd/Ctrl+Shift+H)
-        if cmd && shift && matches!(key, Key::Character(c) if c == "h") {
+        if cmd && shift && matches!(key, Key::Character(c) if c.eq_ignore_ascii_case("h")) {
+            tracing::info!("Cmd+Shift+H pressed - attempting to convert hyperbezier to cubic");
             if self.convert_selected_hyper_to_cubic() {
-                tracing::info!("Converted hyperbezier paths to cubic");
+                tracing::info!("Successfully converted hyperbezier paths to cubic");
                 ctx.request_render();
                 ctx.set_handled();
                 return true;
+            } else {
+                tracing::warn!("No hyperbezier paths to convert");
             }
         }
 
