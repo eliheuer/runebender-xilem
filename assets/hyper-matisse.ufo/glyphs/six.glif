@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="six" format="2">
+	<unicode hex="0036"/>
+	<advance width="512"/>
+	<outline>
+		<contour identifier="hyperbezier">
+			<point x="70" y="-156" type="curve"/>
+			<point x="280" y="100" type="curve"/>
+			<point x="354" y="180" type="curve"/>
+			<point x="219" y="333" type="curve"/>
+			<point x="423" y="432" type="curve"/>
+			<point x="152" y="549" type="curve"/>
+			<point x="491" y="649" type="curve"/>
+			<point x="338" y="751" type="curve"/>
+			<point x="258" y="657" type="curve"/>
+			<point x="201" y="742" type="curve"/>
+			<point x="111" y="761" type="curve"/>
+			<point x="134" y="162" type="curve"/>
+		</contour>
+	</outline>
+</glyph>

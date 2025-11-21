@@ -27,6 +27,16 @@ fn append_contour_to_path(
         return;
     }
 
+    // Check if this is a hyperbezier contour
+    let is_hyperbezier = points.iter().any(|pt| {
+        matches!(pt.point_type, PointType::Hyper | PointType::HyperCorner)
+    });
+
+    if is_hyperbezier {
+        append_hyperbezier_contour(path, contour);
+        return;
+    }
+
     // Find the first on-curve point to start the path
     let start_idx = points
         .iter()
@@ -97,6 +107,15 @@ fn append_contour_to_path(
                 } else {
                     path.line_to(point_to_kurbo(pt));
                 }
+                i += 1;
+            }
+            // Hyperbezier points should not appear in glyph_renderer
+            // They should be converted to Path::Hyper which has its own rendering
+            PointType::Hyper | PointType::HyperCorner => {
+                tracing::warn!(
+                    "Hyperbezier point in glyph_renderer - should use Path::Hyper instead"
+                );
+                path.line_to(point_to_kurbo(pt));
                 i += 1;
             }
         }
@@ -218,6 +237,50 @@ fn add_closing_curve(
             // First point is Line or Move - just close with
             // straight line
             path.close_path();
+        }
+    }
+}
+
+/// Append a hyperbezier contour to a BezPath using the spline solver
+fn append_hyperbezier_contour(path: &mut BezPath, contour: &Contour) {
+    use crate::hyper_path::HyperPath;
+    use crate::point_list::PathPoints;
+    use crate::point::{PathPoint, PointType as PathPointType};
+    use crate::entity_id::EntityId;
+
+    // Convert workspace contour points to PathPoints
+    let path_points: Vec<PathPoint> = contour
+        .points
+        .iter()
+        .map(|pt| PathPoint {
+            id: EntityId::next(),
+            point: Point::new(pt.x, pt.y),
+            typ: match pt.point_type {
+                PointType::Hyper => PathPointType::OnCurve { smooth: true },
+                PointType::HyperCorner => PathPointType::OnCurve { smooth: false },
+                _ => PathPointType::OnCurve { smooth: true },
+            },
+        })
+        .collect();
+
+    // Determine if closed (first point is not Move type)
+    let closed = !matches!(
+        contour.points.first().map(|p| p.point_type),
+        Some(PointType::Move)
+    );
+
+    // Create a HyperPath and get its bezier representation
+    let hyper_path = HyperPath::from_points(PathPoints::from_vec(path_points), closed);
+    let bezier = hyper_path.to_bezpath();
+
+    // Append the solved bezier to the main path
+    for el in bezier.elements() {
+        match el {
+            kurbo::PathEl::MoveTo(p) => path.move_to(*p),
+            kurbo::PathEl::LineTo(p) => path.line_to(*p),
+            kurbo::PathEl::QuadTo(p1, p2) => path.quad_to(*p1, *p2),
+            kurbo::PathEl::CurveTo(p1, p2, p3) => path.curve_to(*p1, *p2, *p3),
+            kurbo::PathEl::ClosePath => path.close_path(),
         }
     }
 }

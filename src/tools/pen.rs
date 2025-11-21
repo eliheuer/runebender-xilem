@@ -61,8 +61,8 @@ impl Tool for PenTool {
     ) {
         use masonry::vello::peniko::Brush;
 
-        let orange_color = crate::theme::point::SELECTED_OUTER;
-        let brush = Brush::Solid(orange_color);
+        let preview_color = crate::theme::tool_preview::LINE_COLOR;
+        let brush = Brush::Solid(preview_color);
 
         // Check if mouse is hovering near first point (for close feedback)
         let hovering_close = self.check_hovering_close(session);
@@ -257,8 +257,12 @@ impl PenTool {
             }
         }
 
-        // Use dashed stroke for preview (like selection marquee)
-        let stroke = kurbo::Stroke::new(2.0).with_dashes(0.0, [4.0, 4.0]);
+        // Use dashed stroke for preview (consistent with other tools)
+        let stroke = kurbo::Stroke::new(crate::theme::tool_preview::LINE_WIDTH)
+            .with_dashes(
+                crate::theme::tool_preview::LINE_DASH_OFFSET,
+                crate::theme::tool_preview::LINE_DASH,
+            );
         scene.stroke(
             &stroke,
             Affine::IDENTITY,
@@ -287,7 +291,8 @@ impl PenTool {
                 // Draw larger circle to show close zone
                 let close_zone = kurbo::Circle::new(
                     screen_pt,
-                    CLOSE_PATH_DISTANCE * session.viewport.zoom,
+                    crate::theme::tool_preview::CLOSE_ZONE_RADIUS
+                        * session.viewport.zoom,
                 );
                 let zone_stroke = kurbo::Stroke::new(1.0);
                 scene.stroke(
@@ -300,7 +305,10 @@ impl PenTool {
             }
 
             // Draw point circle
-            let circle = kurbo::Circle::new(screen_pt, 4.0);
+            let circle = kurbo::Circle::new(
+                screen_pt,
+                crate::theme::tool_preview::DOT_RADIUS,
+            );
             scene.fill(
                 peniko::Fill::NonZero,
                 Affine::IDENTITY,
@@ -336,8 +344,11 @@ impl PenTool {
             return;
         };
 
-        // Draw the orange preview dot
-        let preview_circle = kurbo::Circle::new(preview_screen_pos, 4.0);
+        // Draw the preview dot
+        let preview_circle = kurbo::Circle::new(
+            preview_screen_pos,
+            crate::theme::tool_preview::DOT_RADIUS,
+        );
         scene.fill(
             peniko::Fill::NonZero,
             Affine::IDENTITY,
@@ -349,8 +360,10 @@ impl PenTool {
         // If snapped to a curve, draw a larger circle indicator around
         // it
         if self.snapped_segment.is_some() {
-            let indicator_circle =
-                kurbo::Circle::new(preview_screen_pos, 8.0);
+            let indicator_circle = kurbo::Circle::new(
+                preview_screen_pos,
+                crate::theme::tool_preview::SNAP_INDICATOR_RADIUS,
+            );
             let stroke = kurbo::Stroke::new(1.5);
             scene.stroke(
                 &stroke,

@@ -119,6 +119,48 @@ impl EditorWidget {
             tracing::debug!("Redo: restored next state");
         }
     }
+
+    /// Convert selected hyperbezier paths to cubic bezier paths
+    ///
+    /// Returns true if any paths were converted.
+    fn convert_selected_hyper_to_cubic(&mut self) -> bool {
+        use crate::path::Path;
+        use std::sync::Arc;
+
+        let mut converted = false;
+
+        // Clone paths, convert any selected hyper paths to cubic
+        let mut new_paths = (*self.session.paths).clone();
+
+        for path in &mut new_paths {
+            // Check if this path has any selected points
+            let has_selection = match path {
+                Path::Hyper(hyper) => hyper.points().iter().any(|pt| {
+                    self.session.selection.contains(&pt.id)
+                }),
+                _ => false,
+            };
+
+            // Convert if it's a hyperbezier with selected points
+            if has_selection {
+                if let Path::Hyper(hyper) = path {
+                    *path = Path::Cubic(hyper.to_cubic());
+                    converted = true;
+                    tracing::debug!("Converted hyperbezier path to cubic");
+                }
+            }
+        }
+
+        if converted {
+            // Update paths with converted versions
+            self.session.paths = Arc::new(new_paths);
+
+            // Clear selection since point IDs will have changed
+            self.session.selection = crate::selection::Selection::new();
+        }
+
+        converted
+    }
 }
 
 /// Action emitted by the editor widget when the session is updated
@@ -295,7 +337,7 @@ impl Widget for EditorWidget {
         _props: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
-        use masonry::core::keyboard::KeyState;
+        use masonry::core::keyboard::{Key, KeyState};
 
         if let TextEvent::Keyboard(key_event) = event {
             tracing::debug!(
@@ -303,6 +345,15 @@ impl Widget for EditorWidget {
                 key_event.key,
                 key_event.state
             );
+
+            // Handle shift key for shape constraining
+            if let Key::Named(masonry::core::keyboard::NamedKey::Shift) = key_event.key {
+                let shift_pressed = key_event.state == KeyState::Down;
+                if let crate::tools::ToolBox::Shapes(shapes_tool) = &mut self.session.current_tool {
+                    shapes_tool.set_shift_locked(shift_pressed);
+                    ctx.request_render(); // Repaint to update preview
+                }
+            }
 
             // Handle spacebar for temporary preview mode
             if self.handle_spacebar(ctx, key_event) {
@@ -724,6 +775,16 @@ impl EditorWidget {
             return true;
         }
 
+        // Convert hyperbezier to cubic (Cmd/Ctrl+Shift+H)
+        if cmd && shift && matches!(key, Key::Character(c) if c == "h") {
+            if self.convert_selected_hyper_to_cubic() {
+                tracing::info!("Converted hyperbezier paths to cubic");
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
+            }
+        }
+
         // Save (Cmd/Ctrl+S)
         if cmd && matches!(key, Key::Character(c) if c == "s") {
             // Emit save request action
@@ -763,6 +824,51 @@ impl EditorWidget {
             ctx.request_render();
             ctx.set_handled();
             return true;
+        }
+
+        // Tool switching shortcuts (without modifiers)
+        if !cmd && !shift {
+            let new_tool = match key {
+                Key::Character(c) if c == "v" => {
+                    Some(crate::tools::ToolId::Select)
+                }
+                Key::Character(c) if c == "p" => {
+                    Some(crate::tools::ToolId::Pen)
+                }
+                Key::Character(c) if c == "h" => {
+                    Some(crate::tools::ToolId::HyperPen)
+                }
+                Key::Character(c) if c == "k" => {
+                    Some(crate::tools::ToolId::Knife)
+                }
+                _ => None,
+            };
+
+            if let Some(tool_id) = new_tool {
+                // Cancel current tool
+                let mut tool = std::mem::replace(
+                    &mut self.session.current_tool,
+                    crate::tools::ToolBox::for_id(
+                        crate::tools::ToolId::Select,
+                    ),
+                );
+                self.mouse.cancel(&mut tool, &mut self.session);
+                self.mouse = crate::mouse::Mouse::new();
+
+                // Switch to new tool
+                self.session.current_tool =
+                    crate::tools::ToolBox::for_id(tool_id);
+
+                // Notify toolbar of change
+                ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                    session: self.session.clone(),
+                    save_requested: false,
+                });
+
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
+            }
         }
 
         false
