@@ -4,14 +4,14 @@
 	<advance width="512"/>
 	<outline>
 		<contour>
-			<point x="81.04882812499999" y="-68.54248046875" type="curve" smooth="yes"/>
-			<point x="298.817138671875" y="-97.606201171875" type="curve" smooth="yes"/>
-			<point x="419.82666015625" y="541.224365234375" type="curve" smooth="yes"/>
-			<point x="245.069580078125" y="767.650146484375" type="curve" smooth="yes"/>
-			<point x="327.16796875" y="372.723388671875" type="curve" smooth="yes"/>
-			<point x="180.06591796875" y="558.24658203125" type="curve" smooth="yes"/>
-			<point x="45.7470703125" y="431.64501953125" type="curve" smooth="yes"/>
-			<point x="171.348876953125" y="335.6513671875" type="curve" smooth="yes"/>
+			<point x="81" y="-69" type="curve"/>
+			<point x="299" y="-98" type="curve"/>
+			<point x="420" y="541" type="curve"/>
+			<point x="245" y="768" type="curve"/>
+			<point x="327" y="373" type="curve"/>
+			<point x="180" y="558" type="curve"/>
+			<point x="46" y="432" type="curve"/>
+			<point x="171" y="336" type="curve"/>
 		</contour>
 	</outline>
 </glyph>
