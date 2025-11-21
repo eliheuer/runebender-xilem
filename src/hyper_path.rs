@@ -102,6 +102,74 @@ impl HyperPath {
         (*self.bezier).clone()
     }
 
+    /// Convert this hyperbezier path to a cubic bezier path
+    ///
+    /// This expands the solved spline into explicit on-curve and off-curve control points.
+    /// Use this when you want manual control over individual bezier segments.
+    pub fn to_cubic(&self) -> crate::cubic_path::CubicPath {
+        use crate::cubic_path::CubicPath;
+
+        // Convert the solved bezier path to PathPoints with explicit control points
+        let mut points = Vec::new();
+
+        for el in self.bezier.elements() {
+            match el {
+                kurbo::PathEl::MoveTo(p) => {
+                    // First point (on-curve)
+                    points.push(PathPoint {
+                        id: EntityId::next(),
+                        point: *p,
+                        typ: PointType::OnCurve { smooth: true },
+                    });
+                }
+                kurbo::PathEl::LineTo(p) => {
+                    // Line segment (on-curve, not smooth)
+                    points.push(PathPoint {
+                        id: EntityId::next(),
+                        point: *p,
+                        typ: PointType::OnCurve { smooth: false },
+                    });
+                }
+                kurbo::PathEl::CurveTo(p1, p2, p3) => {
+                    // Cubic bezier: two off-curve control points, one on-curve endpoint
+                    points.push(PathPoint {
+                        id: EntityId::next(),
+                        point: *p1,
+                        typ: PointType::OffCurve { auto: false },
+                    });
+                    points.push(PathPoint {
+                        id: EntityId::next(),
+                        point: *p2,
+                        typ: PointType::OffCurve { auto: false },
+                    });
+                    points.push(PathPoint {
+                        id: EntityId::next(),
+                        point: *p3,
+                        typ: PointType::OnCurve { smooth: true },
+                    });
+                }
+                kurbo::PathEl::QuadTo(p1, p2) => {
+                    // Convert quadratic to cubic (shouldn't happen with hyperbezier, but handle it)
+                    points.push(PathPoint {
+                        id: EntityId::next(),
+                        point: *p1,
+                        typ: PointType::OffCurve { auto: false },
+                    });
+                    points.push(PathPoint {
+                        id: EntityId::next(),
+                        point: *p2,
+                        typ: PointType::OnCurve { smooth: true },
+                    });
+                }
+                kurbo::PathEl::ClosePath => {
+                    // Handled by closed flag
+                }
+            }
+        }
+
+        CubicPath::new(crate::point_list::PathPoints::from_vec(points), self.closed)
+    }
+
     /// Get the bounding box of this path
     pub fn bounding_box(&self) -> Option<kurbo::Rect> {
         if self.bezier.is_empty() {
@@ -240,16 +308,25 @@ impl HyperPath {
         );
 
         // Convert only on-curve points (skip off-curve)
+        // Preserve smooth/corner distinction from Hyper/HyperCorner point types
         let mut path_points: Vec<PathPoint> = contour
             .points
             .iter()
             .filter(|pt| {
                 !matches!(pt.point_type, workspace::PointType::OffCurve)
             })
-            .map(|pt| PathPoint {
-                id: EntityId::next(),
-                point: Point::new(pt.x, pt.y),
-                typ: PointType::OnCurve { smooth: true },
+            .map(|pt| {
+                let smooth = match pt.point_type {
+                    workspace::PointType::Hyper => true,
+                    workspace::PointType::HyperCorner => false,
+                    // For non-hyperbezier points loaded as hyperbezier, default to smooth
+                    _ => true,
+                };
+                PathPoint {
+                    id: EntityId::next(),
+                    point: Point::new(pt.x, pt.y),
+                    typ: PointType::OnCurve { smooth },
+                }
             })
             .collect();
 
@@ -263,72 +340,42 @@ impl HyperPath {
 
     /// Convert this hyper path to a workspace contour (for saving)
     ///
-    /// This converts the solved spline to cubic beziers for UFO format.
+    /// This saves only the on-curve hyperbezier points with their smooth/corner flags.
+    /// Off-curve control points are NOT saved - they will be recomputed by the spline solver on load.
     pub fn to_contour(&self) -> workspace::Contour {
         use crate::workspace::{
             Contour, ContourPoint, PointType as WsPointType,
         };
 
-        // Convert the bezpath to contour points
+        // Convert only the on-curve points, preserving smooth/corner distinction
         let mut points = Vec::new();
-        let mut first = true;
 
-        for el in self.bezier.elements() {
-            match el {
-                kurbo::PathEl::MoveTo(p) => {
-                    if first {
-                        points.push(ContourPoint {
-                            x: p.x,
-                            y: p.y,
-                            point_type: if self.closed {
-                                WsPointType::Curve
-                            } else {
-                                WsPointType::Move
-                            },
-                        });
-                        first = false;
+        for (i, path_point) in self.points.iter().enumerate() {
+            let point_type = if i == 0 && !self.closed {
+                // First point of open path is Move
+                WsPointType::Move
+            } else {
+                // Determine if this is a smooth or corner point
+                match path_point.typ {
+                    PointType::OnCurve { smooth: true } => WsPointType::Hyper,
+                    PointType::OnCurve { smooth: false } => WsPointType::HyperCorner,
+                    PointType::OffCurve { .. } => {
+                        // Hyperbezier paths should only contain on-curve points
+                        // This is a data integrity issue - log and skip
+                        tracing::warn!(
+                            "HyperPath contains off-curve point at index {}, skipping",
+                            i
+                        );
+                        continue;
                     }
                 }
-                kurbo::PathEl::LineTo(p) => {
-                    points.push(ContourPoint {
-                        x: p.x,
-                        y: p.y,
-                        point_type: WsPointType::Line,
-                    });
-                }
-                kurbo::PathEl::QuadTo(p1, p2) => {
-                    points.push(ContourPoint {
-                        x: p1.x,
-                        y: p1.y,
-                        point_type: WsPointType::OffCurve,
-                    });
-                    points.push(ContourPoint {
-                        x: p2.x,
-                        y: p2.y,
-                        point_type: WsPointType::QCurve,
-                    });
-                }
-                kurbo::PathEl::CurveTo(p1, p2, p3) => {
-                    points.push(ContourPoint {
-                        x: p1.x,
-                        y: p1.y,
-                        point_type: WsPointType::OffCurve,
-                    });
-                    points.push(ContourPoint {
-                        x: p2.x,
-                        y: p2.y,
-                        point_type: WsPointType::OffCurve,
-                    });
-                    points.push(ContourPoint {
-                        x: p3.x,
-                        y: p3.y,
-                        point_type: WsPointType::Curve,
-                    });
-                }
-                kurbo::PathEl::ClosePath => {
-                    // Already handled by closed flag
-                }
-            }
+            };
+
+            points.push(ContourPoint {
+                x: path_point.point.x,
+                y: path_point.point.y,
+                point_type,
+            });
         }
 
         // Rotate right if closed to match UFO convention

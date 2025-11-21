@@ -99,6 +99,15 @@ fn append_contour_to_path(
                 }
                 i += 1;
             }
+            // Hyperbezier points should not appear in glyph_renderer
+            // They should be converted to Path::Hyper which has its own rendering
+            PointType::Hyper | PointType::HyperCorner => {
+                tracing::warn!(
+                    "Hyperbezier point in glyph_renderer - should use Path::Hyper instead"
+                );
+                path.line_to(point_to_kurbo(pt));
+                i += 1;
+            }
         }
     }
 

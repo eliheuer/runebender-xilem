@@ -44,6 +44,10 @@ pub enum PointType {
     OffCurve,
     Curve,
     QCurve,
+    /// Hyperbezier smooth point (on-curve, auto control points)
+    Hyper,
+    /// Hyperbezier corner point (on-curve, independent segments)
+    HyperCorner,
 }
 
 // ============================================================================
@@ -143,20 +147,37 @@ impl Workspace {
 
     /// Convert a norad contour to our internal Contour
     fn convert_contour(norad_contour: &norad::Contour) -> Contour {
+        // Check if this is a hyperbezier contour by checking if all points are on-curve
+        // Hyperbeziers have NO off-curve control points - only Curve/Line/Move points
+        let is_hyperbezier = !norad_contour.points.iter().any(|pt| {
+            pt.typ == norad::PointType::OffCurve
+        }) && norad_contour.points.len() >= 3;
+
         let points = norad_contour
             .points
             .iter()
-            .map(Self::convert_point)
+            .map(|pt| Self::convert_point(pt, is_hyperbezier))
             .collect();
         Contour { points }
     }
 
     /// Convert a norad point to our internal ContourPoint
-    fn convert_point(pt: &norad::ContourPoint) -> ContourPoint {
+    fn convert_point(pt: &norad::ContourPoint, is_hyperbezier: bool) -> ContourPoint {
         ContourPoint {
             x: pt.x,
             y: pt.y,
-            point_type: Self::convert_point_type(&pt.typ),
+            point_type: if is_hyperbezier {
+                // In hyperbezier contours, all points are on-curve smooth points
+                // Curve/Line/Move all become Hyper (smooth hyperbezier points)
+                match pt.typ {
+                    norad::PointType::Curve => PointType::Hyper,
+                    norad::PointType::Line => PointType::Hyper,
+                    norad::PointType::Move => PointType::Hyper,
+                    _ => Self::convert_point_type(&pt.typ),
+                }
+            } else {
+                Self::convert_point_type(&pt.typ)
+            },
         }
     }
 
@@ -288,11 +309,14 @@ impl Workspace {
 
     /// Convert our internal ContourPoint to norad ContourPoint
     fn to_norad_point(pt: &ContourPoint) -> norad::ContourPoint {
+        // Hyperbezier points should be marked as smooth
+        let smooth = matches!(pt.point_type, PointType::Hyper);
+
         norad::ContourPoint::new(
             pt.x,
             pt.y,
             Self::to_norad_point_type(pt.point_type),
-            false, // smooth - we don't track this currently
+            smooth,
             None,  // name
             None,  // identifier
             None,  // lib (plist dictionary)
@@ -307,6 +331,10 @@ impl Workspace {
             PointType::OffCurve => norad::PointType::OffCurve,
             PointType::Curve => norad::PointType::Curve,
             PointType::QCurve => norad::PointType::QCurve,
+            // Hyperbezier points are stored as Curve in norad
+            // They're detected by having all on-curve points (no OffCurve control points)
+            PointType::Hyper => norad::PointType::Curve,
+            PointType::HyperCorner => norad::PointType::Curve,
         }
     }
 }

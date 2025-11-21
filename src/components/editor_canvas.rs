@@ -119,6 +119,48 @@ impl EditorWidget {
             tracing::debug!("Redo: restored next state");
         }
     }
+
+    /// Convert selected hyperbezier paths to cubic bezier paths
+    ///
+    /// Returns true if any paths were converted.
+    fn convert_selected_hyper_to_cubic(&mut self) -> bool {
+        use crate::path::Path;
+        use std::sync::Arc;
+
+        let mut converted = false;
+
+        // Clone paths, convert any selected hyper paths to cubic
+        let mut new_paths = (*self.session.paths).clone();
+
+        for path in &mut new_paths {
+            // Check if this path has any selected points
+            let has_selection = match path {
+                Path::Hyper(hyper) => hyper.points().iter().any(|pt| {
+                    self.session.selection.contains(&pt.id)
+                }),
+                _ => false,
+            };
+
+            // Convert if it's a hyperbezier with selected points
+            if has_selection {
+                if let Path::Hyper(hyper) = path {
+                    *path = Path::Cubic(hyper.to_cubic());
+                    converted = true;
+                    tracing::debug!("Converted hyperbezier path to cubic");
+                }
+            }
+        }
+
+        if converted {
+            // Update paths with converted versions
+            self.session.paths = Arc::new(new_paths);
+
+            // Clear selection since point IDs will have changed
+            self.session.selection = crate::selection::Selection::new();
+        }
+
+        converted
+    }
 }
 
 /// Action emitted by the editor widget when the session is updated
@@ -731,6 +773,16 @@ impl EditorWidget {
             ctx.request_render();
             ctx.set_handled();
             return true;
+        }
+
+        // Convert hyperbezier to cubic (Cmd/Ctrl+Shift+H)
+        if cmd && shift && matches!(key, Key::Character(c) if c == "h") {
+            if self.convert_selected_hyper_to_cubic() {
+                tracing::info!("Converted hyperbezier paths to cubic");
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
+            }
         }
 
         // Save (Cmd/Ctrl+S)
