@@ -34,15 +34,20 @@ cargo run -- assets/untitled.ufo
 | `Cmd/Ctrl` + `+` or `=` | Zoom in |
 | `Cmd/Ctrl` + `-` | Zoom out |
 | `Cmd/Ctrl` + `0` | Fit glyph to window |
-| `Cmd/Ctrl` + `Z` | Undo |
-| `Cmd/Ctrl` + `Shift` + `Z` | Redo |
+| `Cmd/Ctrl` + `Shift` + `H` | Convert selected hyperbezier paths to cubic |
 | `Space` (hold) | Temporary preview mode |
 | `Backspace` / `Delete` | Delete selected points |
-| `T` | Toggle point type (corner/smooth) |
-| `R` | Reverse contour direction |
 | Arrow keys | Nudge selection (1 unit) |
 | `Shift` + Arrow keys | Nudge selection (10 units) |
 | `Cmd/Ctrl` + Arrow keys | Nudge selection (100 units) |
+
+## Features
+
+### Hyperbezier Path Support
+
+Runebender Xilem supports on-curve hyperbezier paths - smooth curves defined by only their on-curve points, with control points automatically computed by a spline solver. This makes drawing visually smooth curves easier.
+
+See [docs/hyperbezier-ufo-extension.md](docs/hyperbezier-ufo-extension.md) for the complete specification. Try using the Hyperbezier toold from the edit mode toolbar or load the example file `hyper-matisse.ufo` from the assets directory.
 
 ## Contributing
 
