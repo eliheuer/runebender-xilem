@@ -36,6 +36,7 @@ cargo run -- assets/untitled.ufo
 | `Cmd/Ctrl` + `0` | Fit glyph to window |
 | `Cmd/Ctrl` + `Z` | Undo |
 | `Cmd/Ctrl` + `Shift` + `Z` | Redo |
+| `Cmd/Ctrl` + `Shift` + `H` | Convert selected hyperbezier paths to cubic |
 | `Space` (hold) | Temporary preview mode |
 | `Backspace` / `Delete` | Delete selected points |
 | `T` | Toggle point type (corner/smooth) |
@@ -43,6 +44,19 @@ cargo run -- assets/untitled.ufo
 | Arrow keys | Nudge selection (1 unit) |
 | `Shift` + Arrow keys | Nudge selection (10 units) |
 | `Cmd/Ctrl` + Arrow keys | Nudge selection (100 units) |
+
+## Features
+
+### Hyperbezier Path Support
+
+Runebender Xilem supports **hyperbezier paths** - smooth curves defined by only their on-curve points, with control points automatically computed by a spline solver. This makes drawing smooth curves easier and more intuitive.
+
+- **Create**: Use the HyperPen tool to draw hyperbezier paths
+- **Edit**: Move on-curve points, curves update automatically
+- **Convert**: Select points and press `Cmd/Ctrl + Shift + H` to convert to cubic bezier for manual control
+- **Persist**: Hyperbezier paths are saved in UFO format with `identifier="hyperbezier"`
+
+See [docs/hyperbezier-ufo-extension.md](docs/hyperbezier-ufo-extension.md) for the complete specification.
 
 ## Contributing
 
