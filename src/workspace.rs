@@ -147,11 +147,18 @@ impl Workspace {
 
     /// Convert a norad contour to our internal Contour
     fn convert_contour(norad_contour: &norad::Contour) -> Contour {
-        // Check if this is a hyperbezier contour by checking if all points are on-curve
-        // Hyperbeziers have NO off-curve control points - only Curve/Line/Move points
-        let is_hyperbezier = !norad_contour.points.iter().any(|pt| {
+        // Check if this is a hyperbezier contour using the identifier attribute
+        let has_identifier = norad_contour
+            .identifier()
+            .map(|id| id.as_ref().contains("hyper"))
+            .unwrap_or(false);
+
+        // Also check by heuristic (all on-curve points, no off-curve control points)
+        let has_no_offcurve = !norad_contour.points.iter().any(|pt| {
             pt.typ == norad::PointType::OffCurve
         }) && norad_contour.points.len() >= 3;
+
+        let is_hyperbezier = has_identifier || has_no_offcurve;
 
         let points = norad_contour
             .points
@@ -304,22 +311,43 @@ impl Workspace {
             .iter()
             .map(Self::to_norad_point)
             .collect();
-        norad::Contour::new(points, None, None)
+
+        // Check if this is a hyperbezier contour
+        let is_hyperbezier = contour.points.iter().any(|pt| {
+            matches!(pt.point_type, PointType::Hyper | PointType::HyperCorner)
+        });
+
+        // Set identifier="hyperbezier" for hyperbezier contours
+        let identifier = if is_hyperbezier {
+            Some(norad::Identifier::new("hyperbezier").unwrap())
+        } else {
+            None
+        };
+
+        norad::Contour::new(points, identifier, None)
     }
 
     /// Convert our internal ContourPoint to norad ContourPoint
     fn to_norad_point(pt: &ContourPoint) -> norad::ContourPoint {
-        // Hyperbezier points should be marked as smooth
-        let smooth = matches!(pt.point_type, PointType::Hyper);
+        let is_hyper = matches!(pt.point_type, PointType::Hyper | PointType::HyperCorner);
+
+        // For hyperbezier points:
+        // - Round coordinates to integers
+        // - Don't set smooth attribute (not needed for detection)
+        let (x, y) = if is_hyper {
+            (pt.x.round(), pt.y.round())
+        } else {
+            (pt.x, pt.y)
+        };
 
         norad::ContourPoint::new(
-            pt.x,
-            pt.y,
+            x,
+            y,
             Self::to_norad_point_type(pt.point_type),
-            smooth,
-            None,  // name
-            None,  // identifier
-            None,  // lib (plist dictionary)
+            false,  // smooth - don't set for hyperbeziers
+            None,   // name
+            None,   // identifier
+            None,   // lib (plist dictionary)
         )
     }
 

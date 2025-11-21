@@ -3,7 +3,7 @@
 	<unicode hex="0031"/>
 	<advance width="512"/>
 	<outline>
-		<contour>
+		<contour identifier="hyperbezier">
 			<point x="81" y="-69" type="curve"/>
 			<point x="299" y="-98" type="curve"/>
 			<point x="420" y="541" type="curve"/>

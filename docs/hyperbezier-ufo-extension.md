@@ -25,14 +25,25 @@ This extension is designed to be:
 
 ### Contour Point Representation
 
-Hyperbezier contours are stored in the standard UFO `<contour>` element within a glyph's `.glif` file. Each on-curve point is represented as a `<point>` element with `type="curve"` and `smooth="yes"`.
+Hyperbezier contours are stored in the standard UFO `<contour>` element within a glyph's `.glif` file with an `identifier="hyperbezier"` attribute. Each on-curve point is represented as a `<point>` element with `type="curve"`.
 
 #### Detection
 
-Hyperbezier contours are distinguished from regular cubic bezier contours by having **all on-curve points with NO off-curve control points**:
+Hyperbezier contours are marked with the `identifier="hyperbezier"` attribute:
 
-- All points have `type="curve"` (or `type="line"` or `type="move"`)
-- Zero points with `type="offcurve"` or missing type attribute
+```xml
+<contour identifier="hyperbezier">
+    <point x="100" y="0" type="curve"/>
+    <!-- ... -->
+</contour>
+```
+
+**Primary detection:** Check for `identifier` attribute containing "hyper"
+**Fallback detection:** Contours with all on-curve points (no off-curve control points)
+
+This dual approach ensures:
+- Explicit marking prevents ambiguity
+- Fallback heuristic supports files without the identifier
 - The spline solver automatically computes control points from on-curve points
 
 #### Point Attributes
@@ -52,18 +63,18 @@ Each hyperbezier point has these attributes:
   <advance width="600"/>
   <unicode hex="0061"/>
   <outline>
-    <contour>
-      <!-- Smooth hyperbezier contour - all points are type="curve", NO off-curve points -->
-      <point x="100" y="0" type="curve" smooth="yes"/>
-      <point x="500" y="0" type="curve" smooth="yes"/>
-      <point x="500" y="500" type="curve" smooth="yes"/>
-      <point x="100" y="500" type="curve" smooth="yes"/>
+    <contour identifier="hyperbezier">
+      <!-- Smooth hyperbezier contour - integer coordinates, type="curve" -->
+      <point x="100" y="0" type="curve"/>
+      <point x="500" y="0" type="curve"/>
+      <point x="500" y="500" type="curve"/>
+      <point x="100" y="500" type="curve"/>
     </contour>
-    <contour>
+    <contour identifier="hyperbezier">
       <!-- Mixed smooth and corner points -->
-      <point x="200" y="200" type="curve" smooth="yes"/>
+      <point x="200" y="200" type="curve"/>
       <point x="400" y="200" type="line"/>  <!-- corner point -->
-      <point x="400" y="400" type="curve" smooth="yes"/>
+      <point x="400" y="400" type="curve"/>
       <point x="200" y="400" type="line"/>  <!-- corner point -->
     </contour>
   </outline>
@@ -73,7 +84,7 @@ Each hyperbezier point has these attributes:
 **Comparison with Regular Cubic Bezier:**
 
 ```xml
-<!-- Regular cubic bezier - has off-curve control points -->
+<!-- Regular cubic bezier - has off-curve control points, NO identifier -->
 <contour>
   <point x="100" y="0" type="line"/>
   <point x="300" y="50"/>              <!-- off-curve control point -->
@@ -81,10 +92,10 @@ Each hyperbezier point has these attributes:
   <point x="500" y="0" type="curve"/>  <!-- on-curve endpoint -->
 </contour>
 
-<!-- Hyperbezier - only on-curve points, control points computed automatically -->
-<contour>
-  <point x="100" y="0" type="curve" smooth="yes"/>
-  <point x="500" y="0" type="curve" smooth="yes"/>
+<!-- Hyperbezier - identifier="hyperbezier", only on-curve points -->
+<contour identifier="hyperbezier">
+  <point x="100" y="0" type="curve"/>
+  <point x="500" y="0" type="curve"/>
   <!-- Spline solver computes the two control points automatically -->
 </contour>
 ```
