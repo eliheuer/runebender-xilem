@@ -44,9 +44,8 @@ cargo run -- assets/untitled.ufo
 
 ## Contributing
 
-Contributions are welcome! Make a PRs or issue, but keep in mind this project is very early and things can change quickly. If anyone besides Eli become a regular contributor to this we can move it off my personal Github to a new org.
+Contributions are welcome! Make a PR or issue, but keep in mind this project is very early and things can change quickly. If anyone besides Eli becomes a regular contributor to this we can move it off my personal Github to a new org.
 
 ## License
 
 Apache-2.0
-

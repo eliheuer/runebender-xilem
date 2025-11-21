@@ -22,6 +22,12 @@ pub enum ToolId {
     HyperPen,
     /// Preview mode (view only)
     Preview,
+    /// Knife tool for cutting paths
+    Knife,
+    /// Measure tool for distances and angles
+    Measure,
+    /// Shapes tool for geometric primitives
+    Shapes,
 }
 
 // ===== Tool Trait =====
@@ -55,6 +61,9 @@ pub enum ToolBox {
     Pen(pen::PenTool),
     HyperPen(hyper_pen::HyperPenTool),
     Preview(preview::PreviewTool),
+    Knife(knife::KnifeTool),
+    Measure(measure::MeasureTool),
+    Shapes(shapes::ShapesTool),
 }
 
 // ===== ToolBox Implementation =====
@@ -73,6 +82,15 @@ impl ToolBox {
             ToolId::Preview => {
                 ToolBox::Preview(preview::PreviewTool::default())
             }
+            ToolId::Knife => {
+                ToolBox::Knife(knife::KnifeTool::default())
+            }
+            ToolId::Measure => {
+                ToolBox::Measure(measure::MeasureTool::default())
+            }
+            ToolId::Shapes => {
+                ToolBox::Shapes(shapes::ShapesTool::default())
+            }
         }
     }
 
@@ -83,6 +101,9 @@ impl ToolBox {
             ToolBox::Pen(tool) => tool.id(),
             ToolBox::HyperPen(tool) => tool.id(),
             ToolBox::Preview(tool) => tool.id(),
+            ToolBox::Knife(tool) => tool.id(),
+            ToolBox::Measure(tool) => tool.id(),
+            ToolBox::Shapes(tool) => tool.id(),
         }
     }
 
@@ -106,6 +127,15 @@ impl ToolBox {
             ToolBox::Preview(_) => {
                 // Preview tool has no overlays
             }
+            ToolBox::Knife(tool) => {
+                tool.paint(scene, session, transform);
+            }
+            ToolBox::Measure(tool) => {
+                tool.paint(scene, session, transform);
+            }
+            ToolBox::Shapes(tool) => {
+                tool.paint(scene, session, transform);
+            }
         }
     }
 
@@ -116,6 +146,9 @@ impl ToolBox {
             ToolBox::Pen(tool) => tool.edit_type(),
             ToolBox::HyperPen(tool) => tool.edit_type(),
             ToolBox::Preview(tool) => tool.edit_type(),
+            ToolBox::Knife(tool) => tool.edit_type(),
+            ToolBox::Measure(tool) => tool.edit_type(),
+            ToolBox::Shapes(tool) => tool.edit_type(),
         }
     }
 
@@ -130,6 +163,9 @@ impl ToolBox {
             ToolBox::Pen(tool) => tool.left_down(event, session),
             ToolBox::HyperPen(tool) => tool.left_down(event, session),
             ToolBox::Preview(tool) => tool.left_down(event, session),
+            ToolBox::Knife(tool) => tool.left_down(event, session),
+            ToolBox::Measure(tool) => tool.left_down(event, session),
+            ToolBox::Shapes(tool) => tool.left_down(event, session),
         }
     }
 
@@ -144,6 +180,9 @@ impl ToolBox {
             ToolBox::Pen(tool) => tool.left_up(event, session),
             ToolBox::HyperPen(tool) => tool.left_up(event, session),
             ToolBox::Preview(tool) => tool.left_up(event, session),
+            ToolBox::Knife(tool) => tool.left_up(event, session),
+            ToolBox::Measure(tool) => tool.left_up(event, session),
+            ToolBox::Shapes(tool) => tool.left_up(event, session),
         }
     }
 
@@ -161,6 +200,9 @@ impl ToolBox {
             ToolBox::Pen(tool) => tool.mouse_moved(event, session),
             ToolBox::HyperPen(tool) => tool.mouse_moved(event, session),
             ToolBox::Preview(tool) => tool.mouse_moved(event, session),
+            ToolBox::Knife(tool) => tool.mouse_moved(event, session),
+            ToolBox::Measure(tool) => tool.mouse_moved(event, session),
+            ToolBox::Shapes(tool) => tool.mouse_moved(event, session),
         }
     }
 
@@ -182,6 +224,15 @@ impl ToolBox {
                 tool.left_drag_began(event, drag, session);
             }
             ToolBox::Preview(tool) => {
+                tool.left_drag_began(event, drag, session);
+            }
+            ToolBox::Knife(tool) => {
+                tool.left_drag_began(event, drag, session);
+            }
+            ToolBox::Measure(tool) => {
+                tool.left_drag_began(event, drag, session);
+            }
+            ToolBox::Shapes(tool) => {
                 tool.left_drag_began(event, drag, session);
             }
         }
@@ -207,6 +258,15 @@ impl ToolBox {
             ToolBox::Preview(tool) => {
                 tool.left_drag_changed(event, drag, session);
             }
+            ToolBox::Knife(tool) => {
+                tool.left_drag_changed(event, drag, session);
+            }
+            ToolBox::Measure(tool) => {
+                tool.left_drag_changed(event, drag, session);
+            }
+            ToolBox::Shapes(tool) => {
+                tool.left_drag_changed(event, drag, session);
+            }
         }
     }
 
@@ -230,6 +290,15 @@ impl ToolBox {
             ToolBox::Preview(tool) => {
                 tool.left_drag_ended(event, drag, session);
             }
+            ToolBox::Knife(tool) => {
+                tool.left_drag_ended(event, drag, session);
+            }
+            ToolBox::Measure(tool) => {
+                tool.left_drag_ended(event, drag, session);
+            }
+            ToolBox::Shapes(tool) => {
+                tool.left_drag_ended(event, drag, session);
+            }
         }
     }
 
@@ -243,6 +312,9 @@ impl ToolBox {
             ToolBox::Pen(tool) => tool.cancel(session),
             ToolBox::HyperPen(tool) => tool.cancel(session),
             ToolBox::Preview(tool) => tool.cancel(session),
+            ToolBox::Knife(tool) => tool.cancel(session),
+            ToolBox::Measure(tool) => tool.cancel(session),
+            ToolBox::Shapes(tool) => tool.cancel(session),
         }
     }
 }
@@ -284,6 +356,9 @@ impl MouseDelegate for ToolBox {
             ToolBox::Pen(tool) => tool.left_click(event, data),
             ToolBox::HyperPen(tool) => tool.left_click(event, data),
             ToolBox::Preview(tool) => tool.left_click(event, data),
+            ToolBox::Knife(tool) => tool.left_click(event, data),
+            ToolBox::Measure(tool) => tool.left_click(event, data),
+            ToolBox::Shapes(tool) => tool.left_click(event, data),
         }
     }
 
@@ -297,6 +372,9 @@ impl MouseDelegate for ToolBox {
             ToolBox::Pen(tool) => tool.mouse_moved(event, data),
             ToolBox::HyperPen(tool) => tool.mouse_moved(event, data),
             ToolBox::Preview(tool) => tool.mouse_moved(event, data),
+            ToolBox::Knife(tool) => tool.mouse_moved(event, data),
+            ToolBox::Measure(tool) => tool.mouse_moved(event, data),
+            ToolBox::Shapes(tool) => tool.mouse_moved(event, data),
         }
     }
 
@@ -333,6 +411,9 @@ impl MouseDelegate for ToolBox {
             ToolBox::Pen(tool) => tool.cancel(data),
             ToolBox::HyperPen(tool) => tool.cancel(data),
             ToolBox::Preview(tool) => tool.cancel(data),
+            ToolBox::Knife(tool) => tool.cancel(data),
+            ToolBox::Measure(tool) => tool.cancel(data),
+            ToolBox::Shapes(tool) => tool.cancel(data),
         }
     }
 }
@@ -340,6 +421,9 @@ impl MouseDelegate for ToolBox {
 // ===== Tool Modules =====
 
 pub mod hyper_pen;
+pub mod knife;
+pub mod measure;
 pub mod pen;
 pub mod preview;
 pub mod select;
+pub mod shapes;

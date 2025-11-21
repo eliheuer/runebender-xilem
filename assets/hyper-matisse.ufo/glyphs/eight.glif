@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="eight" format="2">
+	<unicode hex="0038"/>
+	<advance width="512"/>
+	<outline>
+		<contour identifier="hyperbezier">
+			<point x="424" y="-158" type="curve"/>
+			<point x="320" y="140" type="curve"/>
+			<point x="400" y="240" type="curve"/>
+			<point x="309" y="424" type="curve"/>
+			<point x="440" y="480" type="curve"/>
+			<point x="372" y="750" type="curve"/>
+			<point x="255" y="518" type="curve"/>
+			<point x="183" y="739" type="curve"/>
+			<point x="91" y="764" type="curve"/>
+			<point x="122" y="475" type="curve"/>
+			<point x="62" y="189" type="curve"/>
+			<point x="252" y="358" type="curve"/>
+			<point x="160" y="160" type="curve"/>
+		</contour>
+	</outline>
+</glyph>

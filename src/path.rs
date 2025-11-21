@@ -94,6 +94,18 @@ impl Path {
     /// Automatically detects whether the contour contains
     /// QCurve points (quadratic) or Curve points (cubic).
     pub fn from_contour(contour: &workspace::Contour) -> Self {
+        // Check if contour contains hyperbezier points
+        let has_hyper = contour.points.iter().any(|pt| {
+            matches!(
+                pt.point_type,
+                workspace::PointType::Hyper | workspace::PointType::HyperCorner
+            )
+        });
+
+        if has_hyper {
+            return Path::Hyper(HyperPath::from_contour(contour));
+        }
+
         // Check if contour contains QCurve points (quadratic)
         let has_qcurve = contour.points.iter().any(|pt| {
             matches!(pt.point_type, workspace::PointType::QCurve)

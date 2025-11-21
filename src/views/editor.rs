@@ -18,10 +18,12 @@ use xilem::WidgetView;
 use crate::components::workspace_toolbar::WorkspaceToolbarButton;
 use crate::components::{
     coordinate_panel, edit_mode_toolbar_view, editor_view, glyph_view,
-    workspace_toolbar_view,
+    shapes_toolbar_view, workspace_toolbar_view,
 };
 use crate::data::AppState;
 use crate::theme;
+use crate::tools::{ToolBox, ToolId};
+use crate::tools::shapes::ShapeType;
 
 // ===== Editor Tab View =====
 
@@ -39,6 +41,17 @@ pub fn editor_tab(
     let session_arc = Arc::new(session.clone());
 
     const MARGIN: f64 = 16.0; // Fixed 16px margin for all panels
+    const TOOLBAR_HEIGHT: f64 = 64.0; // TOOLBAR_ITEM_SIZE (48) + TOOLBAR_PADDING * 2 (8 * 2)
+
+    // Get current shape type if shapes tool is selected
+    let current_shape = if let ToolBox::Shapes(shapes_tool) = &session.current_tool {
+        shapes_tool.shape_type()
+    } else {
+        ShapeType::Rectangle // Default
+    };
+
+    // Determine if we should show the shapes sub-toolbar
+    let show_shapes_toolbar = current_tool == ToolId::Shapes;
 
     // Use zstack to layer UI elements over the canvas
     Either::A(zstack((
@@ -52,14 +65,28 @@ pub fn editor_tab(
                 }
             },
         ),
-        // Foreground: floating edit mode toolbar positioned in top-left
-        // with fixed margin
-        transformed(edit_mode_toolbar_view(
-            current_tool,
-            |state: &mut AppState, tool_id| {
-                state.set_editor_tool(tool_id);
-            },
-        ))
+        // Foreground: floating toolbars (edit mode + optional shapes sub-toolbar) positioned in top-left
+        transformed(
+            flex_col((
+                edit_mode_toolbar_view(
+                    current_tool,
+                    |state: &mut AppState, tool_id| {
+                        state.set_editor_tool(tool_id);
+                    },
+                ),
+                if show_shapes_toolbar {
+                    Either::A(shapes_toolbar_view(
+                        current_shape,
+                        |state: &mut AppState, shape_type| {
+                            state.set_shape_type(shape_type);
+                        },
+                    ))
+                } else {
+                    Either::B(label(""))
+                },
+            ))
+            .cross_axis_alignment(xilem::view::CrossAxisAlignment::Start)
+        )
         .translate((MARGIN, MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_LEFT)),
         // Bottom-left: glyph preview pane with fixed margin

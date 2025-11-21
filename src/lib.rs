@@ -40,8 +40,15 @@ use views::{editor_tab, glyph_grid_tab, welcome};
 /// Entry point for the Runebender Xilem application
 pub fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
     // Initialize tracing subscriber (can be controlled via RUST_LOG env var)
+    // Filter out noisy wgpu/naga shader compilation logs
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("wgpu=warn".parse().unwrap())
+                .add_directive("naga=warn".parse().unwrap())
+                .add_directive("wgpu_core=warn".parse().unwrap())
+                .add_directive("wgpu_hal=warn".parse().unwrap())
+        )
         .init();
 
     let mut initial_state = AppState::new();

@@ -100,6 +100,8 @@ impl PointType {
                 // Proper quadratic support would require more work.
                 PointType::OnCurve { smooth: true }
             }
+            WsPointType::Hyper => PointType::OnCurve { smooth: true },
+            WsPointType::HyperCorner => PointType::OnCurve { smooth: false },
         }
     }
 
@@ -113,6 +115,9 @@ impl PointType {
                 PointType::OnCurve { smooth: true }
             }
             WsPointType::OffCurve => PointType::OffCurve { auto: false },
+            // Hyperbezier points shouldn't appear in quadratic paths
+            WsPointType::Hyper => PointType::OnCurve { smooth: true },
+            WsPointType::HyperCorner => PointType::OnCurve { smooth: false },
         }
     }
 }

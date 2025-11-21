@@ -164,11 +164,11 @@ pub mod panel {
 
 /// Colors for toolbar buttons and icons (generic for all toolbars)
 pub mod toolbar {
-    use super::{Color, BASE_B, BASE_E, BASE_H, BASE_J};
+    use super::{Color, BASE_B, BASE_F, BASE_H, BASE_J};
 
     // Button background colors
     /// Normal button color (unselected, not hovered)
-    pub const BUTTON_UNSELECTED: Color = BASE_E;
+    pub const BUTTON_UNSELECTED: Color = BASE_F;
     /// Button color when hovered
     pub const BUTTON_HOVERED: Color = BASE_H;
     /// Button color when selected
@@ -269,6 +269,41 @@ pub mod selection {
     pub const RECT_STROKE: Color = super::SELECTION_RECT_STROKE;
 }
 
+/// Tool preview styles (for consistent visual feedback across tools)
+pub mod tool_preview {
+    use super::Color;
+
+    // Colors for tool preview lines and markers
+    /// Primary preview color (used for knife line, pen preview, etc.)
+    pub const LINE_COLOR: Color = super::SELECTED_POINT_OUTER;
+    /// Intersection/marker color (slightly darker for contrast)
+    pub const MARKER_COLOR: Color = super::SELECTED_POINT_OUTER;
+    /// Preview dot fill color
+    pub const DOT_FILL: Color = super::SELECTED_POINT_OUTER;
+
+    // Stroke widths
+    /// Width of preview lines (pen preview, knife line)
+    pub const LINE_WIDTH: f64 = 2.0;
+    /// Width of intersection markers
+    pub const MARKER_WIDTH: f64 = 2.0;
+
+    // Dash patterns
+    /// Dash pattern for preview lines [dash_length, gap_length]
+    pub const LINE_DASH: [f64; 2] = [4.0, 4.0];
+    /// Dash offset
+    pub const LINE_DASH_OFFSET: f64 = 0.0;
+
+    // Sizes
+    /// Radius of preview dots
+    pub const DOT_RADIUS: f64 = 4.0;
+    /// Size of intersection markers (half-length)
+    pub const MARKER_SIZE: f64 = 4.0;
+    /// Radius of close zone indicator
+    pub const CLOSE_ZONE_RADIUS: f64 = 8.0;
+    /// Radius of snap indicator
+    pub const SNAP_INDICATOR_RADIUS: f64 = 6.0;
+}
+
 /// Sizes for rendering
 pub mod size {
     /// Radius for smooth on-curve points
@@ -313,4 +348,6 @@ pub mod size {
     pub const TOOLBAR_BUTTON_RADIUS: f64 = 6.0;
     /// Border thickness for toolbar buttons and panels
     pub const TOOLBAR_BORDER_WIDTH: f64 = 1.5;
+    /// Rounded corner radius for all panels (toolbars, sidebars, etc.)
+    pub const PANEL_RADIUS: f64 = 11.0;
 }

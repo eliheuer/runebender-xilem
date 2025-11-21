@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="four" format="2">
+	<unicode hex="0034"/>
+	<advance width="512"/>
+	<outline>
+		<contour identifier="hyperbezier">
+			<point x="343" y="-133" type="curve"/>
+			<point x="254" y="57" type="curve"/>
+			<point x="270" y="188" type="curve"/>
+			<point x="473" y="619" type="curve"/>
+			<point x="330" y="766" type="curve"/>
+			<point x="258" y="346" type="curve"/>
+			<point x="161" y="609" type="curve"/>
+			<point x="49" y="439" type="curve"/>
+			<point x="174" y="93" type="curve"/>
+			<point x="187" y="-150" type="curve"/>
+		</contour>
+	</outline>
+</glyph>
