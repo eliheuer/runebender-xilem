@@ -6,6 +6,8 @@ A font editor built with [Xilem](https://github.com/linebender/xilem), a Rust UI
 
 <img width="960" height="663" alt="Image" src="https://github.com/user-attachments/assets/458e37a8-5cb2-4ace-91e1-83e0adfc7cd1" />
 
+<img width="1512" height="982" alt="Image" src="https://github.com/user-attachments/assets/6b27b22c-2124-4ca7-8330-6f2d0ccb7d50" />
+
 ## Building from source
 
 Make sure [Rust](https://rust-lang.org/) is installed on your system, clone the repository and build/run the application:
