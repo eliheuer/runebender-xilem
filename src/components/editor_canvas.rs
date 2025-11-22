@@ -8,6 +8,7 @@ use crate::edit_types::EditType;
 use crate::mouse::Mouse;
 use crate::point::PointType;
 use crate::settings;
+use crate::sort::TextCursor;
 use crate::theme;
 use crate::undo::UndoState;
 use kurbo::{Affine, Circle, Point, Rect as KurboRect, Stroke};
@@ -58,6 +59,9 @@ pub struct EditorWidget {
     /// feedback. The main canvas still redraws every frame - only
     /// the expensive Xilem rebuild is throttled.
     drag_update_counter: u32,
+
+    /// Text cursor for text editing mode
+    text_cursor: TextCursor,
 }
 
 impl EditorWidget {
@@ -73,6 +77,7 @@ impl EditorWidget {
             last_edit_type: None,
             previous_tool: None,
             drag_update_counter: 0,
+            text_cursor: TextCursor::new(),
         }
     }
 
@@ -638,31 +643,32 @@ impl EditorWidget {
 
     /// Render the text cursor (Phase 6)
     ///
-    /// Draws a vertical line at the cursor position in design space
+    /// Draws a vertical line at the cursor position in design space, aligned with sort metrics
     fn render_text_cursor(
         &self,
         scene: &mut Scene,
         cursor_x: f64,
-        baseline_y: f64,
+        _baseline_y: f64,
         transform: &Affine,
     ) {
-        // Cursor is a vertical line from descender to ascender
+        // Draw cursor as a vertical line from ascender to descender (matching sort metrics)
         let cursor_top = Point::new(cursor_x, self.session.ascender);
         let cursor_bottom = Point::new(cursor_x, self.session.descender);
 
         // Transform to screen coordinates
-        let cursor_top_screen = *transform * cursor_top;
-        let cursor_bottom_screen = *transform * cursor_bottom;
+        let cursor_line = kurbo::Line::new(
+            *transform * cursor_top,
+            *transform * cursor_bottom,
+        );
 
-        // Draw cursor line
-        let cursor_line = kurbo::Line::new(cursor_top_screen, cursor_bottom_screen);
-        let cursor_stroke = Stroke::new(2.0); // 2px wide cursor
-        let cursor_brush = Brush::Solid(theme::path::STROKE); // Reuse path stroke color
+        // Use orange color (same as selection marquee) with 1.5px stroke
+        let stroke = Stroke::new(1.5);
+        let brush = Brush::Solid(theme::selection::RECT_STROKE);
 
         scene.stroke(
-            &cursor_stroke,
+            &stroke,
             Affine::IDENTITY,
-            &cursor_brush,
+            &brush,
             None,
             &cursor_line,
         );
@@ -1215,7 +1221,7 @@ impl EditorWidget {
     /// - Character typing (insert sorts)
     /// - Arrow keys (cursor movement in buffer)
     /// - Backspace/Delete (remove sorts)
-    /// - Enter (line breaks - Phase 10)
+    /// - Enter (line breaks)
     ///
     /// Returns true if the key was handled, false otherwise
     fn handle_text_mode_input(
@@ -1231,6 +1237,7 @@ impl EditorWidget {
             Key::Named(NamedKey::ArrowLeft) => {
                 if let Some(buffer) = &mut self.session.text_buffer {
                     buffer.move_cursor_left();
+                    self.text_cursor.reset(); // Reset cursor to visible on movement
                     ctx.request_render();
                     ctx.set_handled();
                     return true;
@@ -1239,6 +1246,7 @@ impl EditorWidget {
             Key::Named(NamedKey::ArrowRight) => {
                 if let Some(buffer) = &mut self.session.text_buffer {
                     buffer.move_cursor_right();
+                    self.text_cursor.reset(); // Reset cursor to visible on movement
                     ctx.request_render();
                     ctx.set_handled();
                     return true;
@@ -1247,6 +1255,21 @@ impl EditorWidget {
             Key::Named(NamedKey::Backspace) => {
                 if let Some(buffer) = &mut self.session.text_buffer {
                     buffer.delete();
+                    self.text_cursor.reset(); // Reset cursor to visible on edit
+                    // Emit session update to persist text buffer changes
+                    ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                        session: self.session.clone(),
+                        save_requested: false,
+                    });
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return true;
+                }
+            }
+            Key::Named(NamedKey::Delete) => {
+                if let Some(buffer) = &mut self.session.text_buffer {
+                    buffer.delete_forward();
+                    self.text_cursor.reset(); // Reset cursor to visible on edit
                     // Emit session update to persist text buffer changes
                     ctx.submit_action::<SessionUpdate>(SessionUpdate {
                         session: self.session.clone(),
@@ -1258,10 +1281,29 @@ impl EditorWidget {
                 }
             }
             Key::Named(NamedKey::Enter) => {
-                // TODO Phase 10: Insert line break
-                // For now, just handle the key
-                ctx.set_handled();
-                return true;
+                // Insert line break as a sort
+                if let Some(buffer) = &mut self.session.text_buffer {
+                    use crate::sort::{LayoutMode, Sort, SortKind};
+
+                    let line_break = Sort {
+                        kind: SortKind::LineBreak,
+                        is_active: false,
+                        layout_mode: LayoutMode::LTR,
+                        position: Point::ZERO,
+                    };
+
+                    buffer.insert(line_break);
+                    self.text_cursor.reset(); // Reset cursor to visible on edit
+
+                    // Emit session update to persist text buffer changes
+                    ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                        session: self.session.clone(),
+                        save_requested: false,
+                    });
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return true;
+                }
             }
             Key::Character(s) => {
                 // Don't insert characters when Cmd/Ctrl is held (let shortcuts through)
@@ -1274,6 +1316,7 @@ impl EditorWidget {
                     if let Some(sort) = self.session.create_sort_from_char(c) {
                         if let Some(buffer) = &mut self.session.text_buffer {
                             buffer.insert(sort);
+                            self.text_cursor.reset(); // Reset cursor to visible on edit
                             // Emit session update to persist text buffer changes
                             ctx.submit_action::<SessionUpdate>(SessionUpdate {
                                 session: self.session.clone(),

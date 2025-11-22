@@ -11,7 +11,9 @@
 //! - Cursor management and text positioning
 
 pub mod buffer;
+pub mod cursor;
 pub mod data;
 
 pub use buffer::SortBuffer;
+pub use cursor::TextCursor;
 pub use data::{LayoutMode, Sort, SortKind};
