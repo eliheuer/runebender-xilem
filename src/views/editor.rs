@@ -10,7 +10,7 @@ use masonry::properties::types::{AsUnit, UnitPoint};
 use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::{
-    ChildAlignment, ZStackExt, flex_col, label, sized_box, transformed,
+    ChildAlignment, ZStackExt, flex_col, flex_row, label, sized_box, transformed,
     zstack,
 };
 use xilem::WidgetView;
@@ -89,19 +89,18 @@ pub fn editor_tab(
         )
         .translate((MARGIN, MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_LEFT)),
-        // Bottom-left: glyph preview pane with fixed margin
-        transformed(glyph_preview_pane(
-            session_arc.clone(),
-            glyph_name.clone(),
-        ))
-        .translate((MARGIN, -MARGIN))
-        .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_LEFT)),
-        // Bottom-right: coordinate panel with fixed margin
-        transformed(coordinate_panel_from_session(&session_arc))
-            .translate((-MARGIN, -MARGIN))
-            .alignment(
-                ChildAlignment::SelfAligned(UnitPoint::BOTTOM_RIGHT),
-            ),
+        // Bottom row: flex_row with glyph preview, text buffer preview, and coordinate panel
+        // Centered at bottom with translate to add bottom margin
+        transformed(
+            flex_row((
+                glyph_preview_pane(session_arc.clone(), glyph_name.clone()),
+                text_buffer_preview_pane(session_arc.clone()),
+                coordinate_panel_from_session(&session_arc),
+            ))
+            .gap(MARGIN.px())
+        )
+        .translate((0.0, -MARGIN))
+        .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
         // Top-right: Workspace toolbar for navigation
         transformed(workspace_toolbar_view(
             |state: &mut AppState, button| {
@@ -142,30 +141,57 @@ fn coordinate_panel_from_session(
 }
 
 /// Glyph preview pane showing the rendered glyph
+/// Horizontal layout: glyph on left, labels on right (matching coordinate panel style)
 fn glyph_preview_pane(
     session: Arc<crate::edit_session::EditSession>,
     glyph_name: String,
 ) -> impl WidgetView<AppState> + use<> {
+    const PANEL_HEIGHT: f64 = 100.0;
+    const PANEL_WIDTH: f64 = 240.0; // Match coordinate panel width
+    const GLYPH_SIZE: f64 = 80.0; // Fit within 100px height with padding
+
     // Get the glyph outline path from the session
     let glyph_path = build_glyph_path(&session);
-
-    // Make the preview larger to fill more space
-    let preview_size = 150.0;
     let upm = session.ascender - session.descender;
 
     // Format Unicode codepoint (use first codepoint if available)
     let unicode_display = format_unicode_display(&session);
 
-    sized_box(flex_col((
-        // Add 4px spacer above glyph preview
-        sized_box(label("")).height(4.px()),
-        // Glyph preview - use theme color with custom baseline offset
-        build_glyph_preview(&glyph_path, preview_size, upm),
-        // Glyph name and unicode labels - use primary UI text color
-        build_glyph_labels(glyph_name, unicode_display),
-    )))
-    .width(160.px())
-    .height(180.px())
+    // Glyph preview on the left
+    let glyph_preview = if !glyph_path.is_empty() {
+        Either::A(
+            sized_box(
+                glyph_view(glyph_path, GLYPH_SIZE, GLYPH_SIZE, upm)
+                    .color(theme::panel::GLYPH_PREVIEW)
+                    .baseline_offset(0.15)
+            )
+            .width(100.px())
+        )
+    } else {
+        Either::B(sized_box(label("")).width(100.px()))
+    };
+
+    // Labels on the right
+    let labels = flex_col((
+        label(glyph_name)
+            .text_size(16.0)
+            .color(theme::text::PRIMARY),
+        label(unicode_display)
+            .text_size(14.0)
+            .color(theme::text::PRIMARY),
+    ))
+    .gap(4.px())
+    .cross_axis_alignment(xilem::view::CrossAxisAlignment::Start);
+
+    sized_box(
+        flex_row((glyph_preview, labels))
+            .gap(8.px())
+            .main_axis_alignment(xilem::view::MainAxisAlignment::Start)
+            .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
+    )
+    .width(PANEL_WIDTH.px())
+    .height(PANEL_HEIGHT.px())
+    .padding(8.0)
     .background_color(theme::panel::BACKGROUND)
     .border_color(theme::panel::OUTLINE)
     .border_width(1.5)
@@ -239,4 +265,85 @@ fn build_glyph_labels(
         .gap(2.px()),
     )
     .height(32.px())
+}
+
+/// Text buffer preview pane showing rendered glyphs from the font (mini preview mode)
+fn text_buffer_preview_pane(
+    session: Arc<crate::edit_session::EditSession>,
+) -> impl WidgetView<AppState> + use<> {
+    // Panel height to match other bottom panels
+    const PANEL_HEIGHT: f64 = 100.0;
+
+    // Only show if text buffer exists
+    if session.text_buffer.is_none() {
+        return Either::B(sized_box(label("")).width(0.px()).height(0.px()));
+    }
+
+    // Get workspace reference to load glyphs
+    let workspace = match &session.workspace {
+        Some(ws) => ws,
+        None => return Either::B(sized_box(label("")).width(0.px()).height(0.px())),
+    };
+
+    let buffer = session.text_buffer.as_ref().unwrap();
+
+    // Build a combined BezPath from all sorts in the buffer (like preview mode)
+    let mut combined_path = BezPath::new();
+    let mut x_offset = 0.0;
+
+    for sort in buffer.iter() {
+        match &sort.kind {
+            crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                let mut glyph_path = BezPath::new();
+
+                if sort.is_active {
+                    // For active sort: use session.paths (live editing state)
+                    // This updates in real-time as the user moves points
+                    for path in session.paths.iter() {
+                        glyph_path.extend(path.to_bezpath());
+                    }
+                } else {
+                    // For inactive sorts: load from workspace (saved state)
+                    if let Some(glyph) = workspace.glyphs.get(name) {
+                        for contour in &glyph.contours {
+                            let path = crate::path::Path::from_contour(contour);
+                            glyph_path.extend(path.to_bezpath());
+                        }
+                    }
+                }
+
+                // Translate the glyph to its position in the text buffer
+                let translated_path = kurbo::Affine::translate((x_offset, 0.0)) * glyph_path;
+                combined_path.extend(translated_path);
+
+                x_offset += advance_width;
+            }
+            crate::sort::SortKind::LineBreak => {
+                // For now, ignore line breaks in preview (Phase 1 is single line)
+            }
+        }
+    }
+
+    let preview_size = 60.0; // Smaller than glyph preview
+    let upm = session.ascender - session.descender;
+
+    // Render the combined path as a glyph view, centered vertically
+    // Width calculated to fill space between glyph (240px) and coordinate (240px) panels
+    // For window width, accounting for margins and gaps to ensure coordinate panel is fully visible
+    // Using a conservative width that works well across different window sizes
+    const TEXT_PREVIEW_WIDTH: f64 = 500.0;
+
+    Either::A(
+        sized_box(
+            glyph_view(combined_path, preview_size, preview_size, upm)
+                .color(theme::panel::GLYPH_PREVIEW)
+                .baseline_offset(0.5), // Center vertically (0.5 = middle)
+        )
+        .width(TEXT_PREVIEW_WIDTH.px())
+        .height(PANEL_HEIGHT.px())
+        .background_color(theme::panel::BACKGROUND)
+        .border_color(theme::panel::OUTLINE)
+        .border_width(1.5)
+        .corner_radius(8.0),
+    )
 }
