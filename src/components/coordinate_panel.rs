@@ -564,7 +564,6 @@ where
     )
     .width(240.px())
     .height(100.px())
-    .padding(8.0)
     .background_color(crate::theme::panel::BACKGROUND)
     .border_color(crate::theme::panel::OUTLINE)
     .border_width(1.5)

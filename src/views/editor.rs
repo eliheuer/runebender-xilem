@@ -89,18 +89,18 @@ pub fn editor_tab(
         )
         .translate((MARGIN, MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_LEFT)),
-        // Bottom row: flex_row with glyph preview, text buffer preview, and coordinate panel
-        // Centered at bottom with translate to add bottom margin
-        transformed(
-            flex_row((
-                glyph_preview_pane(session_arc.clone(), glyph_name.clone()),
-                text_buffer_preview_pane(session_arc.clone()),
-                coordinate_panel_from_session(&session_arc),
-            ))
-            .gap(MARGIN.px())
-        )
-        .translate((0.0, -MARGIN))
-        .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
+        // Bottom-left: glyph preview panel
+        transformed(glyph_preview_pane(session_arc.clone(), glyph_name.clone()))
+            .translate((MARGIN, -MARGIN))
+            .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_LEFT)),
+        // Bottom-center: text buffer preview panel
+        transformed(text_buffer_preview_pane_centered(session_arc.clone()))
+            .translate((0.0, -MARGIN))
+            .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
+        // Bottom-right: coordinate panel (locked to corner like workspace toolbar)
+        transformed(coordinate_panel_from_session(&session_arc))
+            .translate((-MARGIN, -MARGIN))
+            .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_RIGHT)),
         // Top-right: Workspace toolbar for navigation
         transformed(workspace_toolbar_view(
             |state: &mut AppState, button| {
@@ -191,7 +191,6 @@ fn glyph_preview_pane(
     )
     .width(PANEL_WIDTH.px())
     .height(PANEL_HEIGHT.px())
-    .padding(8.0)
     .background_color(theme::panel::BACKGROUND)
     .border_color(theme::panel::OUTLINE)
     .border_width(1.5)
@@ -268,15 +267,19 @@ fn build_glyph_labels(
 }
 
 /// Text buffer preview pane showing rendered glyphs from the font (mini preview mode)
-fn text_buffer_preview_pane(
+/// Centered version with fixed width for displaying a line of text
+fn text_buffer_preview_pane_centered(
     session: Arc<crate::edit_session::EditSession>,
 ) -> impl WidgetView<AppState> + use<> {
-    // Panel height to match other bottom panels
+    // Panel dimensions to match other bottom panels
     const PANEL_HEIGHT: f64 = 100.0;
+    // Width calculation: typical window (1200px) - glyph panel (240) - coord panel (240) - margins (32) - gaps (32) = 656
+    // Use 400px for now to ensure proper spacing and avoid overlap
+    const PANEL_WIDTH: f64 = 400.0; // Wide enough for a line of text with proper margins
 
     // Only show if text buffer exists
     if session.text_buffer.is_none() {
-        return Either::B(sized_box(label("")).width(0.px()).height(0.px()));
+        return Either::B(sized_box(label("")).height(PANEL_HEIGHT.px()));
     }
 
     // Get workspace reference to load glyphs
@@ -327,19 +330,14 @@ fn text_buffer_preview_pane(
     let preview_size = 60.0; // Smaller than glyph preview
     let upm = session.ascender - session.descender;
 
-    // Render the combined path as a glyph view, centered vertically
-    // Width calculated to fill space between glyph (240px) and coordinate (240px) panels
-    // For window width, accounting for margins and gaps to ensure coordinate panel is fully visible
-    // Using a conservative width that works well across different window sizes
-    const TEXT_PREVIEW_WIDTH: f64 = 500.0;
-
+    // Render the combined path as a glyph view, centered vertically and horizontally
     Either::A(
         sized_box(
             glyph_view(combined_path, preview_size, preview_size, upm)
                 .color(theme::panel::GLYPH_PREVIEW)
-                .baseline_offset(0.5), // Center vertically (0.5 = middle)
+                .baseline_offset(0.25), // Center vertically with proper baseline positioning
         )
-        .width(TEXT_PREVIEW_WIDTH.px())
+        .width(PANEL_WIDTH.px())
         .height(PANEL_HEIGHT.px())
         .background_color(theme::panel::BACKGROUND)
         .border_color(theme::panel::OUTLINE)
