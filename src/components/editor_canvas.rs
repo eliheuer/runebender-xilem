@@ -644,6 +644,7 @@ impl EditorWidget {
     /// Render the text cursor (Phase 6)
     ///
     /// Draws a vertical line at the cursor position in design space, aligned with sort metrics
+    /// Only visible in text edit mode. Includes triangular indicators at top and bottom.
     fn render_text_cursor(
         &self,
         scene: &mut Scene,
@@ -651,15 +652,20 @@ impl EditorWidget {
         _baseline_y: f64,
         transform: &Affine,
     ) {
+        // Only render cursor in text edit mode
+        if !self.session.text_mode_active {
+            return;
+        }
+
         // Draw cursor as a vertical line from ascender to descender (matching sort metrics)
         let cursor_top = Point::new(cursor_x, self.session.ascender);
         let cursor_bottom = Point::new(cursor_x, self.session.descender);
 
         // Transform to screen coordinates
-        let cursor_line = kurbo::Line::new(
-            *transform * cursor_top,
-            *transform * cursor_bottom,
-        );
+        let cursor_top_screen = *transform * cursor_top;
+        let cursor_bottom_screen = *transform * cursor_bottom;
+
+        let cursor_line = kurbo::Line::new(cursor_top_screen, cursor_bottom_screen);
 
         // Use orange color (same as selection marquee) with 1.5px stroke
         let stroke = Stroke::new(1.5);
@@ -671,6 +677,43 @@ impl EditorWidget {
             &brush,
             None,
             &cursor_line,
+        );
+
+        // Draw triangular indicators at top and bottom (like Glyphs app)
+        // Triangle size in screen space - slightly smaller than 4x
+        let triangle_width = 24.0;
+        let triangle_height = 16.0;
+
+        // Top triangle (pointing down/inward, aligned with ascender)
+        // Base at ascender, tip extends downward into the metrics box
+        let mut top_triangle = kurbo::BezPath::new();
+        top_triangle.move_to((cursor_top_screen.x - triangle_width / 2.0, cursor_top_screen.y)); // Left corner at ascender
+        top_triangle.line_to((cursor_top_screen.x + triangle_width / 2.0, cursor_top_screen.y)); // Right corner at ascender
+        top_triangle.line_to((cursor_top_screen.x, cursor_top_screen.y + triangle_height)); // Tip below, pointing down
+        top_triangle.close_path();
+
+        scene.fill(
+            peniko::Fill::NonZero,
+            Affine::IDENTITY,
+            &brush,
+            None,
+            &top_triangle,
+        );
+
+        // Bottom triangle (pointing up/inward, aligned with descender)
+        // Base at descender, tip extends upward into the metrics box
+        let mut bottom_triangle = kurbo::BezPath::new();
+        bottom_triangle.move_to((cursor_bottom_screen.x - triangle_width / 2.0, cursor_bottom_screen.y)); // Left corner at descender
+        bottom_triangle.line_to((cursor_bottom_screen.x + triangle_width / 2.0, cursor_bottom_screen.y)); // Right corner at descender
+        bottom_triangle.line_to((cursor_bottom_screen.x, cursor_bottom_screen.y - triangle_height)); // Tip above, pointing up
+        bottom_triangle.close_path();
+
+        scene.fill(
+            peniko::Fill::NonZero,
+            Affine::IDENTITY,
+            &brush,
+            None,
+            &bottom_triangle,
         );
     }
 
