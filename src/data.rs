@@ -160,7 +160,8 @@ impl AppState {
         let workspace = self.workspace.as_ref()?;
         let glyph = workspace.get_glyph(glyph_name)?;
 
-        Some(EditSession::new(
+        // Create session with text buffer for text editing support
+        let mut session = EditSession::new_with_text_buffer(
             glyph_name.to_string(),
             workspace.path.clone(),
             glyph.clone(),
@@ -169,7 +170,12 @@ impl AppState {
             workspace.descender.unwrap_or(-200.0),
             workspace.x_height,
             workspace.cap_height,
-        ))
+        );
+
+        // Set workspace reference for text mode character mapping (Phase 5)
+        session.workspace = Some(std::sync::Arc::new(workspace.clone()));
+
+        Some(session)
     }
 
     /// Open or focus an editor for a glyph
@@ -224,6 +230,22 @@ impl AppState {
             Some(s) => s,
             None => return,
         };
+
+        // Phase 4: When switching to text tool, enter text mode
+        if tool_id == crate::tools::ToolId::Text {
+            if session.has_text_buffer() {
+                session.enter_text_mode();
+                tracing::info!("Entered text editing mode");
+            } else {
+                tracing::warn!("Text tool selected but no text buffer available");
+            }
+        } else {
+            // Exit text mode when switching to other tools
+            if session.text_mode_active {
+                session.exit_text_mode();
+                tracing::info!("Exited text editing mode");
+            }
+        }
 
         session.current_tool = crate::tools::ToolBox::for_id(tool_id);
     }

@@ -243,6 +243,14 @@ impl Widget for EditorWidget {
         let is_preview_mode =
             self.session.current_tool.id() == crate::tools::ToolId::Preview;
 
+        // Phase 3: Check if we're in text mode
+        if self.session.text_mode_active && self.session.text_buffer.is_some() {
+            // Text mode rendering: render multiple sorts
+            self.render_text_buffer(scene, &transform, is_preview_mode);
+            return;
+        }
+
+        // Traditional single-glyph rendering
         if !is_preview_mode {
             // Edit mode: Draw font metrics guides
             draw_metrics_guides(
@@ -379,6 +387,13 @@ impl Widget for EditorWidget {
                 || key_event.modifiers.ctrl();
             let shift = key_event.modifiers.shift();
 
+            // Phase 5: Handle text mode input (character typing, cursor movement)
+            if self.session.text_mode_active && self.session.text_buffer.is_some() {
+                if self.handle_text_mode_input(ctx, &key_event.key) {
+                    return;
+                }
+            }
+
             // Handle keyboard shortcuts
             if self.handle_keyboard_shortcuts(
                 ctx,
@@ -453,6 +468,238 @@ impl EditorWidget {
         );
 
         self.session.viewport_initialized = true;
+    }
+
+    /// Render the text buffer with multiple sorts (Phase 3)
+    ///
+    /// This renders all sorts in the text buffer, laying them out horizontally
+    /// with correct spacing based on advance widths.
+    fn render_text_buffer(
+        &self,
+        scene: &mut Scene,
+        transform: &Affine,
+        is_preview_mode: bool,
+    ) {
+        let buffer = match &self.session.text_buffer {
+            Some(buf) => buf,
+            None => return,
+        };
+
+        let mut x_offset = 0.0;
+        let baseline_y = 0.0;
+        let cursor_position = buffer.cursor();
+
+        // Phase 6: Calculate cursor x position while rendering sorts
+        let mut cursor_x = 0.0;
+
+        for (index, sort) in buffer.iter().enumerate() {
+            // Track cursor position
+            if index == cursor_position {
+                cursor_x = x_offset;
+            }
+
+            match &sort.kind {
+                crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                    let sort_position = Point::new(x_offset, baseline_y);
+
+                    // Draw metrics box for this sort
+                    if !is_preview_mode {
+                        self.render_sort_metrics(scene, x_offset, *advance_width, transform);
+                    }
+
+                    if sort.is_active && !is_preview_mode {
+                        // Render active sort with control points (editable)
+                        self.render_active_sort(scene, name, sort_position, transform);
+                    } else {
+                        // Render inactive sort as filled preview
+                        self.render_inactive_sort(scene, name, sort_position, transform);
+                    }
+
+                    x_offset += advance_width;
+                }
+                crate::sort::SortKind::LineBreak => {
+                    // Line break: reset x, move y down
+                    x_offset = 0.0;
+                    // baseline_y -= self.session.line_height(); // TODO: multi-line support
+                }
+            }
+        }
+
+        // Cursor might be at the end of the buffer
+        if cursor_position >= buffer.len() {
+            cursor_x = x_offset;
+        }
+
+        // Phase 6: Render cursor in text mode (not in preview mode)
+        if !is_preview_mode {
+            self.render_text_cursor(scene, cursor_x, baseline_y, transform);
+        }
+    }
+
+    /// Render an active sort with control points and handles
+    fn render_active_sort(
+        &self,
+        scene: &mut Scene,
+        glyph_name: &str,
+        position: Point,
+        transform: &Affine,
+    ) {
+        // Load glyph paths from workspace
+        // For now, we'll use the current session paths if the glyph name matches
+        // TODO Phase 8: Load paths for any glyph by name
+        if glyph_name == self.session.glyph_name {
+            // Apply position offset
+            let sort_transform = *transform * Affine::translate(position.to_vec2());
+
+            // Render path stroke
+            let mut glyph_path = kurbo::BezPath::new();
+            for path in self.session.paths.iter() {
+                glyph_path.extend(path.to_bezpath());
+            }
+
+            if !glyph_path.is_empty() {
+                let transformed_path = sort_transform * &glyph_path;
+                let stroke = Stroke::new(theme::size::PATH_STROKE_WIDTH);
+                let brush = Brush::Solid(theme::path::STROKE);
+                scene.stroke(
+                    &stroke,
+                    Affine::IDENTITY,
+                    &brush,
+                    None,
+                    &transformed_path,
+                );
+
+                // Draw control points and handles
+                // Note: This uses session paths which already have the correct structure
+                draw_paths_with_points(scene, &self.session, &sort_transform);
+            }
+        }
+    }
+
+    /// Render an inactive sort as a filled preview
+    fn render_inactive_sort(
+        &self,
+        scene: &mut Scene,
+        glyph_name: &str,
+        position: Point,
+        transform: &Affine,
+    ) {
+        // Load glyph from workspace and render as filled
+        // For now, we'll use the current session glyph if the name matches
+        // TODO Phase 8: Load any glyph by name from workspace
+        if glyph_name == self.session.glyph_name {
+            // Apply position offset
+            let sort_transform = *transform * Affine::translate(position.to_vec2());
+
+            // Render filled path
+            let mut glyph_path = kurbo::BezPath::new();
+            for path in self.session.paths.iter() {
+                glyph_path.extend(path.to_bezpath());
+            }
+
+            if !glyph_path.is_empty() {
+                let transformed_path = sort_transform * &glyph_path;
+                let fill_brush = Brush::Solid(theme::path::PREVIEW_FILL);
+                scene.fill(
+                    peniko::Fill::NonZero,
+                    Affine::IDENTITY,
+                    &fill_brush,
+                    None,
+                    &transformed_path,
+                );
+            }
+        }
+    }
+
+    /// Render the text cursor (Phase 6)
+    ///
+    /// Draws a vertical line at the cursor position in design space
+    fn render_text_cursor(
+        &self,
+        scene: &mut Scene,
+        cursor_x: f64,
+        baseline_y: f64,
+        transform: &Affine,
+    ) {
+        // Cursor is a vertical line from descender to ascender
+        let cursor_top = Point::new(cursor_x, self.session.ascender);
+        let cursor_bottom = Point::new(cursor_x, self.session.descender);
+
+        // Transform to screen coordinates
+        let cursor_top_screen = *transform * cursor_top;
+        let cursor_bottom_screen = *transform * cursor_bottom;
+
+        // Draw cursor line
+        let cursor_line = kurbo::Line::new(cursor_top_screen, cursor_bottom_screen);
+        let cursor_stroke = Stroke::new(2.0); // 2px wide cursor
+        let cursor_brush = Brush::Solid(theme::path::STROKE); // Reuse path stroke color
+
+        scene.stroke(
+            &cursor_stroke,
+            Affine::IDENTITY,
+            &cursor_brush,
+            None,
+            &cursor_line,
+        );
+    }
+
+    /// Render metrics box for a single sort (Phase 6)
+    ///
+    /// This draws the bounding rectangle that defines the sort.
+    /// Shows the advance width, baseline, ascender, descender, and font metrics.
+    fn render_sort_metrics(
+        &self,
+        scene: &mut Scene,
+        x_offset: f64,
+        advance_width: f64,
+        transform: &Affine,
+    ) {
+        let stroke = Stroke::new(theme::size::METRIC_LINE_WIDTH);
+        let brush = Brush::Solid(theme::metrics::GUIDE);
+
+        // Draw vertical lines (left and right edges of the sort)
+        let left_top = Point::new(x_offset, self.session.ascender);
+        let left_bottom = Point::new(x_offset, self.session.descender);
+        let left_line = kurbo::Line::new(
+            *transform * left_top,
+            *transform * left_bottom,
+        );
+        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &left_line);
+
+        let right_top = Point::new(x_offset + advance_width, self.session.ascender);
+        let right_bottom = Point::new(x_offset + advance_width, self.session.descender);
+        let right_line = kurbo::Line::new(
+            *transform * right_top,
+            *transform * right_bottom,
+        );
+        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &right_line);
+
+        // Draw horizontal lines (baseline, ascender, descender, etc.)
+        let draw_hline = |scene: &mut Scene, y: f64| {
+            let start = Point::new(x_offset, y);
+            let end = Point::new(x_offset + advance_width, y);
+            let line = kurbo::Line::new(*transform * start, *transform * end);
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
+        };
+
+        // Descender (bottom of metrics box)
+        draw_hline(scene, self.session.descender);
+
+        // Baseline (y=0)
+        draw_hline(scene, 0.0);
+
+        // X-height (if available)
+        if let Some(x_height) = self.session.x_height {
+            draw_hline(scene, x_height);
+        }
+
+        // Cap-height (if available)
+        if let Some(cap_height) = self.session.cap_height {
+            draw_hline(scene, cap_height);
+        }
+
+        // Ascender (top of metrics box)
+        draw_hline(scene, self.session.ascender);
     }
 
     /// Handle pointer down event
@@ -929,6 +1176,75 @@ impl EditorWidget {
         self.session.nudge_selection(dx, dy, shift, ctrl);
         ctx.request_render();
         ctx.set_handled();
+    }
+
+    /// Handle text mode keyboard input (Phase 5)
+    ///
+    /// Handles:
+    /// - Character typing (insert sorts)
+    /// - Arrow keys (cursor movement in buffer)
+    /// - Backspace/Delete (remove sorts)
+    /// - Enter (line breaks - Phase 10)
+    ///
+    /// Returns true if the key was handled, false otherwise
+    fn handle_text_mode_input(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use masonry::core::keyboard::{Key, NamedKey};
+
+        // Handle arrow keys for cursor movement
+        match key {
+            Key::Named(NamedKey::ArrowLeft) => {
+                if let Some(buffer) = &mut self.session.text_buffer {
+                    buffer.move_cursor_left();
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return true;
+                }
+            }
+            Key::Named(NamedKey::ArrowRight) => {
+                if let Some(buffer) = &mut self.session.text_buffer {
+                    buffer.move_cursor_right();
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return true;
+                }
+            }
+            Key::Named(NamedKey::Backspace) => {
+                if let Some(buffer) = &mut self.session.text_buffer {
+                    buffer.delete();
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return true;
+                }
+            }
+            Key::Named(NamedKey::Enter) => {
+                // TODO Phase 10: Insert line break
+                // For now, just handle the key
+                ctx.set_handled();
+                return true;
+            }
+            Key::Character(s) => {
+                // Insert character as a sort
+                if let Some(c) = s.chars().next() {
+                    if let Some(sort) = self.session.create_sort_from_char(c) {
+                        if let Some(buffer) = &mut self.session.text_buffer {
+                            buffer.insert(sort);
+                            ctx.request_render();
+                            ctx.set_handled();
+                            return true;
+                        }
+                    } else {
+                        tracing::warn!("No glyph found for character: '{}'", c);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        false
     }
 }
 

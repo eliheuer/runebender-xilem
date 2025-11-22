@@ -8,9 +8,10 @@ use crate::hit_test::{self, HitTestResult};
 use crate::hyper_path::HyperPath;
 use crate::path::Path;
 use crate::selection::Selection;
+use crate::sort::SortBuffer;
 use crate::tools::{ToolBox, ToolId};
 use crate::viewport::ViewPort;
-use crate::workspace::Glyph;
+use crate::workspace::{Glyph, Workspace};
 use kurbo::{Point, Rect};
 use std::sync::Arc;
 
@@ -60,6 +61,19 @@ pub struct EditSession {
     pub descender: f64,
     pub x_height: Option<f64>,
     pub cap_height: Option<f64>,
+
+    /// Text buffer for multi-glyph editing (Phase 2+)
+    /// When Some, the session can switch between single-glyph and text editing modes
+    pub text_buffer: Option<SortBuffer>,
+
+    /// Whether text editing mode is currently active
+    /// When true, render and interact with text buffer
+    /// When false, use traditional single-glyph editing
+    pub text_mode_active: bool,
+
+    /// Reference to the workspace for character-to-glyph mapping (Phase 5+)
+    /// Optional because not all sessions need text editing capabilities
+    pub workspace: Option<Arc<Workspace>>,
 }
 
 impl EditSession {
@@ -97,7 +111,113 @@ impl EditSession {
             descender,
             x_height,
             cap_height,
+            text_buffer: None,
+            text_mode_active: false,
+            workspace: None,
         }
+    }
+
+    /// Create a new editing session with text buffer initialized
+    ///
+    /// This creates a session with a text buffer containing the initial glyph as the first sort.
+    /// The session starts in single-glyph mode (text_mode_active = false).
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_text_buffer(
+        glyph_name: String,
+        ufo_path: std::path::PathBuf,
+        glyph: Glyph,
+        units_per_em: f64,
+        ascender: f64,
+        descender: f64,
+        x_height: Option<f64>,
+        cap_height: Option<f64>,
+    ) -> Self {
+        // Convert glyph contours to editable paths
+        let paths: Vec<Path> = glyph
+            .contours
+            .iter()
+            .map(Path::from_contour)
+            .collect();
+
+        // Create text buffer with initial sort
+        let mut buffer = SortBuffer::new();
+        let initial_sort = crate::sort::Sort::new_glyph(
+            glyph_name.clone(),
+            glyph.codepoints.first().copied(),
+            glyph.width as f64,
+            true, // First sort is active by default
+        );
+        buffer.insert(initial_sort);
+
+        Self {
+            glyph_name,
+            ufo_path,
+            glyph: Arc::new(glyph),
+            paths: Arc::new(paths),
+            selection: Selection::new(),
+            coord_selection: CoordinateSelection::default(),
+            current_tool: ToolBox::for_id(ToolId::Select),
+            viewport: ViewPort::new(),
+            viewport_initialized: false,
+            units_per_em,
+            ascender,
+            descender,
+            x_height,
+            cap_height,
+            text_buffer: Some(buffer),
+            text_mode_active: false, // Start in single-glyph mode
+            workspace: None,
+        }
+    }
+
+    /// Enter text editing mode
+    ///
+    /// This switches the session to text buffer editing mode where multiple glyphs
+    /// can be edited in a line.
+    pub fn enter_text_mode(&mut self) {
+        if self.text_buffer.is_some() {
+            self.text_mode_active = true;
+        }
+    }
+
+    /// Exit text editing mode
+    ///
+    /// This switches back to single-glyph editing mode, where only the active
+    /// sort's glyph is editable.
+    pub fn exit_text_mode(&mut self) {
+        self.text_mode_active = false;
+    }
+
+    /// Check if text mode is available (text buffer exists)
+    pub fn has_text_buffer(&self) -> bool {
+        self.text_buffer.is_some()
+    }
+
+    /// Get the line height for text layout (UPM - descender)
+    pub fn line_height(&self) -> f64 {
+        self.units_per_em - self.descender
+    }
+
+    /// Create a Sort from a character using the workspace character map (Phase 5)
+    ///
+    /// Looks up the glyph for the given character and creates a Sort.
+    /// Returns None if:
+    /// - No workspace is available
+    /// - Character has no mapped glyph
+    /// - Glyph data cannot be found
+    pub fn create_sort_from_char(&self, c: char) -> Option<crate::sort::Sort> {
+        let workspace = self.workspace.as_ref()?;
+
+        // Find a glyph with this codepoint
+        let (glyph_name, glyph) = workspace.glyphs.iter()
+            .find(|(_, g)| g.codepoints.contains(&c))?;
+
+        Some(crate::sort::Sort::new_glyph(
+            glyph_name.clone(),
+            Some(c),
+            glyph.width,
+            false, // New sorts are inactive by default
+        ))
     }
 
     /// Compute the coordinate selection from the current selection
@@ -1105,6 +1225,133 @@ impl EditSession {
             // Handle wrap-around for closed paths
             total_len - start_index - 1 + end_index
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workspace::{Contour, Glyph};
+
+    fn create_test_glyph() -> Glyph {
+        Glyph {
+            name: "a".to_string(),
+            width: 500.0,
+            height: Some(700.0),
+            codepoints: vec!['a'],
+            contours: vec![],
+        }
+    }
+
+    #[test]
+    fn test_session_without_text_buffer() {
+        let glyph = create_test_glyph();
+        let session = EditSession::new(
+            "a".to_string(),
+            std::path::PathBuf::from("/test.ufo"),
+            glyph,
+            1000.0,
+            800.0,
+            -200.0,
+            Some(500.0),
+            Some(700.0),
+        );
+
+        assert!(!session.has_text_buffer());
+        assert!(!session.text_mode_active);
+        assert_eq!(session.glyph_name, "a");
+    }
+
+    #[test]
+    fn test_session_with_text_buffer() {
+        let glyph = create_test_glyph();
+        let session = EditSession::new_with_text_buffer(
+            "a".to_string(),
+            std::path::PathBuf::from("/test.ufo"),
+            glyph,
+            1000.0,
+            800.0,
+            -200.0,
+            Some(500.0),
+            Some(700.0),
+        );
+
+        assert!(session.has_text_buffer());
+        assert!(!session.text_mode_active); // Starts in single-glyph mode
+
+        // Verify text buffer has one sort
+        let buffer = session.text_buffer.as_ref().unwrap();
+        assert_eq!(buffer.len(), 1);
+
+        // Verify the sort is the initial glyph
+        let sort = buffer.get(0).unwrap();
+        assert_eq!(sort.glyph_name(), Some("a"));
+        assert_eq!(sort.advance_width(), Some(500.0));
+        assert!(sort.is_active);
+    }
+
+    #[test]
+    fn test_text_mode_toggle() {
+        let glyph = create_test_glyph();
+        let mut session = EditSession::new_with_text_buffer(
+            "a".to_string(),
+            std::path::PathBuf::from("/test.ufo"),
+            glyph,
+            1000.0,
+            800.0,
+            -200.0,
+            Some(500.0),
+            Some(700.0),
+        );
+
+        assert!(!session.text_mode_active);
+
+        // Enter text mode
+        session.enter_text_mode();
+        assert!(session.text_mode_active);
+
+        // Exit text mode
+        session.exit_text_mode();
+        assert!(!session.text_mode_active);
+    }
+
+    #[test]
+    fn test_line_height() {
+        let glyph = create_test_glyph();
+        let session = EditSession::new(
+            "a".to_string(),
+            std::path::PathBuf::from("/test.ufo"),
+            glyph,
+            1000.0,  // UPM
+            800.0,   // ascender
+            -200.0,  // descender
+            Some(500.0),
+            Some(700.0),
+        );
+
+        // Line height = UPM - descender = 1000 - (-200) = 1200
+        assert_eq!(session.line_height(), 1200.0);
+    }
+
+    #[test]
+    fn test_enter_text_mode_without_buffer() {
+        let glyph = create_test_glyph();
+        let mut session = EditSession::new(
+            "a".to_string(),
+            std::path::PathBuf::from("/test.ufo"),
+            glyph,
+            1000.0,
+            800.0,
+            -200.0,
+            Some(500.0),
+            Some(700.0),
+        );
+
+        assert!(!session.has_text_buffer());
+
+        // Should not enter text mode if no buffer
+        session.enter_text_mode();
+        assert!(!session.text_mode_active);
     }
 }
 
