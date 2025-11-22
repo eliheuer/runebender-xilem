@@ -243,14 +243,15 @@ impl Widget for EditorWidget {
         let is_preview_mode =
             self.session.current_tool.id() == crate::tools::ToolId::Preview;
 
-        // Phase 3: Check if we're in text mode
-        if self.session.text_mode_active && self.session.text_buffer.is_some() {
-            // Text mode rendering: render multiple sorts
+        // Phase 3: Check if we have a text buffer (always show it if it exists)
+        if self.session.text_buffer.is_some() {
+            // Text buffer rendering: render multiple sorts
+            // This is shown regardless of which tool is active
             self.render_text_buffer(scene, &transform, is_preview_mode);
             return;
         }
 
-        // Traditional single-glyph rendering
+        // Traditional single-glyph rendering (only when no text buffer exists)
         if !is_preview_mode {
             // Edit mode: Draw font metrics guides
             draw_metrics_guides(
@@ -1246,6 +1247,11 @@ impl EditorWidget {
             Key::Named(NamedKey::Backspace) => {
                 if let Some(buffer) = &mut self.session.text_buffer {
                     buffer.delete();
+                    // Emit session update to persist text buffer changes
+                    ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                        session: self.session.clone(),
+                        save_requested: false,
+                    });
                     ctx.request_render();
                     ctx.set_handled();
                     return true;
@@ -1268,6 +1274,11 @@ impl EditorWidget {
                     if let Some(sort) = self.session.create_sort_from_char(c) {
                         if let Some(buffer) = &mut self.session.text_buffer {
                             buffer.insert(sort);
+                            // Emit session update to persist text buffer changes
+                            ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                                session: self.session.clone(),
+                                save_requested: false,
+                            });
                             ctx.request_render();
                             ctx.set_handled();
                             return true;
