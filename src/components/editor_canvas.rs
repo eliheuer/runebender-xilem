@@ -314,6 +314,8 @@ impl Widget for EditorWidget {
         _props: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
+        // Always request focus on any pointer event so keyboard shortcuts work
+        ctx.request_focus();
 
         match event {
             PointerEvent::Down(PointerButtonEvent {
@@ -387,14 +389,18 @@ impl Widget for EditorWidget {
                 || key_event.modifiers.ctrl();
             let shift = key_event.modifiers.shift();
 
-            // Phase 5: Handle text mode input (character typing, cursor movement)
-            if self.session.text_mode_active && self.session.text_buffer.is_some() {
-                if self.handle_text_mode_input(ctx, &key_event.key) {
-                    return;
-                }
+            // Debug logging for key events
+            if cmd {
+                tracing::info!(
+                    "[EditorWidget] Cmd+Key: {:?}, cmd={}, shift={}",
+                    key_event.key,
+                    cmd,
+                    shift
+                );
             }
 
-            // Handle keyboard shortcuts
+            // Handle keyboard shortcuts first (before text input)
+            // This allows Cmd+Z, Cmd+-, Cmd+= etc. to work in text mode
             if self.handle_keyboard_shortcuts(
                 ctx,
                 &key_event.key,
@@ -402,6 +408,14 @@ impl Widget for EditorWidget {
                 shift,
             ) {
                 return;
+            }
+
+            // Phase 5: Handle text mode input (character typing, cursor movement)
+            // Only handle after shortcuts, and only if no modifiers (except shift for caps)
+            if self.session.text_mode_active && self.session.text_buffer.is_some() {
+                if self.handle_text_mode_input(ctx, &key_event.key, cmd) {
+                    return;
+                }
             }
 
             // Handle arrow keys for nudging
@@ -1000,25 +1014,31 @@ impl EditorWidget {
         }
 
         // Zoom in (Cmd/Ctrl + or =)
-        if cmd && matches!(key, Key::Character(c) if c == "+" || c == "=") {
-            let new_zoom = (self.session.viewport.zoom * 1.1)
-                .min(settings::editor::MAX_ZOOM);
-            self.session.viewport.zoom = new_zoom;
-            tracing::debug!("Zoom in: new zoom = {:.2}", new_zoom);
-            ctx.request_render();
-            ctx.set_handled();
-            return true;
+        if cmd {
+            let is_zoom_in = matches!(key, Key::Character(c) if c == "+" || c == "=");
+            if is_zoom_in {
+                let new_zoom = (self.session.viewport.zoom * 1.1)
+                    .min(settings::editor::MAX_ZOOM);
+                self.session.viewport.zoom = new_zoom;
+                tracing::info!("Zoom in: new zoom = {:.2}", new_zoom);
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
+            }
         }
 
         // Zoom out (Cmd/Ctrl -)
-        if cmd && matches!(key, Key::Character(c) if c == "-") {
-            let new_zoom = (self.session.viewport.zoom / 1.1)
-                .max(settings::editor::MIN_ZOOM);
-            self.session.viewport.zoom = new_zoom;
-            tracing::debug!("Zoom out: new zoom = {:.2}", new_zoom);
-            ctx.request_render();
-            ctx.set_handled();
-            return true;
+        if cmd {
+            let is_zoom_out = matches!(key, Key::Character(c) if c == "-" || c == "_");
+            if is_zoom_out {
+                let new_zoom = (self.session.viewport.zoom / 1.1)
+                    .max(settings::editor::MIN_ZOOM);
+                self.session.viewport.zoom = new_zoom;
+                tracing::info!("Zoom out: new zoom = {:.2}", new_zoom);
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
+            }
         }
 
         // Fit to window (Cmd/Ctrl+0)
@@ -1191,6 +1211,7 @@ impl EditorWidget {
         &mut self,
         ctx: &mut EventCtx<'_>,
         key: &masonry::core::keyboard::Key,
+        cmd: bool,
     ) -> bool {
         use masonry::core::keyboard::{Key, NamedKey};
 
@@ -1227,6 +1248,11 @@ impl EditorWidget {
                 return true;
             }
             Key::Character(s) => {
+                // Don't insert characters when Cmd/Ctrl is held (let shortcuts through)
+                if cmd {
+                    return false;
+                }
+
                 // Insert character as a sort
                 if let Some(c) = s.chars().next() {
                     if let Some(sort) = self.session.create_sort_from_char(c) {
