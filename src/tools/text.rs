@@ -57,8 +57,14 @@ impl MouseDelegate for TextTool {
         // No-op
     }
 
-    fn left_click(&mut self, _event: MouseEvent, _data: &mut Self::Data) {
-        // No-op
+    fn left_click(&mut self, event: MouseEvent, session: &mut Self::Data) {
+        // Phase 7: Click on a sort to activate it for editing
+        // Transform click position from screen to design space
+        let design_pos = session.viewport.affine().inverse() * event.pos;
+
+        if session.activate_sort_at_position(design_pos) {
+            tracing::info!("Activated sort at position {:?}", design_pos);
+        }
     }
 
     fn mouse_moved(&mut self, _event: MouseEvent, _data: &mut Self::Data) {

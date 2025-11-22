@@ -220,6 +220,49 @@ impl EditSession {
         ))
     }
 
+    /// Find and activate the sort at a given position (Phase 7)
+    ///
+    /// Hit tests the position against each sort's bounding box and activates
+    /// the clicked sort. Returns true if a sort was found and activated.
+    pub fn activate_sort_at_position(&mut self, pos: Point) -> bool {
+        let buffer = match &mut self.text_buffer {
+            Some(buf) => buf,
+            None => return false,
+        };
+
+        // Calculate sort positions and check for hit
+        let mut x_offset = 0.0;
+        let baseline_y = 0.0;
+
+        for (index, sort) in buffer.iter().enumerate() {
+            match &sort.kind {
+                crate::sort::SortKind::Glyph { advance_width, .. } => {
+                    // Check if click is within this sort's bounds
+                    let sort_left = x_offset;
+                    let sort_right = x_offset + advance_width;
+                    let sort_top = self.ascender;
+                    let sort_bottom = self.descender;
+
+                    if pos.x >= sort_left && pos.x <= sort_right
+                        && pos.y >= sort_bottom && pos.y <= sort_top
+                    {
+                        // Found the clicked sort - activate it
+                        buffer.set_active_sort(index);
+                        return true;
+                    }
+
+                    x_offset += advance_width;
+                }
+                crate::sort::SortKind::LineBreak => {
+                    x_offset = 0.0;
+                    // baseline_y -= self.line_height(); // TODO: multi-line
+                }
+            }
+        }
+
+        false
+    }
+
     /// Compute the coordinate selection from the current selection
     ///
     /// This calculates the bounding box of all selected points and

@@ -599,29 +599,39 @@ impl EditorWidget {
         transform: &Affine,
     ) {
         // Load glyph from workspace and render as filled
-        // For now, we'll use the current session glyph if the name matches
-        // TODO Phase 8: Load any glyph by name from workspace
-        if glyph_name == self.session.glyph_name {
-            // Apply position offset
-            let sort_transform = *transform * Affine::translate(position.to_vec2());
+        let workspace = match &self.session.workspace {
+            Some(ws) => ws,
+            None => return,
+        };
 
-            // Render filled path
-            let mut glyph_path = kurbo::BezPath::new();
-            for path in self.session.paths.iter() {
-                glyph_path.extend(path.to_bezpath());
+        let glyph = match workspace.glyphs.get(glyph_name) {
+            Some(g) => g,
+            None => {
+                tracing::warn!("Glyph '{}' not found in workspace", glyph_name);
+                return;
             }
+        };
 
-            if !glyph_path.is_empty() {
-                let transformed_path = sort_transform * &glyph_path;
-                let fill_brush = Brush::Solid(theme::path::PREVIEW_FILL);
-                scene.fill(
-                    peniko::Fill::NonZero,
-                    Affine::IDENTITY,
-                    &fill_brush,
-                    None,
-                    &transformed_path,
-                );
-            }
+        // Apply position offset
+        let sort_transform = *transform * Affine::translate(position.to_vec2());
+
+        // Build BezPath from glyph contours
+        let mut glyph_path = kurbo::BezPath::new();
+        for contour in &glyph.contours {
+            let path = crate::path::Path::from_contour(contour);
+            glyph_path.extend(path.to_bezpath());
+        }
+
+        if !glyph_path.is_empty() {
+            let transformed_path = sort_transform * &glyph_path;
+            let fill_brush = Brush::Solid(theme::path::PREVIEW_FILL);
+            scene.fill(
+                peniko::Fill::NonZero,
+                Affine::IDENTITY,
+                &fill_brush,
+                None,
+                &transformed_path,
+            );
         }
     }
 
