@@ -245,12 +245,18 @@ impl EditSession {
     /// - Character has no mapped glyph
     /// - Glyph data cannot be found
     pub fn create_sort_from_char(&self, c: char) -> Option<crate::sort::Sort> {
+        tracing::debug!("[create_sort_from_char] Trying to create sort for character: '{}' (U+{:04X})", c, c as u32);
+
         let workspace_lock = self.workspace.as_ref()?;
         let workspace = workspace_lock.read().unwrap();
+
+        tracing::debug!("[create_sort_from_char] Workspace has {} glyphs", workspace.glyphs.len());
 
         // Find a glyph with this codepoint
         let (glyph_name, glyph) = workspace.glyphs.iter()
             .find(|(_, g)| g.codepoints.contains(&c))?;
+
+        tracing::debug!("[create_sort_from_char] Found glyph: '{}' for character '{}'", glyph_name, c);
 
         // Check if this character matches the currently active sort's character
         // If so, use the current glyph (with live edits) instead of workspace version
@@ -345,8 +351,9 @@ impl EditSession {
                 .map(Path::from_contour)
                 .collect();
 
-            // Update session state with loaded paths
+            // Update session state with loaded paths AND glyph
             self.paths = std::sync::Arc::new(paths);
+            self.glyph = std::sync::Arc::new(glyph.clone()); // Update glyph so to_glyph() has correct metadata
             self.active_sort_index = Some(index);
             self.active_sort_name = Some(glyph_name.clone());
             self.active_sort_unicode = codepoint.map(|c| format!("U+{:04X}", c as u32));

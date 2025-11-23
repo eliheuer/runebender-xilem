@@ -16,8 +16,8 @@ use masonry::accesskit::{Node, Role};
 use masonry::core::{
     AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
     PaintCtx, PointerButton, PointerButtonEvent, PointerEvent,
-    PointerUpdate, PropertiesMut, PropertiesRef, RegisterCtx,
-    TextEvent, Update, UpdateCtx, Widget,
+    PointerScrollEvent, PointerUpdate, PropertiesMut, PropertiesRef,
+    RegisterCtx, ScrollDelta, TextEvent, Update, UpdateCtx, Widget,
 };
 use masonry::kurbo::Size;
 use masonry::util::fill_color;
@@ -370,10 +370,12 @@ impl Widget for EditorWidget {
                 self.handle_pointer_cancel(ctx);
             }
 
+            PointerEvent::Scroll(PointerScrollEvent { delta, .. }) => {
+                self.handle_scroll_zoom(ctx, delta);
+            }
+
             _ => {
-                // TODO: Implement wheel event handling once Masonry
-                // exposes it. For now, zooming can be done via
-                // keyboard shortcuts or commands
+                // Ignore other pointer events
             }
         }
     }
@@ -1185,6 +1187,39 @@ impl EditorWidget {
         );
         self.mouse.cancel(&mut tool, &mut self.session);
         self.session.current_tool = tool;
+
+        ctx.request_render();
+    }
+
+    /// Handle scroll wheel zoom
+    fn handle_scroll_zoom(&mut self, ctx: &mut EventCtx<'_>, delta: &ScrollDelta) {
+        // Extract the Y component of the scroll delta
+        // Negative Y = scroll up = zoom in
+        // Positive Y = scroll down = zoom out
+        let scroll_y = match delta {
+            ScrollDelta::LineDelta(_x, y) => *y,
+            ScrollDelta::PixelDelta(pos) => (pos.y / 10.0) as f32, // Scale down pixel deltas
+            ScrollDelta::PageDelta(_x, y) => *y * 3.0, // Page scrolls are bigger
+        };
+
+        if scroll_y.abs() < 0.001 {
+            return; // Ignore very small scrolls
+        }
+
+        // Calculate zoom factor: negative scroll_y means zoom in
+        let zoom_factor = if scroll_y < 0.0 {
+            1.1 // Zoom in
+        } else {
+            1.0 / 1.1 // Zoom out
+        };
+
+        // Apply zoom with limits
+        let new_zoom = (self.session.viewport.zoom * zoom_factor)
+            .max(settings::editor::MIN_ZOOM)
+            .min(settings::editor::MAX_ZOOM);
+
+        self.session.viewport.zoom = new_zoom;
+        tracing::debug!("Scroll zoom: scroll_y={:.2}, new zoom={:.2}", scroll_y, new_zoom);
 
         ctx.request_render();
     }
