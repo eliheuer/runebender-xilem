@@ -518,13 +518,16 @@ impl EditorWidget {
         let mut cursor_x = 0.0;
         let mut cursor_y = 0.0;
 
-        for (index, sort) in buffer.iter().enumerate() {
-            // Track cursor position
-            if index == cursor_position {
-                cursor_x = x_offset;
-                cursor_y = baseline_y;
-            }
+        tracing::debug!("[Cursor] buffer.len()={}, cursor_position={}", buffer.len(), cursor_position);
 
+        // Cursor at position 0 (before any sorts)
+        if cursor_position == 0 {
+            cursor_x = x_offset;
+            cursor_y = baseline_y;
+            tracing::debug!("[Cursor] Position 0: ({}, {})", cursor_x, cursor_y);
+        }
+
+        for (index, sort) in buffer.iter().enumerate() {
             match &sort.kind {
                 crate::sort::SortKind::Glyph { name, advance_width, .. } => {
                     let sort_position = Point::new(x_offset, baseline_y);
@@ -551,13 +554,24 @@ impl EditorWidget {
                     baseline_y -= upm_height;
                 }
             }
+
+            // Track cursor position AFTER processing this sort
+            // The cursor is positioned after the sort at this index
+            if index + 1 == cursor_position {
+                cursor_x = x_offset;
+                cursor_y = baseline_y;
+                tracing::debug!("[Cursor] After sort {}: ({}, {})", index, cursor_x, cursor_y);
+            }
         }
 
-        // Cursor might be at the end of the buffer
+        // Cursor might be at the end of the buffer (after all sorts)
         if cursor_position >= buffer.len() {
             cursor_x = x_offset;
             cursor_y = baseline_y;
+            tracing::debug!("[Cursor] At end: ({}, {})", cursor_x, cursor_y);
         }
+
+        tracing::debug!("[Cursor] Final position: ({}, {})", cursor_x, cursor_y);
 
         // Phase 6: Render cursor in text mode (not in preview mode)
         if !is_preview_mode {
@@ -658,7 +672,7 @@ impl EditorWidget {
         &self,
         scene: &mut Scene,
         cursor_x: f64,
-        _baseline_y: f64,
+        baseline_y: f64,
         transform: &Affine,
     ) {
         // Only render cursor in text edit mode
@@ -667,8 +681,9 @@ impl EditorWidget {
         }
 
         // Draw cursor as a vertical line from ascender to descender (matching sort metrics)
-        let cursor_top = Point::new(cursor_x, self.session.ascender);
-        let cursor_bottom = Point::new(cursor_x, self.session.descender);
+        // Offset by baseline_y to support multi-line text
+        let cursor_top = Point::new(cursor_x, baseline_y + self.session.ascender);
+        let cursor_bottom = Point::new(cursor_x, baseline_y + self.session.descender);
 
         // Transform to screen coordinates
         let cursor_top_screen = *transform * cursor_top;
