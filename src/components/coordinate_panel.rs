@@ -562,9 +562,8 @@ where
             .main_axis_alignment(MainAxisAlignment::Start)
             .gap(0.px()),
     )
-    .width(166.px())
-    .height(116.px())
-    .padding(8.0)
+    .width(240.px())
+    .height(100.px())
     .background_color(crate::theme::panel::BACKGROUND)
     .border_color(crate::theme::panel::OUTLINE)
     .border_width(1.5)

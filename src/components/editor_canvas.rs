@@ -8,6 +8,7 @@ use crate::edit_types::EditType;
 use crate::mouse::Mouse;
 use crate::point::PointType;
 use crate::settings;
+use crate::sort::TextCursor;
 use crate::theme;
 use crate::undo::UndoState;
 use kurbo::{Affine, Circle, Point, Rect as KurboRect, Stroke};
@@ -58,6 +59,15 @@ pub struct EditorWidget {
     /// feedback. The main canvas still redraws every frame - only
     /// the expensive Xilem rebuild is throttled.
     drag_update_counter: u32,
+
+    /// Text cursor for text editing mode
+    text_cursor: TextCursor,
+
+    /// Last click time for double-click detection
+    last_click_time: Option<std::time::Instant>,
+
+    /// Last click position for double-click detection
+    last_click_position: Option<Point>,
 }
 
 impl EditorWidget {
@@ -73,6 +83,9 @@ impl EditorWidget {
             last_edit_type: None,
             previous_tool: None,
             drag_update_counter: 0,
+            text_cursor: TextCursor::new(),
+            last_click_time: None,
+            last_click_position: None,
         }
     }
 
@@ -243,6 +256,29 @@ impl Widget for EditorWidget {
         let is_preview_mode =
             self.session.current_tool.id() == crate::tools::ToolId::Preview;
 
+        // Phase 3: Check if we have a text buffer (always show it if it exists)
+        if self.session.text_buffer.is_some() {
+            // Text buffer rendering: render multiple sorts
+            // This is shown regardless of which tool is active
+            self.render_text_buffer(scene, &transform, is_preview_mode);
+
+            // Draw tool overlays (e.g., selection rectangle for marquee, pen preview)
+            // Temporarily take ownership of the tool to call paint (requires &mut)
+            if !is_preview_mode {
+                let mut tool = std::mem::replace(
+                    &mut self.session.current_tool,
+                    crate::tools::ToolBox::for_id(
+                        crate::tools::ToolId::Select,
+                    ),
+                );
+                tool.paint(scene, &self.session, &transform);
+                self.session.current_tool = tool;
+            }
+
+            return;
+        }
+
+        // Traditional single-glyph rendering (only when no text buffer exists)
         if !is_preview_mode {
             // Edit mode: Draw font metrics guides
             draw_metrics_guides(
@@ -306,6 +342,8 @@ impl Widget for EditorWidget {
         _props: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
+        // Always request focus on any pointer event so keyboard shortcuts work
+        ctx.request_focus();
 
         match event {
             PointerEvent::Down(PointerButtonEvent {
@@ -378,15 +416,36 @@ impl Widget for EditorWidget {
             let cmd = key_event.modifiers.meta()
                 || key_event.modifiers.ctrl();
             let shift = key_event.modifiers.shift();
+            let ctrl = key_event.modifiers.ctrl();
 
-            // Handle keyboard shortcuts
+            // Debug logging for key events
+            if cmd {
+                tracing::info!(
+                    "[EditorWidget] Cmd+Key: {:?}, cmd={}, shift={}",
+                    key_event.key,
+                    cmd,
+                    shift
+                );
+            }
+
+            // Handle keyboard shortcuts first (before text input)
+            // This allows Cmd+Z, Cmd+-, Cmd+= etc. to work in text mode
             if self.handle_keyboard_shortcuts(
                 ctx,
                 &key_event.key,
                 cmd,
                 shift,
+                ctrl,
             ) {
                 return;
+            }
+
+            // Phase 5: Handle text mode input (character typing, cursor movement)
+            // Only handle after shortcuts, and only if no modifiers (except shift for caps)
+            if self.session.text_mode_active && self.session.text_buffer.is_some() {
+                if self.handle_text_mode_input(ctx, &key_event.key, cmd) {
+                    return;
+                }
             }
 
             // Handle arrow keys for nudging
@@ -404,9 +463,12 @@ impl Widget for EditorWidget {
         _props: &PropertiesRef<'_>,
         node: &mut Node,
     ) {
+        let glyph_label = self.session.active_sort_name
+            .as_deref()
+            .unwrap_or("(no active sort)");
         node.set_label(format!(
             "Editing glyph: {}",
-            self.session.glyph_name
+            glyph_label
         ));
     }
 
@@ -455,6 +517,468 @@ impl EditorWidget {
         self.session.viewport_initialized = true;
     }
 
+    /// Render the text buffer with multiple sorts (Phase 3)
+    ///
+    /// This renders all sorts in the text buffer, laying them out horizontally
+    /// with correct spacing based on advance widths.
+    fn render_text_buffer(
+        &self,
+        scene: &mut Scene,
+        transform: &Affine,
+        is_preview_mode: bool,
+    ) {
+        let buffer = match &self.session.text_buffer {
+            Some(buf) => buf,
+            None => return,
+        };
+
+        let mut x_offset = 0.0;
+        let mut baseline_y = 0.0;
+        let cursor_position = buffer.cursor();
+
+        // UPM height for line spacing (top of UPM on new line aligns with bottom of descender on previous line)
+        let upm_height = self.session.ascender - self.session.descender;
+
+        // Phase 6: Calculate cursor position while rendering sorts
+        let mut cursor_x = 0.0;
+        let mut cursor_y = 0.0;
+
+        tracing::debug!("[Cursor] buffer.len()={}, cursor_position={}", buffer.len(), cursor_position);
+
+        // Cursor at position 0 (before any sorts)
+        if cursor_position == 0 {
+            cursor_x = x_offset;
+            cursor_y = baseline_y;
+            tracing::debug!("[Cursor] Position 0: ({}, {})", cursor_x, cursor_y);
+        }
+
+        for (index, sort) in buffer.iter().enumerate() {
+            match &sort.kind {
+                crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                    let sort_position = Point::new(x_offset, baseline_y);
+
+                    // Draw metrics box for this sort
+                    if !is_preview_mode {
+                        self.render_sort_metrics(scene, x_offset, baseline_y, *advance_width, transform);
+                    }
+
+                    if sort.is_active && !is_preview_mode {
+                        // Render active sort with control points (editable)
+                        self.render_active_sort(scene, name, sort_position, transform);
+                    } else {
+                        // Render inactive sort as filled preview
+                        self.render_inactive_sort(scene, name, sort_position, transform);
+                    }
+
+                    x_offset += advance_width;
+                }
+                crate::sort::SortKind::LineBreak => {
+                    // Line break: reset x, move y down by UPM height
+                    // Top of UPM on new line aligns with bottom of descender on previous line
+                    x_offset = 0.0;
+                    baseline_y -= upm_height;
+                }
+            }
+
+            // Track cursor position AFTER processing this sort
+            // The cursor is positioned after the sort at this index
+            if index + 1 == cursor_position {
+                cursor_x = x_offset;
+                cursor_y = baseline_y;
+                tracing::debug!("[Cursor] After sort {}: ({}, {})", index, cursor_x, cursor_y);
+            }
+        }
+
+        // Cursor might be at the end of the buffer (after all sorts)
+        if cursor_position >= buffer.len() {
+            cursor_x = x_offset;
+            cursor_y = baseline_y;
+            tracing::debug!("[Cursor] At end: ({}, {})", cursor_x, cursor_y);
+        }
+
+        tracing::debug!("[Cursor] Final position: ({}, {})", cursor_x, cursor_y);
+
+        // Phase 6: Render cursor in text mode (not in preview mode)
+        if !is_preview_mode {
+            self.render_text_cursor(scene, cursor_x, cursor_y, transform);
+        }
+    }
+
+    /// Render an active sort with control points and handles
+    fn render_active_sort(
+        &self,
+        scene: &mut Scene,
+        _glyph_name: &str,
+        position: Point,
+        transform: &Affine,
+    ) {
+        // Render the active sort using session.paths (the editable version)
+        // The caller already verified this is the active sort via sort.is_active
+
+        // Apply position offset
+        let sort_transform = *transform * Affine::translate(position.to_vec2());
+
+        // Render path stroke
+        let mut glyph_path = kurbo::BezPath::new();
+        for path in self.session.paths.iter() {
+            glyph_path.extend(path.to_bezpath());
+        }
+
+        if !glyph_path.is_empty() {
+            let transformed_path = sort_transform * &glyph_path;
+            let stroke = Stroke::new(theme::size::PATH_STROKE_WIDTH);
+            let brush = Brush::Solid(theme::path::STROKE);
+            scene.stroke(
+                &stroke,
+                Affine::IDENTITY,
+                &brush,
+                None,
+                &transformed_path,
+            );
+
+            // Draw control points and handles
+            // Note: This uses session paths which already have the correct structure
+            draw_paths_with_points(scene, &self.session, &sort_transform);
+        }
+    }
+
+    /// Render an inactive sort as a filled preview
+    fn render_inactive_sort(
+        &self,
+        scene: &mut Scene,
+        glyph_name: &str,
+        position: Point,
+        transform: &Affine,
+    ) {
+        // Load glyph from workspace and render as filled
+        let workspace = match &self.session.workspace {
+            Some(ws) => ws,
+            None => return,
+        };
+
+        let glyph = match workspace.glyphs.get(glyph_name) {
+            Some(g) => g,
+            None => {
+                tracing::warn!("Glyph '{}' not found in workspace", glyph_name);
+                return;
+            }
+        };
+
+        // Apply position offset
+        let sort_transform = *transform * Affine::translate(position.to_vec2());
+
+        // Build BezPath from glyph contours
+        let mut glyph_path = kurbo::BezPath::new();
+        for contour in &glyph.contours {
+            let path = crate::path::Path::from_contour(contour);
+            glyph_path.extend(path.to_bezpath());
+        }
+
+        if !glyph_path.is_empty() {
+            let transformed_path = sort_transform * &glyph_path;
+            let fill_brush = Brush::Solid(theme::path::PREVIEW_FILL);
+            scene.fill(
+                peniko::Fill::NonZero,
+                Affine::IDENTITY,
+                &fill_brush,
+                None,
+                &transformed_path,
+            );
+        }
+    }
+
+    /// Render the text cursor (Phase 6)
+    ///
+    /// Draws a vertical line at the cursor position in design space, aligned with sort metrics
+    /// Only visible in text edit mode. Includes triangular indicators at top and bottom.
+    fn render_text_cursor(
+        &self,
+        scene: &mut Scene,
+        cursor_x: f64,
+        baseline_y: f64,
+        transform: &Affine,
+    ) {
+        // Only render cursor in text edit mode
+        if !self.session.text_mode_active {
+            return;
+        }
+
+        // Draw cursor as a vertical line from ascender to descender (matching sort metrics)
+        // Offset by baseline_y to support multi-line text
+        let cursor_top = Point::new(cursor_x, baseline_y + self.session.ascender);
+        let cursor_bottom = Point::new(cursor_x, baseline_y + self.session.descender);
+
+        // Transform to screen coordinates
+        let cursor_top_screen = *transform * cursor_top;
+        let cursor_bottom_screen = *transform * cursor_bottom;
+
+        let cursor_line = kurbo::Line::new(cursor_top_screen, cursor_bottom_screen);
+
+        // Use orange color (same as selection marquee) with 1.5px stroke
+        let stroke = Stroke::new(1.5);
+        let brush = Brush::Solid(theme::selection::RECT_STROKE);
+
+        scene.stroke(
+            &stroke,
+            Affine::IDENTITY,
+            &brush,
+            None,
+            &cursor_line,
+        );
+
+        // Draw triangular indicators at top and bottom (like Glyphs app)
+        // Triangle size in screen space - slightly smaller than 4x
+        let triangle_width = 24.0;
+        let triangle_height = 16.0;
+
+        // Top triangle (pointing down/inward, aligned with ascender)
+        // Base at ascender, tip extends downward into the metrics box
+        let mut top_triangle = kurbo::BezPath::new();
+        top_triangle.move_to((cursor_top_screen.x - triangle_width / 2.0, cursor_top_screen.y)); // Left corner at ascender
+        top_triangle.line_to((cursor_top_screen.x + triangle_width / 2.0, cursor_top_screen.y)); // Right corner at ascender
+        top_triangle.line_to((cursor_top_screen.x, cursor_top_screen.y + triangle_height)); // Tip below, pointing down
+        top_triangle.close_path();
+
+        scene.fill(
+            peniko::Fill::NonZero,
+            Affine::IDENTITY,
+            &brush,
+            None,
+            &top_triangle,
+        );
+
+        // Bottom triangle (pointing up/inward, aligned with descender)
+        // Base at descender, tip extends upward into the metrics box
+        let mut bottom_triangle = kurbo::BezPath::new();
+        bottom_triangle.move_to((cursor_bottom_screen.x - triangle_width / 2.0, cursor_bottom_screen.y)); // Left corner at descender
+        bottom_triangle.line_to((cursor_bottom_screen.x + triangle_width / 2.0, cursor_bottom_screen.y)); // Right corner at descender
+        bottom_triangle.line_to((cursor_bottom_screen.x, cursor_bottom_screen.y - triangle_height)); // Tip above, pointing up
+        bottom_triangle.close_path();
+
+        scene.fill(
+            peniko::Fill::NonZero,
+            Affine::IDENTITY,
+            &brush,
+            None,
+            &bottom_triangle,
+        );
+    }
+
+    /// Render metrics box for a single sort (Phase 6)
+    ///
+    /// This draws the bounding rectangle that defines the sort.
+    /// Shows the advance width, baseline, ascender, descender, and font metrics.
+    fn render_sort_metrics(
+        &self,
+        scene: &mut Scene,
+        x_offset: f64,
+        baseline_y: f64,
+        advance_width: f64,
+        transform: &Affine,
+    ) {
+        let stroke = Stroke::new(theme::size::METRIC_LINE_WIDTH);
+        let brush = Brush::Solid(theme::metrics::GUIDE);
+
+        // Draw vertical lines (left and right edges of the sort)
+        // Offset by baseline_y to support multi-line text
+        let left_top = Point::new(x_offset, baseline_y + self.session.ascender);
+        let left_bottom = Point::new(x_offset, baseline_y + self.session.descender);
+        let left_line = kurbo::Line::new(
+            *transform * left_top,
+            *transform * left_bottom,
+        );
+        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &left_line);
+
+        let right_top = Point::new(x_offset + advance_width, baseline_y + self.session.ascender);
+        let right_bottom = Point::new(x_offset + advance_width, baseline_y + self.session.descender);
+        let right_line = kurbo::Line::new(
+            *transform * right_top,
+            *transform * right_bottom,
+        );
+        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &right_line);
+
+        // Draw horizontal lines (baseline, ascender, descender, etc.)
+        // Offset by baseline_y to support multi-line text
+        let draw_hline = |scene: &mut Scene, y: f64| {
+            let start = Point::new(x_offset, baseline_y + y);
+            let end = Point::new(x_offset + advance_width, baseline_y + y);
+            let line = kurbo::Line::new(*transform * start, *transform * end);
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
+        };
+
+        // Descender (bottom of metrics box)
+        draw_hline(scene, self.session.descender);
+
+        // Baseline (y=0)
+        draw_hline(scene, 0.0);
+
+        // X-height (if available)
+        if let Some(x_height) = self.session.x_height {
+            draw_hline(scene, x_height);
+        }
+
+        // Cap-height (if available)
+        if let Some(cap_height) = self.session.cap_height {
+            draw_hline(scene, cap_height);
+        }
+
+        // Ascender (top of metrics box)
+        draw_hline(scene, self.session.ascender);
+    }
+
+    // ===== Phase 7: Active Sort Toggling =====
+
+    /// Check if the current click is a double-click
+    ///
+    /// Returns true if the click is within 500ms and 10px of the last click
+    fn is_double_click(&mut self, position: Point) -> bool {
+        const DOUBLE_CLICK_TIME_MS: u128 = 500;
+        const DOUBLE_CLICK_DISTANCE_PX: f64 = 10.0;
+
+        let now = std::time::Instant::now();
+
+        let is_double = if let (Some(last_time), Some(last_pos)) =
+            (self.last_click_time, self.last_click_position)
+        {
+            let time_diff = now.duration_since(last_time).as_millis();
+            let distance = ((position.x - last_pos.x).powi(2)
+                + (position.y - last_pos.y).powi(2))
+            .sqrt();
+
+            time_diff < DOUBLE_CLICK_TIME_MS
+                && distance < DOUBLE_CLICK_DISTANCE_PX
+        } else {
+            false
+        };
+
+        // Update tracking (even if this is a double-click, it could be triple-click next)
+        self.last_click_time = Some(now);
+        self.last_click_position = Some(position);
+
+        is_double
+    }
+
+    /// Find which sort is at the given design-space position
+    ///
+    /// Returns the index of the sort, or None if no sort was clicked
+    fn find_sort_at_position(&self, position: Point) -> Option<usize> {
+        let buffer = self.session.text_buffer.as_ref()?;
+
+        let mut x_offset = 0.0;
+        let mut baseline_y = 0.0;
+        let upm_height = self.session.ascender - self.session.descender;
+
+        for (index, sort) in buffer.iter().enumerate() {
+            match &sort.kind {
+                crate::sort::SortKind::Glyph { advance_width, .. } => {
+                    // Create bounding box for this sort
+                    let sort_rect = kurbo::Rect::new(
+                        x_offset,
+                        baseline_y + self.session.descender,
+                        x_offset + advance_width,
+                        baseline_y + self.session.ascender,
+                    );
+
+                    if sort_rect.contains(position) {
+                        return Some(index);
+                    }
+
+                    x_offset += advance_width;
+                }
+                crate::sort::SortKind::LineBreak => {
+                    x_offset = 0.0;
+                    baseline_y -= upm_height;
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Activate a sort for editing
+    ///
+    /// This loads the sort's paths into session.paths, updates the active_sort_* fields,
+    /// and sets the is_active flag in the buffer.
+    fn activate_sort(&mut self, sort_index: usize) {
+        let buffer = match &mut self.session.text_buffer {
+            Some(buf) => buf,
+            None => return,
+        };
+
+        // Get the sort at this index
+        let sort = match buffer.get(sort_index) {
+            Some(s) => s,
+            None => return,
+        };
+
+        // Get glyph name and unicode
+        let (glyph_name, unicode) = match &sort.kind {
+            crate::sort::SortKind::Glyph { name, codepoint, .. } => {
+                let unicode_str = codepoint.map(|c| format!("U+{:04X}", c as u32));
+                (name.clone(), unicode_str)
+            }
+            crate::sort::SortKind::LineBreak => return, // Can't activate line breaks
+        };
+
+        tracing::info!(
+            "Activating sort {} (glyph: {}, unicode: {:?})",
+            sort_index,
+            glyph_name,
+            unicode
+        );
+
+        // Load the glyph's paths from the workspace
+        let workspace = match &self.session.workspace {
+            Some(ws) => ws,
+            None => {
+                tracing::warn!("No workspace available to load glyph paths");
+                return;
+            }
+        };
+
+        let glyph = match workspace.glyphs.get(&glyph_name) {
+            Some(g) => g,
+            None => {
+                tracing::warn!("Glyph '{}' not found in workspace", glyph_name);
+                return;
+            }
+        };
+
+        // Convert contours to paths
+        let paths: Vec<crate::path::Path> = glyph
+            .contours
+            .iter()
+            .map(|contour| crate::path::Path::from_contour(contour))
+            .collect();
+
+        // Calculate x-offset for this sort by summing advance widths of all previous sorts
+        let mut x_offset = 0.0;
+        for i in 0..sort_index {
+            if let Some(sort) = buffer.get(i) {
+                if let crate::sort::SortKind::Glyph { advance_width, .. } = &sort.kind {
+                    x_offset += advance_width;
+                }
+            }
+        }
+
+        // Update session state
+        self.session.paths = std::sync::Arc::new(paths);
+        self.session.active_sort_index = Some(sort_index);
+        self.session.active_sort_name = Some(glyph_name);
+        self.session.active_sort_unicode = unicode;
+        self.session.active_sort_x_offset = x_offset;
+
+        // Update buffer to mark this sort as active
+        buffer.set_active_sort(sort_index);
+
+        tracing::info!(
+            "Sort {} activated with {} paths loaded, x_offset={}",
+            sort_index,
+            self.session.paths.len(),
+            x_offset
+        );
+    }
+
     /// Handle pointer down event
     fn handle_pointer_down(
         &mut self,
@@ -479,6 +1003,28 @@ impl EditorWidget {
         ctx.capture_pointer();
 
         let local_pos = ctx.local_position(state.position);
+
+        // Phase 7: Check for double-click on a sort to activate it
+        // Convert local position to design space
+        let design_pos = self.session.viewport.screen_to_design(local_pos);
+
+        // Check if this is a double-click
+        if self.is_double_click(design_pos) {
+            // Check if we clicked on a sort
+            if let Some(sort_index) = self.find_sort_at_position(design_pos) {
+                tracing::info!("Double-click detected on sort {}", sort_index);
+                self.activate_sort(sort_index);
+
+                // Emit SessionUpdate so AppState gets the updated session with new paths
+                ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                    session: self.session.clone(),
+                    save_requested: false,
+                });
+
+                ctx.request_render();
+                return; // Don't dispatch to tool
+            }
+        }
 
         // Extract modifier keys from pointer state
         // state.modifiers is keyboard_types::Modifiers from
@@ -640,6 +1186,7 @@ impl EditorWidget {
     }
 
     /// Handle spacebar for temporary preview mode
+    /// Note: Disabled in text edit mode to allow typing spaces
     fn handle_spacebar(
         &mut self,
         ctx: &mut EventCtx<'_>,
@@ -648,6 +1195,11 @@ impl EditorWidget {
         use masonry::core::keyboard::{Key, KeyState};
 
         if !matches!(&key_event.key, Key::Character(c) if c == " ") {
+            return false;
+        }
+
+        // Don't handle spacebar in text edit mode - let it insert space characters
+        if self.session.text_mode_active {
             return false;
         }
 
@@ -735,8 +1287,38 @@ impl EditorWidget {
         key: &masonry::core::keyboard::Key,
         cmd: bool,
         shift: bool,
+        ctrl: bool,
     ) -> bool {
         use masonry::core::keyboard::{Key, NamedKey};
+
+        // Ctrl+Space: Toggle preview mode (works in all modes including text edit)
+        if ctrl && matches!(key, Key::Character(c) if c == " ") {
+            let current_tool = self.session.current_tool.id();
+            if current_tool == crate::tools::ToolId::Preview {
+                // Already in preview mode - this shouldn't happen with Ctrl+Space
+                // since we don't have a "previous tool" tracked for Ctrl+Space
+                // Just do nothing
+            } else {
+                // Switch to Preview tool
+                use crate::tools::ToolBox;
+                let mut tool = std::mem::replace(
+                    &mut self.session.current_tool,
+                    ToolBox::for_id(crate::tools::ToolId::Select),
+                );
+                self.mouse.cancel(&mut tool, &mut self.session);
+                self.mouse = Mouse::new();
+
+                self.session.current_tool = ToolBox::for_id(crate::tools::ToolId::Preview);
+
+                ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                    session: self.session.clone(),
+                    save_requested: false,
+                });
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
+            }
+        }
 
         // Undo/Redo
         if cmd && matches!(key, Key::Character(c) if c == "z") {
@@ -753,25 +1335,31 @@ impl EditorWidget {
         }
 
         // Zoom in (Cmd/Ctrl + or =)
-        if cmd && matches!(key, Key::Character(c) if c == "+" || c == "=") {
-            let new_zoom = (self.session.viewport.zoom * 1.1)
-                .min(settings::editor::MAX_ZOOM);
-            self.session.viewport.zoom = new_zoom;
-            tracing::debug!("Zoom in: new zoom = {:.2}", new_zoom);
-            ctx.request_render();
-            ctx.set_handled();
-            return true;
+        if cmd {
+            let is_zoom_in = matches!(key, Key::Character(c) if c == "+" || c == "=");
+            if is_zoom_in {
+                let new_zoom = (self.session.viewport.zoom * 1.1)
+                    .min(settings::editor::MAX_ZOOM);
+                self.session.viewport.zoom = new_zoom;
+                tracing::info!("Zoom in: new zoom = {:.2}", new_zoom);
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
+            }
         }
 
         // Zoom out (Cmd/Ctrl -)
-        if cmd && matches!(key, Key::Character(c) if c == "-") {
-            let new_zoom = (self.session.viewport.zoom / 1.1)
-                .max(settings::editor::MIN_ZOOM);
-            self.session.viewport.zoom = new_zoom;
-            tracing::debug!("Zoom out: new zoom = {:.2}", new_zoom);
-            ctx.request_render();
-            ctx.set_handled();
-            return true;
+        if cmd {
+            let is_zoom_out = matches!(key, Key::Character(c) if c == "-" || c == "_");
+            if is_zoom_out {
+                let new_zoom = (self.session.viewport.zoom / 1.1)
+                    .max(settings::editor::MIN_ZOOM);
+                self.session.viewport.zoom = new_zoom;
+                tracing::info!("Zoom out: new zoom = {:.2}", new_zoom);
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
+            }
         }
 
         // Fit to window (Cmd/Ctrl+0)
@@ -809,10 +1397,13 @@ impl EditorWidget {
         }
 
         // Delete selected points (Backspace or Delete key)
-        if matches!(
-            key,
-            Key::Named(NamedKey::Backspace) | Key::Named(NamedKey::Delete)
-        ) {
+        // Skip in text mode - let text mode handler deal with backspace
+        if !self.session.text_mode_active
+            && matches!(
+                key,
+                Key::Named(NamedKey::Backspace) | Key::Named(NamedKey::Delete)
+            )
+        {
             self.session.delete_selection();
             self.record_edit(EditType::Normal);
             ctx.request_render();
@@ -929,6 +1520,142 @@ impl EditorWidget {
         self.session.nudge_selection(dx, dy, shift, ctrl);
         ctx.request_render();
         ctx.set_handled();
+    }
+
+    /// Handle text mode keyboard input (Phase 5)
+    ///
+    /// Handles:
+    /// - Character typing (insert sorts)
+    /// - Arrow keys (cursor movement in buffer)
+    /// - Backspace/Delete (remove sorts)
+    /// - Enter (line breaks)
+    ///
+    /// Returns true if the key was handled, false otherwise
+    fn handle_text_mode_input(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        key: &masonry::core::keyboard::Key,
+        cmd: bool,
+    ) -> bool {
+        use masonry::core::keyboard::{Key, NamedKey};
+
+        tracing::debug!("[handle_text_mode_input] key={:?}, text_mode_active={}, has_buffer={}",
+            key, self.session.text_mode_active, self.session.text_buffer.is_some());
+
+        // Handle arrow keys for cursor movement
+        match key {
+            Key::Named(NamedKey::ArrowLeft) => {
+                if let Some(buffer) = &mut self.session.text_buffer {
+                    buffer.move_cursor_left();
+                    self.text_cursor.reset(); // Reset cursor to visible on movement
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return true;
+                }
+            }
+            Key::Named(NamedKey::ArrowRight) => {
+                if let Some(buffer) = &mut self.session.text_buffer {
+                    buffer.move_cursor_right();
+                    self.text_cursor.reset(); // Reset cursor to visible on movement
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return true;
+                }
+            }
+            Key::Named(NamedKey::Backspace) => {
+                tracing::info!("[Backspace] Handling backspace in text mode");
+                if let Some(buffer) = &mut self.session.text_buffer {
+                    let cursor_before = buffer.cursor();
+                    let len_before = buffer.len();
+                    let deleted = buffer.delete();
+                    tracing::info!(
+                        "[Backspace] cursor: {} -> {}, len: {} -> {}, deleted: {:?}",
+                        cursor_before,
+                        buffer.cursor(),
+                        len_before,
+                        buffer.len(),
+                        deleted.is_some()
+                    );
+                    self.text_cursor.reset(); // Reset cursor to visible on edit
+                    // Emit session update to persist text buffer changes
+                    ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                        session: self.session.clone(),
+                        save_requested: false,
+                    });
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return true;
+                }
+            }
+            Key::Named(NamedKey::Delete) => {
+                if let Some(buffer) = &mut self.session.text_buffer {
+                    buffer.delete_forward();
+                    self.text_cursor.reset(); // Reset cursor to visible on edit
+                    // Emit session update to persist text buffer changes
+                    ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                        session: self.session.clone(),
+                        save_requested: false,
+                    });
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return true;
+                }
+            }
+            Key::Named(NamedKey::Enter) => {
+                // Insert line break as a sort
+                if let Some(buffer) = &mut self.session.text_buffer {
+                    use crate::sort::{LayoutMode, Sort, SortKind};
+
+                    let line_break = Sort {
+                        kind: SortKind::LineBreak,
+                        is_active: false,
+                        layout_mode: LayoutMode::LTR,
+                        position: Point::ZERO,
+                    };
+
+                    buffer.insert(line_break);
+                    self.text_cursor.reset(); // Reset cursor to visible on edit
+
+                    // Emit session update to persist text buffer changes
+                    ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                        session: self.session.clone(),
+                        save_requested: false,
+                    });
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return true;
+                }
+            }
+            Key::Character(s) => {
+                // Don't insert characters when Cmd/Ctrl is held (let shortcuts through)
+                if cmd {
+                    return false;
+                }
+
+                // Insert character as a sort
+                if let Some(c) = s.chars().next() {
+                    if let Some(sort) = self.session.create_sort_from_char(c) {
+                        if let Some(buffer) = &mut self.session.text_buffer {
+                            buffer.insert(sort);
+                            self.text_cursor.reset(); // Reset cursor to visible on edit
+                            // Emit session update to persist text buffer changes
+                            ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                                session: self.session.clone(),
+                                save_requested: false,
+                            });
+                            ctx.request_render();
+                            ctx.set_handled();
+                            return true;
+                        }
+                    } else {
+                        tracing::warn!("No glyph found for character: '{}'", c);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        false
     }
 }
 
@@ -1548,14 +2275,23 @@ impl<State: 'static, F: Fn(&mut State, EditSession, bool) + 'static>
             // Get mutable access to the widget
             let mut widget = element.downcast::<EditorWidget>();
 
+            // Preserve viewport state before updating session
+            let old_viewport = widget.widget.session.viewport.clone();
+            let old_viewport_initialized = widget.widget.session.viewport_initialized;
+
             // Update the session, but preserve:
             // - Mouse state (to avoid breaking active drag
             //   operations)
             // - Undo state
             // - Canvas size
+            // - Viewport state (to avoid re-initialization and flickering)
             // This allows tool changes and other session updates to
             // take effect
             widget.widget.session = (*self.session).clone();
+
+            // Restore viewport state
+            widget.widget.session.viewport = old_viewport;
+            widget.widget.session.viewport_initialized = old_viewport_initialized;
 
             widget.ctx.request_render();
         }

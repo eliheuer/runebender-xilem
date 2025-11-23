@@ -26,7 +26,16 @@ use crate::components::toolbars::{
 };
 
 /// Available tools in display order
-const TOOLBAR_TOOLS: &[ToolId] = &[ToolId::Select, ToolId::Pen, ToolId::HyperPen, ToolId::Knife, ToolId::Measure, ToolId::Shapes, ToolId::Preview];
+const TOOLBAR_TOOLS: &[ToolId] = &[
+    ToolId::Select,
+    ToolId::Pen,
+    ToolId::HyperPen,
+    ToolId::Knife,
+    ToolId::Measure,
+    ToolId::Shapes,
+    ToolId::Preview,
+    ToolId::Text,
+];
 
 /// Edit mode toolbar widget
 pub struct EditModeToolbarWidget {
@@ -54,6 +63,7 @@ impl EditModeToolbarWidget {
             ToolId::Measure => measure_icon(),
             ToolId::Shapes => shapes_icon(),
             ToolId::Preview => preview_icon(),
+            ToolId::Text => text_icon(),
         }
     }
 
@@ -693,3 +703,44 @@ fn shapes_icon() -> BezPath {
     bez
 }
 
+/// Text tool icon (U+E017 from assets/untitled.ufo)
+///
+/// This is a "T" shaped icon representing text editing
+fn text_icon() -> BezPath {
+    let mut bez = BezPath::new();
+
+    // Single contour from E_017.glif (flipped vertically)
+    // Original coordinates had y ranging from 0-768, flip by: y' = 768 - y
+    bez.move_to((56.0, 0.0));
+    bez.line_to((712.0, 0.0));
+    bez.curve_to((734.0, 0.0), (744.0, 8.0), (744.0, 32.0));
+    bez.line_to((744.0, 232.0));
+    bez.curve_to((744.0, 248.0), (728.0, 264.0), (712.0, 264.0));
+    bez.line_to((696.0, 264.0));
+    bez.curve_to((678.0, 264.0), (668.0, 248.0), (662.0, 232.0));
+    bez.curve_to((642.0, 178.0), (624.0, 128.0), (572.0, 128.0));
+    bez.line_to((532.0, 128.0));
+    bez.curve_to((484.0, 128.0), (468.0, 140.0), (468.0, 192.0));
+    bez.line_to((468.0, 516.0));
+    bez.curve_to((468.0, 614.0), (488.0, 672.0), (616.0, 672.0));
+    bez.curve_to((640.0, 672.0), (648.0, 680.0), (648.0, 704.0));
+    bez.line_to((648.0, 736.0));
+    bez.curve_to((648.0, 760.0), (640.0, 768.0), (616.0, 768.0));
+    bez.line_to((152.0, 768.0));
+    bez.curve_to((128.0, 768.0), (120.0, 760.0), (120.0, 736.0));
+    bez.line_to((120.0, 704.0));
+    bez.curve_to((120.0, 680.0), (128.0, 672.0), (152.0, 672.0));
+    bez.curve_to((280.0, 672.0), (300.0, 614.0), (300.0, 516.0));
+    bez.line_to((300.0, 192.0));
+    bez.curve_to((300.0, 140.0), (284.0, 128.0), (236.0, 128.0));
+    bez.line_to((196.0, 128.0));
+    bez.curve_to((144.0, 128.0), (126.0, 178.0), (106.0, 232.0));
+    bez.curve_to((100.0, 248.0), (90.0, 264.0), (72.0, 264.0));
+    bez.line_to((56.0, 264.0));
+    bez.curve_to((40.0, 264.0), (24.0, 248.0), (24.0, 232.0));
+    bez.line_to((24.0, 32.0));
+    bez.curve_to((24.0, 8.0), (34.0, 0.0), (56.0, 0.0));
+    bez.close_path();
+
+    bez
+}
