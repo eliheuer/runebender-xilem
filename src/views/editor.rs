@@ -273,9 +273,9 @@ fn text_buffer_preview_pane_centered(
 ) -> impl WidgetView<AppState> + use<> {
     // Panel dimensions to match other bottom panels
     const PANEL_HEIGHT: f64 = 100.0;
-    // Width calculation: typical window (1200px) - glyph panel (240) - coord panel (240) - margins (32) - gaps (32) = 656
-    // Use 400px for now to ensure proper spacing and avoid overlap
-    const PANEL_WIDTH: f64 = 400.0; // Wide enough for a line of text with proper margins
+    // Width calculation for centered panel: window width - side panels - margins - gaps
+    // At 1200px window: (1200 - 240*2 - 16*4) = 640px leaves 16px gaps
+    const PANEL_WIDTH: f64 = 488.0; // Wider panel for text buffer preview, works at ~1050px+ window width
 
     // Only show if text buffer exists
     if session.text_buffer.is_none() {
@@ -307,7 +307,7 @@ fn text_buffer_preview_pane_centered(
                     }
                 } else {
                     // For inactive sorts: load from workspace (saved state)
-                    if let Some(glyph) = workspace.glyphs.get(name) {
+                    if let Some(glyph) = workspace.read().unwrap().glyphs.get(name) {
                         for contour in &glyph.contours {
                             let path = crate::path::Path::from_contour(contour);
                             glyph_path.extend(path.to_bezpath());

@@ -6,6 +6,7 @@
 use crate::edit_session::EditSession;
 use crate::workspace::Workspace;
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 use xilem::WindowId;
 
 /// Which tab is currently active
@@ -21,7 +22,8 @@ pub enum Tab {
 /// Main application state
 pub struct AppState {
     /// The loaded font workspace, if any
-    pub workspace: Option<Workspace>,
+    /// Wrapped in Arc<RwLock<>> to allow shared mutable access with EditSession
+    pub workspace: Option<Arc<RwLock<Workspace>>>,
 
     /// Error message to display, if any
     pub error_message: Option<String>,
@@ -88,7 +90,7 @@ impl AppState {
                     workspace.display_name(),
                     workspace.glyph_count()
                 );
-                self.workspace = Some(workspace);
+                self.workspace = Some(Arc::new(RwLock::new(workspace)));
                 self.error_message = None;
             }
             Err(e) => {
@@ -109,12 +111,12 @@ impl AppState {
 
     /// Get the current font display name
     pub fn font_display_name(&self) -> Option<String> {
-        self.workspace.as_ref().map(|w| w.display_name())
+        self.workspace.as_ref().map(|w| w.read().unwrap().display_name())
     }
 
     /// Get the number of glyphs in the current font
     pub fn glyph_count(&self) -> Option<usize> {
-        self.workspace.as_ref().map(|w| w.glyph_count())
+        self.workspace.as_ref().map(|w| w.read().unwrap().glyph_count())
     }
 
     /// Select a glyph by name
@@ -126,7 +128,7 @@ impl AppState {
     pub fn glyph_names(&self) -> Vec<String> {
         self.workspace
             .as_ref()
-            .map(|w| w.glyph_names())
+            .map(|w| w.read().unwrap().glyph_names())
             .unwrap_or_default()
     }
 
@@ -134,13 +136,14 @@ impl AppState {
     pub fn selected_glyph_advance(&self) -> Option<f64> {
         let workspace = self.workspace.as_ref()?;
         let glyph_name = self.selected_glyph.as_ref()?;
-        workspace.get_glyph(glyph_name).map(|g| g.width)
+        workspace.read().unwrap().get_glyph(glyph_name).map(|g| g.width)
     }
 
     /// Get the selected glyph's unicode value
     pub fn selected_glyph_unicode(&self) -> Option<String> {
-        let workspace = self.workspace.as_ref()?;
+        let workspace_arc = self.workspace.as_ref()?;
         let glyph_name = self.selected_glyph.as_ref()?;
+        let workspace = workspace_arc.read().unwrap();
         let glyph = workspace.get_glyph(glyph_name)?;
 
         if glyph.codepoints.is_empty() {
@@ -157,7 +160,8 @@ impl AppState {
         &self,
         glyph_name: &str,
     ) -> Option<EditSession> {
-        let workspace = self.workspace.as_ref()?;
+        let workspace_arc = self.workspace.as_ref()?;
+        let workspace = workspace_arc.read().unwrap();
         let glyph = workspace.get_glyph(glyph_name)?;
 
         // Create session with text buffer for text editing support
@@ -173,7 +177,7 @@ impl AppState {
         );
 
         // Set workspace reference for text mode character mapping (Phase 5)
-        session.workspace = Some(std::sync::Arc::new(workspace.clone()));
+        session.workspace = Some(Arc::clone(workspace_arc));
 
         Some(session)
     }
@@ -202,7 +206,7 @@ impl AppState {
             None => return,
         };
 
-        let workspace = match &mut self.workspace {
+        let workspace_arc = match &self.workspace {
             Some(w) => w,
             None => return,
         };
@@ -220,7 +224,7 @@ impl AppState {
                 );
             }
 
-            workspace.update_glyph(active_name, updated_glyph);
+            workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
         }
     }
 
@@ -280,7 +284,7 @@ impl AppState {
 
     /// Sync a session's changes to the workspace
     fn sync_session_to_workspace(&mut self, session: &EditSession) {
-        let workspace = match &mut self.workspace {
+        let workspace_arc = match &self.workspace {
             Some(w) => w,
             None => return,
         };
@@ -288,13 +292,13 @@ impl AppState {
         // Save to the active sort's glyph (if there is one)
         if let Some(active_name) = &session.active_sort_name {
             let updated_glyph = session.to_glyph();
-            workspace.update_glyph(active_name, updated_glyph);
+            workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
         }
     }
 
     /// Save the current workspace to disk
     pub fn save_workspace(&mut self) {
-        let workspace = match &self.workspace {
+        let workspace_arc = match &self.workspace {
             Some(w) => w,
             None => {
                 self.error_message = Some("No workspace to save".to_string());
@@ -302,6 +306,7 @@ impl AppState {
             }
         };
 
+        let workspace = workspace_arc.read().unwrap();
         match workspace.save() {
             Ok(()) => {
                 tracing::info!("Saved: {}", workspace.path.display());

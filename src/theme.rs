@@ -41,11 +41,26 @@ const PRIMARY_UI_TEXT: Color = BASE_I;
 // ============================================================================
 const PANEL_BACKGROUND: Color = BASE_C;
 const PANEL_OUTLINE: Color = BASE_F;
-const TOOLBAR_BUTTON_OUTLINE: Color = BASE_A;
 const GLYPH_PREVIEW_COLOR: Color = BASE_J;
 
 // Coordinate Panel specific
 const COORDINATE_PANEL_GRID_LINE: Color = BASE_I;
+
+// ============================================================================
+// TOOLBAR BUTTONS AND ICONS (Edit Mode, Shapes, Workspace)
+// ============================================================================
+// Button backgrounds (the filled rectangle behind each icon)
+const TOOLBAR_BUTTON_UNSELECTED: Color = BASE_E; // 0x50 - Darker gray
+const TOOLBAR_BUTTON_HOVERED: Color = BASE_H;    // 0x80 - Light gray
+const TOOLBAR_BUTTON_SELECTED: Color = BASE_J;   // 0xa0 - Lighter gray
+
+// Button outlines (the border around each button)
+const TOOLBAR_BUTTON_OUTLINE: Color = BASE_A; // 0x10 - Very dark gray
+
+// Icon colors (the SVG path stroke/fill inside each button)
+const TOOLBAR_ICON_UNSELECTED: Color = BASE_I;   // 0x90 - Light gray
+const TOOLBAR_ICON_HOVERED: Color = BASE_K;      // 0xb0 - Lighter gray
+const TOOLBAR_ICON_SELECTED: Color = BASE_B;     // 0x20 - Very dark gray
 
 // ============================================================================
 // GLYPH GRID VIEW
@@ -158,29 +173,39 @@ pub mod panel {
     use super::Color;
     pub const BACKGROUND: Color = super::PANEL_BACKGROUND;
     pub const OUTLINE: Color = super::PANEL_OUTLINE;
-    pub const BUTTON_OUTLINE: Color = super::TOOLBAR_BUTTON_OUTLINE;
     pub const GLYPH_PREVIEW: Color = super::GLYPH_PREVIEW_COLOR;
 }
 
-/// Colors for toolbar buttons and icons (generic for all toolbars)
+/// Colors for toolbar buttons and icons (Edit Mode, Shapes, Workspace toolbars)
+///
+/// Each toolbar button has 3 visual components:
+/// 1. Background fill - the button's background color
+/// 2. Outline - the border around the button
+/// 3. Icon - the SVG path color inside the button
+///
+/// Each component can be styled independently in different button states.
 pub mod toolbar {
-    use super::{Color, BASE_B, BASE_F, BASE_H, BASE_J};
+    use super::Color;
 
-    // Button background colors
-    /// Normal button color (unselected, not hovered)
-    pub const BUTTON_UNSELECTED: Color = BASE_F;
-    /// Button color when hovered
-    pub const BUTTON_HOVERED: Color = BASE_H;
-    /// Button color when selected
-    pub const BUTTON_SELECTED: Color = BASE_J;
+    // ===== BUTTON BACKGROUNDS =====
+    /// Button background when unselected and not hovered
+    pub const BUTTON_UNSELECTED: Color = super::TOOLBAR_BUTTON_UNSELECTED;
+    /// Button background when hovered
+    pub const BUTTON_HOVERED: Color = super::TOOLBAR_BUTTON_HOVERED;
+    /// Button background when selected
+    pub const BUTTON_SELECTED: Color = super::TOOLBAR_BUTTON_SELECTED;
 
-    // Icon colors
-    /// Normal icon color (unselected, not hovered)
-    pub const ICON: Color = BASE_B;
+    // ===== BUTTON OUTLINES =====
+    /// Button outline/border color (same for all states)
+    pub const BUTTON_OUTLINE: Color = super::TOOLBAR_BUTTON_OUTLINE;
+
+    // ===== ICON COLORS =====
+    /// Icon color when button is unselected and not hovered
+    pub const ICON_UNSELECTED: Color = super::TOOLBAR_ICON_UNSELECTED;
     /// Icon color when button is hovered
-    pub const ICON_HOVERED: Color = BASE_B;
+    pub const ICON_HOVERED: Color = super::TOOLBAR_ICON_HOVERED;
     /// Icon color when button is selected
-    pub const ICON_SELECTED: Color = BASE_B;
+    pub const ICON_SELECTED: Color = super::TOOLBAR_ICON_SELECTED;
 }
 
 /// Colors and sizes for coordinate panel
