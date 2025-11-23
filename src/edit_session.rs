@@ -13,7 +13,7 @@ use crate::tools::{ToolBox, ToolId};
 use crate::viewport::ViewPort;
 use crate::workspace::{Glyph, Workspace};
 use kurbo::{Point, Rect};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 // CoordinateSelection has been moved to components::coordinate_panel
 // module
@@ -74,7 +74,8 @@ pub struct EditSession {
 
     /// Reference to the workspace for character-to-glyph mapping (Phase 5+)
     /// Optional because not all sessions need text editing capabilities
-    pub workspace: Option<Arc<Workspace>>,
+    /// Wrapped in RwLock to allow updates during editing
+    pub workspace: Option<Arc<RwLock<Workspace>>>,
 
     /// Index of the active sort in the buffer
     /// None when no sort is active (e.g., empty buffer)
@@ -236,21 +237,46 @@ impl EditSession {
     /// Create a Sort from a character using the workspace character map (Phase 5)
     ///
     /// Looks up the glyph for the given character and creates a Sort.
+    /// If the character matches the currently active sort, uses the live edited
+    /// glyph width instead of the workspace version.
+    ///
     /// Returns None if:
     /// - No workspace is available
     /// - Character has no mapped glyph
     /// - Glyph data cannot be found
     pub fn create_sort_from_char(&self, c: char) -> Option<crate::sort::Sort> {
-        let workspace = self.workspace.as_ref()?;
+        tracing::debug!("[create_sort_from_char] Trying to create sort for character: '{}' (U+{:04X})", c, c as u32);
+
+        let workspace_lock = self.workspace.as_ref()?;
+        let workspace = workspace_lock.read().unwrap();
+
+        tracing::debug!("[create_sort_from_char] Workspace has {} glyphs", workspace.glyphs.len());
 
         // Find a glyph with this codepoint
         let (glyph_name, glyph) = workspace.glyphs.iter()
             .find(|(_, g)| g.codepoints.contains(&c))?;
 
+        tracing::debug!("[create_sort_from_char] Found glyph: '{}' for character '{}'", glyph_name, c);
+
+        // Check if this character matches the currently active sort's character
+        // If so, use the current glyph (with live edits) instead of workspace version
+        let advance_width = if self.active_sort_unicode.as_ref()
+            .and_then(|u| u.strip_prefix("U+").and_then(|hex| u32::from_str_radix(hex, 16).ok()))
+            .and_then(|code| char::from_u32(code))
+            .map(|active_char| active_char == c)
+            .unwrap_or(false)
+        {
+            // Active sort matches this character - use current glyph width
+            self.glyph.width
+        } else {
+            // Different character - use workspace version
+            glyph.width
+        };
+
         Some(crate::sort::Sort::new_glyph(
             glyph_name.clone(),
             Some(c),
-            glyph.width,
+            advance_width,
             false, // New sorts are inactive by default
         ))
     }
@@ -301,13 +327,14 @@ impl EditSession {
 
         // If we found a sort to activate, load its paths
         if let Some((index, glyph_name, codepoint, x_offset)) = sort_to_activate {
-            let workspace = match &self.workspace {
+            let workspace_lock = match &self.workspace {
                 Some(ws) => ws,
                 None => {
                     tracing::warn!("No workspace available to load glyph paths");
                     return false;
                 }
             };
+            let workspace = workspace_lock.read().unwrap();
 
             let glyph = match workspace.glyphs.get(&glyph_name) {
                 Some(g) => g,
@@ -324,8 +351,9 @@ impl EditSession {
                 .map(Path::from_contour)
                 .collect();
 
-            // Update session state with loaded paths
+            // Update session state with loaded paths AND glyph
             self.paths = std::sync::Arc::new(paths);
+            self.glyph = std::sync::Arc::new(glyph.clone()); // Update glyph so to_glyph() has correct metadata
             self.active_sort_index = Some(index);
             self.active_sort_name = Some(glyph_name.clone());
             self.active_sort_unicode = codepoint.map(|c| format!("U+{:04X}", c as u32));
@@ -671,6 +699,34 @@ impl EditSession {
             codepoints: self.glyph.codepoints.clone(),
             contours,
         }
+    }
+
+    /// Sync current edits to the workspace immediately
+    ///
+    /// This updates the workspace with the current editing state so that
+    /// all instances of the glyph in the text buffer show the latest edits.
+    /// Should be called after any edit operation (move, delete, add points, etc.)
+    pub fn sync_to_workspace(&mut self) {
+        // Only sync if we have an active sort and workspace
+        let glyph_name = match &self.active_sort_name {
+            Some(name) => name.clone(),
+            None => return,
+        };
+
+        let workspace_lock = match &self.workspace {
+            Some(ws) => ws,
+            None => return,
+        };
+
+        // Get the updated glyph
+        let updated_glyph = self.to_glyph();
+
+        // Update both the session's glyph and the workspace
+        self.glyph = Arc::new(updated_glyph.clone());
+
+        // Update the workspace
+        let mut workspace = workspace_lock.write().unwrap();
+        workspace.glyphs.insert(glyph_name, updated_glyph);
     }
 
     // ===== HELPER METHODS =====

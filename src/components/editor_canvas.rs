@@ -16,8 +16,8 @@ use masonry::accesskit::{Node, Role};
 use masonry::core::{
     AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
     PaintCtx, PointerButton, PointerButtonEvent, PointerEvent,
-    PointerUpdate, PropertiesMut, PropertiesRef, RegisterCtx,
-    TextEvent, Update, UpdateCtx, Widget,
+    PointerScrollEvent, PointerUpdate, PropertiesMut, PropertiesRef,
+    RegisterCtx, ScrollDelta, TextEvent, Update, UpdateCtx, Widget,
 };
 use masonry::kurbo::Size;
 use masonry::util::fill_color;
@@ -370,10 +370,12 @@ impl Widget for EditorWidget {
                 self.handle_pointer_cancel(ctx);
             }
 
+            PointerEvent::Scroll(PointerScrollEvent { delta, .. }) => {
+                self.handle_scroll_zoom(ctx, delta);
+            }
+
             _ => {
-                // TODO: Implement wheel event handling once Masonry
-                // exposes it. For now, zooming can be done via
-                // keyboard shortcuts or commands
+                // Ignore other pointer events
             }
         }
     }
@@ -493,7 +495,7 @@ impl EditorWidget {
         // Create a transform that:
         // 1. Scales to fit the canvas (with some padding)
         // 2. Centers the glyph
-        let padding = 0.8; // Leave 20% padding
+        let padding = 0.6; // Leave 40% padding (more zoomed out)
         let scale = (canvas_size.height * padding) / design_height;
 
         // Center point in design space (middle of advance width,
@@ -656,7 +658,8 @@ impl EditorWidget {
             None => return,
         };
 
-        let glyph = match workspace.glyphs.get(glyph_name) {
+        let workspace_guard = workspace.read().unwrap();
+        let glyph = match workspace_guard.glyphs.get(glyph_name) {
             Some(g) => g,
             None => {
                 tracing::warn!("Glyph '{}' not found in workspace", glyph_name);
@@ -936,7 +939,8 @@ impl EditorWidget {
             }
         };
 
-        let glyph = match workspace.glyphs.get(&glyph_name) {
+        let workspace_guard = workspace.read().unwrap();
+        let glyph = match workspace_guard.glyphs.get(&glyph_name) {
             Some(g) => g,
             None => {
                 tracing::warn!("Glyph '{}' not found in workspace", glyph_name);
@@ -963,6 +967,7 @@ impl EditorWidget {
 
         // Update session state
         self.session.paths = std::sync::Arc::new(paths);
+        self.session.glyph = std::sync::Arc::new(glyph.clone()); // Preserve codepoints for sync_to_workspace
         self.session.active_sort_index = Some(sort_index);
         self.session.active_sort_name = Some(glyph_name);
         self.session.active_sort_unicode = unicode;
@@ -1150,6 +1155,8 @@ impl EditorWidget {
         // Record undo if an edit occurred
         if let Some(edit_type) = tool.edit_type() {
             self.record_edit(edit_type);
+            // Sync edits to workspace immediately so all instances update
+            self.session.sync_to_workspace();
         }
 
         self.session.current_tool = tool;
@@ -1181,6 +1188,39 @@ impl EditorWidget {
         );
         self.mouse.cancel(&mut tool, &mut self.session);
         self.session.current_tool = tool;
+
+        ctx.request_render();
+    }
+
+    /// Handle scroll wheel zoom
+    fn handle_scroll_zoom(&mut self, ctx: &mut EventCtx<'_>, delta: &ScrollDelta) {
+        // Extract the Y component of the scroll delta
+        // Negative Y = scroll up = zoom in
+        // Positive Y = scroll down = zoom out
+        let scroll_y = match delta {
+            ScrollDelta::LineDelta(_x, y) => *y,
+            ScrollDelta::PixelDelta(pos) => (pos.y / 10.0) as f32, // Scale down pixel deltas
+            ScrollDelta::PageDelta(_x, y) => *y * 3.0, // Page scrolls are bigger
+        };
+
+        if scroll_y.abs() < 0.001 {
+            return; // Ignore very small scrolls
+        }
+
+        // Calculate zoom factor: negative scroll_y means zoom in
+        let zoom_factor = if scroll_y < 0.0 {
+            1.1 // Zoom in
+        } else {
+            1.0 / 1.1 // Zoom out
+        };
+
+        // Apply zoom with limits
+        let new_zoom = (self.session.viewport.zoom * zoom_factor)
+            .max(settings::editor::MIN_ZOOM)
+            .min(settings::editor::MAX_ZOOM);
+
+        self.session.viewport.zoom = new_zoom;
+        tracing::debug!("Scroll zoom: scroll_y={:.2}, new zoom={:.2}", scroll_y, new_zoom);
 
         ctx.request_render();
     }
@@ -1406,31 +1446,34 @@ impl EditorWidget {
         {
             self.session.delete_selection();
             self.record_edit(EditType::Normal);
+            self.session.sync_to_workspace();
             ctx.request_render();
             ctx.set_handled();
             return true;
         }
 
-        // Toggle point type (T key)
-        if matches!(key, Key::Character(c) if c == "t") {
+        // Toggle point type (T key) - disabled in text mode
+        if !self.session.text_mode_active && matches!(key, Key::Character(c) if c == "t") {
             self.session.toggle_point_type();
             self.record_edit(EditType::Normal);
+            self.session.sync_to_workspace();
             ctx.request_render();
             ctx.set_handled();
             return true;
         }
 
-        // Reverse contours (R key)
-        if matches!(key, Key::Character(c) if c == "r") {
+        // Reverse contours (R key) - disabled in text mode
+        if !self.session.text_mode_active && matches!(key, Key::Character(c) if c == "r") {
             self.session.reverse_contours();
             self.record_edit(EditType::Normal);
+            self.session.sync_to_workspace();
             ctx.request_render();
             ctx.set_handled();
             return true;
         }
 
-        // Tool switching shortcuts (without modifiers)
-        if !cmd && !shift {
+        // Tool switching shortcuts (without modifiers) - disabled in text mode
+        if !self.session.text_mode_active && !cmd && !shift {
             let new_tool = match key {
                 Key::Character(c) if c == "v" => {
                     Some(crate::tools::ToolId::Select)

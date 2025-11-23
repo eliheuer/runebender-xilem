@@ -20,8 +20,8 @@ use crate::theme::size::{
     TOOLBAR_ITEM_SIZE, TOOLBAR_ITEM_SPACING, TOOLBAR_PADDING,
 };
 use crate::theme::toolbar::{
-    BUTTON_HOVERED, BUTTON_SELECTED, BUTTON_UNSELECTED, ICON, ICON_HOVERED,
-    ICON_SELECTED,
+    BUTTON_HOVERED, BUTTON_OUTLINE, BUTTON_SELECTED, BUTTON_UNSELECTED,
+    ICON_HOVERED, ICON_SELECTED, ICON_UNSELECTED,
 };
 
 /// State for a single button in a toolbar
@@ -115,11 +115,11 @@ pub fn paint_button(
     };
     fill_color(scene, &button_rrect, bg_color);
 
-    // Draw dark outline around button (same color as icon fill)
+    // Draw outline around button
     stroke(
         scene,
         &button_rrect,
-        ICON,
+        BUTTON_OUTLINE,
         TOOLBAR_BORDER_WIDTH,
     );
 }
@@ -151,7 +151,7 @@ pub fn paint_icon(
     } else if state.is_hovered {
         ICON_HOVERED
     } else {
-        ICON
+        ICON_UNSELECTED
     };
 
     fill_color(scene, &(transform * icon), icon_color);
