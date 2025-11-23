@@ -656,7 +656,8 @@ impl EditorWidget {
             None => return,
         };
 
-        let glyph = match workspace.glyphs.get(glyph_name) {
+        let workspace_guard = workspace.read().unwrap();
+        let glyph = match workspace_guard.glyphs.get(glyph_name) {
             Some(g) => g,
             None => {
                 tracing::warn!("Glyph '{}' not found in workspace", glyph_name);
@@ -936,7 +937,8 @@ impl EditorWidget {
             }
         };
 
-        let glyph = match workspace.glyphs.get(&glyph_name) {
+        let workspace_guard = workspace.read().unwrap();
+        let glyph = match workspace_guard.glyphs.get(&glyph_name) {
             Some(g) => g,
             None => {
                 tracing::warn!("Glyph '{}' not found in workspace", glyph_name);
@@ -1150,6 +1152,8 @@ impl EditorWidget {
         // Record undo if an edit occurred
         if let Some(edit_type) = tool.edit_type() {
             self.record_edit(edit_type);
+            // Sync edits to workspace immediately so all instances update
+            self.session.sync_to_workspace();
         }
 
         self.session.current_tool = tool;
@@ -1406,6 +1410,7 @@ impl EditorWidget {
         {
             self.session.delete_selection();
             self.record_edit(EditType::Normal);
+            self.session.sync_to_workspace();
             ctx.request_render();
             ctx.set_handled();
             return true;
@@ -1415,6 +1420,7 @@ impl EditorWidget {
         if !self.session.text_mode_active && matches!(key, Key::Character(c) if c == "t") {
             self.session.toggle_point_type();
             self.record_edit(EditType::Normal);
+            self.session.sync_to_workspace();
             ctx.request_render();
             ctx.set_handled();
             return true;
@@ -1424,6 +1430,7 @@ impl EditorWidget {
         if !self.session.text_mode_active && matches!(key, Key::Character(c) if c == "r") {
             self.session.reverse_contours();
             self.record_edit(EditType::Normal);
+            self.session.sync_to_workspace();
             ctx.request_render();
             ctx.set_handled();
             return true;

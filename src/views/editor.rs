@@ -307,7 +307,7 @@ fn text_buffer_preview_pane_centered(
                     }
                 } else {
                     // For inactive sorts: load from workspace (saved state)
-                    if let Some(glyph) = workspace.glyphs.get(name) {
+                    if let Some(glyph) = workspace.read().unwrap().glyphs.get(name) {
                         for contour in &glyph.contours {
                             let path = crate::path::Path::from_contour(contour);
                             glyph_path.extend(path.to_bezpath());

@@ -13,7 +13,7 @@ use crate::tools::{ToolBox, ToolId};
 use crate::viewport::ViewPort;
 use crate::workspace::{Glyph, Workspace};
 use kurbo::{Point, Rect};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 // CoordinateSelection has been moved to components::coordinate_panel
 // module
@@ -74,7 +74,8 @@ pub struct EditSession {
 
     /// Reference to the workspace for character-to-glyph mapping (Phase 5+)
     /// Optional because not all sessions need text editing capabilities
-    pub workspace: Option<Arc<Workspace>>,
+    /// Wrapped in RwLock to allow updates during editing
+    pub workspace: Option<Arc<RwLock<Workspace>>>,
 
     /// Index of the active sort in the buffer
     /// None when no sort is active (e.g., empty buffer)
@@ -244,7 +245,8 @@ impl EditSession {
     /// - Character has no mapped glyph
     /// - Glyph data cannot be found
     pub fn create_sort_from_char(&self, c: char) -> Option<crate::sort::Sort> {
-        let workspace = self.workspace.as_ref()?;
+        let workspace_lock = self.workspace.as_ref()?;
+        let workspace = workspace_lock.read().unwrap();
 
         // Find a glyph with this codepoint
         let (glyph_name, glyph) = workspace.glyphs.iter()
@@ -319,13 +321,14 @@ impl EditSession {
 
         // If we found a sort to activate, load its paths
         if let Some((index, glyph_name, codepoint, x_offset)) = sort_to_activate {
-            let workspace = match &self.workspace {
+            let workspace_lock = match &self.workspace {
                 Some(ws) => ws,
                 None => {
                     tracing::warn!("No workspace available to load glyph paths");
                     return false;
                 }
             };
+            let workspace = workspace_lock.read().unwrap();
 
             let glyph = match workspace.glyphs.get(&glyph_name) {
                 Some(g) => g,
@@ -689,6 +692,34 @@ impl EditSession {
             codepoints: self.glyph.codepoints.clone(),
             contours,
         }
+    }
+
+    /// Sync current edits to the workspace immediately
+    ///
+    /// This updates the workspace with the current editing state so that
+    /// all instances of the glyph in the text buffer show the latest edits.
+    /// Should be called after any edit operation (move, delete, add points, etc.)
+    pub fn sync_to_workspace(&mut self) {
+        // Only sync if we have an active sort and workspace
+        let glyph_name = match &self.active_sort_name {
+            Some(name) => name.clone(),
+            None => return,
+        };
+
+        let workspace_lock = match &self.workspace {
+            Some(ws) => ws,
+            None => return,
+        };
+
+        // Get the updated glyph
+        let updated_glyph = self.to_glyph();
+
+        // Update both the session's glyph and the workspace
+        self.glyph = Arc::new(updated_glyph.clone());
+
+        // Update the workspace
+        let mut workspace = workspace_lock.write().unwrap();
+        workspace.glyphs.insert(glyph_name, updated_glyph);
     }
 
     // ===== HELPER METHODS =====

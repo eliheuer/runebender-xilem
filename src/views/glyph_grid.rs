@@ -71,7 +71,7 @@ fn get_upm_from_state(state: &AppState) -> f64 {
     state
         .workspace
         .as_ref()
-        .and_then(|w| w.units_per_em)
+        .and_then(|w| w.read().unwrap().units_per_em)
         .unwrap_or(1000.0)
 }
 
@@ -88,10 +88,11 @@ fn build_glyph_data(
     state: &AppState,
     glyph_names: &[String],
 ) -> Vec<GlyphData> {
-    if let Some(workspace) = &state.workspace {
+    if let Some(workspace_arc) = &state.workspace {
+        let workspace = workspace_arc.read().unwrap();
         glyph_names
             .iter()
-            .map(|name| build_single_glyph_data(workspace, name))
+            .map(|name| build_single_glyph_data(&workspace, name))
             .collect()
     } else {
         glyph_names
