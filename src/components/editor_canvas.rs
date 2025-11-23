@@ -495,7 +495,7 @@ impl EditorWidget {
         // Create a transform that:
         // 1. Scales to fit the canvas (with some padding)
         // 2. Centers the glyph
-        let padding = 0.8; // Leave 20% padding
+        let padding = 0.6; // Leave 40% padding (more zoomed out)
         let scale = (canvas_size.height * padding) / design_height;
 
         // Center point in design space (middle of advance width,
