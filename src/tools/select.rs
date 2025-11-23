@@ -376,16 +376,21 @@ fn update_selection_for_marquee(
     toggle: bool,
 ) {
     use crate::path::Path;
+    use kurbo::Point;
 
     // Collect all points that are within the selection rectangle
     let mut new_selection = Selection::new();
+
+    // Get the active sort's x-offset to apply to hit-testing
+    let offset_x = data.active_sort_x_offset;
 
     for path in data.paths.iter() {
         match path {
             Path::Cubic(cubic) => {
                 for pt in cubic.points.iter() {
-                    // Convert point to screen space for hit testing
-                    let screen_pos = data.viewport.to_screen(pt.point);
+                    // Apply x-offset in design space before converting to screen
+                    let offset_point = Point::new(pt.point.x + offset_x, pt.point.y);
+                    let screen_pos = data.viewport.to_screen(offset_point);
 
                     // Check if point is inside the rectangle
                     if rect.contains(screen_pos) {
@@ -395,8 +400,9 @@ fn update_selection_for_marquee(
             }
             Path::Quadratic(quadratic) => {
                 for pt in quadratic.points.iter() {
-                    // Convert point to screen space for hit testing
-                    let screen_pos = data.viewport.to_screen(pt.point);
+                    // Apply x-offset in design space before converting to screen
+                    let offset_point = Point::new(pt.point.x + offset_x, pt.point.y);
+                    let screen_pos = data.viewport.to_screen(offset_point);
 
                     // Check if point is inside the rectangle
                     if rect.contains(screen_pos) {
@@ -406,8 +412,9 @@ fn update_selection_for_marquee(
             }
             Path::Hyper(hyper) => {
                 for pt in hyper.points.iter() {
-                    // Convert point to screen space for hit testing
-                    let screen_pos = data.viewport.to_screen(pt.point);
+                    // Apply x-offset in design space before converting to screen
+                    let offset_point = Point::new(pt.point.x + offset_x, pt.point.y);
+                    let screen_pos = data.viewport.to_screen(offset_point);
 
                     // Check if point is inside the rectangle
                     if rect.contains(screen_pos) {

@@ -8,33 +8,35 @@ use crate::hit_test::{self, HitTestResult};
 use crate::hyper_path::HyperPath;
 use crate::path::Path;
 use crate::selection::Selection;
+use crate::sort::SortBuffer;
 use crate::tools::{ToolBox, ToolId};
 use crate::viewport::ViewPort;
-use crate::workspace::Glyph;
+use crate::workspace::{Glyph, Workspace};
 use kurbo::{Point, Rect};
 use std::sync::Arc;
 
 // CoordinateSelection has been moved to components::coordinate_panel
 // module
 
-/// Editing session for a single glyph
+/// Editing session for text buffer editing
 ///
-/// This holds all the state needed to edit a glyph, including the
-/// outline data, selection, viewport, and metadata.
+/// This holds all the state needed to edit a text buffer, including the
+/// outline data for the active sort, selection, viewport, and metadata.
+///
+/// The session is no longer tied to a specific glyph - instead it tracks
+/// which sort in the buffer is currently active for editing.
 #[derive(Debug, Clone)]
 pub struct EditSession {
-
-    /// Name of the glyph being edited
-    pub glyph_name: String,
 
     /// Path to the UFO file
     pub ufo_path: std::path::PathBuf,
 
-    /// The original glyph data (for metadata, unicode, etc.)
+    /// The original glyph data for the active sort (for metadata, unicode, etc.)
+    /// None when no sort is active
     pub glyph: Arc<Glyph>,
 
-    /// The editable path representation (converted from glyph
-    /// contours)
+    /// The editable path representation (converted from active sort's glyph contours)
+    /// Empty when no sort is active
     pub paths: Arc<Vec<Path>>,
 
     /// Currently selected entities (points, paths, etc.)
@@ -60,10 +62,41 @@ pub struct EditSession {
     pub descender: f64,
     pub x_height: Option<f64>,
     pub cap_height: Option<f64>,
+
+    /// Text buffer for multi-glyph editing (Phase 2+)
+    /// When Some, the session can switch between single-glyph and text editing modes
+    pub text_buffer: Option<SortBuffer>,
+
+    /// Whether text editing mode is currently active
+    /// When true, render and interact with text buffer (cursor, typing, etc.)
+    /// When false, use traditional single-glyph editing (select/pen tools)
+    pub text_mode_active: bool,
+
+    /// Reference to the workspace for character-to-glyph mapping (Phase 5+)
+    /// Optional because not all sessions need text editing capabilities
+    pub workspace: Option<Arc<Workspace>>,
+
+    /// Index of the active sort in the buffer
+    /// None when no sort is active (e.g., empty buffer)
+    pub active_sort_index: Option<usize>,
+
+    /// Unicode value of the active sort (e.g., "U+0052" for "R")
+    /// None when no sort is active
+    pub active_sort_unicode: Option<String>,
+
+    /// Glyph name of the active sort (e.g., "R")
+    /// Used as backup when unicode is not available
+    /// None when no sort is active
+    pub active_sort_name: Option<String>,
+
+    /// X-offset position of the active sort in the text buffer
+    /// Used to translate hit-testing coordinates so tools work correctly
+    /// on sorts that aren't at position 0
+    pub active_sort_x_offset: f64,
 }
 
 impl EditSession {
-    /// Create a new editing session for a glyph
+    /// Create a new editing session for a glyph (legacy, use new_with_text_buffer instead)
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         glyph_name: String,
@@ -82,8 +115,12 @@ impl EditSession {
             .map(Path::from_contour)
             .collect();
 
+        // Get unicode for display
+        let unicode_value = glyph.codepoints.first().map(|cp| {
+            format!("U+{:04X}", *cp as u32)
+        });
+
         Self {
-            glyph_name,
             ufo_path,
             glyph: Arc::new(glyph),
             paths: Arc::new(paths),
@@ -97,7 +134,220 @@ impl EditSession {
             descender,
             x_height,
             cap_height,
+            text_buffer: None,
+            text_mode_active: false,
+            workspace: None,
+            active_sort_index: None,  // No buffer, no active sort
+            active_sort_unicode: unicode_value,
+            active_sort_name: Some(glyph_name),
+            active_sort_x_offset: 0.0,
         }
+    }
+
+    /// Create a new editing session with text buffer initialized
+    ///
+    /// This creates a session with a text buffer containing the initial glyph as the first sort.
+    /// The session starts in select mode (text_mode_active = false) with the first sort active.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_text_buffer(
+        glyph_name: String,
+        ufo_path: std::path::PathBuf,
+        glyph: Glyph,
+        units_per_em: f64,
+        ascender: f64,
+        descender: f64,
+        x_height: Option<f64>,
+        cap_height: Option<f64>,
+    ) -> Self {
+        // Convert glyph contours to editable paths
+        let paths: Vec<Path> = glyph
+            .contours
+            .iter()
+            .map(Path::from_contour)
+            .collect();
+
+        // Get unicode for display
+        let unicode_value = glyph.codepoints.first().map(|cp| {
+            format!("U+{:04X}", *cp as u32)
+        });
+
+        // Create text buffer with initial sort
+        let mut buffer = SortBuffer::new();
+        let initial_sort = crate::sort::Sort::new_glyph(
+            glyph_name.clone(),
+            glyph.codepoints.first().copied(),
+            glyph.width as f64,
+            true, // First sort is active by default
+        );
+        buffer.insert(initial_sort);
+
+        Self {
+            ufo_path,
+            glyph: Arc::new(glyph),
+            paths: Arc::new(paths),
+            selection: Selection::new(),
+            coord_selection: CoordinateSelection::default(),
+            current_tool: ToolBox::for_id(ToolId::Select),
+            viewport: ViewPort::new(),
+            viewport_initialized: false,
+            units_per_em,
+            ascender,
+            descender,
+            x_height,
+            cap_height,
+            text_buffer: Some(buffer),
+            text_mode_active: false, // Start in select mode (not text mode)
+            workspace: None,
+            active_sort_index: Some(0), // First sort is active
+            active_sort_unicode: unicode_value,
+            active_sort_name: Some(glyph_name),
+            active_sort_x_offset: 0.0, // First sort is at position 0
+        }
+    }
+
+    /// Enter text editing mode
+    ///
+    /// This switches the session to text buffer editing mode where multiple glyphs
+    /// can be edited in a line.
+    pub fn enter_text_mode(&mut self) {
+        if self.text_buffer.is_some() {
+            self.text_mode_active = true;
+        }
+    }
+
+    /// Exit text editing mode
+    ///
+    /// This switches back to single-glyph editing mode, where only the active
+    /// sort's glyph is editable.
+    pub fn exit_text_mode(&mut self) {
+        self.text_mode_active = false;
+    }
+
+    /// Check if text mode is available (text buffer exists)
+    pub fn has_text_buffer(&self) -> bool {
+        self.text_buffer.is_some()
+    }
+
+    /// Get the line height for text layout (UPM - descender)
+    pub fn line_height(&self) -> f64 {
+        self.units_per_em - self.descender
+    }
+
+    /// Create a Sort from a character using the workspace character map (Phase 5)
+    ///
+    /// Looks up the glyph for the given character and creates a Sort.
+    /// Returns None if:
+    /// - No workspace is available
+    /// - Character has no mapped glyph
+    /// - Glyph data cannot be found
+    pub fn create_sort_from_char(&self, c: char) -> Option<crate::sort::Sort> {
+        let workspace = self.workspace.as_ref()?;
+
+        // Find a glyph with this codepoint
+        let (glyph_name, glyph) = workspace.glyphs.iter()
+            .find(|(_, g)| g.codepoints.contains(&c))?;
+
+        Some(crate::sort::Sort::new_glyph(
+            glyph_name.clone(),
+            Some(c),
+            glyph.width,
+            false, // New sorts are inactive by default
+        ))
+    }
+
+    /// Find and activate the sort at a given position (Phase 7)
+    ///
+    /// Hit tests the position against each sort's bounding box and activates
+    /// the clicked sort. This loads the glyph's paths from the workspace into
+    /// session.paths for editing. Returns true if a sort was found and activated.
+    pub fn activate_sort_at_position(&mut self, pos: Point) -> bool {
+        // First, find which sort was clicked (if any) and its x-offset
+        let sort_to_activate: Option<(usize, String, Option<char>, f64)> = {
+            let buffer = match &self.text_buffer {
+                Some(buf) => buf,
+                None => return false,
+            };
+
+            // Calculate sort positions and check for hit
+            let mut x_offset = 0.0;
+
+            let mut found_sort = None;
+            for (index, sort) in buffer.iter().enumerate() {
+                match &sort.kind {
+                    crate::sort::SortKind::Glyph { name, advance_width, codepoint } => {
+                        // Check if click is within this sort's bounds
+                        let sort_left = x_offset;
+                        let sort_right = x_offset + advance_width;
+                        let sort_top = self.ascender;
+                        let sort_bottom = self.descender;
+
+                        if pos.x >= sort_left && pos.x <= sort_right
+                            && pos.y >= sort_bottom && pos.y <= sort_top
+                        {
+                            // Found the clicked sort - capture x_offset too
+                            found_sort = Some((index, name.clone(), *codepoint, x_offset));
+                            break;
+                        }
+
+                        x_offset += advance_width;
+                    }
+                    crate::sort::SortKind::LineBreak => {
+                        x_offset = 0.0;
+                    }
+                }
+            }
+            found_sort
+        };
+
+        // If we found a sort to activate, load its paths
+        if let Some((index, glyph_name, codepoint, x_offset)) = sort_to_activate {
+            let workspace = match &self.workspace {
+                Some(ws) => ws,
+                None => {
+                    tracing::warn!("No workspace available to load glyph paths");
+                    return false;
+                }
+            };
+
+            let glyph = match workspace.glyphs.get(&glyph_name) {
+                Some(g) => g,
+                None => {
+                    tracing::warn!("Glyph '{}' not found in workspace", glyph_name);
+                    return false;
+                }
+            };
+
+            // Convert contours to paths
+            let paths: Vec<Path> = glyph
+                .contours
+                .iter()
+                .map(Path::from_contour)
+                .collect();
+
+            // Update session state with loaded paths
+            self.paths = std::sync::Arc::new(paths);
+            self.active_sort_index = Some(index);
+            self.active_sort_name = Some(glyph_name.clone());
+            self.active_sort_unicode = codepoint.map(|c| format!("U+{:04X}", c as u32));
+            self.active_sort_x_offset = x_offset;
+
+            // Update buffer to mark this sort as active
+            if let Some(buffer) = &mut self.text_buffer {
+                buffer.set_active_sort(index);
+            }
+
+            tracing::info!(
+                "Activated sort {} (glyph: {}, {} paths loaded, x_offset: {})",
+                index,
+                glyph_name,
+                self.paths.len(),
+                x_offset
+            );
+
+            return true;
+        }
+
+        false
     }
 
     /// Compute the coordinate selection from the current selection
@@ -142,13 +392,47 @@ impl EditSession {
     ) -> Option<HitTestResult> {
         let max_dist = max_dist.unwrap_or(hit_test::MIN_CLICK_DISTANCE);
 
+        tracing::debug!(
+            "[hit_test_point] screen_pos=({}, {}), offset={}, max_dist={}",
+            screen_pos.x,
+            screen_pos.y,
+            self.active_sort_x_offset,
+            max_dist
+        );
+
         // Collect all points from all paths as screen coordinates
-        let candidates = self.paths.iter().flat_map(|path| {
-            Self::path_to_hit_candidates(path, &self.viewport)
-        });
+        // Apply active sort x-offset so hit-testing matches rendering position
+        let candidates: Vec<_> = self.paths.iter().flat_map(|path| {
+            Self::path_to_hit_candidates(path, &self.viewport, self.active_sort_x_offset)
+        }).collect();
+
+        tracing::debug!(
+            "[hit_test_point] Found {} candidates",
+            candidates.len()
+        );
+
+        if let Some(first) = candidates.first() {
+            tracing::debug!(
+                "[hit_test_point] First candidate: pos=({}, {})",
+                first.1.x,
+                first.1.y
+            );
+        }
 
         // Find closest point in screen space
-        hit_test::find_closest(screen_pos, candidates, max_dist)
+        let result = hit_test::find_closest(screen_pos, candidates.into_iter(), max_dist);
+
+        if let Some(ref hit) = result {
+            tracing::debug!(
+                "[hit_test_point] Hit found: entity={:?}, distance={}",
+                hit.entity,
+                hit.distance
+            );
+        } else {
+            tracing::debug!("[hit_test_point] No hit found");
+        }
+
+        result
     }
 
     /// Hit test for path segments at screen coordinates
@@ -165,7 +449,10 @@ impl EditSession {
         max_dist: f64,
     ) -> Option<(crate::path_segment::SegmentInfo, f64)> {
         // Convert screen position to design space
-        let design_pos = self.viewport.screen_to_design(screen_pos);
+        let mut design_pos = self.viewport.screen_to_design(screen_pos);
+
+        // Adjust for active sort offset - subtract offset so coordinates match paths at (0,0)
+        design_pos.x -= self.active_sort_x_offset;
 
         let closest_segment = Self::find_closest_segment(
             &self.paths,
@@ -454,16 +741,23 @@ impl EditSession {
     }
 
     /// Convert a path to hit test candidates (for point hit testing)
+    ///
+    /// The offset_x parameter allows translating points in design space before
+    /// converting to screen coordinates. This is used for active sorts in text
+    /// buffers that aren't positioned at x=0.
     fn path_to_hit_candidates(
         path: &Path,
         viewport: &ViewPort,
+        offset_x: f64,
     ) -> Vec<(crate::entity_id::EntityId, Point, bool)> {
         match path {
             Path::Cubic(cubic) => cubic
                 .points()
                 .iter()
                 .map(|pt| {
-                    let screen_pt = viewport.to_screen(pt.point);
+                    // Apply x-offset in design space before converting to screen
+                    let offset_point = Point::new(pt.point.x + offset_x, pt.point.y);
+                    let screen_pt = viewport.to_screen(offset_point);
                     (pt.id, screen_pt, pt.is_on_curve())
                 })
                 .collect(),
@@ -471,7 +765,9 @@ impl EditSession {
                 .points()
                 .iter()
                 .map(|pt| {
-                    let screen_pt = viewport.to_screen(pt.point);
+                    // Apply x-offset in design space before converting to screen
+                    let offset_point = Point::new(pt.point.x + offset_x, pt.point.y);
+                    let screen_pt = viewport.to_screen(offset_point);
                     (pt.id, screen_pt, pt.is_on_curve())
                 })
                 .collect(),
@@ -479,7 +775,9 @@ impl EditSession {
                 .points()
                 .iter()
                 .map(|pt| {
-                    let screen_pt = viewport.to_screen(pt.point);
+                    // Apply x-offset in design space before converting to screen
+                    let offset_point = Point::new(pt.point.x + offset_x, pt.point.y);
+                    let screen_pt = viewport.to_screen(offset_point);
                     (pt.id, screen_pt, pt.is_on_curve())
                 })
                 .collect(),
@@ -1105,6 +1403,133 @@ impl EditSession {
             // Handle wrap-around for closed paths
             total_len - start_index - 1 + end_index
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workspace::{Contour, Glyph};
+
+    fn create_test_glyph() -> Glyph {
+        Glyph {
+            name: "a".to_string(),
+            width: 500.0,
+            height: Some(700.0),
+            codepoints: vec!['a'],
+            contours: vec![],
+        }
+    }
+
+    #[test]
+    fn test_session_without_text_buffer() {
+        let glyph = create_test_glyph();
+        let session = EditSession::new(
+            "a".to_string(),
+            std::path::PathBuf::from("/test.ufo"),
+            glyph,
+            1000.0,
+            800.0,
+            -200.0,
+            Some(500.0),
+            Some(700.0),
+        );
+
+        assert!(!session.has_text_buffer());
+        assert!(!session.text_mode_active);
+        assert_eq!(session.glyph_name, "a");
+    }
+
+    #[test]
+    fn test_session_with_text_buffer() {
+        let glyph = create_test_glyph();
+        let session = EditSession::new_with_text_buffer(
+            "a".to_string(),
+            std::path::PathBuf::from("/test.ufo"),
+            glyph,
+            1000.0,
+            800.0,
+            -200.0,
+            Some(500.0),
+            Some(700.0),
+        );
+
+        assert!(session.has_text_buffer());
+        assert!(!session.text_mode_active); // Starts in single-glyph mode
+
+        // Verify text buffer has one sort
+        let buffer = session.text_buffer.as_ref().unwrap();
+        assert_eq!(buffer.len(), 1);
+
+        // Verify the sort is the initial glyph
+        let sort = buffer.get(0).unwrap();
+        assert_eq!(sort.glyph_name(), Some("a"));
+        assert_eq!(sort.advance_width(), Some(500.0));
+        assert!(sort.is_active);
+    }
+
+    #[test]
+    fn test_text_mode_toggle() {
+        let glyph = create_test_glyph();
+        let mut session = EditSession::new_with_text_buffer(
+            "a".to_string(),
+            std::path::PathBuf::from("/test.ufo"),
+            glyph,
+            1000.0,
+            800.0,
+            -200.0,
+            Some(500.0),
+            Some(700.0),
+        );
+
+        assert!(!session.text_mode_active);
+
+        // Enter text mode
+        session.enter_text_mode();
+        assert!(session.text_mode_active);
+
+        // Exit text mode
+        session.exit_text_mode();
+        assert!(!session.text_mode_active);
+    }
+
+    #[test]
+    fn test_line_height() {
+        let glyph = create_test_glyph();
+        let session = EditSession::new(
+            "a".to_string(),
+            std::path::PathBuf::from("/test.ufo"),
+            glyph,
+            1000.0,  // UPM
+            800.0,   // ascender
+            -200.0,  // descender
+            Some(500.0),
+            Some(700.0),
+        );
+
+        // Line height = UPM - descender = 1000 - (-200) = 1200
+        assert_eq!(session.line_height(), 1200.0);
+    }
+
+    #[test]
+    fn test_enter_text_mode_without_buffer() {
+        let glyph = create_test_glyph();
+        let mut session = EditSession::new(
+            "a".to_string(),
+            std::path::PathBuf::from("/test.ufo"),
+            glyph,
+            1000.0,
+            800.0,
+            -200.0,
+            Some(500.0),
+            Some(700.0),
+        );
+
+        assert!(!session.has_text_buffer());
+
+        // Should not enter text mode if no buffer
+        session.enter_text_mode();
+        assert!(!session.text_mode_active);
     }
 }
 

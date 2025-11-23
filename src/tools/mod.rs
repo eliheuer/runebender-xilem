@@ -28,6 +28,8 @@ pub enum ToolId {
     Measure,
     /// Shapes tool for geometric primitives
     Shapes,
+    /// Text editing mode (Phase 4)
+    Text,
 }
 
 // ===== Tool Trait =====
@@ -64,6 +66,7 @@ pub enum ToolBox {
     Knife(knife::KnifeTool),
     Measure(measure::MeasureTool),
     Shapes(shapes::ShapesTool),
+    Text(text::TextTool),
 }
 
 // ===== ToolBox Implementation =====
@@ -91,6 +94,9 @@ impl ToolBox {
             ToolId::Shapes => {
                 ToolBox::Shapes(shapes::ShapesTool::default())
             }
+            ToolId::Text => {
+                ToolBox::Text(text::TextTool::default())
+            }
         }
     }
 
@@ -104,6 +110,7 @@ impl ToolBox {
             ToolBox::Knife(tool) => tool.id(),
             ToolBox::Measure(tool) => tool.id(),
             ToolBox::Shapes(tool) => tool.id(),
+            ToolBox::Text(tool) => tool.id(),
         }
     }
 
@@ -136,6 +143,9 @@ impl ToolBox {
             ToolBox::Shapes(tool) => {
                 tool.paint(scene, session, transform);
             }
+            ToolBox::Text(tool) => {
+                tool.paint(scene, session, transform);
+            }
         }
     }
 
@@ -149,6 +159,7 @@ impl ToolBox {
             ToolBox::Knife(tool) => tool.edit_type(),
             ToolBox::Measure(tool) => tool.edit_type(),
             ToolBox::Shapes(tool) => tool.edit_type(),
+            ToolBox::Text(tool) => tool.edit_type(),
         }
     }
 
@@ -166,6 +177,7 @@ impl ToolBox {
             ToolBox::Knife(tool) => tool.left_down(event, session),
             ToolBox::Measure(tool) => tool.left_down(event, session),
             ToolBox::Shapes(tool) => tool.left_down(event, session),
+            ToolBox::Text(tool) => tool.left_down(event, session),
         }
     }
 
@@ -183,6 +195,7 @@ impl ToolBox {
             ToolBox::Knife(tool) => tool.left_up(event, session),
             ToolBox::Measure(tool) => tool.left_up(event, session),
             ToolBox::Shapes(tool) => tool.left_up(event, session),
+            ToolBox::Text(tool) => tool.left_up(event, session),
         }
     }
 
@@ -203,6 +216,7 @@ impl ToolBox {
             ToolBox::Knife(tool) => tool.mouse_moved(event, session),
             ToolBox::Measure(tool) => tool.mouse_moved(event, session),
             ToolBox::Shapes(tool) => tool.mouse_moved(event, session),
+            ToolBox::Text(tool) => tool.mouse_moved(event, session),
         }
     }
 
@@ -233,6 +247,9 @@ impl ToolBox {
                 tool.left_drag_began(event, drag, session);
             }
             ToolBox::Shapes(tool) => {
+                tool.left_drag_began(event, drag, session);
+            }
+            ToolBox::Text(tool) => {
                 tool.left_drag_began(event, drag, session);
             }
         }
@@ -267,6 +284,9 @@ impl ToolBox {
             ToolBox::Shapes(tool) => {
                 tool.left_drag_changed(event, drag, session);
             }
+            ToolBox::Text(tool) => {
+                tool.left_drag_changed(event, drag, session);
+            }
         }
     }
 
@@ -299,6 +319,9 @@ impl ToolBox {
             ToolBox::Shapes(tool) => {
                 tool.left_drag_ended(event, drag, session);
             }
+            ToolBox::Text(tool) => {
+                tool.left_drag_ended(event, drag, session);
+            }
         }
     }
 
@@ -315,6 +338,7 @@ impl ToolBox {
             ToolBox::Knife(tool) => tool.cancel(session),
             ToolBox::Measure(tool) => tool.cancel(session),
             ToolBox::Shapes(tool) => tool.cancel(session),
+            ToolBox::Text(tool) => tool.cancel(session),
         }
     }
 }
@@ -359,6 +383,7 @@ impl MouseDelegate for ToolBox {
             ToolBox::Knife(tool) => tool.left_click(event, data),
             ToolBox::Measure(tool) => tool.left_click(event, data),
             ToolBox::Shapes(tool) => tool.left_click(event, data),
+            ToolBox::Text(tool) => tool.left_click(event, data),
         }
     }
 
@@ -375,6 +400,7 @@ impl MouseDelegate for ToolBox {
             ToolBox::Knife(tool) => tool.mouse_moved(event, data),
             ToolBox::Measure(tool) => tool.mouse_moved(event, data),
             ToolBox::Shapes(tool) => tool.mouse_moved(event, data),
+            ToolBox::Text(tool) => tool.mouse_moved(event, data),
         }
     }
 
@@ -414,6 +440,7 @@ impl MouseDelegate for ToolBox {
             ToolBox::Knife(tool) => tool.cancel(data),
             ToolBox::Measure(tool) => tool.cancel(data),
             ToolBox::Shapes(tool) => tool.cancel(data),
+            ToolBox::Text(tool) => tool.cancel(data),
         }
     }
 }
@@ -427,3 +454,4 @@ pub mod pen;
 pub mod preview;
 pub mod select;
 pub mod shapes;
+pub mod text;
