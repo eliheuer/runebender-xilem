@@ -1411,8 +1411,8 @@ impl EditorWidget {
             return true;
         }
 
-        // Toggle point type (T key)
-        if matches!(key, Key::Character(c) if c == "t") {
+        // Toggle point type (T key) - disabled in text mode
+        if !self.session.text_mode_active && matches!(key, Key::Character(c) if c == "t") {
             self.session.toggle_point_type();
             self.record_edit(EditType::Normal);
             ctx.request_render();
@@ -1420,8 +1420,8 @@ impl EditorWidget {
             return true;
         }
 
-        // Reverse contours (R key)
-        if matches!(key, Key::Character(c) if c == "r") {
+        // Reverse contours (R key) - disabled in text mode
+        if !self.session.text_mode_active && matches!(key, Key::Character(c) if c == "r") {
             self.session.reverse_contours();
             self.record_edit(EditType::Normal);
             ctx.request_render();
@@ -1429,8 +1429,8 @@ impl EditorWidget {
             return true;
         }
 
-        // Tool switching shortcuts (without modifiers)
-        if !cmd && !shift {
+        // Tool switching shortcuts (without modifiers) - disabled in text mode
+        if !self.session.text_mode_active && !cmd && !shift {
             let new_tool = match key {
                 Key::Character(c) if c == "v" => {
                     Some(crate::tools::ToolId::Select)

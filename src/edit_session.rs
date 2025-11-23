@@ -236,6 +236,9 @@ impl EditSession {
     /// Create a Sort from a character using the workspace character map (Phase 5)
     ///
     /// Looks up the glyph for the given character and creates a Sort.
+    /// If the character matches the currently active sort, uses the live edited
+    /// glyph width instead of the workspace version.
+    ///
     /// Returns None if:
     /// - No workspace is available
     /// - Character has no mapped glyph
@@ -247,10 +250,25 @@ impl EditSession {
         let (glyph_name, glyph) = workspace.glyphs.iter()
             .find(|(_, g)| g.codepoints.contains(&c))?;
 
+        // Check if this character matches the currently active sort's character
+        // If so, use the current glyph (with live edits) instead of workspace version
+        let advance_width = if self.active_sort_unicode.as_ref()
+            .and_then(|u| u.strip_prefix("U+").and_then(|hex| u32::from_str_radix(hex, 16).ok()))
+            .and_then(|code| char::from_u32(code))
+            .map(|active_char| active_char == c)
+            .unwrap_or(false)
+        {
+            // Active sort matches this character - use current glyph width
+            self.glyph.width
+        } else {
+            // Different character - use workspace version
+            glyph.width
+        };
+
         Some(crate::sort::Sort::new_glyph(
             glyph_name.clone(),
             Some(c),
-            glyph.width,
+            advance_width,
             false, // New sorts are inactive by default
         ))
     }
