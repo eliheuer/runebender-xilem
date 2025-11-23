@@ -967,6 +967,7 @@ impl EditorWidget {
 
         // Update session state
         self.session.paths = std::sync::Arc::new(paths);
+        self.session.glyph = std::sync::Arc::new(glyph.clone()); // Preserve codepoints for sync_to_workspace
         self.session.active_sort_index = Some(sort_index);
         self.session.active_sort_name = Some(glyph_name);
         self.session.active_sort_unicode = unicode;
