@@ -394,6 +394,7 @@ impl Widget for EditorWidget {
             let cmd = key_event.modifiers.meta()
                 || key_event.modifiers.ctrl();
             let shift = key_event.modifiers.shift();
+            let ctrl = key_event.modifiers.ctrl();
 
             // Debug logging for key events
             if cmd {
@@ -412,6 +413,7 @@ impl Widget for EditorWidget {
                 &key_event.key,
                 cmd,
                 shift,
+                ctrl,
             ) {
                 return;
             }
@@ -506,16 +508,21 @@ impl EditorWidget {
         };
 
         let mut x_offset = 0.0;
-        let baseline_y = 0.0;
+        let mut baseline_y = 0.0;
         let cursor_position = buffer.cursor();
 
-        // Phase 6: Calculate cursor x position while rendering sorts
+        // UPM height for line spacing (top of UPM on new line aligns with bottom of descender on previous line)
+        let upm_height = self.session.ascender - self.session.descender;
+
+        // Phase 6: Calculate cursor position while rendering sorts
         let mut cursor_x = 0.0;
+        let mut cursor_y = 0.0;
 
         for (index, sort) in buffer.iter().enumerate() {
             // Track cursor position
             if index == cursor_position {
                 cursor_x = x_offset;
+                cursor_y = baseline_y;
             }
 
             match &sort.kind {
@@ -524,7 +531,7 @@ impl EditorWidget {
 
                     // Draw metrics box for this sort
                     if !is_preview_mode {
-                        self.render_sort_metrics(scene, x_offset, *advance_width, transform);
+                        self.render_sort_metrics(scene, x_offset, baseline_y, *advance_width, transform);
                     }
 
                     if sort.is_active && !is_preview_mode {
@@ -538,9 +545,10 @@ impl EditorWidget {
                     x_offset += advance_width;
                 }
                 crate::sort::SortKind::LineBreak => {
-                    // Line break: reset x, move y down
+                    // Line break: reset x, move y down by UPM height
+                    // Top of UPM on new line aligns with bottom of descender on previous line
                     x_offset = 0.0;
-                    // baseline_y -= self.session.line_height(); // TODO: multi-line support
+                    baseline_y -= upm_height;
                 }
             }
         }
@@ -548,11 +556,12 @@ impl EditorWidget {
         // Cursor might be at the end of the buffer
         if cursor_position >= buffer.len() {
             cursor_x = x_offset;
+            cursor_y = baseline_y;
         }
 
         // Phase 6: Render cursor in text mode (not in preview mode)
         if !is_preview_mode {
-            self.render_text_cursor(scene, cursor_x, baseline_y, transform);
+            self.render_text_cursor(scene, cursor_x, cursor_y, transform);
         }
     }
 
@@ -725,6 +734,7 @@ impl EditorWidget {
         &self,
         scene: &mut Scene,
         x_offset: f64,
+        baseline_y: f64,
         advance_width: f64,
         transform: &Affine,
     ) {
@@ -732,16 +742,17 @@ impl EditorWidget {
         let brush = Brush::Solid(theme::metrics::GUIDE);
 
         // Draw vertical lines (left and right edges of the sort)
-        let left_top = Point::new(x_offset, self.session.ascender);
-        let left_bottom = Point::new(x_offset, self.session.descender);
+        // Offset by baseline_y to support multi-line text
+        let left_top = Point::new(x_offset, baseline_y + self.session.ascender);
+        let left_bottom = Point::new(x_offset, baseline_y + self.session.descender);
         let left_line = kurbo::Line::new(
             *transform * left_top,
             *transform * left_bottom,
         );
         scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &left_line);
 
-        let right_top = Point::new(x_offset + advance_width, self.session.ascender);
-        let right_bottom = Point::new(x_offset + advance_width, self.session.descender);
+        let right_top = Point::new(x_offset + advance_width, baseline_y + self.session.ascender);
+        let right_bottom = Point::new(x_offset + advance_width, baseline_y + self.session.descender);
         let right_line = kurbo::Line::new(
             *transform * right_top,
             *transform * right_bottom,
@@ -749,9 +760,10 @@ impl EditorWidget {
         scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &right_line);
 
         // Draw horizontal lines (baseline, ascender, descender, etc.)
+        // Offset by baseline_y to support multi-line text
         let draw_hline = |scene: &mut Scene, y: f64| {
-            let start = Point::new(x_offset, y);
-            let end = Point::new(x_offset + advance_width, y);
+            let start = Point::new(x_offset, baseline_y + y);
+            let end = Point::new(x_offset + advance_width, baseline_y + y);
             let line = kurbo::Line::new(*transform * start, *transform * end);
             scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
         };
@@ -961,6 +973,7 @@ impl EditorWidget {
     }
 
     /// Handle spacebar for temporary preview mode
+    /// Note: Disabled in text edit mode to allow typing spaces
     fn handle_spacebar(
         &mut self,
         ctx: &mut EventCtx<'_>,
@@ -969,6 +982,11 @@ impl EditorWidget {
         use masonry::core::keyboard::{Key, KeyState};
 
         if !matches!(&key_event.key, Key::Character(c) if c == " ") {
+            return false;
+        }
+
+        // Don't handle spacebar in text edit mode - let it insert space characters
+        if self.session.text_mode_active {
             return false;
         }
 
@@ -1056,8 +1074,38 @@ impl EditorWidget {
         key: &masonry::core::keyboard::Key,
         cmd: bool,
         shift: bool,
+        ctrl: bool,
     ) -> bool {
         use masonry::core::keyboard::{Key, NamedKey};
+
+        // Ctrl+Space: Toggle preview mode (works in all modes including text edit)
+        if ctrl && matches!(key, Key::Character(c) if c == " ") {
+            let current_tool = self.session.current_tool.id();
+            if current_tool == crate::tools::ToolId::Preview {
+                // Already in preview mode - this shouldn't happen with Ctrl+Space
+                // since we don't have a "previous tool" tracked for Ctrl+Space
+                // Just do nothing
+            } else {
+                // Switch to Preview tool
+                use crate::tools::ToolBox;
+                let mut tool = std::mem::replace(
+                    &mut self.session.current_tool,
+                    ToolBox::for_id(crate::tools::ToolId::Select),
+                );
+                self.mouse.cancel(&mut tool, &mut self.session);
+                self.mouse = Mouse::new();
+
+                self.session.current_tool = ToolBox::for_id(crate::tools::ToolId::Preview);
+
+                ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                    session: self.session.clone(),
+                    save_requested: false,
+                });
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
+            }
+        }
 
         // Undo/Redo
         if cmd && matches!(key, Key::Character(c) if c == "z") {
@@ -1136,10 +1184,13 @@ impl EditorWidget {
         }
 
         // Delete selected points (Backspace or Delete key)
-        if matches!(
-            key,
-            Key::Named(NamedKey::Backspace) | Key::Named(NamedKey::Delete)
-        ) {
+        // Skip in text mode - let text mode handler deal with backspace
+        if !self.session.text_mode_active
+            && matches!(
+                key,
+                Key::Named(NamedKey::Backspace) | Key::Named(NamedKey::Delete)
+            )
+        {
             self.session.delete_selection();
             self.record_edit(EditType::Normal);
             ctx.request_render();
@@ -1275,6 +1326,9 @@ impl EditorWidget {
     ) -> bool {
         use masonry::core::keyboard::{Key, NamedKey};
 
+        tracing::debug!("[handle_text_mode_input] key={:?}, text_mode_active={}, has_buffer={}",
+            key, self.session.text_mode_active, self.session.text_buffer.is_some());
+
         // Handle arrow keys for cursor movement
         match key {
             Key::Named(NamedKey::ArrowLeft) => {
@@ -1296,8 +1350,19 @@ impl EditorWidget {
                 }
             }
             Key::Named(NamedKey::Backspace) => {
+                tracing::info!("[Backspace] Handling backspace in text mode");
                 if let Some(buffer) = &mut self.session.text_buffer {
-                    buffer.delete();
+                    let cursor_before = buffer.cursor();
+                    let len_before = buffer.len();
+                    let deleted = buffer.delete();
+                    tracing::info!(
+                        "[Backspace] cursor: {} -> {}, len: {} -> {}, deleted: {:?}",
+                        cursor_before,
+                        buffer.cursor(),
+                        len_before,
+                        buffer.len(),
+                        deleted.is_some()
+                    );
                     self.text_cursor.reset(); // Reset cursor to visible on edit
                     // Emit session update to persist text buffer changes
                     ctx.submit_action::<SessionUpdate>(SessionUpdate {
