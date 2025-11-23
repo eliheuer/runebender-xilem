@@ -88,6 +88,11 @@ pub struct EditSession {
     /// Used as backup when unicode is not available
     /// None when no sort is active
     pub active_sort_name: Option<String>,
+
+    /// X-offset position of the active sort in the text buffer
+    /// Used to translate hit-testing coordinates so tools work correctly
+    /// on sorts that aren't at position 0
+    pub active_sort_x_offset: f64,
 }
 
 impl EditSession {
@@ -135,6 +140,7 @@ impl EditSession {
             active_sort_index: None,  // No buffer, no active sort
             active_sort_unicode: unicode_value,
             active_sort_name: Some(glyph_name),
+            active_sort_x_offset: 0.0,
         }
     }
 
@@ -195,6 +201,7 @@ impl EditSession {
             active_sort_index: Some(0), // First sort is active
             active_sort_unicode: unicode_value,
             active_sort_name: Some(glyph_name),
+            active_sort_x_offset: 0.0, // First sort is at position 0
         }
     }
 
@@ -251,41 +258,93 @@ impl EditSession {
     /// Find and activate the sort at a given position (Phase 7)
     ///
     /// Hit tests the position against each sort's bounding box and activates
-    /// the clicked sort. Returns true if a sort was found and activated.
+    /// the clicked sort. This loads the glyph's paths from the workspace into
+    /// session.paths for editing. Returns true if a sort was found and activated.
     pub fn activate_sort_at_position(&mut self, pos: Point) -> bool {
-        let buffer = match &mut self.text_buffer {
-            Some(buf) => buf,
-            None => return false,
-        };
+        // First, find which sort was clicked (if any) and its x-offset
+        let sort_to_activate: Option<(usize, String, Option<char>, f64)> = {
+            let buffer = match &self.text_buffer {
+                Some(buf) => buf,
+                None => return false,
+            };
 
-        // Calculate sort positions and check for hit
-        let mut x_offset = 0.0;
-        let baseline_y = 0.0;
+            // Calculate sort positions and check for hit
+            let mut x_offset = 0.0;
 
-        for (index, sort) in buffer.iter().enumerate() {
-            match &sort.kind {
-                crate::sort::SortKind::Glyph { advance_width, .. } => {
-                    // Check if click is within this sort's bounds
-                    let sort_left = x_offset;
-                    let sort_right = x_offset + advance_width;
-                    let sort_top = self.ascender;
-                    let sort_bottom = self.descender;
+            let mut found_sort = None;
+            for (index, sort) in buffer.iter().enumerate() {
+                match &sort.kind {
+                    crate::sort::SortKind::Glyph { name, advance_width, codepoint } => {
+                        // Check if click is within this sort's bounds
+                        let sort_left = x_offset;
+                        let sort_right = x_offset + advance_width;
+                        let sort_top = self.ascender;
+                        let sort_bottom = self.descender;
 
-                    if pos.x >= sort_left && pos.x <= sort_right
-                        && pos.y >= sort_bottom && pos.y <= sort_top
-                    {
-                        // Found the clicked sort - activate it
-                        buffer.set_active_sort(index);
-                        return true;
+                        if pos.x >= sort_left && pos.x <= sort_right
+                            && pos.y >= sort_bottom && pos.y <= sort_top
+                        {
+                            // Found the clicked sort - capture x_offset too
+                            found_sort = Some((index, name.clone(), *codepoint, x_offset));
+                            break;
+                        }
+
+                        x_offset += advance_width;
                     }
-
-                    x_offset += advance_width;
-                }
-                crate::sort::SortKind::LineBreak => {
-                    x_offset = 0.0;
-                    // baseline_y -= self.line_height(); // TODO: multi-line
+                    crate::sort::SortKind::LineBreak => {
+                        x_offset = 0.0;
+                    }
                 }
             }
+            found_sort
+        };
+
+        // If we found a sort to activate, load its paths
+        if let Some((index, glyph_name, codepoint, x_offset)) = sort_to_activate {
+            let workspace = match &self.workspace {
+                Some(ws) => ws,
+                None => {
+                    tracing::warn!("No workspace available to load glyph paths");
+                    return false;
+                }
+            };
+
+            let glyph = match workspace.glyphs.get(&glyph_name) {
+                Some(g) => g,
+                None => {
+                    tracing::warn!("Glyph '{}' not found in workspace", glyph_name);
+                    return false;
+                }
+            };
+
+            // Convert contours to paths
+            let paths: Vec<Path> = glyph
+                .contours
+                .iter()
+                .map(Path::from_contour)
+                .collect();
+
+            // Update session state with loaded paths
+            self.paths = std::sync::Arc::new(paths);
+            self.active_sort_index = Some(index);
+            self.active_sort_name = Some(glyph_name.clone());
+            self.active_sort_unicode = codepoint.map(|c| format!("U+{:04X}", c as u32));
+            self.active_sort_x_offset = x_offset;
+
+            // Update buffer to mark this sort as active
+            if let Some(buffer) = &mut self.text_buffer {
+                buffer.set_active_sort(index);
+            }
+
+            tracing::info!(
+                "Activated sort {} (glyph: {}, {} paths loaded, x_offset: {})",
+                index,
+                glyph_name,
+                self.paths.len(),
+                x_offset
+            );
+
+            return true;
         }
 
         false
@@ -333,13 +392,47 @@ impl EditSession {
     ) -> Option<HitTestResult> {
         let max_dist = max_dist.unwrap_or(hit_test::MIN_CLICK_DISTANCE);
 
+        tracing::debug!(
+            "[hit_test_point] screen_pos=({}, {}), offset={}, max_dist={}",
+            screen_pos.x,
+            screen_pos.y,
+            self.active_sort_x_offset,
+            max_dist
+        );
+
         // Collect all points from all paths as screen coordinates
-        let candidates = self.paths.iter().flat_map(|path| {
-            Self::path_to_hit_candidates(path, &self.viewport)
-        });
+        // Apply active sort x-offset so hit-testing matches rendering position
+        let candidates: Vec<_> = self.paths.iter().flat_map(|path| {
+            Self::path_to_hit_candidates(path, &self.viewport, self.active_sort_x_offset)
+        }).collect();
+
+        tracing::debug!(
+            "[hit_test_point] Found {} candidates",
+            candidates.len()
+        );
+
+        if let Some(first) = candidates.first() {
+            tracing::debug!(
+                "[hit_test_point] First candidate: pos=({}, {})",
+                first.1.x,
+                first.1.y
+            );
+        }
 
         // Find closest point in screen space
-        hit_test::find_closest(screen_pos, candidates, max_dist)
+        let result = hit_test::find_closest(screen_pos, candidates.into_iter(), max_dist);
+
+        if let Some(ref hit) = result {
+            tracing::debug!(
+                "[hit_test_point] Hit found: entity={:?}, distance={}",
+                hit.entity,
+                hit.distance
+            );
+        } else {
+            tracing::debug!("[hit_test_point] No hit found");
+        }
+
+        result
     }
 
     /// Hit test for path segments at screen coordinates
@@ -356,7 +449,10 @@ impl EditSession {
         max_dist: f64,
     ) -> Option<(crate::path_segment::SegmentInfo, f64)> {
         // Convert screen position to design space
-        let design_pos = self.viewport.screen_to_design(screen_pos);
+        let mut design_pos = self.viewport.screen_to_design(screen_pos);
+
+        // Adjust for active sort offset - subtract offset so coordinates match paths at (0,0)
+        design_pos.x -= self.active_sort_x_offset;
 
         let closest_segment = Self::find_closest_segment(
             &self.paths,
@@ -645,16 +741,23 @@ impl EditSession {
     }
 
     /// Convert a path to hit test candidates (for point hit testing)
+    ///
+    /// The offset_x parameter allows translating points in design space before
+    /// converting to screen coordinates. This is used for active sorts in text
+    /// buffers that aren't positioned at x=0.
     fn path_to_hit_candidates(
         path: &Path,
         viewport: &ViewPort,
+        offset_x: f64,
     ) -> Vec<(crate::entity_id::EntityId, Point, bool)> {
         match path {
             Path::Cubic(cubic) => cubic
                 .points()
                 .iter()
                 .map(|pt| {
-                    let screen_pt = viewport.to_screen(pt.point);
+                    // Apply x-offset in design space before converting to screen
+                    let offset_point = Point::new(pt.point.x + offset_x, pt.point.y);
+                    let screen_pt = viewport.to_screen(offset_point);
                     (pt.id, screen_pt, pt.is_on_curve())
                 })
                 .collect(),
@@ -662,7 +765,9 @@ impl EditSession {
                 .points()
                 .iter()
                 .map(|pt| {
-                    let screen_pt = viewport.to_screen(pt.point);
+                    // Apply x-offset in design space before converting to screen
+                    let offset_point = Point::new(pt.point.x + offset_x, pt.point.y);
+                    let screen_pt = viewport.to_screen(offset_point);
                     (pt.id, screen_pt, pt.is_on_curve())
                 })
                 .collect(),
@@ -670,7 +775,9 @@ impl EditSession {
                 .points()
                 .iter()
                 .map(|pt| {
-                    let screen_pt = viewport.to_screen(pt.point);
+                    // Apply x-offset in design space before converting to screen
+                    let offset_point = Point::new(pt.point.x + offset_x, pt.point.y);
+                    let screen_pt = viewport.to_screen(offset_point);
                     (pt.id, screen_pt, pt.is_on_curve())
                 })
                 .collect(),

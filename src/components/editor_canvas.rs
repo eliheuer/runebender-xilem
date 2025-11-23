@@ -261,6 +261,20 @@ impl Widget for EditorWidget {
             // Text buffer rendering: render multiple sorts
             // This is shown regardless of which tool is active
             self.render_text_buffer(scene, &transform, is_preview_mode);
+
+            // Draw tool overlays (e.g., selection rectangle for marquee, pen preview)
+            // Temporarily take ownership of the tool to call paint (requires &mut)
+            if !is_preview_mode {
+                let mut tool = std::mem::replace(
+                    &mut self.session.current_tool,
+                    crate::tools::ToolBox::for_id(
+                        crate::tools::ToolId::Select,
+                    ),
+                );
+                tool.paint(scene, &self.session, &transform);
+                self.session.current_tool = tool;
+            }
+
             return;
         }
 
@@ -937,19 +951,31 @@ impl EditorWidget {
             .map(|contour| crate::path::Path::from_contour(contour))
             .collect();
 
+        // Calculate x-offset for this sort by summing advance widths of all previous sorts
+        let mut x_offset = 0.0;
+        for i in 0..sort_index {
+            if let Some(sort) = buffer.get(i) {
+                if let crate::sort::SortKind::Glyph { advance_width, .. } = &sort.kind {
+                    x_offset += advance_width;
+                }
+            }
+        }
+
         // Update session state
         self.session.paths = std::sync::Arc::new(paths);
         self.session.active_sort_index = Some(sort_index);
         self.session.active_sort_name = Some(glyph_name);
         self.session.active_sort_unicode = unicode;
+        self.session.active_sort_x_offset = x_offset;
 
         // Update buffer to mark this sort as active
         buffer.set_active_sort(sort_index);
 
         tracing::info!(
-            "Sort {} activated with {} paths loaded",
+            "Sort {} activated with {} paths loaded, x_offset={}",
             sort_index,
-            self.session.paths.len()
+            self.session.paths.len(),
+            x_offset
         );
     }
 
@@ -988,6 +1014,13 @@ impl EditorWidget {
             if let Some(sort_index) = self.find_sort_at_position(design_pos) {
                 tracing::info!("Double-click detected on sort {}", sort_index);
                 self.activate_sort(sort_index);
+
+                // Emit SessionUpdate so AppState gets the updated session with new paths
+                ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                    session: self.session.clone(),
+                    save_requested: false,
+                });
+
                 ctx.request_render();
                 return; // Don't dispatch to tool
             }
@@ -2242,14 +2275,23 @@ impl<State: 'static, F: Fn(&mut State, EditSession, bool) + 'static>
             // Get mutable access to the widget
             let mut widget = element.downcast::<EditorWidget>();
 
+            // Preserve viewport state before updating session
+            let old_viewport = widget.widget.session.viewport.clone();
+            let old_viewport_initialized = widget.widget.session.viewport_initialized;
+
             // Update the session, but preserve:
             // - Mouse state (to avoid breaking active drag
             //   operations)
             // - Undo state
             // - Canvas size
+            // - Viewport state (to avoid re-initialization and flickering)
             // This allows tool changes and other session updates to
             // take effect
             widget.widget.session = (*self.session).clone();
+
+            // Restore viewport state
+            widget.widget.session.viewport = old_viewport;
+            widget.widget.session.viewport_initialized = old_viewport_initialized;
 
             widget.ctx.request_render();
         }
