@@ -62,6 +62,12 @@ pub struct EditorWidget {
 
     /// Text cursor for text editing mode
     text_cursor: TextCursor,
+
+    /// Last click time for double-click detection
+    last_click_time: Option<std::time::Instant>,
+
+    /// Last click position for double-click detection
+    last_click_position: Option<Point>,
 }
 
 impl EditorWidget {
@@ -78,6 +84,8 @@ impl EditorWidget {
             previous_tool: None,
             drag_update_counter: 0,
             text_cursor: TextCursor::new(),
+            last_click_time: None,
+            last_click_position: None,
         }
     }
 
@@ -441,9 +449,12 @@ impl Widget for EditorWidget {
         _props: &PropertiesRef<'_>,
         node: &mut Node,
     ) {
+        let glyph_label = self.session.active_sort_name
+            .as_deref()
+            .unwrap_or("(no active sort)");
         node.set_label(format!(
             "Editing glyph: {}",
-            self.session.glyph_name
+            glyph_label
         ));
     }
 
@@ -583,39 +594,37 @@ impl EditorWidget {
     fn render_active_sort(
         &self,
         scene: &mut Scene,
-        glyph_name: &str,
+        _glyph_name: &str,
         position: Point,
         transform: &Affine,
     ) {
-        // Load glyph paths from workspace
-        // For now, we'll use the current session paths if the glyph name matches
-        // TODO Phase 8: Load paths for any glyph by name
-        if glyph_name == self.session.glyph_name {
-            // Apply position offset
-            let sort_transform = *transform * Affine::translate(position.to_vec2());
+        // Render the active sort using session.paths (the editable version)
+        // The caller already verified this is the active sort via sort.is_active
 
-            // Render path stroke
-            let mut glyph_path = kurbo::BezPath::new();
-            for path in self.session.paths.iter() {
-                glyph_path.extend(path.to_bezpath());
-            }
+        // Apply position offset
+        let sort_transform = *transform * Affine::translate(position.to_vec2());
 
-            if !glyph_path.is_empty() {
-                let transformed_path = sort_transform * &glyph_path;
-                let stroke = Stroke::new(theme::size::PATH_STROKE_WIDTH);
-                let brush = Brush::Solid(theme::path::STROKE);
-                scene.stroke(
-                    &stroke,
-                    Affine::IDENTITY,
-                    &brush,
-                    None,
-                    &transformed_path,
-                );
+        // Render path stroke
+        let mut glyph_path = kurbo::BezPath::new();
+        for path in self.session.paths.iter() {
+            glyph_path.extend(path.to_bezpath());
+        }
 
-                // Draw control points and handles
-                // Note: This uses session paths which already have the correct structure
-                draw_paths_with_points(scene, &self.session, &sort_transform);
-            }
+        if !glyph_path.is_empty() {
+            let transformed_path = sort_transform * &glyph_path;
+            let stroke = Stroke::new(theme::size::PATH_STROKE_WIDTH);
+            let brush = Brush::Solid(theme::path::STROKE);
+            scene.stroke(
+                &stroke,
+                Affine::IDENTITY,
+                &brush,
+                None,
+                &transformed_path,
+            );
+
+            // Draw control points and handles
+            // Note: This uses session paths which already have the correct structure
+            draw_paths_with_points(scene, &self.session, &sort_transform);
         }
     }
 
@@ -803,6 +812,147 @@ impl EditorWidget {
         draw_hline(scene, self.session.ascender);
     }
 
+    // ===== Phase 7: Active Sort Toggling =====
+
+    /// Check if the current click is a double-click
+    ///
+    /// Returns true if the click is within 500ms and 10px of the last click
+    fn is_double_click(&mut self, position: Point) -> bool {
+        const DOUBLE_CLICK_TIME_MS: u128 = 500;
+        const DOUBLE_CLICK_DISTANCE_PX: f64 = 10.0;
+
+        let now = std::time::Instant::now();
+
+        let is_double = if let (Some(last_time), Some(last_pos)) =
+            (self.last_click_time, self.last_click_position)
+        {
+            let time_diff = now.duration_since(last_time).as_millis();
+            let distance = ((position.x - last_pos.x).powi(2)
+                + (position.y - last_pos.y).powi(2))
+            .sqrt();
+
+            time_diff < DOUBLE_CLICK_TIME_MS
+                && distance < DOUBLE_CLICK_DISTANCE_PX
+        } else {
+            false
+        };
+
+        // Update tracking (even if this is a double-click, it could be triple-click next)
+        self.last_click_time = Some(now);
+        self.last_click_position = Some(position);
+
+        is_double
+    }
+
+    /// Find which sort is at the given design-space position
+    ///
+    /// Returns the index of the sort, or None if no sort was clicked
+    fn find_sort_at_position(&self, position: Point) -> Option<usize> {
+        let buffer = self.session.text_buffer.as_ref()?;
+
+        let mut x_offset = 0.0;
+        let mut baseline_y = 0.0;
+        let upm_height = self.session.ascender - self.session.descender;
+
+        for (index, sort) in buffer.iter().enumerate() {
+            match &sort.kind {
+                crate::sort::SortKind::Glyph { advance_width, .. } => {
+                    // Create bounding box for this sort
+                    let sort_rect = kurbo::Rect::new(
+                        x_offset,
+                        baseline_y + self.session.descender,
+                        x_offset + advance_width,
+                        baseline_y + self.session.ascender,
+                    );
+
+                    if sort_rect.contains(position) {
+                        return Some(index);
+                    }
+
+                    x_offset += advance_width;
+                }
+                crate::sort::SortKind::LineBreak => {
+                    x_offset = 0.0;
+                    baseline_y -= upm_height;
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Activate a sort for editing
+    ///
+    /// This loads the sort's paths into session.paths, updates the active_sort_* fields,
+    /// and sets the is_active flag in the buffer.
+    fn activate_sort(&mut self, sort_index: usize) {
+        let buffer = match &mut self.session.text_buffer {
+            Some(buf) => buf,
+            None => return,
+        };
+
+        // Get the sort at this index
+        let sort = match buffer.get(sort_index) {
+            Some(s) => s,
+            None => return,
+        };
+
+        // Get glyph name and unicode
+        let (glyph_name, unicode) = match &sort.kind {
+            crate::sort::SortKind::Glyph { name, codepoint, .. } => {
+                let unicode_str = codepoint.map(|c| format!("U+{:04X}", c as u32));
+                (name.clone(), unicode_str)
+            }
+            crate::sort::SortKind::LineBreak => return, // Can't activate line breaks
+        };
+
+        tracing::info!(
+            "Activating sort {} (glyph: {}, unicode: {:?})",
+            sort_index,
+            glyph_name,
+            unicode
+        );
+
+        // Load the glyph's paths from the workspace
+        let workspace = match &self.session.workspace {
+            Some(ws) => ws,
+            None => {
+                tracing::warn!("No workspace available to load glyph paths");
+                return;
+            }
+        };
+
+        let glyph = match workspace.glyphs.get(&glyph_name) {
+            Some(g) => g,
+            None => {
+                tracing::warn!("Glyph '{}' not found in workspace", glyph_name);
+                return;
+            }
+        };
+
+        // Convert contours to paths
+        let paths: Vec<crate::path::Path> = glyph
+            .contours
+            .iter()
+            .map(|contour| crate::path::Path::from_contour(contour))
+            .collect();
+
+        // Update session state
+        self.session.paths = std::sync::Arc::new(paths);
+        self.session.active_sort_index = Some(sort_index);
+        self.session.active_sort_name = Some(glyph_name);
+        self.session.active_sort_unicode = unicode;
+
+        // Update buffer to mark this sort as active
+        buffer.set_active_sort(sort_index);
+
+        tracing::info!(
+            "Sort {} activated with {} paths loaded",
+            sort_index,
+            self.session.paths.len()
+        );
+    }
+
     /// Handle pointer down event
     fn handle_pointer_down(
         &mut self,
@@ -827,6 +977,21 @@ impl EditorWidget {
         ctx.capture_pointer();
 
         let local_pos = ctx.local_position(state.position);
+
+        // Phase 7: Check for double-click on a sort to activate it
+        // Convert local position to design space
+        let design_pos = self.session.viewport.screen_to_design(local_pos);
+
+        // Check if this is a double-click
+        if self.is_double_click(design_pos) {
+            // Check if we clicked on a sort
+            if let Some(sort_index) = self.find_sort_at_position(design_pos) {
+                tracing::info!("Double-click detected on sort {}", sort_index);
+                self.activate_sort(sort_index);
+                ctx.request_render();
+                return; // Don't dispatch to tool
+            }
+        }
 
         // Extract modifier keys from pointer state
         // state.modifiers is keyboard_types::Modifiers from

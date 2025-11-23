@@ -37,7 +37,7 @@ pub fn editor_tab(
     };
 
     let current_tool = session.current_tool.id();
-    let glyph_name = session.glyph_name.clone();
+    let glyph_name = session.active_sort_name.clone().unwrap_or_else(|| "".to_string());
     let session_arc = Arc::new(session.clone());
 
     const MARGIN: f64 = 16.0; // Fixed 16px margin for all panels

@@ -18,24 +18,25 @@ use std::sync::Arc;
 // CoordinateSelection has been moved to components::coordinate_panel
 // module
 
-/// Editing session for a single glyph
+/// Editing session for text buffer editing
 ///
-/// This holds all the state needed to edit a glyph, including the
-/// outline data, selection, viewport, and metadata.
+/// This holds all the state needed to edit a text buffer, including the
+/// outline data for the active sort, selection, viewport, and metadata.
+///
+/// The session is no longer tied to a specific glyph - instead it tracks
+/// which sort in the buffer is currently active for editing.
 #[derive(Debug, Clone)]
 pub struct EditSession {
-
-    /// Name of the glyph being edited
-    pub glyph_name: String,
 
     /// Path to the UFO file
     pub ufo_path: std::path::PathBuf,
 
-    /// The original glyph data (for metadata, unicode, etc.)
+    /// The original glyph data for the active sort (for metadata, unicode, etc.)
+    /// None when no sort is active
     pub glyph: Arc<Glyph>,
 
-    /// The editable path representation (converted from glyph
-    /// contours)
+    /// The editable path representation (converted from active sort's glyph contours)
+    /// Empty when no sort is active
     pub paths: Arc<Vec<Path>>,
 
     /// Currently selected entities (points, paths, etc.)
@@ -67,17 +68,30 @@ pub struct EditSession {
     pub text_buffer: Option<SortBuffer>,
 
     /// Whether text editing mode is currently active
-    /// When true, render and interact with text buffer
-    /// When false, use traditional single-glyph editing
+    /// When true, render and interact with text buffer (cursor, typing, etc.)
+    /// When false, use traditional single-glyph editing (select/pen tools)
     pub text_mode_active: bool,
 
     /// Reference to the workspace for character-to-glyph mapping (Phase 5+)
     /// Optional because not all sessions need text editing capabilities
     pub workspace: Option<Arc<Workspace>>,
+
+    /// Index of the active sort in the buffer
+    /// None when no sort is active (e.g., empty buffer)
+    pub active_sort_index: Option<usize>,
+
+    /// Unicode value of the active sort (e.g., "U+0052" for "R")
+    /// None when no sort is active
+    pub active_sort_unicode: Option<String>,
+
+    /// Glyph name of the active sort (e.g., "R")
+    /// Used as backup when unicode is not available
+    /// None when no sort is active
+    pub active_sort_name: Option<String>,
 }
 
 impl EditSession {
-    /// Create a new editing session for a glyph
+    /// Create a new editing session for a glyph (legacy, use new_with_text_buffer instead)
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         glyph_name: String,
@@ -96,8 +110,12 @@ impl EditSession {
             .map(Path::from_contour)
             .collect();
 
+        // Get unicode for display
+        let unicode_value = glyph.codepoints.first().map(|cp| {
+            format!("U+{:04X}", *cp as u32)
+        });
+
         Self {
-            glyph_name,
             ufo_path,
             glyph: Arc::new(glyph),
             paths: Arc::new(paths),
@@ -114,13 +132,16 @@ impl EditSession {
             text_buffer: None,
             text_mode_active: false,
             workspace: None,
+            active_sort_index: None,  // No buffer, no active sort
+            active_sort_unicode: unicode_value,
+            active_sort_name: Some(glyph_name),
         }
     }
 
     /// Create a new editing session with text buffer initialized
     ///
     /// This creates a session with a text buffer containing the initial glyph as the first sort.
-    /// The session starts in single-glyph mode (text_mode_active = false).
+    /// The session starts in select mode (text_mode_active = false) with the first sort active.
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_text_buffer(
         glyph_name: String,
@@ -139,6 +160,11 @@ impl EditSession {
             .map(Path::from_contour)
             .collect();
 
+        // Get unicode for display
+        let unicode_value = glyph.codepoints.first().map(|cp| {
+            format!("U+{:04X}", *cp as u32)
+        });
+
         // Create text buffer with initial sort
         let mut buffer = SortBuffer::new();
         let initial_sort = crate::sort::Sort::new_glyph(
@@ -150,7 +176,6 @@ impl EditSession {
         buffer.insert(initial_sort);
 
         Self {
-            glyph_name,
             ufo_path,
             glyph: Arc::new(glyph),
             paths: Arc::new(paths),
@@ -165,8 +190,11 @@ impl EditSession {
             x_height,
             cap_height,
             text_buffer: Some(buffer),
-            text_mode_active: false, // Start in single-glyph mode
+            text_mode_active: false, // Start in select mode (not text mode)
             workspace: None,
+            active_sort_index: Some(0), // First sort is active
+            active_sort_unicode: unicode_value,
+            active_sort_name: Some(glyph_name),
         }
     }
 

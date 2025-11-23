@@ -209,16 +209,19 @@ impl AppState {
 
         let updated_glyph = session.to_glyph();
 
-        // Debug logging only for glyph "a"
-        if session.glyph_name == "a" {
-            println!(
-                "[close_editor] Synced glyph 'a' with {} contours to \
-                 workspace",
-                updated_glyph.contours.len()
-            );
-        }
+        // Save to the active sort's glyph (if there is one)
+        if let Some(active_name) = &session.active_sort_name {
+            // Debug logging only for glyph "a"
+            if active_name == "a" {
+                println!(
+                    "[close_editor] Synced glyph 'a' with {} contours to \
+                     workspace",
+                    updated_glyph.contours.len()
+                );
+            }
 
-        workspace.update_glyph(&session.glyph_name, updated_glyph);
+            workspace.update_glyph(active_name, updated_glyph);
+        }
     }
 
     /// Set the tool for the current editor session
@@ -282,8 +285,11 @@ impl AppState {
             None => return,
         };
 
-        let updated_glyph = session.to_glyph();
-        workspace.update_glyph(&session.glyph_name, updated_glyph);
+        // Save to the active sort's glyph (if there is one)
+        if let Some(active_name) = &session.active_sort_name {
+            let updated_glyph = session.to_glyph();
+            workspace.update_glyph(active_name, updated_glyph);
+        }
     }
 
     /// Save the current workspace to disk
