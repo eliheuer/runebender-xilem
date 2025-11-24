@@ -93,9 +93,9 @@ pub fn editor_tab(
         transformed(glyph_preview_pane(session_arc.clone(), glyph_name.clone()))
             .translate((MARGIN, -MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_LEFT)),
-        // Bottom-center-top: active glyph panel (above text buffer, 8px gap)
+        // Bottom-center-top: active glyph panel (above text buffer, standard margin)
         transformed(active_glyph_panel_centered(session_arc.clone(), glyph_name.clone()))
-            .translate((0.0, -(MARGIN + 100.0 + 8.0)))
+            .translate((0.0, -(MARGIN + 100.0 + MARGIN)))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
         // Bottom-center-bottom: text buffer preview panel
         transformed(text_buffer_preview_pane_centered(session_arc.clone()))
@@ -254,9 +254,10 @@ fn active_glyph_panel_centered(
             .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
         ).width(140.px()),
 
-        // Center column: Width (large, editable)
+        // Center column: Width (editable, aligned to bottom)
         sized_box(
             flex_col((
+                label("").text_size(20.0), // Spacer to align with LSB/RSB labels
                 text_input(
                     format!("{:.0}", width),
                     |state: &mut AppState, new_value| {
@@ -264,6 +265,7 @@ fn active_glyph_panel_centered(
                     }
                 ),
             ))
+            .gap(2.px())
             .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
         ).width(120.px()),
 
