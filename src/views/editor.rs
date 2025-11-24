@@ -93,12 +93,12 @@ pub fn editor_tab(
         transformed(glyph_preview_pane(session_arc.clone(), glyph_name.clone()))
             .translate((MARGIN, -MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_LEFT)),
-        // Bottom-center-top: active glyph panel (above text buffer, standard margin)
-        transformed(active_glyph_panel_centered(session_arc.clone(), glyph_name.clone()))
+        // Bottom-center-top: text buffer preview panel (above active glyph, standard margin)
+        transformed(text_buffer_preview_pane_centered(session_arc.clone()))
             .translate((0.0, -(MARGIN + 100.0 + MARGIN)))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
-        // Bottom-center-bottom: text buffer preview panel
-        transformed(text_buffer_preview_pane_centered(session_arc.clone()))
+        // Bottom-center-bottom: active glyph panel
+        transformed(active_glyph_panel_centered(session_arc.clone(), glyph_name.clone()))
             .translate((0.0, -MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
         // Bottom-right: coordinate panel (locked to corner like workspace toolbar)
@@ -380,7 +380,7 @@ fn text_buffer_preview_pane_centered(
     const PANEL_HEIGHT: f64 = 100.0;
     // Width calculation for centered panel: window width - side panels - margins - gaps
     // At 1200px window: (1200 - 240*2 - 16*4) = 640px leaves 16px gaps
-    const PANEL_WIDTH: f64 = 488.0; // Wider panel for text buffer preview, works at ~1050px+ window width
+    const PANEL_WIDTH: f64 = 640.0; // Extended width for text buffer preview (now on top)
 
     // Only show if text buffer exists
     if session.text_buffer.is_none() {
@@ -444,9 +444,10 @@ fn text_buffer_preview_pane_centered(
         )
         .width(PANEL_WIDTH.px())
         .height(PANEL_HEIGHT.px())
-        .background_color(theme::panel::BACKGROUND)
-        .border_color(theme::panel::OUTLINE)
-        .border_width(1.5)
-        .corner_radius(8.0),
+        // Background container temporarily disabled for wider text display
+        // .background_color(theme::panel::BACKGROUND)
+        // .border_color(theme::panel::OUTLINE)
+        // .border_width(1.5)
+        // .corner_radius(8.0),
     )
 }
