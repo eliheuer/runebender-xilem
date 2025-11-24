@@ -563,7 +563,7 @@ where
             .gap(0.px()),
     )
     .width(240.px())
-    .height(100.px())
+    .height(140.px())
     .background_color(crate::theme::panel::BACKGROUND)
     .border_color(crate::theme::panel::OUTLINE)
     .border_width(1.5)

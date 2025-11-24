@@ -239,6 +239,7 @@ fn active_glyph_panel_centered(
                     // TODO: implement glyph name editing
                 }
             )
+            .text_alignment(parley::Alignment::Center)
         ).width(346.px()),
         sized_box(
             text_input(
@@ -247,6 +248,7 @@ fn active_glyph_panel_centered(
                     // TODO: implement unicode editing
                 }
             )
+            .text_alignment(parley::Alignment::Center)
         ).width(110.px()),
     ))
     .gap(8.px())
@@ -262,6 +264,7 @@ fn active_glyph_panel_centered(
                     // TODO: implement left kern editing
                 }
             )
+            .text_alignment(parley::Alignment::Center)
         ).width(110.px()),
         sized_box(
             text_input(
@@ -270,6 +273,7 @@ fn active_glyph_panel_centered(
                     // TODO: implement LSB editing
                 }
             )
+            .text_alignment(parley::Alignment::Center)
         ).width(110.px()),
         sized_box(
             text_input(
@@ -278,6 +282,7 @@ fn active_glyph_panel_centered(
                     // TODO: implement RSB editing
                 }
             )
+            .text_alignment(parley::Alignment::Center)
         ).width(110.px()),
         sized_box(
             text_input(
@@ -286,6 +291,7 @@ fn active_glyph_panel_centered(
                     // TODO: implement right kern editing
                 }
             )
+            .text_alignment(parley::Alignment::Center)
         ).width(110.px()),
     ))
     .gap(8.px())
@@ -302,6 +308,7 @@ fn active_glyph_panel_centered(
                 }
             )
             .placeholder("Group")
+            .text_alignment(parley::Alignment::Center)
         ).width(149.px()),
         sized_box(
             text_input(
@@ -310,6 +317,7 @@ fn active_glyph_panel_centered(
                     state.update_glyph_width(new_value);
                 }
             )
+            .text_alignment(parley::Alignment::Center)
         ).width(150.px()),
         sized_box(
             text_input(
@@ -319,6 +327,7 @@ fn active_glyph_panel_centered(
                 }
             )
             .placeholder("Group")
+            .text_alignment(parley::Alignment::Center)
         ).width(149.px()),
     ))
     .gap(8.px())
