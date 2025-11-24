@@ -10,8 +10,8 @@ use masonry::properties::types::{AsUnit, UnitPoint};
 use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::{
-    ChildAlignment, ZStackExt, flex_col, flex_row, label, sized_box, transformed,
-    zstack,
+    ChildAlignment, ZStackExt, flex_col, flex_row, label, sized_box, text_input,
+    transformed, zstack,
 };
 use xilem::WidgetView;
 
@@ -93,7 +93,11 @@ pub fn editor_tab(
         transformed(glyph_preview_pane(session_arc.clone(), glyph_name.clone()))
             .translate((MARGIN, -MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_LEFT)),
-        // Bottom-center: text buffer preview panel
+        // Bottom-center-top: active glyph panel (above text buffer, 8px gap)
+        transformed(active_glyph_panel_centered(session_arc.clone(), glyph_name.clone()))
+            .translate((0.0, -(MARGIN + 100.0 + 8.0)))
+            .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
+        // Bottom-center-bottom: text buffer preview panel
         transformed(text_buffer_preview_pane_centered(session_arc.clone()))
             .translate((0.0, -MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
@@ -195,6 +199,105 @@ fn glyph_preview_pane(
     .border_color(theme::panel::OUTLINE)
     .border_width(1.5)
     .corner_radius(8.0)
+}
+
+/// Active glyph panel showing editable metrics (Glyphs app style)
+/// Only shown when a glyph is active
+fn active_glyph_panel_centered(
+    session: Arc<crate::edit_session::EditSession>,
+    glyph_name: String,
+) -> impl WidgetView<AppState> + use<> {
+    const PANEL_HEIGHT: f64 = 100.0;
+    const PANEL_WIDTH: f64 = 488.0; // Match text buffer preview width
+
+    // Only show if we have an active glyph
+    if glyph_name.is_empty() {
+        return Either::B(sized_box(label("")).width(0.px()).height(0.px()));
+    }
+
+    // Get current values
+    let width = session.glyph.width;
+    let lsb = session.glyph.left_side_bearing();
+    let rsb = session.glyph.right_side_bearing();
+    let left_group = session.glyph.left_group.as_ref().map(|s| s.as_str()).unwrap_or("");
+    let right_group = session.glyph.right_group.as_ref().map(|s| s.as_str()).unwrap_or("");
+
+    // Format Unicode
+    let unicode_display = if let Some(first_char) = session.glyph.codepoints.first() {
+        format!("{:04X}", *first_char as u32)
+    } else {
+        String::from("")
+    };
+
+    // Top row: Name and Unicode
+    let top_row = flex_row((
+        label(glyph_name).text_size(16.0).color(theme::text::PRIMARY),
+        label(unicode_display).text_size(16.0).color(theme::text::PRIMARY),
+    ))
+    .main_axis_alignment(xilem::view::MainAxisAlignment::SpaceBetween);
+
+    // Bottom section: 3 columns (LSB, Width, RSB)
+    let metrics_row = flex_row((
+        // Left column: LSB + Left Group
+        sized_box(
+            flex_col((
+                label(format!("{:.0}", lsb)).text_size(20.0).color(theme::text::PRIMARY),
+                text_input(
+                    left_group.to_string(),
+                    |state: &mut AppState, new_value| {
+                        state.update_left_group(new_value);
+                    }
+                )
+                .placeholder("Group"),
+            ))
+            .gap(2.px())
+            .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
+        ).width(140.px()),
+
+        // Center column: Width (large, editable)
+        sized_box(
+            flex_col((
+                text_input(
+                    format!("{:.0}", width),
+                    |state: &mut AppState, new_value| {
+                        state.update_glyph_width(new_value);
+                    }
+                ),
+            ))
+            .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
+        ).width(120.px()),
+
+        // Right column: RSB + Right Group
+        sized_box(
+            flex_col((
+                label(format!("{:.0}", rsb)).text_size(20.0).color(theme::text::PRIMARY),
+                text_input(
+                    right_group.to_string(),
+                    |state: &mut AppState, new_value| {
+                        state.update_right_group(new_value);
+                    }
+                )
+                .placeholder("Group"),
+            ))
+            .gap(2.px())
+            .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
+        ).width(140.px()),
+    ))
+    .main_axis_alignment(xilem::view::MainAxisAlignment::SpaceEvenly)
+    .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center);
+
+    // Combine rows
+    let content = flex_col((top_row, metrics_row))
+        .gap(4.px())
+        .main_axis_alignment(xilem::view::MainAxisAlignment::Center);
+
+    Either::A(sized_box(content)
+        .width(PANEL_WIDTH.px())
+        .height(PANEL_HEIGHT.px())
+        .background_color(theme::panel::BACKGROUND)
+        .border_color(theme::panel::OUTLINE)
+        .border_width(1.5)
+        .corner_radius(8.0))
 }
 
 // ===== Preview Pane Helpers =====
