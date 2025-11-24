@@ -229,77 +229,116 @@ fn active_glyph_panel_centered(
         String::from("")
     };
 
-    // Top row: Name and Unicode
+    // Row 1 (Top): Name and Unicode (both editable)
+    // Widths: 340 + 8 gap + 116 = 464px
     let top_row = flex_row((
-        label(glyph_name).text_size(16.0).color(theme::text::PRIMARY),
-        label(unicode_display).text_size(16.0).color(theme::text::PRIMARY),
+        sized_box(
+            text_input(
+                glyph_name.clone(),
+                |_state: &mut AppState, _new_value| {
+                    // TODO: implement glyph name editing
+                }
+            )
+        ).width(340.px()),
+        sized_box(
+            text_input(
+                unicode_display,
+                |_state: &mut AppState, _new_value| {
+                    // TODO: implement unicode editing
+                }
+            )
+        ).width(116.px()),
     ))
-    .main_axis_alignment(xilem::view::MainAxisAlignment::SpaceBetween);
+    .gap(8.px())
+    .main_axis_alignment(xilem::view::MainAxisAlignment::Start);
 
-    // Bottom section: 3 columns (LSB, Width, RSB)
-    let metrics_row = flex_row((
-        // Left column: LSB + Left Group
+    // Row 2 (Middle): Left kern, LSB, RSB, Right kern (all editable)
+    // Widths: 4 × 110 + 3 × 8 gaps = 464px
+    let middle_row = flex_row((
         sized_box(
-            flex_col((
-                label(format!("{:.0}", lsb)).text_size(20.0).color(theme::text::PRIMARY),
-                text_input(
-                    left_group.to_string(),
-                    |state: &mut AppState, new_value| {
-                        state.update_left_group(new_value);
-                    }
-                )
-                .placeholder("Group"),
-            ))
-            .gap(2.px())
-            .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
-        ).width(140.px()),
-
-        // Center column: Width (editable, aligned to bottom)
+            text_input(
+                "—".to_string(), // Left kern placeholder
+                |_state: &mut AppState, _new_value| {
+                    // TODO: implement left kern editing
+                }
+            )
+        ).width(110.px()),
         sized_box(
-            flex_col((
-                label("").text_size(20.0), // Spacer to align with LSB/RSB labels
-                text_input(
-                    format!("{:.0}", width),
-                    |state: &mut AppState, new_value| {
-                        state.update_glyph_width(new_value);
-                    }
-                ),
-            ))
-            .gap(2.px())
-            .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
-        ).width(120.px()),
-
-        // Right column: RSB + Right Group
+            text_input(
+                format!("{:.0}", lsb),
+                |_state: &mut AppState, _new_value| {
+                    // TODO: implement LSB editing
+                }
+            )
+        ).width(110.px()),
         sized_box(
-            flex_col((
-                label(format!("{:.0}", rsb)).text_size(20.0).color(theme::text::PRIMARY),
-                text_input(
-                    right_group.to_string(),
-                    |state: &mut AppState, new_value| {
-                        state.update_right_group(new_value);
-                    }
-                )
-                .placeholder("Group"),
-            ))
-            .gap(2.px())
-            .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
-        ).width(140.px()),
+            text_input(
+                format!("{:.0}", rsb),
+                |_state: &mut AppState, _new_value| {
+                    // TODO: implement RSB editing
+                }
+            )
+        ).width(110.px()),
+        sized_box(
+            text_input(
+                "—".to_string(), // Right kern placeholder
+                |_state: &mut AppState, _new_value| {
+                    // TODO: implement right kern editing
+                }
+            )
+        ).width(110.px()),
     ))
-    .main_axis_alignment(xilem::view::MainAxisAlignment::SpaceEvenly)
-    .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center);
+    .gap(8.px())
+    .main_axis_alignment(xilem::view::MainAxisAlignment::Start);
 
-    // Combine rows
-    let content = flex_col((top_row, metrics_row))
-        .gap(4.px())
+    // Row 3 (Bottom): Left kern group, Width, Right kern group (all editable)
+    // Widths: 149 + 8 + 150 + 8 + 149 = 464px
+    let bottom_row = flex_row((
+        sized_box(
+            text_input(
+                left_group.to_string(),
+                |state: &mut AppState, new_value| {
+                    state.update_left_group(new_value);
+                }
+            )
+            .placeholder("Group")
+        ).width(149.px()),
+        sized_box(
+            text_input(
+                format!("{:.0}", width),
+                |state: &mut AppState, new_value| {
+                    state.update_glyph_width(new_value);
+                }
+            )
+        ).width(150.px()),
+        sized_box(
+            text_input(
+                right_group.to_string(),
+                |state: &mut AppState, new_value| {
+                    state.update_right_group(new_value);
+                }
+            )
+            .placeholder("Group")
+        ).width(149.px()),
+    ))
+    .gap(8.px())
+    .main_axis_alignment(xilem::view::MainAxisAlignment::Start);
+
+    // Combine all three rows with consistent 8px vertical gap
+    let content = flex_col((top_row, middle_row, bottom_row))
+        .gap(8.px())
         .main_axis_alignment(xilem::view::MainAxisAlignment::Center);
 
-    Either::A(sized_box(content)
-        .width(PANEL_WIDTH.px())
-        .height(PANEL_HEIGHT.px())
-        .background_color(theme::panel::BACKGROUND)
-        .border_color(theme::panel::OUTLINE)
-        .border_width(1.5)
-        .corner_radius(8.0))
+    Either::A(
+        sized_box(content)
+            .width(PANEL_WIDTH.px())
+            .height(PANEL_HEIGHT.px())
+            .background_color(theme::panel::BACKGROUND)
+            .border_color(theme::panel::OUTLINE)
+            .border_width(1.5)
+            .corner_radius(8.0)
+            .padding(12.0)
+    )
 }
 
 // ===== Preview Pane Helpers =====
@@ -435,12 +474,15 @@ fn text_buffer_preview_pane_centered(
     let preview_size = 60.0; // Smaller than glyph preview
     let upm = session.ascender - session.descender;
 
-    // Render the combined path as a glyph view, centered vertically and horizontally
+    // Render the combined path as a glyph view, aligned to bottom
     Either::A(
         sized_box(
-            glyph_view(combined_path, preview_size, preview_size, upm)
-                .color(theme::panel::GLYPH_PREVIEW)
-                .baseline_offset(0.25), // Center vertically with proper baseline positioning
+            flex_col((
+                glyph_view(combined_path, preview_size, preview_size, upm)
+                    .color(theme::panel::GLYPH_PREVIEW)
+                    .baseline_offset(0.0), // Bottom alignment
+            ))
+            .main_axis_alignment(xilem::view::MainAxisAlignment::End)
         )
         .width(PANEL_WIDTH.px())
         .height(PANEL_HEIGHT.px())
