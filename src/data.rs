@@ -319,6 +319,77 @@ impl AppState {
             }
         }
     }
+
+    /// Update the glyph's advance width
+    pub fn update_glyph_width(&mut self, new_width: String) {
+        // Parse the width value
+        if let Ok(width) = new_width.parse::<f64>() {
+            let session = match &mut self.editor_session {
+                Some(s) => s,
+                None => return,
+            };
+
+            // Update the glyph in the session
+            let glyph = Arc::make_mut(&mut session.glyph);
+            glyph.width = width;
+
+            // Sync to workspace (inline to avoid borrow issues)
+            if let Some(workspace_arc) = &self.workspace {
+                if let Some(active_name) = &session.active_sort_name {
+                    let updated_glyph = session.to_glyph();
+                    workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
+                }
+            }
+        }
+    }
+
+    /// Update the glyph's left kerning group
+    pub fn update_left_group(&mut self, new_group: String) {
+        let session = match &mut self.editor_session {
+            Some(s) => s,
+            None => return,
+        };
+
+        // Update the glyph in the session
+        let glyph = Arc::make_mut(&mut session.glyph);
+        glyph.left_group = if new_group.is_empty() || new_group == "-" {
+            None
+        } else {
+            Some(new_group)
+        };
+
+        // Sync to workspace (inline to avoid borrow issues)
+        if let Some(workspace_arc) = &self.workspace {
+            if let Some(active_name) = &session.active_sort_name {
+                let updated_glyph = session.to_glyph();
+                workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
+            }
+        }
+    }
+
+    /// Update the glyph's right kerning group
+    pub fn update_right_group(&mut self, new_group: String) {
+        let session = match &mut self.editor_session {
+            Some(s) => s,
+            None => return,
+        };
+
+        // Update the glyph in the session
+        let glyph = Arc::make_mut(&mut session.glyph);
+        glyph.right_group = if new_group.is_empty() || new_group == "-" {
+            None
+        } else {
+            Some(new_group)
+        };
+
+        // Sync to workspace (inline to avoid borrow issues)
+        if let Some(workspace_arc) = &self.workspace {
+            if let Some(active_name) = &session.active_sort_name {
+                let updated_glyph = session.to_glyph();
+                workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
+            }
+        }
+    }
 }
 
 /// Implement the Xilem AppState trait

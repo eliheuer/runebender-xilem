@@ -20,6 +20,10 @@ pub struct Glyph {
     pub height: Option<f64>,
     pub codepoints: Vec<char>,
     pub contours: Vec<Contour>,
+    /// Left kerning group (e.g., "public.kern1.O")
+    pub left_group: Option<String>,
+    /// Right kerning group (e.g., "public.kern2.O")
+    pub right_group: Option<String>,
 }
 
 /// A contour is a closed path
@@ -48,6 +52,43 @@ pub enum PointType {
     Hyper,
     /// Hyperbezier corner point (on-curve, independent segments)
     HyperCorner,
+}
+
+impl Glyph {
+    /// Calculate the left side bearing (LSB)
+    /// This is the distance from x=0 to the leftmost point in the glyph
+    pub fn left_side_bearing(&self) -> f64 {
+        let min_x = self.bounding_box_min_x();
+        min_x.unwrap_or(0.0)
+    }
+
+    /// Calculate the right side bearing (RSB)
+    /// This is the distance from the rightmost point to the advance width
+    pub fn right_side_bearing(&self) -> f64 {
+        let max_x = self.bounding_box_max_x();
+        match max_x {
+            Some(max_x) => self.width - max_x,
+            None => self.width, // Empty glyph: RSB = width
+        }
+    }
+
+    /// Get the minimum x coordinate from all contour points
+    fn bounding_box_min_x(&self) -> Option<f64> {
+        self.contours
+            .iter()
+            .flat_map(|c| c.points.iter())
+            .map(|p| p.x)
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+    }
+
+    /// Get the maximum x coordinate from all contour points
+    fn bounding_box_max_x(&self) -> Option<f64> {
+        self.contours
+            .iter()
+            .flat_map(|c| c.points.iter())
+            .map(|p| p.x)
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+    }
 }
 
 // ============================================================================
@@ -136,12 +177,22 @@ impl Workspace {
             .map(Self::convert_contour)
             .collect();
 
+        // Extract kerning groups from lib data
+        let left_group = norad_glyph.lib.get("public.kern1")
+            .and_then(|v| v.as_string())
+            .map(|s| s.to_string());
+        let right_group = norad_glyph.lib.get("public.kern2")
+            .and_then(|v| v.as_string())
+            .map(|s| s.to_string());
+
         Glyph {
             name,
             width,
             height: Some(height),
             codepoints,
             contours,
+            left_group,
+            right_group,
         }
     }
 
@@ -296,6 +347,20 @@ impl Workspace {
             .iter()
             .map(Self::to_norad_contour)
             .collect();
+
+        // Save kerning groups to lib data
+        if let Some(left_group) = &glyph.left_group {
+            norad_glyph.lib.insert(
+                "public.kern1".to_string(),
+                left_group.clone().into()
+            );
+        }
+        if let Some(right_group) = &glyph.right_group {
+            norad_glyph.lib.insert(
+                "public.kern2".to_string(),
+                right_group.clone().into()
+            );
+        }
 
         norad_glyph
     }

@@ -698,6 +698,8 @@ impl EditSession {
             height: self.glyph.height,
             codepoints: self.glyph.codepoints.clone(),
             contours,
+            left_group: self.glyph.left_group.clone(),
+            right_group: self.glyph.right_group.clone(),
         }
     }
 
@@ -1474,6 +1476,8 @@ mod tests {
             height: Some(700.0),
             codepoints: vec!['a'],
             contours: vec![],
+            left_group: None,
+            right_group: None,
         }
     }
 

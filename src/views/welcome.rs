@@ -163,6 +163,8 @@ fn create_r_glyph() -> Glyph {
         height: None,
         codepoints: vec!['R'],
         contours,
+        left_group: None,
+        right_group: None,
     }
 }
 
