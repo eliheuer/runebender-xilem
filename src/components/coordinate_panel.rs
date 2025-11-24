@@ -22,7 +22,7 @@ use masonry::vello::Scene;
 
 /// Local constants for the coordinate panel, maybe move to settings?
 const PANEL_WIDTH: f64 = 240.0;
-const PANEL_HEIGHT: f64 = 100.0;
+const PANEL_HEIGHT: f64 = 140.0;
 
 // Import from theme (includes all sizing and color constants)
 use crate::theme::coordinate_panel::*;

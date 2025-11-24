@@ -95,7 +95,7 @@ pub fn editor_tab(
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_LEFT)),
         // Bottom-center-top: text buffer preview panel (above active glyph, standard margin)
         transformed(text_buffer_preview_pane_centered(session_arc.clone()))
-            .translate((0.0, -(MARGIN + 100.0 + MARGIN)))
+            .translate((0.0, -(MARGIN + 140.0 + MARGIN)))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
         // Bottom-center-bottom: active glyph panel
         transformed(active_glyph_panel_centered(session_arc.clone(), glyph_name.clone()))
@@ -150,9 +150,9 @@ fn glyph_preview_pane(
     session: Arc<crate::edit_session::EditSession>,
     glyph_name: String,
 ) -> impl WidgetView<AppState> + use<> {
-    const PANEL_HEIGHT: f64 = 100.0;
+    const PANEL_HEIGHT: f64 = 140.0;
     const PANEL_WIDTH: f64 = 240.0; // Match coordinate panel width
-    const GLYPH_SIZE: f64 = 80.0; // Fit within 100px height with padding
+    const GLYPH_SIZE: f64 = 120.0; // Fit within 140px height with padding
 
     // Get the glyph outline path from the session
     let glyph_path = build_glyph_path(&session);
@@ -207,7 +207,7 @@ fn active_glyph_panel_centered(
     session: Arc<crate::edit_session::EditSession>,
     glyph_name: String,
 ) -> impl WidgetView<AppState> + use<> {
-    const PANEL_HEIGHT: f64 = 100.0;
+    const PANEL_HEIGHT: f64 = 140.0;
     const PANEL_WIDTH: f64 = 488.0; // Match text buffer preview width
 
     // Only show if we have an active glyph
@@ -230,7 +230,7 @@ fn active_glyph_panel_centered(
     };
 
     // Row 1 (Top): Name and Unicode (both editable)
-    // Widths: 340 + 8 gap + 116 = 464px
+    // Widths: 346 (3 quarters) + 8 gap + 110 (1 quarter) = 464px (aligns with row 2)
     let top_row = flex_row((
         sized_box(
             text_input(
@@ -239,7 +239,7 @@ fn active_glyph_panel_centered(
                     // TODO: implement glyph name editing
                 }
             )
-        ).width(340.px()),
+        ).width(346.px()),
         sized_box(
             text_input(
                 unicode_display,
@@ -247,7 +247,7 @@ fn active_glyph_panel_centered(
                     // TODO: implement unicode editing
                 }
             )
-        ).width(116.px()),
+        ).width(110.px()),
     ))
     .gap(8.px())
     .main_axis_alignment(xilem::view::MainAxisAlignment::Start);
