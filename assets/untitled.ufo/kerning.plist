@@ -4,14 +4,35 @@
 <dict>
 	<key>A</key>
 	<dict>
+		<key>T</key>
+		<integer>-90</integer>
 		<key>V</key>
 		<integer>-80</integer>
 		<key>W</key>
 		<integer>-60</integer>
-		<key>T</key>
-		<integer>-90</integer>
 		<key>Y</key>
 		<integer>-100</integer>
+	</dict>
+	<key>F</key>
+	<dict>
+		<key>A</key>
+		<integer>-60</integer>
+	</dict>
+	<key>L</key>
+	<dict>
+		<key>T</key>
+		<integer>-70</integer>
+		<key>V</key>
+		<integer>-80</integer>
+		<key>W</key>
+		<integer>-60</integer>
+		<key>Y</key>
+		<integer>-90</integer>
+	</dict>
+	<key>P</key>
+	<dict>
+		<key>A</key>
+		<integer>-50</integer>
 	</dict>
 	<key>T</key>
 	<dict>
@@ -34,27 +55,6 @@
 	<dict>
 		<key>A</key>
 		<integer>-100</integer>
-	</dict>
-	<key>L</key>
-	<dict>
-		<key>T</key>
-		<integer>-70</integer>
-		<key>V</key>
-		<integer>-80</integer>
-		<key>W</key>
-		<integer>-60</integer>
-		<key>Y</key>
-		<integer>-90</integer>
-	</dict>
-	<key>P</key>
-	<dict>
-		<key>A</key>
-		<integer>-50</integer>
-	</dict>
-	<key>F</key>
-	<dict>
-		<key>A</key>
-		<integer>-60</integer>
 	</dict>
 </dict>
 </plist>

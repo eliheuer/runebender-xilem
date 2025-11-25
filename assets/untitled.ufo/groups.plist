@@ -8,18 +8,18 @@
 		<string>W</string>
 		<string>Y</string>
 	</array>
+	<key>public.kern1.straight</key>
+	<array>
+		<string>H</string>
+		<string>I</string>
+		<string>L</string>
+	</array>
 	<key>public.kern2.round</key>
 	<array>
 		<string>O</string>
 		<string>C</string>
 		<string>G</string>
 		<string>Q</string>
-	</array>
-	<key>public.kern1.straight</key>
-	<array>
-		<string>H</string>
-		<string>I</string>
-		<string>L</string>
 	</array>
 </dict>
 </plist>
