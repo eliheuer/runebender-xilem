@@ -928,9 +928,9 @@ impl EditorWidget {
         transform: &Affine,
         color: masonry::vello::peniko::Color,
     ) {
-        let stroke = Stroke::new(theme::size::METRIC_LINE_WIDTH);
+        let stroke = Stroke::new(theme::size::METRIC_LINE_WIDTH * 2.0);
         let brush = Brush::Solid(color);
-        let cross_size = 12.0; // Length of each arm of the cross from center
+        let cross_size = 24.0; // Length of each arm of the cross from center
 
         // Helper to draw a cross (+) at a given point
         let draw_cross = |scene: &mut Scene, x: f64, y: f64| {
