@@ -593,12 +593,15 @@ where
     let coord_inputs = flex_col((row1, row2))
         .gap(8.px())
         .main_axis_alignment(MainAxisAlignment::Center)
-        .cross_axis_alignment(CrossAxisAlignment::Start);
+        .cross_axis_alignment(CrossAxisAlignment::End);
 
     sized_box(
-        flex_row((quadrant_selector, coord_inputs))
+        flex_row((
+            quadrant_selector,
+            coord_inputs,
+        ))
             .main_axis_alignment(MainAxisAlignment::Center)
-            .gap(12.px()),
+            .gap(6.px()),
     )
     .width(240.px())
     .height(140.px())
