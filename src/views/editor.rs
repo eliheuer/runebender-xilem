@@ -10,8 +10,8 @@ use masonry::properties::types::{AsUnit, UnitPoint};
 use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::{
-    ChildAlignment, ZStackExt, flex_col, flex_row, label, sized_box, transformed,
-    zstack,
+    ChildAlignment, ZStackExt, flex_col, flex_row, label, sized_box, text_input,
+    transformed, zstack,
 };
 use xilem::WidgetView;
 
@@ -93,8 +93,12 @@ pub fn editor_tab(
         transformed(glyph_preview_pane(session_arc.clone(), glyph_name.clone()))
             .translate((MARGIN, -MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_LEFT)),
-        // Bottom-center: text buffer preview panel
+        // Bottom-center-top: text buffer preview panel (above active glyph, standard margin)
         transformed(text_buffer_preview_pane_centered(session_arc.clone()))
+            .translate((0.0, -(MARGIN + 140.0 + MARGIN)))
+            .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
+        // Bottom-center-bottom: active glyph panel
+        transformed(active_glyph_panel_centered(state))
             .translate((0.0, -MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
         // Bottom-right: coordinate panel (locked to corner like workspace toolbar)
@@ -141,53 +145,38 @@ fn coordinate_panel_from_session(
 }
 
 /// Glyph preview pane showing the rendered glyph
-/// Horizontal layout: glyph on left, labels on right (matching coordinate panel style)
 fn glyph_preview_pane(
     session: Arc<crate::edit_session::EditSession>,
-    glyph_name: String,
+    _glyph_name: String,
 ) -> impl WidgetView<AppState> + use<> {
-    const PANEL_HEIGHT: f64 = 100.0;
+    const PANEL_HEIGHT: f64 = 140.0;
     const PANEL_WIDTH: f64 = 240.0; // Match coordinate panel width
-    const GLYPH_SIZE: f64 = 80.0; // Fit within 100px height with padding
+    const GLYPH_SIZE: f64 = 100.0; // Fit within 140px height with padding
 
     // Get the glyph outline path from the session
     let glyph_path = build_glyph_path(&session);
     let upm = session.ascender - session.descender;
 
-    // Format Unicode codepoint (use first codepoint if available)
-    let unicode_display = format_unicode_display(&session);
-
-    // Glyph preview on the left
+    // Centered glyph preview with upward offset
     let glyph_preview = if !glyph_path.is_empty() {
         Either::A(
-            sized_box(
-                glyph_view(glyph_path, GLYPH_SIZE, GLYPH_SIZE, upm)
-                    .color(theme::panel::GLYPH_PREVIEW)
-                    .baseline_offset(0.15)
-            )
-            .width(100.px())
+            glyph_view(glyph_path, GLYPH_SIZE, GLYPH_SIZE, upm)
+                .color(theme::panel::GLYPH_PREVIEW)
         )
     } else {
-        Either::B(sized_box(label("")).width(100.px()))
+        Either::B(label(""))
     };
 
-    // Labels on the right
-    let labels = flex_col((
-        label(glyph_name)
-            .text_size(16.0)
-            .color(theme::text::PRIMARY),
-        label(unicode_display)
-            .text_size(14.0)
-            .color(theme::text::PRIMARY),
-    ))
-    .gap(4.px())
-    .cross_axis_alignment(xilem::view::CrossAxisAlignment::Start);
-
     sized_box(
-        flex_row((glyph_preview, labels))
-            .gap(8.px())
-            .main_axis_alignment(xilem::view::MainAxisAlignment::Start)
-            .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
+        flex_col((
+            // Add spacing at top to push content up
+            sized_box(label("")).height(0.px()),
+            glyph_preview,
+            // Add more spacing at bottom to shift visual center up
+            sized_box(label("")).height(15.px()),
+        ))
+        .main_axis_alignment(xilem::view::MainAxisAlignment::Center)
+        .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
     )
     .width(PANEL_WIDTH.px())
     .height(PANEL_HEIGHT.px())
@@ -195,6 +184,175 @@ fn glyph_preview_pane(
     .border_color(theme::panel::OUTLINE)
     .border_width(1.5)
     .corner_radius(8.0)
+}
+
+/// Active glyph panel showing editable metrics (Glyphs app style)
+/// Only shown when a glyph is active
+fn active_glyph_panel_centered(
+    state: &AppState,
+) -> impl WidgetView<AppState> + use<> {
+    const PANEL_HEIGHT: f64 = 140.0;
+    const PANEL_WIDTH: f64 = 488.0; // Match text buffer preview width
+
+    // Get session and glyph name
+    let session = match &state.editor_session {
+        Some(s) => s,
+        None => return Either::B(sized_box(label("")).width(0.px()).height(0.px())),
+    };
+
+    let glyph_name = match &session.active_sort_name {
+        Some(n) => n.clone(),
+        None => return Either::B(sized_box(label("")).width(0.px()).height(0.px())),
+    };
+
+    // Only show if we have an active glyph
+    if glyph_name.is_empty() {
+        return Either::B(sized_box(label("")).width(0.px()).height(0.px()));
+    }
+
+    // Get current values
+    let width = session.glyph.width;
+    let lsb = session.glyph.left_side_bearing();
+    let rsb = session.glyph.right_side_bearing();
+    let left_group = session.glyph.left_group.as_ref().map(|s| s.as_str()).unwrap_or("");
+    let right_group = session.glyph.right_group.as_ref().map(|s| s.as_str()).unwrap_or("");
+
+    // Get kerning values
+    let left_kern = state.get_left_kern();
+    let right_kern = state.get_right_kern();
+
+    // Format Unicode
+    let unicode_display = if let Some(first_char) = session.glyph.codepoints.first() {
+        format!("{:04X}", *first_char as u32)
+    } else {
+        String::from("")
+    };
+
+    // Row 1 (Top): Name and Unicode (both editable)
+    // Widths: 346 (3 quarters) + 8 gap + 110 (1 quarter) = 464px (aligns with row 2)
+    let top_row = flex_row((
+        sized_box(
+            text_input(
+                glyph_name.clone(),
+                |_state: &mut AppState, _new_value| {
+                    // TODO: implement glyph name editing
+                }
+            )
+            .text_alignment(parley::Alignment::Center)
+        ).width(346.px()),
+        sized_box(
+            text_input(
+                unicode_display,
+                |_state: &mut AppState, _new_value| {
+                    // TODO: implement unicode editing
+                }
+            )
+            .text_alignment(parley::Alignment::Center)
+        ).width(110.px()),
+    ))
+    .gap(8.px())
+    .main_axis_alignment(xilem::view::MainAxisAlignment::Start);
+
+    // Row 2 (Middle): Left kern, LSB, RSB, Right kern (all editable)
+    // Widths: 4 × 110 + 3 × 8 gaps = 464px
+    // NOTE: text_alignment is set before placeholder, but due to an upstream issue in Xilem 0.4.0,
+    // placeholder text does not respect text_alignment and remains left-aligned.
+    // See context/text-input-placeholder-alignment.md for details and upstream PR tracking.
+    let middle_row = flex_row((
+        sized_box(
+            text_input(
+                left_kern.map(|v| format!("{:.0}", v)).unwrap_or_default(),
+                |state: &mut AppState, new_value| {
+                    state.update_left_kern(new_value);
+                }
+            )
+            .text_alignment(parley::Alignment::Center) // Placeholder won't center until upstream fix
+            .placeholder("Kern")
+        ).width(110.px()),
+        sized_box(
+            text_input(
+                format!("{:.0}", lsb),
+                |_state: &mut AppState, _new_value| {
+                    // TODO: implement LSB editing
+                }
+            )
+            .text_alignment(parley::Alignment::Center)
+        ).width(110.px()),
+        sized_box(
+            text_input(
+                format!("{:.0}", rsb),
+                |_state: &mut AppState, _new_value| {
+                    // TODO: implement RSB editing
+                }
+            )
+            .text_alignment(parley::Alignment::Center)
+        ).width(110.px()),
+        sized_box(
+            text_input(
+                right_kern.map(|v| format!("{:.0}", v)).unwrap_or_default(),
+                |state: &mut AppState, new_value| {
+                    state.update_right_kern(new_value);
+                }
+            )
+            .text_alignment(parley::Alignment::Center) // Placeholder won't center until upstream fix
+            .placeholder("Kern")
+        ).width(110.px()),
+    ))
+    .gap(8.px())
+    .main_axis_alignment(xilem::view::MainAxisAlignment::Start);
+
+    // Row 3 (Bottom): Left kern group, Width, Right kern group (all editable)
+    // Widths: 149 + 8 + 150 + 8 + 149 = 464px
+    // NOTE: Placeholder alignment issue same as row 2 - see context/text-input-placeholder-alignment.md
+    let bottom_row = flex_row((
+        sized_box(
+            text_input(
+                left_group.to_string(),
+                |state: &mut AppState, new_value| {
+                    state.update_left_group(new_value);
+                }
+            )
+            .text_alignment(parley::Alignment::Center) // Placeholder won't center until upstream fix
+            .placeholder("Group")
+        ).width(149.px()),
+        sized_box(
+            text_input(
+                format!("{:.0}", width),
+                |state: &mut AppState, new_value| {
+                    state.update_glyph_width(new_value);
+                }
+            )
+            .text_alignment(parley::Alignment::Center)
+        ).width(150.px()),
+        sized_box(
+            text_input(
+                right_group.to_string(),
+                |state: &mut AppState, new_value| {
+                    state.update_right_group(new_value);
+                }
+            )
+            .text_alignment(parley::Alignment::Center) // Placeholder won't center until upstream fix
+            .placeholder("Group")
+        ).width(149.px()),
+    ))
+    .gap(8.px())
+    .main_axis_alignment(xilem::view::MainAxisAlignment::Start);
+
+    // Combine all three rows with consistent 8px vertical gap
+    let content = flex_col((top_row, middle_row, bottom_row))
+        .gap(8.px())
+        .main_axis_alignment(xilem::view::MainAxisAlignment::Center);
+
+    Either::A(
+        sized_box(content)
+            .width(PANEL_WIDTH.px())
+            .height(PANEL_HEIGHT.px())
+            .background_color(theme::panel::BACKGROUND)
+            .border_color(theme::panel::OUTLINE)
+            .border_width(1.5)
+            .corner_radius(8.0)
+            .padding(12.0)
+    )
 }
 
 // ===== Preview Pane Helpers =====
@@ -272,10 +430,10 @@ fn text_buffer_preview_pane_centered(
     session: Arc<crate::edit_session::EditSession>,
 ) -> impl WidgetView<AppState> + use<> {
     // Panel dimensions to match other bottom panels
-    const PANEL_HEIGHT: f64 = 100.0;
+    const PANEL_HEIGHT: f64 = 140.0;
     // Width calculation for centered panel: window width - side panels - margins - gaps
     // At 1200px window: (1200 - 240*2 - 16*4) = 640px leaves 16px gaps
-    const PANEL_WIDTH: f64 = 488.0; // Wider panel for text buffer preview, works at ~1050px+ window width
+    const PANEL_WIDTH: f64 = 640.0; // Extended width for text buffer preview (now on top)
 
     // Only show if text buffer exists
     if session.text_buffer.is_none() {
@@ -294,9 +452,34 @@ fn text_buffer_preview_pane_centered(
     let mut combined_path = BezPath::new();
     let mut x_offset = 0.0;
 
+    // Track previous glyph for kerning lookup
+    let mut prev_glyph_name: Option<String> = None;
+    let mut prev_glyph_group: Option<String> = None;
+
     for sort in buffer.iter() {
         match &sort.kind {
             crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                // Apply kerning if we have a previous glyph
+                if let Some(prev_name) = &prev_glyph_name {
+                    let workspace_guard = workspace.read().unwrap();
+
+                    // Get current glyph's left kerning group
+                    let curr_group = workspace_guard.get_glyph(name)
+                        .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+
+                    // Look up kerning value
+                    let kern_value = crate::kerning::lookup_kerning(
+                        &workspace_guard.kerning,
+                        &workspace_guard.groups,
+                        prev_name,
+                        prev_glyph_group.as_deref(),
+                        name,
+                        curr_group,
+                    );
+
+                    x_offset += kern_value;
+                }
+
                 let mut glyph_path = BezPath::new();
 
                 if sort.is_active {
@@ -320,28 +503,40 @@ fn text_buffer_preview_pane_centered(
                 combined_path.extend(translated_path);
 
                 x_offset += advance_width;
+
+                // Update previous glyph info for next iteration
+                prev_glyph_name = Some(name.clone());
+                prev_glyph_group = workspace.read().unwrap().get_glyph(name)
+                    .and_then(|g| g.right_group.clone());
             }
             crate::sort::SortKind::LineBreak => {
                 // For now, ignore line breaks in preview (Phase 1 is single line)
+                // Reset kerning tracking (no kerning across lines)
+                prev_glyph_name = None;
+                prev_glyph_group = None;
             }
         }
     }
 
-    let preview_size = 60.0; // Smaller than glyph preview
+    let preview_size = 100.0; // Match glyph preview size
     let upm = session.ascender - session.descender;
 
-    // Render the combined path as a glyph view, centered vertically and horizontally
+    // Render the combined path as a glyph view, aligned to bottom
     Either::A(
         sized_box(
-            glyph_view(combined_path, preview_size, preview_size, upm)
-                .color(theme::panel::GLYPH_PREVIEW)
-                .baseline_offset(0.25), // Center vertically with proper baseline positioning
+            flex_col((
+                glyph_view(combined_path, preview_size, preview_size, upm)
+                    .color(theme::panel::GLYPH_PREVIEW)
+                    .baseline_offset(0.0), // Bottom alignment
+            ))
+            .main_axis_alignment(xilem::view::MainAxisAlignment::End)
         )
         .width(PANEL_WIDTH.px())
         .height(PANEL_HEIGHT.px())
-        .background_color(theme::panel::BACKGROUND)
-        .border_color(theme::panel::OUTLINE)
-        .border_width(1.5)
-        .corner_radius(8.0),
+        // Background container temporarily disabled for wider text display
+        // .background_color(theme::panel::BACKGROUND)
+        // .border_color(theme::panel::OUTLINE)
+        // .border_width(1.5)
+        // .corner_radius(8.0),
     )
 }

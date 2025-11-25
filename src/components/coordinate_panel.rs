@@ -22,7 +22,7 @@ use masonry::vello::Scene;
 
 /// Local constants for the coordinate panel, maybe move to settings?
 const PANEL_WIDTH: f64 = 240.0;
-const PANEL_HEIGHT: f64 = 100.0;
+const PANEL_HEIGHT: f64 = 140.0;
 
 // Import from theme (includes all sizing and color constants)
 use crate::theme::coordinate_panel::*;
@@ -492,11 +492,11 @@ use xilem::style::Style;
 use xilem::view::{CrossAxisAlignment, flex_col, flex_row, label, sized_box};
 use xilem::WidgetView;
 
-/// Complete coordinate info panel with quadrant picker and coordinate labels
+/// Complete coordinate info panel with quadrant picker and editable coordinate inputs
 ///
 /// This is the main entry point for displaying the coordinate panel in the
-/// editor window. It combines the quadrant picker widget with coordinate text
-/// labels.
+/// editor window. It combines the quadrant picker widget with editable text inputs
+/// for x, y, width, and height values.
 pub fn coordinate_panel<State: 'static, F>(
     session: Arc<crate::edit_session::EditSession>,
     on_session_update: F,
@@ -511,12 +511,7 @@ where
 
     // Calculate coordinate values based on the selection
     let (x_text, y_text, w_text, h_text) = if coord_sel.count == 0 {
-        (
-            "—".to_string(),
-            "—".to_string(),
-            "—".to_string(),
-            "—".to_string(),
-        )
+        (String::new(), String::new(), String::new(), String::new())
     } else {
         let pt = coord_sel.reference_point();
         let x = format!("{:.0}", pt.x);
@@ -526,44 +521,91 @@ where
         let w = if coord_sel.count > 1 {
             format!("{:.0}", coord_sel.width())
         } else {
-            "—".to_string()
+            String::new()
         };
         let h = if coord_sel.count > 1 {
             format!("{:.0}", coord_sel.height())
         } else {
-            "—".to_string()
+            String::new()
         };
         (x, y, w, h)
     };
 
-    // Helper function to create styled coordinate labels
-    let coord_label = |text: String| {
-        label(text)
-            .text_size(18.0)
-            .text_alignment(parley::Alignment::Start)
-            .color(theme::text::PRIMARY)
-    };
-
     let quadrant_selector = sized_box(
         coordinate_panel_view(session, on_session_update)
-    ).width(104.px());
+    )
+    .width(92.px())
+    .height(92.px());
 
-    let coord_values = flex_col((
-        coord_label(format!("x: {:<6}", x_text)),
-        coord_label(format!("y: {:<6}", y_text)),
-        coord_label(format!("w: {:<6}", w_text)),
-        coord_label(format!("h: {:<6}", h_text)),
+    // Row 1: X and Y
+    let row1 = flex_row((
+        sized_box(
+            xilem::view::text_input(
+                x_text,
+                |_state: &mut State, _new_value| {
+                    // TODO: Handle coordinate updates
+                }
+            )
+            .text_alignment(parley::Alignment::Center)
+            .placeholder("X")
+        ).width(48.px()),
+        sized_box(
+            xilem::view::text_input(
+                y_text,
+                |_state: &mut State, _new_value| {
+                    // TODO: Handle coordinate updates
+                }
+            )
+            .text_alignment(parley::Alignment::Center)
+            .placeholder("Y")
+        ).width(48.px()),
     ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(0.px());
+    .gap(4.px())
+    .cross_axis_alignment(CrossAxisAlignment::Center);
+
+    // Row 2: Width and Height
+    let row2 = flex_row((
+        sized_box(
+            xilem::view::text_input(
+                w_text,
+                |_state: &mut State, _new_value| {
+                    // TODO: Handle coordinate updates
+                }
+            )
+            .text_alignment(parley::Alignment::Center)
+            .placeholder("W")
+        ).width(48.px()),
+        sized_box(
+            xilem::view::text_input(
+                h_text,
+                |_state: &mut State, _new_value| {
+                    // TODO: Handle coordinate updates
+                }
+            )
+            .text_alignment(parley::Alignment::Center)
+            .placeholder("H")
+        ).width(48.px()),
+    ))
+    .gap(4.px())
+    .cross_axis_alignment(CrossAxisAlignment::Center);
+
+    // Coordinate inputs column
+    let coord_inputs = flex_col((row1, row2))
+        .gap(8.px())
+        .main_axis_alignment(MainAxisAlignment::Center)
+        .cross_axis_alignment(CrossAxisAlignment::End);
 
     sized_box(
-        flex_row((quadrant_selector, coord_values))
-            .main_axis_alignment(MainAxisAlignment::Start)
-            .gap(0.px()),
+        flex_row((
+            quadrant_selector,
+            coord_inputs,
+            sized_box(label("")).width(8.px()), // 4px on each side = 8px spacer to shift left by 4px
+        ))
+            .main_axis_alignment(MainAxisAlignment::Center)
+            .gap(6.px()),
     )
     .width(240.px())
-    .height(100.px())
+    .height(140.px())
     .background_color(crate::theme::panel::BACKGROUND)
     .border_color(crate::theme::panel::OUTLINE)
     .border_width(1.5)
