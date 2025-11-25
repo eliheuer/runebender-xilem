@@ -460,9 +460,25 @@ fn text_buffer_preview_pane_centered(
 
     let buffer = session.text_buffer.as_ref().unwrap();
 
+    // Check text direction for RTL support
+    let is_rtl = session.text_direction.is_rtl();
+
+    // For RTL: calculate total width first so we can start from the right
+    let total_width = if is_rtl {
+        buffer.iter().filter_map(|sort| {
+            if let crate::sort::SortKind::Glyph { advance_width, .. } = &sort.kind {
+                Some(*advance_width)
+            } else {
+                None
+            }
+        }).sum()
+    } else {
+        0.0
+    };
+
     // Build a combined BezPath from all sorts in the buffer (like preview mode)
     let mut combined_path = BezPath::new();
-    let mut x_offset = 0.0;
+    let mut x_offset = if is_rtl { total_width } else { 0.0 };
 
     // Track previous glyph for kerning lookup
     let mut prev_glyph_name: Option<String> = None;
@@ -471,6 +487,11 @@ fn text_buffer_preview_pane_centered(
     for sort in buffer.iter() {
         match &sort.kind {
             crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                // For RTL: move x left BEFORE drawing this glyph
+                if is_rtl {
+                    x_offset -= advance_width;
+                }
+
                 // Apply kerning if we have a previous glyph
                 if let Some(prev_name) = &prev_glyph_name {
                     let workspace_guard = workspace.read().unwrap();
@@ -489,7 +510,11 @@ fn text_buffer_preview_pane_centered(
                         curr_group,
                     );
 
-                    x_offset += kern_value;
+                    if is_rtl {
+                        x_offset -= kern_value;
+                    } else {
+                        x_offset += kern_value;
+                    }
                 }
 
                 let mut glyph_path = BezPath::new();
@@ -514,7 +539,10 @@ fn text_buffer_preview_pane_centered(
                 let translated_path = kurbo::Affine::translate((x_offset, 0.0)) * glyph_path;
                 combined_path.extend(translated_path);
 
-                x_offset += advance_width;
+                // For LTR: advance x forward AFTER drawing
+                if !is_rtl {
+                    x_offset += advance_width;
+                }
 
                 // Update previous glyph info for next iteration
                 prev_glyph_name = Some(name.clone());
