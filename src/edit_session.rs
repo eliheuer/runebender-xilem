@@ -8,6 +8,7 @@ use crate::hit_test::{self, HitTestResult};
 use crate::hyper_path::HyperPath;
 use crate::path::Path;
 use crate::selection::Selection;
+use crate::shaping::{ArabicShaper, GlyphProvider, TextDirection};
 use crate::sort::SortBuffer;
 use crate::tools::{ToolBox, ToolId};
 use crate::viewport::ViewPort;
@@ -94,6 +95,10 @@ pub struct EditSession {
     /// Used to translate hit-testing coordinates so tools work correctly
     /// on sorts that aren't at position 0
     pub active_sort_x_offset: f64,
+
+    /// Text direction for rendering and cursor movement
+    /// Defaults to LTR, can be toggled via toolbar when text tool is active
+    pub text_direction: TextDirection,
 }
 
 impl EditSession {
@@ -142,6 +147,7 @@ impl EditSession {
             active_sort_unicode: unicode_value,
             active_sort_name: Some(glyph_name),
             active_sort_x_offset: 0.0,
+            text_direction: TextDirection::default(),
         }
     }
 
@@ -203,6 +209,7 @@ impl EditSession {
             active_sort_unicode: unicode_value,
             active_sort_name: Some(glyph_name),
             active_sort_x_offset: 0.0, // First sort is at position 0
+            text_direction: TextDirection::default(),
         }
     }
 
@@ -279,6 +286,133 @@ impl EditSession {
             advance_width,
             false, // New sorts are inactive by default
         ))
+    }
+
+    /// Create a Sort from a character with Arabic shaping support.
+    ///
+    /// When text direction is RTL and the character is Arabic, this method:
+    /// 1. Determines the correct positional form based on buffer contents
+    /// 2. Uses the shaped glyph name (with suffix like .init, .medi, .fina)
+    /// 3. Returns a sort with the shaped glyph name
+    ///
+    /// For LTR or non-Arabic characters, falls back to `create_sort_from_char`.
+    pub fn create_shaped_sort_from_char(&self, c: char) -> Option<crate::sort::Sort> {
+        // Only use Arabic shaping for RTL mode and Arabic characters
+        if self.text_direction != TextDirection::RightToLeft
+            || !crate::shaping::is_arabic(c)
+        {
+            return self.create_sort_from_char(c);
+        }
+
+        let workspace_lock = self.workspace.as_ref()?;
+        let workspace = workspace_lock.read().unwrap();
+        let font = WorkspaceGlyphProvider::new(&workspace);
+
+        // Get the current text from buffer to determine context
+        let buffer = self.text_buffer.as_ref()?;
+        let cursor_pos = buffer.cursor();
+
+        // Build character array from buffer for context-aware shaping
+        let mut chars: Vec<char> = buffer
+            .iter()
+            .filter_map(|sort| match &sort.kind {
+                crate::sort::SortKind::Glyph { codepoint, .. } => *codepoint,
+                _ => None,
+            })
+            .collect();
+
+        // Insert the new character at cursor position for shaping
+        chars.insert(cursor_pos, c);
+
+        // Shape the new character
+        let shaper = ArabicShaper::new();
+        let shaped = shaper.shape_char_at(&chars, cursor_pos, &font)?;
+
+        tracing::debug!(
+            "[create_shaped_sort_from_char] Character '{}' shaped to '{}' ({:?})",
+            c,
+            shaped.glyph_name,
+            shaped.form
+        );
+
+        Some(crate::sort::Sort::new_glyph(
+            shaped.glyph_name,
+            Some(c),
+            shaped.advance_width,
+            false,
+        ))
+    }
+
+    /// Reshape sorts in the buffer around a position after an edit.
+    ///
+    /// This updates the glyph names of affected sorts to reflect their new
+    /// positional forms. Call this after inserting or deleting a character.
+    ///
+    /// Returns the range of indices that were updated.
+    pub fn reshape_buffer_around(&mut self, position: usize) -> Option<(usize, usize)> {
+        // Only reshape in RTL mode
+        if self.text_direction != TextDirection::RightToLeft {
+            return None;
+        }
+
+        let workspace_lock = self.workspace.as_ref()?.clone();
+        let workspace = workspace_lock.read().unwrap();
+        let font = WorkspaceGlyphProvider::new(&workspace);
+
+        let buffer = self.text_buffer.as_mut()?;
+
+        // Build character array from buffer
+        let chars: Vec<char> = buffer
+            .iter()
+            .filter_map(|sort| match &sort.kind {
+                crate::sort::SortKind::Glyph { codepoint, .. } => *codepoint,
+                _ => None,
+            })
+            .collect();
+
+        if chars.is_empty() {
+            return None;
+        }
+
+        // Determine range to reshape (position ± 1, clamped)
+        let start = position.saturating_sub(1);
+        let end = (position + 1).min(chars.len());
+
+        let shaper = ArabicShaper::new();
+
+        // Reshape each character in the affected range
+        for i in start..end {
+            if i >= chars.len() {
+                continue;
+            }
+
+            let c = chars[i];
+
+            // Only reshape Arabic characters
+            if !crate::shaping::is_arabic(c) {
+                continue;
+            }
+
+            if let Some(shaped) = shaper.shape_char_at(&chars, i, &font) {
+                // Update the sort at this position
+                if let Some(sort) = buffer.get_mut(i) {
+                    if let crate::sort::SortKind::Glyph { name, advance_width, .. } = &mut sort.kind {
+                        if *name != shaped.glyph_name {
+                            tracing::debug!(
+                                "[reshape_buffer_around] Updated sort {}: '{}' -> '{}'",
+                                i,
+                                name,
+                                shaped.glyph_name
+                            );
+                            *name = shaped.glyph_name.clone();
+                            *advance_width = shaped.advance_width;
+                        }
+                    }
+                }
+            }
+        }
+
+        Some((start, end))
     }
 
     /// Find and activate the sort at a given position (Phase 7)
@@ -1461,6 +1595,43 @@ impl EditSession {
             // Handle wrap-around for closed paths
             total_len - start_index - 1 + end_index
         }
+    }
+}
+
+// ===== WORKSPACE GLYPH PROVIDER =====
+
+/// Adapter that provides glyph information from the Workspace to the shaping engine.
+///
+/// This implements the `GlyphProvider` trait, allowing the Arabic shaper (and future
+/// script shapers) to query glyph existence and advance widths without being coupled
+/// to the Workspace type.
+pub struct WorkspaceGlyphProvider<'a> {
+    workspace: &'a Workspace,
+}
+
+impl<'a> WorkspaceGlyphProvider<'a> {
+    /// Create a new provider wrapping a workspace reference.
+    pub fn new(workspace: &'a Workspace) -> Self {
+        Self { workspace }
+    }
+}
+
+impl<'a> GlyphProvider for WorkspaceGlyphProvider<'a> {
+    fn has_glyph(&self, name: &str) -> bool {
+        self.workspace.glyphs.contains_key(name)
+    }
+
+    fn advance_width(&self, name: &str) -> Option<f64> {
+        self.workspace.glyphs.get(name).map(|g| g.width)
+    }
+
+    fn base_glyph_for_codepoint(&self, c: char) -> Option<String> {
+        // Find a glyph that has this codepoint
+        self.workspace
+            .glyphs
+            .iter()
+            .find(|(_, g)| g.codepoints.contains(&c))
+            .map(|(name, _)| name.clone())
     }
 }
 

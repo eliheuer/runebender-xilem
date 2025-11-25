@@ -28,6 +28,7 @@ mod quadrant;
 mod path_segment;
 mod selection;
 mod settings;
+mod shaping;
 mod sort;
 mod theme;
 mod tools;

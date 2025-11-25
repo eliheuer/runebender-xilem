@@ -18,9 +18,10 @@ use xilem::WidgetView;
 use crate::components::workspace_toolbar::WorkspaceToolbarButton;
 use crate::components::{
     coordinate_panel, edit_mode_toolbar_view, editor_view, glyph_view,
-    shapes_toolbar_view, workspace_toolbar_view,
+    shapes_toolbar_view, text_direction_toolbar_view, workspace_toolbar_view,
 };
 use crate::data::AppState;
+use crate::shaping::TextDirection;
 use crate::theme;
 use crate::tools::{ToolBox, ToolId};
 use crate::tools::shapes::ShapeType;
@@ -50,8 +51,12 @@ pub fn editor_tab(
         ShapeType::Rectangle // Default
     };
 
-    // Determine if we should show the shapes sub-toolbar
+    // Get current text direction
+    let current_text_direction = session.text_direction;
+
+    // Determine which sub-toolbar to show
     let show_shapes_toolbar = current_tool == ToolId::Shapes;
+    let show_text_direction_toolbar = current_tool == ToolId::Text;
 
     // Use zstack to layer UI elements over the canvas
     Either::A(zstack((
@@ -65,7 +70,7 @@ pub fn editor_tab(
                 }
             },
         ),
-        // Foreground: floating toolbars (edit mode + optional shapes sub-toolbar) positioned in top-left
+        // Foreground: floating toolbars (edit mode + optional sub-toolbar) positioned in top-left
         transformed(
             flex_col((
                 edit_mode_toolbar_view(
@@ -81,8 +86,15 @@ pub fn editor_tab(
                             state.set_shape_type(shape_type);
                         },
                     ))
+                } else if show_text_direction_toolbar {
+                    Either::B(Either::A(text_direction_toolbar_view(
+                        current_text_direction,
+                        |state: &mut AppState, direction| {
+                            state.set_text_direction(direction);
+                        },
+                    )))
                 } else {
-                    Either::B(label(""))
+                    Either::B(Either::B(label("")))
                 },
             ))
             .cross_axis_alignment(xilem::view::CrossAxisAlignment::Start)

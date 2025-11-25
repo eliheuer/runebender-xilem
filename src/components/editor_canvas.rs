@@ -556,7 +556,18 @@ impl EditorWidget {
             None => return,
         };
 
-        let mut x_offset = 0.0;
+        // Check text direction for RTL support
+        let is_rtl = self.session.text_direction.is_rtl();
+
+        // For RTL: calculate total width first so we can start from the right
+        let total_width = if is_rtl {
+            self.calculate_buffer_width()
+        } else {
+            0.0 // Not needed for LTR
+        };
+
+        // Starting position: LTR starts at 0, RTL starts at total_width
+        let mut x_offset = if is_rtl { total_width } else { 0.0 };
         let mut baseline_y = 0.0;
         let cursor_position = buffer.cursor();
 
@@ -564,14 +575,14 @@ impl EditorWidget {
         let upm_height = self.session.ascender - self.session.descender;
 
         // Phase 6: Calculate cursor position while rendering sorts
-        let mut cursor_x = 0.0;
+        let mut cursor_x = x_offset;
         let mut cursor_y = 0.0;
 
         // Track previous glyph for kerning lookup
         let mut prev_glyph_name: Option<String> = None;
         let mut prev_glyph_group: Option<String> = None;
 
-        tracing::debug!("[Cursor] buffer.len()={}, cursor_position={}", buffer.len(), cursor_position);
+        tracing::debug!("[Cursor] buffer.len()={}, cursor_position={}, is_rtl={}", buffer.len(), cursor_position, is_rtl);
 
         // Cursor at position 0 (before any sorts)
         if cursor_position == 0 {
@@ -583,6 +594,11 @@ impl EditorWidget {
         for (index, sort) in buffer.iter().enumerate() {
             match &sort.kind {
                 crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                    // For RTL: move x left BEFORE drawing this glyph
+                    if is_rtl {
+                        x_offset -= advance_width;
+                    }
+
                     // Apply kerning if we have a previous glyph
                     if let Some(prev_name) = &prev_glyph_name {
                         if let Some(workspace_arc) = &self.session.workspace {
@@ -602,7 +618,11 @@ impl EditorWidget {
                                 curr_group,
                             );
 
-                            x_offset += kern_value;
+                            if is_rtl {
+                                x_offset -= kern_value; // RTL: kerning moves left
+                            } else {
+                                x_offset += kern_value;
+                            }
                         }
                     }
 
@@ -647,7 +667,11 @@ impl EditorWidget {
                         self.render_inactive_sort(scene, name, sort_position, transform);
                     }
 
-                    x_offset += advance_width;
+                    // For LTR: advance x forward AFTER drawing
+                    if !is_rtl {
+                        x_offset += advance_width;
+                    }
+                    // (For RTL, we already moved x_offset before drawing)
 
                     // Update previous glyph info for next iteration
                     prev_glyph_name = Some(name.clone());
@@ -660,7 +684,7 @@ impl EditorWidget {
                 crate::sort::SortKind::LineBreak => {
                     // Line break: reset x, move y down by UPM height
                     // Top of UPM on new line aligns with bottom of descender on previous line
-                    x_offset = 0.0;
+                    x_offset = if is_rtl { total_width } else { 0.0 };
                     baseline_y -= upm_height;
 
                     // Reset kerning tracking (no kerning across lines)
@@ -691,6 +715,24 @@ impl EditorWidget {
         if !is_preview_mode {
             self.render_text_cursor(scene, cursor_x, cursor_y, transform);
         }
+    }
+
+    /// Calculate the total width of the text buffer (for RTL rendering)
+    ///
+    /// This sums all glyph advance widths to determine where RTL text should start.
+    fn calculate_buffer_width(&self) -> f64 {
+        let buffer = match &self.session.text_buffer {
+            Some(buf) => buf,
+            None => return 0.0,
+        };
+
+        let mut total_width = 0.0;
+        for sort in buffer.iter() {
+            if let crate::sort::SortKind::Glyph { advance_width, .. } = &sort.kind {
+                total_width += advance_width;
+            }
+        }
+        total_width
     }
 
     /// Render an active sort with control points and handles
@@ -1974,10 +2016,19 @@ impl EditorWidget {
             key, self.session.text_mode_active, self.session.text_buffer.is_some());
 
         // Handle arrow keys for cursor movement
+        // In RTL mode, visual left/right is inverted from logical left/right
+        let is_rtl = self.session.text_direction.is_rtl();
+
         match key {
             Key::Named(NamedKey::ArrowLeft) => {
                 if let Some(buffer) = &mut self.session.text_buffer {
-                    buffer.move_cursor_left();
+                    // Visual left: in RTL, moves cursor forward (right in buffer)
+                    //              in LTR, moves cursor backward (left in buffer)
+                    if is_rtl {
+                        buffer.move_cursor_right();
+                    } else {
+                        buffer.move_cursor_left();
+                    }
                     self.text_cursor.reset(); // Reset cursor to visible on movement
                     ctx.request_render();
                     ctx.set_handled();
@@ -1986,7 +2037,13 @@ impl EditorWidget {
             }
             Key::Named(NamedKey::ArrowRight) => {
                 if let Some(buffer) = &mut self.session.text_buffer {
-                    buffer.move_cursor_right();
+                    // Visual right: in RTL, moves cursor backward (left in buffer)
+                    //               in LTR, moves cursor forward (right in buffer)
+                    if is_rtl {
+                        buffer.move_cursor_left();
+                    } else {
+                        buffer.move_cursor_right();
+                    }
                     self.text_cursor.reset(); // Reset cursor to visible on movement
                     ctx.request_render();
                     ctx.set_handled();
@@ -1995,7 +2052,7 @@ impl EditorWidget {
             }
             Key::Named(NamedKey::Backspace) => {
                 tracing::info!("[Backspace] Handling backspace in text mode");
-                if let Some(buffer) = &mut self.session.text_buffer {
+                let reshape_pos = if let Some(buffer) = &mut self.session.text_buffer {
                     let cursor_before = buffer.cursor();
                     let len_before = buffer.len();
                     let deleted = buffer.delete();
@@ -2007,30 +2064,49 @@ impl EditorWidget {
                         buffer.len(),
                         deleted.is_some()
                     );
-                    self.text_cursor.reset(); // Reset cursor to visible on edit
-                    // Emit session update to persist text buffer changes
-                    ctx.submit_action::<SessionUpdate>(SessionUpdate {
-                        session: self.session.clone(),
-                        save_requested: false,
-                    });
-                    ctx.request_render();
-                    ctx.set_handled();
-                    return true;
+                    Some(buffer.cursor())
+                } else {
+                    None
+                };
+
+                // Reshape neighbors after deletion (their forms may have changed)
+                if let Some(pos) = reshape_pos {
+                    self.session.reshape_buffer_around(pos);
                 }
+
+                self.text_cursor.reset(); // Reset cursor to visible on edit
+                // Emit session update to persist text buffer changes
+                ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                    session: self.session.clone(),
+                    save_requested: false,
+                });
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
             }
             Key::Named(NamedKey::Delete) => {
-                if let Some(buffer) = &mut self.session.text_buffer {
+                let reshape_pos = if let Some(buffer) = &mut self.session.text_buffer {
+                    let cursor_pos = buffer.cursor();
                     buffer.delete_forward();
-                    self.text_cursor.reset(); // Reset cursor to visible on edit
-                    // Emit session update to persist text buffer changes
-                    ctx.submit_action::<SessionUpdate>(SessionUpdate {
-                        session: self.session.clone(),
-                        save_requested: false,
-                    });
-                    ctx.request_render();
-                    ctx.set_handled();
-                    return true;
+                    Some(cursor_pos)
+                } else {
+                    None
+                };
+
+                // Reshape neighbors after deletion
+                if let Some(pos) = reshape_pos {
+                    self.session.reshape_buffer_around(pos);
                 }
+
+                self.text_cursor.reset(); // Reset cursor to visible on edit
+                // Emit session update to persist text buffer changes
+                ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                    session: self.session.clone(),
+                    save_requested: false,
+                });
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
             }
             Key::Named(NamedKey::Enter) => {
                 // Insert line break as a sort
@@ -2063,21 +2139,32 @@ impl EditorWidget {
                     return false;
                 }
 
-                // Insert character as a sort
+                // Insert character as a sort (with Arabic shaping if RTL)
                 if let Some(c) = s.chars().next() {
-                    if let Some(sort) = self.session.create_sort_from_char(c) {
+                    // Use shaped sort for Arabic text in RTL mode
+                    if let Some(sort) = self.session.create_shaped_sort_from_char(c) {
+                        // Get cursor position before insertion for reshaping
+                        let cursor_pos = self.session.text_buffer.as_ref()
+                            .map(|b| b.cursor())
+                            .unwrap_or(0);
+
                         if let Some(buffer) = &mut self.session.text_buffer {
                             buffer.insert(sort);
-                            self.text_cursor.reset(); // Reset cursor to visible on edit
-                            // Emit session update to persist text buffer changes
-                            ctx.submit_action::<SessionUpdate>(SessionUpdate {
-                                session: self.session.clone(),
-                                save_requested: false,
-                            });
-                            ctx.request_render();
-                            ctx.set_handled();
-                            return true;
                         }
+
+                        // Reshape neighbors (their forms may have changed)
+                        // The cursor has moved, so reshape around cursor-1 (the inserted char)
+                        self.session.reshape_buffer_around(cursor_pos);
+
+                        self.text_cursor.reset(); // Reset cursor to visible on edit
+                        // Emit session update to persist text buffer changes
+                        ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                            session: self.session.clone(),
+                            save_requested: false,
+                        });
+                        ctx.request_render();
+                        ctx.set_handled();
+                        return true;
                     } else {
                         tracing::warn!("No glyph found for character: '{}'", c);
                     }
