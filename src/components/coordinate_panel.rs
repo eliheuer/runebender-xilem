@@ -599,6 +599,7 @@ where
         flex_row((
             quadrant_selector,
             coord_inputs,
+            sized_box(label("")).width(8.px()), // 4px on each side = 8px spacer to shift left by 4px
         ))
             .main_axis_alignment(MainAxisAlignment::Center)
             .gap(6.px()),
