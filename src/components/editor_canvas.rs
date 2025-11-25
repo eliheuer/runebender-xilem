@@ -80,6 +80,9 @@ pub struct EditorWidget {
     /// Starting X position when kern drag began
     kern_start_x: f64,
 
+    /// Original kern value before drag started
+    kern_original_value: f64,
+
     /// Current horizontal offset from start position during kern drag
     kern_current_offset: f64,
 }
@@ -103,6 +106,7 @@ impl EditorWidget {
             kern_mode_active: false,
             kern_sort_index: None,
             kern_start_x: 0.0,
+            kern_original_value: 0.0,
             kern_current_offset: 0.0,
         }
     }
@@ -602,14 +606,8 @@ impl EditorWidget {
                         }
                     }
 
-                    // Apply kern offset to sort position if this is the dragged glyph
-                    let sort_x_offset = if Some(index) == self.kern_sort_index && self.kern_mode_active {
-                        x_offset + self.kern_current_offset
-                    } else {
-                        x_offset
-                    };
-
-                    let sort_position = Point::new(sort_x_offset, baseline_y);
+                    // Don't apply visual offset - kerning is already applied to x_offset
+                    let sort_position = Point::new(x_offset, baseline_y);
 
                     // Draw metrics based on mode
                     if !is_preview_mode {
@@ -632,7 +630,8 @@ impl EditorWidget {
                             };
 
                             // Text mode: minimal metrics for all sorts
-                            self.render_sort_minimal_metrics(scene, sort_x_offset, baseline_y, *advance_width, transform, metrics_color);
+                            // Use x_offset directly - kerning is already applied
+                            self.render_sort_minimal_metrics(scene, x_offset, baseline_y, *advance_width, transform, metrics_color);
                         } else if sort.is_active {
                             // Non-text mode: full metrics only for active sort
                             self.render_sort_metrics(scene, x_offset, baseline_y, *advance_width, transform);
@@ -1300,11 +1299,54 @@ impl EditorWidget {
             if let Some(sort_index) = self.find_sort_at_position(design_pos) {
                 // Can only kern if there's a previous glyph
                 if sort_index > 0 {
-                    tracing::info!("Entering kern mode for sort {}", sort_index);
+                    // Get current kern value for this pair
+                    let current_kern_value = if let Some(buffer) = &self.session.text_buffer {
+                        if let (Some(curr_sort), Some(prev_sort)) = (buffer.get(sort_index), buffer.get(sort_index - 1)) {
+                            if let (
+                                crate::sort::SortKind::Glyph { name: curr_name, .. },
+                                crate::sort::SortKind::Glyph { name: prev_name, .. }
+                            ) = (&curr_sort.kind, &prev_sort.kind) {
+                                if let Some(workspace_arc) = &self.session.workspace {
+                                    let workspace = workspace_arc.read().unwrap();
+                                    let prev_glyph = workspace.get_glyph(prev_name);
+                                    let curr_glyph = workspace.get_glyph(curr_name);
+
+                                    crate::kerning::lookup_kerning(
+                                        &workspace.kerning,
+                                        &workspace.groups,
+                                        prev_name,
+                                        prev_glyph.and_then(|g| g.right_group.as_deref()),
+                                        curr_name,
+                                        curr_glyph.and_then(|g| g.left_group.as_deref()),
+                                    )
+                                } else {
+                                    0.0
+                                }
+                            } else {
+                                0.0
+                            }
+                        } else {
+                            0.0
+                        }
+                    } else {
+                        0.0
+                    };
+
+                    tracing::info!("Entering kern mode for sort {}, current kern = {}", sort_index, current_kern_value);
                     self.kern_mode_active = true;
                     self.kern_sort_index = Some(sort_index);
                     self.kern_start_x = design_pos.x;
+                    self.kern_original_value = current_kern_value;
                     self.kern_current_offset = 0.0;
+
+                    // Activate this sort so the panel updates
+                    self.activate_sort(sort_index);
+
+                    // Emit session update for panel
+                    ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                        session: self.session.clone(),
+                        save_requested: false,
+                    });
 
                     ctx.request_render();
                     return; // Don't dispatch to tool
@@ -1362,6 +1404,41 @@ impl EditorWidget {
             let design_pos = self.session.viewport.screen_to_design(local_pos);
             // Only horizontal movement
             self.kern_current_offset = design_pos.x - self.kern_start_x;
+
+            // Apply kern value in real-time
+            if let (Some(sort_index), Some(buffer)) = (self.kern_sort_index, &self.session.text_buffer) {
+                if let (Some(curr_sort), Some(prev_sort)) = (buffer.get(sort_index), buffer.get(sort_index - 1)) {
+                    if let (
+                        crate::sort::SortKind::Glyph { name: curr_name, .. },
+                        crate::sort::SortKind::Glyph { name: prev_name, .. }
+                    ) = (&curr_sort.kind, &prev_sort.kind) {
+                        if let Some(workspace_arc) = &self.session.workspace {
+                            let new_kern_value = self.kern_original_value + self.kern_current_offset;
+                            let mut workspace = workspace_arc.write().unwrap();
+
+                            if new_kern_value == 0.0 {
+                                // Remove kerning if value is 0
+                                if let Some(first_pairs) = workspace.kerning.get_mut(prev_name) {
+                                    first_pairs.remove(curr_name);
+                                }
+                            } else {
+                                // Set or update kerning value
+                                workspace.kerning
+                                    .entry(prev_name.clone())
+                                    .or_insert_with(std::collections::HashMap::new)
+                                    .insert(curr_name.clone(), new_kern_value);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Emit session update so panel reflects new value
+            ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                session: self.session.clone(),
+                save_requested: false,
+            });
+
             ctx.request_render();
             return; // Don't dispatch to tool while kerning
         }
@@ -1419,45 +1496,18 @@ impl EditorWidget {
 
         let local_pos = ctx.local_position(state.position);
 
-        // Handle kern mode release - apply the kerning value
+        // Handle kern mode release - kerning was already applied during drag
         if self.kern_mode_active {
-            if let (Some(sort_index), Some(buffer)) = (self.kern_sort_index, &self.session.text_buffer) {
-                if let (Some(curr_sort), Some(prev_sort)) = (buffer.get(sort_index), buffer.get(sort_index - 1)) {
-                    // Get glyph names
-                    if let (
-                        crate::sort::SortKind::Glyph { name: curr_name, .. },
-                        crate::sort::SortKind::Glyph { name: prev_name, .. }
-                    ) = (&curr_sort.kind, &prev_sort.kind) {
-                        // Apply the kern value to the workspace
-                        if let Some(workspace_arc) = &self.session.workspace {
-                            let kern_value = self.kern_current_offset;
-                            let mut workspace = workspace_arc.write().unwrap();
-
-                            if kern_value == 0.0 {
-                                // Remove kerning if value is 0
-                                if let Some(first_pairs) = workspace.kerning.get_mut(prev_name) {
-                                    first_pairs.remove(curr_name);
-                                }
-                            } else {
-                                // Set or update kerning value
-                                workspace.kerning
-                                    .entry(prev_name.clone())
-                                    .or_insert_with(std::collections::HashMap::new)
-                                    .insert(curr_name.clone(), kern_value);
-                            }
-
-                            tracing::info!("Applied kerning: {} + {} = {}", prev_name, curr_name, kern_value);
-                        }
-                    }
-                }
-            }
+            let final_kern_value = self.kern_original_value + self.kern_current_offset;
+            tracing::info!("Kern mode released: final value = {}", final_kern_value);
 
             // Reset kern mode
             self.kern_mode_active = false;
             self.kern_sort_index = None;
+            self.kern_original_value = 0.0;
             self.kern_current_offset = 0.0;
 
-            // Emit session update
+            // Emit final session update
             ctx.submit_action::<SessionUpdate>(SessionUpdate {
                 session: self.session.clone(),
                 save_requested: false,
