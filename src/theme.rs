@@ -368,7 +368,7 @@ pub mod size {
     /// Padding around the entire toolbar
     pub const TOOLBAR_PADDING: f64 = 8.0;
     /// Padding inside buttons for icons
-    pub const TOOLBAR_ICON_PADDING: f64 = 8.0;
+    pub const TOOLBAR_ICON_PADDING: f64 = 12.0;
     /// Rounded corner radius for toolbar buttons
     pub const TOOLBAR_BUTTON_RADIUS: f64 = 6.0;
     /// Border thickness for toolbar buttons and panels

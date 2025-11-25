@@ -14,15 +14,17 @@ use crate::undo::UndoState;
 use kurbo::{Affine, Circle, Point, Rect as KurboRect, Stroke};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
+    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx, LayoutCtx,
     PaintCtx, PointerButton, PointerButtonEvent, PointerEvent,
     PointerScrollEvent, PointerUpdate, PropertiesMut, PropertiesRef,
-    RegisterCtx, ScrollDelta, TextEvent, Update, UpdateCtx, Widget,
+    RegisterCtx, ScrollDelta, StyleProperty, TextEvent, Update, UpdateCtx, Widget,
+    render_text,
 };
 use masonry::kurbo::Size;
 use masonry::util::fill_color;
 use masonry::vello::Scene;
 use masonry::vello::peniko::Brush;
+use parley::{FontContext, FontFamily, FontStack, GenericFamily, LayoutContext};
 use std::sync::Arc;
 use tracing;
 
@@ -68,6 +70,21 @@ pub struct EditorWidget {
 
     /// Last click position for double-click detection
     last_click_position: Option<Point>,
+
+    /// Manual kerning mode state
+    kern_mode_active: bool,
+
+    /// Index of the sort being kerned (dragged)
+    kern_sort_index: Option<usize>,
+
+    /// Starting X position when kern drag began
+    kern_start_x: f64,
+
+    /// Original kern value before drag started
+    kern_original_value: f64,
+
+    /// Current horizontal offset from start position during kern drag
+    kern_current_offset: f64,
 }
 
 impl EditorWidget {
@@ -86,6 +103,11 @@ impl EditorWidget {
             text_cursor: TextCursor::new(),
             last_click_time: None,
             last_click_position: None,
+            kern_mode_active: false,
+            kern_sort_index: None,
+            kern_start_x: 0.0,
+            kern_original_value: 0.0,
+            kern_current_offset: 0.0,
         }
     }
 
@@ -545,6 +567,10 @@ impl EditorWidget {
         let mut cursor_x = 0.0;
         let mut cursor_y = 0.0;
 
+        // Track previous glyph for kerning lookup
+        let mut prev_glyph_name: Option<String> = None;
+        let mut prev_glyph_group: Option<String> = None;
+
         tracing::debug!("[Cursor] buffer.len()={}, cursor_position={}", buffer.len(), cursor_position);
 
         // Cursor at position 0 (before any sorts)
@@ -557,28 +583,89 @@ impl EditorWidget {
         for (index, sort) in buffer.iter().enumerate() {
             match &sort.kind {
                 crate::sort::SortKind::Glyph { name, advance_width, .. } => {
-                    let sort_position = Point::new(x_offset, baseline_y);
+                    // Apply kerning if we have a previous glyph
+                    if let Some(prev_name) = &prev_glyph_name {
+                        if let Some(workspace_arc) = &self.session.workspace {
+                            let workspace = workspace_arc.read().unwrap();
 
-                    // Draw metrics box for this sort
-                    if !is_preview_mode {
-                        self.render_sort_metrics(scene, x_offset, baseline_y, *advance_width, transform);
+                            // Get current glyph's left kerning group
+                            let curr_group = workspace.get_glyph(name)
+                                .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+
+                            // Look up kerning value
+                            let kern_value = crate::kerning::lookup_kerning(
+                                &workspace.kerning,
+                                &workspace.groups,
+                                prev_name,
+                                prev_glyph_group.as_deref(),
+                                name,
+                                curr_group,
+                            );
+
+                            x_offset += kern_value;
+                        }
                     }
 
-                    if sort.is_active && !is_preview_mode {
-                        // Render active sort with control points (editable)
+                    // Don't apply visual offset - kerning is already applied to x_offset
+                    let sort_position = Point::new(x_offset, baseline_y);
+
+                    // Draw metrics based on mode
+                    if !is_preview_mode {
+                        if self.session.text_mode_active {
+                            // Determine metrics color based on kern mode
+                            let metrics_color = if self.kern_mode_active {
+                                if Some(index) == self.kern_sort_index {
+                                    // Active dragged glyph: bright turquoise-green
+                                    masonry::vello::peniko::Color::from_rgb8(0x00, 0xff, 0xcc)
+                                } else if Some(index + 1) == self.kern_sort_index {
+                                    // Previous glyph: orange (selection marquee color)
+                                    masonry::vello::peniko::Color::from_rgb8(0xff, 0xaa, 0x33)
+                                } else {
+                                    // Normal gray
+                                    theme::metrics::GUIDE
+                                }
+                            } else {
+                                // Normal gray when not in kern mode
+                                theme::metrics::GUIDE
+                            };
+
+                            // Text mode: minimal metrics for all sorts
+                            // Use x_offset directly - kerning is already applied
+                            self.render_sort_minimal_metrics(scene, x_offset, baseline_y, *advance_width, transform, metrics_color);
+                        } else if sort.is_active {
+                            // Non-text mode: full metrics only for active sort
+                            self.render_sort_metrics(scene, x_offset, baseline_y, *advance_width, transform);
+                        }
+                        // Inactive sorts in non-text mode: no metrics at all
+                    }
+
+                    if sort.is_active && !is_preview_mode && !self.session.text_mode_active {
+                        // Non-text mode: render active sort with control points (editable)
                         self.render_active_sort(scene, name, sort_position, transform);
                     } else {
-                        // Render inactive sort as filled preview
+                        // All other cases: render as filled preview
                         self.render_inactive_sort(scene, name, sort_position, transform);
                     }
 
                     x_offset += advance_width;
+
+                    // Update previous glyph info for next iteration
+                    prev_glyph_name = Some(name.clone());
+                    if let Some(workspace_arc) = &self.session.workspace {
+                        let workspace = workspace_arc.read().unwrap();
+                        prev_glyph_group = workspace.get_glyph(name)
+                            .and_then(|g| g.right_group.clone());
+                    }
                 }
                 crate::sort::SortKind::LineBreak => {
                     // Line break: reset x, move y down by UPM height
                     // Top of UPM on new line aligns with bottom of descender on previous line
                     x_offset = 0.0;
                     baseline_y -= upm_height;
+
+                    // Reset kerning tracking (no kerning across lines)
+                    prev_glyph_name = None;
+                    prev_glyph_group = None;
                 }
             }
 
@@ -829,6 +916,109 @@ impl EditorWidget {
         draw_hline(scene, self.session.ascender);
     }
 
+    /// Render minimal metrics markers for text mode (Glyphs.app style)
+    ///
+    /// Shows cross markers (+) at each edge point where metrics lines would be
+    fn render_sort_minimal_metrics(
+        &self,
+        scene: &mut Scene,
+        x_offset: f64,
+        baseline_y: f64,
+        advance_width: f64,
+        transform: &Affine,
+        color: masonry::vello::peniko::Color,
+    ) {
+        let stroke = Stroke::new(theme::size::METRIC_LINE_WIDTH * 2.0);
+        let brush = Brush::Solid(color);
+        let cross_size = 24.0; // Length of each arm of the cross from center
+
+        // Helper to draw a cross (+) at a given point
+        let draw_cross = |scene: &mut Scene, x: f64, y: f64| {
+            // Horizontal line
+            let h_line = kurbo::Line::new(
+                *transform * Point::new(x - cross_size, y),
+                *transform * Point::new(x + cross_size, y),
+            );
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &h_line);
+
+            // Vertical line
+            let v_line = kurbo::Line::new(
+                *transform * Point::new(x, y - cross_size),
+                *transform * Point::new(x, y + cross_size),
+            );
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &v_line);
+        };
+
+        // Left edge crosses
+        draw_cross(scene, x_offset, baseline_y + self.session.descender); // Bottom
+        draw_cross(scene, x_offset, baseline_y); // Baseline
+        draw_cross(scene, x_offset, baseline_y + self.session.ascender); // Top
+
+        // Right edge crosses
+        draw_cross(scene, x_offset + advance_width, baseline_y + self.session.descender); // Bottom
+        draw_cross(scene, x_offset + advance_width, baseline_y); // Baseline
+        draw_cross(scene, x_offset + advance_width, baseline_y + self.session.ascender); // Top
+    }
+
+    /// Render width and sidebearing labels for text mode (Glyphs.app style)
+    ///
+    /// Shows LSB, width, and RSB in light gray text at the bottom of the sort
+    #[allow(dead_code)]
+    fn render_sort_labels(
+        &self,
+        scene: &mut Scene,
+        x_offset: f64,
+        baseline_y: f64,
+        lsb: f64,
+        width: f64,
+        rsb: f64,
+        transform: &Affine,
+    ) {
+        // Text styling
+        let font_size = 14.0;
+        let text_color = masonry::vello::peniko::Color::from_rgb8(0x80, 0x80, 0x80); // Gray
+        let brushes = vec![Brush::Solid(text_color)];
+
+        // Position labels below the descender
+        let label_y = baseline_y + self.session.descender - 16.0;
+
+        // Helper function to render a single label
+        let render_label = |scene: &mut Scene, text: String, x: f64, y: f64| {
+            let mut font_cx = FontContext::default();
+            let mut layout_cx = LayoutContext::new();
+
+            let mut builder = layout_cx.ranged_builder(&mut font_cx, &text, 1.0, false);
+            builder.push_default(StyleProperty::FontSize(font_size));
+            builder.push_default(StyleProperty::FontStack(FontStack::Single(
+                FontFamily::Generic(GenericFamily::SansSerif)
+            )));
+            builder.push_default(StyleProperty::Brush(BrushIndex(0)));
+            let mut layout = builder.build(&text);
+            layout.break_all_lines(None);
+
+            // Center the text horizontally at the given x position
+            let text_width = layout.width() as f64;
+            let text_height = layout.height() as f64;
+
+            // Transform the position from font space to screen space
+            let screen_pos = *transform * Point::new(x, y);
+
+            // Render text in screen space (no flip)
+            render_text(
+                scene,
+                Affine::translate((screen_pos.x - text_width / 2.0, screen_pos.y - text_height / 2.0)),
+                &layout,
+                &brushes,
+                false,
+            );
+        };
+
+        // Render three labels: LSB, Width, RSB
+        render_label(scene, format!("{:.0}", lsb), x_offset, label_y);
+        render_label(scene, format!("{:.0}", width), x_offset + width / 2.0, label_y);
+        render_label(scene, format!("{:.0}", rsb), x_offset + width, label_y);
+    }
+
     // ===== Phase 7: Active Sort Toggling =====
 
     /// Check if the current click is a double-click
@@ -871,9 +1061,36 @@ impl EditorWidget {
         let mut baseline_y = 0.0;
         let upm_height = self.session.ascender - self.session.descender;
 
+        // Track previous glyph for kerning lookup
+        let mut prev_glyph_name: Option<String> = None;
+        let mut prev_glyph_group: Option<String> = None;
+
         for (index, sort) in buffer.iter().enumerate() {
             match &sort.kind {
-                crate::sort::SortKind::Glyph { advance_width, .. } => {
+                crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                    // Apply kerning if we have a previous glyph
+                    if let Some(prev_name) = &prev_glyph_name {
+                        if let Some(workspace_arc) = &self.session.workspace {
+                            let workspace = workspace_arc.read().unwrap();
+
+                            // Get current glyph's left kerning group
+                            let curr_group = workspace.get_glyph(name)
+                                .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+
+                            // Look up kerning value
+                            let kern_value = crate::kerning::lookup_kerning(
+                                &workspace.kerning,
+                                &workspace.groups,
+                                prev_name,
+                                prev_glyph_group.as_deref(),
+                                name,
+                                curr_group,
+                            );
+
+                            x_offset += kern_value;
+                        }
+                    }
+
                     // Create bounding box for this sort
                     let sort_rect = kurbo::Rect::new(
                         x_offset,
@@ -887,10 +1104,22 @@ impl EditorWidget {
                     }
 
                     x_offset += advance_width;
+
+                    // Update previous glyph info for next iteration
+                    prev_glyph_name = Some(name.clone());
+                    if let Some(workspace_arc) = &self.session.workspace {
+                        let workspace = workspace_arc.read().unwrap();
+                        prev_glyph_group = workspace.get_glyph(name)
+                            .and_then(|g| g.right_group.clone());
+                    }
                 }
                 crate::sort::SortKind::LineBreak => {
                     x_offset = 0.0;
                     baseline_y -= upm_height;
+
+                    // Reset kerning tracking (no kerning across lines)
+                    prev_glyph_name = None;
+                    prev_glyph_group = None;
                 }
             }
         }
@@ -955,12 +1184,46 @@ impl EditorWidget {
             .map(|contour| crate::path::Path::from_contour(contour))
             .collect();
 
-        // Calculate x-offset for this sort by summing advance widths of all previous sorts
+        // Calculate x-offset for this sort by summing advance widths and kerning of all previous sorts
         let mut x_offset = 0.0;
+        let mut prev_glyph_name: Option<String> = None;
+        let mut prev_glyph_group: Option<String> = None;
+
         for i in 0..sort_index {
             if let Some(sort) = buffer.get(i) {
-                if let crate::sort::SortKind::Glyph { advance_width, .. } = &sort.kind {
-                    x_offset += advance_width;
+                match &sort.kind {
+                    crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                        // Apply kerning if we have a previous glyph
+                        if let Some(prev_name) = &prev_glyph_name {
+                            // Get current glyph's left kerning group
+                            let curr_group = workspace_guard.get_glyph(name)
+                                .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+
+                            // Look up kerning value
+                            let kern_value = crate::kerning::lookup_kerning(
+                                &workspace_guard.kerning,
+                                &workspace_guard.groups,
+                                prev_name,
+                                prev_glyph_group.as_deref(),
+                                name,
+                                curr_group,
+                            );
+
+                            x_offset += kern_value;
+                        }
+
+                        x_offset += advance_width;
+
+                        // Update previous glyph info for next iteration
+                        prev_glyph_name = Some(name.clone());
+                        prev_glyph_group = workspace_guard.get_glyph(name)
+                            .and_then(|g| g.right_group.clone());
+                    }
+                    crate::sort::SortKind::LineBreak => {
+                        // Reset kerning tracking (no kerning across lines)
+                        prev_glyph_name = None;
+                        prev_glyph_group = None;
+                    }
                 }
             }
         }
@@ -1031,6 +1294,66 @@ impl EditorWidget {
             }
         }
 
+        // Check for shift+click in text mode to enter manual kerning mode
+        if self.session.text_mode_active && state.modifiers.shift() {
+            if let Some(sort_index) = self.find_sort_at_position(design_pos) {
+                // Can only kern if there's a previous glyph
+                if sort_index > 0 {
+                    // Get current kern value for this pair
+                    let current_kern_value = if let Some(buffer) = &self.session.text_buffer {
+                        if let (Some(curr_sort), Some(prev_sort)) = (buffer.get(sort_index), buffer.get(sort_index - 1)) {
+                            if let (
+                                crate::sort::SortKind::Glyph { name: curr_name, .. },
+                                crate::sort::SortKind::Glyph { name: prev_name, .. }
+                            ) = (&curr_sort.kind, &prev_sort.kind) {
+                                if let Some(workspace_arc) = &self.session.workspace {
+                                    let workspace = workspace_arc.read().unwrap();
+                                    let prev_glyph = workspace.get_glyph(prev_name);
+                                    let curr_glyph = workspace.get_glyph(curr_name);
+
+                                    crate::kerning::lookup_kerning(
+                                        &workspace.kerning,
+                                        &workspace.groups,
+                                        prev_name,
+                                        prev_glyph.and_then(|g| g.right_group.as_deref()),
+                                        curr_name,
+                                        curr_glyph.and_then(|g| g.left_group.as_deref()),
+                                    )
+                                } else {
+                                    0.0
+                                }
+                            } else {
+                                0.0
+                            }
+                        } else {
+                            0.0
+                        }
+                    } else {
+                        0.0
+                    };
+
+                    tracing::info!("Entering kern mode for sort {}, current kern = {}", sort_index, current_kern_value);
+                    self.kern_mode_active = true;
+                    self.kern_sort_index = Some(sort_index);
+                    self.kern_start_x = design_pos.x;
+                    self.kern_original_value = current_kern_value;
+                    self.kern_current_offset = 0.0;
+
+                    // Activate this sort so the panel updates
+                    self.activate_sort(sort_index);
+
+                    // Emit session update for panel
+                    ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                        session: self.session.clone(),
+                        save_requested: false,
+                    });
+
+                    ctx.request_render();
+                    return; // Don't dispatch to tool
+                }
+            }
+        }
+
         // Extract modifier keys from pointer state
         // state.modifiers is keyboard_types::Modifiers from
         // ui-events crate
@@ -1075,6 +1398,50 @@ impl EditorWidget {
         ctx.request_focus();
 
         let local_pos = ctx.local_position(current.position);
+
+        // Handle kern mode dragging (horizontal constraint)
+        if self.kern_mode_active {
+            let design_pos = self.session.viewport.screen_to_design(local_pos);
+            // Only horizontal movement
+            self.kern_current_offset = design_pos.x - self.kern_start_x;
+
+            // Apply kern value in real-time
+            if let (Some(sort_index), Some(buffer)) = (self.kern_sort_index, &self.session.text_buffer) {
+                if let (Some(curr_sort), Some(prev_sort)) = (buffer.get(sort_index), buffer.get(sort_index - 1)) {
+                    if let (
+                        crate::sort::SortKind::Glyph { name: curr_name, .. },
+                        crate::sort::SortKind::Glyph { name: prev_name, .. }
+                    ) = (&curr_sort.kind, &prev_sort.kind) {
+                        if let Some(workspace_arc) = &self.session.workspace {
+                            let new_kern_value = self.kern_original_value + self.kern_current_offset;
+                            let mut workspace = workspace_arc.write().unwrap();
+
+                            if new_kern_value == 0.0 {
+                                // Remove kerning if value is 0
+                                if let Some(first_pairs) = workspace.kerning.get_mut(prev_name) {
+                                    first_pairs.remove(curr_name);
+                                }
+                            } else {
+                                // Set or update kerning value
+                                workspace.kerning
+                                    .entry(prev_name.clone())
+                                    .or_insert_with(std::collections::HashMap::new)
+                                    .insert(curr_name.clone(), new_kern_value);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Emit session update so panel reflects new value
+            ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                session: self.session.clone(),
+                save_requested: false,
+            });
+
+            ctx.request_render();
+            return; // Don't dispatch to tool while kerning
+        }
 
         // Create MouseEvent
         let mouse_event = MouseEvent::new(local_pos, None);
@@ -1128,6 +1495,27 @@ impl EditorWidget {
         use crate::tools::{ToolBox, ToolId};
 
         let local_pos = ctx.local_position(state.position);
+
+        // Handle kern mode release - kerning was already applied during drag
+        if self.kern_mode_active {
+            let final_kern_value = self.kern_original_value + self.kern_current_offset;
+            tracing::info!("Kern mode released: final value = {}", final_kern_value);
+
+            // Reset kern mode
+            self.kern_mode_active = false;
+            self.kern_sort_index = None;
+            self.kern_original_value = 0.0;
+            self.kern_current_offset = 0.0;
+
+            // Emit final session update
+            ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                session: self.session.clone(),
+                save_requested: false,
+            });
+
+            ctx.request_render();
+            return; // Don't dispatch to tool
+        }
 
         // Extract modifier keys from pointer state
         let mods = Modifiers {

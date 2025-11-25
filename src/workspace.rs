@@ -20,6 +20,10 @@ pub struct Glyph {
     pub height: Option<f64>,
     pub codepoints: Vec<char>,
     pub contours: Vec<Contour>,
+    /// Left kerning group (e.g., "public.kern1.O")
+    pub left_group: Option<String>,
+    /// Right kerning group (e.g., "public.kern2.O")
+    pub right_group: Option<String>,
 }
 
 /// A contour is a closed path
@@ -50,6 +54,43 @@ pub enum PointType {
     HyperCorner,
 }
 
+impl Glyph {
+    /// Calculate the left side bearing (LSB)
+    /// This is the distance from x=0 to the leftmost point in the glyph
+    pub fn left_side_bearing(&self) -> f64 {
+        let min_x = self.bounding_box_min_x();
+        min_x.unwrap_or(0.0)
+    }
+
+    /// Calculate the right side bearing (RSB)
+    /// This is the distance from the rightmost point to the advance width
+    pub fn right_side_bearing(&self) -> f64 {
+        let max_x = self.bounding_box_max_x();
+        match max_x {
+            Some(max_x) => self.width - max_x,
+            None => self.width, // Empty glyph: RSB = width
+        }
+    }
+
+    /// Get the minimum x coordinate from all contour points
+    fn bounding_box_min_x(&self) -> Option<f64> {
+        self.contours
+            .iter()
+            .flat_map(|c| c.points.iter())
+            .map(|p| p.x)
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+    }
+
+    /// Get the maximum x coordinate from all contour points
+    fn bounding_box_max_x(&self) -> Option<f64> {
+        self.contours
+            .iter()
+            .flat_map(|c| c.points.iter())
+            .map(|p| p.x)
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+    }
+}
+
 // ============================================================================
 // WORKSPACE
 // ============================================================================
@@ -76,6 +117,16 @@ pub struct Workspace {
     pub descender: Option<f64>,
     pub x_height: Option<f64>,
     pub cap_height: Option<f64>,
+
+    /// Kerning pairs: first_member -> (second_member -> kern_value)
+    /// First member can be a glyph name or "public.kern1.*" group name
+    /// Second member can be a glyph name or "public.kern2.*" group name
+    pub kerning: HashMap<String, HashMap<String, f64>>,
+
+    /// Kerning groups: group_name -> [glyph_names]
+    /// e.g., "public.kern1.O" -> ["O", "D", "Q"]
+    /// Loaded from groups.plist and merged with glyph-level groups
+    pub groups: HashMap<String, Vec<String>>,
 }
 
 impl Workspace {
@@ -107,6 +158,31 @@ impl Workspace {
             glyphs.insert(glyph.name.clone(), glyph);
         }
 
+        // Convert kerning from norad's BTreeMap to HashMap
+        // norad's Kerning type: BTreeMap<Name, BTreeMap<Name, f64>>
+        let kerning = font
+            .kerning
+            .iter()
+            .map(|(first, second_map)| {
+                let inner: HashMap<String, f64> = second_map
+                    .iter()
+                    .map(|(second, value)| (second.to_string(), *value))
+                    .collect();
+                (first.to_string(), inner)
+            })
+            .collect();
+
+        // Convert groups from norad's BTreeMap to HashMap
+        // norad's Groups type: BTreeMap<Name, Vec<Name>>
+        let groups = font
+            .groups
+            .iter()
+            .map(|(group_name, glyph_names)| {
+                let names: Vec<String> = glyph_names.iter().map(|n| n.to_string()).collect();
+                (group_name.to_string(), names)
+            })
+            .collect();
+
         Ok(Self {
             path: path.to_path_buf(),
             family_name,
@@ -117,6 +193,8 @@ impl Workspace {
             descender: font.font_info.descender,
             x_height: font.font_info.x_height,
             cap_height: font.font_info.cap_height,
+            kerning,
+            groups,
         })
     }
 
@@ -136,12 +214,22 @@ impl Workspace {
             .map(Self::convert_contour)
             .collect();
 
+        // Extract kerning groups from lib data
+        let left_group = norad_glyph.lib.get("public.kern1")
+            .and_then(|v| v.as_string())
+            .map(|s| s.to_string());
+        let right_group = norad_glyph.lib.get("public.kern2")
+            .and_then(|v| v.as_string())
+            .map(|s| s.to_string());
+
         Glyph {
             name,
             width,
             height: Some(height),
             codepoints,
             contours,
+            left_group,
+            right_group,
         }
     }
 
@@ -270,6 +358,36 @@ impl Workspace {
             default_layer.insert_glyph(norad_glyph);
         }
 
+        // Update kerning data
+        // Convert from HashMap<String, HashMap<String, f64>> to BTreeMap<Name, BTreeMap<Name, f64>>
+        font.kerning.clear();
+        for (first, second_map) in &self.kerning {
+            let first_name = norad::Name::new(first).ok();
+            if let Some(first_name) = first_name {
+                let mut inner = std::collections::BTreeMap::new();
+                for (second, value) in second_map {
+                    if let Some(second_name) = norad::Name::new(second).ok() {
+                        inner.insert(second_name, *value);
+                    }
+                }
+                font.kerning.insert(first_name, inner);
+            }
+        }
+
+        // Update groups data
+        // Convert from HashMap<String, Vec<String>> to BTreeMap<Name, Vec<Name>>
+        font.groups.clear();
+        for (group_name, glyph_names) in &self.groups {
+            let group_name_obj = norad::Name::new(group_name).ok();
+            if let Some(group_name_obj) = group_name_obj {
+                let names: Vec<norad::Name> = glyph_names
+                    .iter()
+                    .filter_map(|n| norad::Name::new(n).ok())
+                    .collect();
+                font.groups.insert(group_name_obj, names);
+            }
+        }
+
         // Save back to disk
         font.save(&self.path)
             .with_context(|| format!("Failed to save UFO to {:?}", self.path))?;
@@ -296,6 +414,20 @@ impl Workspace {
             .iter()
             .map(Self::to_norad_contour)
             .collect();
+
+        // Save kerning groups to lib data
+        if let Some(left_group) = &glyph.left_group {
+            norad_glyph.lib.insert(
+                "public.kern1".to_string(),
+                left_group.clone().into()
+            );
+        }
+        if let Some(right_group) = &glyph.right_group {
+            norad_glyph.lib.insert(
+                "public.kern2".to_string(),
+                right_group.clone().into()
+            );
+        }
 
         norad_glyph
     }
