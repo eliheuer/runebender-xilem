@@ -70,6 +70,18 @@ pub struct EditorWidget {
 
     /// Last click position for double-click detection
     last_click_position: Option<Point>,
+
+    /// Manual kerning mode state
+    kern_mode_active: bool,
+
+    /// Index of the sort being kerned (dragged)
+    kern_sort_index: Option<usize>,
+
+    /// Starting X position when kern drag began
+    kern_start_x: f64,
+
+    /// Current horizontal offset from start position during kern drag
+    kern_current_offset: f64,
 }
 
 impl EditorWidget {
@@ -88,6 +100,10 @@ impl EditorWidget {
             text_cursor: TextCursor::new(),
             last_click_time: None,
             last_click_position: None,
+            kern_mode_active: false,
+            kern_sort_index: None,
+            kern_start_x: 0.0,
+            kern_current_offset: 0.0,
         }
     }
 
@@ -586,13 +602,37 @@ impl EditorWidget {
                         }
                     }
 
-                    let sort_position = Point::new(x_offset, baseline_y);
+                    // Apply kern offset to sort position if this is the dragged glyph
+                    let sort_x_offset = if Some(index) == self.kern_sort_index && self.kern_mode_active {
+                        x_offset + self.kern_current_offset
+                    } else {
+                        x_offset
+                    };
+
+                    let sort_position = Point::new(sort_x_offset, baseline_y);
 
                     // Draw metrics based on mode
                     if !is_preview_mode {
                         if self.session.text_mode_active {
+                            // Determine metrics color based on kern mode
+                            let metrics_color = if self.kern_mode_active {
+                                if Some(index) == self.kern_sort_index {
+                                    // Active dragged glyph: bright turquoise-green
+                                    masonry::vello::peniko::Color::from_rgb8(0x00, 0xff, 0xcc)
+                                } else if Some(index + 1) == self.kern_sort_index {
+                                    // Previous glyph: orange (selection marquee color)
+                                    masonry::vello::peniko::Color::from_rgb8(0xff, 0xaa, 0x33)
+                                } else {
+                                    // Normal gray
+                                    theme::metrics::GUIDE
+                                }
+                            } else {
+                                // Normal gray when not in kern mode
+                                theme::metrics::GUIDE
+                            };
+
                             // Text mode: minimal metrics for all sorts
-                            self.render_sort_minimal_metrics(scene, x_offset, baseline_y, *advance_width, transform);
+                            self.render_sort_minimal_metrics(scene, sort_x_offset, baseline_y, *advance_width, transform, metrics_color);
                         } else if sort.is_active {
                             // Non-text mode: full metrics only for active sort
                             self.render_sort_metrics(scene, x_offset, baseline_y, *advance_width, transform);
@@ -887,9 +927,10 @@ impl EditorWidget {
         baseline_y: f64,
         advance_width: f64,
         transform: &Affine,
+        color: masonry::vello::peniko::Color,
     ) {
         let stroke = Stroke::new(theme::size::METRIC_LINE_WIDTH);
-        let brush = Brush::Solid(theme::metrics::GUIDE);
+        let brush = Brush::Solid(color);
         let cross_size = 12.0; // Length of each arm of the cross from center
 
         // Helper to draw a cross (+) at a given point
@@ -1254,6 +1295,23 @@ impl EditorWidget {
             }
         }
 
+        // Check for shift+click in text mode to enter manual kerning mode
+        if self.session.text_mode_active && state.modifiers.shift() {
+            if let Some(sort_index) = self.find_sort_at_position(design_pos) {
+                // Can only kern if there's a previous glyph
+                if sort_index > 0 {
+                    tracing::info!("Entering kern mode for sort {}", sort_index);
+                    self.kern_mode_active = true;
+                    self.kern_sort_index = Some(sort_index);
+                    self.kern_start_x = design_pos.x;
+                    self.kern_current_offset = 0.0;
+
+                    ctx.request_render();
+                    return; // Don't dispatch to tool
+                }
+            }
+        }
+
         // Extract modifier keys from pointer state
         // state.modifiers is keyboard_types::Modifiers from
         // ui-events crate
@@ -1298,6 +1356,15 @@ impl EditorWidget {
         ctx.request_focus();
 
         let local_pos = ctx.local_position(current.position);
+
+        // Handle kern mode dragging (horizontal constraint)
+        if self.kern_mode_active {
+            let design_pos = self.session.viewport.screen_to_design(local_pos);
+            // Only horizontal movement
+            self.kern_current_offset = design_pos.x - self.kern_start_x;
+            ctx.request_render();
+            return; // Don't dispatch to tool while kerning
+        }
 
         // Create MouseEvent
         let mouse_event = MouseEvent::new(local_pos, None);
@@ -1351,6 +1418,54 @@ impl EditorWidget {
         use crate::tools::{ToolBox, ToolId};
 
         let local_pos = ctx.local_position(state.position);
+
+        // Handle kern mode release - apply the kerning value
+        if self.kern_mode_active {
+            if let (Some(sort_index), Some(buffer)) = (self.kern_sort_index, &self.session.text_buffer) {
+                if let (Some(curr_sort), Some(prev_sort)) = (buffer.get(sort_index), buffer.get(sort_index - 1)) {
+                    // Get glyph names
+                    if let (
+                        crate::sort::SortKind::Glyph { name: curr_name, .. },
+                        crate::sort::SortKind::Glyph { name: prev_name, .. }
+                    ) = (&curr_sort.kind, &prev_sort.kind) {
+                        // Apply the kern value to the workspace
+                        if let Some(workspace_arc) = &self.session.workspace {
+                            let kern_value = self.kern_current_offset;
+                            let mut workspace = workspace_arc.write().unwrap();
+
+                            if kern_value == 0.0 {
+                                // Remove kerning if value is 0
+                                if let Some(first_pairs) = workspace.kerning.get_mut(prev_name) {
+                                    first_pairs.remove(curr_name);
+                                }
+                            } else {
+                                // Set or update kerning value
+                                workspace.kerning
+                                    .entry(prev_name.clone())
+                                    .or_insert_with(std::collections::HashMap::new)
+                                    .insert(curr_name.clone(), kern_value);
+                            }
+
+                            tracing::info!("Applied kerning: {} + {} = {}", prev_name, curr_name, kern_value);
+                        }
+                    }
+                }
+            }
+
+            // Reset kern mode
+            self.kern_mode_active = false;
+            self.kern_sort_index = None;
+            self.kern_current_offset = 0.0;
+
+            // Emit session update
+            ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                session: self.session.clone(),
+                save_requested: false,
+            });
+
+            ctx.request_render();
+            return; // Don't dispatch to tool
+        }
 
         // Extract modifier keys from pointer state
         let mods = Modifiers {
