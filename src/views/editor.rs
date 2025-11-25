@@ -98,7 +98,7 @@ pub fn editor_tab(
             .translate((0.0, -(MARGIN + 140.0 + MARGIN)))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
         // Bottom-center-bottom: active glyph panel
-        transformed(active_glyph_panel_centered(session_arc.clone(), glyph_name.clone()))
+        transformed(active_glyph_panel_centered(state))
             .translate((0.0, -MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
         // Bottom-right: coordinate panel (locked to corner like workspace toolbar)
@@ -204,11 +204,21 @@ fn glyph_preview_pane(
 /// Active glyph panel showing editable metrics (Glyphs app style)
 /// Only shown when a glyph is active
 fn active_glyph_panel_centered(
-    session: Arc<crate::edit_session::EditSession>,
-    glyph_name: String,
+    state: &AppState,
 ) -> impl WidgetView<AppState> + use<> {
     const PANEL_HEIGHT: f64 = 140.0;
     const PANEL_WIDTH: f64 = 488.0; // Match text buffer preview width
+
+    // Get session and glyph name
+    let session = match &state.editor_session {
+        Some(s) => s,
+        None => return Either::B(sized_box(label("")).width(0.px()).height(0.px())),
+    };
+
+    let glyph_name = match &session.active_sort_name {
+        Some(n) => n.clone(),
+        None => return Either::B(sized_box(label("")).width(0.px()).height(0.px())),
+    };
 
     // Only show if we have an active glyph
     if glyph_name.is_empty() {
@@ -221,6 +231,10 @@ fn active_glyph_panel_centered(
     let rsb = session.glyph.right_side_bearing();
     let left_group = session.glyph.left_group.as_ref().map(|s| s.as_str()).unwrap_or("");
     let right_group = session.glyph.right_group.as_ref().map(|s| s.as_str()).unwrap_or("");
+
+    // Get kerning values
+    let left_kern = state.get_left_kern();
+    let right_kern = state.get_right_kern();
 
     // Format Unicode
     let unicode_display = if let Some(first_char) = session.glyph.codepoints.first() {
@@ -262,9 +276,9 @@ fn active_glyph_panel_centered(
     let middle_row = flex_row((
         sized_box(
             text_input(
-                String::new(), // Left kern (empty with placeholder)
-                |_state: &mut AppState, _new_value| {
-                    // TODO: implement left kern editing
+                left_kern.map(|v| format!("{:.0}", v)).unwrap_or_default(),
+                |state: &mut AppState, new_value| {
+                    state.update_left_kern(new_value);
                 }
             )
             .text_alignment(parley::Alignment::Center) // Placeholder won't center until upstream fix
@@ -290,9 +304,9 @@ fn active_glyph_panel_centered(
         ).width(110.px()),
         sized_box(
             text_input(
-                String::new(), // Right kern (empty with placeholder)
-                |_state: &mut AppState, _new_value| {
-                    // TODO: implement right kern editing
+                right_kern.map(|v| format!("{:.0}", v)).unwrap_or_default(),
+                |state: &mut AppState, new_value| {
+                    state.update_right_kern(new_value);
                 }
             )
             .text_alignment(parley::Alignment::Center) // Placeholder won't center until upstream fix
