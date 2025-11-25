@@ -14,15 +14,17 @@ use crate::undo::UndoState;
 use kurbo::{Affine, Circle, Point, Rect as KurboRect, Stroke};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
+    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx, LayoutCtx,
     PaintCtx, PointerButton, PointerButtonEvent, PointerEvent,
     PointerScrollEvent, PointerUpdate, PropertiesMut, PropertiesRef,
-    RegisterCtx, ScrollDelta, TextEvent, Update, UpdateCtx, Widget,
+    RegisterCtx, ScrollDelta, StyleProperty, TextEvent, Update, UpdateCtx, Widget,
+    render_text,
 };
 use masonry::kurbo::Size;
 use masonry::util::fill_color;
 use masonry::vello::Scene;
 use masonry::vello::peniko::Brush;
+use parley::{FontContext, FontFamily, FontStack, GenericFamily, LayoutContext};
 use std::sync::Arc;
 use tracing;
 
@@ -586,16 +588,23 @@ impl EditorWidget {
 
                     let sort_position = Point::new(x_offset, baseline_y);
 
-                    // Draw metrics box for this sort
+                    // Draw metrics based on mode
                     if !is_preview_mode {
-                        self.render_sort_metrics(scene, x_offset, baseline_y, *advance_width, transform);
+                        if self.session.text_mode_active {
+                            // Text mode: minimal metrics for all sorts
+                            self.render_sort_minimal_metrics(scene, x_offset, baseline_y, *advance_width, transform);
+                        } else if sort.is_active {
+                            // Non-text mode: full metrics only for active sort
+                            self.render_sort_metrics(scene, x_offset, baseline_y, *advance_width, transform);
+                        }
+                        // Inactive sorts in non-text mode: no metrics at all
                     }
 
-                    if sort.is_active && !is_preview_mode {
-                        // Render active sort with control points (editable)
+                    if sort.is_active && !is_preview_mode && !self.session.text_mode_active {
+                        // Non-text mode: render active sort with control points (editable)
                         self.render_active_sort(scene, name, sort_position, transform);
                     } else {
-                        // Render inactive sort as filled preview
+                        // All other cases: render as filled preview
                         self.render_inactive_sort(scene, name, sort_position, transform);
                     }
 
@@ -866,6 +875,108 @@ impl EditorWidget {
 
         // Ascender (top of metrics box)
         draw_hline(scene, self.session.ascender);
+    }
+
+    /// Render minimal metrics markers for text mode (Glyphs.app style)
+    ///
+    /// Shows cross markers (+) at each edge point where metrics lines would be
+    fn render_sort_minimal_metrics(
+        &self,
+        scene: &mut Scene,
+        x_offset: f64,
+        baseline_y: f64,
+        advance_width: f64,
+        transform: &Affine,
+    ) {
+        let stroke = Stroke::new(theme::size::METRIC_LINE_WIDTH);
+        let brush = Brush::Solid(theme::metrics::GUIDE);
+        let cross_size = 12.0; // Length of each arm of the cross from center
+
+        // Helper to draw a cross (+) at a given point
+        let draw_cross = |scene: &mut Scene, x: f64, y: f64| {
+            // Horizontal line
+            let h_line = kurbo::Line::new(
+                *transform * Point::new(x - cross_size, y),
+                *transform * Point::new(x + cross_size, y),
+            );
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &h_line);
+
+            // Vertical line
+            let v_line = kurbo::Line::new(
+                *transform * Point::new(x, y - cross_size),
+                *transform * Point::new(x, y + cross_size),
+            );
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &v_line);
+        };
+
+        // Left edge crosses
+        draw_cross(scene, x_offset, baseline_y + self.session.descender); // Bottom
+        draw_cross(scene, x_offset, baseline_y); // Baseline
+        draw_cross(scene, x_offset, baseline_y + self.session.ascender); // Top
+
+        // Right edge crosses
+        draw_cross(scene, x_offset + advance_width, baseline_y + self.session.descender); // Bottom
+        draw_cross(scene, x_offset + advance_width, baseline_y); // Baseline
+        draw_cross(scene, x_offset + advance_width, baseline_y + self.session.ascender); // Top
+    }
+
+    /// Render width and sidebearing labels for text mode (Glyphs.app style)
+    ///
+    /// Shows LSB, width, and RSB in light gray text at the bottom of the sort
+    #[allow(dead_code)]
+    fn render_sort_labels(
+        &self,
+        scene: &mut Scene,
+        x_offset: f64,
+        baseline_y: f64,
+        lsb: f64,
+        width: f64,
+        rsb: f64,
+        transform: &Affine,
+    ) {
+        // Text styling
+        let font_size = 14.0;
+        let text_color = masonry::vello::peniko::Color::from_rgb8(0x80, 0x80, 0x80); // Gray
+        let brushes = vec![Brush::Solid(text_color)];
+
+        // Position labels below the descender
+        let label_y = baseline_y + self.session.descender - 16.0;
+
+        // Helper function to render a single label
+        let render_label = |scene: &mut Scene, text: String, x: f64, y: f64| {
+            let mut font_cx = FontContext::default();
+            let mut layout_cx = LayoutContext::new();
+
+            let mut builder = layout_cx.ranged_builder(&mut font_cx, &text, 1.0, false);
+            builder.push_default(StyleProperty::FontSize(font_size));
+            builder.push_default(StyleProperty::FontStack(FontStack::Single(
+                FontFamily::Generic(GenericFamily::SansSerif)
+            )));
+            builder.push_default(StyleProperty::Brush(BrushIndex(0)));
+            let mut layout = builder.build(&text);
+            layout.break_all_lines(None);
+
+            // Center the text horizontally at the given x position
+            let text_width = layout.width() as f64;
+            let text_height = layout.height() as f64;
+
+            // Transform the position from font space to screen space
+            let screen_pos = *transform * Point::new(x, y);
+
+            // Render text in screen space (no flip)
+            render_text(
+                scene,
+                Affine::translate((screen_pos.x - text_width / 2.0, screen_pos.y - text_height / 2.0)),
+                &layout,
+                &brushes,
+                false,
+            );
+        };
+
+        // Render three labels: LSB, Width, RSB
+        render_label(scene, format!("{:.0}", lsb), x_offset, label_y);
+        render_label(scene, format!("{:.0}", width), x_offset + width / 2.0, label_y);
+        render_label(scene, format!("{:.0}", rsb), x_offset + width, label_y);
     }
 
     // ===== Phase 7: Active Sort Toggling =====
