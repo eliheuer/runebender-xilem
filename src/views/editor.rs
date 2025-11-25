@@ -145,53 +145,38 @@ fn coordinate_panel_from_session(
 }
 
 /// Glyph preview pane showing the rendered glyph
-/// Horizontal layout: glyph on left, labels on right (matching coordinate panel style)
 fn glyph_preview_pane(
     session: Arc<crate::edit_session::EditSession>,
-    glyph_name: String,
+    _glyph_name: String,
 ) -> impl WidgetView<AppState> + use<> {
     const PANEL_HEIGHT: f64 = 140.0;
     const PANEL_WIDTH: f64 = 240.0; // Match coordinate panel width
-    const GLYPH_SIZE: f64 = 120.0; // Fit within 140px height with padding
+    const GLYPH_SIZE: f64 = 100.0; // Fit within 140px height with padding
 
     // Get the glyph outline path from the session
     let glyph_path = build_glyph_path(&session);
     let upm = session.ascender - session.descender;
 
-    // Format Unicode codepoint (use first codepoint if available)
-    let unicode_display = format_unicode_display(&session);
-
-    // Glyph preview on the left
+    // Centered glyph preview with upward offset
     let glyph_preview = if !glyph_path.is_empty() {
         Either::A(
-            sized_box(
-                glyph_view(glyph_path, GLYPH_SIZE, GLYPH_SIZE, upm)
-                    .color(theme::panel::GLYPH_PREVIEW)
-                    .baseline_offset(0.15)
-            )
-            .width(100.px())
+            glyph_view(glyph_path, GLYPH_SIZE, GLYPH_SIZE, upm)
+                .color(theme::panel::GLYPH_PREVIEW)
         )
     } else {
-        Either::B(sized_box(label("")).width(100.px()))
+        Either::B(label(""))
     };
 
-    // Labels on the right
-    let labels = flex_col((
-        label(glyph_name)
-            .text_size(16.0)
-            .color(theme::text::PRIMARY),
-        label(unicode_display)
-            .text_size(14.0)
-            .color(theme::text::PRIMARY),
-    ))
-    .gap(4.px())
-    .cross_axis_alignment(xilem::view::CrossAxisAlignment::Start);
-
     sized_box(
-        flex_row((glyph_preview, labels))
-            .gap(8.px())
-            .main_axis_alignment(xilem::view::MainAxisAlignment::Start)
-            .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
+        flex_col((
+            // Add spacing at top to push content up
+            sized_box(label("")).height(0.px()),
+            glyph_preview,
+            // Add more spacing at bottom to shift visual center up
+            sized_box(label("")).height(15.px()),
+        ))
+        .main_axis_alignment(xilem::view::MainAxisAlignment::Center)
+        .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center)
     )
     .width(PANEL_WIDTH.px())
     .height(PANEL_HEIGHT.px())
@@ -445,7 +430,7 @@ fn text_buffer_preview_pane_centered(
     session: Arc<crate::edit_session::EditSession>,
 ) -> impl WidgetView<AppState> + use<> {
     // Panel dimensions to match other bottom panels
-    const PANEL_HEIGHT: f64 = 100.0;
+    const PANEL_HEIGHT: f64 = 140.0;
     // Width calculation for centered panel: window width - side panels - margins - gaps
     // At 1200px window: (1200 - 240*2 - 16*4) = 640px leaves 16px gaps
     const PANEL_WIDTH: f64 = 640.0; // Extended width for text buffer preview (now on top)
@@ -533,7 +518,7 @@ fn text_buffer_preview_pane_centered(
         }
     }
 
-    let preview_size = 60.0; // Smaller than glyph preview
+    let preview_size = 100.0; // Match glyph preview size
     let upm = session.ascender - session.descender;
 
     // Render the combined path as a glyph view, aligned to bottom
