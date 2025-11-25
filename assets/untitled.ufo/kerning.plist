@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>A</key>
+	<dict>
+		<key>V</key>
+		<integer>-80</integer>
+		<key>W</key>
+		<integer>-60</integer>
+		<key>T</key>
+		<integer>-90</integer>
+		<key>Y</key>
+		<integer>-100</integer>
+	</dict>
+	<key>T</key>
+	<dict>
+		<key>A</key>
+		<integer>-90</integer>
+		<key>public.kern2.round</key>
+		<integer>-50</integer>
+	</dict>
+	<key>V</key>
+	<dict>
+		<key>A</key>
+		<integer>-80</integer>
+	</dict>
+	<key>W</key>
+	<dict>
+		<key>A</key>
+		<integer>-60</integer>
+	</dict>
+	<key>Y</key>
+	<dict>
+		<key>A</key>
+		<integer>-100</integer>
+	</dict>
+	<key>L</key>
+	<dict>
+		<key>T</key>
+		<integer>-70</integer>
+		<key>V</key>
+		<integer>-80</integer>
+		<key>W</key>
+		<integer>-60</integer>
+		<key>Y</key>
+		<integer>-90</integer>
+	</dict>
+	<key>P</key>
+	<dict>
+		<key>A</key>
+		<integer>-50</integer>
+	</dict>
+	<key>F</key>
+	<dict>
+		<key>A</key>
+		<integer>-60</integer>
+	</dict>
+</dict>
+</plist>

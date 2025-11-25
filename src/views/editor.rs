@@ -256,15 +256,19 @@ fn active_glyph_panel_centered(
 
     // Row 2 (Middle): Left kern, LSB, RSB, Right kern (all editable)
     // Widths: 4 × 110 + 3 × 8 gaps = 464px
+    // NOTE: text_alignment is set before placeholder, but due to an upstream issue in Xilem 0.4.0,
+    // placeholder text does not respect text_alignment and remains left-aligned.
+    // See context/text-input-placeholder-alignment.md for details and upstream PR tracking.
     let middle_row = flex_row((
         sized_box(
             text_input(
-                "—".to_string(), // Left kern placeholder
+                String::new(), // Left kern (empty with placeholder)
                 |_state: &mut AppState, _new_value| {
                     // TODO: implement left kern editing
                 }
             )
-            .text_alignment(parley::Alignment::Center)
+            .text_alignment(parley::Alignment::Center) // Placeholder won't center until upstream fix
+            .placeholder("Kern")
         ).width(110.px()),
         sized_box(
             text_input(
@@ -286,12 +290,13 @@ fn active_glyph_panel_centered(
         ).width(110.px()),
         sized_box(
             text_input(
-                "—".to_string(), // Right kern placeholder
+                String::new(), // Right kern (empty with placeholder)
                 |_state: &mut AppState, _new_value| {
                     // TODO: implement right kern editing
                 }
             )
-            .text_alignment(parley::Alignment::Center)
+            .text_alignment(parley::Alignment::Center) // Placeholder won't center until upstream fix
+            .placeholder("Kern")
         ).width(110.px()),
     ))
     .gap(8.px())
@@ -299,6 +304,7 @@ fn active_glyph_panel_centered(
 
     // Row 3 (Bottom): Left kern group, Width, Right kern group (all editable)
     // Widths: 149 + 8 + 150 + 8 + 149 = 464px
+    // NOTE: Placeholder alignment issue same as row 2 - see context/text-input-placeholder-alignment.md
     let bottom_row = flex_row((
         sized_box(
             text_input(
@@ -307,8 +313,8 @@ fn active_glyph_panel_centered(
                     state.update_left_group(new_value);
                 }
             )
+            .text_alignment(parley::Alignment::Center) // Placeholder won't center until upstream fix
             .placeholder("Group")
-            .text_alignment(parley::Alignment::Center)
         ).width(149.px()),
         sized_box(
             text_input(
@@ -326,8 +332,8 @@ fn active_glyph_panel_centered(
                     state.update_right_group(new_value);
                 }
             )
+            .text_alignment(parley::Alignment::Center) // Placeholder won't center until upstream fix
             .placeholder("Group")
-            .text_alignment(parley::Alignment::Center)
         ).width(149.px()),
     ))
     .gap(8.px())
@@ -447,9 +453,34 @@ fn text_buffer_preview_pane_centered(
     let mut combined_path = BezPath::new();
     let mut x_offset = 0.0;
 
+    // Track previous glyph for kerning lookup
+    let mut prev_glyph_name: Option<String> = None;
+    let mut prev_glyph_group: Option<String> = None;
+
     for sort in buffer.iter() {
         match &sort.kind {
             crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                // Apply kerning if we have a previous glyph
+                if let Some(prev_name) = &prev_glyph_name {
+                    let workspace_guard = workspace.read().unwrap();
+
+                    // Get current glyph's left kerning group
+                    let curr_group = workspace_guard.get_glyph(name)
+                        .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+
+                    // Look up kerning value
+                    let kern_value = crate::kerning::lookup_kerning(
+                        &workspace_guard.kerning,
+                        &workspace_guard.groups,
+                        prev_name,
+                        prev_glyph_group.as_deref(),
+                        name,
+                        curr_group,
+                    );
+
+                    x_offset += kern_value;
+                }
+
                 let mut glyph_path = BezPath::new();
 
                 if sort.is_active {
@@ -473,9 +504,17 @@ fn text_buffer_preview_pane_centered(
                 combined_path.extend(translated_path);
 
                 x_offset += advance_width;
+
+                // Update previous glyph info for next iteration
+                prev_glyph_name = Some(name.clone());
+                prev_glyph_group = workspace.read().unwrap().get_glyph(name)
+                    .and_then(|g| g.right_group.clone());
             }
             crate::sort::SortKind::LineBreak => {
                 // For now, ignore line breaks in preview (Phase 1 is single line)
+                // Reset kerning tracking (no kerning across lines)
+                prev_glyph_name = None;
+                prev_glyph_group = None;
             }
         }
     }

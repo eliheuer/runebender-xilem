@@ -117,6 +117,16 @@ pub struct Workspace {
     pub descender: Option<f64>,
     pub x_height: Option<f64>,
     pub cap_height: Option<f64>,
+
+    /// Kerning pairs: first_member -> (second_member -> kern_value)
+    /// First member can be a glyph name or "public.kern1.*" group name
+    /// Second member can be a glyph name or "public.kern2.*" group name
+    pub kerning: HashMap<String, HashMap<String, f64>>,
+
+    /// Kerning groups: group_name -> [glyph_names]
+    /// e.g., "public.kern1.O" -> ["O", "D", "Q"]
+    /// Loaded from groups.plist and merged with glyph-level groups
+    pub groups: HashMap<String, Vec<String>>,
 }
 
 impl Workspace {
@@ -148,6 +158,31 @@ impl Workspace {
             glyphs.insert(glyph.name.clone(), glyph);
         }
 
+        // Convert kerning from norad's BTreeMap to HashMap
+        // norad's Kerning type: BTreeMap<Name, BTreeMap<Name, f64>>
+        let kerning = font
+            .kerning
+            .iter()
+            .map(|(first, second_map)| {
+                let inner: HashMap<String, f64> = second_map
+                    .iter()
+                    .map(|(second, value)| (second.to_string(), *value))
+                    .collect();
+                (first.to_string(), inner)
+            })
+            .collect();
+
+        // Convert groups from norad's BTreeMap to HashMap
+        // norad's Groups type: BTreeMap<Name, Vec<Name>>
+        let groups = font
+            .groups
+            .iter()
+            .map(|(group_name, glyph_names)| {
+                let names: Vec<String> = glyph_names.iter().map(|n| n.to_string()).collect();
+                (group_name.to_string(), names)
+            })
+            .collect();
+
         Ok(Self {
             path: path.to_path_buf(),
             family_name,
@@ -158,6 +193,8 @@ impl Workspace {
             descender: font.font_info.descender,
             x_height: font.font_info.x_height,
             cap_height: font.font_info.cap_height,
+            kerning,
+            groups,
         })
     }
 
@@ -319,6 +356,36 @@ impl Workspace {
                 default_layer.remove_glyph(name);
             }
             default_layer.insert_glyph(norad_glyph);
+        }
+
+        // Update kerning data
+        // Convert from HashMap<String, HashMap<String, f64>> to BTreeMap<Name, BTreeMap<Name, f64>>
+        font.kerning.clear();
+        for (first, second_map) in &self.kerning {
+            let first_name = norad::Name::new(first).ok();
+            if let Some(first_name) = first_name {
+                let mut inner = std::collections::BTreeMap::new();
+                for (second, value) in second_map {
+                    if let Some(second_name) = norad::Name::new(second).ok() {
+                        inner.insert(second_name, *value);
+                    }
+                }
+                font.kerning.insert(first_name, inner);
+            }
+        }
+
+        // Update groups data
+        // Convert from HashMap<String, Vec<String>> to BTreeMap<Name, Vec<Name>>
+        font.groups.clear();
+        for (group_name, glyph_names) in &self.groups {
+            let group_name_obj = norad::Name::new(group_name).ok();
+            if let Some(group_name_obj) = group_name_obj {
+                let names: Vec<norad::Name> = glyph_names
+                    .iter()
+                    .filter_map(|n| norad::Name::new(n).ok())
+                    .collect();
+                font.groups.insert(group_name_obj, names);
+            }
         }
 
         // Save back to disk

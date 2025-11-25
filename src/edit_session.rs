@@ -1497,7 +1497,7 @@ mod tests {
 
         assert!(!session.has_text_buffer());
         assert!(!session.text_mode_active);
-        assert_eq!(session.glyph_name, "a");
+        assert_eq!(session.glyph.name, "a");
     }
 
     #[test]

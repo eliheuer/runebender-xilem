@@ -545,6 +545,10 @@ impl EditorWidget {
         let mut cursor_x = 0.0;
         let mut cursor_y = 0.0;
 
+        // Track previous glyph for kerning lookup
+        let mut prev_glyph_name: Option<String> = None;
+        let mut prev_glyph_group: Option<String> = None;
+
         tracing::debug!("[Cursor] buffer.len()={}, cursor_position={}", buffer.len(), cursor_position);
 
         // Cursor at position 0 (before any sorts)
@@ -557,6 +561,29 @@ impl EditorWidget {
         for (index, sort) in buffer.iter().enumerate() {
             match &sort.kind {
                 crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                    // Apply kerning if we have a previous glyph
+                    if let Some(prev_name) = &prev_glyph_name {
+                        if let Some(workspace_arc) = &self.session.workspace {
+                            let workspace = workspace_arc.read().unwrap();
+
+                            // Get current glyph's left kerning group
+                            let curr_group = workspace.get_glyph(name)
+                                .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+
+                            // Look up kerning value
+                            let kern_value = crate::kerning::lookup_kerning(
+                                &workspace.kerning,
+                                &workspace.groups,
+                                prev_name,
+                                prev_glyph_group.as_deref(),
+                                name,
+                                curr_group,
+                            );
+
+                            x_offset += kern_value;
+                        }
+                    }
+
                     let sort_position = Point::new(x_offset, baseline_y);
 
                     // Draw metrics box for this sort
@@ -573,12 +600,24 @@ impl EditorWidget {
                     }
 
                     x_offset += advance_width;
+
+                    // Update previous glyph info for next iteration
+                    prev_glyph_name = Some(name.clone());
+                    if let Some(workspace_arc) = &self.session.workspace {
+                        let workspace = workspace_arc.read().unwrap();
+                        prev_glyph_group = workspace.get_glyph(name)
+                            .and_then(|g| g.right_group.clone());
+                    }
                 }
                 crate::sort::SortKind::LineBreak => {
                     // Line break: reset x, move y down by UPM height
                     // Top of UPM on new line aligns with bottom of descender on previous line
                     x_offset = 0.0;
                     baseline_y -= upm_height;
+
+                    // Reset kerning tracking (no kerning across lines)
+                    prev_glyph_name = None;
+                    prev_glyph_group = None;
                 }
             }
 
@@ -871,9 +910,36 @@ impl EditorWidget {
         let mut baseline_y = 0.0;
         let upm_height = self.session.ascender - self.session.descender;
 
+        // Track previous glyph for kerning lookup
+        let mut prev_glyph_name: Option<String> = None;
+        let mut prev_glyph_group: Option<String> = None;
+
         for (index, sort) in buffer.iter().enumerate() {
             match &sort.kind {
-                crate::sort::SortKind::Glyph { advance_width, .. } => {
+                crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                    // Apply kerning if we have a previous glyph
+                    if let Some(prev_name) = &prev_glyph_name {
+                        if let Some(workspace_arc) = &self.session.workspace {
+                            let workspace = workspace_arc.read().unwrap();
+
+                            // Get current glyph's left kerning group
+                            let curr_group = workspace.get_glyph(name)
+                                .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+
+                            // Look up kerning value
+                            let kern_value = crate::kerning::lookup_kerning(
+                                &workspace.kerning,
+                                &workspace.groups,
+                                prev_name,
+                                prev_glyph_group.as_deref(),
+                                name,
+                                curr_group,
+                            );
+
+                            x_offset += kern_value;
+                        }
+                    }
+
                     // Create bounding box for this sort
                     let sort_rect = kurbo::Rect::new(
                         x_offset,
@@ -887,10 +953,22 @@ impl EditorWidget {
                     }
 
                     x_offset += advance_width;
+
+                    // Update previous glyph info for next iteration
+                    prev_glyph_name = Some(name.clone());
+                    if let Some(workspace_arc) = &self.session.workspace {
+                        let workspace = workspace_arc.read().unwrap();
+                        prev_glyph_group = workspace.get_glyph(name)
+                            .and_then(|g| g.right_group.clone());
+                    }
                 }
                 crate::sort::SortKind::LineBreak => {
                     x_offset = 0.0;
                     baseline_y -= upm_height;
+
+                    // Reset kerning tracking (no kerning across lines)
+                    prev_glyph_name = None;
+                    prev_glyph_group = None;
                 }
             }
         }
@@ -955,12 +1033,46 @@ impl EditorWidget {
             .map(|contour| crate::path::Path::from_contour(contour))
             .collect();
 
-        // Calculate x-offset for this sort by summing advance widths of all previous sorts
+        // Calculate x-offset for this sort by summing advance widths and kerning of all previous sorts
         let mut x_offset = 0.0;
+        let mut prev_glyph_name: Option<String> = None;
+        let mut prev_glyph_group: Option<String> = None;
+
         for i in 0..sort_index {
             if let Some(sort) = buffer.get(i) {
-                if let crate::sort::SortKind::Glyph { advance_width, .. } = &sort.kind {
-                    x_offset += advance_width;
+                match &sort.kind {
+                    crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                        // Apply kerning if we have a previous glyph
+                        if let Some(prev_name) = &prev_glyph_name {
+                            // Get current glyph's left kerning group
+                            let curr_group = workspace_guard.get_glyph(name)
+                                .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+
+                            // Look up kerning value
+                            let kern_value = crate::kerning::lookup_kerning(
+                                &workspace_guard.kerning,
+                                &workspace_guard.groups,
+                                prev_name,
+                                prev_glyph_group.as_deref(),
+                                name,
+                                curr_group,
+                            );
+
+                            x_offset += kern_value;
+                        }
+
+                        x_offset += advance_width;
+
+                        // Update previous glyph info for next iteration
+                        prev_glyph_name = Some(name.clone());
+                        prev_glyph_group = workspace_guard.get_glyph(name)
+                            .and_then(|g| g.right_group.clone());
+                    }
+                    crate::sort::SortKind::LineBreak => {
+                        // Reset kerning tracking (no kerning across lines)
+                        prev_glyph_name = None;
+                        prev_glyph_group = None;
+                    }
                 }
             }
         }

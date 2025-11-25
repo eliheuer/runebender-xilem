@@ -19,6 +19,7 @@ mod edit_types;
 mod entity_id;
 mod glyph_renderer;
 mod hit_test;
+mod kerning;
 mod mouse;
 mod path;
 mod point;
