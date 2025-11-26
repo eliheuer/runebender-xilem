@@ -771,6 +771,18 @@ impl EditorWidget {
             // Note: This uses session paths which already have the correct structure
             draw_paths_with_points(scene, &self.session, &sort_transform);
         }
+
+        // Render components for the active glyph
+        // Components are rendered as filled shapes in a distinct color
+        if let Some(workspace) = &self.session.workspace {
+            let workspace_guard = workspace.read().unwrap();
+            self.render_glyph_components(
+                scene,
+                &self.session.glyph,
+                &sort_transform,
+                &workspace_guard,
+            );
+        }
     }
 
     /// Render an inactive sort as a filled preview
@@ -816,6 +828,87 @@ impl EditorWidget {
                 None,
                 &transformed_path,
             );
+        }
+
+        // Render components (references to other glyphs)
+        self.render_glyph_components(scene, glyph, &sort_transform, &workspace_guard);
+    }
+
+    /// Render components of a glyph recursively
+    ///
+    /// Components are rendered in a distinct color and can be nested
+    /// (a component's base glyph may itself contain components).
+    /// For the active glyph, selected components get a highlight outline.
+    fn render_glyph_components(
+        &self,
+        scene: &mut Scene,
+        glyph: &crate::workspace::Glyph,
+        transform: &Affine,
+        workspace: &crate::workspace::Workspace,
+    ) {
+        for component in &glyph.components {
+            // Look up the base glyph
+            let base_glyph = match workspace.glyphs.get(&component.base) {
+                Some(g) => g,
+                None => {
+                    tracing::warn!(
+                        "Component base glyph '{}' not found in workspace",
+                        component.base
+                    );
+                    continue;
+                }
+            };
+
+            // Combine transform: parent transform * component transform
+            let component_transform = *transform * component.transform;
+
+            // Build BezPath from base glyph's contours
+            let mut component_path = kurbo::BezPath::new();
+            for contour in &base_glyph.contours {
+                let path = crate::path::Path::from_contour(contour);
+                component_path.extend(path.to_bezpath());
+            }
+
+            // Render the component in a distinct color
+            if !component_path.is_empty() {
+                let transformed_path = component_transform * &component_path;
+
+                // Check if this component is selected (for the active glyph)
+                let is_selected = self.session.selected_component == Some(component.id);
+
+                // Use a brighter color if selected
+                let fill_color = if is_selected {
+                    // Brighter blue for selected component
+                    peniko::Color::from_rgb8(0x88, 0xbb, 0xff)
+                } else {
+                    theme::component::FILL
+                };
+
+                let fill_brush = Brush::Solid(fill_color);
+                scene.fill(
+                    peniko::Fill::NonZero,
+                    Affine::IDENTITY,
+                    &fill_brush,
+                    None,
+                    &transformed_path,
+                );
+
+                // Draw selection outline if selected
+                if is_selected {
+                    let stroke = Stroke::new(2.0);
+                    let stroke_brush = Brush::Solid(theme::selection::RECT_STROKE);
+                    scene.stroke(
+                        &stroke,
+                        Affine::IDENTITY,
+                        &stroke_brush,
+                        None,
+                        &transformed_path,
+                    );
+                }
+            }
+
+            // Recursively render nested components
+            self.render_glyph_components(scene, base_glyph, &component_transform, workspace);
         }
     }
 
@@ -1980,17 +2073,37 @@ impl EditorWidget {
             _ => return,
         };
 
-        tracing::debug!(
-            "Nudging selection: dx={} dy={} shift={} ctrl={} \
-             selection_len={}",
-            dx,
-            dy,
-            shift,
-            ctrl,
-            self.session.selection.len()
-        );
+        // Check if we have a component selected (takes priority over points)
+        if self.session.selected_component.is_some() {
+            tracing::debug!(
+                "Nudging selected component: dx={} dy={} shift={} ctrl={}",
+                dx, dy, shift, ctrl
+            );
 
-        self.session.nudge_selection(dx, dy, shift, ctrl);
+            // Calculate the actual nudge amount
+            let multiplier = if ctrl {
+                100.0
+            } else if shift {
+                10.0
+            } else {
+                1.0
+            };
+            let delta = kurbo::Vec2::new(dx * multiplier, dy * multiplier);
+            self.session.move_selected_component(delta);
+        } else {
+            tracing::debug!(
+                "Nudging selection: dx={} dy={} shift={} ctrl={} \
+                 selection_len={}",
+                dx,
+                dy,
+                shift,
+                ctrl,
+                self.session.selection.len()
+            );
+
+            self.session.nudge_selection(dx, dy, shift, ctrl);
+        }
+
         ctx.request_render();
         ctx.set_handled();
     }

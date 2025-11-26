@@ -525,13 +525,21 @@ fn text_buffer_preview_pane_centered(
                     for path in session.paths.iter() {
                         glyph_path.extend(path.to_bezpath());
                     }
+                    // Also include components from the session glyph
+                    // We need to render components separately since session.paths only has editable contours
+                    let workspace_guard = workspace.read().unwrap();
+                    for component in &session.glyph.components {
+                        append_component_path(&mut glyph_path, component, &workspace_guard, kurbo::Affine::IDENTITY);
+                    }
                 } else {
                     // For inactive sorts: load from workspace (saved state)
-                    if let Some(glyph) = workspace.read().unwrap().glyphs.get(name) {
-                        for contour in &glyph.contours {
-                            let path = crate::path::Path::from_contour(contour);
-                            glyph_path.extend(path.to_bezpath());
-                        }
+                    // Use glyph_to_bezpath_with_components to include components
+                    let workspace_guard = workspace.read().unwrap();
+                    if let Some(glyph) = workspace_guard.glyphs.get(name) {
+                        glyph_path = crate::glyph_renderer::glyph_to_bezpath_with_components(
+                            glyph,
+                            &workspace_guard,
+                        );
                     }
                 }
 
@@ -561,13 +569,15 @@ fn text_buffer_preview_pane_centered(
     let preview_size = 100.0; // Match glyph preview size
     let upm = session.ascender - session.descender;
 
-    // Render the combined path as a glyph view, aligned to bottom
+    // Render the combined path as a glyph view
+    // baseline_offset controls vertical position (0.0 = bottom, 1.0 = top)
+    // Use 0.25 to leave room for Arabic descenders which are deeper than Latin
     Either::A(
         sized_box(
             flex_col((
                 glyph_view(combined_path, preview_size, preview_size, upm)
                     .color(theme::panel::GLYPH_PREVIEW)
-                    .baseline_offset(0.0), // Bottom alignment
+                    .baseline_offset(0.15), // Leave room for Arabic descenders
             ))
             .main_axis_alignment(xilem::view::MainAxisAlignment::End)
         )
@@ -579,4 +589,35 @@ fn text_buffer_preview_pane_centered(
         // .border_width(1.5)
         // .corner_radius(8.0),
     )
+}
+
+/// Helper function to append component paths to a BezPath
+///
+/// Recursively resolves component references and applies transforms.
+fn append_component_path(
+    path: &mut BezPath,
+    component: &crate::workspace::Component,
+    workspace: &crate::workspace::Workspace,
+    parent_transform: kurbo::Affine,
+) {
+    // Look up the base glyph
+    let base_glyph = match workspace.glyphs.get(&component.base) {
+        Some(g) => g,
+        None => return,
+    };
+
+    // Combine transforms
+    let combined_transform = parent_transform * component.transform;
+
+    // Add contours from base glyph
+    for contour in &base_glyph.contours {
+        let contour_path = crate::path::Path::from_contour(contour);
+        let transformed = combined_transform * contour_path.to_bezpath();
+        path.extend(transformed);
+    }
+
+    // Recursively add nested components
+    for nested_component in &base_glyph.components {
+        append_component_path(path, nested_component, workspace, combined_transform);
+    }
 }

@@ -43,6 +43,11 @@ pub struct EditSession {
     /// Currently selected entities (points, paths, etc.)
     pub selection: Selection,
 
+    /// Currently selected component (if any)
+    /// Components are selected separately from points since they have
+    /// different selection/drag behavior
+    pub selected_component: Option<crate::entity_id::EntityId>,
+
     /// Coordinate selection (for the coordinate pane)
     pub coord_selection: CoordinateSelection,
 
@@ -131,6 +136,7 @@ impl EditSession {
             glyph: Arc::new(glyph),
             paths: Arc::new(paths),
             selection: Selection::new(),
+            selected_component: None,
             coord_selection: CoordinateSelection::default(),
             current_tool: ToolBox::for_id(ToolId::Select),
             viewport: ViewPort::new(),
@@ -193,6 +199,7 @@ impl EditSession {
             glyph: Arc::new(glyph),
             paths: Arc::new(paths),
             selection: Selection::new(),
+            selected_component: None,
             coord_selection: CoordinateSelection::default(),
             current_tool: ToolBox::for_id(ToolId::Select),
             viewport: ViewPort::new(),
@@ -635,6 +642,81 @@ impl EditSession {
         })
     }
 
+    /// Hit test for a component at screen coordinates
+    ///
+    /// Returns the EntityId of the component if the point is inside its filled area.
+    /// Components are tested in reverse order so topmost components are hit first.
+    pub fn hit_test_component(
+        &self,
+        screen_pos: Point,
+    ) -> Option<crate::entity_id::EntityId> {
+        use kurbo::Shape;
+
+        // Convert screen position to design space
+        let mut design_pos = self.viewport.screen_to_design(screen_pos);
+
+        // Adjust for active sort offset
+        design_pos.x -= self.active_sort_x_offset;
+
+        // Get workspace to resolve component base glyphs
+        let workspace = self.workspace.as_ref()?;
+        let workspace_guard = workspace.read().ok()?;
+
+        // Test each component in reverse order (topmost first)
+        for component in self.glyph.components.iter().rev() {
+            // Look up the base glyph
+            let base_glyph = workspace_guard.glyphs.get(&component.base)?;
+
+            // Build the component's path with transform applied
+            let mut component_path = kurbo::BezPath::new();
+            for contour in &base_glyph.contours {
+                let path = crate::path::Path::from_contour(contour);
+                let transformed = component.transform * path.to_bezpath();
+                component_path.extend(transformed);
+            }
+
+            // Check if point is inside the component's path
+            // winding() returns non-zero for points inside a filled region
+            if component_path.winding(design_pos) != 0 {
+                return Some(component.id);
+            }
+        }
+
+        None
+    }
+
+    /// Move the selected component by a delta in design space
+    ///
+    /// This modifies the component's transform to translate it by the given delta.
+    pub fn move_selected_component(&mut self, delta: kurbo::Vec2) {
+        let Some(selected_id) = self.selected_component else {
+            return;
+        };
+
+        // Get mutable access to the glyph
+        let glyph = Arc::make_mut(&mut self.glyph);
+
+        // Find and update the component with the selected ID
+        for component in &mut glyph.components {
+            if component.id == selected_id {
+                component.translate(delta.x, delta.y);
+                break;
+            }
+        }
+    }
+
+    /// Clear the component selection
+    pub fn clear_component_selection(&mut self) {
+        self.selected_component = None;
+    }
+
+    /// Select a component by its EntityId
+    pub fn select_component(&mut self, id: crate::entity_id::EntityId) {
+        // Clear point selection when selecting a component
+        self.selection = Selection::new();
+        self.selected_component = Some(id);
+    }
+
     /// Move selected points by a delta in design space
     ///
     /// This mutates the paths using Arc::make_mut, which will clone
@@ -825,13 +907,14 @@ impl EditSession {
             self.paths.iter().map(|path| path.to_contour()).collect();
 
         // Create updated glyph with new contours but preserve other
-        // metadata
+        // metadata (including components)
         Glyph {
             name: self.glyph.name.clone(),
             width: self.glyph.width,
             height: self.glyph.height,
             codepoints: self.glyph.codepoints.clone(),
             contours,
+            components: self.glyph.components.clone(),
             left_group: self.glyph.left_group.clone(),
             right_group: self.glyph.right_group.clone(),
         }
@@ -1647,6 +1730,7 @@ mod tests {
             height: Some(700.0),
             codepoints: vec!['a'],
             contours: vec![],
+            components: vec![],
             left_group: None,
             right_group: None,
         }
