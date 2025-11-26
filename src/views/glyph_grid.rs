@@ -3,8 +3,7 @@
 
 //! Glyph grid view - displays all glyphs in a scrollable grid
 
-use std::sync::Arc;
-
+use kurbo::BezPath;
 use masonry::properties::types::AsUnit;
 use xilem::core::one_of::Either;
 use xilem::style::Style;
@@ -76,9 +75,10 @@ fn get_upm_from_state(state: &AppState) -> f64 {
 }
 
 /// Type alias for glyph data tuple
+/// (name, path with components, codepoints, contour count)
 type GlyphData = (
     String,
-    Option<Arc<workspace::Glyph>>,
+    Option<BezPath>,
     Vec<char>,
     usize,
 );
@@ -110,9 +110,11 @@ fn build_single_glyph_data(
     if let Some(glyph) = workspace.get_glyph(name) {
         let count = glyph.contours.len();
         let codepoints = glyph.codepoints.clone();
+        // Build path including components
+        let path = glyph_renderer::glyph_to_bezpath_with_components(glyph, workspace);
         (
             name.to_string(),
-            Some(Arc::new(glyph.clone())),
+            Some(path),
             codepoints,
             count,
         )
@@ -133,12 +135,12 @@ fn build_glyph_rows(
         .map(|chunk| {
             let row_items: Vec<_> = chunk
                 .iter()
-                .map(|(name, glyph_opt, codepoints, contour_count)| {
+                .map(|(name, path_opt, codepoints, contour_count)| {
                     let is_selected =
                         selected_glyph.as_ref() == Some(name);
                     glyph_cell(
                         name.clone(),
-                        glyph_opt.clone(),
+                        path_opt.clone(),
                         codepoints.clone(),
                         is_selected,
                         upm,
@@ -156,7 +158,7 @@ fn build_glyph_rows(
 /// Individual glyph cell in the grid
 fn glyph_cell(
     glyph_name: String,
-    glyph_opt: Option<Arc<workspace::Glyph>>,
+    path_opt: Option<BezPath>,
     codepoints: Vec<char>,
     is_selected: bool,
     upm: f64,
@@ -165,7 +167,7 @@ fn glyph_cell(
     let name_clone = glyph_name.clone();
     let display_name = format_display_name(&glyph_name);
     let unicode_display = format_unicode_display(&codepoints, contour_count);
-    let glyph_view_widget = build_glyph_view_widget(glyph_opt, upm);
+    let glyph_view_widget = build_glyph_view_widget(path_opt, upm);
     let (bg_color, border_color) = get_cell_colors(is_selected);
 
     sized_box(
@@ -208,14 +210,13 @@ fn format_unicode_display(codepoints: &[char], contour_count: usize) -> String {
 
 /// Build the glyph view widget (either glyph preview or placeholder)
 fn build_glyph_view_widget(
-    glyph_opt: Option<Arc<workspace::Glyph>>,
+    path_opt: Option<BezPath>,
     upm: f64,
 ) -> Either<
     impl WidgetView<AppState> + use<>,
     impl WidgetView<AppState> + use<>,
 > {
-    if let Some(glyph) = glyph_opt {
-        let path = glyph_renderer::glyph_to_bezpath(&glyph);
+    if let Some(path) = path_opt {
         Either::A(
             sized_box(
                 flex_col((

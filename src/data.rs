@@ -273,6 +273,20 @@ impl AppState {
         }
     }
 
+    /// Set the text direction for RTL/LTR text editing
+    pub fn set_text_direction(
+        &mut self,
+        direction: crate::shaping::TextDirection,
+    ) {
+        let session = match &mut self.editor_session {
+            Some(s) => s,
+            None => return,
+        };
+
+        session.text_direction = direction;
+        tracing::info!("Text direction set to {:?}", direction);
+    }
+
     /// Update the current editor session with new state
     ///
     /// This also syncs the edited glyph back to the workspace so
