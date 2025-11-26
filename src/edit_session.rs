@@ -8,6 +8,7 @@ use crate::hit_test::{self, HitTestResult};
 use crate::hyper_path::HyperPath;
 use crate::path::Path;
 use crate::selection::Selection;
+use crate::shaping::{ArabicShaper, GlyphProvider, TextDirection};
 use crate::sort::SortBuffer;
 use crate::tools::{ToolBox, ToolId};
 use crate::viewport::ViewPort;
@@ -41,6 +42,11 @@ pub struct EditSession {
 
     /// Currently selected entities (points, paths, etc.)
     pub selection: Selection,
+
+    /// Currently selected component (if any)
+    /// Components are selected separately from points since they have
+    /// different selection/drag behavior
+    pub selected_component: Option<crate::entity_id::EntityId>,
 
     /// Coordinate selection (for the coordinate pane)
     pub coord_selection: CoordinateSelection,
@@ -94,6 +100,10 @@ pub struct EditSession {
     /// Used to translate hit-testing coordinates so tools work correctly
     /// on sorts that aren't at position 0
     pub active_sort_x_offset: f64,
+
+    /// Text direction for rendering and cursor movement
+    /// Defaults to LTR, can be toggled via toolbar when text tool is active
+    pub text_direction: TextDirection,
 }
 
 impl EditSession {
@@ -126,6 +136,7 @@ impl EditSession {
             glyph: Arc::new(glyph),
             paths: Arc::new(paths),
             selection: Selection::new(),
+            selected_component: None,
             coord_selection: CoordinateSelection::default(),
             current_tool: ToolBox::for_id(ToolId::Select),
             viewport: ViewPort::new(),
@@ -142,6 +153,7 @@ impl EditSession {
             active_sort_unicode: unicode_value,
             active_sort_name: Some(glyph_name),
             active_sort_x_offset: 0.0,
+            text_direction: TextDirection::default(),
         }
     }
 
@@ -187,6 +199,7 @@ impl EditSession {
             glyph: Arc::new(glyph),
             paths: Arc::new(paths),
             selection: Selection::new(),
+            selected_component: None,
             coord_selection: CoordinateSelection::default(),
             current_tool: ToolBox::for_id(ToolId::Select),
             viewport: ViewPort::new(),
@@ -203,6 +216,7 @@ impl EditSession {
             active_sort_unicode: unicode_value,
             active_sort_name: Some(glyph_name),
             active_sort_x_offset: 0.0, // First sort is at position 0
+            text_direction: TextDirection::default(),
         }
     }
 
@@ -279,6 +293,133 @@ impl EditSession {
             advance_width,
             false, // New sorts are inactive by default
         ))
+    }
+
+    /// Create a Sort from a character with Arabic shaping support.
+    ///
+    /// When text direction is RTL and the character is Arabic, this method:
+    /// 1. Determines the correct positional form based on buffer contents
+    /// 2. Uses the shaped glyph name (with suffix like .init, .medi, .fina)
+    /// 3. Returns a sort with the shaped glyph name
+    ///
+    /// For LTR or non-Arabic characters, falls back to `create_sort_from_char`.
+    pub fn create_shaped_sort_from_char(&self, c: char) -> Option<crate::sort::Sort> {
+        // Only use Arabic shaping for RTL mode and Arabic characters
+        if self.text_direction != TextDirection::RightToLeft
+            || !crate::shaping::is_arabic(c)
+        {
+            return self.create_sort_from_char(c);
+        }
+
+        let workspace_lock = self.workspace.as_ref()?;
+        let workspace = workspace_lock.read().unwrap();
+        let font = WorkspaceGlyphProvider::new(&workspace);
+
+        // Get the current text from buffer to determine context
+        let buffer = self.text_buffer.as_ref()?;
+        let cursor_pos = buffer.cursor();
+
+        // Build character array from buffer for context-aware shaping
+        let mut chars: Vec<char> = buffer
+            .iter()
+            .filter_map(|sort| match &sort.kind {
+                crate::sort::SortKind::Glyph { codepoint, .. } => *codepoint,
+                _ => None,
+            })
+            .collect();
+
+        // Insert the new character at cursor position for shaping
+        chars.insert(cursor_pos, c);
+
+        // Shape the new character
+        let shaper = ArabicShaper::new();
+        let shaped = shaper.shape_char_at(&chars, cursor_pos, &font)?;
+
+        tracing::debug!(
+            "[create_shaped_sort_from_char] Character '{}' shaped to '{}' ({:?})",
+            c,
+            shaped.glyph_name,
+            shaped.form
+        );
+
+        Some(crate::sort::Sort::new_glyph(
+            shaped.glyph_name,
+            Some(c),
+            shaped.advance_width,
+            false,
+        ))
+    }
+
+    /// Reshape sorts in the buffer around a position after an edit.
+    ///
+    /// This updates the glyph names of affected sorts to reflect their new
+    /// positional forms. Call this after inserting or deleting a character.
+    ///
+    /// Returns the range of indices that were updated.
+    pub fn reshape_buffer_around(&mut self, position: usize) -> Option<(usize, usize)> {
+        // Only reshape in RTL mode
+        if self.text_direction != TextDirection::RightToLeft {
+            return None;
+        }
+
+        let workspace_lock = self.workspace.as_ref()?.clone();
+        let workspace = workspace_lock.read().unwrap();
+        let font = WorkspaceGlyphProvider::new(&workspace);
+
+        let buffer = self.text_buffer.as_mut()?;
+
+        // Build character array from buffer
+        let chars: Vec<char> = buffer
+            .iter()
+            .filter_map(|sort| match &sort.kind {
+                crate::sort::SortKind::Glyph { codepoint, .. } => *codepoint,
+                _ => None,
+            })
+            .collect();
+
+        if chars.is_empty() {
+            return None;
+        }
+
+        // Determine range to reshape (position ± 1, clamped)
+        let start = position.saturating_sub(1);
+        let end = (position + 1).min(chars.len());
+
+        let shaper = ArabicShaper::new();
+
+        // Reshape each character in the affected range
+        for i in start..end {
+            if i >= chars.len() {
+                continue;
+            }
+
+            let c = chars[i];
+
+            // Only reshape Arabic characters
+            if !crate::shaping::is_arabic(c) {
+                continue;
+            }
+
+            if let Some(shaped) = shaper.shape_char_at(&chars, i, &font) {
+                // Update the sort at this position
+                if let Some(sort) = buffer.get_mut(i) {
+                    if let crate::sort::SortKind::Glyph { name, advance_width, .. } = &mut sort.kind {
+                        if *name != shaped.glyph_name {
+                            tracing::debug!(
+                                "[reshape_buffer_around] Updated sort {}: '{}' -> '{}'",
+                                i,
+                                name,
+                                shaped.glyph_name
+                            );
+                            *name = shaped.glyph_name.clone();
+                            *advance_width = shaped.advance_width;
+                        }
+                    }
+                }
+            }
+        }
+
+        Some((start, end))
     }
 
     /// Find and activate the sort at a given position (Phase 7)
@@ -501,6 +642,131 @@ impl EditSession {
         })
     }
 
+    /// Hit test for a component at screen coordinates
+    ///
+    /// Returns the EntityId of the component if the point is inside its filled area.
+    /// Components are tested in reverse order so topmost components are hit first.
+    pub fn hit_test_component(
+        &self,
+        screen_pos: Point,
+    ) -> Option<crate::entity_id::EntityId> {
+        use kurbo::Shape;
+
+        // Convert screen position to design space
+        let mut design_pos = self.viewport.screen_to_design(screen_pos);
+
+        // Adjust for active sort offset
+        design_pos.x -= self.active_sort_x_offset;
+
+        // Get workspace to resolve component base glyphs
+        let workspace = self.workspace.as_ref()?;
+        let workspace_guard = workspace.read().ok()?;
+
+        // Test each component in reverse order (topmost first)
+        for component in self.glyph.components.iter().rev() {
+            // Look up the base glyph
+            let base_glyph = workspace_guard.glyphs.get(&component.base)?;
+
+            // Build the component's path with transform applied
+            let mut component_path = kurbo::BezPath::new();
+            for contour in &base_glyph.contours {
+                let path = crate::path::Path::from_contour(contour);
+                let transformed = component.transform * path.to_bezpath();
+                component_path.extend(transformed);
+            }
+
+            // Check if point is inside the component's path
+            // winding() returns non-zero for points inside a filled region
+            if component_path.winding(design_pos) != 0 {
+                return Some(component.id);
+            }
+        }
+
+        None
+    }
+
+    /// Move the selected component by a delta in design space
+    ///
+    /// This modifies the component's transform to translate it by the given delta.
+    pub fn move_selected_component(&mut self, delta: kurbo::Vec2) {
+        let Some(selected_id) = self.selected_component else {
+            return;
+        };
+
+        // Get mutable access to the glyph
+        let glyph = Arc::make_mut(&mut self.glyph);
+
+        // Find and update the component with the selected ID
+        for component in &mut glyph.components {
+            if component.id == selected_id {
+                component.translate(delta.x, delta.y);
+                break;
+            }
+        }
+    }
+
+    /// Clear the component selection
+    pub fn clear_component_selection(&mut self) {
+        self.selected_component = None;
+    }
+
+    /// Select a component by its EntityId
+    pub fn select_component(&mut self, id: crate::entity_id::EntityId) {
+        // Clear point selection when selecting a component
+        self.selection = Selection::new();
+        self.selected_component = Some(id);
+    }
+
+    /// Add a glyph to the text buffer by name (for component base glyph editing)
+    ///
+    /// This looks up the glyph in the workspace and inserts it into the text buffer
+    /// at the current cursor position. Used when double-clicking a component to
+    /// add its base glyph to the buffer for editing.
+    ///
+    /// Returns true if the glyph was added successfully.
+    pub fn add_glyph_to_buffer(&mut self, glyph_name: &str) -> bool {
+        // Get the glyph from workspace
+        let workspace = match &self.workspace {
+            Some(ws) => ws.clone(),
+            None => return false,
+        };
+
+        let workspace_guard = workspace.read().unwrap();
+        let glyph = match workspace_guard.glyphs.get(glyph_name) {
+            Some(g) => g.clone(),
+            None => {
+                tracing::warn!("Glyph '{}' not found in workspace", glyph_name);
+                return false;
+            }
+        };
+
+        // Get the advance width
+        let advance_width = glyph.width as f64;
+
+        // Get the first codepoint if any
+        let codepoint = glyph.codepoints.first().copied();
+
+        // Drop the lock before we modify the buffer
+        drop(workspace_guard);
+
+        // Create a new sort for this glyph
+        let sort = crate::sort::Sort::new_glyph(
+            glyph_name.to_string(),
+            codepoint,
+            advance_width,
+            false, // Not active initially
+        );
+
+        // Insert into buffer
+        if let Some(buffer) = &mut self.text_buffer {
+            buffer.insert(sort);
+            tracing::info!("Added glyph '{}' to buffer for editing", glyph_name);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Move selected points by a delta in design space
     ///
     /// This mutates the paths using Arc::make_mut, which will clone
@@ -691,13 +957,14 @@ impl EditSession {
             self.paths.iter().map(|path| path.to_contour()).collect();
 
         // Create updated glyph with new contours but preserve other
-        // metadata
+        // metadata (including components)
         Glyph {
             name: self.glyph.name.clone(),
             width: self.glyph.width,
             height: self.glyph.height,
             codepoints: self.glyph.codepoints.clone(),
             contours,
+            components: self.glyph.components.clone(),
             left_group: self.glyph.left_group.clone(),
             right_group: self.glyph.right_group.clone(),
         }
@@ -1464,6 +1731,43 @@ impl EditSession {
     }
 }
 
+// ===== WORKSPACE GLYPH PROVIDER =====
+
+/// Adapter that provides glyph information from the Workspace to the shaping engine.
+///
+/// This implements the `GlyphProvider` trait, allowing the Arabic shaper (and future
+/// script shapers) to query glyph existence and advance widths without being coupled
+/// to the Workspace type.
+pub struct WorkspaceGlyphProvider<'a> {
+    workspace: &'a Workspace,
+}
+
+impl<'a> WorkspaceGlyphProvider<'a> {
+    /// Create a new provider wrapping a workspace reference.
+    pub fn new(workspace: &'a Workspace) -> Self {
+        Self { workspace }
+    }
+}
+
+impl<'a> GlyphProvider for WorkspaceGlyphProvider<'a> {
+    fn has_glyph(&self, name: &str) -> bool {
+        self.workspace.glyphs.contains_key(name)
+    }
+
+    fn advance_width(&self, name: &str) -> Option<f64> {
+        self.workspace.glyphs.get(name).map(|g| g.width)
+    }
+
+    fn base_glyph_for_codepoint(&self, c: char) -> Option<String> {
+        // Find a glyph that has this codepoint
+        self.workspace
+            .glyphs
+            .iter()
+            .find(|(_, g)| g.codepoints.contains(&c))
+            .map(|(name, _)| name.clone())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1476,6 +1780,7 @@ mod tests {
             height: Some(700.0),
             codepoints: vec!['a'],
             contours: vec![],
+            components: vec![],
             left_group: None,
             right_group: None,
         }

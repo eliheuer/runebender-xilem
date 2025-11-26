@@ -8,6 +8,7 @@ pub mod edit_mode_toolbar;
 pub mod editor_canvas;
 pub mod glyph_preview_widget;
 pub mod shapes_toolbar;
+pub mod text_direction_toolbar;
 pub mod toolbars;
 pub mod workspace_toolbar;
 
@@ -17,5 +18,6 @@ pub use edit_mode_toolbar::edit_mode_toolbar_view;
 pub use editor_canvas::editor_view;
 pub use glyph_preview_widget::glyph_view;
 pub use shapes_toolbar::shapes_toolbar_view;
+pub use text_direction_toolbar::text_direction_toolbar_view;
 pub use workspace_toolbar::workspace_toolbar_view;
 

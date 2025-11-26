@@ -37,6 +37,11 @@ enum State {
         /// Last mouse position in design space
         last_pos: Point,
     },
+    /// Dragging a selected component
+    DraggingComponent {
+        /// Last mouse position in design space
+        last_pos: Point,
+    },
     /// Marquee selection (dragging out a rectangle)
     MarqueeSelect {
         /// Selection before this marquee started (for shift+toggle mode)
@@ -89,6 +94,7 @@ impl Tool for SelectTool {
     fn edit_type(&self) -> Option<EditType> {
         match &self.state {
             State::DraggingPoints { .. } => Some(EditType::Drag),
+            State::DraggingComponent { .. } => Some(EditType::Drag),
             _ => None,
         }
     }
@@ -119,10 +125,18 @@ impl MouseDelegate for SelectTool {
                 hit.entity,
                 hit.distance
             );
+            // Clear component selection when selecting a point
+            data.clear_component_selection();
             self.handle_point_selection(data, hit.entity, event.mods.shift);
+        } else if let Some(component_id) = data.hit_test_component(event.pos) {
+            // Hit a component - select it
+            tracing::debug!("Hit component: {:?}", component_id);
+            data.select_component(component_id);
+            data.update_coord_selection();
         } else if !event.mods.shift {
             // Clicked on empty space without shift - clear selection
             data.selection = Selection::new();
+            data.clear_component_selection();
             data.update_coord_selection();
         }
     }
@@ -157,6 +171,11 @@ impl MouseDelegate for SelectTool {
             return;
         }
 
+        // Check if we're starting the drag on a selected component
+        if self.start_dragging_component(event, data) {
+            return;
+        }
+
         // Start marquee selection
         self.start_marquee_selection(event, drag, data);
     }
@@ -170,6 +189,9 @@ impl MouseDelegate for SelectTool {
         match &mut self.state {
             State::DraggingPoints { last_pos } => {
                 handle_dragging_points(event, data, last_pos);
+            }
+            State::DraggingComponent { last_pos } => {
+                handle_dragging_component(event, data, last_pos);
             }
             State::MarqueeSelect {
                 previous_selection,
@@ -197,6 +219,9 @@ impl MouseDelegate for SelectTool {
         match &self.state {
             State::DraggingPoints { .. } => {
                 tracing::debug!("Select tool: finished dragging points");
+            }
+            State::DraggingComponent { .. } => {
+                tracing::debug!("Select tool: finished dragging component");
             }
             State::MarqueeSelect { .. } => {
                 tracing::debug!(
@@ -300,6 +325,37 @@ impl SelectTool {
         true
     }
 
+    /// Start dragging a selected component
+    ///
+    /// Returns true if we started dragging a component, false otherwise
+    fn start_dragging_component(
+        &mut self,
+        event: MouseEvent,
+        data: &mut EditSession,
+    ) -> bool {
+        // Check if we have a selected component
+        if data.selected_component.is_none() {
+            return false;
+        }
+
+        // Check if we're starting the drag on the selected component
+        let Some(hit_component) = data.hit_test_component(event.pos) else {
+            return false;
+        };
+
+        if data.selected_component != Some(hit_component) {
+            return false;
+        }
+
+        // We're dragging the selected component
+        let design_pos = data.viewport.screen_to_design(event.pos);
+        self.state = State::DraggingComponent {
+            last_pos: design_pos,
+        };
+        tracing::debug!("Select tool: started dragging component");
+        true
+    }
+
     /// Start marquee selection
     fn start_marquee_selection(
         &mut self,
@@ -343,6 +399,28 @@ fn handle_dragging_points(
 
     // Move selected points
     data.move_selection(delta);
+
+    // Update last position
+    *last_pos = current_pos;
+}
+
+/// Handle dragging component (during drag)
+fn handle_dragging_component(
+    event: MouseEvent,
+    data: &mut EditSession,
+    last_pos: &mut Point,
+) {
+    // Convert current mouse position to design space
+    let current_pos = data.viewport.screen_to_design(event.pos);
+
+    // Calculate delta in design space
+    let delta = Vec2::new(
+        current_pos.x - last_pos.x,
+        current_pos.y - last_pos.y,
+    );
+
+    // Move the selected component
+    data.move_selected_component(delta);
 
     // Update last position
     *last_pos = current_pos;

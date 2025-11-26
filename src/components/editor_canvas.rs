@@ -556,7 +556,18 @@ impl EditorWidget {
             None => return,
         };
 
-        let mut x_offset = 0.0;
+        // Check text direction for RTL support
+        let is_rtl = self.session.text_direction.is_rtl();
+
+        // For RTL: calculate total width first so we can start from the right
+        let total_width = if is_rtl {
+            self.calculate_buffer_width()
+        } else {
+            0.0 // Not needed for LTR
+        };
+
+        // Starting position: LTR starts at 0, RTL starts at total_width
+        let mut x_offset = if is_rtl { total_width } else { 0.0 };
         let mut baseline_y = 0.0;
         let cursor_position = buffer.cursor();
 
@@ -564,14 +575,14 @@ impl EditorWidget {
         let upm_height = self.session.ascender - self.session.descender;
 
         // Phase 6: Calculate cursor position while rendering sorts
-        let mut cursor_x = 0.0;
+        let mut cursor_x = x_offset;
         let mut cursor_y = 0.0;
 
         // Track previous glyph for kerning lookup
         let mut prev_glyph_name: Option<String> = None;
         let mut prev_glyph_group: Option<String> = None;
 
-        tracing::debug!("[Cursor] buffer.len()={}, cursor_position={}", buffer.len(), cursor_position);
+        tracing::debug!("[Cursor] buffer.len()={}, cursor_position={}, is_rtl={}", buffer.len(), cursor_position, is_rtl);
 
         // Cursor at position 0 (before any sorts)
         if cursor_position == 0 {
@@ -583,6 +594,11 @@ impl EditorWidget {
         for (index, sort) in buffer.iter().enumerate() {
             match &sort.kind {
                 crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                    // For RTL: move x left BEFORE drawing this glyph
+                    if is_rtl {
+                        x_offset -= advance_width;
+                    }
+
                     // Apply kerning if we have a previous glyph
                     if let Some(prev_name) = &prev_glyph_name {
                         if let Some(workspace_arc) = &self.session.workspace {
@@ -602,7 +618,11 @@ impl EditorWidget {
                                 curr_group,
                             );
 
-                            x_offset += kern_value;
+                            if is_rtl {
+                                x_offset -= kern_value; // RTL: kerning moves left
+                            } else {
+                                x_offset += kern_value;
+                            }
                         }
                     }
 
@@ -647,7 +667,11 @@ impl EditorWidget {
                         self.render_inactive_sort(scene, name, sort_position, transform);
                     }
 
-                    x_offset += advance_width;
+                    // For LTR: advance x forward AFTER drawing
+                    if !is_rtl {
+                        x_offset += advance_width;
+                    }
+                    // (For RTL, we already moved x_offset before drawing)
 
                     // Update previous glyph info for next iteration
                     prev_glyph_name = Some(name.clone());
@@ -660,7 +684,7 @@ impl EditorWidget {
                 crate::sort::SortKind::LineBreak => {
                     // Line break: reset x, move y down by UPM height
                     // Top of UPM on new line aligns with bottom of descender on previous line
-                    x_offset = 0.0;
+                    x_offset = if is_rtl { total_width } else { 0.0 };
                     baseline_y -= upm_height;
 
                     // Reset kerning tracking (no kerning across lines)
@@ -691,6 +715,24 @@ impl EditorWidget {
         if !is_preview_mode {
             self.render_text_cursor(scene, cursor_x, cursor_y, transform);
         }
+    }
+
+    /// Calculate the total width of the text buffer (for RTL rendering)
+    ///
+    /// This sums all glyph advance widths to determine where RTL text should start.
+    fn calculate_buffer_width(&self) -> f64 {
+        let buffer = match &self.session.text_buffer {
+            Some(buf) => buf,
+            None => return 0.0,
+        };
+
+        let mut total_width = 0.0;
+        for sort in buffer.iter() {
+            if let crate::sort::SortKind::Glyph { advance_width, .. } = &sort.kind {
+                total_width += advance_width;
+            }
+        }
+        total_width
     }
 
     /// Render an active sort with control points and handles
@@ -728,6 +770,21 @@ impl EditorWidget {
             // Draw control points and handles
             // Note: This uses session paths which already have the correct structure
             draw_paths_with_points(scene, &self.session, &sort_transform);
+        }
+
+        // Render components for the active glyph
+        // Use distinct color only in non-text mode (to distinguish from editable paths)
+        if let Some(workspace) = &self.session.workspace {
+            let workspace_guard = workspace.read().unwrap();
+            let use_component_color = !self.session.text_mode_active;
+            self.render_glyph_components(
+                scene,
+                &self.session.glyph,
+                &sort_transform,
+                &workspace_guard,
+                true,  // is_active_sort
+                use_component_color,
+            );
         }
     }
 
@@ -773,6 +830,113 @@ impl EditorWidget {
                 &fill_brush,
                 None,
                 &transformed_path,
+            );
+        }
+
+        // Render components (references to other glyphs)
+        // Inactive sorts always use regular fill color (not distinct component color)
+        self.render_glyph_components(
+            scene,
+            glyph,
+            &sort_transform,
+            &workspace_guard,
+            false,  // is_active_sort
+            false,  // use_component_color
+        );
+    }
+
+    /// Render components of a glyph recursively
+    ///
+    /// Components are rendered in a distinct color only when in an active sort
+    /// in non-text mode (to distinguish from editable paths). In text mode or
+    /// inactive sorts, they use the same fill color as regular glyphs.
+    ///
+    /// Parameters:
+    /// - `is_active_sort`: true if rendering the active (editable) sort
+    /// - `use_component_color`: true to use distinct component color (blue)
+    fn render_glyph_components(
+        &self,
+        scene: &mut Scene,
+        glyph: &crate::workspace::Glyph,
+        transform: &Affine,
+        workspace: &crate::workspace::Workspace,
+        is_active_sort: bool,
+        use_component_color: bool,
+    ) {
+        for component in &glyph.components {
+            // Look up the base glyph
+            let base_glyph = match workspace.glyphs.get(&component.base) {
+                Some(g) => g,
+                None => {
+                    tracing::warn!(
+                        "Component base glyph '{}' not found in workspace",
+                        component.base
+                    );
+                    continue;
+                }
+            };
+
+            // Combine transform: parent transform * component transform
+            let component_transform = *transform * component.transform;
+
+            // Build BezPath from base glyph's contours
+            let mut component_path = kurbo::BezPath::new();
+            for contour in &base_glyph.contours {
+                let path = crate::path::Path::from_contour(contour);
+                component_path.extend(path.to_bezpath());
+            }
+
+            // Render the component
+            if !component_path.is_empty() {
+                let transformed_path = component_transform * &component_path;
+
+                // Check if this component is selected (only relevant for active sort)
+                let is_selected = is_active_sort &&
+                    self.session.selected_component == Some(component.id);
+
+                // Determine fill color based on context
+                let fill_color = if is_selected {
+                    // Brighter blue for selected component
+                    peniko::Color::from_rgb8(0x88, 0xbb, 0xff)
+                } else if use_component_color {
+                    // Blue for components in active sort (non-text mode)
+                    theme::component::FILL
+                } else {
+                    // Same as regular glyph fill for text mode or inactive sorts
+                    theme::path::PREVIEW_FILL
+                };
+
+                let fill_brush = Brush::Solid(fill_color);
+                scene.fill(
+                    peniko::Fill::NonZero,
+                    Affine::IDENTITY,
+                    &fill_brush,
+                    None,
+                    &transformed_path,
+                );
+
+                // Draw selection outline if selected
+                if is_selected {
+                    let stroke = Stroke::new(2.0);
+                    let stroke_brush = Brush::Solid(theme::selection::RECT_STROKE);
+                    scene.stroke(
+                        &stroke,
+                        Affine::IDENTITY,
+                        &stroke_brush,
+                        None,
+                        &transformed_path,
+                    );
+                }
+            }
+
+            // Recursively render nested components
+            self.render_glyph_components(
+                scene,
+                base_glyph,
+                &component_transform,
+                workspace,
+                is_active_sort,
+                use_component_color,
             );
         }
     }
@@ -1278,6 +1442,35 @@ impl EditorWidget {
 
         // Check if this is a double-click
         if self.is_double_click(design_pos) {
+            // First check if we double-clicked on a component
+            if let Some(component_id) = self.session.hit_test_component(local_pos) {
+                // Find the component to get its base glyph name
+                if let Some(component) = self.session.glyph.components.iter()
+                    .find(|c| c.id == component_id)
+                {
+                    let base_name = component.base.clone();
+                    tracing::info!(
+                        "Double-click on component '{}' - adding to buffer",
+                        base_name
+                    );
+
+                    // Add the base glyph to the buffer for editing
+                    if self.session.add_glyph_to_buffer(&base_name) {
+                        // Clear component selection
+                        self.session.clear_component_selection();
+
+                        // Emit SessionUpdate so AppState gets the updated session
+                        ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                            session: self.session.clone(),
+                            save_requested: false,
+                        });
+
+                        ctx.request_render();
+                        return; // Don't dispatch to tool
+                    }
+                }
+            }
+
             // Check if we clicked on a sort
             if let Some(sort_index) = self.find_sort_at_position(design_pos) {
                 tracing::info!("Double-click detected on sort {}", sort_index);
@@ -1938,17 +2131,37 @@ impl EditorWidget {
             _ => return,
         };
 
-        tracing::debug!(
-            "Nudging selection: dx={} dy={} shift={} ctrl={} \
-             selection_len={}",
-            dx,
-            dy,
-            shift,
-            ctrl,
-            self.session.selection.len()
-        );
+        // Check if we have a component selected (takes priority over points)
+        if self.session.selected_component.is_some() {
+            tracing::debug!(
+                "Nudging selected component: dx={} dy={} shift={} ctrl={}",
+                dx, dy, shift, ctrl
+            );
 
-        self.session.nudge_selection(dx, dy, shift, ctrl);
+            // Calculate the actual nudge amount
+            let multiplier = if ctrl {
+                100.0
+            } else if shift {
+                10.0
+            } else {
+                1.0
+            };
+            let delta = kurbo::Vec2::new(dx * multiplier, dy * multiplier);
+            self.session.move_selected_component(delta);
+        } else {
+            tracing::debug!(
+                "Nudging selection: dx={} dy={} shift={} ctrl={} \
+                 selection_len={}",
+                dx,
+                dy,
+                shift,
+                ctrl,
+                self.session.selection.len()
+            );
+
+            self.session.nudge_selection(dx, dy, shift, ctrl);
+        }
+
         ctx.request_render();
         ctx.set_handled();
     }
@@ -1974,10 +2187,19 @@ impl EditorWidget {
             key, self.session.text_mode_active, self.session.text_buffer.is_some());
 
         // Handle arrow keys for cursor movement
+        // In RTL mode, visual left/right is inverted from logical left/right
+        let is_rtl = self.session.text_direction.is_rtl();
+
         match key {
             Key::Named(NamedKey::ArrowLeft) => {
                 if let Some(buffer) = &mut self.session.text_buffer {
-                    buffer.move_cursor_left();
+                    // Visual left: in RTL, moves cursor forward (right in buffer)
+                    //              in LTR, moves cursor backward (left in buffer)
+                    if is_rtl {
+                        buffer.move_cursor_right();
+                    } else {
+                        buffer.move_cursor_left();
+                    }
                     self.text_cursor.reset(); // Reset cursor to visible on movement
                     ctx.request_render();
                     ctx.set_handled();
@@ -1986,7 +2208,13 @@ impl EditorWidget {
             }
             Key::Named(NamedKey::ArrowRight) => {
                 if let Some(buffer) = &mut self.session.text_buffer {
-                    buffer.move_cursor_right();
+                    // Visual right: in RTL, moves cursor backward (left in buffer)
+                    //               in LTR, moves cursor forward (right in buffer)
+                    if is_rtl {
+                        buffer.move_cursor_left();
+                    } else {
+                        buffer.move_cursor_right();
+                    }
                     self.text_cursor.reset(); // Reset cursor to visible on movement
                     ctx.request_render();
                     ctx.set_handled();
@@ -1995,7 +2223,7 @@ impl EditorWidget {
             }
             Key::Named(NamedKey::Backspace) => {
                 tracing::info!("[Backspace] Handling backspace in text mode");
-                if let Some(buffer) = &mut self.session.text_buffer {
+                let reshape_pos = if let Some(buffer) = &mut self.session.text_buffer {
                     let cursor_before = buffer.cursor();
                     let len_before = buffer.len();
                     let deleted = buffer.delete();
@@ -2007,30 +2235,49 @@ impl EditorWidget {
                         buffer.len(),
                         deleted.is_some()
                     );
-                    self.text_cursor.reset(); // Reset cursor to visible on edit
-                    // Emit session update to persist text buffer changes
-                    ctx.submit_action::<SessionUpdate>(SessionUpdate {
-                        session: self.session.clone(),
-                        save_requested: false,
-                    });
-                    ctx.request_render();
-                    ctx.set_handled();
-                    return true;
+                    Some(buffer.cursor())
+                } else {
+                    None
+                };
+
+                // Reshape neighbors after deletion (their forms may have changed)
+                if let Some(pos) = reshape_pos {
+                    self.session.reshape_buffer_around(pos);
                 }
+
+                self.text_cursor.reset(); // Reset cursor to visible on edit
+                // Emit session update to persist text buffer changes
+                ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                    session: self.session.clone(),
+                    save_requested: false,
+                });
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
             }
             Key::Named(NamedKey::Delete) => {
-                if let Some(buffer) = &mut self.session.text_buffer {
+                let reshape_pos = if let Some(buffer) = &mut self.session.text_buffer {
+                    let cursor_pos = buffer.cursor();
                     buffer.delete_forward();
-                    self.text_cursor.reset(); // Reset cursor to visible on edit
-                    // Emit session update to persist text buffer changes
-                    ctx.submit_action::<SessionUpdate>(SessionUpdate {
-                        session: self.session.clone(),
-                        save_requested: false,
-                    });
-                    ctx.request_render();
-                    ctx.set_handled();
-                    return true;
+                    Some(cursor_pos)
+                } else {
+                    None
+                };
+
+                // Reshape neighbors after deletion
+                if let Some(pos) = reshape_pos {
+                    self.session.reshape_buffer_around(pos);
                 }
+
+                self.text_cursor.reset(); // Reset cursor to visible on edit
+                // Emit session update to persist text buffer changes
+                ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                    session: self.session.clone(),
+                    save_requested: false,
+                });
+                ctx.request_render();
+                ctx.set_handled();
+                return true;
             }
             Key::Named(NamedKey::Enter) => {
                 // Insert line break as a sort
@@ -2063,21 +2310,32 @@ impl EditorWidget {
                     return false;
                 }
 
-                // Insert character as a sort
+                // Insert character as a sort (with Arabic shaping if RTL)
                 if let Some(c) = s.chars().next() {
-                    if let Some(sort) = self.session.create_sort_from_char(c) {
+                    // Use shaped sort for Arabic text in RTL mode
+                    if let Some(sort) = self.session.create_shaped_sort_from_char(c) {
+                        // Get cursor position before insertion for reshaping
+                        let cursor_pos = self.session.text_buffer.as_ref()
+                            .map(|b| b.cursor())
+                            .unwrap_or(0);
+
                         if let Some(buffer) = &mut self.session.text_buffer {
                             buffer.insert(sort);
-                            self.text_cursor.reset(); // Reset cursor to visible on edit
-                            // Emit session update to persist text buffer changes
-                            ctx.submit_action::<SessionUpdate>(SessionUpdate {
-                                session: self.session.clone(),
-                                save_requested: false,
-                            });
-                            ctx.request_render();
-                            ctx.set_handled();
-                            return true;
                         }
+
+                        // Reshape neighbors (their forms may have changed)
+                        // The cursor has moved, so reshape around cursor-1 (the inserted char)
+                        self.session.reshape_buffer_around(cursor_pos);
+
+                        self.text_cursor.reset(); // Reset cursor to visible on edit
+                        // Emit session update to persist text buffer changes
+                        ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                            session: self.session.clone(),
+                            save_requested: false,
+                        });
+                        ctx.request_render();
+                        ctx.set_handled();
+                        return true;
                     } else {
                         tracing::warn!("No glyph found for character: '{}'", c);
                     }

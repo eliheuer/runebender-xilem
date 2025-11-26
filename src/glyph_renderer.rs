@@ -3,10 +3,10 @@
 
 //! Glyph rendering - converts glyph contours to Kurbo paths
 
-use crate::workspace::{Contour, ContourPoint, Glyph, PointType};
-use kurbo::{BezPath, Point, Shape};
+use crate::workspace::{Contour, ContourPoint, Glyph, PointType, Workspace};
+use kurbo::{Affine, BezPath, Point, Shape};
 
-/// Convert a Norad Glyph to a Kurbo BezPath
+/// Convert a Norad Glyph to a Kurbo BezPath (contours only)
 pub fn glyph_to_bezpath(glyph: &Glyph) -> BezPath {
     let mut path = BezPath::new();
 
@@ -15,6 +15,61 @@ pub fn glyph_to_bezpath(glyph: &Glyph) -> BezPath {
         append_contour_to_path(&mut path, contour);
     }
     path
+}
+
+/// Convert a Glyph to a BezPath including components
+///
+/// This recursively resolves component references and applies their
+/// transforms to build a complete path including all nested components.
+pub fn glyph_to_bezpath_with_components(glyph: &Glyph, workspace: &Workspace) -> BezPath {
+    let mut path = BezPath::new();
+
+    // First, add the glyph's own contours
+    for contour in &glyph.contours {
+        append_contour_to_path(&mut path, contour);
+    }
+
+    // Then recursively add component paths
+    append_components_to_path(&mut path, glyph, workspace, Affine::IDENTITY);
+
+    path
+}
+
+/// Recursively append component paths to a BezPath
+fn append_components_to_path(
+    path: &mut BezPath,
+    glyph: &Glyph,
+    workspace: &Workspace,
+    parent_transform: Affine,
+) {
+    for component in &glyph.components {
+        // Look up the base glyph
+        let base_glyph = match workspace.glyphs.get(&component.base) {
+            Some(g) => g,
+            None => {
+                tracing::warn!(
+                    "Component base glyph '{}' not found in workspace",
+                    component.base
+                );
+                continue;
+            }
+        };
+
+        // Combine transforms: parent * component
+        let combined_transform = parent_transform * component.transform;
+
+        // Build path from base glyph's contours and apply transform
+        for contour in &base_glyph.contours {
+            let mut contour_path = BezPath::new();
+            append_contour_to_path(&mut contour_path, contour);
+            // Apply the combined transform and add to main path
+            let transformed = combined_transform * &contour_path;
+            path.extend(transformed.elements().iter().cloned());
+        }
+
+        // Recursively process nested components
+        append_components_to_path(path, base_glyph, workspace, combined_transform);
+    }
 }
 
 /// Append a single contour to a BezPath

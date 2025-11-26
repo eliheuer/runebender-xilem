@@ -4,9 +4,12 @@
 //! Font workspace management - handles UFO loading and glyph access
 
 use anyhow::{Context, Result};
+use kurbo::Affine;
 use norad::{Font, Glyph as NoradGlyph};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+use crate::entity_id::EntityId;
 
 // ============================================================================
 // DATA STRUCTURES
@@ -20,6 +23,8 @@ pub struct Glyph {
     pub height: Option<f64>,
     pub codepoints: Vec<char>,
     pub contours: Vec<Contour>,
+    /// Components referencing other glyphs
+    pub components: Vec<Component>,
     /// Left kerning group (e.g., "public.kern1.O")
     pub left_group: Option<String>,
     /// Right kerning group (e.g., "public.kern2.O")
@@ -52,6 +57,94 @@ pub enum PointType {
     Hyper,
     /// Hyperbezier corner point (on-curve, independent segments)
     HyperCorner,
+}
+
+/// A component reference to another glyph
+///
+/// Components allow glyphs to reuse other glyphs as building blocks.
+/// This is heavily used in Arabic fonts where base letters are combined
+/// with dots and diacritical marks.
+#[derive(Debug, Clone)]
+pub struct Component {
+    /// Name of the referenced glyph (the "base" glyph)
+    pub base: String,
+    /// Affine transformation applied to the component
+    /// Default is identity: [1, 0, 0, 1, 0, 0]
+    pub transform: Affine,
+    /// Unique identifier for selection and hit testing
+    pub id: EntityId,
+}
+
+impl Component {
+    /// Create a new component with identity transform
+    pub fn new(base: String) -> Self {
+        Self {
+            base,
+            transform: Affine::IDENTITY,
+            id: EntityId::next(),
+        }
+    }
+
+    /// Create a component from norad's Component type
+    pub fn from_norad(norad_comp: &norad::Component) -> Self {
+        // norad's AffineTransform has: x_scale, xy_scale, yx_scale, y_scale, x_offset, y_offset
+        let t = &norad_comp.transform;
+        let transform = Affine::new([
+            t.x_scale,
+            t.xy_scale,
+            t.yx_scale,
+            t.y_scale,
+            t.x_offset,
+            t.y_offset,
+        ]);
+
+        Self {
+            base: norad_comp.base.to_string(),
+            transform,
+            id: EntityId::next(),
+        }
+    }
+
+    /// Convert to norad's Component type for saving
+    pub fn to_norad(&self) -> norad::Component {
+        let coeffs = self.transform.as_coeffs();
+        let transform = norad::AffineTransform {
+            x_scale: coeffs[0],
+            xy_scale: coeffs[1],
+            yx_scale: coeffs[2],
+            y_scale: coeffs[3],
+            x_offset: coeffs[4],
+            y_offset: coeffs[5],
+        };
+
+        norad::Component::new(
+            norad::Name::new(&self.base).expect("Invalid component base name"),
+            transform,
+            None, // identifier
+            None, // lib
+        )
+    }
+
+    /// Get the x offset (translation)
+    pub fn x_offset(&self) -> f64 {
+        self.transform.as_coeffs()[4]
+    }
+
+    /// Get the y offset (translation)
+    pub fn y_offset(&self) -> f64 {
+        self.transform.as_coeffs()[5]
+    }
+
+    /// Set the x and y offset (translation) while preserving other transform values
+    pub fn set_offset(&mut self, x: f64, y: f64) {
+        let coeffs = self.transform.as_coeffs();
+        self.transform = Affine::new([coeffs[0], coeffs[1], coeffs[2], coeffs[3], x, y]);
+    }
+
+    /// Translate the component by a delta
+    pub fn translate(&mut self, dx: f64, dy: f64) {
+        self.transform = Affine::translate((dx, dy)) * self.transform;
+    }
 }
 
 impl Glyph {
@@ -214,6 +307,13 @@ impl Workspace {
             .map(Self::convert_contour)
             .collect();
 
+        // Convert components
+        let components = norad_glyph
+            .components
+            .iter()
+            .map(Component::from_norad)
+            .collect();
+
         // Extract kerning groups from lib data
         let left_group = norad_glyph.lib.get("public.kern1")
             .and_then(|v| v.as_string())
@@ -228,6 +328,7 @@ impl Workspace {
             height: Some(height),
             codepoints,
             contours,
+            components,
             left_group,
             right_group,
         }
@@ -413,6 +514,13 @@ impl Workspace {
             .contours
             .iter()
             .map(Self::to_norad_contour)
+            .collect();
+
+        // Convert components
+        norad_glyph.components = glyph
+            .components
+            .iter()
+            .map(Component::to_norad)
             .collect();
 
         // Save kerning groups to lib data

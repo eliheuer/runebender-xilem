@@ -83,6 +83,12 @@ const PATH_FILL: Color = BASE_F;
 const PATH_PREVIEW_FILL: Color = BASE_L;
 
 // ============================================================================
+// COMPONENT COLORS
+// Components are rendered in a distinct color to differentiate from editable paths
+// ============================================================================
+const COMPONENT_FILL: Color = Color::from_rgb8(0x66, 0x99, 0xCC); // Blue-gray tint
+
+// ============================================================================
 // METRICS GUIDES
 // ============================================================================
 const METRICS_GUIDE: Color = BASE_F;
@@ -258,6 +264,13 @@ pub mod path {
     #[allow(dead_code)]
     pub const FILL: Color = super::PATH_FILL;
     pub const PREVIEW_FILL: Color = super::PATH_PREVIEW_FILL;
+}
+
+/// Colors for components (references to other glyphs)
+pub mod component {
+    use super::Color;
+    /// Fill color for components - distinct from editable paths
+    pub const FILL: Color = super::COMPONENT_FILL;
 }
 
 /// Colors for font metrics guides
