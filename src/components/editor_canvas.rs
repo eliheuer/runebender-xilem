@@ -1413,6 +1413,35 @@ impl EditorWidget {
 
         // Check if this is a double-click
         if self.is_double_click(design_pos) {
+            // First check if we double-clicked on a component
+            if let Some(component_id) = self.session.hit_test_component(local_pos) {
+                // Find the component to get its base glyph name
+                if let Some(component) = self.session.glyph.components.iter()
+                    .find(|c| c.id == component_id)
+                {
+                    let base_name = component.base.clone();
+                    tracing::info!(
+                        "Double-click on component '{}' - adding to buffer",
+                        base_name
+                    );
+
+                    // Add the base glyph to the buffer for editing
+                    if self.session.add_glyph_to_buffer(&base_name) {
+                        // Clear component selection
+                        self.session.clear_component_selection();
+
+                        // Emit SessionUpdate so AppState gets the updated session
+                        ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                            session: self.session.clone(),
+                            save_requested: false,
+                        });
+
+                        ctx.request_render();
+                        return; // Don't dispatch to tool
+                    }
+                }
+            }
+
             // Check if we clicked on a sort
             if let Some(sort_index) = self.find_sort_at_position(design_pos) {
                 tracing::info!("Double-click detected on sort {}", sort_index);

@@ -717,6 +717,56 @@ impl EditSession {
         self.selected_component = Some(id);
     }
 
+    /// Add a glyph to the text buffer by name (for component base glyph editing)
+    ///
+    /// This looks up the glyph in the workspace and inserts it into the text buffer
+    /// at the current cursor position. Used when double-clicking a component to
+    /// add its base glyph to the buffer for editing.
+    ///
+    /// Returns true if the glyph was added successfully.
+    pub fn add_glyph_to_buffer(&mut self, glyph_name: &str) -> bool {
+        // Get the glyph from workspace
+        let workspace = match &self.workspace {
+            Some(ws) => ws.clone(),
+            None => return false,
+        };
+
+        let workspace_guard = workspace.read().unwrap();
+        let glyph = match workspace_guard.glyphs.get(glyph_name) {
+            Some(g) => g.clone(),
+            None => {
+                tracing::warn!("Glyph '{}' not found in workspace", glyph_name);
+                return false;
+            }
+        };
+
+        // Get the advance width
+        let advance_width = glyph.width as f64;
+
+        // Get the first codepoint if any
+        let codepoint = glyph.codepoints.first().copied();
+
+        // Drop the lock before we modify the buffer
+        drop(workspace_guard);
+
+        // Create a new sort for this glyph
+        let sort = crate::sort::Sort::new_glyph(
+            glyph_name.to_string(),
+            codepoint,
+            advance_width,
+            false, // Not active initially
+        );
+
+        // Insert into buffer
+        if let Some(buffer) = &mut self.text_buffer {
+            buffer.insert(sort);
+            tracing::info!("Added glyph '{}' to buffer for editing", glyph_name);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Move selected points by a delta in design space
     ///
     /// This mutates the paths using Arc::make_mut, which will clone

@@ -35,10 +35,10 @@ From the UFO spec, a component has:
 - [x] Save repositioned components back to UFO (via to_glyph())
 - [x] Arrow keys to nudge selected component
 
-### Phase 4: Advanced Editing (Glyphs-like)
-- [ ] Double-click component to add base glyph to buffer for editing
-- [ ] Show component bounding box when selected
-- [ ] Component info in coordinate panel
+### Phase 4: Advanced Editing (Glyphs-like) ✅
+- [x] Double-click component to add base glyph to buffer for editing
+- [x] Show component selection outline (orange stroke when selected)
+- [ ] Component info in coordinate panel (future enhancement)
 
 ## Data Structures
 
