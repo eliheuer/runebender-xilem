@@ -773,14 +773,17 @@ impl EditorWidget {
         }
 
         // Render components for the active glyph
-        // Components are rendered as filled shapes in a distinct color
+        // Use distinct color only in non-text mode (to distinguish from editable paths)
         if let Some(workspace) = &self.session.workspace {
             let workspace_guard = workspace.read().unwrap();
+            let use_component_color = !self.session.text_mode_active;
             self.render_glyph_components(
                 scene,
                 &self.session.glyph,
                 &sort_transform,
                 &workspace_guard,
+                true,  // is_active_sort
+                use_component_color,
             );
         }
     }
@@ -831,20 +834,34 @@ impl EditorWidget {
         }
 
         // Render components (references to other glyphs)
-        self.render_glyph_components(scene, glyph, &sort_transform, &workspace_guard);
+        // Inactive sorts always use regular fill color (not distinct component color)
+        self.render_glyph_components(
+            scene,
+            glyph,
+            &sort_transform,
+            &workspace_guard,
+            false,  // is_active_sort
+            false,  // use_component_color
+        );
     }
 
     /// Render components of a glyph recursively
     ///
-    /// Components are rendered in a distinct color and can be nested
-    /// (a component's base glyph may itself contain components).
-    /// For the active glyph, selected components get a highlight outline.
+    /// Components are rendered in a distinct color only when in an active sort
+    /// in non-text mode (to distinguish from editable paths). In text mode or
+    /// inactive sorts, they use the same fill color as regular glyphs.
+    ///
+    /// Parameters:
+    /// - `is_active_sort`: true if rendering the active (editable) sort
+    /// - `use_component_color`: true to use distinct component color (blue)
     fn render_glyph_components(
         &self,
         scene: &mut Scene,
         glyph: &crate::workspace::Glyph,
         transform: &Affine,
         workspace: &crate::workspace::Workspace,
+        is_active_sort: bool,
+        use_component_color: bool,
     ) {
         for component in &glyph.components {
             // Look up the base glyph
@@ -869,19 +886,24 @@ impl EditorWidget {
                 component_path.extend(path.to_bezpath());
             }
 
-            // Render the component in a distinct color
+            // Render the component
             if !component_path.is_empty() {
                 let transformed_path = component_transform * &component_path;
 
-                // Check if this component is selected (for the active glyph)
-                let is_selected = self.session.selected_component == Some(component.id);
+                // Check if this component is selected (only relevant for active sort)
+                let is_selected = is_active_sort &&
+                    self.session.selected_component == Some(component.id);
 
-                // Use a brighter color if selected
+                // Determine fill color based on context
                 let fill_color = if is_selected {
                     // Brighter blue for selected component
                     peniko::Color::from_rgb8(0x88, 0xbb, 0xff)
-                } else {
+                } else if use_component_color {
+                    // Blue for components in active sort (non-text mode)
                     theme::component::FILL
+                } else {
+                    // Same as regular glyph fill for text mode or inactive sorts
+                    theme::path::PREVIEW_FILL
                 };
 
                 let fill_brush = Brush::Solid(fill_color);
@@ -908,7 +930,14 @@ impl EditorWidget {
             }
 
             // Recursively render nested components
-            self.render_glyph_components(scene, base_glyph, &component_transform, workspace);
+            self.render_glyph_components(
+                scene,
+                base_glyph,
+                &component_transform,
+                workspace,
+                is_active_sort,
+                use_component_color,
+            );
         }
     }
 
