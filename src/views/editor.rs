@@ -17,8 +17,8 @@ use xilem::WidgetView;
 
 use crate::components::workspace_toolbar::WorkspaceToolbarButton;
 use crate::components::{
-    coordinate_panel, edit_mode_toolbar_view, editor_view, glyph_view,
-    shapes_toolbar_view, text_direction_toolbar_view, workspace_toolbar_view,
+    coordinate_panel, create_master_infos, edit_mode_toolbar_view, editor_view, glyph_view,
+    master_toolbar_view, shapes_toolbar_view, text_direction_toolbar_view, workspace_toolbar_view,
 };
 use crate::data::AppState;
 use crate::shaping::TextDirection;
@@ -117,22 +117,63 @@ pub fn editor_tab(
         transformed(coordinate_panel_from_session(&session_arc))
             .translate((-MARGIN, -MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_RIGHT)),
-        // Top-right: Workspace toolbar for navigation
-        transformed(workspace_toolbar_view(
-            |state: &mut AppState, button| {
-                match button {
-                    WorkspaceToolbarButton::GlyphGrid => {
-                        state.close_editor();
-                    }
-                }
-            },
-        ))
+        // Top-right: Workspace toolbar and master toolbar (stacked vertically)
+        transformed(
+            flex_col((
+                workspace_toolbar_view(
+                    |state: &mut AppState, button| {
+                        match button {
+                            WorkspaceToolbarButton::GlyphGrid => {
+                                state.close_editor();
+                            }
+                        }
+                    },
+                ),
+                // Master toolbar (only shown when designspace is loaded)
+                master_toolbar_panel(state),
+            ))
+            .cross_axis_alignment(xilem::view::CrossAxisAlignment::End)
+        )
         .translate((-MARGIN, MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_RIGHT)),
     )))
 }
 
 // ===== Helper Views =====
+
+/// Master toolbar panel - only shown when a designspace is loaded
+fn master_toolbar_panel(
+    state: &AppState,
+) -> impl WidgetView<AppState> + use<> {
+    // Only show master toolbar when we have a designspace with multiple masters
+    if let Some(ref designspace) = state.designspace {
+        if designspace.masters.len() > 1 {
+            let master_infos = create_master_infos(&designspace.masters);
+            let active_master = designspace.active_master;
+
+            return Either::A(master_toolbar_view(
+                master_infos,
+                active_master,
+                |state: &mut AppState, index| {
+                    // Switch to the selected master
+                    if let Some(ref mut ds) = state.designspace {
+                        ds.switch_master(index);
+                        // Reload the current glyph from the new master
+                        if let Some(ref session) = state.editor_session {
+                            if let Some(glyph_name) = &session.active_sort_name {
+                                // Re-create editor session with new master's glyph
+                                state.open_editor(glyph_name.clone());
+                            }
+                        }
+                    }
+                },
+            ));
+        }
+    }
+
+    // No designspace or single master - return empty view
+    Either::B(sized_box(label("")).width(0.px()).height(0.px()))
+}
 
 /// Helper to create coordinate panel from session data
 fn coordinate_panel_from_session(
