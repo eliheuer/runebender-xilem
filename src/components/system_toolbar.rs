@@ -188,46 +188,106 @@ impl SystemToolbarWidget {
     }
 }
 
-/// Save icon - floppy disk shape
+/// Save icon - U+E000 from untitled.ufo
 fn save_icon() -> BezPath {
     let mut path = BezPath::new();
 
-    // Draw a simple floppy disk icon centered at origin
-    // Outer rectangle with cut corner
-    let size = 28.0;
-    let half = size / 2.0;
-    let corner_cut = 6.0;
+    // Glyph metrics: width=600, bbox roughly (44,44) to (571,556)
+    // Center: ~307.5, 300  Size: ~527 x 512
+    // Scale to fit in ~24x24 icon, centered at origin
+    let scale = 24.0 / 512.0;
+    let cx = 307.5;
+    let cy = 300.0;
 
-    // Main body (with top-right corner cut)
-    path.move_to((-half, -half));
-    path.line_to((half - corner_cut, -half));
-    path.line_to((half, -half + corner_cut));
-    path.line_to((half, half));
-    path.line_to((-half, half));
+    // Helper to transform points
+    // IMPORTANT: Font coordinates have Y going UP, screen coordinates have Y going DOWN
+    // We negate Y to flip the glyph right-side up for screen rendering
+    let t = |x: f64, y: f64| -> (f64, f64) {
+        ((x - cx) * scale, -(y - cy) * scale)
+    };
+
+    // Contour 1
+    let p = t(227.0, 115.0); path.move_to(p);
+    path.curve_to(t(238.0, 115.0), t(255.0, 95.0), t(255.0, 83.0));
+    path.curve_to(t(255.0, 71.0), t(234.0, 44.0), t(224.0, 44.0));
+    path.curve_to(t(215.0, 44.0), t(191.0, 60.0), t(191.0, 67.0));
+    path.curve_to(t(191.0, 73.0), t(220.0, 115.0), t(227.0, 115.0));
     path.close_path();
 
-    // Label area (bottom rectangle)
-    let label_height = 10.0;
-    let label_width = 18.0;
-    let label_x = -label_width / 2.0;
-    let label_y = half - label_height - 3.0;
-
-    path.move_to((label_x, label_y));
-    path.line_to((label_x + label_width, label_y));
-    path.line_to((label_x + label_width, label_y + label_height));
-    path.line_to((label_x, label_y + label_height));
+    // Contour 2
+    let p = t(134.0, 161.0); path.move_to(p);
+    path.curve_to(t(96.0, 161.0), t(44.0, 169.0), t(44.0, 225.0));
+    path.curve_to(t(44.0, 248.0), t(48.0, 267.0), t(58.0, 267.0));
+    path.curve_to(t(67.0, 267.0), t(62.0, 251.0), t(86.0, 236.0));
+    path.curve_to(t(99.0, 228.0), t(118.0, 221.0), t(183.0, 221.0));
+    path.curve_to(t(321.0, 221.0), t(377.0, 263.0), t(377.0, 277.0));
+    path.curve_to(t(377.0, 283.0), t(374.0, 287.0), t(369.0, 287.0));
+    path.curve_to(t(363.0, 287.0), t(359.0, 285.0), t(352.0, 285.0));
+    path.curve_to(t(342.0, 285.0), t(332.0, 290.0), t(332.0, 306.0));
+    path.curve_to(t(332.0, 324.0), t(354.0, 358.0), t(368.0, 358.0));
+    path.curve_to(t(387.0, 358.0), t(403.0, 333.0), t(403.0, 304.0));
+    path.curve_to(t(403.0, 251.0), t(357.0, 161.0), t(134.0, 161.0));
     path.close_path();
 
-    // Shutter area (top rectangle)
-    let shutter_width = 14.0;
-    let shutter_height = 8.0;
-    let shutter_x = -shutter_width / 2.0;
-    let shutter_y = -half + 2.0;
+    // Contour 3
+    let p = t(169.0, 556.0); path.move_to(p);
+    path.curve_to(t(180.0, 556.0), t(197.0, 536.0), t(197.0, 524.0));
+    path.curve_to(t(197.0, 512.0), t(176.0, 485.0), t(166.0, 485.0));
+    path.curve_to(t(157.0, 485.0), t(133.0, 501.0), t(133.0, 508.0));
+    path.curve_to(t(133.0, 514.0), t(162.0, 556.0), t(169.0, 556.0));
+    path.close_path();
 
-    path.move_to((shutter_x, shutter_y));
-    path.line_to((shutter_x + shutter_width, shutter_y));
-    path.line_to((shutter_x + shutter_width, shutter_y + shutter_height));
-    path.line_to((shutter_x, shutter_y + shutter_height));
+    // Contour 4
+    let p = t(355.0, 512.0); path.move_to(p);
+    path.curve_to(t(366.0, 512.0), t(381.0, 492.0), t(381.0, 480.0));
+    path.curve_to(t(381.0, 468.0), t(362.0, 441.0), t(352.0, 441.0));
+    path.curve_to(t(343.0, 441.0), t(319.0, 457.0), t(319.0, 464.0));
+    path.curve_to(t(319.0, 470.0), t(348.0, 512.0), t(355.0, 512.0));
+    path.close_path();
+
+    // Contour 5
+    let p = t(231.0, 278.0); path.move_to(p);
+    path.curve_to(t(214.0, 278.0), t(196.0, 290.0), t(196.0, 333.0));
+    path.curve_to(t(196.0, 435.0), t(224.0, 532.0), t(238.0, 532.0));
+    path.curve_to(t(243.0, 532.0), t(244.0, 529.0), t(244.0, 525.0));
+    path.curve_to(t(244.0, 513.0), t(226.0, 473.0), t(226.0, 384.0));
+    path.curve_to(t(226.0, 353.0), t(234.0, 338.0), t(247.0, 338.0));
+    path.curve_to(t(266.0, 338.0), t(268.0, 369.0), t(274.0, 369.0));
+    path.curve_to(t(278.0, 369.0), t(280.0, 363.0), t(280.0, 353.0));
+    path.curve_to(t(280.0, 325.0), t(260.0, 278.0), t(231.0, 278.0));
+    path.close_path();
+
+    // Contour 6
+    let p = t(84.0, 276.0); path.move_to(p);
+    path.curve_to(t(78.0, 276.0), t(75.0, 278.0), t(75.0, 283.0));
+    path.curve_to(t(75.0, 291.0), t(120.0, 320.0), t(137.0, 341.0));
+    path.curve_to(t(142.0, 347.0), t(151.0, 365.0), t(157.0, 384.0));
+    path.curve_to(t(167.0, 413.0), t(171.0, 436.0), t(176.0, 436.0));
+    path.curve_to(t(179.0, 436.0), t(181.0, 434.0), t(181.0, 429.0));
+    path.curve_to(t(181.0, 397.0), t(168.0, 333.0), t(152.0, 308.0));
+    path.curve_to(t(137.0, 285.0), t(94.0, 276.0), t(84.0, 276.0));
+    path.close_path();
+
+    // Contour 7
+    let p = t(364.0, 168.0); path.move_to(p);
+    path.curve_to(t(360.0, 168.0), t(357.0, 170.0), t(357.0, 175.0));
+    path.curve_to(t(357.0, 185.0), t(414.0, 215.0), t(428.0, 232.0));
+    path.curve_to(t(442.0, 249.0), t(451.0, 280.0), t(459.0, 291.0));
+    path.curve_to(t(471.0, 308.0), t(500.0, 313.0), t(507.0, 321.0));
+    path.curve_to(t(514.0, 329.0), t(529.0, 347.0), t(529.0, 353.0));
+    path.curve_to(t(529.0, 359.0), t(505.0, 364.0), t(495.0, 364.0));
+    path.curve_to(t(489.0, 364.0), t(471.0, 343.0), t(465.0, 343.0));
+    path.curve_to(t(461.0, 343.0), t(459.0, 345.0), t(459.0, 349.0));
+    path.curve_to(t(459.0, 356.0), t(486.0, 390.0), t(503.0, 390.0));
+    path.curve_to(t(520.0, 390.0), t(536.0, 380.0), t(543.0, 380.0));
+    path.curve_to(t(549.0, 380.0), t(559.0, 391.0), t(565.0, 391.0));
+    path.curve_to(t(569.0, 391.0), t(571.0, 387.0), t(571.0, 383.0));
+    path.curve_to(t(571.0, 378.0), t(564.0, 365.0), t(559.0, 360.0));
+    path.curve_to(t(556.0, 357.0), t(548.0, 351.0), t(543.0, 345.0));
+    path.curve_to(t(538.0, 339.0), t(520.0, 302.0), t(512.0, 292.0));
+    path.curve_to(t(504.0, 282.0), t(471.0, 270.0), t(464.0, 260.0));
+    path.curve_to(t(457.0, 250.0), t(441.0, 194.0), t(424.0, 184.0));
+    path.curve_to(t(410.0, 176.0), t(383.0, 168.0), t(364.0, 168.0));
     path.close_path();
 
     path
