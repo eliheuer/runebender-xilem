@@ -8,6 +8,7 @@ use crate::edit_session::EditSession;
 use crate::workspace::Workspace;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use chrono::Local;
 use xilem::WindowId;
 
 /// Which tab is currently active
@@ -50,6 +51,9 @@ pub struct AppState {
     /// Main window ID (stable across rebuilds to prevent window
     /// recreation)
     pub main_window_id: WindowId,
+
+    /// When the file was last saved (formatted time string for UI)
+    pub last_saved: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -66,6 +70,7 @@ impl AppState {
             active_tab: Tab::GlyphGrid,
             running: true,
             main_window_id: WindowId::next(),
+            last_saved: None,
         }
     }
 
@@ -152,6 +157,22 @@ impl AppState {
     /// Check if any font is loaded (either UFO or designspace)
     pub fn has_font_loaded(&self) -> bool {
         self.workspace.is_some() || self.designspace.is_some()
+    }
+
+    /// Get the path of the loaded file (designspace or UFO)
+    pub fn loaded_file_path(&self) -> Option<PathBuf> {
+        if let Some(ds) = &self.designspace {
+            Some(ds.path.clone())
+        } else if let Some(ws) = &self.workspace {
+            Some(ws.read().unwrap().path.clone())
+        } else {
+            None
+        }
+    }
+
+    /// Get the last saved time string
+    pub fn last_saved_display(&self) -> Option<String> {
+        self.last_saved.clone()
     }
 
     /// Create a new empty font
@@ -380,6 +401,7 @@ impl AppState {
                 Ok(()) => {
                     tracing::info!("Saved designspace: {}", designspace.path.display());
                     self.error_message = None;
+                    self.last_saved = Some(Local::now().format("%I:%M %p").to_string());
                 }
                 Err(e) => {
                     let error = format!("Failed to save designspace: {}", e);
@@ -404,6 +426,7 @@ impl AppState {
             Ok(()) => {
                 tracing::info!("Saved: {}", workspace.path.display());
                 self.error_message = None;
+                self.last_saved = Some(Local::now().format("%I:%M %p").to_string());
             }
             Err(e) => {
                 let error = format!("Failed to save: {}", e);

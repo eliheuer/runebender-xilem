@@ -14,7 +14,7 @@ use xilem::view::{
 use xilem::WidgetView;
 
 use crate::components::{
-    create_master_infos, glyph_view, master_toolbar_view,
+    create_master_infos, glyph_view, keyboard_shortcuts, master_toolbar_view,
 };
 use crate::data::AppState;
 use crate::glyph_renderer;
@@ -32,13 +32,21 @@ pub fn glyph_grid_tab(
     state: &mut AppState,
 ) -> impl WidgetView<AppState> + use<> {
     zstack((
+        // Keyboard shortcut handler (invisible, handles Cmd+S)
+        keyboard_shortcuts(|state: &mut AppState| {
+            state.save_workspace();
+        }),
         // Background: the glyph grid with top margin for toolbar
         flex_col((
             // Top margin to make room for floating toolbar
-            sized_box(label("")).height((TOOLBAR_HEIGHT + UI_PANEL_MARGIN + 6.0).px()),
+            sized_box(label("")).height((TOOLBAR_HEIGHT + UI_PANEL_MARGIN).px()),
             glyph_grid_view(state),
         ))
         .background_color(theme::app::BACKGROUND),
+        // Top-left: File info panel
+        transformed(file_info_panel(state))
+            .translate((UI_PANEL_MARGIN, UI_PANEL_MARGIN))
+            .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_LEFT)),
         // Top-right: Master toolbar (if designspace)
         transformed(
             flex_row((
@@ -50,6 +58,41 @@ pub fn glyph_grid_tab(
         .translate((-UI_PANEL_MARGIN, UI_PANEL_MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_RIGHT)),
     ))
+}
+
+/// File info panel showing the loaded file path and last save time
+fn file_info_panel(
+    state: &AppState,
+) -> impl WidgetView<AppState> + use<> {
+    // Get file path (shortened to last 3 components)
+    let path_display = state
+        .loaded_file_path()
+        .map(|p| shorten_path(&p, 3))
+        .unwrap_or_else(|| "No file loaded".to_string());
+
+    // Get last saved info
+    let save_display = state
+        .last_saved_display()
+        .map(|s| format!("Saved {}", s))
+        .unwrap_or_else(|| "Not saved".to_string());
+
+    sized_box(
+        flex_col((
+            label(path_display)
+                .text_size(14.0)
+                .color(theme::text::PRIMARY),
+            label(save_display)
+                .text_size(14.0)
+                .color(theme::text::SECONDARY),
+        ))
+        .gap(2.px())
+        .cross_axis_alignment(xilem::view::CrossAxisAlignment::Start),
+    )
+    .padding(12.0)
+    .background_color(theme::panel::BACKGROUND)
+    .border_color(theme::panel::OUTLINE)
+    .border_width(1.5)
+    .corner_radius(theme::size::PANEL_RADIUS)
 }
 
 /// Master toolbar panel for glyph grid - only shown when designspace is loaded
@@ -332,4 +375,19 @@ fn get_cell_colors(
     } else {
         (theme::grid::CELL_BACKGROUND, theme::grid::CELL_OUTLINE)
     }
+}
+
+// ===== Path Helpers =====
+
+/// Shorten a path to show only the last N components with ".." prefix
+fn shorten_path(path: &std::path::Path, components: usize) -> String {
+    let parts: Vec<_> = path.components().collect();
+    if parts.len() <= components {
+        return path.display().to_string();
+    }
+
+    // Take the last N components
+    let start = parts.len() - components;
+    let shortened: std::path::PathBuf = parts[start..].iter().collect();
+    format!("../{}", shortened.display())
 }

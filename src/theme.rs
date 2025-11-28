@@ -35,6 +35,7 @@ const APP_BACKGROUND: Color = BASE_B;
 // UI TEXT AND LABELS
 // ============================================================================
 const PRIMARY_UI_TEXT: Color = BASE_I;
+const SECONDARY_UI_TEXT: Color = BASE_G;
 
 // ============================================================================
 // UI PANELS (Toolbar, Coordinate Panel, Glyph Preview)
@@ -172,6 +173,7 @@ pub mod canvas {
 pub mod text {
     use super::Color;
     pub const PRIMARY: Color = super::PRIMARY_UI_TEXT;
+    pub const SECONDARY: Color = super::SECONDARY_UI_TEXT;
 }
 
 /// Colors for UI panels (toolbar, coordinate panel, glyph preview, etc.)
