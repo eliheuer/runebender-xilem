@@ -97,9 +97,10 @@ impl MasterToolbarWidget {
         let target_size = TOOLBAR_ITEM_SIZE - TOOLBAR_ICON_PADDING * 2.0;
         let scale = target_size / icon_size;
 
-        // Create transform: scale then translate to center
+        // Create transform: scale (with Y flip for glyph coords) then translate to center
+        // Glyph coordinates have Y going up, screen has Y going down
         let transform = Affine::translate((button_center.x, button_center.y))
-            * Affine::scale(scale)
+            * Affine::scale_non_uniform(scale, -scale)  // Flip Y axis
             * Affine::translate((-icon_center.x, -icon_center.y));
 
         // Determine icon color based on state

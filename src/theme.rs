@@ -373,6 +373,12 @@ pub mod size {
     /// Width of metric guide lines
     pub const METRIC_LINE_WIDTH: f64 = 1.0;
 
+    // ===== UI Layout =====
+    /// Margin from screen edges for floating UI panels
+    pub const UI_PANEL_MARGIN: f64 = 16.0;
+    /// Gap between adjacent UI panels/toolbars
+    pub const UI_PANEL_GAP: f64 = 16.0;
+
     // ===== Toolbar dimensions =====
     /// Size of toolbar buttons (width and height)
     pub const TOOLBAR_ITEM_SIZE: f64 = 48.0;

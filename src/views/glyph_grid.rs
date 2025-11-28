@@ -19,12 +19,13 @@ use crate::components::{
 use crate::data::AppState;
 use crate::glyph_renderer;
 use crate::theme;
+use crate::theme::size::{UI_PANEL_GAP, UI_PANEL_MARGIN, TOOLBAR_ITEM_SIZE, TOOLBAR_PADDING};
 use crate::workspace;
 
 // ===== Glyph Grid Tab View =====
 
-const MARGIN: f64 = 16.0; // Fixed 16px margin for all panels
-const TOOLBAR_HEIGHT: f64 = 64.0; // TOOLBAR_ITEM_SIZE (48) + TOOLBAR_PADDING * 2 (8 * 2)
+/// Height of a toolbar (button size + padding on both sides)
+const TOOLBAR_HEIGHT: f64 = TOOLBAR_ITEM_SIZE + TOOLBAR_PADDING * 2.0;
 
 /// Tab 0: Glyph grid view with header and floating toolbar
 pub fn glyph_grid_tab(
@@ -34,21 +35,19 @@ pub fn glyph_grid_tab(
         // Background: the glyph grid with top margin for toolbar
         flex_col((
             // Top margin to make room for floating toolbar
-            sized_box(label("")).height((TOOLBAR_HEIGHT + MARGIN + 6.0).px()),
+            sized_box(label("")).height((TOOLBAR_HEIGHT + UI_PANEL_MARGIN + 6.0).px()),
             glyph_grid_view(state),
         ))
         .background_color(theme::app::BACKGROUND),
-        // Top-right: Master toolbar (if designspace) + Workspace toolbar
+        // Top-right: Master toolbar (if designspace)
         transformed(
             flex_row((
                 // Master toolbar (only shown when designspace is loaded)
                 master_toolbar_panel(state),
-                // Workspace toolbar (placeholder - not much use in grid view)
-                // We keep it for consistency but it could be removed
             ))
-            .gap(8.px())
+            .gap(UI_PANEL_GAP.px())
         )
-        .translate((-MARGIN, MARGIN))
+        .translate((-UI_PANEL_MARGIN, UI_PANEL_MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_RIGHT)),
     ))
 }
