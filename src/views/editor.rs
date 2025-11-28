@@ -117,9 +117,12 @@ pub fn editor_tab(
         transformed(coordinate_panel_from_session(&session_arc))
             .translate((-MARGIN, -MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_RIGHT)),
-        // Top-right: Workspace toolbar and master toolbar (stacked vertically)
+        // Top-right: Master toolbar (if designspace) + Workspace toolbar (horizontal)
         transformed(
-            flex_col((
+            flex_row((
+                // Master toolbar (only shown when designspace is loaded)
+                master_toolbar_panel(state),
+                // Workspace toolbar for navigation
                 workspace_toolbar_view(
                     |state: &mut AppState, button| {
                         match button {
@@ -129,10 +132,8 @@ pub fn editor_tab(
                         }
                     },
                 ),
-                // Master toolbar (only shown when designspace is loaded)
-                master_toolbar_panel(state),
             ))
-            .cross_axis_alignment(xilem::view::CrossAxisAlignment::End)
+            .gap(8.px())
         )
         .translate((-MARGIN, MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_RIGHT)),

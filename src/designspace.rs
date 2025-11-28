@@ -126,14 +126,94 @@ impl DesignspaceProject {
         let instances = Self::parse_instances(&designspace_doc);
         tracing::debug!("Found {} instances", instances.len());
 
+        // Find the default master based on axis defaults
+        let active_master = Self::find_default_master(&axes, &masters);
+        tracing::info!(
+            "Default master: {} ({})",
+            masters[active_master].name,
+            masters[active_master].style_name
+        );
+
         Ok(Self {
             path: path.to_path_buf(),
             axes,
             masters,
-            active_master: 0, // Default to first master
+            active_master,
             instances,
             designspace_doc,
         })
+    }
+
+    /// Find the default master based on axis default values
+    ///
+    /// First tries to find a master that matches all axis defaults exactly.
+    /// If no exact match, finds the master closest to weight 400 (standard Regular).
+    fn find_default_master(axes: &[DesignAxis], masters: &[Master]) -> usize {
+        if masters.is_empty() {
+            return 0;
+        }
+
+        // Build default location from axes
+        let default_location: HashMap<String, f64> = axes
+            .iter()
+            .map(|axis| (axis.name.clone(), axis.default))
+            .collect();
+
+        // Try to find exact match for default location
+        for (index, master) in masters.iter().enumerate() {
+            if Self::location_matches(&master.location, &default_location) {
+                tracing::debug!("Found exact default master match at index {}", index);
+                return index;
+            }
+        }
+
+        // No exact match - find master closest to weight 400
+        // Look for weight axis (could be named "Weight" or have tag "wght")
+        let weight_axis = axes.iter().find(|a| {
+            a.tag.eq_ignore_ascii_case("wght") || a.name.eq_ignore_ascii_case("weight")
+        });
+
+        if let Some(weight_axis) = weight_axis {
+            let target_weight = 400.0;
+            let mut best_index = 0;
+            let mut best_distance = f64::MAX;
+
+            for (index, master) in masters.iter().enumerate() {
+                if let Some(&weight) = master.location.get(&weight_axis.name) {
+                    let distance = (weight - target_weight).abs();
+                    if distance < best_distance {
+                        best_distance = distance;
+                        best_index = index;
+                    }
+                }
+            }
+
+            tracing::debug!(
+                "No exact default match, using master {} closest to weight 400",
+                best_index
+            );
+            return best_index;
+        }
+
+        // No weight axis found, default to first master
+        tracing::debug!("No weight axis found, defaulting to first master");
+        0
+    }
+
+    /// Check if a master's location matches the target location
+    fn location_matches(master_loc: &HashMap<String, f64>, target_loc: &HashMap<String, f64>) -> bool {
+        // Check that all target axes are matched (with small epsilon for float comparison)
+        for (axis_name, &target_value) in target_loc {
+            match master_loc.get(axis_name) {
+                Some(&master_value) => {
+                    if (master_value - target_value).abs() > 0.001 {
+                        return false;
+                    }
+                }
+                None => return false,
+            }
+        }
+        true
     }
 
     /// Parse axes from the designspace document

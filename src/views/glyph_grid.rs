@@ -4,15 +4,18 @@
 //! Glyph grid view - displays all glyphs in a scrollable grid
 
 use kurbo::BezPath;
-use masonry::properties::types::AsUnit;
+use masonry::properties::types::{AsUnit, UnitPoint};
 use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::{
-    button, flex_col, flex_row, label, portal, sized_box,
+    button, flex_col, flex_row, label, portal, sized_box, transformed, zstack,
+    ChildAlignment, ZStackExt,
 };
 use xilem::WidgetView;
 
-use crate::components::glyph_view;
+use crate::components::{
+    create_master_infos, glyph_view, master_toolbar_view,
+};
 use crate::data::AppState;
 use crate::glyph_renderer;
 use crate::theme;
@@ -20,12 +23,61 @@ use crate::workspace;
 
 // ===== Glyph Grid Tab View =====
 
-/// Tab 0: Glyph grid view with header
+const MARGIN: f64 = 16.0; // Fixed 16px margin for all panels
+const TOOLBAR_HEIGHT: f64 = 64.0; // TOOLBAR_ITEM_SIZE (48) + TOOLBAR_PADDING * 2 (8 * 2)
+
+/// Tab 0: Glyph grid view with header and floating toolbar
 pub fn glyph_grid_tab(
     state: &mut AppState,
 ) -> impl WidgetView<AppState> + use<> {
-    flex_col((glyph_grid_view(state),))
-        .background_color(theme::app::BACKGROUND)
+    zstack((
+        // Background: the glyph grid with top margin for toolbar
+        flex_col((
+            // Top margin to make room for floating toolbar
+            sized_box(label("")).height((TOOLBAR_HEIGHT + MARGIN + 6.0).px()),
+            glyph_grid_view(state),
+        ))
+        .background_color(theme::app::BACKGROUND),
+        // Top-right: Master toolbar (if designspace) + Workspace toolbar
+        transformed(
+            flex_row((
+                // Master toolbar (only shown when designspace is loaded)
+                master_toolbar_panel(state),
+                // Workspace toolbar (placeholder - not much use in grid view)
+                // We keep it for consistency but it could be removed
+            ))
+            .gap(8.px())
+        )
+        .translate((-MARGIN, MARGIN))
+        .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_RIGHT)),
+    ))
+}
+
+/// Master toolbar panel for glyph grid - only shown when designspace is loaded
+fn master_toolbar_panel(
+    state: &AppState,
+) -> impl WidgetView<AppState> + use<> {
+    // Only show master toolbar when we have a designspace with multiple masters
+    if let Some(ref designspace) = state.designspace {
+        if designspace.masters.len() > 1 {
+            let master_infos = create_master_infos(&designspace.masters);
+            let active_master = designspace.active_master;
+
+            return Either::A(master_toolbar_view(
+                master_infos,
+                active_master,
+                |state: &mut AppState, index| {
+                    // Switch to the selected master
+                    if let Some(ref mut ds) = state.designspace {
+                        ds.switch_master(index);
+                    }
+                },
+            ));
+        }
+    }
+
+    // No designspace or single master - return empty view
+    Either::B(sized_box(label("")).width(0.px()).height(0.px()))
 }
 
 // ===== Glyph Grid View =====
@@ -68,8 +120,7 @@ fn glyph_grid_view(
 /// Get UPM (units per em) from workspace state
 fn get_upm_from_state(state: &AppState) -> f64 {
     state
-        .workspace
-        .as_ref()
+        .active_workspace()
         .and_then(|w| w.read().unwrap().units_per_em)
         .unwrap_or(1000.0)
 }
@@ -88,7 +139,7 @@ fn build_glyph_data(
     state: &AppState,
     glyph_names: &[String],
 ) -> Vec<GlyphData> {
-    if let Some(workspace_arc) = &state.workspace {
+    if let Some(workspace_arc) = state.active_workspace() {
         let workspace = workspace_arc.read().unwrap();
         glyph_names
             .iter()
