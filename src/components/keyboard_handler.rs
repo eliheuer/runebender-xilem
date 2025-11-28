@@ -53,7 +53,7 @@ impl Widget for KeyboardShortcutsWidget {
         _props: &mut PropertiesMut<'_>,
         bc: &BoxConstraints,
     ) -> Size {
-        // Take up all available space to capture events
+        // Take full size to receive pointer events in empty areas
         self.size = bc.max();
         self.size
     }
@@ -89,7 +89,7 @@ impl Widget for KeyboardShortcutsWidget {
         _props: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
-        // Request focus on any pointer activity so we can receive keyboard events
+        // Request focus on pointer activity so we can receive keyboard events
         match event {
             PointerEvent::Down(_) | PointerEvent::Move(_) => {
                 ctx.request_focus();

@@ -308,6 +308,72 @@ impl AppState {
         }
     }
 
+    /// Switch the editor to a different master while preserving the text buffer
+    ///
+    /// This syncs current edits to the old master, switches to the new master,
+    /// and reloads the active glyph's paths from the new master's workspace.
+    /// The text buffer (list of sorts being edited) is preserved.
+    pub fn switch_editor_master(&mut self, new_master_index: usize) {
+        // First sync any edits to the current master
+        self.sync_editor_to_workspace();
+
+        // Switch to the new master in the designspace
+        if let Some(ref mut ds) = self.designspace {
+            if !ds.switch_master(new_master_index) {
+                return; // Invalid index
+            }
+        } else {
+            return; // No designspace
+        }
+
+        // Get the new workspace
+        let workspace_arc = match self.active_workspace() {
+            Some(w) => w,
+            None => return,
+        };
+
+        // Update the editor session to use the new master's data
+        if let Some(ref mut session) = self.editor_session {
+            // Update workspace reference
+            session.workspace = Some(Arc::clone(&workspace_arc));
+
+            // Reload the active sort's glyph from the new master
+            if let Some(glyph_name) = session.active_sort_name.clone() {
+                let workspace = workspace_arc.read().unwrap();
+
+                if let Some(glyph) = workspace.get_glyph(&glyph_name) {
+                    // Update the glyph data
+                    session.glyph = Arc::new(glyph.clone());
+
+                    // Convert contours to editable paths
+                    let paths: Vec<crate::path::Path> = glyph
+                        .contours
+                        .iter()
+                        .map(crate::path::Path::from_contour)
+                        .collect();
+                    session.paths = Arc::new(paths);
+
+                    // Update font metrics from new workspace
+                    session.units_per_em = workspace.units_per_em.unwrap_or(1000.0);
+                    session.ascender = workspace.ascender.unwrap_or(800.0);
+                    session.descender = workspace.descender.unwrap_or(-200.0);
+                    session.x_height = workspace.x_height;
+                    session.cap_height = workspace.cap_height;
+
+                    // Clear selection since points have new IDs
+                    session.selection = crate::selection::Selection::new();
+                    session.selected_component = None;
+
+                    tracing::info!(
+                        "Switched editor to master {}, reloaded glyph '{}'",
+                        new_master_index,
+                        glyph_name
+                    );
+                }
+            }
+        }
+    }
+
     /// Set the tool for the current editor session
     pub fn set_editor_tool(
         &mut self,

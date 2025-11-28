@@ -115,7 +115,7 @@ pub fn editor_tab(
         transformed(coordinate_panel_from_session(&session_arc))
             .translate((-UI_PANEL_MARGIN, -UI_PANEL_MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_RIGHT)),
-        // Top-right: Master toolbar (if designspace) + Workspace toolbar (horizontal)
+        // Top-right: Master toolbar (if designspace) + Workspace toolbar
         transformed(
             flex_row((
                 // Master toolbar (only shown when designspace is loaded)
@@ -154,17 +154,8 @@ fn master_toolbar_panel(
                 master_infos,
                 active_master,
                 |state: &mut AppState, index| {
-                    // Switch to the selected master
-                    if let Some(ref mut ds) = state.designspace {
-                        ds.switch_master(index);
-                        // Reload the current glyph from the new master
-                        if let Some(ref session) = state.editor_session {
-                            if let Some(glyph_name) = &session.active_sort_name {
-                                // Re-create editor session with new master's glyph
-                                state.open_editor(glyph_name.clone());
-                            }
-                        }
-                    }
+                    // Switch to the selected master while preserving text buffer
+                    state.switch_editor_master(index);
                 },
             ));
         }

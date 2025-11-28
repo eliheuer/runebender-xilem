@@ -15,6 +15,7 @@ use xilem::WidgetView;
 
 use crate::components::{
     create_master_infos, glyph_view, keyboard_shortcuts, master_toolbar_view,
+    system_toolbar_view, SystemToolbarButton,
 };
 use crate::data::AppState;
 use crate::glyph_renderer;
@@ -33,6 +34,7 @@ pub fn glyph_grid_tab(
 ) -> impl WidgetView<AppState> + use<> {
     zstack((
         // Keyboard shortcut handler (invisible, handles Cmd+S)
+        // At bottom of zstack so widgets above receive pointer events first
         keyboard_shortcuts(|state: &mut AppState| {
             state.save_workspace();
         }),
@@ -47,11 +49,19 @@ pub fn glyph_grid_tab(
         transformed(file_info_panel(state))
             .translate((UI_PANEL_MARGIN, UI_PANEL_MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_LEFT)),
-        // Top-right: Master toolbar (if designspace)
+        // Top-right: System toolbar + Master toolbar (if designspace)
         transformed(
             flex_row((
                 // Master toolbar (only shown when designspace is loaded)
                 master_toolbar_panel(state),
+                // System toolbar (save button)
+                system_toolbar_view(|state: &mut AppState, button| {
+                    match button {
+                        SystemToolbarButton::Save => {
+                            state.save_workspace();
+                        }
+                    }
+                }),
             ))
             .gap(UI_PANEL_GAP.px())
         )

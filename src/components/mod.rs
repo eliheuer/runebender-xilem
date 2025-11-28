@@ -10,6 +10,7 @@ pub mod glyph_preview_widget;
 pub mod keyboard_handler;
 pub mod master_toolbar;
 pub mod shapes_toolbar;
+pub mod system_toolbar;
 pub mod text_direction_toolbar;
 pub mod toolbars;
 pub mod workspace_toolbar;
@@ -22,6 +23,7 @@ pub use glyph_preview_widget::glyph_view;
 pub use keyboard_handler::keyboard_shortcuts;
 pub use master_toolbar::{create_master_infos, master_toolbar_view, MasterInfo};
 pub use shapes_toolbar::shapes_toolbar_view;
+pub use system_toolbar::{system_toolbar_view, SystemToolbarButton};
 pub use text_direction_toolbar::text_direction_toolbar_view;
 pub use workspace_toolbar::workspace_toolbar_view;
 
