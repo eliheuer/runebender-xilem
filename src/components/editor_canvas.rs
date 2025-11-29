@@ -1221,7 +1221,17 @@ impl EditorWidget {
     fn find_sort_at_position(&self, position: Point) -> Option<usize> {
         let buffer = self.session.text_buffer.as_ref()?;
 
-        let mut x_offset = 0.0;
+        // Check text direction for RTL support
+        let is_rtl = self.session.text_direction.is_rtl();
+
+        // For RTL: calculate total width first so we can start from the right
+        let total_width = if is_rtl {
+            self.calculate_buffer_width()
+        } else {
+            0.0
+        };
+
+        let mut x_offset = if is_rtl { total_width } else { 0.0 };
         let mut baseline_y = 0.0;
         let upm_height = self.session.ascender - self.session.descender;
 
@@ -1232,6 +1242,11 @@ impl EditorWidget {
         for (index, sort) in buffer.iter().enumerate() {
             match &sort.kind {
                 crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                    // For RTL: move x left BEFORE processing this glyph
+                    if is_rtl {
+                        x_offset -= advance_width;
+                    }
+
                     // Apply kerning if we have a previous glyph
                     if let Some(prev_name) = &prev_glyph_name {
                         if let Some(workspace_arc) = &self.session.workspace {
@@ -1251,7 +1266,11 @@ impl EditorWidget {
                                 curr_group,
                             );
 
-                            x_offset += kern_value;
+                            if is_rtl {
+                                x_offset -= kern_value;
+                            } else {
+                                x_offset += kern_value;
+                            }
                         }
                     }
 
@@ -1267,7 +1286,10 @@ impl EditorWidget {
                         return Some(index);
                     }
 
-                    x_offset += advance_width;
+                    // For LTR: advance x forward AFTER processing
+                    if !is_rtl {
+                        x_offset += advance_width;
+                    }
 
                     // Update previous glyph info for next iteration
                     prev_glyph_name = Some(name.clone());
@@ -1278,7 +1300,7 @@ impl EditorWidget {
                     }
                 }
                 crate::sort::SortKind::LineBreak => {
-                    x_offset = 0.0;
+                    x_offset = if is_rtl { total_width } else { 0.0 };
                     baseline_y -= upm_height;
 
                     // Reset kerning tracking (no kerning across lines)
@@ -1296,6 +1318,14 @@ impl EditorWidget {
     /// This loads the sort's paths into session.paths, updates the active_sort_* fields,
     /// and sets the is_active flag in the buffer.
     fn activate_sort(&mut self, sort_index: usize) {
+        // Calculate RTL info early, before mutable borrow of buffer
+        let is_rtl = self.session.text_direction.is_rtl();
+        let total_width = if is_rtl {
+            self.calculate_buffer_width()
+        } else {
+            0.0
+        };
+
         let buffer = match &mut self.session.text_buffer {
             Some(buf) => buf,
             None => return,
@@ -1348,15 +1378,23 @@ impl EditorWidget {
             .map(|contour| crate::path::Path::from_contour(contour))
             .collect();
 
-        // Calculate x-offset for this sort by summing advance widths and kerning of all previous sorts
-        let mut x_offset = 0.0;
+        let mut x_offset = if is_rtl { total_width } else { 0.0 };
         let mut prev_glyph_name: Option<String> = None;
         let mut prev_glyph_group: Option<String> = None;
 
-        for i in 0..sort_index {
+        // Iterate through all sorts up to and including the target sort
+        // For RTL, we need to include the target because x_offset is decremented BEFORE drawing
+        let end_index = if is_rtl { sort_index + 1 } else { sort_index };
+
+        for i in 0..end_index {
             if let Some(sort) = buffer.get(i) {
                 match &sort.kind {
                     crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                        // For RTL: move x left BEFORE processing this glyph
+                        if is_rtl {
+                            x_offset -= advance_width;
+                        }
+
                         // Apply kerning if we have a previous glyph
                         if let Some(prev_name) = &prev_glyph_name {
                             // Get current glyph's left kerning group
@@ -1373,10 +1411,17 @@ impl EditorWidget {
                                 curr_group,
                             );
 
-                            x_offset += kern_value;
+                            if is_rtl {
+                                x_offset -= kern_value;
+                            } else {
+                                x_offset += kern_value;
+                            }
                         }
 
-                        x_offset += advance_width;
+                        // For LTR: advance x forward AFTER processing
+                        if !is_rtl {
+                            x_offset += advance_width;
+                        }
 
                         // Update previous glyph info for next iteration
                         prev_glyph_name = Some(name.clone());
@@ -1384,6 +1429,8 @@ impl EditorWidget {
                             .and_then(|g| g.right_group.clone());
                     }
                     crate::sort::SortKind::LineBreak => {
+                        // Reset x_offset for new line
+                        x_offset = if is_rtl { total_width } else { 0.0 };
                         // Reset kerning tracking (no kerning across lines)
                         prev_glyph_name = None;
                         prev_glyph_group = None;

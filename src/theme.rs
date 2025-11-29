@@ -38,30 +38,32 @@ const PRIMARY_UI_TEXT: Color = BASE_I;
 const SECONDARY_UI_TEXT: Color = BASE_G;
 
 // ============================================================================
+// GLYPH PREVIEW COLOR (glyph panel, text buffer preview panel)
+// ============================================================================
+const GLYPH_PREVIEW_COLOR: Color = BASE_J;
+
+// ============================================================================
 // UI PANELS (Toolbar, Coordinate Panel, Glyph Preview)
 // ============================================================================
 const PANEL_BACKGROUND: Color = BASE_C;
 const PANEL_OUTLINE: Color = BASE_F;
-const GLYPH_PREVIEW_COLOR: Color = BASE_J;
-
-// Coordinate Panel specific
-const COORDINATE_PANEL_GRID_LINE: Color = BASE_I;
+const PANEL_LINE: Color = BASE_I;
 
 // ============================================================================
 // TOOLBAR BUTTONS AND ICONS (Edit Mode, Shapes, Workspace)
 // ============================================================================
 // Button backgrounds (the filled rectangle behind each icon)
-const TOOLBAR_BUTTON_UNSELECTED: Color = BASE_E; // 0x50 - Darker gray
-const TOOLBAR_BUTTON_HOVERED: Color = BASE_H;    // 0x80 - Light gray
-const TOOLBAR_BUTTON_SELECTED: Color = BASE_J;   // 0xa0 - Lighter gray
+const TOOLBAR_BUTTON_UNSELECTED: Color = BASE_E;
+const TOOLBAR_BUTTON_HOVERED: Color = BASE_H;
+const TOOLBAR_BUTTON_SELECTED: Color = BASE_I;
 
 // Button outlines (the border around each button)
-const TOOLBAR_BUTTON_OUTLINE: Color = BASE_A; // 0x10 - Very dark gray
+const TOOLBAR_BUTTON_OUTLINE: Color = BASE_A;
 
 // Icon colors (the SVG path stroke/fill inside each button)
-const TOOLBAR_ICON_UNSELECTED: Color = BASE_I;   // 0x90 - Light gray
-const TOOLBAR_ICON_HOVERED: Color = BASE_K;      // 0xb0 - Lighter gray
-const TOOLBAR_ICON_SELECTED: Color = BASE_B;     // 0x20 - Very dark gray
+const TOOLBAR_ICON_UNSELECTED: Color = BASE_I;
+const TOOLBAR_ICON_HOVERED: Color = BASE_K;
+const TOOLBAR_ICON_SELECTED: Color = BASE_B;
 
 // ============================================================================
 // GLYPH GRID VIEW
@@ -181,6 +183,7 @@ pub mod panel {
     use super::Color;
     pub const BACKGROUND: Color = super::PANEL_BACKGROUND;
     pub const OUTLINE: Color = super::PANEL_OUTLINE;
+    pub const LINE: Color = super::PANEL_LINE;
     pub const GLYPH_PREVIEW: Color = super::GLYPH_PREVIEW_COLOR;
 }
 
@@ -219,7 +222,7 @@ pub mod toolbar {
 /// Colors and sizes for coordinate panel
 pub mod coordinate_panel {
     use super::Color;
-    pub const GRID_LINE: Color = super::COORDINATE_PANEL_GRID_LINE;
+    pub const GRID_LINE: Color = super::PANEL_LINE;
     #[allow(dead_code)]
     pub const TEXT: Color = super::PRIMARY_UI_TEXT;
 
