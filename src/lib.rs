@@ -12,6 +12,7 @@ use xilem::{EventLoopBuilder, WidgetView, WindowView, Xilem, window};
 mod components;
 mod cubic_path;
 mod data;
+mod designspace;
 mod hyper_path;
 mod quadratic_path;
 mod edit_session;
@@ -64,22 +65,22 @@ pub fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
     Ok(())
 }
 
-/// Handle command-line arguments to load a UFO file
+/// Handle command-line arguments to load a UFO or designspace file
 fn handle_command_line_args(initial_state: &mut AppState) {
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 1 {
         return;
     }
 
-    let ufo_path = std::path::PathBuf::from(&args[1]);
+    let font_path = std::path::PathBuf::from(&args[1]);
 
     // Validate that the path exists
-    if ufo_path.exists() {
-        tracing::info!("Loading UFO from: {}", ufo_path.display());
-        initial_state.load_ufo(ufo_path);
+    if font_path.exists() {
+        tracing::info!("Loading font from: {}", font_path.display());
+        initial_state.load_font(font_path);
     } else {
-        tracing::error!("Path does not exist: {}", ufo_path.display());
-        tracing::error!("Usage: runebender [path/to/font.ufo]");
+        tracing::error!("Path does not exist: {}", font_path.display());
+        tracing::error!("Usage: runebender [path/to/font.ufo|designspace]");
     }
 }
 
@@ -87,9 +88,10 @@ fn handle_command_line_args(initial_state: &mut AppState) {
 fn app_logic(
     state: &mut AppState,
 ) -> impl Iterator<Item = WindowView<AppState>> + use<> {
-    let content = match state.workspace {
-        Some(_) => Either::A(tabbed_view(state)),
-        None => Either::B(welcome(state)),
+    let content = if state.has_font_loaded() {
+        Either::A(tabbed_view(state))
+    } else {
+        Either::B(welcome(state))
     };
 
     let window_size = LogicalSize::new(1030.0, 800.0);

@@ -1,6 +1,8 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(dead_code)]
+
 //! Measure tool for measuring distances and angles
 //!
 //! Ported from Runebender Druid implementation.
@@ -81,12 +83,11 @@ impl MouseDelegate for MeasureTool {
         drag: crate::mouse::Drag,
         _data: &mut EditSession,
     ) {
-        if self.dragging {
-            if let Some(start) = self.drag_start {
+        if self.dragging
+            && let Some(start) = self.drag_start {
                 // TODO: Add shift-key axis locking support when we have modifier key state
                 self.line = Some(Line::new(start, drag.current));
             }
-        }
     }
 
     fn left_up(&mut self, _event: MouseEvent, _data: &mut EditSession) {
@@ -184,7 +185,7 @@ impl MeasureTool {
                             &seg_info.segment,
                         );
                         for (_seg_t, line_t) in hits {
-                            let t_fixed = (line_t.max(0.0).min(1.0) * T_SCALE) as u64;
+                            let t_fixed = (line_t.clamp(0.0, 1.0) * T_SCALE) as u64;
                             intersections.push(t_fixed);
                         }
                     }
@@ -197,7 +198,7 @@ impl MeasureTool {
                             &seg_info.segment,
                         );
                         for (_seg_t, line_t) in hits {
-                            let t_fixed = (line_t.max(0.0).min(1.0) * T_SCALE) as u64;
+                            let t_fixed = (line_t.clamp(0.0, 1.0) * T_SCALE) as u64;
                             intersections.push(t_fixed);
                         }
                     }

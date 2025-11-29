@@ -17,12 +17,12 @@ use xilem::WidgetView;
 
 use crate::components::workspace_toolbar::WorkspaceToolbarButton;
 use crate::components::{
-    coordinate_panel, edit_mode_toolbar_view, editor_view, glyph_view,
-    shapes_toolbar_view, text_direction_toolbar_view, workspace_toolbar_view,
+    coordinate_panel, create_master_infos, edit_mode_toolbar_view, editor_view, glyph_view,
+    master_toolbar_view, shapes_toolbar_view, text_direction_toolbar_view, workspace_toolbar_view,
 };
 use crate::data::AppState;
-use crate::shaping::TextDirection;
 use crate::theme;
+use crate::theme::size::{UI_PANEL_GAP, UI_PANEL_MARGIN};
 use crate::tools::{ToolBox, ToolId};
 use crate::tools::shapes::ShapeType;
 
@@ -40,9 +40,6 @@ pub fn editor_tab(
     let current_tool = session.current_tool.id();
     let glyph_name = session.active_sort_name.clone().unwrap_or_else(|| "".to_string());
     let session_arc = Arc::new(session.clone());
-
-    const MARGIN: f64 = 16.0; // Fixed 16px margin for all panels
-    const TOOLBAR_HEIGHT: f64 = 64.0; // TOOLBAR_ITEM_SIZE (48) + TOOLBAR_PADDING * 2 (8 * 2)
 
     // Get current shape type if shapes tool is selected
     let current_shape = if let ToolBox::Shapes(shapes_tool) = &session.current_tool {
@@ -99,40 +96,72 @@ pub fn editor_tab(
             ))
             .cross_axis_alignment(xilem::view::CrossAxisAlignment::Start)
         )
-        .translate((MARGIN, MARGIN))
+        .translate((UI_PANEL_MARGIN, UI_PANEL_MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_LEFT)),
         // Bottom-left: glyph preview panel
         transformed(glyph_preview_pane(session_arc.clone(), glyph_name.clone()))
-            .translate((MARGIN, -MARGIN))
+            .translate((UI_PANEL_MARGIN, -UI_PANEL_MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_LEFT)),
         // Bottom-center-top: text buffer preview panel (above active glyph, standard margin)
         transformed(text_buffer_preview_pane_centered(session_arc.clone()))
-            .translate((0.0, -(MARGIN + 140.0 + MARGIN)))
+            .translate((0.0, -(UI_PANEL_MARGIN + 140.0 + UI_PANEL_MARGIN)))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
         // Bottom-center-bottom: active glyph panel
         transformed(active_glyph_panel_centered(state))
-            .translate((0.0, -MARGIN))
+            .translate((0.0, -UI_PANEL_MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
         // Bottom-right: coordinate panel (locked to corner like workspace toolbar)
         transformed(coordinate_panel_from_session(&session_arc))
-            .translate((-MARGIN, -MARGIN))
+            .translate((-UI_PANEL_MARGIN, -UI_PANEL_MARGIN))
             .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_RIGHT)),
-        // Top-right: Workspace toolbar for navigation
-        transformed(workspace_toolbar_view(
-            |state: &mut AppState, button| {
-                match button {
-                    WorkspaceToolbarButton::GlyphGrid => {
-                        state.close_editor();
-                    }
-                }
-            },
-        ))
-        .translate((-MARGIN, MARGIN))
+        // Top-right: Master toolbar (if designspace) + Workspace toolbar
+        transformed(
+            flex_row((
+                // Master toolbar (only shown when designspace is loaded)
+                master_toolbar_panel(state),
+                // Workspace toolbar for navigation
+                workspace_toolbar_view(
+                    |state: &mut AppState, button| {
+                        match button {
+                            WorkspaceToolbarButton::GlyphGrid => {
+                                state.close_editor();
+                            }
+                        }
+                    },
+                ),
+            ))
+            .gap(UI_PANEL_GAP.px())
+        )
+        .translate((-UI_PANEL_MARGIN, UI_PANEL_MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_RIGHT)),
     )))
 }
 
 // ===== Helper Views =====
+
+/// Master toolbar panel - only shown when a designspace is loaded
+fn master_toolbar_panel(
+    state: &AppState,
+) -> impl WidgetView<AppState> + use<> {
+    // Only show master toolbar when we have a designspace with multiple masters
+    if let Some(ref designspace) = state.designspace
+        && designspace.masters.len() > 1 {
+            let master_infos = create_master_infos(&designspace.masters);
+            let active_master = designspace.active_master;
+
+            return Either::A(master_toolbar_view(
+                master_infos,
+                active_master,
+                |state: &mut AppState, index| {
+                    // Switch to the selected master while preserving text buffer
+                    state.switch_editor_master(index);
+                },
+            ));
+        }
+
+    // No designspace or single master - return empty view
+    Either::B(sized_box(label("")).width(0.px()).height(0.px()))
+}
 
 /// Helper to create coordinate panel from session data
 fn coordinate_panel_from_session(
@@ -226,8 +255,8 @@ fn active_glyph_panel_centered(
     let width = session.glyph.width;
     let lsb = session.glyph.left_side_bearing();
     let rsb = session.glyph.right_side_bearing();
-    let left_group = session.glyph.left_group.as_ref().map(|s| s.as_str()).unwrap_or("");
-    let right_group = session.glyph.right_group.as_ref().map(|s| s.as_str()).unwrap_or("");
+    let left_group = session.glyph.left_group.as_deref().unwrap_or("");
+    let right_group = session.glyph.right_group.as_deref().unwrap_or("");
 
     // Get kerning values
     let left_kern = state.get_left_kern();
@@ -381,6 +410,7 @@ fn build_glyph_path(
 }
 
 /// Format Unicode codepoint display string
+#[allow(dead_code)]
 fn format_unicode_display(
     session: &crate::edit_session::EditSession,
 ) -> String {
@@ -392,6 +422,7 @@ fn format_unicode_display(
 }
 
 /// Build the glyph preview view (either glyph or empty label)
+#[allow(dead_code)]
 fn build_glyph_preview(
     glyph_path: &BezPath,
     preview_size: f64,
@@ -417,6 +448,7 @@ fn build_glyph_preview(
 }
 
 /// Build the glyph name and Unicode labels
+#[allow(dead_code)]
 fn build_glyph_labels(
     glyph_name: String,
     unicode_display: String,
@@ -498,7 +530,7 @@ fn text_buffer_preview_pane_centered(
 
                     // Get current glyph's left kerning group
                     let curr_group = workspace_guard.get_glyph(name)
-                        .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+                        .and_then(|g| g.left_group.as_deref());
 
                     // Look up kerning value
                     let kern_value = crate::kerning::lookup_kerning(

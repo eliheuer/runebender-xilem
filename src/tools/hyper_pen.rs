@@ -178,11 +178,10 @@ impl HyperPenTool {
 
     /// Close the current path
     fn close_path(&mut self, data: &mut EditSession) {
-        if let Some(path_id) = self.active_path_id {
-            if let Some(path) = Self::find_hyper_path_mut(data, path_id) {
+        if let Some(path_id) = self.active_path_id
+            && let Some(path) = Self::find_hyper_path_mut(data, path_id) {
                 path.close_path();
             }
-        }
 
         self.active_path_id = None;
         self.drawing = false;
@@ -195,11 +194,10 @@ impl HyperPenTool {
     ) -> Option<&mut HyperPath> {
         let paths = Arc::make_mut(&mut data.paths);
         for path in paths.iter_mut() {
-            if let Path::Hyper(hyper) = path {
-                if hyper.id == path_id {
+            if let Path::Hyper(hyper) = path
+                && hyper.id == path_id {
                     return Some(hyper);
                 }
-            }
         }
         None
     }
@@ -216,16 +214,14 @@ impl HyperPenTool {
 
         // Find the path and check if we're near the first point
         for path in data.paths.iter() {
-            if let Path::Hyper(hyper) = path {
-                if hyper.id == path_id && hyper.len() >= 3 {
-                    if let Some(start) = hyper.start_point() {
+            if let Path::Hyper(hyper) = path
+                && hyper.id == path_id && hyper.len() >= 3
+                    && let Some(start) = hyper.start_point() {
                         let distance = ((design_pos.x - start.point.x).powi(2)
                             + (design_pos.y - start.point.y).powi(2))
                         .sqrt();
                         return distance < CLOSE_PATH_DISTANCE;
                     }
-                }
-            }
         }
 
         false
@@ -296,9 +292,9 @@ impl HyperPenTool {
 
         // Find the first point of the active path
         for path in session.paths.iter() {
-            if let Path::Hyper(hyper) = path {
-                if hyper.id == path_id {
-                    if let Some(start) = hyper.start_point() {
+            if let Path::Hyper(hyper) = path
+                && hyper.id == path_id
+                    && let Some(start) = hyper.start_point() {
                         let screen_pt = session.viewport.to_screen(start.point);
                         let close_zone = kurbo::Circle::new(
                             screen_pt,
@@ -313,8 +309,6 @@ impl HyperPenTool {
                             &close_zone,
                         );
                     }
-                }
-            }
         }
     }
 }

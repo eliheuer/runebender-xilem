@@ -8,7 +8,6 @@
 //! reference point for multi-point selections.
 
 use crate::quadrant::Quadrant;
-use crate::theme;
 use kurbo::{Circle, Point, Rect};
 use tracing;
 use masonry::accesskit::{Node, Role};
