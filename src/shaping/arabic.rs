@@ -1,6 +1,8 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(dead_code)]
+
 //! Arabic shaping engine implementing Unicode Arabic Joining Algorithm.
 //!
 //! This provides real-time shaping for Arabic text, determining the correct

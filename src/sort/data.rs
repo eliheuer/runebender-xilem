@@ -1,6 +1,9 @@
 // Copyright 2024 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(dead_code)]
+#![allow(clippy::upper_case_acronyms)]
+
 //! Core data structures for sorts.
 
 use kurbo::Point;

@@ -40,6 +40,7 @@ pub enum ShapeType {
 
 /// State of the shape drawing gesture
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 enum GestureState {
     /// Ready to start drawing
     Ready,
@@ -114,7 +115,7 @@ impl MouseDelegate for ShapesTool {
 
     fn left_drag_began(
         &mut self,
-        event: MouseEvent,
+        _event: MouseEvent,
         drag: crate::mouse::Drag,
         data: &mut EditSession,
     ) {
@@ -129,7 +130,7 @@ impl MouseDelegate for ShapesTool {
 
     fn left_drag_changed(
         &mut self,
-        event: MouseEvent,
+        _event: MouseEvent,
         drag: crate::mouse::Drag,
         data: &mut EditSession,
     ) {
@@ -142,7 +143,7 @@ impl MouseDelegate for ShapesTool {
 
     fn left_drag_ended(
         &mut self,
-        event: MouseEvent,
+        _event: MouseEvent,
         drag: crate::mouse::Drag,
         data: &mut EditSession,
     ) {

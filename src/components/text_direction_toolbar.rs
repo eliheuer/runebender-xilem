@@ -8,7 +8,7 @@
 //! and right-to-left text direction.
 
 use crate::shaping::TextDirection;
-use kurbo::{BezPath, Point, Shape, Size};
+use kurbo::{BezPath, Point, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
     AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,

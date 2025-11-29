@@ -1,6 +1,8 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(dead_code)]
+
 //! Text cursor rendering and position calculation
 
 use kurbo::{Affine, Line, Point, Stroke};

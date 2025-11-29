@@ -4,28 +4,131 @@
 //! Glyph grid view - displays all glyphs in a scrollable grid
 
 use kurbo::BezPath;
-use masonry::properties::types::AsUnit;
+use masonry::properties::types::{AsUnit, UnitPoint};
 use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::{
-    button, flex_col, flex_row, label, portal, sized_box,
+    button, flex_col, flex_row, label, portal, sized_box, transformed, zstack,
+    ChildAlignment, ZStackExt,
 };
 use xilem::WidgetView;
 
-use crate::components::glyph_view;
+use crate::components::{
+    create_master_infos, glyph_view, keyboard_shortcuts, master_toolbar_view,
+    system_toolbar_view, SystemToolbarButton,
+};
 use crate::data::AppState;
 use crate::glyph_renderer;
 use crate::theme;
+use crate::theme::size::{UI_PANEL_GAP, UI_PANEL_MARGIN, TOOLBAR_ITEM_SIZE, TOOLBAR_PADDING};
 use crate::workspace;
 
 // ===== Glyph Grid Tab View =====
 
-/// Tab 0: Glyph grid view with header
+/// Height of a toolbar (button size + padding on both sides)
+const TOOLBAR_HEIGHT: f64 = TOOLBAR_ITEM_SIZE + TOOLBAR_PADDING * 2.0;
+
+/// Tab 0: Glyph grid view with header and floating toolbar
 pub fn glyph_grid_tab(
     state: &mut AppState,
 ) -> impl WidgetView<AppState> + use<> {
-    flex_col((glyph_grid_view(state),))
-        .background_color(theme::app::BACKGROUND)
+    zstack((
+        // Keyboard shortcut handler (invisible, handles Cmd+S)
+        // At bottom of zstack so widgets above receive pointer events first
+        keyboard_shortcuts(|state: &mut AppState| {
+            state.save_workspace();
+        }),
+        // Background: the glyph grid with top margin for toolbar
+        flex_col((
+            // Top margin to make room for floating toolbar
+            sized_box(label("")).height((TOOLBAR_HEIGHT + UI_PANEL_MARGIN).px()),
+            glyph_grid_view(state),
+        ))
+        .background_color(theme::app::BACKGROUND),
+        // Top-left: File info panel
+        transformed(file_info_panel(state))
+            .translate((UI_PANEL_MARGIN, UI_PANEL_MARGIN))
+            .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_LEFT)),
+        // Top-right: System toolbar + Master toolbar (if designspace)
+        transformed(
+            flex_row((
+                // Master toolbar (only shown when designspace is loaded)
+                master_toolbar_panel(state),
+                // System toolbar (save button)
+                system_toolbar_view(|state: &mut AppState, button| {
+                    match button {
+                        SystemToolbarButton::Save => {
+                            state.save_workspace();
+                        }
+                    }
+                }),
+            ))
+            .gap(UI_PANEL_GAP.px())
+        )
+        .translate((-UI_PANEL_MARGIN, UI_PANEL_MARGIN))
+        .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_RIGHT)),
+    ))
+}
+
+/// File info panel showing the loaded file path and last save time
+fn file_info_panel(
+    state: &AppState,
+) -> impl WidgetView<AppState> + use<> {
+    // Get file path (shortened to last 3 components)
+    let path_display = state
+        .loaded_file_path()
+        .map(|p| shorten_path(&p, 3))
+        .unwrap_or_else(|| "No file loaded".to_string());
+
+    // Get last saved info
+    let save_display = state
+        .last_saved_display()
+        .map(|s| format!("Saved {}", s))
+        .unwrap_or_else(|| "Not saved".to_string());
+
+    sized_box(
+        flex_col((
+            label(path_display)
+                .text_size(14.0)
+                .color(theme::text::PRIMARY),
+            label(save_display)
+                .text_size(14.0)
+                .color(theme::text::SECONDARY),
+        ))
+        .gap(2.px())
+        .cross_axis_alignment(xilem::view::CrossAxisAlignment::Start),
+    )
+    .padding(12.0)
+    .background_color(theme::panel::BACKGROUND)
+    .border_color(theme::panel::OUTLINE)
+    .border_width(1.5)
+    .corner_radius(theme::size::PANEL_RADIUS)
+}
+
+/// Master toolbar panel for glyph grid - only shown when designspace is loaded
+fn master_toolbar_panel(
+    state: &AppState,
+) -> impl WidgetView<AppState> + use<> {
+    // Only show master toolbar when we have a designspace with multiple masters
+    if let Some(ref designspace) = state.designspace
+        && designspace.masters.len() > 1 {
+            let master_infos = create_master_infos(&designspace.masters);
+            let active_master = designspace.active_master;
+
+            return Either::A(master_toolbar_view(
+                master_infos,
+                active_master,
+                |state: &mut AppState, index| {
+                    // Switch to the selected master
+                    if let Some(ref mut ds) = state.designspace {
+                        ds.switch_master(index);
+                    }
+                },
+            ));
+        }
+
+    // No designspace or single master - return empty view
+    Either::B(sized_box(label("")).width(0.px()).height(0.px()))
 }
 
 // ===== Glyph Grid View =====
@@ -68,8 +171,7 @@ fn glyph_grid_view(
 /// Get UPM (units per em) from workspace state
 fn get_upm_from_state(state: &AppState) -> f64 {
     state
-        .workspace
-        .as_ref()
+        .active_workspace()
         .and_then(|w| w.read().unwrap().units_per_em)
         .unwrap_or(1000.0)
 }
@@ -88,7 +190,7 @@ fn build_glyph_data(
     state: &AppState,
     glyph_names: &[String],
 ) -> Vec<GlyphData> {
-    if let Some(workspace_arc) = &state.workspace {
+    if let Some(workspace_arc) = state.active_workspace() {
         let workspace = workspace_arc.read().unwrap();
         glyph_names
             .iter()
@@ -282,4 +384,19 @@ fn get_cell_colors(
     } else {
         (theme::grid::CELL_BACKGROUND, theme::grid::CELL_OUTLINE)
     }
+}
+
+// ===== Path Helpers =====
+
+/// Shorten a path to show only the last N components with ".." prefix
+fn shorten_path(path: &std::path::Path, components: usize) -> String {
+    let parts: Vec<_> = path.components().collect();
+    if parts.len() <= components {
+        return path.display().to_string();
+    }
+
+    // Take the last N components
+    let start = parts.len() - components;
+    let shortened: std::path::PathBuf = parts[start..].iter().collect();
+    format!("../{}", shortened.display())
 }

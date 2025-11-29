@@ -8,7 +8,7 @@
 //! and other shape types.
 
 use crate::tools::shapes::ShapeType;
-use kurbo::{BezPath, Point, Shape, Size};
+use kurbo::{BezPath, Point, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
     AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,

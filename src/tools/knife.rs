@@ -79,8 +79,10 @@ pub struct KnifeTool {
 
 /// The state of the knife gesture
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Default)]
 enum GestureState {
     /// Ready for a new cut
+    #[default]
     Ready,
     /// Currently cutting - points are in design space
     Begun { start: Point, current: Point },
@@ -111,11 +113,6 @@ impl Default for KnifeTool {
     }
 }
 
-impl Default for GestureState {
-    fn default() -> Self {
-        GestureState::Ready
-    }
-}
 
 impl KnifeTool {
     /// Get the current line endpoints, applying shift-lock if active
@@ -300,14 +297,13 @@ impl MouseDelegate for KnifeTool {
             }
         }
 
-        if let Some(line) = self.current_line() {
-            if !self.intersections.is_empty() {
+        if let Some(line) = self.current_line()
+            && !self.intersections.is_empty() {
                 let new_paths = slice_paths(&data.paths, line);
                 let paths_vec = Arc::make_mut(&mut data.paths);
                 paths_vec.clear();
                 paths_vec.extend(new_paths);
             }
-        }
 
         self.gesture = GestureState::Finished;
     }
@@ -372,7 +368,7 @@ fn slice_path_impl(
                 line_t,
                 segment_t: seg_t,
                 point,
-                segment_info: seg_info.clone(),
+                segment_info: seg_info,
             });
         }
     }

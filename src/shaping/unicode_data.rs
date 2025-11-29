@@ -1,6 +1,8 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(dead_code)]
+
 //! Unicode character property data for text shaping.
 //!
 //! Data sourced from Unicode Standard and ArabicShaping.txt.

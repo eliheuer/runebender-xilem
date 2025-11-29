@@ -111,8 +111,8 @@ fn lookup_glyph_to_group(
     // If we have a group hint, try that first
     if let Some(group_name) = second_group_hint {
         // Verify the glyph is actually in this group
-        if let Some(group_members) = groups.get(group_name) {
-            if group_members.contains(&second_glyph.to_string()) {
+        if let Some(group_members) = groups.get(group_name)
+            && group_members.contains(&second_glyph.to_string()) {
                 let value = if reverse {
                     lookup_pair(kerning_pairs, group_name, first_glyph)
                 } else {
@@ -122,7 +122,6 @@ fn lookup_glyph_to_group(
                     return value;
                 }
             }
-        }
     }
 
     // Search all groups for the second glyph
@@ -153,13 +152,11 @@ fn lookup_group_to_group(
 ) -> Option<f64> {
     // Build list of groups containing left glyph
     let mut left_groups = Vec::new();
-    if let Some(hint) = left_group_hint {
-        if let Some(members) = groups.get(hint) {
-            if members.contains(&left_glyph.to_string()) {
+    if let Some(hint) = left_group_hint
+        && let Some(members) = groups.get(hint)
+            && members.contains(&left_glyph.to_string()) {
                 left_groups.push(hint);
             }
-        }
-    }
     for (group_name, members) in groups {
         if members.contains(&left_glyph.to_string()) && !left_groups.contains(&group_name.as_str()) {
             left_groups.push(group_name.as_str());
@@ -168,13 +165,11 @@ fn lookup_group_to_group(
 
     // Build list of groups containing right glyph
     let mut right_groups = Vec::new();
-    if let Some(hint) = right_group_hint {
-        if let Some(members) = groups.get(hint) {
-            if members.contains(&right_glyph.to_string()) {
+    if let Some(hint) = right_group_hint
+        && let Some(members) = groups.get(hint)
+            && members.contains(&right_glyph.to_string()) {
                 right_groups.push(hint);
             }
-        }
-    }
     for (group_name, members) in groups {
         if members.contains(&right_glyph.to_string()) && !right_groups.contains(&group_name.as_str()) {
             right_groups.push(group_name.as_str());
