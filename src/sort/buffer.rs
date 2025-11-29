@@ -1,6 +1,8 @@
 // Copyright 2024 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(dead_code)]
+
 //! Gap buffer implementation for efficient text editing.
 //!
 //! A gap buffer maintains a contiguous array with a "gap" of unused space
@@ -290,11 +292,10 @@ impl SortBuffer {
     /// Find the index of the active sort, if any.
     pub fn find_active_sort(&self) -> Option<usize> {
         for i in 0..self.len() {
-            if let Some(sort) = self.get(i) {
-                if sort.is_active {
+            if let Some(sort) = self.get(i)
+                && sort.is_active {
                     return Some(i);
                 }
-            }
         }
         None
     }

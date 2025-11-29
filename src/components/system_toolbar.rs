@@ -352,12 +352,11 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
         // Reset flash state when view rebuilds (user made changes)
         // But only if enough time has passed since the flash started
         // (to avoid resetting immediately due to save updating state)
-        if let Some(start) = element.widget.flash_start {
-            if start.elapsed().as_millis() >= FLASH_DURATION_MS {
+        if let Some(start) = element.widget.flash_start
+            && start.elapsed().as_millis() >= FLASH_DURATION_MS {
                 element.widget.flash_on = false;
                 element.widget.flash_start = None;
             }
-        }
     }
 
     fn teardown(

@@ -1,6 +1,8 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(dead_code)]
+
 //! Theme colors and constants
 //!
 //! All colors use hexadecimal format: Color::from_rgb8(0xRR, 0xGG, 0xBB)

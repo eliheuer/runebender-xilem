@@ -186,13 +186,12 @@ impl EditorWidget {
             };
 
             // Convert if needed
-            if should_convert {
-                if let Path::Hyper(hyper) = path {
+            if should_convert
+                && let Path::Hyper(hyper) = path {
                     *path = Path::Cubic(hyper.to_cubic());
                     converted = true;
                     tracing::info!("Converted hyperbezier path to cubic");
                 }
-            }
         }
 
         if converted {
@@ -388,11 +387,10 @@ impl Widget for EditorWidget {
 
             // Phase 5: Handle text mode input (character typing, cursor movement)
             // Only handle after shortcuts, and only if no modifiers (except shift for caps)
-            if self.session.text_mode_active && self.session.text_buffer.is_some() {
-                if self.handle_text_mode_input(ctx, &key_event.key, cmd) {
+            if self.session.text_mode_active && self.session.text_buffer.is_some()
+                && self.handle_text_mode_input(ctx, &key_event.key, cmd) {
                     return;
                 }
-            }
 
             // Handle arrow keys for nudging
             self.handle_arrow_keys(ctx, &key_event.key, shift, cmd);
@@ -645,6 +643,18 @@ impl EditorWidget {
             tracing::debug!("[Cursor] Position 0: ({}, {})", cursor_x, cursor_y);
         }
 
+        // Collect sort render data for two-pass rendering
+        // (First pass: metrics behind, second pass: glyphs on top)
+        struct SortRenderData {
+            index: usize,
+            name: String,
+            x_offset: f64,
+            baseline_y: f64,
+            advance_width: f64,
+            is_active: bool,
+        }
+        let mut sort_render_data: Vec<SortRenderData> = Vec::new();
+
         for (index, sort) in buffer.iter().enumerate() {
             match &sort.kind {
                 crate::sort::SortKind::Glyph { name, advance_width, .. } => {
@@ -654,13 +664,13 @@ impl EditorWidget {
                     }
 
                     // Apply kerning if we have a previous glyph
-                    if let Some(prev_name) = &prev_glyph_name {
-                        if let Some(workspace_arc) = &self.session.workspace {
+                    if let Some(prev_name) = &prev_glyph_name
+                        && let Some(workspace_arc) = &self.session.workspace {
                             let workspace = workspace_arc.read().unwrap();
 
                             // Get current glyph's left kerning group
                             let curr_group = workspace.get_glyph(name)
-                                .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+                                .and_then(|g| g.left_group.as_deref());
 
                             // Look up kerning value
                             let kern_value = crate::kerning::lookup_kerning(
@@ -678,50 +688,18 @@ impl EditorWidget {
                                 x_offset += kern_value;
                             }
                         }
-                    }
 
-                    // Don't apply visual offset - kerning is already applied to x_offset
-                    let sort_position = Point::new(x_offset, baseline_y);
+                    // Store data for two-pass rendering
+                    sort_render_data.push(SortRenderData {
+                        index,
+                        name: name.clone(),
+                        x_offset,
+                        baseline_y,
+                        advance_width: *advance_width,
+                        is_active: sort.is_active,
+                    });
 
-                    // Draw metrics based on mode
-                    if !is_preview_mode {
-                        if self.session.text_mode_active {
-                            // Determine metrics color based on kern mode
-                            let metrics_color = if self.kern_mode_active {
-                                if Some(index) == self.kern_sort_index {
-                                    // Active dragged glyph: bright turquoise-green
-                                    masonry::vello::peniko::Color::from_rgb8(0x00, 0xff, 0xcc)
-                                } else if Some(index + 1) == self.kern_sort_index {
-                                    // Previous glyph: orange (selection marquee color)
-                                    masonry::vello::peniko::Color::from_rgb8(0xff, 0xaa, 0x33)
-                                } else {
-                                    // Normal gray
-                                    theme::metrics::GUIDE
-                                }
-                            } else {
-                                // Normal gray when not in kern mode
-                                theme::metrics::GUIDE
-                            };
-
-                            // Text mode: minimal metrics for all sorts
-                            // Use x_offset directly - kerning is already applied
-                            self.render_sort_minimal_metrics(scene, x_offset, baseline_y, *advance_width, transform, metrics_color);
-                        } else if sort.is_active {
-                            // Non-text mode: full metrics only for active sort
-                            self.render_sort_metrics(scene, x_offset, baseline_y, *advance_width, transform);
-                        }
-                        // Inactive sorts in non-text mode: no metrics at all
-                    }
-
-                    if sort.is_active && !is_preview_mode && !self.session.text_mode_active {
-                        // Non-text mode: render active sort with control points (editable)
-                        self.render_active_sort(scene, name, sort_position, transform);
-                    } else {
-                        // All other cases: render as filled preview
-                        self.render_inactive_sort(scene, name, sort_position, transform);
-                    }
-
-                    // For LTR: advance x forward AFTER drawing
+                    // For LTR: advance x forward AFTER processing
                     if !is_rtl {
                         x_offset += advance_width;
                     }
@@ -753,6 +731,50 @@ impl EditorWidget {
                 cursor_x = x_offset;
                 cursor_y = baseline_y;
                 tracing::debug!("[Cursor] After sort {}: ({}, {})", index, cursor_x, cursor_y);
+            }
+        }
+
+        // PASS 1: Render all metrics FIRST (behind glyphs)
+        if !is_preview_mode {
+            for data in &sort_render_data {
+                if self.session.text_mode_active {
+                    // Determine metrics color based on kern mode
+                    let metrics_color = if self.kern_mode_active {
+                        if Some(data.index) == self.kern_sort_index {
+                            // Active dragged glyph: bright turquoise-green
+                            masonry::vello::peniko::Color::from_rgb8(0x00, 0xff, 0xcc)
+                        } else if Some(data.index + 1) == self.kern_sort_index {
+                            // Previous glyph: orange (selection marquee color)
+                            masonry::vello::peniko::Color::from_rgb8(0xff, 0xaa, 0x33)
+                        } else {
+                            // Normal gray
+                            theme::metrics::GUIDE
+                        }
+                    } else {
+                        // Normal gray when not in kern mode
+                        theme::metrics::GUIDE
+                    };
+
+                    // Text mode: minimal metrics for all sorts
+                    self.render_sort_minimal_metrics(scene, data.x_offset, data.baseline_y, data.advance_width, transform, metrics_color);
+                } else if data.is_active {
+                    // Non-text mode: full metrics only for active sort
+                    self.render_sort_metrics(scene, data.x_offset, data.baseline_y, data.advance_width, transform);
+                }
+                // Inactive sorts in non-text mode: no metrics at all
+            }
+        }
+
+        // PASS 2: Render all glyphs SECOND (on top of metrics)
+        for data in &sort_render_data {
+            let sort_position = Point::new(data.x_offset, data.baseline_y);
+
+            if data.is_active && !is_preview_mode && !self.session.text_mode_active {
+                // Non-text mode: render active sort with control points (editable)
+                self.render_active_sort(scene, &data.name, sort_position, transform);
+            } else {
+                // All other cases: render as filled preview
+                self.render_inactive_sort(scene, &data.name, sort_position, transform);
             }
         }
 
@@ -1146,7 +1168,7 @@ impl EditorWidget {
         transform: &Affine,
         color: masonry::vello::peniko::Color,
     ) {
-        let stroke = Stroke::new(theme::size::METRIC_LINE_WIDTH * 2.0);
+        let stroke = Stroke::new(theme::size::METRIC_LINE_WIDTH);
         let brush = Brush::Solid(color);
         let cross_size = 24.0; // Length of each arm of the cross from center
 
@@ -1182,6 +1204,7 @@ impl EditorWidget {
     ///
     /// Shows LSB, width, and RSB in light gray text at the bottom of the sort
     #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
     fn render_sort_labels(
         &self,
         scene: &mut Scene,
@@ -1302,13 +1325,13 @@ impl EditorWidget {
                     }
 
                     // Apply kerning if we have a previous glyph
-                    if let Some(prev_name) = &prev_glyph_name {
-                        if let Some(workspace_arc) = &self.session.workspace {
+                    if let Some(prev_name) = &prev_glyph_name
+                        && let Some(workspace_arc) = &self.session.workspace {
                             let workspace = workspace_arc.read().unwrap();
 
                             // Get current glyph's left kerning group
                             let curr_group = workspace.get_glyph(name)
-                                .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+                                .and_then(|g| g.left_group.as_deref());
 
                             // Look up kerning value
                             let kern_value = crate::kerning::lookup_kerning(
@@ -1326,7 +1349,6 @@ impl EditorWidget {
                                 x_offset += kern_value;
                             }
                         }
-                    }
 
                     // Create bounding box for this sort
                     let sort_rect = kurbo::Rect::new(
@@ -1429,7 +1451,7 @@ impl EditorWidget {
         let paths: Vec<crate::path::Path> = glyph
             .contours
             .iter()
-            .map(|contour| crate::path::Path::from_contour(contour))
+            .map(crate::path::Path::from_contour)
             .collect();
 
         let mut x_offset = if is_rtl { total_width } else { 0.0 };
@@ -1453,7 +1475,7 @@ impl EditorWidget {
                         if let Some(prev_name) = &prev_glyph_name {
                             // Get current glyph's left kerning group
                             let curr_group = workspace_guard.get_glyph(name)
-                                .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+                                .and_then(|g| g.left_group.as_deref());
 
                             // Look up kerning value
                             let kern_value = crate::kerning::lookup_kerning(
@@ -2004,8 +2026,7 @@ impl EditorWidget {
 
         // Apply zoom with limits
         let new_zoom = (self.session.viewport.zoom * zoom_factor)
-            .max(settings::editor::MIN_ZOOM)
-            .min(settings::editor::MAX_ZOOM);
+            .clamp(settings::editor::MIN_ZOOM, settings::editor::MAX_ZOOM);
 
         self.session.viewport.zoom = new_zoom;
         tracing::debug!("Scroll zoom: scroll_y={:.2}, new zoom={:.2}", scroll_y, new_zoom);

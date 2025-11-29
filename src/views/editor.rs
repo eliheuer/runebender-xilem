@@ -21,7 +21,6 @@ use crate::components::{
     master_toolbar_view, shapes_toolbar_view, text_direction_toolbar_view, workspace_toolbar_view,
 };
 use crate::data::AppState;
-use crate::shaping::TextDirection;
 use crate::theme;
 use crate::theme::size::{UI_PANEL_GAP, UI_PANEL_MARGIN};
 use crate::tools::{ToolBox, ToolId};
@@ -145,8 +144,8 @@ fn master_toolbar_panel(
     state: &AppState,
 ) -> impl WidgetView<AppState> + use<> {
     // Only show master toolbar when we have a designspace with multiple masters
-    if let Some(ref designspace) = state.designspace {
-        if designspace.masters.len() > 1 {
+    if let Some(ref designspace) = state.designspace
+        && designspace.masters.len() > 1 {
             let master_infos = create_master_infos(&designspace.masters);
             let active_master = designspace.active_master;
 
@@ -159,7 +158,6 @@ fn master_toolbar_panel(
                 },
             ));
         }
-    }
 
     // No designspace or single master - return empty view
     Either::B(sized_box(label("")).width(0.px()).height(0.px()))
@@ -257,8 +255,8 @@ fn active_glyph_panel_centered(
     let width = session.glyph.width;
     let lsb = session.glyph.left_side_bearing();
     let rsb = session.glyph.right_side_bearing();
-    let left_group = session.glyph.left_group.as_ref().map(|s| s.as_str()).unwrap_or("");
-    let right_group = session.glyph.right_group.as_ref().map(|s| s.as_str()).unwrap_or("");
+    let left_group = session.glyph.left_group.as_deref().unwrap_or("");
+    let right_group = session.glyph.right_group.as_deref().unwrap_or("");
 
     // Get kerning values
     let left_kern = state.get_left_kern();
@@ -412,6 +410,7 @@ fn build_glyph_path(
 }
 
 /// Format Unicode codepoint display string
+#[allow(dead_code)]
 fn format_unicode_display(
     session: &crate::edit_session::EditSession,
 ) -> String {
@@ -423,6 +422,7 @@ fn format_unicode_display(
 }
 
 /// Build the glyph preview view (either glyph or empty label)
+#[allow(dead_code)]
 fn build_glyph_preview(
     glyph_path: &BezPath,
     preview_size: f64,
@@ -448,6 +448,7 @@ fn build_glyph_preview(
 }
 
 /// Build the glyph name and Unicode labels
+#[allow(dead_code)]
 fn build_glyph_labels(
     glyph_name: String,
     unicode_display: String,
@@ -529,7 +530,7 @@ fn text_buffer_preview_pane_centered(
 
                     // Get current glyph's left kerning group
                     let curr_group = workspace_guard.get_glyph(name)
-                        .and_then(|g| g.left_group.as_ref().map(|s| s.as_str()));
+                        .and_then(|g| g.left_group.as_deref());
 
                     // Look up kerning value
                     let kern_value = crate::kerning::lookup_kerning(

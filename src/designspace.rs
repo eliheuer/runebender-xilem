@@ -24,6 +24,7 @@ use crate::workspace::Workspace;
 /// This wraps a norad DesignSpaceDocument and loads all referenced UFO
 /// sources into Workspace instances for editing.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct DesignspaceProject {
     /// Path to the .designspace file
     pub path: PathBuf,
@@ -46,6 +47,7 @@ pub struct DesignspaceProject {
 
 /// A design axis (e.g., Weight, Width)
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DesignAxis {
     /// Axis tag (e.g., "wght", "wdth")
     pub tag: String,
@@ -83,6 +85,7 @@ pub struct Master {
 
 /// A named instance (specific point in design space)
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Instance {
     /// Instance name (e.g., "Virtua Grotesk Medium")
     pub name: String,
@@ -329,6 +332,7 @@ impl DesignspaceProject {
     }
 
     /// Get the active master mutably
+    #[allow(dead_code)]
     pub fn active_master_mut(&mut self) -> &mut Master {
         &mut self.masters[self.active_master]
     }
@@ -356,6 +360,7 @@ impl DesignspaceProject {
     }
 
     /// Check if any master has unsaved changes
+    #[allow(dead_code)]
     pub fn has_unsaved_changes(&self) -> bool {
         self.masters.iter().any(|m| m.modified)
     }
@@ -378,6 +383,7 @@ impl DesignspaceProject {
     }
 
     /// Get glyph names from the active master
+    #[allow(dead_code)]
     pub fn glyph_names(&self) -> Vec<String> {
         self.active_workspace()
             .read()

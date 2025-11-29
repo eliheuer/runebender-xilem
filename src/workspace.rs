@@ -77,6 +77,7 @@ pub struct Component {
 
 impl Component {
     /// Create a new component with identity transform
+    #[allow(dead_code)]
     pub fn new(base: String) -> Self {
         Self {
             base,
@@ -126,16 +127,19 @@ impl Component {
     }
 
     /// Get the x offset (translation)
+    #[allow(dead_code)]
     pub fn x_offset(&self) -> f64 {
         self.transform.as_coeffs()[4]
     }
 
     /// Get the y offset (translation)
+    #[allow(dead_code)]
     pub fn y_offset(&self) -> f64 {
         self.transform.as_coeffs()[5]
     }
 
     /// Set the x and y offset (translation) while preserving other transform values
+    #[allow(dead_code)]
     pub fn set_offset(&mut self, x: f64, y: f64) {
         let coeffs = self.transform.as_coeffs();
         self.transform = Affine::new([coeffs[0], coeffs[1], coeffs[2], coeffs[3], x, y]);
@@ -467,7 +471,7 @@ impl Workspace {
             if let Some(first_name) = first_name {
                 let mut inner = std::collections::BTreeMap::new();
                 for (second, value) in second_map {
-                    if let Some(second_name) = norad::Name::new(second).ok() {
+                    if let Ok(second_name) = norad::Name::new(second) {
                         inner.insert(second_name, *value);
                     }
                 }

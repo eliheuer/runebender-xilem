@@ -21,7 +21,7 @@ pub use edit_mode_toolbar::edit_mode_toolbar_view;
 pub use editor_canvas::editor_view;
 pub use glyph_preview_widget::glyph_view;
 pub use keyboard_handler::keyboard_shortcuts;
-pub use master_toolbar::{create_master_infos, master_toolbar_view, MasterInfo};
+pub use master_toolbar::{create_master_infos, master_toolbar_view};
 pub use shapes_toolbar::shapes_toolbar_view;
 pub use system_toolbar::{system_toolbar_view, SystemToolbarButton};
 pub use text_direction_toolbar::text_direction_toolbar_view;

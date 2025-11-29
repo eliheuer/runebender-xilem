@@ -1,6 +1,8 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
+#![allow(dead_code)]
+
 //! Real-time text shaping engine for font editing.
 //!
 //! This module provides script-specific shaping that works directly with
@@ -48,10 +50,7 @@ pub mod arabic;
 pub mod unicode_data;
 
 pub use arabic::ArabicShaper;
-pub use unicode_data::{is_arabic, is_arabic_letter, joining_type, JoiningType};
-
-// Re-export TextDirection at module level for easy access
-pub use TextDirection::{LeftToRight, RightToLeft};
+pub use unicode_data::is_arabic;
 
 /// Text direction for rendering and input handling
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]

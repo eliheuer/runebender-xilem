@@ -30,6 +30,7 @@ use std::sync::{Arc, RwLock};
 pub struct EditSession {
 
     /// Path to the UFO file
+    #[allow(dead_code)]
     pub ufo_path: std::path::PathBuf,
 
     /// The original glyph data for the active sort (for metadata, unicode, etc.)
@@ -189,7 +190,7 @@ impl EditSession {
         let initial_sort = crate::sort::Sort::new_glyph(
             glyph_name.clone(),
             glyph.codepoints.first().copied(),
-            glyph.width as f64,
+            glyph.width,
             true, // First sort is active by default
         );
         buffer.insert(initial_sort);
@@ -244,6 +245,7 @@ impl EditSession {
     }
 
     /// Get the line height for text layout (UPM - descender)
+    #[allow(dead_code)]
     pub fn line_height(&self) -> f64 {
         self.units_per_em - self.descender
     }
@@ -276,7 +278,7 @@ impl EditSession {
         // If so, use the current glyph (with live edits) instead of workspace version
         let advance_width = if self.active_sort_unicode.as_ref()
             .and_then(|u| u.strip_prefix("U+").and_then(|hex| u32::from_str_radix(hex, 16).ok()))
-            .and_then(|code| char::from_u32(code))
+            .and_then(char::from_u32)
             .map(|active_char| active_char == c)
             .unwrap_or(false)
         {
@@ -402,9 +404,9 @@ impl EditSession {
 
             if let Some(shaped) = shaper.shape_char_at(&chars, i, &font) {
                 // Update the sort at this position
-                if let Some(sort) = buffer.get_mut(i) {
-                    if let crate::sort::SortKind::Glyph { name, advance_width, .. } = &mut sort.kind {
-                        if *name != shaped.glyph_name {
+                if let Some(sort) = buffer.get_mut(i)
+                    && let crate::sort::SortKind::Glyph { name, advance_width, .. } = &mut sort.kind
+                        && *name != shaped.glyph_name {
                             tracing::debug!(
                                 "[reshape_buffer_around] Updated sort {}: '{}' -> '{}'",
                                 i,
@@ -414,8 +416,6 @@ impl EditSession {
                             *name = shaped.glyph_name.clone();
                             *advance_width = shaped.advance_width;
                         }
-                    }
-                }
             }
         }
 

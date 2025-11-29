@@ -110,8 +110,8 @@ fn master_toolbar_panel(
     state: &AppState,
 ) -> impl WidgetView<AppState> + use<> {
     // Only show master toolbar when we have a designspace with multiple masters
-    if let Some(ref designspace) = state.designspace {
-        if designspace.masters.len() > 1 {
+    if let Some(ref designspace) = state.designspace
+        && designspace.masters.len() > 1 {
             let master_infos = create_master_infos(&designspace.masters);
             let active_master = designspace.active_master;
 
@@ -126,7 +126,6 @@ fn master_toolbar_panel(
                 },
             ));
         }
-    }
 
     // No designspace or single master - return empty view
     Either::B(sized_box(label("")).width(0.px()).height(0.px()))

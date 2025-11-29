@@ -37,6 +37,7 @@ const PREVIEW_GLYPH: &str = "n";
 
 /// Info about a master needed for the toolbar
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct MasterInfo {
     /// Master index
     pub index: usize,
@@ -69,12 +70,7 @@ impl MasterToolbarWidget {
 
     /// Find which master was clicked
     fn master_at_point(&self, point: Point) -> Option<usize> {
-        for i in 0..self.masters.len() {
-            if button_rect(i).contains(point) {
-                return Some(i);
-            }
-        }
-        None
+        (0..self.masters.len()).find(|&i| button_rect(i).contains(point))
     }
 
     /// Paint a glyph icon in a button
@@ -210,14 +206,13 @@ impl Widget for MasterToolbarWidget {
                 ..
             }) => {
                 let local_pos = ctx.local_position(state.position);
-                if let Some(index) = self.master_at_point(local_pos) {
-                    if index != self.active_master {
+                if let Some(index) = self.master_at_point(local_pos)
+                    && index != self.active_master {
                         tracing::debug!("Master toolbar: clicked master {}", index);
                         self.active_master = index;
                         ctx.request_render();
                         ctx.submit_action::<MasterSelected>(MasterSelected(index));
                     }
-                }
             }
             PointerEvent::Leave(_) => {
                 if self.hover_index.is_some() {

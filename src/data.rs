@@ -163,11 +163,7 @@ impl AppState {
     pub fn loaded_file_path(&self) -> Option<PathBuf> {
         if let Some(ds) = &self.designspace {
             Some(ds.path.clone())
-        } else if let Some(ws) = &self.workspace {
-            Some(ws.read().unwrap().path.clone())
-        } else {
-            None
-        }
+        } else { self.workspace.as_ref().map(|ws| ws.read().unwrap().path.clone()) }
     }
 
     /// Get the last saved time string
@@ -520,12 +516,11 @@ impl AppState {
         glyph.width = width;
 
         // Sync to workspace (inline to avoid borrow issues)
-        if let Some(workspace_arc) = workspace_arc {
-            if let Some(active_name) = &session.active_sort_name {
+        if let Some(workspace_arc) = workspace_arc
+            && let Some(active_name) = &session.active_sort_name {
                 let updated_glyph = session.to_glyph();
                 workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
             }
-        }
     }
 
     /// Update the glyph's left kerning group
@@ -547,12 +542,11 @@ impl AppState {
         };
 
         // Sync to workspace (inline to avoid borrow issues)
-        if let Some(workspace_arc) = workspace_arc {
-            if let Some(active_name) = &session.active_sort_name {
+        if let Some(workspace_arc) = workspace_arc
+            && let Some(active_name) = &session.active_sort_name {
                 let updated_glyph = session.to_glyph();
                 workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
             }
-        }
     }
 
     /// Update the glyph's right kerning group
@@ -574,12 +568,11 @@ impl AppState {
         };
 
         // Sync to workspace (inline to avoid borrow issues)
-        if let Some(workspace_arc) = workspace_arc {
-            if let Some(active_name) = &session.active_sort_name {
+        if let Some(workspace_arc) = workspace_arc
+            && let Some(active_name) = &session.active_sort_name {
                 let updated_glyph = session.to_glyph();
                 workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
             }
-        }
     }
 
     /// Get the left kern value (kerning from previous glyph to current glyph)
