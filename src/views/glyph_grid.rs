@@ -165,7 +165,13 @@ fn glyph_grid_view(
         sized_box(label("")).height(6.px()),
         flex_row((
             sized_box(label("")).width(6.px()),
-            portal(flex_col(rows_of_cells).gap(6.px())).flex(1.0),
+            portal(
+                flex_col((
+                    flex_col(rows_of_cells).gap(6.px()),
+                    // Bottom margin so last row is fully visible when scrolled
+                    sized_box(label("")).height(120.px()),
+                ))
+            ).flex(1.0),
             sized_box(label("")).width(6.px()),
         )),
     ))
