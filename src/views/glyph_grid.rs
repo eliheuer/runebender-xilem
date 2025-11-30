@@ -14,8 +14,9 @@ use xilem::view::{
 use xilem::WidgetView;
 
 use crate::components::{
-    create_master_infos, glyph_view, keyboard_shortcuts, master_toolbar_view,
-    size_tracker, system_toolbar_view, SystemToolbarButton,
+    category_panel, create_master_infos, glyph_info_panel, glyph_view, keyboard_shortcuts,
+    master_toolbar_view, size_tracker, system_toolbar_view, GlyphCategory, SystemToolbarButton,
+    CATEGORY_PANEL_WIDTH, GLYPH_INFO_PANEL_WIDTH,
 };
 use crate::data::AppState;
 use crate::glyph_renderer;
@@ -35,18 +36,27 @@ pub fn glyph_grid_tab(
     zstack((
         // Size tracker (invisible, tracks window width for responsive columns)
         size_tracker(|state: &mut AppState, width| {
-            state.window_width = width;
+            // Subtract side panel widths from available width for grid columns
+            state.window_width = width - CATEGORY_PANEL_WIDTH - GLYPH_INFO_PANEL_WIDTH;
         }),
         // Keyboard shortcut handler (invisible, handles Cmd+S)
         // At bottom of zstack so widgets above receive pointer events first
         keyboard_shortcuts(|state: &mut AppState| {
             state.save_workspace();
         }),
-        // Background: the glyph grid with top margin for toolbar
+        // Main layout: toolbar row on top, then three-column layout below
         flex_col((
             // Top margin to make room for floating toolbar
             sized_box(label("")).height((TOOLBAR_HEIGHT + UI_PANEL_MARGIN).px()),
-            glyph_grid_view(state),
+            // Three-column layout: category panel | glyph grid | glyph info panel
+            flex_row((
+                // Left: Category panel
+                category_panel(state),
+                // Middle: Glyph grid (takes remaining space)
+                glyph_grid_view(state).flex(1.0),
+                // Right: Glyph info panel
+                glyph_info_panel(state),
+            )),
         ))
         .background_color(theme::app::BACKGROUND),
         // Top-left: File info panel
@@ -196,16 +206,26 @@ type GlyphData = (
     usize,
 );
 
-/// Build glyph data vector from workspace
+/// Build glyph data vector from workspace, filtered by category
 fn build_glyph_data(
     state: &AppState,
     glyph_names: &[String],
 ) -> Vec<GlyphData> {
+    let category_filter = state.glyph_category_filter;
+
     if let Some(workspace_arc) = state.active_workspace() {
         let workspace = workspace_arc.read().unwrap();
         glyph_names
             .iter()
-            .map(|name| build_single_glyph_data(&workspace, name))
+            .filter_map(|name| {
+                let data = build_single_glyph_data(&workspace, name);
+                // Apply category filter
+                if matches_category(&data.2, category_filter) {
+                    Some(data)
+                } else {
+                    None
+                }
+            })
             .collect()
     } else {
         glyph_names
@@ -213,6 +233,23 @@ fn build_glyph_data(
             .map(|name| (name.clone(), None, Vec::new(), 0))
             .collect()
     }
+}
+
+/// Check if a glyph matches the category filter
+fn matches_category(codepoints: &[char], category: GlyphCategory) -> bool {
+    // All category matches everything
+    if category == GlyphCategory::All {
+        return true;
+    }
+
+    // If no codepoints, put in "Other" category
+    if codepoints.is_empty() {
+        return category == GlyphCategory::Other;
+    }
+
+    // Check if the first codepoint matches the category
+    let glyph_category = GlyphCategory::from_codepoint(codepoints[0]);
+    glyph_category == category
 }
 
 /// Build data for a single glyph

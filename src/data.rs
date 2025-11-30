@@ -3,6 +3,7 @@
 
 //! Application state and data structures
 
+use crate::components::GlyphCategory;
 use crate::designspace::{is_designspace_file, DesignspaceProject};
 use crate::edit_session::EditSession;
 use crate::workspace::Workspace;
@@ -57,6 +58,9 @@ pub struct AppState {
 
     /// Current window width for responsive layout
     pub window_width: f64,
+
+    /// Category filter for glyph grid
+    pub glyph_category_filter: GlyphCategory,
 }
 
 #[allow(dead_code)]
@@ -75,6 +79,7 @@ impl AppState {
             main_window_id: WindowId::next(),
             last_saved: None,
             window_width: 1030.0, // Default window width
+            glyph_category_filter: GlyphCategory::All,
         }
     }
 
