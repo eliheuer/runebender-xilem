@@ -9,13 +9,13 @@ use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::{
     button, flex_col, flex_row, label, portal, sized_box, transformed, zstack,
-    ChildAlignment, ZStackExt,
+    ChildAlignment, FlexExt, ZStackExt,
 };
 use xilem::WidgetView;
 
 use crate::components::{
     create_master_infos, glyph_view, keyboard_shortcuts, master_toolbar_view,
-    system_toolbar_view, SystemToolbarButton,
+    size_tracker, system_toolbar_view, SystemToolbarButton,
 };
 use crate::data::AppState;
 use crate::glyph_renderer;
@@ -33,6 +33,10 @@ pub fn glyph_grid_tab(
     state: &mut AppState,
 ) -> impl WidgetView<AppState> + use<> {
     zstack((
+        // Size tracker (invisible, tracks window width for responsive columns)
+        size_tracker(|state: &mut AppState, width| {
+            state.window_width = width;
+        }),
         // Keyboard shortcut handler (invisible, handles Cmd+S)
         // At bottom of zstack so widgets above receive pointer events first
         keyboard_shortcuts(|state: &mut AppState| {
@@ -145,13 +149,14 @@ fn glyph_grid_view(
     // Pre-compute glyph data
     let glyph_data = build_glyph_data(state, &glyph_names);
 
-    const COLUMNS: usize = 8;
+    // Calculate responsive column count based on window width
+    let columns = state.grid_columns();
     let selected_glyph = state.selected_glyph.clone();
 
     // Build rows of glyph cells
     let rows_of_cells = build_glyph_rows(
         &glyph_data,
-        COLUMNS,
+        columns,
         &selected_glyph,
         upm,
     );
@@ -160,7 +165,7 @@ fn glyph_grid_view(
         sized_box(label("")).height(6.px()),
         flex_row((
             sized_box(label("")).width(6.px()),
-            portal(flex_col(rows_of_cells).gap(6.px())),
+            portal(flex_col(rows_of_cells).gap(6.px())).flex(1.0),
             sized_box(label("")).width(6.px()),
         )),
     ))
@@ -248,6 +253,7 @@ fn build_glyph_rows(
                         upm,
                         *contour_count,
                     )
+                    .flex(1.0) // Each cell gets equal flex space
                 })
                 .collect();
             flex_row(row_items).gap(6.px())
@@ -286,8 +292,8 @@ fn glyph_cell(
         .background_color(bg_color)
         .border_color(border_color),
     )
-    .width(120.px())
     .height(120.px())
+    .expand_width()
 }
 
 // ===== Cell Building Helpers =====
