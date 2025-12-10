@@ -18,15 +18,241 @@ use masonry::core::{
 };
 use masonry::kurbo::Size;
 use masonry::vello::Scene;
-
-/// Local constants for the coordinate panel, maybe move to settings?
-const PANEL_WIDTH: f64 = 240.0;
-const PANEL_HEIGHT: f64 = 140.0;
+use masonry::properties::types::{AsUnit, MainAxisAlignment};
+use xilem::style::Style;
+use xilem::view::{CrossAxisAlignment, flex_col, flex_row, sized_box};
+use xilem::WidgetView;
 
 // Import from theme (includes all sizing and color constants)
 use crate::theme::coordinate_panel::*;
 
-// ===== Data Model =====
+// ============================================================================
+// LAYOUT CONSTANTS
+// ============================================================================
+//
+// All layout dimensions are defined here for easy editing.
+// Change these values to adjust spacing, sizes, and positioning.
+
+mod layout {
+    /// Overall panel dimensions
+    pub const PANEL_WIDTH: f64 = 240.0;
+    pub const PANEL_HEIGHT: f64 = 140.0;
+
+    /// Quadrant selector (3x3 grid picker) size
+    /// Coordinate inputs total ~100px (48 + 4 + 48), so reducing quadrant
+    /// size helps balance the visual weight. Try: 88.0, 86.0, 84.0
+    pub const QUADRANT_SIZE: f64 = 80.0;
+
+    /// Text input field dimensions
+    pub const INPUT_WIDTH: f64 = 48.0;
+
+    /// Spacing between elements
+    pub const GAP_BETWEEN_INPUTS: f64 = 4.0;   // Horizontal gap in input rows
+    pub const GAP_BETWEEN_ROWS: f64 = 8.0;     // Vertical gap between X/Y and W/H rows
+    pub const GAP_BETWEEN_SECTIONS: f64 = 6.0; // Gap between quadrant and inputs
+
+    /// Padding around the content inside the panel
+    pub const CONTENT_PADDING: f64 = 8.0;
+
+    /// Panel styling
+    pub const BORDER_WIDTH: f64 = 1.5;
+    pub const CORNER_RADIUS: f64 = 8.0;
+}
+
+// ============================================================================
+// LAYOUT BUILDING FUNCTIONS
+// ============================================================================
+
+/// Coordinate data extracted from the session
+#[derive(Clone)]
+struct CoordinateData {
+    x: String,
+    y: String,
+    width: String,
+    height: String,
+}
+
+/// Extract and format coordinate values from the selection
+fn prepare_coordinate_data(
+    coordinate_selection: &CoordinateSelection,
+) -> CoordinateData {
+    if coordinate_selection.count == 0 {
+        return CoordinateData {
+            x: String::new(),
+            y: String::new(),
+            width: String::new(),
+            height: String::new(),
+        };
+    }
+
+    let reference_point = coordinate_selection.reference_point();
+    let x = format!("{:.0}", reference_point.x);
+    let y = format!("{:.0}", reference_point.y);
+
+    // Width and height only shown when multiple points are selected
+    let width = if coordinate_selection.count > 1 {
+        format!("{:.0}", coordinate_selection.width())
+    } else {
+        String::new()
+    };
+
+    let height = if coordinate_selection.count > 1 {
+        format!("{:.0}", coordinate_selection.height())
+    } else {
+        String::new()
+    };
+
+    CoordinateData { x, y, width, height }
+}
+
+/// Build the quadrant selector widget (3x3 grid picker)
+fn build_quadrant_selector<State: 'static, F>(
+    session: Arc<crate::edit_session::EditSession>,
+    on_session_update: F,
+) -> impl WidgetView<State>
+where
+    F: Fn(&mut State, crate::edit_session::EditSession)
+        + Send
+        + Sync
+        + 'static,
+{
+    sized_box(
+        coordinate_panel_view(session, on_session_update)
+    )
+    .width(layout::QUADRANT_SIZE.px())
+    .height(layout::QUADRANT_SIZE.px())
+}
+
+/// Build a single coordinate input field
+fn build_coord_input<State: 'static>(
+    value: String,
+    placeholder: &str,
+) -> impl WidgetView<State> {
+    sized_box(
+        xilem::view::text_input(
+            value,
+            |_state: &mut State, _new_value| {
+                // TODO: Handle coordinate updates
+            }
+        )
+        .text_alignment(parley::Alignment::Center)
+        .placeholder(placeholder)
+    )
+    .width(layout::INPUT_WIDTH.px())
+}
+
+/// Build the coordinate input section (X, Y, W, H fields)
+///
+/// Creates two rows:
+/// - Row 1: X and Y inputs
+/// - Row 2: W and H inputs
+fn build_coordinate_inputs<State: 'static>(
+    data: CoordinateData,
+) -> impl WidgetView<State> {
+    // Row 1: X and Y position inputs
+    let row1 = flex_row((
+        build_coord_input(data.x, "X"),
+        build_coord_input(data.y, "Y"),
+    ))
+    .gap(layout::GAP_BETWEEN_INPUTS.px())
+    .cross_axis_alignment(CrossAxisAlignment::Center);
+
+    // Row 2: Width and Height inputs
+    let row2 = flex_row((
+        build_coord_input(data.width, "W"),
+        build_coord_input(data.height, "H"),
+    ))
+    .gap(layout::GAP_BETWEEN_INPUTS.px())
+    .cross_axis_alignment(CrossAxisAlignment::Center);
+
+    // Stack the two rows vertically
+    flex_col((row1, row2))
+        .gap(layout::GAP_BETWEEN_ROWS.px())
+        .main_axis_alignment(MainAxisAlignment::Center)
+        .cross_axis_alignment(CrossAxisAlignment::End)
+}
+
+/// Build the final panel container with background, border, and layout
+///
+/// Arranges: [Quadrant Selector] [Coordinate Inputs]
+/// Content is centered both horizontally and vertically within the panel.
+fn build_panel_container<State: 'static>(
+    quadrant_selector: impl WidgetView<State>,
+    coordinate_inputs: impl WidgetView<State>,
+) -> impl WidgetView<State> {
+    // Main horizontal layout: quadrant | inputs
+    let row = flex_row((
+        quadrant_selector,
+        coordinate_inputs,
+    ))
+    .main_axis_alignment(MainAxisAlignment::Center)
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(layout::GAP_BETWEEN_SECTIONS.px());
+
+    // Center the row both horizontally and vertically within the panel
+    let centered_content = flex_col((row,))
+        .main_axis_alignment(MainAxisAlignment::Center)
+        .cross_axis_alignment(CrossAxisAlignment::Center);
+
+    // Apply panel styling, dimensions, and padding
+    sized_box(centered_content)
+        .width(layout::PANEL_WIDTH.px())
+        .height(layout::PANEL_HEIGHT.px())
+        .padding(layout::CONTENT_PADDING)
+        .background_color(crate::theme::panel::BACKGROUND)
+        .border_color(crate::theme::panel::OUTLINE)
+        .border_width(layout::BORDER_WIDTH)
+        .corner_radius(layout::CORNER_RADIUS)
+}
+
+/// Complete coordinate info panel with quadrant picker and editable inputs
+///
+/// Layout structure:
+/// ```
+/// ┌─────────────────────────┐
+/// │  ┌──────┐  ┌───┐ ┌───┐  │
+/// │  │ 3x3  │  │ X │ │ Y │  │
+/// │  │ grid │  └───┘ └───┘  │
+/// │  │      │  ┌───┐ ┌───┐  │
+/// │  │      │  │ W │ │ H │  │
+/// │  └──────┘  └───┘ └───┘  │
+/// └─────────────────────────┘
+/// ```
+pub fn coordinate_panel<State: 'static, F>(
+    session: Arc<crate::edit_session::EditSession>,
+    on_session_update: F,
+) -> impl WidgetView<State>
+where
+    F: Fn(&mut State, crate::edit_session::EditSession)
+        + Send
+        + Sync
+        + 'static,
+{
+    // Step 1: Prepare coordinate data (clone strings for use in closures)
+    let coord_data = prepare_coordinate_data(&session.coord_selection);
+
+    // Step 2: Build the quadrant selector
+    let quadrant_selector = build_quadrant_selector(
+        session,
+        on_session_update,
+    );
+
+    // Step 3: Build the coordinate input fields
+    // Clone the data so it can be moved into the view closures
+    let coordinate_inputs = build_coordinate_inputs::<State>(
+        coord_data.clone(),
+    );
+
+    // Step 4: Assemble the final panel
+    build_panel_container(
+        quadrant_selector,
+        coordinate_inputs,
+    )
+}
+
+// ============================================================================
+// DATA MODEL
+// ============================================================================
 
 /// Coordinate selection information for displaying/editing point coordinates
 ///
@@ -205,7 +431,10 @@ impl Widget for CoordinatePanelWidget {
         bc: &BoxConstraints,
     ) -> Size {
         // Store the widget size so we can use it in paint
-        self.widget_size = bc.constrain(Size::new(PANEL_WIDTH, PANEL_HEIGHT));
+        self.widget_size = bc.constrain(Size::new(
+            layout::PANEL_WIDTH,
+            layout::PANEL_HEIGHT,
+        ));
         self.widget_size
     }
 
@@ -482,131 +711,4 @@ impl<
             None => MessageResult::Stale,
         }
     }
-}
-
-// ===== Complete Coordinate Panel View =====
-
-use masonry::properties::types::{AsUnit, MainAxisAlignment};
-use xilem::style::Style;
-use xilem::view::{CrossAxisAlignment, flex_col, flex_row, label, sized_box};
-use xilem::WidgetView;
-
-/// Complete coordinate info panel with quadrant picker and editable coordinate inputs
-///
-/// This is the main entry point for displaying the coordinate panel in the
-/// editor window. It combines the quadrant picker widget with editable text inputs
-/// for x, y, width, and height values.
-pub fn coordinate_panel<State: 'static, F>(
-    session: Arc<crate::edit_session::EditSession>,
-    on_session_update: F,
-) -> impl WidgetView<State>
-where
-    F: Fn(&mut State, crate::edit_session::EditSession)
-        + Send
-        + Sync
-        + 'static,
-{
-    let coord_sel = session.coord_selection;
-
-    // Calculate coordinate values based on the selection
-    let (x_text, y_text, w_text, h_text) = if coord_sel.count == 0 {
-        (String::new(), String::new(), String::new(), String::new())
-    } else {
-        let pt = coord_sel.reference_point();
-        let x = format!("{:.0}", pt.x);
-        let y = format!("{:.0}", pt.y);
-
-        // Width and height only shown when multiple points are selected
-        let w = if coord_sel.count > 1 {
-            format!("{:.0}", coord_sel.width())
-        } else {
-            String::new()
-        };
-        let h = if coord_sel.count > 1 {
-            format!("{:.0}", coord_sel.height())
-        } else {
-            String::new()
-        };
-        (x, y, w, h)
-    };
-
-    let quadrant_selector = sized_box(
-        coordinate_panel_view(session, on_session_update)
-    )
-    .width(92.px())
-    .height(92.px());
-
-    // Row 1: X and Y
-    let row1 = flex_row((
-        sized_box(
-            xilem::view::text_input(
-                x_text,
-                |_state: &mut State, _new_value| {
-                    // TODO: Handle coordinate updates
-                }
-            )
-            .text_alignment(parley::Alignment::Center)
-            .placeholder("X")
-        ).width(48.px()),
-        sized_box(
-            xilem::view::text_input(
-                y_text,
-                |_state: &mut State, _new_value| {
-                    // TODO: Handle coordinate updates
-                }
-            )
-            .text_alignment(parley::Alignment::Center)
-            .placeholder("Y")
-        ).width(48.px()),
-    ))
-    .gap(4.px())
-    .cross_axis_alignment(CrossAxisAlignment::Center);
-
-    // Row 2: Width and Height
-    let row2 = flex_row((
-        sized_box(
-            xilem::view::text_input(
-                w_text,
-                |_state: &mut State, _new_value| {
-                    // TODO: Handle coordinate updates
-                }
-            )
-            .text_alignment(parley::Alignment::Center)
-            .placeholder("W")
-        ).width(48.px()),
-        sized_box(
-            xilem::view::text_input(
-                h_text,
-                |_state: &mut State, _new_value| {
-                    // TODO: Handle coordinate updates
-                }
-            )
-            .text_alignment(parley::Alignment::Center)
-            .placeholder("H")
-        ).width(48.px()),
-    ))
-    .gap(4.px())
-    .cross_axis_alignment(CrossAxisAlignment::Center);
-
-    // Coordinate inputs column
-    let coord_inputs = flex_col((row1, row2))
-        .gap(8.px())
-        .main_axis_alignment(MainAxisAlignment::Center)
-        .cross_axis_alignment(CrossAxisAlignment::End);
-
-    sized_box(
-        flex_row((
-            quadrant_selector,
-            coord_inputs,
-            sized_box(label("")).width(8.px()), // 4px on each side = 8px spacer to shift left by 4px
-        ))
-            .main_axis_alignment(MainAxisAlignment::Center)
-            .gap(6.px()),
-    )
-    .width(240.px())
-    .height(140.px())
-    .background_color(crate::theme::panel::BACKGROUND)
-    .border_color(crate::theme::panel::OUTLINE)
-    .border_width(1.5)
-    .corner_radius(8.0)
 }

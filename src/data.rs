@@ -3,6 +3,7 @@
 
 //! Application state and data structures
 
+use crate::components::GlyphCategory;
 use crate::designspace::{is_designspace_file, DesignspaceProject};
 use crate::edit_session::EditSession;
 use crate::workspace::Workspace;
@@ -54,6 +55,12 @@ pub struct AppState {
 
     /// When the file was last saved (formatted time string for UI)
     pub last_saved: Option<String>,
+
+    /// Current window width for responsive layout
+    pub window_width: f64,
+
+    /// Category filter for glyph grid
+    pub glyph_category_filter: GlyphCategory,
 }
 
 #[allow(dead_code)]
@@ -71,6 +78,8 @@ impl AppState {
             running: true,
             main_window_id: WindowId::next(),
             last_saved: None,
+            window_width: 1030.0, // Default window width
+            glyph_category_filter: GlyphCategory::All,
         }
     }
 
@@ -206,6 +215,27 @@ impl AppState {
         self.active_workspace()
             .map(|w| w.read().unwrap().glyph_names())
             .unwrap_or_default()
+    }
+
+    /// Calculate number of grid columns based on window width
+    /// Ensures cells are never narrower than their height (120px)
+    pub fn grid_columns(&self) -> usize {
+        const CELL_HEIGHT: f64 = 120.0;
+        const GAP: f64 = 6.0;
+        const MARGIN: f64 = 6.0 * 2.0; // Left and right margins
+
+        // Available width for cells (minus margins)
+        let available = self.window_width - MARGIN;
+
+        // Calculate how many cells can fit at minimum width (= height)
+        // Each cell needs CELL_HEIGHT + GAP (except the last one)
+        // n * CELL_HEIGHT + (n-1) * GAP <= available
+        // n * (CELL_HEIGHT + GAP) - GAP <= available
+        // n <= (available + GAP) / (CELL_HEIGHT + GAP)
+        let max_cols = ((available + GAP) / (CELL_HEIGHT + GAP)).floor() as usize;
+
+        // Clamp between 1 and 8 columns
+        max_cols.clamp(1, 8)
     }
 
     /// Get the selected glyph's advance width

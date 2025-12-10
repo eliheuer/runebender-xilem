@@ -9,13 +9,14 @@ use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::{
     button, flex_col, flex_row, label, portal, sized_box, transformed, zstack,
-    ChildAlignment, ZStackExt,
+    ChildAlignment, FlexExt, ZStackExt,
 };
 use xilem::WidgetView;
 
 use crate::components::{
-    create_master_infos, glyph_view, keyboard_shortcuts, master_toolbar_view,
-    system_toolbar_view, SystemToolbarButton,
+    category_panel, create_master_infos, glyph_info_panel, glyph_view, keyboard_shortcuts,
+    master_toolbar_view, size_tracker, system_toolbar_view, GlyphCategory, SystemToolbarButton,
+    CATEGORY_PANEL_WIDTH, GLYPH_INFO_PANEL_WIDTH,
 };
 use crate::data::AppState;
 use crate::glyph_renderer;
@@ -33,16 +34,29 @@ pub fn glyph_grid_tab(
     state: &mut AppState,
 ) -> impl WidgetView<AppState> + use<> {
     zstack((
+        // Size tracker (invisible, tracks window width for responsive columns)
+        size_tracker(|state: &mut AppState, width| {
+            // Subtract side panel widths from available width for grid columns
+            state.window_width = width - CATEGORY_PANEL_WIDTH - GLYPH_INFO_PANEL_WIDTH;
+        }),
         // Keyboard shortcut handler (invisible, handles Cmd+S)
         // At bottom of zstack so widgets above receive pointer events first
         keyboard_shortcuts(|state: &mut AppState| {
             state.save_workspace();
         }),
-        // Background: the glyph grid with top margin for toolbar
+        // Main layout: toolbar row on top, then three-column layout below
         flex_col((
             // Top margin to make room for floating toolbar
             sized_box(label("")).height((TOOLBAR_HEIGHT + UI_PANEL_MARGIN).px()),
-            glyph_grid_view(state),
+            // Three-column layout: category panel | glyph grid | glyph info panel
+            flex_row((
+                // Left: Category panel
+                category_panel(state),
+                // Middle: Glyph grid (takes remaining space)
+                glyph_grid_view(state).flex(1.0),
+                // Right: Glyph info panel
+                glyph_info_panel(state),
+            )),
         ))
         .background_color(theme::app::BACKGROUND),
         // Top-left: File info panel
@@ -145,13 +159,14 @@ fn glyph_grid_view(
     // Pre-compute glyph data
     let glyph_data = build_glyph_data(state, &glyph_names);
 
-    const COLUMNS: usize = 8;
+    // Calculate responsive column count based on window width
+    let columns = state.grid_columns();
     let selected_glyph = state.selected_glyph.clone();
 
     // Build rows of glyph cells
     let rows_of_cells = build_glyph_rows(
         &glyph_data,
-        COLUMNS,
+        columns,
         &selected_glyph,
         upm,
     );
@@ -160,7 +175,13 @@ fn glyph_grid_view(
         sized_box(label("")).height(6.px()),
         flex_row((
             sized_box(label("")).width(6.px()),
-            portal(flex_col(rows_of_cells).gap(6.px())),
+            portal(
+                flex_col((
+                    flex_col(rows_of_cells).gap(6.px()),
+                    // Bottom margin so last row is fully visible when scrolled
+                    sized_box(label("")).height(120.px()),
+                ))
+            ).flex(1.0),
             sized_box(label("")).width(6.px()),
         )),
     ))
@@ -185,16 +206,26 @@ type GlyphData = (
     usize,
 );
 
-/// Build glyph data vector from workspace
+/// Build glyph data vector from workspace, filtered by category
 fn build_glyph_data(
     state: &AppState,
     glyph_names: &[String],
 ) -> Vec<GlyphData> {
+    let category_filter = state.glyph_category_filter;
+
     if let Some(workspace_arc) = state.active_workspace() {
         let workspace = workspace_arc.read().unwrap();
         glyph_names
             .iter()
-            .map(|name| build_single_glyph_data(&workspace, name))
+            .filter_map(|name| {
+                let data = build_single_glyph_data(&workspace, name);
+                // Apply category filter
+                if matches_category(&data.2, category_filter) {
+                    Some(data)
+                } else {
+                    None
+                }
+            })
             .collect()
     } else {
         glyph_names
@@ -202,6 +233,23 @@ fn build_glyph_data(
             .map(|name| (name.clone(), None, Vec::new(), 0))
             .collect()
     }
+}
+
+/// Check if a glyph matches the category filter
+fn matches_category(codepoints: &[char], category: GlyphCategory) -> bool {
+    // All category matches everything
+    if category == GlyphCategory::All {
+        return true;
+    }
+
+    // If no codepoints, put in "Other" category
+    if codepoints.is_empty() {
+        return category == GlyphCategory::Other;
+    }
+
+    // Check if the first codepoint matches the category
+    let glyph_category = GlyphCategory::from_codepoint(codepoints[0]);
+    glyph_category == category
 }
 
 /// Build data for a single glyph
@@ -248,6 +296,7 @@ fn build_glyph_rows(
                         upm,
                         *contour_count,
                     )
+                    .flex(1.0) // Each cell gets equal flex space
                 })
                 .collect();
             flex_row(row_items).gap(6.px())
@@ -286,8 +335,8 @@ fn glyph_cell(
         .background_color(bg_color)
         .border_color(border_color),
     )
-    .width(120.px())
     .height(120.px())
+    .expand_width()
 }
 
 // ===== Cell Building Helpers =====
