@@ -94,7 +94,7 @@ fn app_logic(
         Either::B(welcome(state))
     };
 
-    let window_size = LogicalSize::new(1030.0, 800.0);
+    let window_size = LogicalSize::new(1280.0, 800.0);
     let window_view = window(
         state.main_window_id,
         "Runebender Xilem",
