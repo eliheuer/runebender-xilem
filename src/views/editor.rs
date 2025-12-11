@@ -18,7 +18,8 @@ use xilem::WidgetView;
 use crate::components::workspace_toolbar::WorkspaceToolbarButton;
 use crate::components::{
     coordinate_panel, create_master_infos, edit_mode_toolbar_view, editor_view, glyph_view,
-    master_toolbar_view, shapes_toolbar_view, text_direction_toolbar_view, workspace_toolbar_view,
+    master_toolbar_view, multi_glyph_view, shapes_toolbar_view, text_direction_toolbar_view,
+    workspace_toolbar_view,
 };
 use crate::data::AppState;
 use crate::theme;
@@ -508,8 +509,8 @@ fn text_buffer_preview_pane_centered(
         0.0
     };
 
-    // Build a combined BezPath from all sorts in the buffer (like preview mode)
-    let mut combined_path = BezPath::new();
+    // Build separate BezPaths for each glyph (to avoid winding conflicts when overlapping)
+    let mut glyph_paths: Vec<BezPath> = Vec::new();
     let mut x_offset = if is_rtl { total_width } else { 0.0 };
 
     // Track previous glyph for kerning lookup
@@ -577,7 +578,8 @@ fn text_buffer_preview_pane_centered(
 
                 // Translate the glyph to its position in the text buffer
                 let translated_path = kurbo::Affine::translate((x_offset, 0.0)) * glyph_path;
-                combined_path.extend(translated_path);
+                // Store each glyph path separately (don't combine with .extend())
+                glyph_paths.push(translated_path);
 
                 // For LTR: advance x forward AFTER drawing
                 if !is_rtl {
@@ -601,13 +603,13 @@ fn text_buffer_preview_pane_centered(
     let preview_size = 100.0; // Match glyph preview size
     let upm = session.ascender - session.descender;
 
-    // Render the combined path as a glyph view
+    // Render each glyph path separately using multi_glyph_view
+    // This avoids winding direction conflicts when connector glyphs overlap
     // baseline_offset controls vertical position (0.0 = bottom, 1.0 = top)
-    // Use 0.25 to leave room for Arabic descenders which are deeper than Latin
     Either::A(
         sized_box(
             flex_col((
-                glyph_view(combined_path, preview_size, preview_size, upm)
+                multi_glyph_view(glyph_paths, preview_size, preview_size, upm)
                     .color(theme::panel::GLYPH_PREVIEW)
                     .baseline_offset(0.15), // Leave room for Arabic descenders
             ))
