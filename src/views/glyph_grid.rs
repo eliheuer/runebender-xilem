@@ -107,7 +107,7 @@ pub fn glyph_grid_tab(
                     glyph_grid_view(state),
                     |state: &mut AppState, delta| {
                         let count =
-                            state.filtered_glyph_count();
+                            state.cached_filtered_count;
                         state.scroll_grid(delta, count);
                     },
                     |state: &mut AppState| {
@@ -216,25 +216,26 @@ fn current_mark_color_index(state: &AppState) -> Option<usize> {
 fn glyph_grid_view(
     state: &mut AppState,
 ) -> impl WidgetView<AppState> + use<> {
-    let glyph_names = state.glyph_names();
-    let upm = get_upm_from_state(state);
-    let glyph_data = build_glyph_data(state, &glyph_names);
     let columns = state.grid_columns();
+    let visible = state.visible_grid_rows();
+    let upm = get_upm_from_state(state);
     let selected_glyphs = state.selected_glyphs.clone();
 
-    // Virtual row slicing — only render visible rows
-    let visible = state.visible_grid_rows();
-    let start = state.grid_scroll_row * columns;
-    let end = ((state.grid_scroll_row + visible) * columns)
-        .min(glyph_data.len());
-    let visible_data = if start <= glyph_data.len() {
-        &glyph_data[start..end]
-    } else {
-        &[]
-    };
+    // Build only the visible slice of glyph data —
+    // filter first, then slice, then build bezpaths.
+    let (visible_data, filtered_count) =
+        build_visible_glyph_data(
+            state,
+            columns,
+            visible,
+            state.grid_scroll_row,
+        );
+    // Cache the filtered count so scroll callbacks don't
+    // have to re-iterate all glyphs.
+    state.cached_filtered_count = filtered_count;
 
     let rows_of_cells = build_glyph_rows(
-        visible_data,
+        &visible_data,
         columns,
         &selected_glyphs,
         upm,
@@ -274,33 +275,61 @@ type GlyphData = (
     Option<usize>,
 );
 
-/// Build glyph data vector from workspace, filtered by category
-fn build_glyph_data(
+/// Build glyph data for only the visible rows.
+///
+/// Filters by category (cheap — only checks codepoints), slices
+/// to the visible window, THEN builds bezpaths (expensive) for
+/// only those glyphs.
+fn build_visible_glyph_data(
     state: &AppState,
-    glyph_names: &[String],
-) -> Vec<GlyphData> {
+    columns: usize,
+    visible_rows: usize,
+    scroll_row: usize,
+) -> (Vec<GlyphData>, usize) {
+    let workspace_arc = match state.active_workspace() {
+        Some(w) => w,
+        None => return (Vec::new(), 0),
+    };
+    let workspace = workspace_arc.read().unwrap();
     let category_filter = state.glyph_category_filter;
 
-    if let Some(workspace_arc) = state.active_workspace() {
-        let workspace = workspace_arc.read().unwrap();
-        glyph_names
-            .iter()
-            .filter_map(|name| {
-                let data =
-                    build_single_glyph_data(&workspace, name);
-                if matches_category(&data.2, category_filter) {
-                    Some(data)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    } else {
-        glyph_names
-            .iter()
-            .map(|name| (name.clone(), None, Vec::new(), 0, None))
-            .collect()
+    // Step 1: Collect filtered glyph names (cheap — no bezpath)
+    let all_names = workspace.glyph_names();
+    let filtered_names: Vec<&str> = all_names
+        .iter()
+        .filter(|name| {
+            if let Some(glyph) = workspace.get_glyph(name) {
+                matches_category(
+                    &glyph.codepoints,
+                    category_filter,
+                )
+            } else {
+                false
+            }
+        })
+        .map(|s| s.as_str())
+        .collect();
+
+    // Step 2: Slice to only the visible window
+    let start = scroll_row * columns;
+    let end =
+        ((scroll_row + visible_rows) * columns)
+            .min(filtered_names.len());
+    let total_filtered = filtered_names.len();
+    if start > total_filtered {
+        return (Vec::new(), total_filtered);
     }
+    let visible_names = &filtered_names[start..end];
+
+    // Step 3: Build full glyph data (with bezpaths) for
+    // only the visible glyphs
+    let data = visible_names
+        .iter()
+        .map(|name| {
+            build_single_glyph_data(&workspace, name)
+        })
+        .collect();
+    (data, total_filtered)
 }
 
 /// Check if a glyph matches the category filter
@@ -448,6 +477,14 @@ enum GlyphCellAction {
 
 /// Font size for cell labels
 const CELL_LABEL_SIZE: f64 = 12.0;
+
+thread_local! {
+    static FONT_CX: std::cell::RefCell<FontContext> =
+        std::cell::RefCell::new(FontContext::default());
+    static LAYOUT_CX: std::cell::RefCell<
+        LayoutContext<BrushIndex>,
+    > = std::cell::RefCell::new(LayoutContext::new());
+}
 /// Height reserved for the label area at the bottom of the cell
 const CELL_LABEL_HEIGHT: f64 = 32.0;
 /// Padding above the glyph preview area
@@ -573,77 +610,92 @@ impl GlyphCellWidget {
         let unicode_display =
             format_unicode_display(&self.codepoints);
 
-        let mut font_cx = FontContext::default();
-        let mut layout_cx = LayoutContext::new();
+        FONT_CX.with(|font_cell| {
+            LAYOUT_CX.with(|layout_cell| {
+                let mut font_cx = font_cell.borrow_mut();
+                let mut layout_cx = layout_cell.borrow_mut();
 
-        // Name label
-        let mut builder = layout_cx.ranged_builder(
-            &mut font_cx,
-            &display_name,
-            1.0,
-            false,
-        );
-        builder.push_default(StyleProperty::FontSize(
-            CELL_LABEL_SIZE as f32,
-        ));
-        builder.push_default(StyleProperty::FontStack(
-            FontStack::Single(parley::FontFamily::Generic(
-                parley::GenericFamily::SansSerif,
-            )),
-        ));
-        builder
-            .push_default(StyleProperty::Brush(BrushIndex(0)));
-        let mut name_layout = builder.build(&display_name);
-        name_layout.break_all_lines(None);
+                // Name label
+                let mut builder = layout_cx.ranged_builder(
+                    &mut font_cx,
+                    &display_name,
+                    1.0,
+                    false,
+                );
+                builder.push_default(StyleProperty::FontSize(
+                    CELL_LABEL_SIZE as f32,
+                ));
+                builder.push_default(StyleProperty::FontStack(
+                    FontStack::Single(
+                        parley::FontFamily::Generic(
+                            parley::GenericFamily::SansSerif,
+                        ),
+                    ),
+                ));
+                builder.push_default(StyleProperty::Brush(
+                    BrushIndex(0),
+                ));
+                let mut name_layout =
+                    builder.build(&display_name);
+                name_layout.break_all_lines(None);
 
-        let brushes = vec![Brush::Solid(text_color)];
-        let name_y = label_rect.y0 + 2.0;
-        render_text(
-            scene,
-            Affine::translate((
-                label_rect.x0 + CELL_TEXT_INSET,
-                name_y,
-            )),
-            &name_layout,
-            &brushes,
-            false,
-        );
+                let brushes = vec![Brush::Solid(text_color)];
+                let name_y = label_rect.y0 + 2.0;
+                render_text(
+                    scene,
+                    Affine::translate((
+                        label_rect.x0 + CELL_TEXT_INSET,
+                        name_y,
+                    )),
+                    &name_layout,
+                    &brushes,
+                    false,
+                );
 
-        // Unicode label
-        if !unicode_display.is_empty() {
-            let mut builder = layout_cx.ranged_builder(
-                &mut font_cx,
-                &unicode_display,
-                1.0,
-                false,
-            );
-            builder.push_default(StyleProperty::FontSize(
-                CELL_LABEL_SIZE as f32,
-            ));
-            builder.push_default(StyleProperty::FontStack(
-                FontStack::Single(parley::FontFamily::Generic(
-                    parley::GenericFamily::SansSerif,
-                )),
-            ));
-            builder.push_default(StyleProperty::Brush(
-                BrushIndex(0),
-            ));
-            let mut uni_layout =
-                builder.build(&unicode_display);
-            uni_layout.break_all_lines(None);
+                // Unicode label
+                if !unicode_display.is_empty() {
+                    let mut builder = layout_cx.ranged_builder(
+                        &mut font_cx,
+                        &unicode_display,
+                        1.0,
+                        false,
+                    );
+                    builder.push_default(
+                        StyleProperty::FontSize(
+                            CELL_LABEL_SIZE as f32,
+                        ),
+                    );
+                    builder.push_default(
+                        StyleProperty::FontStack(
+                            FontStack::Single(
+                                parley::FontFamily::Generic(
+                                    parley::GenericFamily::SansSerif,
+                                ),
+                            ),
+                        ),
+                    );
+                    builder.push_default(
+                        StyleProperty::Brush(BrushIndex(0)),
+                    );
+                    let mut uni_layout =
+                        builder.build(&unicode_display);
+                    uni_layout.break_all_lines(None);
 
-            let uni_y = name_y + CELL_LABEL_SIZE + 2.0;
-            render_text(
-                scene,
-                Affine::translate((
-                    label_rect.x0 + CELL_TEXT_INSET,
-                    uni_y,
-                )),
-                &uni_layout,
-                &brushes,
-                false,
-            );
-        }
+                    let uni_y =
+                        name_y + CELL_LABEL_SIZE + 2.0;
+                    render_text(
+                        scene,
+                        Affine::translate((
+                            label_rect.x0 + CELL_TEXT_INSET,
+                            uni_y,
+                        )),
+                        &uni_layout,
+                        &brushes,
+                        false,
+                    );
+                }
+            });
+        });
     }
 }
 
