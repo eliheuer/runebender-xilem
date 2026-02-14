@@ -3,11 +3,13 @@
 
 //! Category panel for filtering glyphs in the glyph grid view
 //!
-//! Based on Glyphs.app's sidebar with categories like Letter, Figures, Punctuation, etc.
+//! Based on Glyphs.app's sidebar with categories like Letter,
+//! Figures, Punctuation, etc.
 
 use masonry::properties::types::AsUnit;
+use masonry::properties::Padding;
 use xilem::style::Style;
-use xilem::view::{button, flex_col, label, portal, sized_box};
+use xilem::view::{button, flex_col, label, sized_box, CrossAxisAlignment};
 use xilem::WidgetView;
 
 use crate::data::AppState;
@@ -69,45 +71,51 @@ impl GlyphCategory {
 
     /// Determine category from a Unicode codepoint
     pub fn from_codepoint(c: char) -> GlyphCategory {
-        use unicode_general_category::{get_general_category, GeneralCategory};
+        use unicode_general_category::{
+            get_general_category, GeneralCategory,
+        };
 
         match get_general_category(c) {
             // Letters
-            GeneralCategory::UppercaseLetter |
-            GeneralCategory::LowercaseLetter |
-            GeneralCategory::TitlecaseLetter |
-            GeneralCategory::ModifierLetter |
-            GeneralCategory::OtherLetter => GlyphCategory::Letter,
+            GeneralCategory::UppercaseLetter
+            | GeneralCategory::LowercaseLetter
+            | GeneralCategory::TitlecaseLetter
+            | GeneralCategory::ModifierLetter
+            | GeneralCategory::OtherLetter => GlyphCategory::Letter,
 
             // Numbers
-            GeneralCategory::DecimalNumber |
-            GeneralCategory::LetterNumber |
-            GeneralCategory::OtherNumber => GlyphCategory::Number,
+            GeneralCategory::DecimalNumber
+            | GeneralCategory::LetterNumber
+            | GeneralCategory::OtherNumber => GlyphCategory::Number,
 
             // Punctuation
-            GeneralCategory::ConnectorPunctuation |
-            GeneralCategory::DashPunctuation |
-            GeneralCategory::OpenPunctuation |
-            GeneralCategory::ClosePunctuation |
-            GeneralCategory::InitialPunctuation |
-            GeneralCategory::FinalPunctuation |
-            GeneralCategory::OtherPunctuation => GlyphCategory::Punctuation,
+            GeneralCategory::ConnectorPunctuation
+            | GeneralCategory::DashPunctuation
+            | GeneralCategory::OpenPunctuation
+            | GeneralCategory::ClosePunctuation
+            | GeneralCategory::InitialPunctuation
+            | GeneralCategory::FinalPunctuation
+            | GeneralCategory::OtherPunctuation => {
+                GlyphCategory::Punctuation
+            }
 
             // Symbols
-            GeneralCategory::MathSymbol |
-            GeneralCategory::CurrencySymbol |
-            GeneralCategory::ModifierSymbol |
-            GeneralCategory::OtherSymbol => GlyphCategory::Symbol,
+            GeneralCategory::MathSymbol
+            | GeneralCategory::CurrencySymbol
+            | GeneralCategory::ModifierSymbol
+            | GeneralCategory::OtherSymbol => GlyphCategory::Symbol,
 
             // Marks
-            GeneralCategory::NonspacingMark |
-            GeneralCategory::SpacingMark |
-            GeneralCategory::EnclosingMark => GlyphCategory::Mark,
+            GeneralCategory::NonspacingMark
+            | GeneralCategory::SpacingMark
+            | GeneralCategory::EnclosingMark => GlyphCategory::Mark,
 
             // Separators
-            GeneralCategory::SpaceSeparator |
-            GeneralCategory::LineSeparator |
-            GeneralCategory::ParagraphSeparator => GlyphCategory::Separator,
+            GeneralCategory::SpaceSeparator
+            | GeneralCategory::LineSeparator
+            | GeneralCategory::ParagraphSeparator => {
+                GlyphCategory::Separator
+            }
 
             // Other
             _ => GlyphCategory::Other,
@@ -116,35 +124,39 @@ impl GlyphCategory {
 }
 
 /// Category panel view for the left sidebar
-pub fn category_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
+pub fn category_panel(
+    state: &AppState,
+) -> impl WidgetView<AppState> + use<> {
     let selected_category = state.glyph_category_filter;
 
-    // Build category buttons
-    let category_buttons: Vec<_> = GlyphCategory::all_categories()
-        .iter()
-        .map(|&cat| {
-            let is_selected = cat == selected_category;
-            category_button(cat, is_selected)
-        })
-        .collect();
+    let category_buttons: Vec<_> =
+        GlyphCategory::all_categories()
+            .iter()
+            .map(|&cat| {
+                let is_selected = cat == selected_category;
+                category_button(cat, is_selected)
+            })
+            .collect();
 
     sized_box(
-        portal(
-            flex_col((
-                // Header
-                sized_box(
-                    label("CATEGORIES")
-                        .text_size(12.0)
-                        .color(theme::text::SECONDARY)
-                )
-                .padding(8.0),
-                // Category list
-                flex_col(category_buttons).gap(2.px()),
-            ))
-        )
+        flex_col((
+            // Header
+            sized_box(
+                label("CATEGORIES")
+                    .text_size(12.0)
+                    .color(theme::text::SECONDARY),
+            )
+            .padding(Padding::from_vh(8.0, 8.0)),
+            // Category list
+            flex_col(category_buttons),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Fill),
     )
     .width(CATEGORY_PANEL_WIDTH.px())
     .background_color(theme::panel::BACKGROUND)
+    .border_color(theme::panel::OUTLINE)
+    .border_width(1.5)
+    .corner_radius(theme::size::PANEL_RADIUS)
 }
 
 /// Single category button
@@ -160,19 +172,17 @@ fn category_button(
     };
 
     sized_box(
-        sized_box(
-            button(
-                label(name)
-                    .text_size(14.0)
-                    .color(theme::text::PRIMARY),
-                move |state: &mut AppState| {
-                    state.glyph_category_filter = category;
-                },
-            )
-            .background_color(bg_color)
-            .border_color(masonry::vello::peniko::Color::TRANSPARENT)
+        button(
+            label(name)
+                .text_size(14.0)
+                .color(theme::text::PRIMARY),
+            move |state: &mut AppState| {
+                state.glyph_category_filter = category;
+            },
         )
-        .expand_width()
+        .background_color(bg_color)
+        .border_color(masonry::vello::peniko::Color::TRANSPARENT),
     )
-    .padding(8.0)
+    .expand_width()
+    .padding(Padding::from_vh(1.0, 6.0))
 }
