@@ -8,7 +8,7 @@
 use masonry::properties::types::AsUnit;
 use xilem::core::one_of::Either;
 use xilem::style::Style;
-use xilem::view::{flex_col, flex_row, label, portal, sized_box};
+use xilem::view::{flex_col, flex_row, label, sized_box};
 use xilem::WidgetView;
 
 use crate::data::AppState;
@@ -44,11 +44,12 @@ pub fn glyph_info_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
         Either::B(no_selection_content())
     };
 
-    sized_box(
-        portal(content)
-    )
+    sized_box(content)
     .width(GLYPH_INFO_PANEL_WIDTH.px())
     .background_color(theme::panel::BACKGROUND)
+    .border_color(theme::panel::OUTLINE)
+    .border_width(1.5)
+    .corner_radius(theme::size::PANEL_RADIUS)
 }
 
 /// Content when a glyph is selected

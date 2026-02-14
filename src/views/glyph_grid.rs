@@ -4,97 +4,93 @@
 //! Glyph grid view - displays all glyphs in a scrollable grid
 
 use kurbo::BezPath;
-use masonry::properties::types::{AsUnit, UnitPoint};
+use masonry::properties::types::AsUnit;
 use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::{
-    button, flex_col, flex_row, label, portal, sized_box, transformed, zstack,
-    ChildAlignment, FlexExt, ZStackExt,
+    button, flex_col, flex_row, label, portal, sized_box, zstack,
+    CrossAxisAlignment, FlexExt,
 };
 use xilem::WidgetView;
 
 use crate::components::{
-    category_panel, create_master_infos, glyph_info_panel, glyph_view, keyboard_shortcuts,
-    master_toolbar_view, size_tracker, system_toolbar_view, GlyphCategory, SystemToolbarButton,
+    category_panel, create_master_infos, glyph_info_panel, glyph_view,
+    keyboard_shortcuts, master_toolbar_view, size_tracker,
+    system_toolbar_view, GlyphCategory, SystemToolbarButton,
     CATEGORY_PANEL_WIDTH, GLYPH_INFO_PANEL_WIDTH,
 };
 use crate::data::AppState;
 use crate::glyph_renderer;
 use crate::theme;
-use crate::theme::size::{UI_PANEL_GAP, UI_PANEL_MARGIN, TOOLBAR_ITEM_SIZE, TOOLBAR_PADDING};
 use crate::workspace;
+
+// ===== Bento Layout Constants =====
+
+/// Uniform gap between all tiles — panels, grid cells, outer padding
+const BENTO_GAP: f64 = 6.0;
 
 // ===== Glyph Grid Tab View =====
 
-/// Height of a toolbar (button size + padding on both sides)
-const TOOLBAR_HEIGHT: f64 = TOOLBAR_ITEM_SIZE + TOOLBAR_PADDING * 2.0;
-
-/// Tab 0: Glyph grid view with header and floating toolbar
+/// Tab 0: Glyph grid view with bento tile layout
 pub fn glyph_grid_tab(
     state: &mut AppState,
 ) -> impl WidgetView<AppState> + use<> {
     zstack((
-        // Size tracker (invisible, tracks window width for responsive columns)
+        // Invisible: size tracker (measures window width for responsive
+        // grid columns)
         size_tracker(|state: &mut AppState, width| {
-            // Subtract side panel widths from available width for grid columns
-            state.window_width = width - CATEGORY_PANEL_WIDTH - GLYPH_INFO_PANEL_WIDTH;
+            // Grid width = window - panels - outer padding - inner gaps
+            state.window_width = width
+                - CATEGORY_PANEL_WIDTH
+                - GLYPH_INFO_PANEL_WIDTH
+                - BENTO_GAP * 4.0;
         }),
-        // Keyboard shortcut handler (invisible, handles Cmd+S)
-        // At bottom of zstack so widgets above receive pointer events first
+        // Invisible: keyboard shortcut handler (Cmd+S)
         keyboard_shortcuts(|state: &mut AppState| {
             state.save_workspace();
         }),
-        // Main layout: toolbar row on top, then three-column layout below
+        // Bento tile layout
         flex_col((
-            // Top margin to make room for floating toolbar
-            sized_box(label("")).height((TOOLBAR_HEIGHT + UI_PANEL_MARGIN).px()),
-            // Three-column layout: category panel | glyph grid | glyph info panel
+            // Row 1: File info stretches, toolbars fixed on right
             flex_row((
-                // Left: Category panel
-                category_panel(state),
-                // Middle: Glyph grid (takes remaining space)
-                glyph_grid_view(state).flex(1.0),
-                // Right: Glyph info panel
-                glyph_info_panel(state),
-            )),
-        ))
-        .background_color(theme::app::BACKGROUND),
-        // Top-left: File info panel
-        transformed(file_info_panel(state))
-            .translate((UI_PANEL_MARGIN, UI_PANEL_MARGIN))
-            .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_LEFT)),
-        // Top-right: System toolbar + Master toolbar (if designspace)
-        transformed(
-            flex_row((
-                // Master toolbar (only shown when designspace is loaded)
+                file_info_panel(state).flex(1.0),
                 master_toolbar_panel(state),
-                // System toolbar (save button)
-                system_toolbar_view(|state: &mut AppState, button| {
-                    match button {
+                system_toolbar_view(
+                    |state: &mut AppState, button| match button {
                         SystemToolbarButton::Save => {
                             state.save_workspace();
                         }
-                    }
-                }),
+                    },
+                ),
             ))
-            .gap(UI_PANEL_GAP.px())
-        )
-        .translate((-UI_PANEL_MARGIN, UI_PANEL_MARGIN))
-        .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_RIGHT)),
+            .gap(BENTO_GAP.px()),
+            // Row 2: Three-column content (fills remaining height)
+            flex_row((
+                category_panel(state),
+                glyph_grid_view(state).flex(1.0),
+                glyph_info_panel(state),
+            ))
+            .gap(BENTO_GAP.px())
+            .cross_axis_alignment(CrossAxisAlignment::Fill)
+            .flex(1.0),
+        ))
+        .gap(BENTO_GAP.px())
+        .padding(BENTO_GAP)
+        .background_color(theme::app::BACKGROUND),
     ))
 }
+
+// ===== Toolbar Panels =====
 
 /// File info panel showing the loaded file path and last save time
 fn file_info_panel(
     state: &AppState,
 ) -> impl WidgetView<AppState> + use<> {
-    // Get file path (shortened to last 3 components)
     let path_display = state
         .loaded_file_path()
         .map(|p| shorten_path(&p, 3))
         .unwrap_or_else(|| "No file loaded".to_string());
 
-    // Get last saved info
     let save_display = state
         .last_saved_display()
         .map(|s| format!("Saved {}", s))
@@ -110,8 +106,9 @@ fn file_info_panel(
                 .color(theme::text::SECONDARY),
         ))
         .gap(2.px())
-        .cross_axis_alignment(xilem::view::CrossAxisAlignment::Start),
+        .cross_axis_alignment(CrossAxisAlignment::Start),
     )
+    .expand_width()
     .padding(12.0)
     .background_color(theme::panel::BACKGROUND)
     .border_color(theme::panel::OUTLINE)
@@ -119,51 +116,43 @@ fn file_info_panel(
     .corner_radius(theme::size::PANEL_RADIUS)
 }
 
-/// Master toolbar panel for glyph grid - only shown when designspace is loaded
+/// Master toolbar panel — only shown when designspace has multiple masters
 fn master_toolbar_panel(
     state: &AppState,
 ) -> impl WidgetView<AppState> + use<> {
-    // Only show master toolbar when we have a designspace with multiple masters
     if let Some(ref designspace) = state.designspace
-        && designspace.masters.len() > 1 {
-            let master_infos = create_master_infos(&designspace.masters);
-            let active_master = designspace.active_master;
+        && designspace.masters.len() > 1
+    {
+        let master_infos =
+            create_master_infos(&designspace.masters);
+        let active_master = designspace.active_master;
 
-            return Either::A(master_toolbar_view(
-                master_infos,
-                active_master,
-                |state: &mut AppState, index| {
-                    // Switch to the selected master
-                    if let Some(ref mut ds) = state.designspace {
-                        ds.switch_master(index);
-                    }
-                },
-            ));
-        }
+        return Either::A(master_toolbar_view(
+            master_infos,
+            active_master,
+            |state: &mut AppState, index| {
+                if let Some(ref mut ds) = state.designspace {
+                    ds.switch_master(index);
+                }
+            },
+        ));
+    }
 
-    // No designspace or single master - return empty view
     Either::B(sized_box(label("")).width(0.px()).height(0.px()))
 }
 
 // ===== Glyph Grid View =====
 
-/// Glyph grid showing all glyphs
+/// Glyph grid showing all glyphs in a scrollable portal
 fn glyph_grid_view(
     state: &mut AppState,
 ) -> impl WidgetView<AppState> + use<> {
     let glyph_names = state.glyph_names();
-
-    // Get UPM from workspace for uniform scaling
     let upm = get_upm_from_state(state);
-
-    // Pre-compute glyph data
     let glyph_data = build_glyph_data(state, &glyph_names);
-
-    // Calculate responsive column count based on window width
     let columns = state.grid_columns();
     let selected_glyph = state.selected_glyph.clone();
 
-    // Build rows of glyph cells
     let rows_of_cells = build_glyph_rows(
         &glyph_data,
         columns,
@@ -171,20 +160,14 @@ fn glyph_grid_view(
         upm,
     );
 
-    flex_col((
-        sized_box(label("")).height(6.px()),
-        flex_row((
-            sized_box(label("")).width(6.px()),
-            portal(
-                flex_col((
-                    flex_col(rows_of_cells).gap(6.px()),
-                    // Bottom margin so last row is fully visible when scrolled
-                    sized_box(label("")).height(120.px()),
-                ))
-            ).flex(1.0),
-            sized_box(label("")).width(6.px()),
-        )),
-    ))
+    portal(
+        flex_col((
+            flex_col(rows_of_cells).gap(BENTO_GAP.px()),
+            // Bottom spacer so last row is visible when scrolled
+            sized_box(label("")).height(100.px()),
+        ))
+        .padding(BENTO_GAP / 2.0),
+    )
 }
 
 // ===== Grid Building Helpers =====
@@ -218,8 +201,8 @@ fn build_glyph_data(
         glyph_names
             .iter()
             .filter_map(|name| {
-                let data = build_single_glyph_data(&workspace, name);
-                // Apply category filter
+                let data =
+                    build_single_glyph_data(&workspace, name);
                 if matches_category(&data.2, category_filter) {
                     Some(data)
                 } else {
@@ -236,19 +219,18 @@ fn build_glyph_data(
 }
 
 /// Check if a glyph matches the category filter
-fn matches_category(codepoints: &[char], category: GlyphCategory) -> bool {
-    // All category matches everything
+fn matches_category(
+    codepoints: &[char],
+    category: GlyphCategory,
+) -> bool {
     if category == GlyphCategory::All {
         return true;
     }
-
-    // If no codepoints, put in "Other" category
     if codepoints.is_empty() {
         return category == GlyphCategory::Other;
     }
-
-    // Check if the first codepoint matches the category
-    let glyph_category = GlyphCategory::from_codepoint(codepoints[0]);
+    let glyph_category =
+        GlyphCategory::from_codepoint(codepoints[0]);
     glyph_category == category
 }
 
@@ -260,14 +242,10 @@ fn build_single_glyph_data(
     if let Some(glyph) = workspace.get_glyph(name) {
         let count = glyph.contours.len();
         let codepoints = glyph.codepoints.clone();
-        // Build path including components
-        let path = glyph_renderer::glyph_to_bezpath_with_components(glyph, workspace);
-        (
-            name.to_string(),
-            Some(path),
-            codepoints,
-            count,
-        )
+        let path = glyph_renderer::glyph_to_bezpath_with_components(
+            glyph, workspace,
+        );
+        (name.to_string(), Some(path), codepoints, count)
     } else {
         (name.to_string(), None, Vec::new(), 0)
     }
@@ -285,7 +263,7 @@ fn build_glyph_rows(
         .map(|chunk| {
             let row_items: Vec<_> = chunk
                 .iter()
-                .map(|(name, path_opt, codepoints, contour_count)| {
+                .map(|(name, path_opt, codepoints, _)| {
                     let is_selected =
                         selected_glyph.as_ref() == Some(name);
                     glyph_cell(
@@ -294,12 +272,11 @@ fn build_glyph_rows(
                         codepoints.clone(),
                         is_selected,
                         upm,
-                        *contour_count,
                     )
-                    .flex(1.0) // Each cell gets equal flex space
+                    .flex(1.0)
                 })
                 .collect();
-            flex_row(row_items).gap(6.px())
+            flex_row(row_items).gap(BENTO_GAP.px())
         })
         .collect()
 }
@@ -313,11 +290,10 @@ fn glyph_cell(
     codepoints: Vec<char>,
     is_selected: bool,
     upm: f64,
-    contour_count: usize,
 ) -> impl WidgetView<AppState> + use<> {
     let name_clone = glyph_name.clone();
     let display_name = format_display_name(&glyph_name);
-    let unicode_display = format_unicode_display(&codepoints, contour_count);
+    let unicode_display = format_unicode_display(&codepoints);
     let glyph_view_widget = build_glyph_view_widget(path_opt, upm);
     let (bg_color, border_color) = get_cell_colors(is_selected);
 
@@ -335,7 +311,7 @@ fn glyph_cell(
         .background_color(bg_color)
         .border_color(border_color),
     )
-    .height(120.px())
+    .height(100.px())
     .expand_width()
 }
 
@@ -351,11 +327,11 @@ fn format_display_name(glyph_name: &str) -> String {
 }
 
 /// Format Unicode codepoint display string
-fn format_unicode_display(codepoints: &[char], contour_count: usize) -> String {
+fn format_unicode_display(codepoints: &[char]) -> String {
     if let Some(first_char) = codepoints.first() {
-        format!("U+{:04X} {}", *first_char as u32, contour_count)
+        format!("U+{:04X}", *first_char as u32)
     } else {
-        format!("{}", contour_count)
+        String::new()
     }
 }
 
@@ -371,22 +347,22 @@ fn build_glyph_view_widget(
         Either::A(
             sized_box(
                 flex_col((
-                    sized_box(label("")).height(4.px()),
-                    glyph_view(path, 60.0, 60.0, upm)
+                    sized_box(label("")).height(2.px()),
+                    glyph_view(path, 50.0, 50.0, upm)
                         .baseline_offset(0.06),
                 )),
             )
-            .height(78.px()),
+            .height(62.px()),
         )
     } else {
         Either::B(
             sized_box(
                 flex_col((
-                    sized_box(label("")).height(4.px()),
-                    label("?").text_size(40.0),
+                    sized_box(label("")).height(2.px()),
+                    label("?").text_size(32.0),
                 )),
             )
-            .height(78.px()),
+            .height(62.px()),
         )
     }
 }
@@ -396,26 +372,18 @@ fn build_cell_labels(
     display_name: String,
     unicode_display: String,
 ) -> impl WidgetView<AppState> + use<> {
-    // Glyph name label (truncated if too long)
     let name_label = label(display_name)
-        .text_size(14.0)
+        .text_size(12.0)
         .color(theme::text::PRIMARY);
 
-    // Unicode codepoint and contour count label
     let unicode_label = label(unicode_display)
-        .text_size(14.0)
-        .color(theme::text::PRIMARY);
+        .text_size(12.0)
+        .color(theme::text::SECONDARY);
 
-    // Container for both labels with vertical spacing
     sized_box(
-        flex_col((
-            name_label,
-            unicode_label,
-            sized_box(label("")).height(12.px()), // Bottom margin
-        ))
-        .gap(2.px()),
+        flex_col((name_label, unicode_label)).gap(2.px()),
     )
-    .height(36.px()) // Increased to accommodate larger bottom margin
+    .height(32.px())
 }
 
 /// Get cell colors based on selection state
@@ -438,14 +406,17 @@ fn get_cell_colors(
 // ===== Path Helpers =====
 
 /// Shorten a path to show only the last N components with ".." prefix
-fn shorten_path(path: &std::path::Path, components: usize) -> String {
+fn shorten_path(
+    path: &std::path::Path,
+    components: usize,
+) -> String {
     let parts: Vec<_> = path.components().collect();
     if parts.len() <= components {
         return path.display().to_string();
     }
 
-    // Take the last N components
     let start = parts.len() - components;
-    let shortened: std::path::PathBuf = parts[start..].iter().collect();
+    let shortened: std::path::PathBuf =
+        parts[start..].iter().collect();
     format!("../{}", shortened.display())
 }
