@@ -72,6 +72,11 @@ pub struct AppState {
 
     /// Current window height (tracked by size_tracker)
     pub window_height: f64,
+
+    /// Cached count of glyphs matching current category filter.
+    /// Updated by `glyph_grid_view` on each rebuild so the scroll
+    /// callback can use it without re-iterating all glyphs.
+    pub cached_filtered_count: usize,
 }
 
 #[allow(dead_code)]
@@ -94,6 +99,7 @@ impl AppState {
             glyph_category_filter: GlyphCategory::All,
             grid_scroll_row: 0,
             window_height: 800.0,
+            cached_filtered_count: 0,
         }
     }
 
