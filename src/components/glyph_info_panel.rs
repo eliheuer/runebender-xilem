@@ -8,7 +8,9 @@
 use masonry::properties::types::AsUnit;
 use xilem::core::one_of::Either;
 use xilem::style::Style;
-use xilem::view::{flex_col, flex_row, label, sized_box};
+use xilem::view::{
+    flex_col, flex_row, label, sized_box, CrossAxisAlignment,
+};
 use xilem::WidgetView;
 
 use crate::data::AppState;
@@ -113,6 +115,7 @@ fn glyph_info_content(
         info_row_value(&format!("{}", contour_count)),
     ))
     .gap(2.px())
+    .cross_axis_alignment(CrossAxisAlignment::Start)
     .padding(12.0)
 }
 
@@ -128,6 +131,7 @@ fn no_selection_content() -> impl WidgetView<AppState> + use<> {
         info_row_value("No Selection"),
     ))
     .gap(2.px())
+    .cross_axis_alignment(CrossAxisAlignment::Start)
     .padding(12.0)
 }
 

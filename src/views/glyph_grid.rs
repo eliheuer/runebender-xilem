@@ -3,18 +3,35 @@
 
 //! Glyph grid view - displays all glyphs in a scrollable grid
 
-use kurbo::BezPath;
+use std::collections::HashSet;
+use std::marker::PhantomData;
+
+use kurbo::{Affine, BezPath, Rect, RoundedRect, Shape, Size};
+use masonry::accesskit::{Node, Role};
+use masonry::core::{
+    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx,
+    LayoutCtx, PaintCtx, PointerButton, PointerButtonEvent,
+    PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx,
+    StyleProperty, TextEvent, Update, UpdateCtx, Widget,
+    render_text,
+};
 use masonry::properties::types::AsUnit;
+use masonry::vello::Scene;
+use masonry::vello::peniko::{Brush, Color, Fill};
+use parley::{FontContext, FontStack, LayoutContext};
 use xilem::core::one_of::Either;
+use xilem::core::{
+    MessageContext, MessageResult, Mut, View, ViewMarker,
+};
 use xilem::style::Style;
 use xilem::view::{
-    button, flex_col, flex_row, label, sized_box, zstack,
+    flex_col, flex_row, label, sized_box, zstack,
     CrossAxisAlignment, FlexExt,
 };
-use xilem::WidgetView;
+use xilem::{Pod, ViewCtx, WidgetView};
 
 use crate::components::{
-    category_panel, create_master_infos, glyph_info_panel, glyph_view,
+    category_panel, create_master_infos, glyph_info_panel,
     grid_scroll_handler, mark_color_panel, master_toolbar_view,
     size_tracker, system_toolbar_view, GlyphCategory,
     SystemToolbarButton, CATEGORY_PANEL_WIDTH,
@@ -25,12 +42,16 @@ use crate::glyph_renderer;
 use crate::theme;
 use crate::workspace;
 
-// ===== Bento Layout Constants =====
+// ============================================================
+// Bento Layout Constants
+// ============================================================
 
 /// Uniform gap between all tiles — panels, grid cells, outer padding
 const BENTO_GAP: f64 = 6.0;
 
-// ===== Glyph Grid Tab View =====
+// ============================================================
+// Glyph Grid Tab View
+// ============================================================
 
 /// Tab 0: Glyph grid view with bento tile layout
 pub fn glyph_grid_tab(
@@ -46,16 +67,6 @@ pub fn glyph_grid_tab(
                 - BENTO_GAP * 4.0;
             state.window_height = height;
         }),
-        // Invisible: scroll wheel, arrow keys, Cmd+S handler
-        grid_scroll_handler(
-            |state: &mut AppState, delta| {
-                let count = state.filtered_glyph_count();
-                state.scroll_grid(delta, count);
-            },
-            |state: &mut AppState| {
-                state.save_workspace();
-            },
-        ),
         // Bento tile layout
         flex_col((
             // Row 1: File info stretches, toolbars fixed on right
@@ -90,7 +101,20 @@ pub fn glyph_grid_tab(
                     ),
                 ))
                 .gap(BENTO_GAP.px()),
-                glyph_grid_view(state).flex(1.0),
+                // Grid wrapped in scroll handler container
+                // (captures scroll wheel, arrow keys, Cmd+S)
+                grid_scroll_handler(
+                    glyph_grid_view(state),
+                    |state: &mut AppState, delta| {
+                        let count =
+                            state.filtered_glyph_count();
+                        state.scroll_grid(delta, count);
+                    },
+                    |state: &mut AppState| {
+                        state.save_workspace();
+                    },
+                )
+                .flex(1.0),
                 glyph_info_panel(state),
             ))
             .gap(BENTO_GAP.px())
@@ -103,7 +127,9 @@ pub fn glyph_grid_tab(
     ))
 }
 
-// ===== Toolbar Panels =====
+// ============================================================
+// Toolbar Panels
+// ============================================================
 
 /// File info panel showing the loaded file path and last save time
 fn file_info_panel(
@@ -164,7 +190,9 @@ fn master_toolbar_panel(
     Either::B(sized_box(label("")).width(0.px()).height(0.px()))
 }
 
-// ===== Mark Color Helpers =====
+// ============================================================
+// Mark Color Helpers
+// ============================================================
 
 /// Look up the selected glyph's mark color palette index
 fn current_mark_color_index(state: &AppState) -> Option<usize> {
@@ -178,7 +206,9 @@ fn current_mark_color_index(state: &AppState) -> Option<usize> {
         .and_then(|s| rgba_string_to_palette_index(s))
 }
 
-// ===== Glyph Grid View =====
+// ============================================================
+// Glyph Grid View
+// ============================================================
 
 /// Glyph grid showing only rows that fit in the visible area.
 /// Scrolling is handled by `grid_scroll_handler` which adjusts
@@ -190,13 +220,13 @@ fn glyph_grid_view(
     let upm = get_upm_from_state(state);
     let glyph_data = build_glyph_data(state, &glyph_names);
     let columns = state.grid_columns();
-    let selected_glyph = state.selected_glyph.clone();
+    let selected_glyphs = state.selected_glyphs.clone();
 
     // Virtual row slicing — only render visible rows
     let visible = state.visible_grid_rows();
     let start = state.grid_scroll_row * columns;
-    let end =
-        ((state.grid_scroll_row + visible) * columns).min(glyph_data.len());
+    let end = ((state.grid_scroll_row + visible) * columns)
+        .min(glyph_data.len());
     let visible_data = if start <= glyph_data.len() {
         &glyph_data[start..end]
     } else {
@@ -206,7 +236,7 @@ fn glyph_grid_view(
     let rows_of_cells = build_glyph_rows(
         visible_data,
         columns,
-        &selected_glyph,
+        &selected_glyphs,
         upm,
     );
 
@@ -221,7 +251,9 @@ fn glyph_grid_view(
         .cross_axis_alignment(CrossAxisAlignment::Fill)
 }
 
-// ===== Grid Building Helpers =====
+// ============================================================
+// Grid Building Helpers
+// ============================================================
 
 /// Get UPM (units per em) from workspace state
 fn get_upm_from_state(state: &AppState) -> f64 {
@@ -295,14 +327,21 @@ fn build_single_glyph_data(
     if let Some(glyph) = workspace.get_glyph(name) {
         let count = glyph.contours.len();
         let codepoints = glyph.codepoints.clone();
-        let path = glyph_renderer::glyph_to_bezpath_with_components(
-            glyph, workspace,
-        );
+        let path =
+            glyph_renderer::glyph_to_bezpath_with_components(
+                glyph, workspace,
+            );
         let mark_index = glyph
             .mark_color
             .as_ref()
             .and_then(|s| rgba_string_to_palette_index(s));
-        (name.to_string(), Some(path), codepoints, count, mark_index)
+        (
+            name.to_string(),
+            Some(path),
+            codepoints,
+            count,
+            mark_index,
+        )
     } else {
         (name.to_string(), None, Vec::new(), 0, None)
     }
@@ -320,7 +359,7 @@ fn rgba_string_to_palette_index(rgba: &str) -> Option<usize> {
 fn build_glyph_rows(
     glyph_data: &[GlyphData],
     columns: usize,
-    selected_glyph: &Option<String>,
+    selected_glyphs: &HashSet<String>,
     upm: f64,
 ) -> Vec<impl WidgetView<AppState> + use<>> {
     glyph_data
@@ -331,7 +370,7 @@ fn build_glyph_rows(
                 .map(
                     |(name, path_opt, codepoints, _, mark_color)| {
                         let is_selected =
-                            selected_glyph.as_ref() == Some(name);
+                            selected_glyphs.contains(name);
                         glyph_cell(
                             name.clone(),
                             path_opt.clone(),
@@ -351,9 +390,13 @@ fn build_glyph_rows(
         .collect()
 }
 
-// ===== Glyph Cell View =====
+// ============================================================
+// Glyph Cell (custom widget approach)
+// ============================================================
 
-/// Individual glyph cell in the grid
+/// Individual glyph cell in the grid — uses custom widget for
+/// single-click (select), double-click (open editor),
+/// and shift-click (toggle multi-select).
 fn glyph_cell(
     glyph_name: String,
     path_opt: Option<BezPath>,
@@ -362,33 +405,534 @@ fn glyph_cell(
     upm: f64,
     mark_color: Option<usize>,
 ) -> impl WidgetView<AppState> + use<> {
-    let name_clone = glyph_name.clone();
-    let display_name = format_display_name(&glyph_name);
-    let unicode_display = format_unicode_display(&codepoints);
-    let glyph_view_widget = build_glyph_view_widget(path_opt, upm);
-    let (bg_color, border_color) =
-        get_cell_colors(is_selected, mark_color);
-
-    sized_box(
-        button(
-            flex_col((
-                glyph_view_widget,
-                build_cell_labels(display_name, unicode_display),
-            )),
-            move |state: &mut AppState| {
-                state.select_glyph(name_clone.clone());
-                state.open_editor(name_clone.clone());
-            },
-        )
-        .background_color(bg_color)
-        .border_color(border_color)
-        .border_width(theme::size::TOOLBAR_BORDER_WIDTH)
-        .corner_radius(theme::size::PANEL_RADIUS),
+    glyph_cell_view(
+        glyph_name,
+        path_opt,
+        codepoints,
+        is_selected,
+        upm,
+        mark_color,
+        |state: &mut AppState, action| match action {
+            GlyphCellAction::Select(name) => {
+                state.select_glyph(name);
+            }
+            GlyphCellAction::ShiftSelect(name) => {
+                state.toggle_glyph_selection(name);
+            }
+            GlyphCellAction::Open(name) => {
+                state.select_glyph(name.clone());
+                state.open_editor(name);
+            }
+        },
     )
-    .expand_width()
 }
 
-// ===== Cell Building Helpers =====
+// ============================================================
+// GlyphCellAction
+// ============================================================
+
+/// Actions emitted by the glyph cell widget
+#[derive(Debug, Clone)]
+enum GlyphCellAction {
+    /// Single-click without shift — select this glyph only
+    Select(String),
+    /// Single-click with shift — toggle in/out of multi-select
+    ShiftSelect(String),
+    /// Double-click — open glyph in editor
+    Open(String),
+}
+
+// ============================================================
+// GlyphCellWidget (custom Masonry widget)
+// ============================================================
+
+/// Font size for cell labels
+const CELL_LABEL_SIZE: f64 = 12.0;
+/// Height reserved for the label area at the bottom of the cell
+const CELL_LABEL_HEIGHT: f64 = 32.0;
+/// Padding above the glyph preview area
+const CELL_TOP_PAD: f64 = 4.0;
+/// Horizontal text inset
+const CELL_TEXT_INSET: f64 = 6.0;
+
+/// Custom widget that renders a glyph cell and handles
+/// click, double-click, and shift-click events.
+struct GlyphCellWidget {
+    glyph_name: String,
+    path: Option<BezPath>,
+    codepoints: Vec<char>,
+    upm: f64,
+    is_selected: bool,
+    mark_color: Option<usize>,
+}
+
+impl GlyphCellWidget {
+    fn new(
+        glyph_name: String,
+        path: Option<BezPath>,
+        codepoints: Vec<char>,
+        upm: f64,
+        is_selected: bool,
+        mark_color: Option<usize>,
+    ) -> Self {
+        Self {
+            glyph_name,
+            path,
+            codepoints,
+            upm,
+            is_selected,
+            mark_color,
+        }
+    }
+
+    /// Resolve the mark color to a Color value
+    fn mark(&self) -> Option<Color> {
+        self.mark_color.map(|i| theme::mark::COLORS[i])
+    }
+
+    /// Get (background, border) colors for this cell
+    fn cell_colors(&self, is_hovered: bool) -> (Color, Color) {
+        if self.is_selected {
+            (
+                theme::grid::CELL_SELECTED_BACKGROUND,
+                theme::grid::CELL_SELECTED_OUTLINE,
+            )
+        } else if is_hovered {
+            (
+                theme::grid::CELL_BACKGROUND,
+                theme::grid::CELL_SELECTED_OUTLINE,
+            )
+        } else if let Some(color) = self.mark() {
+            (theme::grid::CELL_BACKGROUND, color)
+        } else {
+            (
+                theme::grid::CELL_BACKGROUND,
+                theme::grid::CELL_OUTLINE,
+            )
+        }
+    }
+
+    /// Paint the glyph bezpath into the preview area
+    fn paint_glyph(
+        &self,
+        scene: &mut Scene,
+        preview_rect: Rect,
+    ) {
+        let path = match &self.path {
+            Some(p) if !p.is_empty() => p,
+            _ => return,
+        };
+
+        let bounds = path.bounding_box();
+        let scale = preview_rect.height() / self.upm;
+        let scale = scale * 0.8;
+
+        // Center horizontally based on bounding box
+        let scaled_width = bounds.width() * scale;
+        let left_pad =
+            (preview_rect.width() - scaled_width) / 2.0;
+        let x_translation =
+            preview_rect.x0 + left_pad - bounds.x0 * scale;
+
+        // Baseline at ~6% from bottom of preview area
+        let baseline_offset = 0.06;
+        let baseline = preview_rect.height() * baseline_offset;
+
+        let transform = Affine::new([
+            scale,
+            0.0,
+            0.0,
+            -scale,
+            x_translation,
+            preview_rect.y1 - baseline,
+        ]);
+
+        let transformed_path = transform * path;
+        let color = self
+            .mark()
+            .unwrap_or(theme::grid::GLYPH_COLOR);
+        scene.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            &Brush::Solid(color),
+            None,
+            &transformed_path,
+        );
+    }
+
+    /// Paint the name and unicode labels
+    fn paint_labels(
+        &self,
+        scene: &mut Scene,
+        label_rect: Rect,
+    ) {
+        let text_color =
+            self.mark().unwrap_or(theme::text::PRIMARY);
+
+        let display_name = format_display_name(&self.glyph_name);
+        let unicode_display =
+            format_unicode_display(&self.codepoints);
+
+        let mut font_cx = FontContext::default();
+        let mut layout_cx = LayoutContext::new();
+
+        // Name label
+        let mut builder = layout_cx.ranged_builder(
+            &mut font_cx,
+            &display_name,
+            1.0,
+            false,
+        );
+        builder.push_default(StyleProperty::FontSize(
+            CELL_LABEL_SIZE as f32,
+        ));
+        builder.push_default(StyleProperty::FontStack(
+            FontStack::Single(parley::FontFamily::Generic(
+                parley::GenericFamily::SansSerif,
+            )),
+        ));
+        builder
+            .push_default(StyleProperty::Brush(BrushIndex(0)));
+        let mut name_layout = builder.build(&display_name);
+        name_layout.break_all_lines(None);
+
+        let brushes = vec![Brush::Solid(text_color)];
+        let name_y = label_rect.y0 + 2.0;
+        render_text(
+            scene,
+            Affine::translate((
+                label_rect.x0 + CELL_TEXT_INSET,
+                name_y,
+            )),
+            &name_layout,
+            &brushes,
+            false,
+        );
+
+        // Unicode label
+        if !unicode_display.is_empty() {
+            let mut builder = layout_cx.ranged_builder(
+                &mut font_cx,
+                &unicode_display,
+                1.0,
+                false,
+            );
+            builder.push_default(StyleProperty::FontSize(
+                CELL_LABEL_SIZE as f32,
+            ));
+            builder.push_default(StyleProperty::FontStack(
+                FontStack::Single(parley::FontFamily::Generic(
+                    parley::GenericFamily::SansSerif,
+                )),
+            ));
+            builder.push_default(StyleProperty::Brush(
+                BrushIndex(0),
+            ));
+            let mut uni_layout =
+                builder.build(&unicode_display);
+            uni_layout.break_all_lines(None);
+
+            let uni_y = name_y + CELL_LABEL_SIZE + 2.0;
+            render_text(
+                scene,
+                Affine::translate((
+                    label_rect.x0 + CELL_TEXT_INSET,
+                    uni_y,
+                )),
+                &uni_layout,
+                &brushes,
+                false,
+            );
+        }
+    }
+}
+
+impl Widget for GlyphCellWidget {
+    type Action = GlyphCellAction;
+
+    fn register_children(
+        &mut self,
+        _ctx: &mut RegisterCtx<'_>,
+    ) {
+    }
+
+    fn update(
+        &mut self,
+        ctx: &mut UpdateCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &Update,
+    ) {
+        if matches!(event, Update::HoveredChanged(_)) {
+            ctx.request_render();
+        }
+    }
+
+    fn layout(
+        &mut self,
+        _ctx: &mut LayoutCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        bc: &BoxConstraints,
+    ) -> Size {
+        // Fill available space from flex layout
+        bc.max()
+    }
+
+    fn paint(
+        &mut self,
+        ctx: &mut PaintCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        scene: &mut Scene,
+    ) {
+        let size = ctx.size();
+        let (bg_color, border_color) =
+            self.cell_colors(ctx.is_hovered());
+
+        // Panel background and border
+        let panel_rect = RoundedRect::from_rect(
+            Rect::from_origin_size(kurbo::Point::ZERO, size),
+            theme::size::PANEL_RADIUS,
+        );
+        scene.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            &Brush::Solid(bg_color),
+            None,
+            &panel_rect,
+        );
+        scene.stroke(
+            &kurbo::Stroke::new(
+                theme::size::TOOLBAR_BORDER_WIDTH,
+            ),
+            Affine::IDENTITY,
+            &Brush::Solid(border_color),
+            None,
+            &panel_rect,
+        );
+
+        // Glyph preview area (above labels)
+        let preview_height =
+            (size.height - CELL_LABEL_HEIGHT).max(0.0);
+        let preview_rect = Rect::new(
+            0.0,
+            CELL_TOP_PAD,
+            size.width,
+            CELL_TOP_PAD + preview_height - CELL_TOP_PAD,
+        );
+        self.paint_glyph(scene, preview_rect);
+
+        // Label area (bottom of cell)
+        let label_rect = Rect::new(
+            0.0,
+            preview_height,
+            size.width,
+            size.height,
+        );
+        self.paint_labels(scene, label_rect);
+    }
+
+    fn accessibility_role(&self) -> Role {
+        Role::Button
+    }
+
+    fn accessibility(
+        &mut self,
+        _ctx: &mut AccessCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        _node: &mut Node,
+    ) {
+    }
+
+    fn children_ids(&self) -> ChildrenIds {
+        ChildrenIds::new()
+    }
+
+    fn on_pointer_event(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &PointerEvent,
+    ) {
+        match event {
+            PointerEvent::Down(PointerButtonEvent {
+                button: Some(PointerButton::Primary),
+                state,
+                ..
+            }) => {
+                let name = self.glyph_name.clone();
+                if state.count >= 2 {
+                    ctx.submit_action::<GlyphCellAction>(
+                        GlyphCellAction::Open(name),
+                    );
+                } else if state.modifiers.shift() {
+                    ctx.submit_action::<GlyphCellAction>(
+                        GlyphCellAction::ShiftSelect(name),
+                    );
+                } else {
+                    ctx.submit_action::<GlyphCellAction>(
+                        GlyphCellAction::Select(name),
+                    );
+                }
+                // Don't set_handled — let Down bubble to the
+                // GridScrollWidget container so it grabs focus
+                // for arrow key scrolling.
+            }
+            _ => {}
+        }
+    }
+
+    fn on_text_event(
+        &mut self,
+        _ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        _event: &TextEvent,
+    ) {
+    }
+}
+
+// ============================================================
+// GlyphCellView (Xilem View wrapper)
+// ============================================================
+
+type GlyphCellCallback<State> =
+    Box<dyn Fn(&mut State, GlyphCellAction) + Send + Sync>;
+
+fn glyph_cell_view<State, Action>(
+    glyph_name: String,
+    path: Option<BezPath>,
+    codepoints: Vec<char>,
+    is_selected: bool,
+    upm: f64,
+    mark_color: Option<usize>,
+    callback: impl Fn(&mut State, GlyphCellAction)
+        + Send
+        + Sync
+        + 'static,
+) -> GlyphCellView<State, Action>
+where
+    State: 'static,
+    Action: 'static,
+{
+    GlyphCellView {
+        glyph_name,
+        path,
+        codepoints,
+        is_selected,
+        upm,
+        mark_color,
+        callback: Box::new(callback),
+        phantom: PhantomData,
+    }
+}
+
+#[must_use = "View values do nothing unless provided to Xilem."]
+struct GlyphCellView<State, Action = ()> {
+    glyph_name: String,
+    path: Option<BezPath>,
+    codepoints: Vec<char>,
+    is_selected: bool,
+    upm: f64,
+    mark_color: Option<usize>,
+    callback: GlyphCellCallback<State>,
+    phantom: PhantomData<fn() -> (State, Action)>,
+}
+
+impl<State, Action> ViewMarker
+    for GlyphCellView<State, Action>
+{
+}
+
+impl<State: 'static, Action: 'static + Default>
+    View<State, Action, ViewCtx>
+    for GlyphCellView<State, Action>
+{
+    type Element = Pod<GlyphCellWidget>;
+    type ViewState = ();
+
+    fn build(
+        &self,
+        ctx: &mut ViewCtx,
+        _app_state: &mut State,
+    ) -> (Self::Element, Self::ViewState) {
+        let widget = GlyphCellWidget::new(
+            self.glyph_name.clone(),
+            self.path.clone(),
+            self.codepoints.clone(),
+            self.upm,
+            self.is_selected,
+            self.mark_color,
+        );
+        let pod = ctx.create_pod(widget);
+        ctx.record_action(pod.new_widget.id());
+        (pod, ())
+    }
+
+    fn rebuild(
+        &self,
+        prev: &Self,
+        _view_state: &mut Self::ViewState,
+        _ctx: &mut ViewCtx,
+        mut element: Mut<'_, Self::Element>,
+        _app_state: &mut State,
+    ) {
+        let mut changed = false;
+        let w = &mut element.widget;
+        if w.is_selected != self.is_selected {
+            w.is_selected = self.is_selected;
+            changed = true;
+        }
+        if w.glyph_name != self.glyph_name {
+            w.glyph_name = self.glyph_name.clone();
+            changed = true;
+        }
+        if self.path != prev.path {
+            w.path = self.path.clone();
+            changed = true;
+        }
+        if self.codepoints != prev.codepoints {
+            w.codepoints = self.codepoints.clone();
+            changed = true;
+        }
+        if self.upm != prev.upm {
+            w.upm = self.upm;
+            changed = true;
+        }
+        if self.mark_color != prev.mark_color {
+            w.mark_color = self.mark_color;
+            changed = true;
+        }
+        if changed {
+            element.ctx.request_render();
+        }
+    }
+
+    fn teardown(
+        &self,
+        _view_state: &mut Self::ViewState,
+        _ctx: &mut ViewCtx,
+        _element: Mut<'_, Self::Element>,
+    ) {
+    }
+
+    fn message(
+        &self,
+        _view_state: &mut Self::ViewState,
+        message: &mut MessageContext,
+        _element: Mut<'_, Self::Element>,
+        app_state: &mut State,
+    ) -> MessageResult<Action> {
+        match message.take_message::<GlyphCellAction>() {
+            Some(action) => {
+                (self.callback)(app_state, *action);
+                MessageResult::Action(Action::default())
+            }
+            None => MessageResult::Stale,
+        }
+    }
+}
+
+// ============================================================
+// Cell Formatting Helpers
+// ============================================================
 
 /// Format display name with truncation if too long
 fn format_display_name(glyph_name: &str) -> String {
@@ -408,97 +952,9 @@ fn format_unicode_display(codepoints: &[char]) -> String {
     }
 }
 
-/// Build the glyph view widget (either glyph preview or placeholder)
-fn build_glyph_view_widget(
-    path_opt: Option<BezPath>,
-    upm: f64,
-) -> Either<
-    impl WidgetView<AppState> + use<>,
-    impl WidgetView<AppState> + use<>,
-> {
-    if let Some(path) = path_opt {
-        Either::A(
-            sized_box(
-                flex_col((
-                    sized_box(label("")).height(2.px()),
-                    glyph_view(path, 50.0, 50.0, upm)
-                        .baseline_offset(0.06),
-                )),
-            )
-            .height(62.px()),
-        )
-    } else {
-        Either::B(
-            sized_box(
-                flex_col((
-                    sized_box(label("")).height(2.px()),
-                    label("?").text_size(32.0),
-                )),
-            )
-            .height(62.px()),
-        )
-    }
-}
-
-/// Build the cell labels (name and Unicode)
-fn build_cell_labels(
-    display_name: String,
-    unicode_display: String,
-) -> impl WidgetView<AppState> + use<> {
-    let name_label = label(display_name)
-        .text_size(12.0)
-        .color(theme::text::PRIMARY);
-
-    let unicode_label = label(unicode_display)
-        .text_size(12.0)
-        .color(theme::text::SECONDARY);
-
-    sized_box(
-        flex_col((name_label, unicode_label)).gap(2.px()),
-    )
-    .height(32.px())
-}
-
-/// Get cell colors based on selection state and mark color
-fn get_cell_colors(
-    is_selected: bool,
-    mark_color: Option<usize>,
-) -> (
-    masonry::vello::peniko::Color,
-    masonry::vello::peniko::Color,
-) {
-    if is_selected {
-        (
-            theme::grid::CELL_SELECTED_BACKGROUND,
-            theme::grid::CELL_SELECTED_OUTLINE,
-        )
-    } else if let Some(index) = mark_color {
-        // Blend mark color at low alpha with cell background
-        let mark = theme::mark::COLORS[index];
-        let bg = blend_mark_color(mark, 0.15);
-        (bg, theme::grid::CELL_OUTLINE)
-    } else {
-        (theme::grid::CELL_BACKGROUND, theme::grid::CELL_OUTLINE)
-    }
-}
-
-/// Blend a mark color with the cell background at the given alpha
-fn blend_mark_color(
-    mark: masonry::vello::peniko::Color,
-    alpha: f64,
-) -> masonry::vello::peniko::Color {
-    let bg_rgba = theme::grid::CELL_BACKGROUND.to_rgba8();
-    let mk_rgba = mark.to_rgba8();
-    let r = (bg_rgba.r as f64 * (1.0 - alpha)
-        + mk_rgba.r as f64 * alpha) as u8;
-    let g = (bg_rgba.g as f64 * (1.0 - alpha)
-        + mk_rgba.g as f64 * alpha) as u8;
-    let b = (bg_rgba.b as f64 * (1.0 - alpha)
-        + mk_rgba.b as f64 * alpha) as u8;
-    masonry::vello::peniko::Color::from_rgb8(r, g, b)
-}
-
-// ===== Path Helpers =====
+// ============================================================
+// Path Helpers
+// ============================================================
 
 /// Shorten a path to show only the last N components with ".." prefix
 fn shorten_path(
