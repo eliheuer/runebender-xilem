@@ -31,7 +31,7 @@ const BASE_O: Color = Color::from_rgb8(0xf0, 0xf0, 0xf0);
 // ============================================================================
 // GLOBAL BACKGROUNDS -- Used for welcome screen, grid view, editor canvas, etc
 // ============================================================================
-const APP_BACKGROUND: Color = BASE_B;
+const APP_BACKGROUND: Color = BASE_A;
 
 // ============================================================================
 // UI TEXT AND LABELS
@@ -47,7 +47,7 @@ const GLYPH_PREVIEW_COLOR: Color = BASE_J;
 // ============================================================================
 // UI PANELS (Toolbar, Coordinate Panel, Glyph Preview)
 // ============================================================================
-const PANEL_BACKGROUND: Color = Color::from_rgb8(0x28, 0x28, 0x28);
+const PANEL_BACKGROUND: Color = Color::from_rgb8(0x1C, 0x1C, 0x1C);
 const PANEL_OUTLINE: Color = BASE_F;
 const PANEL_LINE: Color = BASE_I;
 
@@ -150,6 +150,7 @@ const MARK_PURPLE: Color = Color::from_rgb8(0x99, 0x55, 0xDD);
 const MARK_PINK: Color = Color::from_rgb8(0xDD, 0x55, 0xAA);
 const MARK_BROWN: Color = Color::from_rgb8(0xAA, 0x77, 0x44);
 const MARK_GRAY: Color = Color::from_rgb8(0x88, 0x88, 0x88);
+const MARK_LIGHT_GRAY: Color = Color::from_rgb8(0xBB, 0xBB, 0xBB);
 
 // ============================================================================
 // PUBLIC API - Don't edit below this line unless you know what you're doing
@@ -334,8 +335,8 @@ pub mod selection {
 pub mod mark {
     use super::Color;
 
-    /// 12 preset mark colors (matching Glyphs.app palette order)
-    pub const COLORS: [Color; 12] = [
+    /// 13 preset mark colors (matching Glyphs.app palette + light gray)
+    pub const COLORS: [Color; 13] = [
         super::MARK_RED,
         super::MARK_ORANGE,
         super::MARK_YELLOW,
@@ -348,11 +349,12 @@ pub mod mark {
         super::MARK_PINK,
         super::MARK_BROWN,
         super::MARK_GRAY,
+        super::MARK_LIGHT_GRAY,
     ];
 
     /// RGBA strings for UFO storage (matching COLORS array order)
     /// Format: "R,G,B,A" with 0–1 floats
-    pub const RGBA_STRINGS: [&str; 12] = [
+    pub const RGBA_STRINGS: [&str; 13] = [
         "1,0.251,0.251,1",
         "1,0.6,0.2,1",
         "1,0.867,0.2,1",
@@ -365,10 +367,11 @@ pub mod mark {
         "0.867,0.333,0.667,1",
         "0.667,0.467,0.267,1",
         "0.533,0.533,0.533,1",
+        "0.733,0.733,0.733,1",
     ];
 
     /// Number of colors in the palette
-    pub const COUNT: usize = 12;
+    pub const COUNT: usize = 13;
 }
 
 /// Tool preview styles (for consistent visual feedback across tools)

@@ -1,22 +1,26 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Grid scroll handler — handles scroll wheel, arrow keys, and Cmd+S
-//! for the virtual glyph grid.
+//! Grid scroll handler — container widget that wraps the glyph
+//! grid and handles scroll wheel, arrow keys, and Cmd+S.
+//!
+//! Events bubble up from child glyph cell widgets to this
+//! container, which holds keyboard focus for arrow key scrolling.
 
+use kurbo::{Point, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
     AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
-    PaintCtx, PointerEvent, PropertiesMut, PropertiesRef,
-    RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
+    NewWidget, PaintCtx, PointerEvent, PropertiesMut,
+    PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx,
+    Widget, WidgetMut, WidgetPod,
 };
 use masonry::vello::Scene;
-use kurbo::Size;
 use std::marker::PhantomData;
 use xilem::core::{
     MessageContext, MessageResult, Mut, View, ViewMarker,
 };
-use xilem::{Pod, ViewCtx};
+use xilem::{Pod, ViewCtx, WidgetView};
 
 // ============================================================
 // Action
@@ -35,22 +39,39 @@ pub enum GridScrollAction {
 // Widget
 // ============================================================
 
-/// Invisible widget that captures scroll wheel, arrow keys, and
-/// Cmd+S for the glyph grid.
+/// Container widget that wraps the glyph grid and captures
+/// scroll wheel, arrow keys, and Cmd+S. Events bubble up from
+/// child widgets (glyph cells) to this container.
 pub struct GridScrollWidget {
-    size: Size,
+    child: WidgetPod<dyn Widget>,
 }
 
 impl GridScrollWidget {
-    pub fn new() -> Self {
-        Self { size: Size::ZERO }
+    pub fn new(
+        child: NewWidget<impl Widget + ?Sized>,
+    ) -> Self {
+        Self {
+            child: child.erased().to_pod(),
+        }
+    }
+
+    /// Get mutable access to the child widget
+    pub fn child_mut<'t>(
+        this: &'t mut WidgetMut<'_, Self>,
+    ) -> WidgetMut<'t, dyn Widget> {
+        this.ctx.get_mut(&mut this.widget.child)
     }
 }
 
 impl Widget for GridScrollWidget {
     type Action = GridScrollAction;
 
-    fn register_children(&mut self, _ctx: &mut RegisterCtx<'_>) {}
+    fn register_children(
+        &mut self,
+        ctx: &mut RegisterCtx<'_>,
+    ) {
+        ctx.register_child(&mut self.child);
+    }
 
     fn update(
         &mut self,
@@ -62,12 +83,13 @@ impl Widget for GridScrollWidget {
 
     fn layout(
         &mut self,
-        _ctx: &mut LayoutCtx<'_>,
+        ctx: &mut LayoutCtx<'_>,
         _props: &mut PropertiesMut<'_>,
         bc: &BoxConstraints,
     ) -> Size {
-        self.size = bc.max();
-        self.size
+        let size = ctx.run_layout(&mut self.child, bc);
+        ctx.place_child(&mut self.child, Point::ORIGIN);
+        size
     }
 
     fn paint(
@@ -76,7 +98,7 @@ impl Widget for GridScrollWidget {
         _props: &PropertiesRef<'_>,
         _scene: &mut Scene,
     ) {
-        // Invisible
+        // Transparent — child painting is automatic
     }
 
     fn accessibility_role(&self) -> Role {
@@ -92,7 +114,11 @@ impl Widget for GridScrollWidget {
     }
 
     fn children_ids(&self) -> ChildrenIds {
-        ChildrenIds::new()
+        ChildrenIds::from_slice(&[self.child.id()])
+    }
+
+    fn accepts_focus(&self) -> bool {
+        true
     }
 
     fn on_pointer_event(
@@ -102,20 +128,22 @@ impl Widget for GridScrollWidget {
         event: &PointerEvent,
     ) {
         match event {
-            PointerEvent::Down(_) | PointerEvent::Move(_) => {
+            // Grab focus when user clicks in the grid area
+            // (bubbles from cells that don't set_handled on Down)
+            PointerEvent::Down(_) => {
                 ctx.request_focus();
             }
             PointerEvent::Scroll(scroll_event) => {
+                ctx.request_focus();
                 // Convert scroll delta to row count.
-                // LineDelta: each tick is one row.
-                // PixelDelta: divide by threshold.
                 let rows = match &scroll_event.delta {
-                    masonry::core::ScrollDelta::LineDelta(_, y) => {
-                        -(*y as i32)
-                    }
-                    masonry::core::ScrollDelta::PixelDelta(pos) => {
-                        -(pos.y / 40.0) as i32
-                    }
+                    masonry::core::ScrollDelta::LineDelta(
+                        _,
+                        y,
+                    ) => -(*y as i32),
+                    masonry::core::ScrollDelta::PixelDelta(
+                        pos,
+                    ) => -(pos.y / 40.0) as i32,
                     _ => 0,
                 };
                 if rows != 0 {
@@ -185,19 +213,25 @@ impl Widget for GridScrollWidget {
 // Xilem View wrapper
 // ============================================================
 
-/// Create a grid scroll handler view.
+/// Create a grid scroll handler that wraps a child view.
+///
+/// The container captures scroll events, arrow keys, and Cmd+S
+/// while delegating pointer/click events to child widgets.
 ///
 /// `on_scroll` receives the row delta (positive = down).
 /// `on_save` is called when Cmd+S is pressed.
-pub fn grid_scroll_handler<State, Action>(
+pub fn grid_scroll_handler<State, Action, V>(
+    inner: V,
     on_scroll: impl Fn(&mut State, i32) + Send + Sync + 'static,
     on_save: impl Fn(&mut State) + Send + Sync + 'static,
-) -> GridScrollHandlerView<State, Action>
+) -> GridScrollHandlerView<V, State, Action>
 where
     State: 'static,
     Action: 'static,
+    V: WidgetView<State, Action>,
 {
     GridScrollHandlerView {
+        inner,
         on_scroll: Box::new(on_scroll),
         on_save: Box::new(on_save),
         phantom: PhantomData,
@@ -208,72 +242,107 @@ type ScrollCb<S> = Box<dyn Fn(&mut S, i32) + Send + Sync>;
 type SaveCb<S> = Box<dyn Fn(&mut S) + Send + Sync>;
 
 #[must_use = "View values do nothing unless provided to Xilem."]
-pub struct GridScrollHandlerView<State, Action = ()> {
+pub struct GridScrollHandlerView<V, State, Action = ()> {
+    inner: V,
     on_scroll: ScrollCb<State>,
     on_save: SaveCb<State>,
     phantom: PhantomData<fn() -> (State, Action)>,
 }
 
-impl<State, Action> ViewMarker
-    for GridScrollHandlerView<State, Action>
+impl<V, State, Action> ViewMarker
+    for GridScrollHandlerView<V, State, Action>
 {
 }
 
-impl<State: 'static, Action: 'static + Default>
+impl<V, State: 'static, Action: 'static + Default>
     View<State, Action, ViewCtx>
-    for GridScrollHandlerView<State, Action>
+    for GridScrollHandlerView<V, State, Action>
+where
+    V: WidgetView<State, Action>,
 {
     type Element = Pod<GridScrollWidget>;
-    type ViewState = ();
+    type ViewState = V::ViewState;
 
     fn build(
         &self,
         ctx: &mut ViewCtx,
-        _app_state: &mut State,
+        app_state: &mut State,
     ) -> (Self::Element, Self::ViewState) {
-        let widget = GridScrollWidget::new();
+        let (child, child_state) =
+            self.inner.build(ctx, app_state);
+        let widget =
+            GridScrollWidget::new(child.new_widget);
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());
-        (pod, ())
+        (pod, child_state)
     }
 
     fn rebuild(
         &self,
-        _prev: &Self,
-        _view_state: &mut Self::ViewState,
-        _ctx: &mut ViewCtx,
-        _element: Mut<'_, Self::Element>,
-        _app_state: &mut State,
+        prev: &Self,
+        view_state: &mut Self::ViewState,
+        ctx: &mut ViewCtx,
+        mut element: Mut<'_, Self::Element>,
+        app_state: &mut State,
     ) {
+        let mut child =
+            GridScrollWidget::child_mut(&mut element);
+        self.inner.rebuild(
+            &prev.inner,
+            view_state,
+            ctx,
+            child.downcast(),
+            app_state,
+        );
     }
 
     fn teardown(
         &self,
-        _view_state: &mut Self::ViewState,
-        _ctx: &mut ViewCtx,
-        _element: Mut<'_, Self::Element>,
+        view_state: &mut Self::ViewState,
+        ctx: &mut ViewCtx,
+        mut element: Mut<'_, Self::Element>,
     ) {
+        let mut child =
+            GridScrollWidget::child_mut(&mut element);
+        self.inner
+            .teardown(view_state, ctx, child.downcast());
     }
 
     fn message(
         &self,
-        _view_state: &mut Self::ViewState,
+        view_state: &mut Self::ViewState,
         message: &mut MessageContext,
-        _element: Mut<'_, Self::Element>,
+        mut element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<Action> {
-        match message.take_message::<GridScrollAction>() {
-            Some(action) => match *action {
+        // Handle container's own actions (scroll, save)
+        if let Some(action) =
+            message.take_message::<GridScrollAction>()
+        {
+            match *action {
                 GridScrollAction::Scroll(delta) => {
                     (self.on_scroll)(app_state, delta);
-                    MessageResult::Action(Action::default())
+                    return MessageResult::Action(
+                        Action::default(),
+                    );
                 }
                 GridScrollAction::Save => {
                     (self.on_save)(app_state);
-                    MessageResult::Action(Action::default())
+                    return MessageResult::Action(
+                        Action::default(),
+                    );
                 }
-            },
-            None => MessageResult::Stale,
+            }
         }
+
+        // Delegate to child for cell actions
+        let mut child =
+            GridScrollWidget::child_mut(&mut element);
+        self.inner.message(
+            view_state,
+            message,
+            child.downcast(),
+            app_state,
+        )
     }
 }

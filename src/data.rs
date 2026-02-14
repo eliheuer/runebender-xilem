@@ -8,6 +8,7 @@ use crate::designspace::{is_designspace_file, DesignspaceProject};
 use crate::edit_session::EditSession;
 use crate::theme;
 use crate::workspace::Workspace;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use chrono::Local;
@@ -37,6 +38,9 @@ pub struct AppState {
 
     /// Currently selected glyph name (for showing in grid)
     pub selected_glyph: Option<String>,
+
+    /// All currently selected glyph names (for multi-select)
+    pub selected_glyphs: HashSet<String>,
 
     /// Current editor session (when Editor tab is active)
     pub editor_session: Option<EditSession>,
@@ -80,6 +84,7 @@ impl AppState {
             welcome_session: None,
             error_message: None,
             selected_glyph: None,
+            selected_glyphs: HashSet::new(),
             editor_session: None,
             active_tab: Tab::GlyphGrid,
             running: true,
@@ -214,9 +219,23 @@ impl AppState {
             .map(|w| w.read().unwrap().glyph_count())
     }
 
-    /// Select a glyph by name
+    /// Select a glyph by name (clears multi-selection)
     pub fn select_glyph(&mut self, name: String) {
+        self.selected_glyphs.clear();
+        self.selected_glyphs.insert(name.clone());
         self.selected_glyph = Some(name);
+    }
+
+    /// Toggle a glyph in/out of multi-selection (shift-click)
+    pub fn toggle_glyph_selection(&mut self, name: String) {
+        if self.selected_glyphs.contains(&name) {
+            self.selected_glyphs.remove(&name);
+            self.selected_glyph =
+                self.selected_glyphs.iter().next().cloned();
+        } else {
+            self.selected_glyphs.insert(name.clone());
+            self.selected_glyph = Some(name);
+        }
     }
 
     /// Get all glyph names
@@ -835,7 +854,7 @@ impl AppState {
             .insert(curr_name, kern_value);
     }
 
-    /// Set the selected glyph's mark color by palette index
+    /// Set mark color for all selected glyphs by palette index
     ///
     /// Pass `None` to clear the mark color, or `Some(index)` where
     /// index is 0–11 corresponding to `theme::mark::COLORS`.
@@ -843,19 +862,22 @@ impl AppState {
         &mut self,
         color_index: Option<usize>,
     ) {
-        let glyph_name = match self.selected_glyph.clone() {
-            Some(name) => name,
-            None => return,
-        };
+        if self.selected_glyphs.is_empty() {
+            return;
+        }
         let workspace_arc = match self.active_workspace() {
             Some(w) => w,
             None => return,
         };
+        let names: Vec<String> =
+            self.selected_glyphs.iter().cloned().collect();
         let mut workspace = workspace_arc.write().unwrap();
-        if let Some(glyph) = workspace.get_glyph_mut(&glyph_name)
-        {
-            glyph.mark_color = color_index
-                .map(|i| theme::mark::RGBA_STRINGS[i].to_string());
+        for name in &names {
+            if let Some(glyph) = workspace.get_glyph_mut(name) {
+                glyph.mark_color = color_index.map(|i| {
+                    theme::mark::RGBA_STRINGS[i].to_string()
+                });
+            }
         }
     }
 
