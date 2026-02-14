@@ -27,6 +27,7 @@ pub struct SizeChanged {
 pub struct SizeTrackerWidget {
     size: Size,
     last_reported_width: f64,
+    last_reported_height: f64,
 }
 
 impl SizeTrackerWidget {
@@ -34,6 +35,7 @@ impl SizeTrackerWidget {
         Self {
             size: Size::ZERO,
             last_reported_width: 0.0,
+            last_reported_height: 0.0,
         }
     }
 }
@@ -62,9 +64,14 @@ impl Widget for SizeTrackerWidget {
         // Take full size
         self.size = bc.max();
 
-        // Report size change if width changed significantly (more than 1px)
-        if (self.size.width - self.last_reported_width).abs() > 1.0 {
+        // Report size change if width or height changed significantly
+        let width_changed =
+            (self.size.width - self.last_reported_width).abs() > 1.0;
+        let height_changed =
+            (self.size.height - self.last_reported_height).abs() > 1.0;
+        if width_changed || height_changed {
             self.last_reported_width = self.size.width;
+            self.last_reported_height = self.size.height;
             ctx.submit_action::<SizeChanged>(SizeChanged {
                 width: self.size.width,
                 height: self.size.height,
@@ -121,8 +128,10 @@ impl Widget for SizeTrackerWidget {
 // --- Xilem View Wrapper ---
 
 /// Public API to create a size tracker view
+///
+/// Callback receives `(state, width, height)`.
 pub fn size_tracker<State, Action>(
-    on_size_change: impl Fn(&mut State, f64) + Send + Sync + 'static,
+    on_size_change: impl Fn(&mut State, f64, f64) + Send + Sync + 'static,
 ) -> SizeTrackerView<State, Action>
 where
     State: 'static,
@@ -134,7 +143,8 @@ where
     }
 }
 
-type SizeCallback<State> = Box<dyn Fn(&mut State, f64) + Send + Sync>;
+type SizeCallback<State> =
+    Box<dyn Fn(&mut State, f64, f64) + Send + Sync>;
 
 /// The Xilem View for SizeTrackerWidget
 #[must_use = "View values do nothing unless provided to Xilem."]
@@ -189,8 +199,10 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
         app_state: &mut State,
     ) -> MessageResult<Action> {
         match message.take_message::<SizeChanged>() {
-            Some(size_changed) => {
-                (self.on_size_change)(app_state, size_changed.width);
+            Some(sc) => {
+                (self.on_size_change)(
+                    app_state, sc.width, sc.height,
+                );
                 MessageResult::Action(Action::default())
             }
             None => MessageResult::Stale,

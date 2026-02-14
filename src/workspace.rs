@@ -29,6 +29,9 @@ pub struct Glyph {
     pub left_group: Option<String>,
     /// Right kerning group (e.g., "public.kern2.O")
     pub right_group: Option<String>,
+    /// Mark color (UFO public.markColor), stored as "R,G,B,A"
+    /// with 0–1 floats
+    pub mark_color: Option<String>,
 }
 
 /// A contour is a closed path
@@ -326,6 +329,11 @@ impl Workspace {
             .and_then(|v| v.as_string())
             .map(|s| s.to_string());
 
+        // Extract mark color from lib data
+        let mark_color = norad_glyph.lib.get("public.markColor")
+            .and_then(|v| v.as_string())
+            .map(|s| s.to_string());
+
         Glyph {
             name,
             width,
@@ -335,6 +343,7 @@ impl Workspace {
             components,
             left_group,
             right_group,
+            mark_color,
         }
     }
 
@@ -439,6 +448,14 @@ impl Workspace {
         self.glyphs.get(name)
     }
 
+    /// Get a mutable reference to a glyph by name
+    pub fn get_glyph_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut Glyph> {
+        self.glyphs.get_mut(name)
+    }
+
     /// Update a glyph in the workspace
     pub fn update_glyph(&mut self, glyph_name: &str, glyph: Glyph) {
         self.glyphs.insert(glyph_name.to_string(), glyph);
@@ -538,6 +555,14 @@ impl Workspace {
             norad_glyph.lib.insert(
                 "public.kern2".to_string(),
                 right_group.clone().into()
+            );
+        }
+
+        // Save mark color to lib data
+        if let Some(mark_color) = &glyph.mark_color {
+            norad_glyph.lib.insert(
+                "public.markColor".to_string(),
+                mark_color.clone().into(),
             );
         }
 
