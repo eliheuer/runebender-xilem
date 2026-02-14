@@ -47,7 +47,7 @@ const GLYPH_PREVIEW_COLOR: Color = BASE_J;
 // ============================================================================
 // UI PANELS (Toolbar, Coordinate Panel, Glyph Preview)
 // ============================================================================
-const PANEL_BACKGROUND: Color = BASE_C;
+const PANEL_BACKGROUND: Color = Color::from_rgb8(0x28, 0x28, 0x28);
 const PANEL_OUTLINE: Color = BASE_F;
 const PANEL_LINE: Color = BASE_I;
 
@@ -71,7 +71,7 @@ const TOOLBAR_ICON_SELECTED: Color = BASE_B;
 // GLYPH GRID VIEW
 // ============================================================================
 // Grid cell backgrounds
-const GRID_CELL_BACKGROUND: Color = BASE_C;
+const GRID_CELL_BACKGROUND: Color = PANEL_BACKGROUND;
 const GRID_CELL_OUTLINE: Color = BASE_F;
 const GRID_CELL_SELECTED_BACKGROUND: Color = Color::from_rgb8(0x14, 0x64, 0x14);
 const GRID_CELL_SELECTED_OUTLINE: Color = Color::from_rgb8(0x90, 0xee, 0x90);
@@ -134,6 +134,22 @@ const SELECTED_POINT_OUTER: Color = Color::from_rgb8(0xff, 0xaa, 0x33);
 // ============================================================================
 const SELECTION_RECT_FILL: Color = Color::from_rgba8(0xff, 0xaa, 0x33, 0x20);
 const SELECTION_RECT_STROKE: Color = Color::from_rgb8(0xff, 0xaa, 0x33);
+
+// ============================================================================
+// MARK COLORS (glyph workflow markers, Glyphs.app-style palette)
+// ============================================================================
+const MARK_RED: Color = Color::from_rgb8(0xFF, 0x40, 0x40);
+const MARK_ORANGE: Color = Color::from_rgb8(0xFF, 0x99, 0x33);
+const MARK_YELLOW: Color = Color::from_rgb8(0xFF, 0xDD, 0x33);
+const MARK_LIGHT_GREEN: Color = Color::from_rgb8(0x88, 0xDD, 0x44);
+const MARK_GREEN: Color = Color::from_rgb8(0x44, 0xBB, 0x44);
+const MARK_TEAL: Color = Color::from_rgb8(0x44, 0xBB, 0xAA);
+const MARK_LIGHT_BLUE: Color = Color::from_rgb8(0x44, 0x99, 0xDD);
+const MARK_BLUE: Color = Color::from_rgb8(0x44, 0x66, 0xEE);
+const MARK_PURPLE: Color = Color::from_rgb8(0x99, 0x55, 0xDD);
+const MARK_PINK: Color = Color::from_rgb8(0xDD, 0x55, 0xAA);
+const MARK_BROWN: Color = Color::from_rgb8(0xAA, 0x77, 0x44);
+const MARK_GRAY: Color = Color::from_rgb8(0x88, 0x88, 0x88);
 
 // ============================================================================
 // PUBLIC API - Don't edit below this line unless you know what you're doing
@@ -314,6 +330,47 @@ pub mod selection {
     pub const RECT_STROKE: Color = super::SELECTION_RECT_STROKE;
 }
 
+/// Mark color palette for glyph workflow organization
+pub mod mark {
+    use super::Color;
+
+    /// 12 preset mark colors (matching Glyphs.app palette order)
+    pub const COLORS: [Color; 12] = [
+        super::MARK_RED,
+        super::MARK_ORANGE,
+        super::MARK_YELLOW,
+        super::MARK_LIGHT_GREEN,
+        super::MARK_GREEN,
+        super::MARK_TEAL,
+        super::MARK_LIGHT_BLUE,
+        super::MARK_BLUE,
+        super::MARK_PURPLE,
+        super::MARK_PINK,
+        super::MARK_BROWN,
+        super::MARK_GRAY,
+    ];
+
+    /// RGBA strings for UFO storage (matching COLORS array order)
+    /// Format: "R,G,B,A" with 0–1 floats
+    pub const RGBA_STRINGS: [&str; 12] = [
+        "1,0.251,0.251,1",
+        "1,0.6,0.2,1",
+        "1,0.867,0.2,1",
+        "0.533,0.867,0.267,1",
+        "0.267,0.733,0.267,1",
+        "0.267,0.733,0.667,1",
+        "0.267,0.6,0.867,1",
+        "0.267,0.4,0.933,1",
+        "0.6,0.333,0.867,1",
+        "0.867,0.333,0.667,1",
+        "0.667,0.467,0.267,1",
+        "0.533,0.533,0.533,1",
+    ];
+
+    /// Number of colors in the palette
+    pub const COUNT: usize = 12;
+}
+
 /// Tool preview styles (for consistent visual feedback across tools)
 pub mod tool_preview {
     use super::Color;
@@ -400,5 +457,5 @@ pub mod size {
     /// Border thickness for toolbar buttons and panels
     pub const TOOLBAR_BORDER_WIDTH: f64 = 1.5;
     /// Rounded corner radius for all panels (toolbars, sidebars, etc.)
-    pub const PANEL_RADIUS: f64 = 11.0;
+    pub const PANEL_RADIUS: f64 = 8.0;
 }

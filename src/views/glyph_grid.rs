@@ -8,16 +8,17 @@ use masonry::properties::types::AsUnit;
 use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::{
-    button, flex_col, flex_row, label, portal, sized_box, zstack,
+    button, flex_col, flex_row, label, sized_box, zstack,
     CrossAxisAlignment, FlexExt,
 };
 use xilem::WidgetView;
 
 use crate::components::{
     category_panel, create_master_infos, glyph_info_panel, glyph_view,
-    keyboard_shortcuts, master_toolbar_view, size_tracker,
-    system_toolbar_view, GlyphCategory, SystemToolbarButton,
-    CATEGORY_PANEL_WIDTH, GLYPH_INFO_PANEL_WIDTH,
+    grid_scroll_handler, mark_color_panel, master_toolbar_view,
+    size_tracker, system_toolbar_view, GlyphCategory,
+    SystemToolbarButton, CATEGORY_PANEL_WIDTH,
+    GLYPH_INFO_PANEL_WIDTH,
 };
 use crate::data::AppState;
 use crate::glyph_renderer;
@@ -36,19 +37,25 @@ pub fn glyph_grid_tab(
     state: &mut AppState,
 ) -> impl WidgetView<AppState> + use<> {
     zstack((
-        // Invisible: size tracker (measures window width for responsive
-        // grid columns)
-        size_tracker(|state: &mut AppState, width| {
+        // Invisible: size tracker (measures window dimensions)
+        size_tracker(|state: &mut AppState, width, height| {
             // Grid width = window - panels - outer padding - inner gaps
             state.window_width = width
                 - CATEGORY_PANEL_WIDTH
                 - GLYPH_INFO_PANEL_WIDTH
                 - BENTO_GAP * 4.0;
+            state.window_height = height;
         }),
-        // Invisible: keyboard shortcut handler (Cmd+S)
-        keyboard_shortcuts(|state: &mut AppState| {
-            state.save_workspace();
-        }),
+        // Invisible: scroll wheel, arrow keys, Cmd+S handler
+        grid_scroll_handler(
+            |state: &mut AppState, delta| {
+                let count = state.filtered_glyph_count();
+                state.scroll_grid(delta, count);
+            },
+            |state: &mut AppState| {
+                state.save_workspace();
+            },
+        ),
         // Bento tile layout
         flex_col((
             // Row 1: File info stretches, toolbars fixed on right
@@ -66,7 +73,23 @@ pub fn glyph_grid_tab(
             .gap(BENTO_GAP.px()),
             // Row 2: Three-column content (fills remaining height)
             flex_row((
-                category_panel(state),
+                flex_col((
+                    category_panel(
+                        state.glyph_category_filter,
+                        |state: &mut AppState, cat| {
+                            state.glyph_category_filter = cat;
+                            state.grid_scroll_row = 0;
+                        },
+                    )
+                    .flex(1.0),
+                    mark_color_panel(
+                        current_mark_color_index(state),
+                        |state: &mut AppState, color_index| {
+                            state.set_glyph_mark_color(color_index);
+                        },
+                    ),
+                ))
+                .gap(BENTO_GAP.px()),
                 glyph_grid_view(state).flex(1.0),
                 glyph_info_panel(state),
             ))
@@ -75,7 +98,7 @@ pub fn glyph_grid_tab(
             .flex(1.0),
         ))
         .gap(BENTO_GAP.px())
-        .padding(BENTO_GAP)
+        .padding(BENTO_GAP * 2.0)
         .background_color(theme::app::BACKGROUND),
     ))
 }
@@ -141,9 +164,25 @@ fn master_toolbar_panel(
     Either::B(sized_box(label("")).width(0.px()).height(0.px()))
 }
 
+// ===== Mark Color Helpers =====
+
+/// Look up the selected glyph's mark color palette index
+fn current_mark_color_index(state: &AppState) -> Option<usize> {
+    let glyph_name = state.selected_glyph.as_ref()?;
+    let workspace_arc = state.active_workspace()?;
+    let workspace = workspace_arc.read().unwrap();
+    let glyph = workspace.get_glyph(glyph_name)?;
+    glyph
+        .mark_color
+        .as_ref()
+        .and_then(|s| rgba_string_to_palette_index(s))
+}
+
 // ===== Glyph Grid View =====
 
-/// Glyph grid showing all glyphs in a scrollable portal
+/// Glyph grid showing only rows that fit in the visible area.
+/// Scrolling is handled by `grid_scroll_handler` which adjusts
+/// `state.grid_scroll_row`.
 fn glyph_grid_view(
     state: &mut AppState,
 ) -> impl WidgetView<AppState> + use<> {
@@ -153,21 +192,33 @@ fn glyph_grid_view(
     let columns = state.grid_columns();
     let selected_glyph = state.selected_glyph.clone();
 
+    // Virtual row slicing — only render visible rows
+    let visible = state.visible_grid_rows();
+    let start = state.grid_scroll_row * columns;
+    let end =
+        ((state.grid_scroll_row + visible) * columns).min(glyph_data.len());
+    let visible_data = if start <= glyph_data.len() {
+        &glyph_data[start..end]
+    } else {
+        &[]
+    };
+
     let rows_of_cells = build_glyph_rows(
-        &glyph_data,
+        visible_data,
         columns,
         &selected_glyph,
         upm,
     );
 
-    portal(
-        flex_col((
-            flex_col(rows_of_cells).gap(BENTO_GAP.px()),
-            // Bottom spacer so last row is visible when scrolled
-            sized_box(label("")).height(100.px()),
-        ))
-        .padding(BENTO_GAP / 2.0),
-    )
+    // Each row flexes to fill available height evenly
+    let flexy_rows: Vec<_> = rows_of_cells
+        .into_iter()
+        .map(|row| row.flex(1.0))
+        .collect();
+
+    flex_col(flexy_rows)
+        .gap(BENTO_GAP.px())
+        .cross_axis_alignment(CrossAxisAlignment::Fill)
 }
 
 // ===== Grid Building Helpers =====
@@ -181,12 +232,14 @@ fn get_upm_from_state(state: &AppState) -> f64 {
 }
 
 /// Type alias for glyph data tuple
-/// (name, path with components, codepoints, contour count)
+/// (name, path with components, codepoints, contour count,
+///  mark color palette index)
 type GlyphData = (
     String,
     Option<BezPath>,
     Vec<char>,
     usize,
+    Option<usize>,
 );
 
 /// Build glyph data vector from workspace, filtered by category
@@ -213,7 +266,7 @@ fn build_glyph_data(
     } else {
         glyph_names
             .iter()
-            .map(|name| (name.clone(), None, Vec::new(), 0))
+            .map(|name| (name.clone(), None, Vec::new(), 0, None))
             .collect()
     }
 }
@@ -245,10 +298,22 @@ fn build_single_glyph_data(
         let path = glyph_renderer::glyph_to_bezpath_with_components(
             glyph, workspace,
         );
-        (name.to_string(), Some(path), codepoints, count)
+        let mark_index = glyph
+            .mark_color
+            .as_ref()
+            .and_then(|s| rgba_string_to_palette_index(s));
+        (name.to_string(), Some(path), codepoints, count, mark_index)
     } else {
-        (name.to_string(), None, Vec::new(), 0)
+        (name.to_string(), None, Vec::new(), 0, None)
     }
+}
+
+/// Convert an RGBA string to a palette index by matching
+/// against the known palette strings
+fn rgba_string_to_palette_index(rgba: &str) -> Option<usize> {
+    theme::mark::RGBA_STRINGS
+        .iter()
+        .position(|&s| s == rgba)
 }
 
 /// Build rows of glyph cells from glyph data
@@ -263,20 +328,25 @@ fn build_glyph_rows(
         .map(|chunk| {
             let row_items: Vec<_> = chunk
                 .iter()
-                .map(|(name, path_opt, codepoints, _)| {
-                    let is_selected =
-                        selected_glyph.as_ref() == Some(name);
-                    glyph_cell(
-                        name.clone(),
-                        path_opt.clone(),
-                        codepoints.clone(),
-                        is_selected,
-                        upm,
-                    )
-                    .flex(1.0)
-                })
+                .map(
+                    |(name, path_opt, codepoints, _, mark_color)| {
+                        let is_selected =
+                            selected_glyph.as_ref() == Some(name);
+                        glyph_cell(
+                            name.clone(),
+                            path_opt.clone(),
+                            codepoints.clone(),
+                            is_selected,
+                            upm,
+                            *mark_color,
+                        )
+                        .flex(1.0)
+                    },
+                )
                 .collect();
-            flex_row(row_items).gap(BENTO_GAP.px())
+            flex_row(row_items)
+                .gap(BENTO_GAP.px())
+                .cross_axis_alignment(CrossAxisAlignment::Fill)
         })
         .collect()
 }
@@ -290,12 +360,14 @@ fn glyph_cell(
     codepoints: Vec<char>,
     is_selected: bool,
     upm: f64,
+    mark_color: Option<usize>,
 ) -> impl WidgetView<AppState> + use<> {
     let name_clone = glyph_name.clone();
     let display_name = format_display_name(&glyph_name);
     let unicode_display = format_unicode_display(&codepoints);
     let glyph_view_widget = build_glyph_view_widget(path_opt, upm);
-    let (bg_color, border_color) = get_cell_colors(is_selected);
+    let (bg_color, border_color) =
+        get_cell_colors(is_selected, mark_color);
 
     sized_box(
         button(
@@ -309,9 +381,10 @@ fn glyph_cell(
             },
         )
         .background_color(bg_color)
-        .border_color(border_color),
+        .border_color(border_color)
+        .border_width(theme::size::TOOLBAR_BORDER_WIDTH)
+        .corner_radius(theme::size::PANEL_RADIUS),
     )
-    .height(100.px())
     .expand_width()
 }
 
@@ -386,9 +459,10 @@ fn build_cell_labels(
     .height(32.px())
 }
 
-/// Get cell colors based on selection state
+/// Get cell colors based on selection state and mark color
 fn get_cell_colors(
     is_selected: bool,
+    mark_color: Option<usize>,
 ) -> (
     masonry::vello::peniko::Color,
     masonry::vello::peniko::Color,
@@ -398,9 +472,30 @@ fn get_cell_colors(
             theme::grid::CELL_SELECTED_BACKGROUND,
             theme::grid::CELL_SELECTED_OUTLINE,
         )
+    } else if let Some(index) = mark_color {
+        // Blend mark color at low alpha with cell background
+        let mark = theme::mark::COLORS[index];
+        let bg = blend_mark_color(mark, 0.15);
+        (bg, theme::grid::CELL_OUTLINE)
     } else {
         (theme::grid::CELL_BACKGROUND, theme::grid::CELL_OUTLINE)
     }
+}
+
+/// Blend a mark color with the cell background at the given alpha
+fn blend_mark_color(
+    mark: masonry::vello::peniko::Color,
+    alpha: f64,
+) -> masonry::vello::peniko::Color {
+    let bg_rgba = theme::grid::CELL_BACKGROUND.to_rgba8();
+    let mk_rgba = mark.to_rgba8();
+    let r = (bg_rgba.r as f64 * (1.0 - alpha)
+        + mk_rgba.r as f64 * alpha) as u8;
+    let g = (bg_rgba.g as f64 * (1.0 - alpha)
+        + mk_rgba.g as f64 * alpha) as u8;
+    let b = (bg_rgba.b as f64 * (1.0 - alpha)
+        + mk_rgba.b as f64 * alpha) as u8;
+    masonry::vello::peniko::Color::from_rgb8(r, g, b)
 }
 
 // ===== Path Helpers =====
