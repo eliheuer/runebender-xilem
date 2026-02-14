@@ -102,8 +102,8 @@ impl MarkColorPanelWidget {
     /// clear) is at the given position? Returns None if no hit.
     fn swatch_at_pos(&self, x: f64, y: f64) -> Option<usize> {
         let radius = SWATCH_SIZE / 2.0;
-        // 12 color swatches + 1 clear = 13 total
-        for i in 0..13 {
+        // 13 color swatches + 1 clear = 14 total
+        for i in 0..14 {
             let (col, row) = self.swatch_grid_pos(i);
             let (cx, cy) = self.swatch_center(col, row);
             let dx = x - cx;
@@ -116,7 +116,7 @@ impl MarkColorPanelWidget {
     }
 
     /// Map a linear swatch index to (col, row) in the grid.
-    /// Index 0–11 = color swatches, index 12 = clear swatch.
+    /// Index 0–12 = color swatches, index 13 = clear swatch.
     fn swatch_grid_pos(
         &self,
         index: usize,
@@ -258,8 +258,8 @@ impl Widget for MarkColorPanelWidget {
             }
         }
 
-        // --- Clear swatch (index 12) ---
-        let (col, row) = self.swatch_grid_pos(12);
+        // --- Clear swatch (index 13) ---
+        let (col, row) = self.swatch_grid_pos(13);
         let (cx, cy) = self.swatch_center(col, row);
         let circle = Circle::new((cx, cy), radius);
 
@@ -298,7 +298,7 @@ impl Widget for MarkColorPanelWidget {
         );
 
         // Hover ring for clear swatch
-        if self.hover_index == Some(12) {
+        if self.hover_index == Some(13) {
             scene.stroke(
                 &kurbo::Stroke::new(1.5),
                 Affine::IDENTITY,
