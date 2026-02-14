@@ -6,6 +6,7 @@
 use crate::components::GlyphCategory;
 use crate::designspace::{is_designspace_file, DesignspaceProject};
 use crate::edit_session::EditSession;
+use crate::theme;
 use crate::workspace::Workspace;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -61,6 +62,12 @@ pub struct AppState {
 
     /// Category filter for glyph grid
     pub glyph_category_filter: GlyphCategory,
+
+    /// First visible row index in the virtual glyph grid
+    pub grid_scroll_row: usize,
+
+    /// Current window height (tracked by size_tracker)
+    pub window_height: f64,
 }
 
 #[allow(dead_code)]
@@ -80,6 +87,8 @@ impl AppState {
             last_saved: None,
             window_width: 1030.0, // Default window width
             glyph_category_filter: GlyphCategory::All,
+            grid_scroll_row: 0,
+            window_height: 800.0,
         }
     }
 
@@ -236,6 +245,71 @@ impl AppState {
 
         // Clamp between 1 and 8 columns
         max_cols.clamp(1, 8)
+    }
+
+    /// How many grid rows fit in the visible area
+    pub fn visible_grid_rows(&self) -> usize {
+        // Row height = cell (100) + gap (6) = 106
+        const ROW_HEIGHT: f64 = 106.0;
+        // Toolbar row ~70, outer gaps top/bottom ~12, grid padding ~6
+        const CHROME_HEIGHT: f64 = 88.0;
+        let available = (self.window_height - CHROME_HEIGHT).max(0.0);
+        (available / ROW_HEIGHT).floor().max(1.0) as usize
+    }
+
+    /// Total number of rows in the grid for the given glyph count
+    pub fn total_grid_rows(&self, glyph_count: usize) -> usize {
+        let cols = self.grid_columns();
+        glyph_count.div_ceil(cols)
+    }
+
+    /// Scroll the grid by `delta` rows (positive = down, negative = up)
+    pub fn scroll_grid(
+        &mut self,
+        delta: i32,
+        glyph_count: usize,
+    ) {
+        let total = self.total_grid_rows(glyph_count);
+        let visible = self.visible_grid_rows();
+        let max_row = total.saturating_sub(visible);
+
+        if delta < 0 {
+            self.grid_scroll_row =
+                self.grid_scroll_row.saturating_sub(delta.unsigned_abs() as usize);
+        } else {
+            self.grid_scroll_row =
+                (self.grid_scroll_row + delta as usize).min(max_row);
+        }
+    }
+
+    /// Count of glyphs matching the current category filter
+    pub fn filtered_glyph_count(&self) -> usize {
+        let names = self.glyph_names();
+        if self.glyph_category_filter == GlyphCategory::All {
+            return names.len();
+        }
+        let workspace_arc = match self.active_workspace() {
+            Some(w) => w,
+            None => return names.len(),
+        };
+        let workspace = workspace_arc.read().unwrap();
+        names
+            .iter()
+            .filter(|name| {
+                if let Some(glyph) = workspace.get_glyph(name) {
+                    if glyph.codepoints.is_empty() {
+                        self.glyph_category_filter
+                            == GlyphCategory::Other
+                    } else {
+                        GlyphCategory::from_codepoint(
+                            glyph.codepoints[0],
+                        ) == self.glyph_category_filter
+                    }
+                } else {
+                    false
+                }
+            })
+            .count()
     }
 
     /// Get the selected glyph's advance width
@@ -759,6 +833,30 @@ impl AppState {
             .entry(prev_name.clone())
             .or_insert_with(std::collections::HashMap::new)
             .insert(curr_name, kern_value);
+    }
+
+    /// Set the selected glyph's mark color by palette index
+    ///
+    /// Pass `None` to clear the mark color, or `Some(index)` where
+    /// index is 0–11 corresponding to `theme::mark::COLORS`.
+    pub fn set_glyph_mark_color(
+        &mut self,
+        color_index: Option<usize>,
+    ) {
+        let glyph_name = match self.selected_glyph.clone() {
+            Some(name) => name,
+            None => return,
+        };
+        let workspace_arc = match self.active_workspace() {
+            Some(w) => w,
+            None => return,
+        };
+        let mut workspace = workspace_arc.write().unwrap();
+        if let Some(glyph) = workspace.get_glyph_mut(&glyph_name)
+        {
+            glyph.mark_color = color_index
+                .map(|i| theme::mark::RGBA_STRINGS[i].to_string());
+        }
     }
 
     /// Update the right kern value (kerning from current glyph to next glyph)

@@ -166,6 +166,7 @@ fn create_r_glyph() -> Glyph {
         components: vec![],
         left_group: None,
         right_group: None,
+        mark_color: None,
     }
 }
 

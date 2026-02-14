@@ -967,6 +967,7 @@ impl EditSession {
             components: self.glyph.components.clone(),
             left_group: self.glyph.left_group.clone(),
             right_group: self.glyph.right_group.clone(),
+            mark_color: self.glyph.mark_color.clone(),
         }
     }
 
@@ -1783,6 +1784,7 @@ mod tests {
             components: vec![],
             left_group: None,
             right_group: None,
+            mark_color: None,
         }
     }
 
