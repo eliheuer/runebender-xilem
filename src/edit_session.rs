@@ -1771,7 +1771,7 @@ impl<'a> GlyphProvider for WorkspaceGlyphProvider<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::{Contour, Glyph};
+    use crate::workspace::Glyph;
 
     fn create_test_glyph() -> Glyph {
         Glyph {

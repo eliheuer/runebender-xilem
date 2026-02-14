@@ -218,11 +218,11 @@ impl AppState {
     }
 
     /// Calculate number of grid columns based on window width
-    /// Ensures cells are never narrower than their height (120px)
+    /// Ensures cells are never narrower than their height (100px)
     pub fn grid_columns(&self) -> usize {
-        const CELL_HEIGHT: f64 = 120.0;
+        const CELL_HEIGHT: f64 = 100.0;
         const GAP: f64 = 6.0;
-        const MARGIN: f64 = 6.0 * 2.0; // Left and right margins
+        const MARGIN: f64 = 3.0 * 2.0; // Internal portal padding
 
         // Available width for cells (minus margins)
         let available = self.window_width - MARGIN;
