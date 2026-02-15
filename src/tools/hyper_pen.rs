@@ -55,12 +55,7 @@ impl Tool for HyperPenTool {
         ToolId::HyperPen
     }
 
-    fn paint(
-        &mut self,
-        scene: &mut Scene,
-        session: &EditSession,
-        _transform: &Affine,
-    ) {
+    fn paint(&mut self, scene: &mut Scene, session: &EditSession, _transform: &Affine) {
         use masonry::vello::peniko::Brush;
 
         let orange_color = crate::theme::point::SELECTED_OUTER;
@@ -92,11 +87,7 @@ impl Tool for HyperPenTool {
 impl MouseDelegate for HyperPenTool {
     type Data = EditSession;
 
-    fn left_click(
-        &mut self,
-        event: MouseEvent,
-        data: &mut EditSession,
-    ) {
+    fn left_click(&mut self, event: MouseEvent, data: &mut EditSession) {
         // Check if we're snapped to a curve segment
         if let Some((segment_info, t)) = &self.snapped_segment {
             data.insert_point_on_segment(segment_info, *t);
@@ -117,19 +108,13 @@ impl MouseDelegate for HyperPenTool {
         self.add_point(data, design_pos);
     }
 
-    fn mouse_moved(
-        &mut self,
-        event: MouseEvent,
-        data: &mut EditSession,
-    ) {
+    fn mouse_moved(&mut self, event: MouseEvent, data: &mut EditSession) {
         self.mouse_pos = Some(event.pos);
 
         // Check for curve snapping (only when not actively drawing)
         if !self.drawing {
-            if let Some((segment_info, t)) = data.hit_test_segments(
-                event.pos,
-                CURVE_SNAP_DISTANCE,
-            ) {
+            if let Some((segment_info, t)) = data.hit_test_segments(event.pos, CURVE_SNAP_DISTANCE)
+            {
                 self.snapped_segment = Some((segment_info, t));
             } else {
                 self.snapped_segment = None;
@@ -151,11 +136,7 @@ impl MouseDelegate for HyperPenTool {
 
 impl HyperPenTool {
     /// Add a new on-curve point to the current path (or create a new path)
-    fn add_point(
-        &mut self,
-        data: &mut EditSession,
-        pos: kurbo::Point,
-    ) {
+    fn add_point(&mut self, data: &mut EditSession, pos: kurbo::Point) {
         if let Some(path_id) = self.active_path_id {
             // Add to existing path
             if let Some(path) = Self::find_hyper_path_mut(data, path_id) {
@@ -179,35 +160,30 @@ impl HyperPenTool {
     /// Close the current path
     fn close_path(&mut self, data: &mut EditSession) {
         if let Some(path_id) = self.active_path_id
-            && let Some(path) = Self::find_hyper_path_mut(data, path_id) {
-                path.close_path();
-            }
+            && let Some(path) = Self::find_hyper_path_mut(data, path_id)
+        {
+            path.close_path();
+        }
 
         self.active_path_id = None;
         self.drawing = false;
     }
 
     /// Find a HyperPath by its ID and return mutable reference
-    fn find_hyper_path_mut(
-        data: &mut EditSession,
-        path_id: EntityId,
-    ) -> Option<&mut HyperPath> {
+    fn find_hyper_path_mut(data: &mut EditSession, path_id: EntityId) -> Option<&mut HyperPath> {
         let paths = Arc::make_mut(&mut data.paths);
         for path in paths.iter_mut() {
             if let Path::Hyper(hyper) = path
-                && hyper.id == path_id {
-                    return Some(hyper);
-                }
+                && hyper.id == path_id
+            {
+                return Some(hyper);
+            }
         }
         None
     }
 
     /// Check if we should close the path
-    fn should_close_path(
-        &self,
-        data: &EditSession,
-        design_pos: kurbo::Point,
-    ) -> bool {
+    fn should_close_path(&self, data: &EditSession, design_pos: kurbo::Point) -> bool {
         let Some(path_id) = self.active_path_id else {
             return false;
         };
@@ -215,13 +191,15 @@ impl HyperPenTool {
         // Find the path and check if we're near the first point
         for path in data.paths.iter() {
             if let Path::Hyper(hyper) = path
-                && hyper.id == path_id && hyper.len() >= 3
-                    && let Some(start) = hyper.start_point() {
-                        let distance = ((design_pos.x - start.point.x).powi(2)
-                            + (design_pos.y - start.point.y).powi(2))
-                        .sqrt();
-                        return distance < CLOSE_PATH_DISTANCE;
-                    }
+                && hyper.id == path_id
+                && hyper.len() >= 3
+                && let Some(start) = hyper.start_point()
+            {
+                let distance = ((design_pos.x - start.point.x).powi(2)
+                    + (design_pos.y - start.point.y).powi(2))
+                .sqrt();
+                return distance < CLOSE_PATH_DISTANCE;
+            }
         }
 
         false
@@ -269,13 +247,7 @@ impl HyperPenTool {
         if self.snapped_segment.is_some() {
             let indicator_circle = kurbo::Circle::new(preview_screen_pos, 8.0);
             let stroke = kurbo::Stroke::new(1.5);
-            scene.stroke(
-                &stroke,
-                Affine::IDENTITY,
-                brush,
-                None,
-                &indicator_circle,
-            );
+            scene.stroke(&stroke, Affine::IDENTITY, brush, None, &indicator_circle);
         }
     }
 
@@ -294,21 +266,14 @@ impl HyperPenTool {
         for path in session.paths.iter() {
             if let Path::Hyper(hyper) = path
                 && hyper.id == path_id
-                    && let Some(start) = hyper.start_point() {
-                        let screen_pt = session.viewport.to_screen(start.point);
-                        let close_zone = kurbo::Circle::new(
-                            screen_pt,
-                            CLOSE_PATH_DISTANCE * session.viewport.zoom,
-                        );
-                        let stroke = kurbo::Stroke::new(1.0);
-                        scene.stroke(
-                            &stroke,
-                            Affine::IDENTITY,
-                            brush,
-                            None,
-                            &close_zone,
-                        );
-                    }
+                && let Some(start) = hyper.start_point()
+            {
+                let screen_pt = session.viewport.to_screen(start.point);
+                let close_zone =
+                    kurbo::Circle::new(screen_pt, CLOSE_PATH_DISTANCE * session.viewport.zoom);
+                let stroke = kurbo::Stroke::new(1.0);
+                scene.stroke(&stroke, Affine::IDENTITY, brush, None, &close_zone);
+            }
         }
     }
 }

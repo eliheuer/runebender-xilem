@@ -11,9 +11,8 @@ use crate::shaping::TextDirection;
 use kurbo::{BezPath, Point, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
-    PaintCtx, PointerButton, PointerButtonEvent, PointerEvent,
-    PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
+    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
+    PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
     UpdateCtx, Widget,
 };
 use masonry::vello::Scene;
@@ -24,15 +23,12 @@ use xilem::{Pod, ViewCtx};
 
 // Import shared toolbar functionality
 use crate::components::toolbars::{
-    button_rect, calculate_toolbar_size, paint_button, paint_icon,
-    paint_panel, ButtonState,
+    ButtonState, button_rect, calculate_toolbar_size, paint_button, paint_icon, paint_panel,
 };
 
 /// Available text directions in display order
-const TOOLBAR_DIRECTIONS: &[TextDirection] = &[
-    TextDirection::LeftToRight,
-    TextDirection::RightToLeft,
-];
+const TOOLBAR_DIRECTIONS: &[TextDirection] =
+    &[TextDirection::LeftToRight, TextDirection::RightToLeft];
 
 /// Text direction sub-toolbar widget
 pub struct TextDirectionToolbarWidget {
@@ -99,12 +95,7 @@ impl Widget for TextDirectionToolbarWidget {
         bc.constrain(size)
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         let size = ctx.size();
         paint_panel(scene, size);
 
@@ -163,9 +154,7 @@ impl Widget for TextDirectionToolbarWidget {
                     tracing::debug!("Text direction toolbar: clicked {:?}", direction);
                     self.selected_direction = direction;
                     ctx.request_render();
-                    ctx.submit_action::<TextDirectionSelected>(
-                        TextDirectionSelected(direction),
-                    );
+                    ctx.submit_action::<TextDirectionSelected>(TextDirectionSelected(direction));
                 }
             }
             PointerEvent::Leave(_) => {
@@ -301,8 +290,7 @@ where
 }
 
 /// The Xilem View for TextDirectionToolbarWidget
-type TextDirectionToolbarCallback<State> =
-    Box<dyn Fn(&mut State, TextDirection) + Send + Sync>;
+type TextDirectionToolbarCallback<State> = Box<dyn Fn(&mut State, TextDirection) + Send + Sync>;
 
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct TextDirectionToolbarView<State, Action = ()> {
@@ -319,11 +307,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     type Element = Pod<TextDirectionToolbarWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = TextDirectionToolbarWidget::new(self.selected_direction);
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());

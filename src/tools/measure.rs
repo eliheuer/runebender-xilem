@@ -12,9 +12,9 @@ use crate::edit_types::EditType;
 use crate::mouse::{MouseDelegate, MouseEvent};
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, Circle, Line, Point, Rect, Size};
-use masonry::vello::peniko::{Brush, Color, Fill};
-use masonry::vello::Scene;
 use masonry::core::{BrushIndex, StyleProperty, render_text};
+use masonry::vello::Scene;
+use masonry::vello::peniko::{Brush, Color, Fill};
 use parley::GenericFamily;
 use parley::{FontContext, LayoutContext};
 use tracing;
@@ -44,12 +44,7 @@ impl Tool for MeasureTool {
         ToolId::Measure
     }
 
-    fn paint(
-        &mut self,
-        scene: &mut Scene,
-        session: &EditSession,
-        _transform: &Affine,
-    ) {
+    fn paint(&mut self, scene: &mut Scene, session: &EditSession, _transform: &Affine) {
         // Paint the measurement line and info if present
         if let Some(line) = self.line {
             self.paint_measurement(scene, session, line);
@@ -84,10 +79,11 @@ impl MouseDelegate for MeasureTool {
         _data: &mut EditSession,
     ) {
         if self.dragging
-            && let Some(start) = self.drag_start {
-                // TODO: Add shift-key axis locking support when we have modifier key state
-                self.line = Some(Line::new(start, drag.current));
-            }
+            && let Some(start) = self.drag_start
+        {
+            // TODO: Add shift-key axis locking support when we have modifier key state
+            self.line = Some(Line::new(start, drag.current));
+        }
     }
 
     fn left_up(&mut self, _event: MouseEvent, _data: &mut EditSession) {
@@ -118,11 +114,10 @@ impl MeasureTool {
     /// Paint the measurement line and all associated info
     fn paint_measurement(&self, scene: &mut Scene, session: &EditSession, line: Line) {
         // Draw the measurement line using theme colors (same as pen/knife preview)
-        let stroke = kurbo::Stroke::new(crate::theme::tool_preview::LINE_WIDTH)
-            .with_dashes(
-                crate::theme::tool_preview::LINE_DASH_OFFSET,
-                crate::theme::tool_preview::LINE_DASH,
-            );
+        let stroke = kurbo::Stroke::new(crate::theme::tool_preview::LINE_WIDTH).with_dashes(
+            crate::theme::tool_preview::LINE_DASH_OFFSET,
+            crate::theme::tool_preview::LINE_DASH,
+        );
         let brush = Brush::Solid(crate::theme::tool_preview::LINE_COLOR);
         scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
 
@@ -265,11 +260,7 @@ fn atan_to_angle(atan: f64) -> f64 {
 fn format_point(pt: Point) -> String {
     let x = format!("{:.1}", pt.x);
     let y = format!("{:.1}", pt.y);
-    format!(
-        "{}, {}",
-        x.trim_end_matches(".0"),
-        y.trim_end_matches(".0")
-    )
+    format!("{}, {}", x.trim_end_matches(".0"), y.trim_end_matches(".0"))
 }
 
 /// Draw a text label at a position with a given color
@@ -303,7 +294,7 @@ fn draw_info_bubble(scene: &mut Scene, pos: Point, label: impl Into<String>) {
     let mut builder = layout_cx.ranged_builder(&mut font_cx, &formatted_label, 1.0, false);
     builder.push_default(StyleProperty::FontSize(14.0));
     builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(
-        parley::FontFamily::Generic(GenericFamily::SansSerif)
+        parley::FontFamily::Generic(GenericFamily::SansSerif),
     )));
     builder.push_default(StyleProperty::Brush(BrushIndex(0))); // Index into brushes array
     let mut layout = builder.build(&formatted_label);
@@ -317,17 +308,24 @@ fn draw_info_bubble(scene: &mut Scene, pos: Point, label: impl Into<String>) {
     let bubble_padding = 4.0;
     let bubble = Rect::from_center_size(
         pos,
-        Size::new(text_width + bubble_padding * 2.0, text_height + bubble_padding * 2.0)
-    ).to_rounded_rect(4.0);
+        Size::new(
+            text_width + bubble_padding * 2.0,
+            text_height + bubble_padding * 2.0,
+        ),
+    )
+    .to_rounded_rect(4.0);
 
     let bubble_brush = Brush::Solid(crate::theme::point::CORNER_INNER);
-    scene.fill(Fill::NonZero, Affine::IDENTITY, &bubble_brush, None, &bubble);
+    scene.fill(
+        Fill::NonZero,
+        Affine::IDENTITY,
+        &bubble_brush,
+        None,
+        &bubble,
+    );
 
     // Draw dark gray text on top
-    let text_pos = Point::new(
-        pos.x - text_width / 2.0,
-        pos.y - text_height / 2.0,
-    );
+    let text_pos = Point::new(pos.x - text_width / 2.0, pos.y - text_height / 2.0);
 
     let text_color = Color::from_rgb8(0x30, 0x30, 0x30); // Dark gray
     let brushes = vec![Brush::Solid(text_color)];

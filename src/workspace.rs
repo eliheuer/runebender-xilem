@@ -94,12 +94,7 @@ impl Component {
         // norad's AffineTransform has: x_scale, xy_scale, yx_scale, y_scale, x_offset, y_offset
         let t = &norad_comp.transform;
         let transform = Affine::new([
-            t.x_scale,
-            t.xy_scale,
-            t.yx_scale,
-            t.y_scale,
-            t.x_offset,
-            t.y_offset,
+            t.x_scale, t.xy_scale, t.yx_scale, t.y_scale, t.x_offset, t.y_offset,
         ]);
 
         Self {
@@ -235,8 +230,8 @@ impl Workspace {
         let path = path.as_ref();
 
         // Load the UFO using norad
-        let font = Font::load(path)
-            .with_context(|| format!("Failed to load UFO from {:?}", path))?;
+        let font =
+            Font::load(path).with_context(|| format!("Failed to load UFO from {:?}", path))?;
 
         // Extract font metadata
         let family_name = font
@@ -322,15 +317,21 @@ impl Workspace {
             .collect();
 
         // Extract kerning groups from lib data
-        let left_group = norad_glyph.lib.get("public.kern1")
+        let left_group = norad_glyph
+            .lib
+            .get("public.kern1")
             .and_then(|v| v.as_string())
             .map(|s| s.to_string());
-        let right_group = norad_glyph.lib.get("public.kern2")
+        let right_group = norad_glyph
+            .lib
+            .get("public.kern2")
             .and_then(|v| v.as_string())
             .map(|s| s.to_string());
 
         // Extract mark color from lib data
-        let mark_color = norad_glyph.lib.get("public.markColor")
+        let mark_color = norad_glyph
+            .lib
+            .get("public.markColor")
             .and_then(|v| v.as_string())
             .map(|s| s.to_string());
 
@@ -449,10 +450,7 @@ impl Workspace {
     }
 
     /// Get a mutable reference to a glyph by name
-    pub fn get_glyph_mut(
-        &mut self,
-        name: &str,
-    ) -> Option<&mut Glyph> {
+    pub fn get_glyph_mut(&mut self, name: &str) -> Option<&mut Glyph> {
         self.glyphs.get_mut(name)
     }
 
@@ -531,39 +529,28 @@ impl Workspace {
         }
 
         // Convert contours
-        norad_glyph.contours = glyph
-            .contours
-            .iter()
-            .map(Self::to_norad_contour)
-            .collect();
+        norad_glyph.contours = glyph.contours.iter().map(Self::to_norad_contour).collect();
 
         // Convert components
-        norad_glyph.components = glyph
-            .components
-            .iter()
-            .map(Component::to_norad)
-            .collect();
+        norad_glyph.components = glyph.components.iter().map(Component::to_norad).collect();
 
         // Save kerning groups to lib data
         if let Some(left_group) = &glyph.left_group {
-            norad_glyph.lib.insert(
-                "public.kern1".to_string(),
-                left_group.clone().into()
-            );
+            norad_glyph
+                .lib
+                .insert("public.kern1".to_string(), left_group.clone().into());
         }
         if let Some(right_group) = &glyph.right_group {
-            norad_glyph.lib.insert(
-                "public.kern2".to_string(),
-                right_group.clone().into()
-            );
+            norad_glyph
+                .lib
+                .insert("public.kern2".to_string(), right_group.clone().into());
         }
 
         // Save mark color to lib data
         if let Some(mark_color) = &glyph.mark_color {
-            norad_glyph.lib.insert(
-                "public.markColor".to_string(),
-                mark_color.clone().into(),
-            );
+            norad_glyph
+                .lib
+                .insert("public.markColor".to_string(), mark_color.clone().into());
         }
 
         norad_glyph
@@ -571,16 +558,13 @@ impl Workspace {
 
     /// Convert our internal Contour to norad Contour
     fn to_norad_contour(contour: &Contour) -> norad::Contour {
-        let points = contour
-            .points
-            .iter()
-            .map(Self::to_norad_point)
-            .collect();
+        let points = contour.points.iter().map(Self::to_norad_point).collect();
 
         // Check if this is a hyperbezier contour
-        let is_hyperbezier = contour.points.iter().any(|pt| {
-            matches!(pt.point_type, PointType::Hyper | PointType::HyperCorner)
-        });
+        let is_hyperbezier = contour
+            .points
+            .iter()
+            .any(|pt| matches!(pt.point_type, PointType::Hyper | PointType::HyperCorner));
 
         // Set identifier="hyperbezier" for hyperbezier contours
         let identifier = if is_hyperbezier {
@@ -609,10 +593,10 @@ impl Workspace {
             x,
             y,
             Self::to_norad_point_type(pt.point_type),
-            false,  // smooth - don't set for hyperbeziers
-            None,   // name
-            None,   // identifier
-            None,   // lib (plist dictionary)
+            false, // smooth - don't set for hyperbeziers
+            None,  // name
+            None,  // identifier
+            None,  // lib (plist dictionary)
         )
     }
 

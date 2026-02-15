@@ -56,11 +56,7 @@ impl TextCursor {
     ///
     /// Returns the (x, y) position in design space where the cursor should be rendered.
     /// This accumulates advance widths up to the cursor position.
-    pub fn calculate_position(
-        &self,
-        buffer: &SortBuffer,
-        line_height: f64,
-    ) -> Point {
+    pub fn calculate_position(&self, buffer: &SortBuffer, line_height: f64) -> Point {
         let mut x = 0.0;
         let mut y = 0.0;
         let cursor_pos = buffer.cursor();

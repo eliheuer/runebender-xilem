@@ -50,11 +50,7 @@ impl Tool for PreviewTool {
 impl MouseDelegate for PreviewTool {
     type Data = EditSession;
 
-    fn left_down(
-        &mut self,
-        _event: MouseEvent,
-        session: &mut EditSession,
-    ) {
+    fn left_down(&mut self, _event: MouseEvent, session: &mut EditSession) {
         tracing::debug!(
             "[PreviewTool] left_down - capturing offset: {:?}",
             session.viewport.offset
@@ -65,22 +61,13 @@ impl MouseDelegate for PreviewTool {
         };
     }
 
-    fn left_up(
-        &mut self,
-        _event: MouseEvent,
-        _session: &mut EditSession,
-    ) {
+    fn left_up(&mut self, _event: MouseEvent, _session: &mut EditSession) {
         tracing::debug!("[PreviewTool] left_up - returning to ready");
         // Return to ready state
         self.state = State::Ready;
     }
 
-    fn left_drag_changed(
-        &mut self,
-        _event: MouseEvent,
-        drag: Drag,
-        session: &mut EditSession,
-    ) {
+    fn left_drag_changed(&mut self, _event: MouseEvent, drag: Drag, session: &mut EditSession) {
         tracing::debug!(
             "[PreviewTool] left_drag_changed - state: {:?}, \
              drag.start: {:?}, drag.current: {:?}",
@@ -105,10 +92,7 @@ impl MouseDelegate for PreviewTool {
         // Note: We add the delta directly since screen space panning
         // should move the viewport in the same direction as the mouse
         session.viewport.offset = start_offset + delta;
-        tracing::debug!(
-            "[PreviewTool] new offset: {:?}",
-            session.viewport.offset
-        );
+        tracing::debug!("[PreviewTool] new offset: {:?}", session.viewport.offset);
     }
 
     fn cancel(&mut self, session: &mut EditSession) {

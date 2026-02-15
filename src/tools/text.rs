@@ -42,12 +42,7 @@ impl Tool for TextTool {
         ToolId::Text
     }
 
-    fn paint(
-        &mut self,
-        _scene: &mut Scene,
-        _session: &EditSession,
-        _transform: &Affine,
-    ) {
+    fn paint(&mut self, _scene: &mut Scene, _session: &EditSession, _transform: &Affine) {
         // Text tool doesn't paint overlays
         // (cursor will be rendered by editor_canvas in Phase 6)
     }
@@ -111,30 +106,15 @@ impl MouseDelegate for TextTool {
         // No-op
     }
 
-    fn left_drag_began(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        _data: &mut Self::Data,
-    ) {
+    fn left_drag_began(&mut self, _event: MouseEvent, _drag: Drag, _data: &mut Self::Data) {
         // No-op
     }
 
-    fn left_drag_changed(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        _data: &mut Self::Data,
-    ) {
+    fn left_drag_changed(&mut self, _event: MouseEvent, _drag: Drag, _data: &mut Self::Data) {
         // No-op
     }
 
-    fn left_drag_ended(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        _data: &mut Self::Data,
-    ) {
+    fn left_drag_ended(&mut self, _event: MouseEvent, _drag: Drag, _data: &mut Self::Data) {
         // No-op
     }
 

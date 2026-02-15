@@ -14,11 +14,10 @@ use crate::undo::UndoState;
 use kurbo::{Affine, Circle, Point, Rect as KurboRect, Stroke};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx, LayoutCtx,
-    PaintCtx, PointerButton, PointerButtonEvent, PointerEvent,
-    PointerScrollEvent, PointerUpdate, PropertiesMut, PropertiesRef,
-    RegisterCtx, ScrollDelta, StyleProperty, TextEvent, Update, UpdateCtx, Widget,
-    render_text,
+    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx, LayoutCtx, PaintCtx,
+    PointerButton, PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate,
+    PropertiesMut, PropertiesRef, RegisterCtx, ScrollDelta, StyleProperty, TextEvent, Update,
+    UpdateCtx, Widget, render_text,
 };
 use masonry::kurbo::Size;
 use masonry::util::fill_color;
@@ -175,9 +174,10 @@ impl EditorWidget {
             let should_convert = if has_selection {
                 // If points are selected, only convert paths with selected points
                 match path {
-                    Path::Hyper(hyper) => hyper.points().iter().any(|pt| {
-                        self.session.selection.contains(&pt.id)
-                    }),
+                    Path::Hyper(hyper) => hyper
+                        .points()
+                        .iter()
+                        .any(|pt| self.session.selection.contains(&pt.id)),
                     _ => false,
                 }
             } else {
@@ -186,12 +186,11 @@ impl EditorWidget {
             };
 
             // Convert if needed
-            if should_convert
-                && let Path::Hyper(hyper) = path {
-                    *path = Path::Cubic(hyper.to_cubic());
-                    converted = true;
-                    tracing::info!("Converted hyperbezier path to cubic");
-                }
+            if should_convert && let Path::Hyper(hyper) = path {
+                *path = Path::Cubic(hyper.to_cubic());
+                converted = true;
+                tracing::info!("Converted hyperbezier path to cubic");
+            }
         }
 
         if converted {
@@ -247,12 +246,7 @@ impl Widget for EditorWidget {
         size
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         let canvas_size = ctx.size();
         self.paint_background(scene, canvas_size);
 
@@ -264,19 +258,11 @@ impl Widget for EditorWidget {
         let is_preview_mode = self.is_preview_mode();
 
         if self.session.text_buffer.is_some() {
-            self.paint_text_buffer_mode(
-                scene,
-                &transform,
-                is_preview_mode,
-            );
+            self.paint_text_buffer_mode(scene, &transform, is_preview_mode);
             return;
         }
 
-        self.paint_single_glyph_mode(
-            scene,
-            &transform,
-            is_preview_mode,
-        );
+        self.paint_single_glyph_mode(scene, &transform, is_preview_mode);
     }
 
     fn on_pointer_event(
@@ -358,8 +344,7 @@ impl Widget for EditorWidget {
             }
 
             // Check for keyboard shortcuts
-            let cmd = key_event.modifiers.meta()
-                || key_event.modifiers.ctrl();
+            let cmd = key_event.modifiers.meta() || key_event.modifiers.ctrl();
             let shift = key_event.modifiers.shift();
             let ctrl = key_event.modifiers.ctrl();
 
@@ -375,22 +360,18 @@ impl Widget for EditorWidget {
 
             // Handle keyboard shortcuts first (before text input)
             // This allows Cmd+Z, Cmd+-, Cmd+= etc. to work in text mode
-            if self.handle_keyboard_shortcuts(
-                ctx,
-                &key_event.key,
-                cmd,
-                shift,
-                ctrl,
-            ) {
+            if self.handle_keyboard_shortcuts(ctx, &key_event.key, cmd, shift, ctrl) {
                 return;
             }
 
             // Phase 5: Handle text mode input (character typing, cursor movement)
             // Only handle after shortcuts, and only if no modifiers (except shift for caps)
-            if self.session.text_mode_active && self.session.text_buffer.is_some()
-                && self.handle_text_mode_input(ctx, &key_event.key, cmd) {
-                    return;
-                }
+            if self.session.text_mode_active
+                && self.session.text_buffer.is_some()
+                && self.handle_text_mode_input(ctx, &key_event.key, cmd)
+            {
+                return;
+            }
 
             // Handle arrow keys for nudging
             self.handle_arrow_keys(ctx, &key_event.key, shift, cmd);
@@ -407,13 +388,12 @@ impl Widget for EditorWidget {
         _props: &PropertiesRef<'_>,
         node: &mut Node,
     ) {
-        let glyph_label = self.session.active_sort_name
+        let glyph_label = self
+            .session
+            .active_sort_name
             .as_deref()
             .unwrap_or("(no active sort)");
-        node.set_label(format!(
-            "Editing glyph: {}",
-            glyph_label
-        ));
+        node.set_label(format!("Editing glyph: {}", glyph_label));
     }
 
     fn children_ids(&self) -> ChildrenIds {
@@ -426,18 +406,13 @@ impl EditorWidget {
     // PAINT HELPER METHODS
     // ============================================================================
 
-    fn paint_background(
-        &self,
-        scene: &mut Scene,
-        canvas_size: Size,
-    ) {
+    fn paint_background(&self, scene: &mut Scene, canvas_size: Size) {
         let bg_rect = canvas_size.to_rect();
         fill_color(scene, &bg_rect, crate::theme::canvas::BACKGROUND);
     }
 
     fn is_preview_mode(&self) -> bool {
-        self.session.current_tool.id()
-            == crate::tools::ToolId::Preview
+        self.session.current_tool.id() == crate::tools::ToolId::Preview
     }
 
     fn paint_text_buffer_mode(
@@ -446,11 +421,7 @@ impl EditorWidget {
         transform: &Affine,
         is_preview_mode: bool,
     ) {
-        self.render_text_buffer(
-            scene,
-            transform,
-            is_preview_mode,
-        );
+        self.render_text_buffer(scene, transform, is_preview_mode);
 
         if !is_preview_mode {
             self.paint_tool_overlay(scene, transform);
@@ -464,12 +435,7 @@ impl EditorWidget {
         is_preview_mode: bool,
     ) {
         if !is_preview_mode {
-            draw_metrics_guides(
-                scene,
-                transform,
-                &self.session,
-                self.size,
-            );
+            draw_metrics_guides(scene, transform, &self.session, self.size);
         }
 
         let glyph_path = self.build_glyph_path();
@@ -482,11 +448,7 @@ impl EditorWidget {
         if is_preview_mode {
             self.paint_glyph_preview(scene, &transformed_path);
         } else {
-            self.paint_glyph_edit_mode(
-                scene,
-                &transformed_path,
-                transform,
-            );
+            self.paint_glyph_edit_mode(scene, &transformed_path, transform);
         }
     }
 
@@ -498,11 +460,7 @@ impl EditorWidget {
         glyph_path
     }
 
-    fn paint_glyph_preview(
-        &self,
-        scene: &mut Scene,
-        path: &kurbo::BezPath,
-    ) {
+    fn paint_glyph_preview(&self, scene: &mut Scene, path: &kurbo::BezPath) {
         let fill_brush = Brush::Solid(theme::path::PREVIEW_FILL);
         scene.fill(
             peniko::Fill::NonZero,
@@ -521,35 +479,16 @@ impl EditorWidget {
     ) {
         let stroke = Stroke::new(theme::size::PATH_STROKE_WIDTH);
         let brush = Brush::Solid(theme::path::STROKE);
-        scene.stroke(
-            &stroke,
-            Affine::IDENTITY,
-            &brush,
-            None,
-            path,
-        );
+        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, path);
 
-        draw_paths_with_points(
-            scene,
-            &self.session,
-            transform,
-        );
+        draw_paths_with_points(scene, &self.session, transform);
 
         self.paint_tool_overlay(scene, transform);
     }
 
-    fn paint_tool_overlay(
-        &mut self,
-        scene: &mut Scene,
-        transform: &Affine,
-    ) {
-        let select_tool = crate::tools::ToolBox::for_id(
-            crate::tools::ToolId::Select,
-        );
-        let mut tool = std::mem::replace(
-            &mut self.session.current_tool,
-            select_tool,
-        );
+    fn paint_tool_overlay(&mut self, scene: &mut Scene, transform: &Affine) {
+        let select_tool = crate::tools::ToolBox::for_id(crate::tools::ToolId::Select);
+        let mut tool = std::mem::replace(&mut self.session.current_tool, select_tool);
         tool.paint(scene, &self.session, transform);
         self.session.current_tool = tool;
     }
@@ -597,12 +536,7 @@ impl EditorWidget {
     ///
     /// This renders all sorts in the text buffer, laying them out horizontally
     /// with correct spacing based on advance widths.
-    fn render_text_buffer(
-        &self,
-        scene: &mut Scene,
-        transform: &Affine,
-        is_preview_mode: bool,
-    ) {
+    fn render_text_buffer(&self, scene: &mut Scene, transform: &Affine, is_preview_mode: bool) {
         let buffer = match &self.session.text_buffer {
             Some(buf) => buf,
             None => return,
@@ -634,7 +568,12 @@ impl EditorWidget {
         let mut prev_glyph_name: Option<String> = None;
         let mut prev_glyph_group: Option<String> = None;
 
-        tracing::debug!("[Cursor] buffer.len()={}, cursor_position={}, is_rtl={}", buffer.len(), cursor_position, is_rtl);
+        tracing::debug!(
+            "[Cursor] buffer.len()={}, cursor_position={}, is_rtl={}",
+            buffer.len(),
+            cursor_position,
+            is_rtl
+        );
 
         // Cursor at position 0 (before any sorts)
         if cursor_position == 0 {
@@ -657,7 +596,11 @@ impl EditorWidget {
 
         for (index, sort) in buffer.iter().enumerate() {
             match &sort.kind {
-                crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                crate::sort::SortKind::Glyph {
+                    name,
+                    advance_width,
+                    ..
+                } => {
                     // For RTL: move x left BEFORE drawing this glyph
                     if is_rtl {
                         x_offset -= advance_width;
@@ -665,29 +608,31 @@ impl EditorWidget {
 
                     // Apply kerning if we have a previous glyph
                     if let Some(prev_name) = &prev_glyph_name
-                        && let Some(workspace_arc) = &self.session.workspace {
-                            let workspace = workspace_arc.read().unwrap();
+                        && let Some(workspace_arc) = &self.session.workspace
+                    {
+                        let workspace = workspace_arc.read().unwrap();
 
-                            // Get current glyph's left kerning group
-                            let curr_group = workspace.get_glyph(name)
-                                .and_then(|g| g.left_group.as_deref());
+                        // Get current glyph's left kerning group
+                        let curr_group = workspace
+                            .get_glyph(name)
+                            .and_then(|g| g.left_group.as_deref());
 
-                            // Look up kerning value
-                            let kern_value = crate::kerning::lookup_kerning(
-                                &workspace.kerning,
-                                &workspace.groups,
-                                prev_name,
-                                prev_glyph_group.as_deref(),
-                                name,
-                                curr_group,
-                            );
+                        // Look up kerning value
+                        let kern_value = crate::kerning::lookup_kerning(
+                            &workspace.kerning,
+                            &workspace.groups,
+                            prev_name,
+                            prev_glyph_group.as_deref(),
+                            name,
+                            curr_group,
+                        );
 
-                            if is_rtl {
-                                x_offset -= kern_value; // RTL: kerning moves left
-                            } else {
-                                x_offset += kern_value;
-                            }
+                        if is_rtl {
+                            x_offset -= kern_value; // RTL: kerning moves left
+                        } else {
+                            x_offset += kern_value;
                         }
+                    }
 
                     // Store data for two-pass rendering
                     sort_render_data.push(SortRenderData {
@@ -709,7 +654,8 @@ impl EditorWidget {
                     prev_glyph_name = Some(name.clone());
                     if let Some(workspace_arc) = &self.session.workspace {
                         let workspace = workspace_arc.read().unwrap();
-                        prev_glyph_group = workspace.get_glyph(name)
+                        prev_glyph_group = workspace
+                            .get_glyph(name)
                             .and_then(|g| g.right_group.clone());
                     }
                 }
@@ -730,7 +676,12 @@ impl EditorWidget {
             if index + 1 == cursor_position {
                 cursor_x = x_offset;
                 cursor_y = baseline_y;
-                tracing::debug!("[Cursor] After sort {}: ({}, {})", index, cursor_x, cursor_y);
+                tracing::debug!(
+                    "[Cursor] After sort {}: ({}, {})",
+                    index,
+                    cursor_x,
+                    cursor_y
+                );
             }
         }
 
@@ -756,10 +707,23 @@ impl EditorWidget {
                     };
 
                     // Text mode: minimal metrics for all sorts
-                    self.render_sort_minimal_metrics(scene, data.x_offset, data.baseline_y, data.advance_width, transform, metrics_color);
+                    self.render_sort_minimal_metrics(
+                        scene,
+                        data.x_offset,
+                        data.baseline_y,
+                        data.advance_width,
+                        transform,
+                        metrics_color,
+                    );
                 } else if data.is_active {
                     // Non-text mode: full metrics only for active sort
-                    self.render_sort_metrics(scene, data.x_offset, data.baseline_y, data.advance_width, transform);
+                    self.render_sort_metrics(
+                        scene,
+                        data.x_offset,
+                        data.baseline_y,
+                        data.advance_width,
+                        transform,
+                    );
                 }
                 // Inactive sorts in non-text mode: no metrics at all
             }
@@ -835,13 +799,7 @@ impl EditorWidget {
             let transformed_path = sort_transform * &glyph_path;
             let stroke = Stroke::new(theme::size::PATH_STROKE_WIDTH);
             let brush = Brush::Solid(theme::path::STROKE);
-            scene.stroke(
-                &stroke,
-                Affine::IDENTITY,
-                &brush,
-                None,
-                &transformed_path,
-            );
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &transformed_path);
 
             // Draw control points and handles
             // Note: This uses session paths which already have the correct structure
@@ -858,7 +816,7 @@ impl EditorWidget {
                 &self.session.glyph,
                 &sort_transform,
                 &workspace_guard,
-                true,  // is_active_sort
+                true, // is_active_sort
                 use_component_color,
             );
         }
@@ -916,8 +874,8 @@ impl EditorWidget {
             glyph,
             &sort_transform,
             &workspace_guard,
-            false,  // is_active_sort
-            false,  // use_component_color
+            false, // is_active_sort
+            false, // use_component_color
         );
     }
 
@@ -967,8 +925,8 @@ impl EditorWidget {
                 let transformed_path = component_transform * &component_path;
 
                 // Check if this component is selected (only relevant for active sort)
-                let is_selected = is_active_sort &&
-                    self.session.selected_component == Some(component.id);
+                let is_selected =
+                    is_active_sort && self.session.selected_component == Some(component.id);
 
                 // Determine fill color based on context
                 let fill_color = if is_selected {
@@ -1048,13 +1006,7 @@ impl EditorWidget {
         let stroke = Stroke::new(1.5);
         let brush = Brush::Solid(theme::selection::RECT_STROKE);
 
-        scene.stroke(
-            &stroke,
-            Affine::IDENTITY,
-            &brush,
-            None,
-            &cursor_line,
-        );
+        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &cursor_line);
 
         // Draw triangular indicators at top and bottom (like Glyphs app)
         // Triangle size in screen space - slightly smaller than 4x
@@ -1064,8 +1016,14 @@ impl EditorWidget {
         // Top triangle (pointing down/inward, aligned with ascender)
         // Base at ascender, tip extends downward into the metrics box
         let mut top_triangle = kurbo::BezPath::new();
-        top_triangle.move_to((cursor_top_screen.x - triangle_width / 2.0, cursor_top_screen.y)); // Left corner at ascender
-        top_triangle.line_to((cursor_top_screen.x + triangle_width / 2.0, cursor_top_screen.y)); // Right corner at ascender
+        top_triangle.move_to((
+            cursor_top_screen.x - triangle_width / 2.0,
+            cursor_top_screen.y,
+        )); // Left corner at ascender
+        top_triangle.line_to((
+            cursor_top_screen.x + triangle_width / 2.0,
+            cursor_top_screen.y,
+        )); // Right corner at ascender
         top_triangle.line_to((cursor_top_screen.x, cursor_top_screen.y + triangle_height)); // Tip below, pointing down
         top_triangle.close_path();
 
@@ -1080,9 +1038,18 @@ impl EditorWidget {
         // Bottom triangle (pointing up/inward, aligned with descender)
         // Base at descender, tip extends upward into the metrics box
         let mut bottom_triangle = kurbo::BezPath::new();
-        bottom_triangle.move_to((cursor_bottom_screen.x - triangle_width / 2.0, cursor_bottom_screen.y)); // Left corner at descender
-        bottom_triangle.line_to((cursor_bottom_screen.x + triangle_width / 2.0, cursor_bottom_screen.y)); // Right corner at descender
-        bottom_triangle.line_to((cursor_bottom_screen.x, cursor_bottom_screen.y - triangle_height)); // Tip above, pointing up
+        bottom_triangle.move_to((
+            cursor_bottom_screen.x - triangle_width / 2.0,
+            cursor_bottom_screen.y,
+        )); // Left corner at descender
+        bottom_triangle.line_to((
+            cursor_bottom_screen.x + triangle_width / 2.0,
+            cursor_bottom_screen.y,
+        )); // Right corner at descender
+        bottom_triangle.line_to((
+            cursor_bottom_screen.x,
+            cursor_bottom_screen.y - triangle_height,
+        )); // Tip above, pointing up
         bottom_triangle.close_path();
 
         scene.fill(
@@ -1113,18 +1080,15 @@ impl EditorWidget {
         // Offset by baseline_y to support multi-line text
         let left_top = Point::new(x_offset, baseline_y + self.session.ascender);
         let left_bottom = Point::new(x_offset, baseline_y + self.session.descender);
-        let left_line = kurbo::Line::new(
-            *transform * left_top,
-            *transform * left_bottom,
-        );
+        let left_line = kurbo::Line::new(*transform * left_top, *transform * left_bottom);
         scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &left_line);
 
         let right_top = Point::new(x_offset + advance_width, baseline_y + self.session.ascender);
-        let right_bottom = Point::new(x_offset + advance_width, baseline_y + self.session.descender);
-        let right_line = kurbo::Line::new(
-            *transform * right_top,
-            *transform * right_bottom,
+        let right_bottom = Point::new(
+            x_offset + advance_width,
+            baseline_y + self.session.descender,
         );
+        let right_line = kurbo::Line::new(*transform * right_top, *transform * right_bottom);
         scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &right_line);
 
         // Draw horizontal lines (baseline, ascender, descender, etc.)
@@ -1195,9 +1159,17 @@ impl EditorWidget {
         draw_cross(scene, x_offset, baseline_y + self.session.ascender); // Top
 
         // Right edge crosses
-        draw_cross(scene, x_offset + advance_width, baseline_y + self.session.descender); // Bottom
+        draw_cross(
+            scene,
+            x_offset + advance_width,
+            baseline_y + self.session.descender,
+        ); // Bottom
         draw_cross(scene, x_offset + advance_width, baseline_y); // Baseline
-        draw_cross(scene, x_offset + advance_width, baseline_y + self.session.ascender); // Top
+        draw_cross(
+            scene,
+            x_offset + advance_width,
+            baseline_y + self.session.ascender,
+        ); // Top
     }
 
     /// Render width and sidebearing labels for text mode (Glyphs.app style)
@@ -1231,7 +1203,7 @@ impl EditorWidget {
             let mut builder = layout_cx.ranged_builder(&mut font_cx, &text, 1.0, false);
             builder.push_default(StyleProperty::FontSize(font_size));
             builder.push_default(StyleProperty::FontStack(FontStack::Single(
-                FontFamily::Generic(GenericFamily::SansSerif)
+                FontFamily::Generic(GenericFamily::SansSerif),
             )));
             builder.push_default(StyleProperty::Brush(BrushIndex(0)));
             let mut layout = builder.build(&text);
@@ -1247,7 +1219,10 @@ impl EditorWidget {
             // Render text in screen space (no flip)
             render_text(
                 scene,
-                Affine::translate((screen_pos.x - text_width / 2.0, screen_pos.y - text_height / 2.0)),
+                Affine::translate((
+                    screen_pos.x - text_width / 2.0,
+                    screen_pos.y - text_height / 2.0,
+                )),
                 &layout,
                 &brushes,
                 false,
@@ -1256,7 +1231,12 @@ impl EditorWidget {
 
         // Render three labels: LSB, Width, RSB
         render_label(scene, format!("{:.0}", lsb), x_offset, label_y);
-        render_label(scene, format!("{:.0}", width), x_offset + width / 2.0, label_y);
+        render_label(
+            scene,
+            format!("{:.0}", width),
+            x_offset + width / 2.0,
+            label_y,
+        );
         render_label(scene, format!("{:.0}", rsb), x_offset + width, label_y);
     }
 
@@ -1275,12 +1255,10 @@ impl EditorWidget {
             (self.last_click_time, self.last_click_position)
         {
             let time_diff = now.duration_since(last_time).as_millis();
-            let distance = ((position.x - last_pos.x).powi(2)
-                + (position.y - last_pos.y).powi(2))
-            .sqrt();
+            let distance =
+                ((position.x - last_pos.x).powi(2) + (position.y - last_pos.y).powi(2)).sqrt();
 
-            time_diff < DOUBLE_CLICK_TIME_MS
-                && distance < DOUBLE_CLICK_DISTANCE_PX
+            time_diff < DOUBLE_CLICK_TIME_MS && distance < DOUBLE_CLICK_DISTANCE_PX
         } else {
             false
         };
@@ -1318,7 +1296,11 @@ impl EditorWidget {
 
         for (index, sort) in buffer.iter().enumerate() {
             match &sort.kind {
-                crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                crate::sort::SortKind::Glyph {
+                    name,
+                    advance_width,
+                    ..
+                } => {
                     // For RTL: move x left BEFORE processing this glyph
                     if is_rtl {
                         x_offset -= advance_width;
@@ -1326,29 +1308,31 @@ impl EditorWidget {
 
                     // Apply kerning if we have a previous glyph
                     if let Some(prev_name) = &prev_glyph_name
-                        && let Some(workspace_arc) = &self.session.workspace {
-                            let workspace = workspace_arc.read().unwrap();
+                        && let Some(workspace_arc) = &self.session.workspace
+                    {
+                        let workspace = workspace_arc.read().unwrap();
 
-                            // Get current glyph's left kerning group
-                            let curr_group = workspace.get_glyph(name)
-                                .and_then(|g| g.left_group.as_deref());
+                        // Get current glyph's left kerning group
+                        let curr_group = workspace
+                            .get_glyph(name)
+                            .and_then(|g| g.left_group.as_deref());
 
-                            // Look up kerning value
-                            let kern_value = crate::kerning::lookup_kerning(
-                                &workspace.kerning,
-                                &workspace.groups,
-                                prev_name,
-                                prev_glyph_group.as_deref(),
-                                name,
-                                curr_group,
-                            );
+                        // Look up kerning value
+                        let kern_value = crate::kerning::lookup_kerning(
+                            &workspace.kerning,
+                            &workspace.groups,
+                            prev_name,
+                            prev_glyph_group.as_deref(),
+                            name,
+                            curr_group,
+                        );
 
-                            if is_rtl {
-                                x_offset -= kern_value;
-                            } else {
-                                x_offset += kern_value;
-                            }
+                        if is_rtl {
+                            x_offset -= kern_value;
+                        } else {
+                            x_offset += kern_value;
                         }
+                    }
 
                     // Create bounding box for this sort
                     let sort_rect = kurbo::Rect::new(
@@ -1371,7 +1355,8 @@ impl EditorWidget {
                     prev_glyph_name = Some(name.clone());
                     if let Some(workspace_arc) = &self.session.workspace {
                         let workspace = workspace_arc.read().unwrap();
-                        prev_glyph_group = workspace.get_glyph(name)
+                        prev_glyph_group = workspace
+                            .get_glyph(name)
                             .and_then(|g| g.right_group.clone());
                     }
                 }
@@ -1415,7 +1400,9 @@ impl EditorWidget {
 
         // Get glyph name and unicode
         let (glyph_name, unicode) = match &sort.kind {
-            crate::sort::SortKind::Glyph { name, codepoint, .. } => {
+            crate::sort::SortKind::Glyph {
+                name, codepoint, ..
+            } => {
                 let unicode_str = codepoint.map(|c| format!("U+{:04X}", c as u32));
                 (name.clone(), unicode_str)
             }
@@ -1465,7 +1452,11 @@ impl EditorWidget {
         for i in 0..end_index {
             if let Some(sort) = buffer.get(i) {
                 match &sort.kind {
-                    crate::sort::SortKind::Glyph { name, advance_width, .. } => {
+                    crate::sort::SortKind::Glyph {
+                        name,
+                        advance_width,
+                        ..
+                    } => {
                         // For RTL: move x left BEFORE processing this glyph
                         if is_rtl {
                             x_offset -= advance_width;
@@ -1474,7 +1465,8 @@ impl EditorWidget {
                         // Apply kerning if we have a previous glyph
                         if let Some(prev_name) = &prev_glyph_name {
                             // Get current glyph's left kerning group
-                            let curr_group = workspace_guard.get_glyph(name)
+                            let curr_group = workspace_guard
+                                .get_glyph(name)
                                 .and_then(|g| g.left_group.as_deref());
 
                             // Look up kerning value
@@ -1501,7 +1493,8 @@ impl EditorWidget {
 
                         // Update previous glyph info for next iteration
                         prev_glyph_name = Some(name.clone());
-                        prev_glyph_group = workspace_guard.get_glyph(name)
+                        prev_glyph_group = workspace_guard
+                            .get_glyph(name)
                             .and_then(|g| g.right_group.clone());
                     }
                     crate::sort::SortKind::LineBreak => {
@@ -1535,12 +1528,7 @@ impl EditorWidget {
     }
 
     /// Handle pointer down event
-    fn handle_pointer_down(
-        &mut self,
-        ctx: &mut EventCtx<'_>,
-        state: &masonry::core::PointerState,
-    ) {
-
+    fn handle_pointer_down(&mut self, ctx: &mut EventCtx<'_>, state: &masonry::core::PointerState) {
         tracing::debug!(
             "[EditorWidget::on_pointer_event] Down at {:?}, \
              current_tool: {:?}",
@@ -1558,19 +1546,11 @@ impl EditorWidget {
             return;
         }
 
-        if self.handle_kern_mode_activation(
-            ctx,
-            state,
-            design_pos,
-        ) {
+        if self.handle_kern_mode_activation(ctx, state, design_pos) {
             return;
         }
 
-        self.dispatch_tool_mouse_down(
-            ctx,
-            local_pos,
-            state,
-        );
+        self.dispatch_tool_mouse_down(ctx, local_pos, state);
     }
 
     // ============================================================================
@@ -1602,19 +1582,19 @@ impl EditorWidget {
         false
     }
 
-    fn handle_component_double_click(
-        &mut self,
-        ctx: &mut EventCtx<'_>,
-        local_pos: Point,
-    ) -> bool {
+    fn handle_component_double_click(&mut self, ctx: &mut EventCtx<'_>, local_pos: Point) -> bool {
         let component_id = match self.session.hit_test_component(local_pos) {
             Some(id) => id,
             None => return false,
         };
 
-        let component = match self.session.glyph.components
+        let component = match self
+            .session
+            .glyph
+            .components
             .iter()
-            .find(|c| c.id == component_id) {
+            .find(|c| c.id == component_id)
+        {
             Some(c) => c,
             None => return false,
         };
@@ -1679,18 +1659,12 @@ impl EditorWidget {
             None => return 0.0,
         };
 
-        let (curr_sort, prev_sort) = match (
-            buffer.get(sort_index),
-            buffer.get(sort_index - 1),
-        ) {
+        let (curr_sort, prev_sort) = match (buffer.get(sort_index), buffer.get(sort_index - 1)) {
             (Some(c), Some(p)) => (c, p),
             _ => return 0.0,
         };
 
-        let (curr_name, prev_name) = match (
-            &curr_sort.kind,
-            &prev_sort.kind,
-        ) {
+        let (curr_name, prev_name) = match (&curr_sort.kind, &prev_sort.kind) {
             (
                 crate::sort::SortKind::Glyph { name: c, .. },
                 crate::sort::SortKind::Glyph { name: p, .. },
@@ -1722,7 +1696,7 @@ impl EditorWidget {
         local_pos: Point,
         state: &masonry::core::PointerState,
     ) {
-        use crate::mouse::{MouseButton, MouseEvent, Modifiers};
+        use crate::mouse::{Modifiers, MouseButton, MouseEvent};
         use crate::tools::{ToolBox, ToolId};
 
         let mods = Modifiers {
@@ -1732,22 +1706,12 @@ impl EditorWidget {
             meta: state.modifiers.meta(),
         };
 
-        let mouse_event = MouseEvent::with_modifiers(
-            local_pos,
-            Some(MouseButton::Left),
-            mods,
-        );
+        let mouse_event = MouseEvent::with_modifiers(local_pos, Some(MouseButton::Left), mods);
 
         let select_tool = ToolBox::for_id(ToolId::Select);
-        let mut tool = std::mem::replace(
-            &mut self.session.current_tool,
-            select_tool,
-        );
-        self.mouse.mouse_down(
-            mouse_event,
-            &mut tool,
-            &mut self.session,
-        );
+        let mut tool = std::mem::replace(&mut self.session.current_tool, select_tool);
+        self.mouse
+            .mouse_down(mouse_event, &mut tool, &mut self.session);
         self.session.current_tool = tool;
 
         ctx.request_render();
@@ -1772,11 +1736,7 @@ impl EditorWidget {
         self.maybe_emit_throttled_update(ctx);
     }
 
-    fn handle_kern_mode_drag(
-        &mut self,
-        ctx: &mut EventCtx<'_>,
-        local_pos: Point,
-    ) {
+    fn handle_kern_mode_drag(&mut self, ctx: &mut EventCtx<'_>, local_pos: Point) {
         let design_pos = self.session.viewport.screen_to_design(local_pos);
         self.kern_current_offset = design_pos.x - self.kern_start_x;
 
@@ -1797,18 +1757,12 @@ impl EditorWidget {
             None => return,
         };
 
-        let (curr_sort, prev_sort) = match (
-            buffer.get(sort_index),
-            buffer.get(sort_index - 1),
-        ) {
+        let (curr_sort, prev_sort) = match (buffer.get(sort_index), buffer.get(sort_index - 1)) {
             (Some(c), Some(p)) => (c, p),
             _ => return,
         };
 
-        let (curr_name, prev_name) = match (
-            &curr_sort.kind,
-            &prev_sort.kind,
-        ) {
+        let (curr_name, prev_name) = match (&curr_sort.kind, &prev_sort.kind) {
             (
                 crate::sort::SortKind::Glyph { name: c, .. },
                 crate::sort::SortKind::Glyph { name: p, .. },
@@ -1821,8 +1775,7 @@ impl EditorWidget {
             None => return,
         };
 
-        let new_kern_value =
-            self.kern_original_value + self.kern_current_offset;
+        let new_kern_value = self.kern_original_value + self.kern_current_offset;
         let mut workspace = workspace_arc.write().unwrap();
 
         if new_kern_value == 0.0 {
@@ -1830,49 +1783,36 @@ impl EditorWidget {
                 first_pairs.remove(curr_name);
             }
         } else {
-            workspace.kerning
+            workspace
+                .kerning
                 .entry(prev_name.clone())
                 .or_insert_with(std::collections::HashMap::new)
                 .insert(curr_name.clone(), new_kern_value);
         }
     }
 
-    fn dispatch_tool_mouse_move(
-        &mut self,
-        _ctx: &mut EventCtx<'_>,
-        local_pos: Point,
-    ) {
+    fn dispatch_tool_mouse_move(&mut self, _ctx: &mut EventCtx<'_>, local_pos: Point) {
         use crate::mouse::MouseEvent;
         use crate::tools::{ToolBox, ToolId};
 
         let mouse_event = MouseEvent::new(local_pos, None);
         let select_tool = ToolBox::for_id(ToolId::Select);
-        let mut tool = std::mem::replace(
-            &mut self.session.current_tool,
-            select_tool,
-        );
-        self.mouse.mouse_moved(
-            mouse_event,
-            &mut tool,
-            &mut self.session,
-        );
+        let mut tool = std::mem::replace(&mut self.session.current_tool, select_tool);
+        self.mouse
+            .mouse_moved(mouse_event, &mut tool, &mut self.session);
         self.session.current_tool = tool;
     }
 
     fn maybe_request_render(&self, ctx: &mut EventCtx<'_>) {
         use crate::tools::ToolId;
 
-        let needs_render = ctx.is_active()
-            || self.session.current_tool.id() == ToolId::Pen;
+        let needs_render = ctx.is_active() || self.session.current_tool.id() == ToolId::Pen;
         if needs_render {
             ctx.request_render();
         }
     }
 
-    fn maybe_emit_throttled_update(
-        &mut self,
-        ctx: &mut EventCtx<'_>,
-    ) {
+    fn maybe_emit_throttled_update(&mut self, ctx: &mut EventCtx<'_>) {
         if !ctx.is_active() {
             return;
         }
@@ -1886,11 +1826,7 @@ impl EditorWidget {
         }
     }
 
-    fn emit_session_update(
-        &self,
-        ctx: &mut EventCtx<'_>,
-        save_requested: bool,
-    ) {
+    fn emit_session_update(&self, ctx: &mut EventCtx<'_>, save_requested: bool) {
         ctx.submit_action::<SessionUpdate>(SessionUpdate {
             session: self.session.clone(),
             save_requested,
@@ -1898,11 +1834,7 @@ impl EditorWidget {
     }
 
     /// Handle pointer up event
-    fn handle_pointer_up(
-        &mut self,
-        ctx: &mut EventCtx<'_>,
-        state: &masonry::core::PointerState,
-    ) {
+    fn handle_pointer_up(&mut self, ctx: &mut EventCtx<'_>, state: &masonry::core::PointerState) {
         let local_pos = ctx.local_position(state.position);
 
         if self.kern_mode_active {
@@ -1914,16 +1846,9 @@ impl EditorWidget {
         self.finish_pointer_up(ctx);
     }
 
-    fn handle_kern_mode_release(
-        &mut self,
-        ctx: &mut EventCtx<'_>,
-    ) {
-        let final_kern_value =
-            self.kern_original_value + self.kern_current_offset;
-        tracing::info!(
-            "Kern mode released: final value = {}",
-            final_kern_value
-        );
+    fn handle_kern_mode_release(&mut self, ctx: &mut EventCtx<'_>) {
+        let final_kern_value = self.kern_original_value + self.kern_current_offset;
+        tracing::info!("Kern mode released: final value = {}", final_kern_value);
 
         self.kern_mode_active = false;
         self.kern_sort_index = None;
@@ -1940,7 +1865,7 @@ impl EditorWidget {
         local_pos: Point,
         state: &masonry::core::PointerState,
     ) {
-        use crate::mouse::{MouseButton, MouseEvent, Modifiers};
+        use crate::mouse::{Modifiers, MouseButton, MouseEvent};
         use crate::tools::{ToolBox, ToolId};
 
         let mods = Modifiers {
@@ -1950,22 +1875,12 @@ impl EditorWidget {
             meta: state.modifiers.meta(),
         };
 
-        let mouse_event = MouseEvent::with_modifiers(
-            local_pos,
-            Some(MouseButton::Left),
-            mods,
-        );
+        let mouse_event = MouseEvent::with_modifiers(local_pos, Some(MouseButton::Left), mods);
 
         let select_tool = ToolBox::for_id(ToolId::Select);
-        let mut tool = std::mem::replace(
-            &mut self.session.current_tool,
-            select_tool,
-        );
-        self.mouse.mouse_up(
-            mouse_event,
-            &mut tool,
-            &mut self.session,
-        );
+        let mut tool = std::mem::replace(&mut self.session.current_tool, select_tool);
+        self.mouse
+            .mouse_up(mouse_event, &mut tool, &mut self.session);
 
         if let Some(edit_type) = tool.edit_type() {
             self.record_edit(edit_type);
@@ -1975,10 +1890,7 @@ impl EditorWidget {
         self.session.current_tool = tool;
     }
 
-    fn finish_pointer_up(
-        &mut self,
-        ctx: &mut EventCtx<'_>,
-    ) {
+    fn finish_pointer_up(&mut self, ctx: &mut EventCtx<'_>) {
         self.session.update_coord_selection();
         self.drag_update_counter = 0;
 
@@ -2010,7 +1922,7 @@ impl EditorWidget {
         let scroll_y = match delta {
             ScrollDelta::LineDelta(_x, y) => *y,
             ScrollDelta::PixelDelta(pos) => (pos.y / 10.0) as f32, // Scale down pixel deltas
-            ScrollDelta::PageDelta(_x, y) => *y * 3.0, // Page scrolls are bigger
+            ScrollDelta::PageDelta(_x, y) => *y * 3.0,             // Page scrolls are bigger
         };
 
         if scroll_y.abs() < 0.001 {
@@ -2029,7 +1941,11 @@ impl EditorWidget {
             .clamp(settings::editor::MIN_ZOOM, settings::editor::MAX_ZOOM);
 
         self.session.viewport.zoom = new_zoom;
-        tracing::debug!("Scroll zoom: scroll_y={:.2}, new zoom={:.2}", scroll_y, new_zoom);
+        tracing::debug!(
+            "Scroll zoom: scroll_y={:.2}, new zoom={:.2}",
+            scroll_y,
+            new_zoom
+        );
 
         ctx.request_render();
     }
@@ -2059,9 +1975,7 @@ impl EditorWidget {
             self.previous_tool
         );
 
-        if key_event.state == KeyState::Down
-            && self.previous_tool.is_none()
-        {
+        if key_event.state == KeyState::Down && self.previous_tool.is_none() {
             // Spacebar pressed: save current tool and switch to
             // Preview
             let current_tool = self.session.current_tool.id();
@@ -2081,8 +1995,7 @@ impl EditorWidget {
                 self.mouse = Mouse::new();
 
                 // Switch to Preview tool
-                self.session.current_tool =
-                    ToolBox::for_id(crate::tools::ToolId::Preview);
+                self.session.current_tool = ToolBox::for_id(crate::tools::ToolId::Preview);
 
                 tracing::debug!(
                     "Spacebar down: switched to Preview, will \
@@ -2101,16 +2014,13 @@ impl EditorWidget {
                 ctx.set_handled();
             }
             return true;
-        } else if key_event.state == KeyState::Up
-            && self.previous_tool.is_some()
-        {
+        } else if key_event.state == KeyState::Up && self.previous_tool.is_some() {
             // Spacebar released: return to previous tool
             if let Some(previous) = self.previous_tool.take() {
                 // Reset mouse state by creating new instance
                 self.mouse = Mouse::new();
 
-                self.session.current_tool =
-                    crate::tools::ToolBox::for_id(previous);
+                self.session.current_tool = crate::tools::ToolBox::for_id(previous);
                 tracing::debug!("Spacebar up: returned to {:?}", previous);
 
                 // Emit SessionUpdate so the toolbar reflects the
@@ -2138,7 +2048,6 @@ impl EditorWidget {
         shift: bool,
         ctrl: bool,
     ) -> bool {
-
         if self.handle_ctrl_space_toggle(ctx, ctrl, key) {
             return true;
         }
@@ -2192,8 +2101,8 @@ impl EditorWidget {
         ctrl: bool,
         key: &masonry::core::keyboard::Key,
     ) -> bool {
-        use masonry::core::keyboard::Key;
         use crate::tools::ToolBox;
+        use masonry::core::keyboard::Key;
 
         if !ctrl || !matches!(key, Key::Character(c) if c == " ") {
             return false;
@@ -2211,8 +2120,7 @@ impl EditorWidget {
         self.mouse.cancel(&mut tool, &mut self.session);
         self.mouse = Mouse::new();
 
-        self.session.current_tool =
-            ToolBox::for_id(crate::tools::ToolId::Preview);
+        self.session.current_tool = ToolBox::for_id(crate::tools::ToolId::Preview);
 
         self.emit_session_update(ctx, false);
         ctx.request_render();
@@ -2257,8 +2165,7 @@ impl EditorWidget {
         }
 
         if matches!(key, Key::Character(c) if c == "+" || c == "=") {
-            let new_zoom = (self.session.viewport.zoom * 1.1)
-                .min(settings::editor::MAX_ZOOM);
+            let new_zoom = (self.session.viewport.zoom * 1.1).min(settings::editor::MAX_ZOOM);
             self.session.viewport.zoom = new_zoom;
             tracing::info!("Zoom in: new zoom = {:.2}", new_zoom);
             ctx.request_render();
@@ -2267,8 +2174,7 @@ impl EditorWidget {
         }
 
         if matches!(key, Key::Character(c) if c == "-" || c == "_") {
-            let new_zoom = (self.session.viewport.zoom / 1.1)
-                .max(settings::editor::MIN_ZOOM);
+            let new_zoom = (self.session.viewport.zoom / 1.1).max(settings::editor::MIN_ZOOM);
             self.session.viewport.zoom = new_zoom;
             tracing::info!("Zoom out: new zoom = {:.2}", new_zoom);
             ctx.request_render();
@@ -2321,9 +2227,7 @@ impl EditorWidget {
         );
 
         if self.convert_selected_hyper_to_cubic() {
-            tracing::info!(
-                "Successfully converted hyperbezier paths to cubic"
-            );
+            tracing::info!("Successfully converted hyperbezier paths to cubic");
             ctx.request_render();
             ctx.set_handled();
             return true;
@@ -2436,18 +2340,10 @@ impl EditorWidget {
         }
 
         let tool_id = match key {
-            Key::Character(c) if c == "v" => {
-                Some(crate::tools::ToolId::Select)
-            }
-            Key::Character(c) if c == "p" => {
-                Some(crate::tools::ToolId::Pen)
-            }
-            Key::Character(c) if c == "h" => {
-                Some(crate::tools::ToolId::HyperPen)
-            }
-            Key::Character(c) if c == "k" => {
-                Some(crate::tools::ToolId::Knife)
-            }
+            Key::Character(c) if c == "v" => Some(crate::tools::ToolId::Select),
+            Key::Character(c) if c == "p" => Some(crate::tools::ToolId::Pen),
+            Key::Character(c) if c == "h" => Some(crate::tools::ToolId::HyperPen),
+            Key::Character(c) if c == "k" => Some(crate::tools::ToolId::Knife),
             _ => None,
         };
 
@@ -2456,18 +2352,12 @@ impl EditorWidget {
             None => return false,
         };
 
-        let select_tool = crate::tools::ToolBox::for_id(
-            crate::tools::ToolId::Select,
-        );
-        let mut tool = std::mem::replace(
-            &mut self.session.current_tool,
-            select_tool,
-        );
+        let select_tool = crate::tools::ToolBox::for_id(crate::tools::ToolId::Select);
+        let mut tool = std::mem::replace(&mut self.session.current_tool, select_tool);
         self.mouse.cancel(&mut tool, &mut self.session);
         self.mouse = crate::mouse::Mouse::new();
 
-        self.session.current_tool =
-            crate::tools::ToolBox::for_id(tool_id);
+        self.session.current_tool = crate::tools::ToolBox::for_id(tool_id);
 
         self.emit_session_update(ctx, false);
         ctx.request_render();
@@ -2509,7 +2399,10 @@ impl EditorWidget {
         if self.session.selected_component.is_some() {
             tracing::debug!(
                 "Nudging selected component: dx={} dy={} shift={} ctrl={}",
-                dx, dy, shift, ctrl
+                dx,
+                dy,
+                shift,
+                ctrl
             );
 
             // Calculate the actual nudge amount
@@ -2557,8 +2450,12 @@ impl EditorWidget {
     ) -> bool {
         use masonry::core::keyboard::{Key, NamedKey};
 
-        tracing::debug!("[handle_text_mode_input] key={:?}, text_mode_active={}, has_buffer={}",
-            key, self.session.text_mode_active, self.session.text_buffer.is_some());
+        tracing::debug!(
+            "[handle_text_mode_input] key={:?}, text_mode_active={}, has_buffer={}",
+            key,
+            self.session.text_mode_active,
+            self.session.text_buffer.is_some()
+        );
 
         // Handle arrow keys for cursor movement
         // In RTL mode, visual left/right is inverted from logical left/right
@@ -2689,7 +2586,10 @@ impl EditorWidget {
                     // Use shaped sort for Arabic text in RTL mode
                     if let Some(sort) = self.session.create_shaped_sort_from_char(c) {
                         // Get cursor position before insertion for reshaping
-                        let cursor_pos = self.session.text_buffer.as_ref()
+                        let cursor_pos = self
+                            .session
+                            .text_buffer
+                            .as_ref()
                             .map(|b| b.cursor())
                             .unwrap_or(0);
 
@@ -2743,13 +2643,7 @@ fn draw_metrics_guides(
         let end_screen = *transform * end;
 
         let line = kurbo::Line::new(start_screen, end_screen);
-        scene.stroke(
-            &stroke,
-            Affine::IDENTITY,
-            &brush,
-            None,
-            &line,
-        );
+        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
     };
 
     // Helper to draw a vertical line at a given X coordinate in
@@ -2763,13 +2657,7 @@ fn draw_metrics_guides(
         let end_screen = *transform * end;
 
         let line = kurbo::Line::new(start_screen, end_screen);
-        scene.stroke(
-            &stroke,
-            Affine::IDENTITY,
-            &brush,
-            None,
-            &line,
-        );
+        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
     };
 
     // Draw vertical lines (left and right edges of metrics box)
@@ -2798,11 +2686,7 @@ fn draw_metrics_guides(
 }
 
 /// Draw paths with control point lines and styled points
-fn draw_paths_with_points(
-    scene: &mut Scene,
-    session: &EditSession,
-    transform: &Affine,
-) {
+fn draw_paths_with_points(scene: &mut Scene, session: &EditSession, transform: &Affine) {
     use crate::path::Path;
 
     // First pass: draw control point lines (handles)
@@ -2814,11 +2698,7 @@ fn draw_paths_with_points(
                 draw_control_handles(scene, cubic, transform);
             }
             Path::Quadratic(quadratic) => {
-                draw_control_handles_quadratic(
-                    scene,
-                    quadratic,
-                    transform,
-                );
+                draw_control_handles_quadratic(scene, quadratic, transform);
             }
             Path::Hyper(hyper) => {
                 // Hyper paths use similar handle drawing to cubic
@@ -2834,12 +2714,7 @@ fn draw_paths_with_points(
                 draw_points(scene, cubic, session, transform);
             }
             Path::Quadratic(quadratic) => {
-                draw_points_quadratic(
-                    scene,
-                    quadratic,
-                    session,
-                    transform,
-                );
+                draw_points_quadratic(scene, quadratic, session, transform);
             }
             Path::Hyper(hyper) => {
                 // Hyper paths use similar point drawing to cubic
@@ -2895,13 +2770,7 @@ fn draw_control_handles(
             let line = kurbo::Line::new(start, end);
             let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
             let brush = Brush::Solid(theme::handle::LINE);
-            scene.stroke(
-                &stroke,
-                Affine::IDENTITY,
-                &brush,
-                None,
-                &line,
-            );
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
         }
 
         // Draw handle to previous point if it's off-curve
@@ -2911,13 +2780,7 @@ fn draw_control_handles(
             let line = kurbo::Line::new(start, end);
             let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
             let brush = Brush::Solid(theme::handle::LINE);
-            scene.stroke(
-                &stroke,
-                Affine::IDENTITY,
-                &brush,
-                None,
-                &line,
-            );
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
         }
     }
 }
@@ -2949,11 +2812,7 @@ fn draw_points(
 }
 
 /// Draw a smooth on-curve point as a circle
-fn draw_smooth_point(
-    scene: &mut Scene,
-    screen_pos: Point,
-    is_selected: bool,
-) {
+fn draw_smooth_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
     let radius = if is_selected {
         theme::size::SMOOTH_POINT_SELECTED_RADIUS
     } else {
@@ -2976,11 +2835,7 @@ fn draw_smooth_point(
 }
 
 /// Draw a corner on-curve point as a square
-fn draw_corner_point(
-    scene: &mut Scene,
-    screen_pos: Point,
-    is_selected: bool,
-) {
+fn draw_corner_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
     let half_size = if is_selected {
         theme::size::CORNER_POINT_SELECTED_HALF_SIZE
     } else {
@@ -3013,11 +2868,7 @@ fn draw_corner_point(
 }
 
 /// Draw an off-curve point as a small circle
-fn draw_offcurve_point(
-    scene: &mut Scene,
-    screen_pos: Point,
-    is_selected: bool,
-) {
+fn draw_offcurve_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
     let radius = if is_selected {
         theme::size::OFFCURVE_POINT_SELECTED_RADIUS
     } else {
@@ -3040,11 +2891,7 @@ fn draw_offcurve_point(
 }
 
 /// Draw a hyperbezier on-curve point as a circle (cyan/teal color)
-fn draw_hyper_point(
-    scene: &mut Scene,
-    screen_pos: Point,
-    is_selected: bool,
-) {
+fn draw_hyper_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
     let radius = if is_selected {
         theme::size::HYPER_POINT_SELECTED_RADIUS
     } else {
@@ -3112,13 +2959,7 @@ fn draw_control_handles_quadratic(
             let line = kurbo::Line::new(start, end);
             let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
             let brush = Brush::Solid(theme::handle::LINE);
-            scene.stroke(
-                &stroke,
-                Affine::IDENTITY,
-                &brush,
-                None,
-                &line,
-            );
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
         }
 
         // Draw handle to previous point if it's off-curve
@@ -3128,13 +2969,7 @@ fn draw_control_handles_quadratic(
             let line = kurbo::Line::new(start, end);
             let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
             let brush = Brush::Solid(theme::handle::LINE);
-            scene.stroke(
-                &stroke,
-                Affine::IDENTITY,
-                &brush,
-                None,
-                &line,
-            );
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
         }
     }
 }
@@ -3210,13 +3045,7 @@ fn draw_control_handles_hyper(
             let line = kurbo::Line::new(start, end);
             let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
             let brush = Brush::Solid(theme::handle::LINE);
-            scene.stroke(
-                &stroke,
-                Affine::IDENTITY,
-                &brush,
-                None,
-                &line,
-            );
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
         }
 
         // Draw handle to previous point if it's off-curve
@@ -3226,13 +3055,7 @@ fn draw_control_handles_hyper(
             let line = kurbo::Line::new(start, end);
             let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
             let brush = Brush::Solid(theme::handle::LINE);
-            scene.stroke(
-                &stroke,
-                Affine::IDENTITY,
-                &brush,
-                None,
-                &line,
-            );
+            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
         }
     }
 }
@@ -3295,17 +3118,13 @@ pub struct EditorView<State, F> {
 
 impl<State, F> ViewMarker for EditorView<State, F> {}
 
-impl<State: 'static, F: Fn(&mut State, EditSession, bool) + 'static>
-    View<State, (), ViewCtx> for EditorView<State, F>
+impl<State: 'static, F: Fn(&mut State, EditSession, bool) + 'static> View<State, (), ViewCtx>
+    for EditorView<State, F>
 {
     type Element = Pod<EditorWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = EditorWidget::new(self.session.clone());
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());
@@ -3385,11 +3204,7 @@ impl<State: 'static, F: Fn(&mut State, EditSession, bool) + 'static>
                     update.session.selection.len(),
                     update.save_requested
                 );
-                (self.on_session_update)(
-                    app_state,
-                    update.session,
-                    update.save_requested,
-                );
+                (self.on_session_update)(app_state, update.session, update.save_requested);
                 tracing::debug!(
                     "[EditorView::message] Callback complete, \
                      returning Action(())"

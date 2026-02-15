@@ -11,17 +11,14 @@ use kurbo::{Affine, BezPath, Rect, RoundedRect, Shape, Size};
 use masonry::util::{fill_color, stroke};
 use masonry::vello::Scene;
 
-use crate::theme::panel::{
-    BACKGROUND as COLOR_PANEL,
-    OUTLINE as COLOR_PANEL_BORDER,
-};
+use crate::theme::panel::{BACKGROUND as COLOR_PANEL, OUTLINE as COLOR_PANEL_BORDER};
 use crate::theme::size::{
     PANEL_RADIUS, TOOLBAR_BORDER_WIDTH, TOOLBAR_BUTTON_RADIUS, TOOLBAR_ICON_PADDING,
     TOOLBAR_ITEM_SIZE, TOOLBAR_ITEM_SPACING, TOOLBAR_PADDING,
 };
 use crate::theme::toolbar::{
-    BUTTON_HOVERED, BUTTON_OUTLINE, BUTTON_SELECTED, BUTTON_UNSELECTED,
-    ICON_HOVERED, ICON_SELECTED, ICON_UNSELECTED,
+    BUTTON_HOVERED, BUTTON_OUTLINE, BUTTON_SELECTED, BUTTON_UNSELECTED, ICON_HOVERED,
+    ICON_SELECTED, ICON_UNSELECTED,
 };
 
 /// State for a single button in a toolbar
@@ -68,8 +65,7 @@ pub fn calculate_toolbar_size(button_count: usize) -> Size {
 
 /// Get the rect for a button by index
 pub fn button_rect(index: usize) -> Rect {
-    let x = TOOLBAR_PADDING
-        + index as f64 * (TOOLBAR_ITEM_SIZE + TOOLBAR_ITEM_SPACING);
+    let x = TOOLBAR_PADDING + index as f64 * (TOOLBAR_ITEM_SIZE + TOOLBAR_ITEM_SPACING);
     let y = TOOLBAR_PADDING;
     Rect::new(x, y, x + TOOLBAR_ITEM_SIZE, y + TOOLBAR_ITEM_SIZE)
 }
@@ -97,13 +93,8 @@ pub fn paint_panel(scene: &mut Scene, size: Size) {
 }
 
 /// Paint a toolbar button with the given state
-pub fn paint_button(
-    scene: &mut Scene,
-    button_rect: Rect,
-    state: ButtonState,
-) {
-    let button_rrect =
-        RoundedRect::from_rect(button_rect, TOOLBAR_BUTTON_RADIUS);
+pub fn paint_button(scene: &mut Scene, button_rect: Rect, state: ButtonState) {
+    let button_rrect = RoundedRect::from_rect(button_rect, TOOLBAR_BUTTON_RADIUS);
 
     // Determine button background color based on state
     let bg_color = if state.is_selected {
@@ -121,21 +112,11 @@ pub fn paint_button(
     } else {
         BUTTON_OUTLINE
     };
-    stroke(
-        scene,
-        &button_rrect,
-        outline_color,
-        TOOLBAR_BORDER_WIDTH,
-    );
+    stroke(scene, &button_rrect, outline_color, TOOLBAR_BORDER_WIDTH);
 }
 
 /// Paint an icon in a toolbar button with state-based coloring
-pub fn paint_icon(
-    scene: &mut Scene,
-    icon: BezPath,
-    button_rect: Rect,
-    state: ButtonState,
-) {
+pub fn paint_icon(scene: &mut Scene, icon: BezPath, button_rect: Rect, state: ButtonState) {
     let icon_bounds = icon.bounding_box();
     let icon_center = icon_bounds.center();
     let button_center = button_rect.center();
@@ -161,5 +142,3 @@ pub fn paint_icon(
 
     fill_color(scene, &(transform * icon), icon_color);
 }
-
-

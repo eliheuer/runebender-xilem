@@ -24,7 +24,7 @@
 //! The `reshape_range` method handles this efficiently by examining only the
 //! affected characters and their immediate neighbors.
 
-use super::unicode_data::{is_arabic, joining_type, JoiningType};
+use super::unicode_data::{JoiningType, is_arabic, joining_type};
 use super::{GlyphProvider, PositionalForm, ShapedGlyph};
 
 /// Arabic shaping engine.
@@ -130,14 +130,12 @@ impl ArabicShaper {
         let next_joins = self.check_next_joins_backward(text, index);
 
         match jt {
-            JoiningType::Dual => {
-                match (prev_joins, next_joins) {
-                    (false, false) => PositionalForm::Isolated,
-                    (false, true) => PositionalForm::Initial,
-                    (true, false) => PositionalForm::Final,
-                    (true, true) => PositionalForm::Medial,
-                }
-            }
+            JoiningType::Dual => match (prev_joins, next_joins) {
+                (false, false) => PositionalForm::Isolated,
+                (false, true) => PositionalForm::Initial,
+                (true, false) => PositionalForm::Final,
+                (true, true) => PositionalForm::Medial,
+            },
             JoiningType::Right => {
                 // Right-joining characters only have isolated and final forms
                 if prev_joins {
@@ -310,11 +308,10 @@ mod tests {
 
             // Add Arabic glyphs with all positional forms
             for base in &[
-                "alef-ar", "beh-ar", "teh-ar", "theh-ar", "jeem-ar", "hah-ar",
-                "khah-ar", "dal-ar", "thal-ar", "reh-ar", "zain-ar", "seen-ar",
-                "sheen-ar", "sad-ar", "dad-ar", "tah-ar", "zah-ar", "ain-ar",
-                "ghain-ar", "feh-ar", "qaf-ar", "kaf-ar", "lam-ar", "meem-ar",
-                "noon-ar", "heh-ar", "waw-ar", "yeh-ar",
+                "alef-ar", "beh-ar", "teh-ar", "theh-ar", "jeem-ar", "hah-ar", "khah-ar", "dal-ar",
+                "thal-ar", "reh-ar", "zain-ar", "seen-ar", "sheen-ar", "sad-ar", "dad-ar",
+                "tah-ar", "zah-ar", "ain-ar", "ghain-ar", "feh-ar", "qaf-ar", "kaf-ar", "lam-ar",
+                "meem-ar", "noon-ar", "heh-ar", "waw-ar", "yeh-ar",
             ] {
                 glyphs.insert(base.to_string());
                 glyphs.insert(format!("{}.init", base));
@@ -323,7 +320,9 @@ mod tests {
             }
 
             // Right-joining letters only have isolated and final
-            for base in &["alef-ar", "dal-ar", "thal-ar", "reh-ar", "zain-ar", "waw-ar"] {
+            for base in &[
+                "alef-ar", "dal-ar", "thal-ar", "reh-ar", "zain-ar", "waw-ar",
+            ] {
                 glyphs.remove(&format!("{}.init", base));
                 glyphs.remove(&format!("{}.medi", base));
             }
@@ -450,8 +449,8 @@ mod tests {
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].form, PositionalForm::Isolated); // alef
-        assert_eq!(result[1].form, PositionalForm::Initial);  // beh
-        assert_eq!(result[2].form, PositionalForm::Final);    // meem
+        assert_eq!(result[1].form, PositionalForm::Initial); // beh
+        assert_eq!(result[2].form, PositionalForm::Final); // meem
     }
 
     #[test]
@@ -465,9 +464,9 @@ mod tests {
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0].form, PositionalForm::Initial); // first beh
-        assert_eq!(result[1].form, PositionalForm::Final);   // first alef
+        assert_eq!(result[1].form, PositionalForm::Final); // first alef
         assert_eq!(result[2].form, PositionalForm::Initial); // second beh
-        assert_eq!(result[3].form, PositionalForm::Final);   // second alef
+        assert_eq!(result[3].form, PositionalForm::Final); // second alef
     }
 
     #[test]
@@ -531,10 +530,10 @@ mod tests {
 
         assert_eq!(result.len(), 6);
         assert_eq!(result[0].form, PositionalForm::Initial); // beh
-        assert_eq!(result[1].form, PositionalForm::Medial);  // seen
-        assert_eq!(result[2].form, PositionalForm::Medial);  // meem
-        assert_eq!(result[3].form, PositionalForm::Medial);  // lam
-        assert_eq!(result[4].form, PositionalForm::Medial);  // lam
-        assert_eq!(result[5].form, PositionalForm::Final);   // heh
+        assert_eq!(result[1].form, PositionalForm::Medial); // seen
+        assert_eq!(result[2].form, PositionalForm::Medial); // meem
+        assert_eq!(result[3].form, PositionalForm::Medial); // lam
+        assert_eq!(result[4].form, PositionalForm::Medial); // lam
+        assert_eq!(result[5].form, PositionalForm::Final); // heh
     }
 }

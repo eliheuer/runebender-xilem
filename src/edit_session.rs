@@ -28,7 +28,6 @@ use std::sync::{Arc, RwLock};
 /// which sort in the buffer is currently active for editing.
 #[derive(Debug, Clone)]
 pub struct EditSession {
-
     /// Path to the UFO file
     #[allow(dead_code)]
     pub ufo_path: std::path::PathBuf,
@@ -121,16 +120,13 @@ impl EditSession {
         cap_height: Option<f64>,
     ) -> Self {
         // Convert glyph contours to editable paths
-        let paths: Vec<Path> = glyph
-            .contours
-            .iter()
-            .map(Path::from_contour)
-            .collect();
+        let paths: Vec<Path> = glyph.contours.iter().map(Path::from_contour).collect();
 
         // Get unicode for display
-        let unicode_value = glyph.codepoints.first().map(|cp| {
-            format!("U+{:04X}", *cp as u32)
-        });
+        let unicode_value = glyph
+            .codepoints
+            .first()
+            .map(|cp| format!("U+{:04X}", *cp as u32));
 
         Self {
             ufo_path,
@@ -150,7 +146,7 @@ impl EditSession {
             text_buffer: None,
             text_mode_active: false,
             workspace: None,
-            active_sort_index: None,  // No buffer, no active sort
+            active_sort_index: None, // No buffer, no active sort
             active_sort_unicode: unicode_value,
             active_sort_name: Some(glyph_name),
             active_sort_x_offset: 0.0,
@@ -174,16 +170,13 @@ impl EditSession {
         cap_height: Option<f64>,
     ) -> Self {
         // Convert glyph contours to editable paths
-        let paths: Vec<Path> = glyph
-            .contours
-            .iter()
-            .map(Path::from_contour)
-            .collect();
+        let paths: Vec<Path> = glyph.contours.iter().map(Path::from_contour).collect();
 
         // Get unicode for display
-        let unicode_value = glyph.codepoints.first().map(|cp| {
-            format!("U+{:04X}", *cp as u32)
-        });
+        let unicode_value = glyph
+            .codepoints
+            .first()
+            .map(|cp| format!("U+{:04X}", *cp as u32));
 
         // Create text buffer with initial sort
         let mut buffer = SortBuffer::new();
@@ -261,23 +254,41 @@ impl EditSession {
     /// - Character has no mapped glyph
     /// - Glyph data cannot be found
     pub fn create_sort_from_char(&self, c: char) -> Option<crate::sort::Sort> {
-        tracing::debug!("[create_sort_from_char] Trying to create sort for character: '{}' (U+{:04X})", c, c as u32);
+        tracing::debug!(
+            "[create_sort_from_char] Trying to create sort for character: '{}' (U+{:04X})",
+            c,
+            c as u32
+        );
 
         let workspace_lock = self.workspace.as_ref()?;
         let workspace = workspace_lock.read().unwrap();
 
-        tracing::debug!("[create_sort_from_char] Workspace has {} glyphs", workspace.glyphs.len());
+        tracing::debug!(
+            "[create_sort_from_char] Workspace has {} glyphs",
+            workspace.glyphs.len()
+        );
 
         // Find a glyph with this codepoint
-        let (glyph_name, glyph) = workspace.glyphs.iter()
+        let (glyph_name, glyph) = workspace
+            .glyphs
+            .iter()
             .find(|(_, g)| g.codepoints.contains(&c))?;
 
-        tracing::debug!("[create_sort_from_char] Found glyph: '{}' for character '{}'", glyph_name, c);
+        tracing::debug!(
+            "[create_sort_from_char] Found glyph: '{}' for character '{}'",
+            glyph_name,
+            c
+        );
 
         // Check if this character matches the currently active sort's character
         // If so, use the current glyph (with live edits) instead of workspace version
-        let advance_width = if self.active_sort_unicode.as_ref()
-            .and_then(|u| u.strip_prefix("U+").and_then(|hex| u32::from_str_radix(hex, 16).ok()))
+        let advance_width = if self
+            .active_sort_unicode
+            .as_ref()
+            .and_then(|u| {
+                u.strip_prefix("U+")
+                    .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+            })
             .and_then(char::from_u32)
             .map(|active_char| active_char == c)
             .unwrap_or(false)
@@ -307,9 +318,7 @@ impl EditSession {
     /// For LTR or non-Arabic characters, falls back to `create_sort_from_char`.
     pub fn create_shaped_sort_from_char(&self, c: char) -> Option<crate::sort::Sort> {
         // Only use Arabic shaping for RTL mode and Arabic characters
-        if self.text_direction != TextDirection::RightToLeft
-            || !crate::shaping::is_arabic(c)
-        {
+        if self.text_direction != TextDirection::RightToLeft || !crate::shaping::is_arabic(c) {
             return self.create_sort_from_char(c);
         }
 
@@ -405,17 +414,22 @@ impl EditSession {
             if let Some(shaped) = shaper.shape_char_at(&chars, i, &font) {
                 // Update the sort at this position
                 if let Some(sort) = buffer.get_mut(i)
-                    && let crate::sort::SortKind::Glyph { name, advance_width, .. } = &mut sort.kind
-                        && *name != shaped.glyph_name {
-                            tracing::debug!(
-                                "[reshape_buffer_around] Updated sort {}: '{}' -> '{}'",
-                                i,
-                                name,
-                                shaped.glyph_name
-                            );
-                            *name = shaped.glyph_name.clone();
-                            *advance_width = shaped.advance_width;
-                        }
+                    && let crate::sort::SortKind::Glyph {
+                        name,
+                        advance_width,
+                        ..
+                    } = &mut sort.kind
+                    && *name != shaped.glyph_name
+                {
+                    tracing::debug!(
+                        "[reshape_buffer_around] Updated sort {}: '{}' -> '{}'",
+                        i,
+                        name,
+                        shaped.glyph_name
+                    );
+                    *name = shaped.glyph_name.clone();
+                    *advance_width = shaped.advance_width;
+                }
             }
         }
 
@@ -441,15 +455,21 @@ impl EditSession {
             let mut found_sort = None;
             for (index, sort) in buffer.iter().enumerate() {
                 match &sort.kind {
-                    crate::sort::SortKind::Glyph { name, advance_width, codepoint } => {
+                    crate::sort::SortKind::Glyph {
+                        name,
+                        advance_width,
+                        codepoint,
+                    } => {
                         // Check if click is within this sort's bounds
                         let sort_left = x_offset;
                         let sort_right = x_offset + advance_width;
                         let sort_top = self.ascender;
                         let sort_bottom = self.descender;
 
-                        if pos.x >= sort_left && pos.x <= sort_right
-                            && pos.y >= sort_bottom && pos.y <= sort_top
+                        if pos.x >= sort_left
+                            && pos.x <= sort_right
+                            && pos.y >= sort_bottom
+                            && pos.y <= sort_top
                         {
                             // Found the clicked sort - capture x_offset too
                             found_sort = Some((index, name.clone(), *codepoint, x_offset));
@@ -486,11 +506,7 @@ impl EditSession {
             };
 
             // Convert contours to paths
-            let paths: Vec<Path> = glyph
-                .contours
-                .iter()
-                .map(Path::from_contour)
-                .collect();
+            let paths: Vec<Path> = glyph.contours.iter().map(Path::from_contour).collect();
 
             // Update session state with loaded paths AND glyph
             self.paths = std::sync::Arc::new(paths);
@@ -529,10 +545,7 @@ impl EditSession {
             return;
         }
 
-        let bbox = Self::calculate_selection_bbox(
-            &self.paths,
-            &self.selection,
-        );
+        let bbox = Self::calculate_selection_bbox(&self.paths, &self.selection);
 
         match bbox {
             Some((count, frame)) => {
@@ -548,7 +561,6 @@ impl EditSession {
             }
         }
     }
-
 
     /// Hit test for a point at screen coordinates
     ///
@@ -571,14 +583,15 @@ impl EditSession {
 
         // Collect all points from all paths as screen coordinates
         // Apply active sort x-offset so hit-testing matches rendering position
-        let candidates: Vec<_> = self.paths.iter().flat_map(|path| {
-            Self::path_to_hit_candidates(path, &self.viewport, self.active_sort_x_offset)
-        }).collect();
+        let candidates: Vec<_> = self
+            .paths
+            .iter()
+            .flat_map(|path| {
+                Self::path_to_hit_candidates(path, &self.viewport, self.active_sort_x_offset)
+            })
+            .collect();
 
-        tracing::debug!(
-            "[hit_test_point] Found {} candidates",
-            candidates.len()
-        );
+        tracing::debug!("[hit_test_point] Found {} candidates", candidates.len());
 
         if let Some(first) = candidates.first() {
             tracing::debug!(
@@ -623,10 +636,7 @@ impl EditSession {
         // Adjust for active sort offset - subtract offset so coordinates match paths at (0,0)
         design_pos.x -= self.active_sort_x_offset;
 
-        let closest_segment = Self::find_closest_segment(
-            &self.paths,
-            design_pos,
-        );
+        let closest_segment = Self::find_closest_segment(&self.paths, design_pos);
 
         // Check if the closest segment is within max_dist
         closest_segment.and_then(|(segment_info, t, dist_sq)| {
@@ -646,10 +656,7 @@ impl EditSession {
     ///
     /// Returns the EntityId of the component if the point is inside its filled area.
     /// Components are tested in reverse order so topmost components are hit first.
-    pub fn hit_test_component(
-        &self,
-        screen_pos: Point,
-    ) -> Option<crate::entity_id::EntityId> {
+    pub fn hit_test_component(&self, screen_pos: Point) -> Option<crate::entity_id::EntityId> {
         use kurbo::Shape;
 
         // Convert screen position to design space
@@ -790,16 +797,11 @@ impl EditSession {
         // Build a set of IDs to move:
         // - All selected points
         // - Adjacent off-curve points of selected on-curve points
-        let mut points_to_move: HashSet<EntityId> =
-            self.selection.iter().copied().collect();
+        let mut points_to_move: HashSet<EntityId> = self.selection.iter().copied().collect();
 
         // First pass: identify adjacent off-curve points of selected
         // on-curve points
-        Self::collect_adjacent_off_curve_points(
-            paths_vec,
-            &self.selection,
-            &mut points_to_move,
-        );
+        Self::collect_adjacent_off_curve_points(paths_vec, &self.selection, &mut points_to_move);
 
         // Second pass: move all identified points
         Self::apply_point_movement(paths_vec, &points_to_move, delta);
@@ -811,13 +813,7 @@ impl EditSession {
     /// - Normal: 1 unit
     /// - Shift: 10 units
     /// - Cmd/Ctrl: 100 units
-    pub fn nudge_selection(
-        &mut self,
-        dx: f64,
-        dy: f64,
-        shift: bool,
-        ctrl: bool,
-    ) {
+    pub fn nudge_selection(&mut self, dx: f64, dy: f64, shift: bool, ctrl: bool) {
         let multiplier = if ctrl {
             100.0
         } else if shift {
@@ -843,9 +839,7 @@ impl EditSession {
         let paths_vec = Arc::make_mut(&mut self.paths);
 
         // Filter out paths that become empty after deletion
-        paths_vec.retain_mut(|path| {
-            Self::retain_path_after_deletion(path, &self.selection)
-        });
+        paths_vec.retain_mut(|path| Self::retain_path_after_deletion(path, &self.selection));
 
         // Clear selection since deleted points are gone
         self.selection = Selection::new();
@@ -910,32 +904,16 @@ impl EditSession {
         let paths_vec = Arc::make_mut(&mut self.paths);
 
         for path in paths_vec.iter_mut() {
-            if let Some(points) =
-                Self::find_path_containing_segment(path, segment_info)
-            {
+            if let Some(points) = Self::find_path_containing_segment(path, segment_info) {
                 match segment_info.segment {
                     Segment::Line(_line) => {
-                        return Self::insert_point_on_line(
-                            points,
-                            segment_info,
-                            t,
-                        );
+                        return Self::insert_point_on_line(points, segment_info, t);
                     }
                     Segment::Cubic(cubic_bez) => {
-                        return Self::insert_point_on_cubic(
-                            points,
-                            segment_info,
-                            cubic_bez,
-                            t,
-                        );
+                        return Self::insert_point_on_cubic(points, segment_info, cubic_bez, t);
                     }
                     Segment::Quadratic(quad_bez) => {
-                        return Self::insert_point_on_quadratic(
-                            points,
-                            segment_info,
-                            quad_bez,
-                            t,
-                        );
+                        return Self::insert_point_on_quadratic(points, segment_info, quad_bez, t);
                     }
                 }
             }
@@ -1002,10 +980,7 @@ impl EditSession {
     // ===== HELPER METHODS =====
 
     /// Calculate the bounding box of selected points
-    fn calculate_selection_bbox(
-        paths: &[Path],
-        selection: &Selection,
-    ) -> Option<(usize, Rect)> {
+    fn calculate_selection_bbox(paths: &[Path], selection: &Selection) -> Option<(usize, Rect)> {
         let mut min_x = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
         let mut min_y = f64::INFINITY;
@@ -1014,13 +989,7 @@ impl EditSession {
 
         for path in paths.iter() {
             Self::collect_selected_points_from_path(
-                path,
-                selection,
-                &mut min_x,
-                &mut max_x,
-                &mut min_y,
-                &mut max_y,
-                &mut count,
+                path, selection, &mut min_x, &mut max_x, &mut min_y, &mut max_y, &mut count,
             );
         }
 
@@ -1044,15 +1013,9 @@ impl EditSession {
         count: &mut usize,
     ) {
         let points_iter: Box<dyn Iterator<Item = _>> = match path {
-            Path::Cubic(cubic) => {
-                Box::new(cubic.points.iter())
-            }
-            Path::Quadratic(quadratic) => {
-                Box::new(quadratic.points.iter())
-            }
-            Path::Hyper(hyper) => {
-                Box::new(hyper.points.iter())
-            }
+            Path::Cubic(cubic) => Box::new(cubic.points.iter()),
+            Path::Quadratic(quadratic) => Box::new(quadratic.points.iter()),
+            Path::Hyper(hyper) => Box::new(hyper.points.iter()),
         };
 
         for pt in points_iter {
@@ -1114,16 +1077,8 @@ impl EditSession {
     fn find_closest_segment(
         paths: &[Path],
         design_pos: kurbo::Point,
-    ) -> Option<(
-        crate::path_segment::SegmentInfo,
-        f64,
-        f64,
-    )> {
-        let mut closest: Option<(
-            crate::path_segment::SegmentInfo,
-            f64,
-            f64,
-        )> = None;
+    ) -> Option<(crate::path_segment::SegmentInfo, f64, f64)> {
+        let mut closest: Option<(crate::path_segment::SegmentInfo, f64, f64)> = None;
 
         for path in paths.iter() {
             Self::process_path_segments(path, design_pos, &mut closest);
@@ -1135,33 +1090,17 @@ impl EditSession {
     fn process_path_segments(
         path: &Path,
         design_pos: kurbo::Point,
-        closest: &mut Option<(
-            crate::path_segment::SegmentInfo,
-            f64,
-            f64,
-        )>,
+        closest: &mut Option<(crate::path_segment::SegmentInfo, f64, f64)>,
     ) {
         match path {
             Path::Cubic(cubic) => {
-                Self::process_path_segment_iterator(
-                    cubic.iter_segments(),
-                    design_pos,
-                    closest,
-                );
+                Self::process_path_segment_iterator(cubic.iter_segments(), design_pos, closest);
             }
             Path::Quadratic(quadratic) => {
-                Self::process_path_segment_iterator(
-                    quadratic.iter_segments(),
-                    design_pos,
-                    closest,
-                );
+                Self::process_path_segment_iterator(quadratic.iter_segments(), design_pos, closest);
             }
             Path::Hyper(hyper) => {
-                Self::process_path_segment_iterator(
-                    hyper.iter_segments(),
-                    design_pos,
-                    closest,
-                );
+                Self::process_path_segment_iterator(hyper.iter_segments(), design_pos, closest);
             }
         }
     }
@@ -1170,22 +1109,13 @@ impl EditSession {
     fn process_path_segment_iterator<I>(
         segments: I,
         design_pos: kurbo::Point,
-        closest: &mut Option<(
-            crate::path_segment::SegmentInfo,
-            f64,
-            f64,
-        )>,
+        closest: &mut Option<(crate::path_segment::SegmentInfo, f64, f64)>,
     ) where
         I: Iterator<Item = crate::path_segment::SegmentInfo>,
     {
         for segment_info in segments {
             let (t, dist_sq) = segment_info.segment.nearest(design_pos);
-            Self::update_closest_segment(
-                closest,
-                segment_info,
-                t,
-                dist_sq,
-            );
+            Self::update_closest_segment(closest, segment_info, t, dist_sq);
         }
     }
 
@@ -1212,32 +1142,18 @@ impl EditSession {
     fn collect_adjacent_off_curve_points(
         paths: &[Path],
         selection: &Selection,
-        points_to_move: &mut std::collections::HashSet<
-            crate::entity_id::EntityId,
-        >,
+        points_to_move: &mut std::collections::HashSet<crate::entity_id::EntityId>,
     ) {
         for path in paths.iter() {
             match path {
                 Path::Cubic(cubic) => {
-                    Self::collect_adjacent_for_cubic(
-                        cubic,
-                        selection,
-                        points_to_move,
-                    );
+                    Self::collect_adjacent_for_cubic(cubic, selection, points_to_move);
                 }
                 Path::Quadratic(quadratic) => {
-                    Self::collect_adjacent_for_quadratic(
-                        quadratic,
-                        selection,
-                        points_to_move,
-                    );
+                    Self::collect_adjacent_for_quadratic(quadratic, selection, points_to_move);
                 }
                 Path::Hyper(hyper) => {
-                    Self::collect_adjacent_for_hyper(
-                        hyper,
-                        selection,
-                        points_to_move,
-                    );
+                    Self::collect_adjacent_for_hyper(hyper, selection, points_to_move);
                 }
             }
         }
@@ -1247,9 +1163,7 @@ impl EditSession {
     fn collect_adjacent_for_cubic(
         cubic: &crate::cubic_path::CubicPath,
         selection: &Selection,
-        points_to_move: &mut std::collections::HashSet<
-            crate::entity_id::EntityId,
-        >,
+        points_to_move: &mut std::collections::HashSet<crate::entity_id::EntityId>,
     ) {
         let points: Vec<_> = cubic.points.iter().collect();
         let len = points.len();
@@ -1261,17 +1175,20 @@ impl EditSession {
             // off-curve points
             if point.is_on_curve() && selection.contains(&point.id) {
                 // Check previous point
-                if let Some(prev_i) =
-                    Self::get_previous_index(i, len, cubic.closed)
-                    && prev_i < len && points[prev_i].is_off_curve() {
-                        points_to_move.insert(points[prev_i].id);
-                    }
+                if let Some(prev_i) = Self::get_previous_index(i, len, cubic.closed)
+                    && prev_i < len
+                    && points[prev_i].is_off_curve()
+                {
+                    points_to_move.insert(points[prev_i].id);
+                }
 
                 // Check next point
                 if let Some(next_i) = Self::get_next_index(i, len, cubic.closed)
-                    && next_i < len && points[next_i].is_off_curve() {
-                        points_to_move.insert(points[next_i].id);
-                    }
+                    && next_i < len
+                    && points[next_i].is_off_curve()
+                {
+                    points_to_move.insert(points[next_i].id);
+                }
             }
         }
     }
@@ -1280,9 +1197,7 @@ impl EditSession {
     fn collect_adjacent_for_quadratic(
         quadratic: &crate::quadratic_path::QuadraticPath,
         selection: &Selection,
-        points_to_move: &mut std::collections::HashSet<
-            crate::entity_id::EntityId,
-        >,
+        points_to_move: &mut std::collections::HashSet<crate::entity_id::EntityId>,
     ) {
         let points: Vec<_> = quadratic.points.iter().collect();
         let len = points.len();
@@ -1294,18 +1209,20 @@ impl EditSession {
             // off-curve points
             if point.is_on_curve() && selection.contains(&point.id) {
                 // Check previous point
-                if let Some(prev_i) =
-                    Self::get_previous_index(i, len, quadratic.closed)
-                    && prev_i < len && points[prev_i].is_off_curve() {
-                        points_to_move.insert(points[prev_i].id);
-                    }
+                if let Some(prev_i) = Self::get_previous_index(i, len, quadratic.closed)
+                    && prev_i < len
+                    && points[prev_i].is_off_curve()
+                {
+                    points_to_move.insert(points[prev_i].id);
+                }
 
                 // Check next point
-                if let Some(next_i) =
-                    Self::get_next_index(i, len, quadratic.closed)
-                    && next_i < len && points[next_i].is_off_curve() {
-                        points_to_move.insert(points[next_i].id);
-                    }
+                if let Some(next_i) = Self::get_next_index(i, len, quadratic.closed)
+                    && next_i < len
+                    && points[next_i].is_off_curve()
+                {
+                    points_to_move.insert(points[next_i].id);
+                }
             }
         }
     }
@@ -1314,9 +1231,7 @@ impl EditSession {
     fn collect_adjacent_for_hyper(
         hyper: &HyperPath,
         selection: &Selection,
-        points_to_move: &mut std::collections::HashSet<
-            crate::entity_id::EntityId,
-        >,
+        points_to_move: &mut std::collections::HashSet<crate::entity_id::EntityId>,
     ) {
         let points: Vec<_> = hyper.points.iter().collect();
         let len = points.len();
@@ -1328,29 +1243,27 @@ impl EditSession {
             // off-curve points
             if point.is_on_curve() && selection.contains(&point.id) {
                 // Check previous point
-                if let Some(prev_i) =
-                    Self::get_previous_index(i, len, hyper.closed)
-                    && prev_i < len && points[prev_i].is_off_curve() {
-                        points_to_move.insert(points[prev_i].id);
-                    }
+                if let Some(prev_i) = Self::get_previous_index(i, len, hyper.closed)
+                    && prev_i < len
+                    && points[prev_i].is_off_curve()
+                {
+                    points_to_move.insert(points[prev_i].id);
+                }
 
                 // Check next point
-                if let Some(next_i) =
-                    Self::get_next_index(i, len, hyper.closed)
-                    && next_i < len && points[next_i].is_off_curve() {
-                        points_to_move.insert(points[next_i].id);
-                    }
+                if let Some(next_i) = Self::get_next_index(i, len, hyper.closed)
+                    && next_i < len
+                    && points[next_i].is_off_curve()
+                {
+                    points_to_move.insert(points[next_i].id);
+                }
             }
         }
     }
 
     /// Get the previous index in a path (with wrapping for closed
     /// paths)
-    fn get_previous_index(
-        current: usize,
-        len: usize,
-        closed: bool,
-    ) -> Option<usize> {
+    fn get_previous_index(current: usize, len: usize, closed: bool) -> Option<usize> {
         if current > 0 {
             Some(current - 1)
         } else if closed {
@@ -1361,11 +1274,7 @@ impl EditSession {
     }
 
     /// Get the next index in a path (with wrapping for closed paths)
-    fn get_next_index(
-        current: usize,
-        len: usize,
-        closed: bool,
-    ) -> Option<usize> {
+    fn get_next_index(current: usize, len: usize, closed: bool) -> Option<usize> {
         if current + 1 < len {
             Some(current + 1)
         } else if closed {
@@ -1378,9 +1287,7 @@ impl EditSession {
     /// Apply point movement to paths
     fn apply_point_movement(
         paths: &mut [Path],
-        points_to_move: &std::collections::HashSet<
-            crate::entity_id::EntityId,
-        >,
+        points_to_move: &std::collections::HashSet<crate::entity_id::EntityId>,
         delta: kurbo::Vec2,
     ) {
         for path in paths.iter_mut() {
@@ -1405,26 +1312,18 @@ impl EditSession {
     /// Move points in a point list by delta
     fn move_points_in_list(
         points: &mut [crate::point::PathPoint],
-        points_to_move: &std::collections::HashSet<
-            crate::entity_id::EntityId,
-        >,
+        points_to_move: &std::collections::HashSet<crate::entity_id::EntityId>,
         delta: kurbo::Vec2,
     ) {
         for point in points.iter_mut() {
             if points_to_move.contains(&point.id) {
-                point.point = Point::new(
-                    point.point.x + delta.x,
-                    point.point.y + delta.y,
-                );
+                point.point = Point::new(point.point.x + delta.x, point.point.y + delta.y);
             }
         }
     }
 
     /// Retain a path after deletion (remove selected points)
-    fn retain_path_after_deletion(
-        path: &mut Path,
-        selection: &Selection,
-    ) -> bool {
+    fn retain_path_after_deletion(path: &mut Path, selection: &Selection) -> bool {
         match path {
             Path::Cubic(cubic) => {
                 let points = cubic.points.make_mut();
@@ -1466,16 +1365,11 @@ impl EditSession {
     }
 
     /// Toggle point types in a point list
-    fn toggle_points_in_list(
-        points: &mut [crate::point::PathPoint],
-        selection: &Selection,
-    ) {
+    fn toggle_points_in_list(points: &mut [crate::point::PathPoint], selection: &Selection) {
         for point in points.iter_mut() {
             if selection.contains(&point.id) {
                 // Only toggle on-curve points
-                if let crate::point::PointType::OnCurve { smooth } =
-                    &mut point.typ
-                {
+                if let crate::point::PointType::OnCurve { smooth } = &mut point.typ {
                     *smooth = !*smooth;
                 }
             }
@@ -1594,18 +1488,14 @@ impl EditSession {
         let (left, right) = Segment::subdivide_cubic(cubic_bez, t);
 
         // Create the new points from subdivision
-        let new_points = Self::create_cubic_subdivision_points(
-            left,
-            right,
-        );
+        let new_points = Self::create_cubic_subdivision_points(left, right);
 
         // Calculate how many points are between start and end
-        let points_between =
-            Self::calculate_points_between(
-                segment_info.start_index,
-                segment_info.end_index,
-                points.len(),
-            );
+        let points_between = Self::calculate_points_between(
+            segment_info.start_index,
+            segment_info.end_index,
+            points.len(),
+        );
 
         // Remove the old control points
         if points_between > 0 {
@@ -1669,8 +1559,8 @@ impl EditSession {
         t: f64,
     ) -> bool {
         use crate::entity_id::EntityId;
-        use crate::point::{PathPoint, PointType};
         use crate::path_segment::Segment;
+        use crate::point::{PathPoint, PointType};
 
         // For a quadratic curve, subdivide it using de Casteljau
         // algorithm
@@ -1718,11 +1608,7 @@ impl EditSession {
     }
 
     /// Calculate how many points are between start and end indices
-    fn calculate_points_between(
-        start_index: usize,
-        end_index: usize,
-        total_len: usize,
-    ) -> usize {
+    fn calculate_points_between(start_index: usize, end_index: usize, total_len: usize) -> usize {
         if end_index > start_index {
             end_index - start_index - 1
         } else {
@@ -1867,9 +1753,9 @@ mod tests {
             "a".to_string(),
             std::path::PathBuf::from("/test.ufo"),
             glyph,
-            1000.0,  // UPM
-            800.0,   // ascender
-            -200.0,  // descender
+            1000.0, // UPM
+            800.0,  // ascender
+            -200.0, // descender
             Some(500.0),
             Some(700.0),
         );
@@ -1899,4 +1785,3 @@ mod tests {
         assert!(!session.text_mode_active);
     }
 }
-

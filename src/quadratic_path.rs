@@ -78,10 +78,7 @@ impl QuadraticPath {
         Self::process_points(&rotated, &mut path);
 
         if self.closed {
-            Self::handle_closed_path_trailing_points(
-                &rotated,
-                &mut path,
-            );
+            Self::handle_closed_path_trailing_points(&rotated, &mut path);
             path.close_path();
         }
 
@@ -110,10 +107,7 @@ impl QuadraticPath {
         // Determine if the path is closed
         // In UFO, a contour is closed unless the first point is
         // a Move
-        let closed = !matches!(
-            contour.points[0].point_type,
-            workspace::PointType::Move
-        );
+        let closed = !matches!(contour.points[0].point_type, workspace::PointType::Move);
 
         // Convert all points
         let mut path_points: Vec<PathPoint> = contour
@@ -136,9 +130,7 @@ impl QuadraticPath {
     /// saving)
     pub fn to_contour(&self) -> workspace::Contour {
         use crate::point::PointType;
-        use crate::workspace::{
-            Contour, ContourPoint, PointType as WsPointType,
-        };
+        use crate::workspace::{Contour, ContourPoint, PointType as WsPointType};
 
         let mut contour_points: Vec<PathPoint> = self.points.to_vec();
 
@@ -153,15 +145,9 @@ impl QuadraticPath {
             .iter()
             .map(|pt| {
                 let point_type = match pt.typ {
-                    PointType::OnCurve { smooth: true } => {
-                        WsPointType::QCurve
-                    }
-                    PointType::OnCurve { smooth: false } => {
-                        WsPointType::Line
-                    }
-                    PointType::OffCurve { .. } => {
-                        WsPointType::OffCurve
-                    }
+                    PointType::OnCurve { smooth: true } => WsPointType::QCurve,
+                    PointType::OnCurve { smooth: false } => WsPointType::Line,
+                    PointType::OffCurve { .. } => WsPointType::OffCurve,
                 };
 
                 ContourPoint {
@@ -179,20 +165,13 @@ impl QuadraticPath {
     ///
     /// Returns an iterator that yields SegmentInfo for each
     /// segment (line or quadratic curve)
-    pub fn iter_segments(
-        &self,
-    ) -> impl Iterator<Item = crate::path_segment::SegmentInfo> + '_ {
+    pub fn iter_segments(&self) -> impl Iterator<Item = crate::path_segment::SegmentInfo> + '_ {
         SegmentIterator::new(&self.points, self.closed)
     }
 
     /// Rotate points so we start at an on-curve point
-    fn rotate_to_on_curve_start<'a>(
-        points: &'a [&PathPoint],
-    ) -> Vec<&'a PathPoint> {
-        let start_idx = points
-            .iter()
-            .position(|p| p.is_on_curve())
-            .unwrap_or(0);
+    fn rotate_to_on_curve_start<'a>(points: &'a [&PathPoint]) -> Vec<&'a PathPoint> {
+        let start_idx = points.iter().position(|p| p.is_on_curve()).unwrap_or(0);
 
         points[start_idx..]
             .iter()
@@ -202,26 +181,15 @@ impl QuadraticPath {
     }
 
     /// Process all points and add segments to the path
-    fn process_points(
-        rotated: &[&PathPoint],
-        path: &mut BezPath,
-    ) {
+    fn process_points(rotated: &[&PathPoint], path: &mut BezPath) {
         let mut i = 1;
         while i < rotated.len() {
             let pt = rotated[i];
 
             match pt.typ {
                 PointType::OnCurve { .. } => {
-                    let off_curve_before =
-                        Self::collect_preceding_off_curve_points(
-                            rotated,
-                            i,
-                        );
-                    Self::add_segment_to_path(
-                        path,
-                        &off_curve_before,
-                        pt.point,
-                    );
+                    let off_curve_before = Self::collect_preceding_off_curve_points(rotated, i);
+                    Self::add_segment_to_path(path, &off_curve_before, pt.point);
                     i += 1;
                 }
                 PointType::OffCurve { .. } => {
@@ -285,22 +253,14 @@ impl QuadraticPath {
     }
 
     /// Handle trailing off-curve points for closed paths
-    fn handle_closed_path_trailing_points(
-        rotated: &[&PathPoint],
-        path: &mut BezPath,
-    ) {
-        let trailing_off_curve =
-            Self::collect_trailing_off_curve_points(rotated);
+    fn handle_closed_path_trailing_points(rotated: &[&PathPoint], path: &mut BezPath) {
+        let trailing_off_curve = Self::collect_trailing_off_curve_points(rotated);
 
         if !trailing_off_curve.is_empty() {
             // These off-curve points connect back to the first
             // point
             let first_pt = rotated[0];
-            Self::add_segment_to_path(
-                path,
-                &trailing_off_curve,
-                first_pt.point,
-            );
+            Self::add_segment_to_path(path, &trailing_off_curve, first_pt.point);
         }
     }
 
@@ -308,9 +268,7 @@ impl QuadraticPath {
     ///
     /// For quadratic paths, we expect at most one trailing
     /// off-curve point.
-    fn collect_trailing_off_curve_points<'a>(
-        rotated: &'a [&PathPoint],
-    ) -> Vec<&'a PathPoint> {
+    fn collect_trailing_off_curve_points<'a>(rotated: &'a [&PathPoint]) -> Vec<&'a PathPoint> {
         let len = rotated.len();
 
         // For quadratic, check only the last point
@@ -333,12 +291,8 @@ struct SegmentIterator {
 }
 
 impl SegmentIterator {
-    fn new(
-        points: &crate::point_list::PathPoints,
-        closed: bool,
-    ) -> Self {
-        let points_vec: Vec<PathPoint> =
-            points.iter().cloned().collect();
+    fn new(points: &crate::point_list::PathPoints, closed: bool) -> Self {
+        let points_vec: Vec<PathPoint> = points.iter().cloned().collect();
 
         // Find first on-curve point
         let (start_idx, start_pt) = points_vec
@@ -369,9 +323,8 @@ impl SegmentIterator {
     ) -> Option<crate::path_segment::SegmentInfo> {
         let start_idx = self.prev_on_curve_idx;
         let end_idx = point_idx;
-        let segment = crate::path_segment::Segment::Line(
-            kurbo::Line::new(self.prev_on_curve, point),
-        );
+        let segment =
+            crate::path_segment::Segment::Line(kurbo::Line::new(self.prev_on_curve, point));
 
         self.prev_on_curve = point;
         self.prev_on_curve_idx = point_idx;
@@ -399,9 +352,11 @@ impl SegmentIterator {
 
         let start_idx = self.prev_on_curve_idx;
         let end_idx = point_idx + 1;
-        let segment = crate::path_segment::Segment::Quadratic(
-            kurbo::QuadBez::new(self.prev_on_curve, cp, end),
-        );
+        let segment = crate::path_segment::Segment::Quadratic(kurbo::QuadBez::new(
+            self.prev_on_curve,
+            cp,
+            end,
+        ));
 
         self.prev_on_curve = end;
         self.prev_on_curve_idx = point_idx + 1;
@@ -434,4 +389,3 @@ impl Iterator for SegmentIterator {
         }
     }
 }
-

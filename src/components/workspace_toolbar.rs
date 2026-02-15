@@ -10,16 +10,14 @@
 use kurbo::{BezPath, Point, Rect, RoundedRect, Shape, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, EventCtx, LayoutCtx, PaintCtx,
-    PointerButton, PointerButtonEvent, PointerEvent, PropertiesMut,
-    PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
+    AccessCtx, BoxConstraints, EventCtx, LayoutCtx, PaintCtx, PointerButton, PointerButtonEvent,
+    PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
 };
 use masonry::vello::Scene;
 
 // Import shared toolbar functionality
 use crate::components::toolbars::{
-    button_rect, calculate_toolbar_size, paint_button, paint_icon,
-    paint_panel, ButtonState,
+    ButtonState, button_rect, calculate_toolbar_size, paint_button, paint_icon, paint_panel,
 };
 
 /// Workspace toolbar button types
@@ -55,7 +53,6 @@ impl WorkspaceToolbarWidget {
         }
         None
     }
-
 }
 
 /// Action sent when a workspace toolbar button is clicked
@@ -88,12 +85,7 @@ impl Widget for WorkspaceToolbarWidget {
         bc.constrain(size)
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         let size = ctx.size();
 
         // Draw background panel
@@ -158,8 +150,7 @@ impl WorkspaceToolbarWidget {
     /// Paint the glyph grid button
     fn paint_button(&self, scene: &mut Scene) {
         let rect = button_rect(0);
-        let is_hovered =
-            self.hover_button == Some(WorkspaceToolbarButton::GlyphGrid);
+        let is_hovered = self.hover_button == Some(WorkspaceToolbarButton::GlyphGrid);
 
         // Workspace toolbar buttons don't have a selected state
         let state = ButtonState::new(is_hovered, false);
@@ -173,16 +164,10 @@ impl WorkspaceToolbarWidget {
     }
 
     /// Handle pointer down event
-    fn handle_pointer_down(
-        &mut self,
-        ctx: &mut EventCtx<'_>,
-        state: &masonry::core::PointerState,
-    ) {
+    fn handle_pointer_down(&mut self, ctx: &mut EventCtx<'_>, state: &masonry::core::PointerState) {
         let local_pos = ctx.local_position(state.position);
         if let Some(button) = self.button_at_point(local_pos) {
-            ctx.submit_action::<WorkspaceToolbarAction>(
-                WorkspaceToolbarAction(button),
-            );
+            ctx.submit_action::<WorkspaceToolbarAction>(WorkspaceToolbarAction(button));
             ctx.request_render();
         }
         // Always consume the event to prevent it from reaching the
@@ -262,16 +247,9 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     type Element = Pod<WorkspaceToolbarWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = WorkspaceToolbarWidget::new();
-        (
-            ctx.with_action_widget(|ctx| ctx.create_pod(widget)),
-            (),
-        )
+        (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())
     }
 
     fn rebuild(
@@ -313,10 +291,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
 
 /// Helper function to create a workspace toolbar view
 pub fn workspace_toolbar_view<State, Action>(
-    callback: impl Fn(&mut State, WorkspaceToolbarButton)
-        + Send
-        + Sync
-        + 'static,
+    callback: impl Fn(&mut State, WorkspaceToolbarButton) + Send + Sync + 'static,
 ) -> WorkspaceToolbarView<State, Action>
 where
     Action: 'static,
@@ -326,4 +301,3 @@ where
         phantom: PhantomData,
     }
 }
-

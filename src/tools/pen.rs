@@ -53,12 +53,7 @@ impl Tool for PenTool {
         ToolId::Pen
     }
 
-    fn paint(
-        &mut self,
-        scene: &mut Scene,
-        session: &EditSession,
-        _transform: &Affine,
-    ) {
+    fn paint(&mut self, scene: &mut Scene, session: &EditSession, _transform: &Affine) {
         use masonry::vello::peniko::Brush;
 
         let preview_color = crate::theme::tool_preview::LINE_COLOR;
@@ -101,19 +96,12 @@ impl Tool for PenTool {
 impl MouseDelegate for PenTool {
     type Data = EditSession;
 
-    fn left_click(
-        &mut self,
-        event: MouseEvent,
-        data: &mut EditSession,
-    ) {
+    fn left_click(&mut self, event: MouseEvent, data: &mut EditSession) {
         // Check if we're snapped to a curve segment
         // If so, insert a point on the segment instead of starting a
         // new path
         if let Some((segment_info, t)) = &self.snapped_segment {
-            tracing::debug!(
-                "Pen tool: inserting point on curve at t={}",
-                t
-            );
+            tracing::debug!("Pen tool: inserting point on curve at t={}", t);
             data.insert_point_on_segment(segment_info, *t);
             // Clear snapping after insertion
             self.snapped_segment = None;
@@ -148,11 +136,7 @@ impl MouseDelegate for PenTool {
         );
     }
 
-    fn mouse_moved(
-        &mut self,
-        event: MouseEvent,
-        data: &mut EditSession,
-    ) {
+    fn mouse_moved(&mut self, event: MouseEvent, data: &mut EditSession) {
         // Track mouse position for hover feedback
         self.mouse_pos = Some(event.pos);
 
@@ -160,10 +144,8 @@ impl MouseDelegate for PenTool {
         // path). This prevents snapping while building a new path
         if !self.drawing {
             // Hit test segments at cursor position
-            if let Some((segment_info, t)) = data.hit_test_segments(
-                event.pos,
-                CURVE_SNAP_DISTANCE,
-            ) {
+            if let Some((segment_info, t)) = data.hit_test_segments(event.pos, CURVE_SNAP_DISTANCE)
+            {
                 // Store the snapped segment for rendering and click
                 // handling
                 self.snapped_segment = Some((segment_info, t));
@@ -195,10 +177,7 @@ impl MouseDelegate for PenTool {
 impl PenTool {
     /// Check if mouse is hovering near the first point (for close
     /// feedback)
-    fn check_hovering_close(
-        &self,
-        session: &EditSession,
-    ) -> bool {
+    fn check_hovering_close(&self, session: &EditSession) -> bool {
         if !self.drawing || self.current_path_points.len() < 3 {
             return false;
         }
@@ -244,10 +223,7 @@ impl PenTool {
             if hovering_close {
                 // Show closing line to first point
                 if let Some(first_pt) = self.current_path_points.first() {
-                    let design_pt = Point::new(
-                        first_pt.point.x,
-                        first_pt.point.y,
-                    );
+                    let design_pt = Point::new(first_pt.point.x, first_pt.point.y);
                     let screen_pt = session.viewport.to_screen(design_pt);
                     bez_path.line_to(screen_pt);
                 }
@@ -258,18 +234,11 @@ impl PenTool {
         }
 
         // Use dashed stroke for preview (consistent with other tools)
-        let stroke = kurbo::Stroke::new(crate::theme::tool_preview::LINE_WIDTH)
-            .with_dashes(
-                crate::theme::tool_preview::LINE_DASH_OFFSET,
-                crate::theme::tool_preview::LINE_DASH,
-            );
-        scene.stroke(
-            &stroke,
-            Affine::IDENTITY,
-            brush,
-            None,
-            &bez_path,
+        let stroke = kurbo::Stroke::new(crate::theme::tool_preview::LINE_WIDTH).with_dashes(
+            crate::theme::tool_preview::LINE_DASH_OFFSET,
+            crate::theme::tool_preview::LINE_DASH,
         );
+        scene.stroke(&stroke, Affine::IDENTITY, brush, None, &bez_path);
     }
 
     /// Draw circles at each point in the current path
@@ -291,24 +260,14 @@ impl PenTool {
                 // Draw larger circle to show close zone
                 let close_zone = kurbo::Circle::new(
                     screen_pt,
-                    crate::theme::tool_preview::CLOSE_ZONE_RADIUS
-                        * session.viewport.zoom,
+                    crate::theme::tool_preview::CLOSE_ZONE_RADIUS * session.viewport.zoom,
                 );
                 let zone_stroke = kurbo::Stroke::new(1.0);
-                scene.stroke(
-                    &zone_stroke,
-                    Affine::IDENTITY,
-                    brush,
-                    None,
-                    &close_zone,
-                );
+                scene.stroke(&zone_stroke, Affine::IDENTITY, brush, None, &close_zone);
             }
 
             // Draw point circle
-            let circle = kurbo::Circle::new(
-                screen_pt,
-                crate::theme::tool_preview::DOT_RADIUS,
-            );
+            let circle = kurbo::Circle::new(screen_pt, crate::theme::tool_preview::DOT_RADIUS);
             scene.fill(
                 peniko::Fill::NonZero,
                 Affine::IDENTITY,
@@ -327,9 +286,7 @@ impl PenTool {
         brush: &masonry::vello::peniko::Brush,
     ) {
         // Calculate preview position (snapped or raw mouse position)
-        let preview_pos = if let Some((segment_info, t)) =
-            &self.snapped_segment
-        {
+        let preview_pos = if let Some((segment_info, t)) = &self.snapped_segment {
             // Evaluate the segment at parameter t to get the snapped
             // position in design space
             let snapped_design_pos = segment_info.segment.eval(*t);
@@ -345,10 +302,8 @@ impl PenTool {
         };
 
         // Draw the preview dot
-        let preview_circle = kurbo::Circle::new(
-            preview_screen_pos,
-            crate::theme::tool_preview::DOT_RADIUS,
-        );
+        let preview_circle =
+            kurbo::Circle::new(preview_screen_pos, crate::theme::tool_preview::DOT_RADIUS);
         scene.fill(
             peniko::Fill::NonZero,
             Affine::IDENTITY,
@@ -365,13 +320,7 @@ impl PenTool {
                 crate::theme::tool_preview::SNAP_INDICATOR_RADIUS,
             );
             let stroke = kurbo::Stroke::new(1.5);
-            scene.stroke(
-                &stroke,
-                Affine::IDENTITY,
-                brush,
-                None,
-                &indicator_circle,
-            );
+            scene.stroke(&stroke, Affine::IDENTITY, brush, None, &indicator_circle);
         }
     }
 
@@ -396,8 +345,7 @@ impl PenTool {
         }
 
         // Create a new open path from the points
-        let path_points =
-            PathPoints::from_vec(self.current_path_points.clone());
+        let path_points = PathPoints::from_vec(self.current_path_points.clone());
         let cubic_path = CubicPath {
             points: path_points,
             closed: false,
@@ -422,8 +370,7 @@ impl PenTool {
         }
 
         // Create a closed path from the points
-        let path_points =
-            PathPoints::from_vec(self.current_path_points.clone());
+        let path_points = PathPoints::from_vec(self.current_path_points.clone());
         let cubic_path = CubicPath {
             points: path_points,
             closed: true, // Mark as closed

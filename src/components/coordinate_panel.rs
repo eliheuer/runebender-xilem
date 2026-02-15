@@ -9,19 +9,19 @@
 
 use crate::quadrant::Quadrant;
 use kurbo::{Circle, Point, Rect};
-use tracing;
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx,
-    PointerButton, PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef,
-    RegisterCtx, Update, UpdateCtx, Widget,
+    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
+    PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, Update, UpdateCtx,
+    Widget,
 };
 use masonry::kurbo::Size;
-use masonry::vello::Scene;
 use masonry::properties::types::{AsUnit, MainAxisAlignment};
+use masonry::vello::Scene;
+use tracing;
+use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::{CrossAxisAlignment, flex_col, flex_row, sized_box};
-use xilem::WidgetView;
 
 // Import from theme (includes all sizing and color constants)
 use crate::theme::coordinate_panel::*;
@@ -47,8 +47,8 @@ mod layout {
     pub const INPUT_WIDTH: f64 = 48.0;
 
     /// Spacing between elements
-    pub const GAP_BETWEEN_INPUTS: f64 = 4.0;   // Horizontal gap in input rows
-    pub const GAP_BETWEEN_ROWS: f64 = 8.0;     // Vertical gap between X/Y and W/H rows
+    pub const GAP_BETWEEN_INPUTS: f64 = 4.0; // Horizontal gap in input rows
+    pub const GAP_BETWEEN_ROWS: f64 = 8.0; // Vertical gap between X/Y and W/H rows
     pub const GAP_BETWEEN_SECTIONS: f64 = 6.0; // Gap between quadrant and inputs
 
     /// Padding around the content inside the panel
@@ -73,9 +73,7 @@ struct CoordinateData {
 }
 
 /// Extract and format coordinate values from the selection
-fn prepare_coordinate_data(
-    coordinate_selection: &CoordinateSelection,
-) -> CoordinateData {
+fn prepare_coordinate_data(coordinate_selection: &CoordinateSelection) -> CoordinateData {
     if coordinate_selection.count == 0 {
         return CoordinateData {
             x: String::new(),
@@ -102,7 +100,12 @@ fn prepare_coordinate_data(
         String::new()
     };
 
-    CoordinateData { x, y, width, height }
+    CoordinateData {
+        x,
+        y,
+        width,
+        height,
+    }
 }
 
 /// Build the quadrant selector widget (3x3 grid picker)
@@ -111,32 +114,21 @@ fn build_quadrant_selector<State: 'static, F>(
     on_session_update: F,
 ) -> impl WidgetView<State>
 where
-    F: Fn(&mut State, crate::edit_session::EditSession)
-        + Send
-        + Sync
-        + 'static,
+    F: Fn(&mut State, crate::edit_session::EditSession) + Send + Sync + 'static,
 {
-    sized_box(
-        coordinate_panel_view(session, on_session_update)
-    )
-    .width(layout::QUADRANT_SIZE.px())
-    .height(layout::QUADRANT_SIZE.px())
+    sized_box(coordinate_panel_view(session, on_session_update))
+        .width(layout::QUADRANT_SIZE.px())
+        .height(layout::QUADRANT_SIZE.px())
 }
 
 /// Build a single coordinate input field
-fn build_coord_input<State: 'static>(
-    value: String,
-    placeholder: &str,
-) -> impl WidgetView<State> {
+fn build_coord_input<State: 'static>(value: String, placeholder: &str) -> impl WidgetView<State> {
     sized_box(
-        xilem::view::text_input(
-            value,
-            |_state: &mut State, _new_value| {
-                // TODO: Handle coordinate updates
-            }
-        )
+        xilem::view::text_input(value, |_state: &mut State, _new_value| {
+            // TODO: Handle coordinate updates
+        })
         .text_alignment(parley::Alignment::Center)
-        .placeholder(placeholder)
+        .placeholder(placeholder),
     )
     .width(layout::INPUT_WIDTH.px())
 }
@@ -146,9 +138,7 @@ fn build_coord_input<State: 'static>(
 /// Creates two rows:
 /// - Row 1: X and Y inputs
 /// - Row 2: W and H inputs
-fn build_coordinate_inputs<State: 'static>(
-    data: CoordinateData,
-) -> impl WidgetView<State> {
+fn build_coordinate_inputs<State: 'static>(data: CoordinateData) -> impl WidgetView<State> {
     // Row 1: X and Y position inputs
     let row1 = flex_row((
         build_coord_input(data.x, "X"),
@@ -181,13 +171,10 @@ fn build_panel_container<State: 'static>(
     coordinate_inputs: impl WidgetView<State>,
 ) -> impl WidgetView<State> {
     // Main horizontal layout: quadrant | inputs
-    let row = flex_row((
-        quadrant_selector,
-        coordinate_inputs,
-    ))
-    .main_axis_alignment(MainAxisAlignment::Center)
-    .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(layout::GAP_BETWEEN_SECTIONS.px());
+    let row = flex_row((quadrant_selector, coordinate_inputs))
+        .main_axis_alignment(MainAxisAlignment::Center)
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+        .gap(layout::GAP_BETWEEN_SECTIONS.px());
 
     // Center the row both horizontally and vertically within the panel
     let centered_content = flex_col((row,))
@@ -223,31 +210,20 @@ pub fn coordinate_panel<State: 'static, F>(
     on_session_update: F,
 ) -> impl WidgetView<State>
 where
-    F: Fn(&mut State, crate::edit_session::EditSession)
-        + Send
-        + Sync
-        + 'static,
+    F: Fn(&mut State, crate::edit_session::EditSession) + Send + Sync + 'static,
 {
     // Step 1: Prepare coordinate data (clone strings for use in closures)
     let coord_data = prepare_coordinate_data(&session.coord_selection);
 
     // Step 2: Build the quadrant selector
-    let quadrant_selector = build_quadrant_selector(
-        session,
-        on_session_update,
-    );
+    let quadrant_selector = build_quadrant_selector(session, on_session_update);
 
     // Step 3: Build the coordinate input fields
     // Clone the data so it can be moved into the view closures
-    let coordinate_inputs = build_coordinate_inputs::<State>(
-        coord_data.clone(),
-    );
+    let coordinate_inputs = build_coordinate_inputs::<State>(coord_data.clone());
 
     // Step 4: Assemble the final panel
-    build_panel_container(
-        quadrant_selector,
-        coordinate_inputs,
-    )
+    build_panel_container(quadrant_selector, coordinate_inputs)
 }
 
 // ============================================================================
@@ -388,8 +364,7 @@ impl CoordinatePanelWidget {
         // Use the FULL widget bounds for hit detection, not just the visual
         // picker bounds. The padding is just for visual spacing, not for
         // limiting clickability.
-        let hit_bounds =
-            Rect::from_origin_size(kurbo::Point::ZERO, self.widget_size);
+        let hit_bounds = Rect::from_origin_size(kurbo::Point::ZERO, self.widget_size);
 
         if !hit_bounds.contains(point) {
             return None;
@@ -431,10 +406,7 @@ impl Widget for CoordinatePanelWidget {
         bc: &BoxConstraints,
     ) -> Size {
         // Store the widget size so we can use it in paint
-        self.widget_size = bc.constrain(Size::new(
-            layout::PANEL_WIDTH,
-            layout::PANEL_HEIGHT,
-        ));
+        self.widget_size = bc.constrain(Size::new(layout::PANEL_WIDTH, layout::PANEL_HEIGHT));
         self.widget_size
     }
 
@@ -451,10 +423,7 @@ impl Widget for CoordinatePanelWidget {
         }) = event
         {
             let local_pos = ctx.local_position(state.position);
-            tracing::debug!(
-                "Pointer down at local_pos: {:?}",
-                local_pos
-            );
+            tracing::debug!("Pointer down at local_pos: {:?}", local_pos);
             if let Some(quadrant) = self.quadrant_at_point(local_pos) {
                 tracing::debug!(
                     "Clicked on quadrant: {:?}, old: {:?}",
@@ -479,12 +448,7 @@ impl Widget for CoordinatePanelWidget {
         }
     }
 
-    fn paint(
-        &mut self,
-        _ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         // Background and border are now handled by the sized_box wrapper in
         // lib.rs. This widget only paints the quadrant picker. Coordinate text
         // values are handled by Xilem views in lib.rs.
@@ -555,8 +519,12 @@ impl CoordinatePanelWidget {
 
         // Draw all grid lines using theme stroke width
         let grid_lines = [
-            &h_line_top, &h_line_middle, &h_line_bottom,
-            &v_line_left, &v_line_middle, &v_line_right,
+            &h_line_top,
+            &h_line_middle,
+            &h_line_bottom,
+            &v_line_left,
+            &v_line_middle,
+            &v_line_right,
         ];
         for line in grid_lines {
             masonry::util::stroke(scene, line, GRID_LINE, STROKE_WIDTH);
@@ -610,10 +578,7 @@ pub fn coordinate_panel_view<State, F>(
     on_session_update: F,
 ) -> CoordinatePanelView<State, F>
 where
-    F: Fn(&mut State, crate::edit_session::EditSession)
-        + Send
-        + Sync
-        + 'static,
+    F: Fn(&mut State, crate::edit_session::EditSession) + Send + Sync + 'static,
 {
     CoordinatePanelView {
         session,
@@ -633,22 +598,13 @@ pub struct CoordinatePanelView<State, F> {
 impl<State, F> ViewMarker for CoordinatePanelView<State, F> {}
 
 // Xilem View trait implementation
-impl<
-        State: 'static,
-        F: Fn(&mut State, crate::edit_session::EditSession)
-            + Send
-            + Sync
-            + 'static,
-    > View<State, (), ViewCtx> for CoordinatePanelView<State, F>
+impl<State: 'static, F: Fn(&mut State, crate::edit_session::EditSession) + Send + Sync + 'static>
+    View<State, (), ViewCtx> for CoordinatePanelView<State, F>
 {
     type Element = Pod<CoordinatePanelWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = CoordinatePanelWidget::new((*self.session).clone());
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());

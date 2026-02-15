@@ -107,9 +107,10 @@ impl Path {
         }
 
         // Check if contour contains QCurve points (quadratic)
-        let has_qcurve = contour.points.iter().any(|pt| {
-            matches!(pt.point_type, workspace::PointType::QCurve)
-        });
+        let has_qcurve = contour
+            .points
+            .iter()
+            .any(|pt| matches!(pt.point_type, workspace::PointType::QCurve));
 
         if has_qcurve {
             Path::Quadratic(QuadraticPath::from_contour(contour))

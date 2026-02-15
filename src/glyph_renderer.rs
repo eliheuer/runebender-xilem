@@ -73,19 +73,16 @@ fn append_components_to_path(
 }
 
 /// Append a single contour to a BezPath
-fn append_contour_to_path(
-    path: &mut BezPath,
-    contour: &Contour,
-) {
+fn append_contour_to_path(path: &mut BezPath, contour: &Contour) {
     let points = &contour.points;
     if points.is_empty() {
         return;
     }
 
     // Check if this is a hyperbezier contour
-    let is_hyperbezier = points.iter().any(|pt| {
-        matches!(pt.point_type, PointType::Hyper | PointType::HyperCorner)
-    });
+    let is_hyperbezier = points
+        .iter()
+        .any(|pt| matches!(pt.point_type, PointType::Hyper | PointType::HyperCorner));
 
     if is_hyperbezier {
         append_hyperbezier_contour(path, contour);
@@ -135,16 +132,8 @@ fn append_contour_to_path(
                 // Cubic bezier - need to look back for control points
                 // In UFO, off-curve points (OffCurve) precede the
                 // on-curve point (Curve)
-                let off_curve_points =
-                    collect_preceding_off_curve_points(
-                        &rotated,
-                        i,
-                    );
-                add_curve_segment(
-                    path,
-                    &off_curve_points,
-                    pt,
-                );
+                let off_curve_points = collect_preceding_off_curve_points(&rotated, i);
+                add_curve_segment(path, &off_curve_points, pt);
                 i += 1;
             }
             PointType::OffCurve => {
@@ -238,12 +227,8 @@ fn add_curve_segment(
 }
 
 /// Handle trailing off-curve points for closed paths
-fn handle_trailing_off_curve_points(
-    path: &mut BezPath,
-    rotated: &[&ContourPoint],
-) {
-    let trailing_off_curve =
-        collect_trailing_off_curve_points(rotated);
+fn handle_trailing_off_curve_points(path: &mut BezPath, rotated: &[&ContourPoint]) {
+    let trailing_off_curve = collect_trailing_off_curve_points(rotated);
 
     if trailing_off_curve.is_empty() {
         path.close_path();
@@ -255,9 +240,7 @@ fn handle_trailing_off_curve_points(
 }
 
 /// Collect trailing off-curve points at the end of the path
-fn collect_trailing_off_curve_points<'a>(
-    rotated: &'a [&'a ContourPoint],
-) -> Vec<&'a ContourPoint> {
+fn collect_trailing_off_curve_points<'a>(rotated: &'a [&'a ContourPoint]) -> Vec<&'a ContourPoint> {
     let mut trailing_off_curve = Vec::new();
     let mut j = rotated.len().saturating_sub(1);
 
@@ -298,10 +281,10 @@ fn add_closing_curve(
 
 /// Append a hyperbezier contour to a BezPath using the spline solver
 fn append_hyperbezier_contour(path: &mut BezPath, contour: &Contour) {
-    use crate::hyper_path::HyperPath;
-    use crate::point_list::PathPoints;
-    use crate::point::{PathPoint, PointType as PathPointType};
     use crate::entity_id::EntityId;
+    use crate::hyper_path::HyperPath;
+    use crate::point::{PathPoint, PointType as PathPointType};
+    use crate::point_list::PathPoints;
 
     // Convert workspace contour points to PathPoints
     let path_points: Vec<PathPoint> = contour

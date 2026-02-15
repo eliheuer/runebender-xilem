@@ -20,8 +20,8 @@ use crate::point::{PathPoint, PointType};
 use crate::point_list::PathPoints;
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, Point, Rect, Shape};
-use masonry::vello::peniko::{Brush, Fill};
 use masonry::vello::Scene;
+use masonry::vello::peniko::{Brush, Fill};
 use std::sync::Arc;
 use tracing;
 
@@ -82,12 +82,7 @@ impl Tool for ShapesTool {
         ToolId::Shapes
     }
 
-    fn paint(
-        &mut self,
-        scene: &mut Scene,
-        session: &EditSession,
-        _transform: &Affine,
-    ) {
+    fn paint(&mut self, scene: &mut Scene, session: &EditSession, _transform: &Affine) {
         // Paint preview of the shape being drawn
         if let Some(rect) = self.current_drag_rect(session) {
             self.paint_shape_preview(scene, rect);
@@ -110,7 +105,11 @@ impl MouseDelegate for ShapesTool {
     fn left_down(&mut self, event: MouseEvent, _data: &mut EditSession) {
         self.gesture = GestureState::Down(event.pos);
         // Note: shift_locked is controlled by keyboard events, not mouse events
-        tracing::debug!("Shapes tool: mouse down at {:?}, shift={}", event.pos, self.shift_locked);
+        tracing::debug!(
+            "Shapes tool: mouse down at {:?}, shift={}",
+            event.pos,
+            self.shift_locked
+        );
     }
 
     fn left_drag_began(
@@ -214,11 +213,19 @@ impl ShapesTool {
             );
             tracing::debug!(
                 "pts_for_rect: CONSTRAINED - start={:?}, current={:?}, delta={:?}, size={}, constrained={:?}",
-                start, current, delta, size, constrained
+                start,
+                current,
+                delta,
+                size,
+                constrained
             );
             (start, constrained)
         } else {
-            tracing::debug!("pts_for_rect: unconstrained - start={:?}, current={:?}", start, current);
+            tracing::debug!(
+                "pts_for_rect: unconstrained - start={:?}, current={:?}",
+                start,
+                current
+            );
             (start, current)
         }
     }

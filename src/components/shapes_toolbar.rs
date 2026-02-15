@@ -11,9 +11,8 @@ use crate::tools::shapes::ShapeType;
 use kurbo::{BezPath, Point, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
-    PaintCtx, PointerButton, PointerButtonEvent, PointerEvent,
-    PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
+    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
+    PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
     UpdateCtx, Widget,
 };
 use masonry::vello::Scene;
@@ -24,8 +23,7 @@ use xilem::{Pod, ViewCtx};
 
 // Import shared toolbar functionality
 use crate::components::toolbars::{
-    button_rect, calculate_toolbar_size, paint_button, paint_icon,
-    paint_panel, ButtonState,
+    ButtonState, button_rect, calculate_toolbar_size, paint_button, paint_icon, paint_panel,
 };
 
 /// Available shape types in display order
@@ -96,12 +94,7 @@ impl Widget for ShapesToolbarWidget {
         bc.constrain(size)
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         let size = ctx.size();
         paint_panel(scene, size);
 
@@ -191,24 +184,24 @@ fn rectangle_icon() -> BezPath {
     let mut bez = BezPath::new();
 
     // Outer rectangle (clockwise)
-    bez.move_to((120.0, 620.0));  // 768-148
+    bez.move_to((120.0, 620.0)); // 768-148
     bez.curve_to((120.0, 640.0), (132.0, 652.0), (152.0, 652.0));
     bez.line_to((616.0, 652.0));
     bez.curve_to((636.0, 652.0), (648.0, 640.0), (648.0, 620.0));
-    bez.line_to((648.0, 146.0));  // 768-622
+    bez.line_to((648.0, 146.0)); // 768-622
     bez.curve_to((648.0, 126.0), (636.0, 114.0), (616.0, 114.0));
     bez.line_to((152.0, 114.0));
     bez.curve_to((132.0, 114.0), (120.0, 126.0), (120.0, 146.0));
     bez.close_path();
 
     // Inner rectangle (counter-clockwise to create hole)
-    bez.move_to((546.0, 192.0));  // Start from opposite corner
+    bez.move_to((546.0, 192.0)); // Start from opposite corner
     bez.curve_to((562.0, 192.0), (570.0, 200.0), (570.0, 216.0));
-    bez.line_to((570.0, 550.0));  // 768-218
+    bez.line_to((570.0, 550.0)); // 768-218
     bez.curve_to((570.0, 566.0), (562.0, 574.0), (546.0, 574.0));
-    bez.line_to((222.0, 574.0));  // 768-194
+    bez.line_to((222.0, 574.0)); // 768-194
     bez.curve_to((206.0, 574.0), (198.0, 566.0), (198.0, 550.0));
-    bez.line_to((198.0, 216.0));  // 768-552
+    bez.line_to((198.0, 216.0)); // 768-552
     bez.curve_to((198.0, 200.0), (206.0, 192.0), (222.0, 192.0));
     bez.close_path();
 
@@ -221,17 +214,17 @@ fn ellipse_icon() -> BezPath {
     let mut bez = BezPath::new();
 
     // Outer ellipse
-    bez.move_to((384.0, 688.0));  // 768-80
-    bez.curve_to((546.0, 688.0), (680.0, 556.0), (680.0, 392.0));  // 768-212, 768-376
-    bez.curve_to((680.0, 228.0), (546.0, 96.0), (384.0, 96.0));  // 768-540, 768-672
+    bez.move_to((384.0, 688.0)); // 768-80
+    bez.curve_to((546.0, 688.0), (680.0, 556.0), (680.0, 392.0)); // 768-212, 768-376
+    bez.curve_to((680.0, 228.0), (546.0, 96.0), (384.0, 96.0)); // 768-540, 768-672
     bez.curve_to((220.0, 96.0), (90.0, 228.0), (90.0, 392.0));
     bez.curve_to((90.0, 556.0), (220.0, 688.0), (384.0, 688.0));
     bez.close_path();
 
     // Inner ellipse (hole)
-    bez.move_to((384.0, 608.0));  // 768-160
-    bez.curve_to((266.0, 608.0), (168.0, 512.0), (168.0, 392.0));  // 768-256, 768-376
-    bez.curve_to((168.0, 272.0), (266.0, 176.0), (384.0, 176.0));  // 768-496, 768-592
+    bez.move_to((384.0, 608.0)); // 768-160
+    bez.curve_to((266.0, 608.0), (168.0, 512.0), (168.0, 392.0)); // 768-256, 768-376
+    bez.curve_to((168.0, 272.0), (266.0, 176.0), (384.0, 176.0)); // 768-496, 768-592
     bez.curve_to((504.0, 176.0), (600.0, 272.0), (600.0, 392.0));
     bez.curve_to((600.0, 512.0), (504.0, 608.0), (384.0, 608.0));
     bez.close_path();
@@ -257,8 +250,7 @@ where
 }
 
 /// The Xilem View for ShapesToolbarWidget
-type ShapesToolbarCallback<State> =
-    Box<dyn Fn(&mut State, ShapeType) + Send + Sync>;
+type ShapesToolbarCallback<State> = Box<dyn Fn(&mut State, ShapeType) + Send + Sync>;
 
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct ShapesToolbarView<State, Action = ()> {
@@ -275,11 +267,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     type Element = Pod<ShapesToolbarWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = ShapesToolbarWidget::new(self.selected_shape);
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());

@@ -56,7 +56,6 @@ impl Selection {
         set.remove(id);
         self.inner = Arc::new(set);
     }
-
 }
 
 impl Default for Selection {

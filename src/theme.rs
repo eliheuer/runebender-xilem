@@ -74,7 +74,7 @@ const TOOLBAR_ICON_SELECTED: Color = GRID_CELL_SELECTED_OUTLINE;
 const GRID_CELL_BACKGROUND: Color = PANEL_BACKGROUND;
 const GRID_CELL_OUTLINE: Color = BASE_F;
 const GRID_CELL_SELECTED_BACKGROUND: Color = Color::from_rgb8(0x14, 0x64, 0x14);
-const GRID_CELL_SELECTED_OUTLINE: Color = Color::from_rgb8(0x90, 0xee, 0x90);
+const GRID_CELL_SELECTED_OUTLINE: Color = Color::from_rgb8(0x66, 0xEE, 0x88);
 
 // Glyph rendering in grid
 const GRID_GLYPH_COLOR: Color = BASE_J;
@@ -142,9 +142,9 @@ const MARK_RED: Color = Color::from_rgb8(0xFF, 0x40, 0x40);
 const MARK_ORANGE: Color = Color::from_rgb8(0xFF, 0x99, 0x33);
 const MARK_YELLOW: Color = Color::from_rgb8(0xFF, 0xDD, 0x33);
 const MARK_LIGHT_GREEN: Color = Color::from_rgb8(0x88, 0xDD, 0x44);
-const MARK_GREEN: Color = Color::from_rgb8(0x44, 0xBB, 0x44);
+const MARK_GREEN: Color = Color::from_rgb8(0x22, 0xBB, 0x77);
 const MARK_TEAL: Color = Color::from_rgb8(0x44, 0xBB, 0xAA);
-const MARK_BLUE: Color = Color::from_rgb8(0x1E, 0x50, 0xC8);
+const MARK_BLUE: Color = Color::from_rgb8(0x44, 0x88, 0xFF);
 const MARK_PURPLE: Color = Color::from_rgb8(0x99, 0x55, 0xDD);
 const MARK_PINK: Color = Color::from_rgb8(0xDD, 0x55, 0xAA);
 const MARK_BROWN: Color = Color::from_rgb8(0xAA, 0x77, 0x44);
@@ -268,8 +268,7 @@ pub mod grid {
 
     pub const CELL_BACKGROUND: Color = super::GRID_CELL_BACKGROUND;
     pub const CELL_OUTLINE: Color = super::GRID_CELL_OUTLINE;
-    pub const CELL_SELECTED_BACKGROUND: Color =
-        super::GRID_CELL_SELECTED_BACKGROUND;
+    pub const CELL_SELECTED_BACKGROUND: Color = super::GRID_CELL_SELECTED_BACKGROUND;
     pub const CELL_SELECTED_OUTLINE: Color = super::GRID_CELL_SELECTED_OUTLINE;
     pub const CELL_TEXT: Color = super::GRID_CELL_TEXT;
     pub const GLYPH_COLOR: Color = super::GRID_GLYPH_COLOR;

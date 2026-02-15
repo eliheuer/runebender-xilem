@@ -37,10 +37,7 @@ pub enum EditType {
 impl EditType {
     /// Check if this edit type should create a new undo group when
     /// following the given previous edit type
-    pub fn should_create_new_undo_group(
-        &self,
-        prev: Option<EditType>,
-    ) -> bool {
+    pub fn should_create_new_undo_group(&self, prev: Option<EditType>) -> bool {
         match (prev, self) {
             // No previous edit - create new group
             (None, _) => true,
@@ -53,11 +50,7 @@ impl EditType {
             (_, EditType::DragUp) => true,
 
             // Same nudge direction continues in same group
-            (Some(prev), current)
-                if prev == *current && prev.is_nudge() =>
-            {
-                false
-            }
+            (Some(prev), current) if prev == *current && prev.is_nudge() => false,
 
             // Different edit types create new groups
             _ => true,
@@ -68,11 +61,7 @@ impl EditType {
     pub fn is_nudge(&self) -> bool {
         matches!(
             self,
-            EditType::NudgeUp
-                | EditType::NudgeDown
-                | EditType::NudgeLeft
-                | EditType::NudgeRight
+            EditType::NudgeUp | EditType::NudgeDown | EditType::NudgeLeft | EditType::NudgeRight
         )
     }
 }
-
