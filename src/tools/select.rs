@@ -61,12 +61,7 @@ impl Tool for SelectTool {
         ToolId::Select
     }
 
-    fn paint(
-        &mut self,
-        scene: &mut Scene,
-        _session: &EditSession,
-        _transform: &Affine,
-    ) {
+    fn paint(&mut self, scene: &mut Scene, _session: &EditSession, _transform: &Affine) {
         // Draw selection rectangle if in marquee mode
         let State::MarqueeSelect { rect, .. } = &self.state else {
             return;
@@ -82,13 +77,7 @@ impl Tool for SelectTool {
         // Create a dashed stroke pattern: 4px dash, 4px gap
         let stroke = kurbo::Stroke::new(1.5).with_dashes(0.0, [4.0, 4.0]);
         let brush = Brush::Solid(crate::theme::selection::RECT_STROKE);
-        scene.stroke(
-            &stroke,
-            Affine::IDENTITY,
-            &brush,
-            None,
-            rect,
-        );
+        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, rect);
     }
 
     fn edit_type(&self) -> Option<EditType> {
@@ -106,11 +95,7 @@ impl Tool for SelectTool {
 impl MouseDelegate for SelectTool {
     type Data = EditSession;
 
-    fn left_down(
-        &mut self,
-        event: MouseEvent,
-        data: &mut EditSession,
-    ) {
+    fn left_down(&mut self, event: MouseEvent, data: &mut EditSession) {
         tracing::debug!(
             "SelectTool::left_down pos={:?} shift={}",
             event.pos,
@@ -120,11 +105,7 @@ impl MouseDelegate for SelectTool {
         // Hit test for a point at the cursor - selection happens HERE,
         // on mouse down
         if let Some(hit) = data.hit_test_point(event.pos, None) {
-            tracing::debug!(
-                "Hit point: {:?} distance={}",
-                hit.entity,
-                hit.distance
-            );
+            tracing::debug!("Hit point: {:?} distance={}", hit.entity, hit.distance);
             // Clear component selection when selecting a point
             data.clear_component_selection();
             self.handle_point_selection(data, hit.entity, event.mods.shift);
@@ -141,31 +122,18 @@ impl MouseDelegate for SelectTool {
         }
     }
 
-    fn left_up(
-        &mut self,
-        _event: MouseEvent,
-        _data: &mut EditSession,
-    ) {
+    fn left_up(&mut self, _event: MouseEvent, _data: &mut EditSession) {
         // Selection already happened in left_down, nothing to do here
     }
 
-    fn left_click(
-        &mut self,
-        _event: MouseEvent,
-        _data: &mut EditSession,
-    ) {
+    fn left_click(&mut self, _event: MouseEvent, _data: &mut EditSession) {
         // Click is now handled entirely by left_down
         // This method is called after left_up if no drag occurred
         // But we don't need to do anything here since selection already
         // happened
     }
 
-    fn left_drag_began(
-        &mut self,
-        event: MouseEvent,
-        drag: Drag,
-        data: &mut EditSession,
-    ) {
+    fn left_drag_began(&mut self, event: MouseEvent, drag: Drag, data: &mut EditSession) {
         // Check if we're starting the drag on a selected point
         if self.start_dragging_points(event, data) {
             return;
@@ -180,12 +148,7 @@ impl MouseDelegate for SelectTool {
         self.start_marquee_selection(event, drag, data);
     }
 
-    fn left_drag_changed(
-        &mut self,
-        event: MouseEvent,
-        drag: Drag,
-        data: &mut EditSession,
-    ) {
+    fn left_drag_changed(&mut self, event: MouseEvent, drag: Drag, data: &mut EditSession) {
         match &mut self.state {
             State::DraggingPoints { last_pos } => {
                 handle_dragging_points(event, data, last_pos);
@@ -198,24 +161,13 @@ impl MouseDelegate for SelectTool {
                 rect,
                 toggle,
             } => {
-                handle_marquee_selection(
-                    drag,
-                    data,
-                    previous_selection,
-                    rect,
-                    *toggle,
-                );
+                handle_marquee_selection(drag, data, previous_selection, rect, *toggle);
             }
             State::Ready => {}
         }
     }
 
-    fn left_drag_ended(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        data: &mut EditSession,
-    ) {
+    fn left_drag_ended(&mut self, _event: MouseEvent, _drag: Drag, data: &mut EditSession) {
         match &self.state {
             State::DraggingPoints { .. } => {
                 tracing::debug!("Select tool: finished dragging points");
@@ -293,11 +245,7 @@ impl SelectTool {
     /// Start dragging selected points
     ///
     /// Returns true if we started dragging points, false otherwise
-    fn start_dragging_points(
-        &mut self,
-        event: MouseEvent,
-        data: &mut EditSession,
-    ) -> bool {
+    fn start_dragging_points(&mut self, event: MouseEvent, data: &mut EditSession) -> bool {
         // Check if we have any selected points
         // (They were already selected in left_down)
         if data.selection.is_empty() {
@@ -328,11 +276,7 @@ impl SelectTool {
     /// Start dragging a selected component
     ///
     /// Returns true if we started dragging a component, false otherwise
-    fn start_dragging_component(
-        &mut self,
-        event: MouseEvent,
-        data: &mut EditSession,
-    ) -> bool {
+    fn start_dragging_component(&mut self, event: MouseEvent, data: &mut EditSession) -> bool {
         // Check if we have a selected component
         if data.selected_component.is_none() {
             return false;
@@ -357,12 +301,7 @@ impl SelectTool {
     }
 
     /// Start marquee selection
-    fn start_marquee_selection(
-        &mut self,
-        event: MouseEvent,
-        drag: Drag,
-        data: &mut EditSession,
-    ) {
+    fn start_marquee_selection(&mut self, event: MouseEvent, drag: Drag, data: &mut EditSession) {
         // Store the previous selection for toggle mode
         let previous_selection = data.selection.clone();
         let rect = Rect::from_points(drag.start, drag.current);
@@ -377,25 +316,17 @@ impl SelectTool {
             toggle: event.mods.shift,
         };
     }
-
 }
 
 // ===== Drag Handling Helpers =====
 
 /// Handle dragging points (during drag)
-fn handle_dragging_points(
-    event: MouseEvent,
-    data: &mut EditSession,
-    last_pos: &mut Point,
-) {
+fn handle_dragging_points(event: MouseEvent, data: &mut EditSession, last_pos: &mut Point) {
     // Convert current mouse position to design space
     let current_pos = data.viewport.screen_to_design(event.pos);
 
     // Calculate delta in design space
-    let delta = Vec2::new(
-        current_pos.x - last_pos.x,
-        current_pos.y - last_pos.y,
-    );
+    let delta = Vec2::new(current_pos.x - last_pos.x, current_pos.y - last_pos.y);
 
     // Move selected points
     data.move_selection(delta);
@@ -405,19 +336,12 @@ fn handle_dragging_points(
 }
 
 /// Handle dragging component (during drag)
-fn handle_dragging_component(
-    event: MouseEvent,
-    data: &mut EditSession,
-    last_pos: &mut Point,
-) {
+fn handle_dragging_component(event: MouseEvent, data: &mut EditSession, last_pos: &mut Point) {
     // Convert current mouse position to design space
     let current_pos = data.viewport.screen_to_design(event.pos);
 
     // Calculate delta in design space
-    let delta = Vec2::new(
-        current_pos.x - last_pos.x,
-        current_pos.y - last_pos.y,
-    );
+    let delta = Vec2::new(current_pos.x - last_pos.x, current_pos.y - last_pos.y);
 
     // Move the selected component
     data.move_selected_component(delta);

@@ -9,17 +9,15 @@
 use kurbo::{Affine, BezPath, Point, Shape, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, EventCtx, LayoutCtx, PaintCtx,
-    PointerButton, PointerButtonEvent, PointerEvent, PropertiesMut,
-    PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
+    AccessCtx, BoxConstraints, EventCtx, LayoutCtx, PaintCtx, PointerButton, PointerButtonEvent,
+    PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
 };
 use masonry::vello::Scene;
 use std::time::Instant;
 
 // Import shared toolbar functionality
 use crate::components::toolbars::{
-    button_rect, calculate_toolbar_size, paint_button,
-    paint_panel, ButtonState,
+    ButtonState, button_rect, calculate_toolbar_size, paint_button, paint_panel,
 };
 
 /// System toolbar button types
@@ -96,12 +94,7 @@ impl Widget for SystemToolbarWidget {
         bc.constrain(size)
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         let size = ctx.size();
         paint_panel(scene, size);
         self.paint_button(scene);
@@ -137,9 +130,7 @@ impl Widget for SystemToolbarWidget {
             }) => {
                 let local_pos = ctx.local_position(state.position);
                 if let Some(button) = self.button_at_point(local_pos) {
-                    ctx.submit_action::<SystemToolbarAction>(
-                        SystemToolbarAction(button),
-                    );
+                    ctx.submit_action::<SystemToolbarAction>(SystemToolbarAction(button));
                     // Show active state for visual feedback
                     self.flash_on = true;
                     self.flash_start = Some(Instant::now());
@@ -190,20 +181,12 @@ impl SystemToolbarWidget {
         let icon_bounds = icon.bounding_box();
         let icon_center = icon_bounds.center();
         let button_center = rect.center();
-        let icon_size =
-            icon_bounds.width().max(icon_bounds.height());
-        let target =
-            crate::theme::size::TOOLBAR_ITEM_SIZE
-                - icon_padding * 2.0;
+        let icon_size = icon_bounds.width().max(icon_bounds.height());
+        let target = crate::theme::size::TOOLBAR_ITEM_SIZE - icon_padding * 2.0;
         let scale = target / icon_size;
-        let transform = Affine::translate((
-            button_center.x,
-            button_center.y,
-        )) * Affine::scale(scale)
-            * Affine::translate((
-                -icon_center.x,
-                -icon_center.y,
-            ));
+        let transform = Affine::translate((button_center.x, button_center.y))
+            * Affine::scale(scale)
+            * Affine::translate((-icon_center.x, -icon_center.y));
         let icon_color = if state.is_selected {
             crate::theme::toolbar::ICON_SELECTED
         } else if state.is_hovered {
@@ -211,11 +194,7 @@ impl SystemToolbarWidget {
         } else {
             crate::theme::toolbar::ICON_UNSELECTED
         };
-        masonry::util::fill_color(
-            scene,
-            &(transform * icon),
-            icon_color,
-        );
+        masonry::util::fill_color(scene, &(transform * icon), icon_color);
     }
 }
 
@@ -233,12 +212,11 @@ fn save_icon() -> BezPath {
     // Helper to transform points
     // IMPORTANT: Font coordinates have Y going UP, screen coordinates have Y going DOWN
     // We negate Y to flip the glyph right-side up for screen rendering
-    let t = |x: f64, y: f64| -> (f64, f64) {
-        ((x - cx) * scale, -(y - cy) * scale)
-    };
+    let t = |x: f64, y: f64| -> (f64, f64) { ((x - cx) * scale, -(y - cy) * scale) };
 
     // Contour 1
-    let p = t(227.0, 115.0); path.move_to(p);
+    let p = t(227.0, 115.0);
+    path.move_to(p);
     path.curve_to(t(238.0, 115.0), t(255.0, 95.0), t(255.0, 83.0));
     path.curve_to(t(255.0, 71.0), t(234.0, 44.0), t(224.0, 44.0));
     path.curve_to(t(215.0, 44.0), t(191.0, 60.0), t(191.0, 67.0));
@@ -246,7 +224,8 @@ fn save_icon() -> BezPath {
     path.close_path();
 
     // Contour 2
-    let p = t(134.0, 161.0); path.move_to(p);
+    let p = t(134.0, 161.0);
+    path.move_to(p);
     path.curve_to(t(96.0, 161.0), t(44.0, 169.0), t(44.0, 225.0));
     path.curve_to(t(44.0, 248.0), t(48.0, 267.0), t(58.0, 267.0));
     path.curve_to(t(67.0, 267.0), t(62.0, 251.0), t(86.0, 236.0));
@@ -261,7 +240,8 @@ fn save_icon() -> BezPath {
     path.close_path();
 
     // Contour 3
-    let p = t(169.0, 556.0); path.move_to(p);
+    let p = t(169.0, 556.0);
+    path.move_to(p);
     path.curve_to(t(180.0, 556.0), t(197.0, 536.0), t(197.0, 524.0));
     path.curve_to(t(197.0, 512.0), t(176.0, 485.0), t(166.0, 485.0));
     path.curve_to(t(157.0, 485.0), t(133.0, 501.0), t(133.0, 508.0));
@@ -269,7 +249,8 @@ fn save_icon() -> BezPath {
     path.close_path();
 
     // Contour 4
-    let p = t(355.0, 512.0); path.move_to(p);
+    let p = t(355.0, 512.0);
+    path.move_to(p);
     path.curve_to(t(366.0, 512.0), t(381.0, 492.0), t(381.0, 480.0));
     path.curve_to(t(381.0, 468.0), t(362.0, 441.0), t(352.0, 441.0));
     path.curve_to(t(343.0, 441.0), t(319.0, 457.0), t(319.0, 464.0));
@@ -277,7 +258,8 @@ fn save_icon() -> BezPath {
     path.close_path();
 
     // Contour 5
-    let p = t(231.0, 278.0); path.move_to(p);
+    let p = t(231.0, 278.0);
+    path.move_to(p);
     path.curve_to(t(214.0, 278.0), t(196.0, 290.0), t(196.0, 333.0));
     path.curve_to(t(196.0, 435.0), t(224.0, 532.0), t(238.0, 532.0));
     path.curve_to(t(243.0, 532.0), t(244.0, 529.0), t(244.0, 525.0));
@@ -289,7 +271,8 @@ fn save_icon() -> BezPath {
     path.close_path();
 
     // Contour 6
-    let p = t(84.0, 276.0); path.move_to(p);
+    let p = t(84.0, 276.0);
+    path.move_to(p);
     path.curve_to(t(78.0, 276.0), t(75.0, 278.0), t(75.0, 283.0));
     path.curve_to(t(75.0, 291.0), t(120.0, 320.0), t(137.0, 341.0));
     path.curve_to(t(142.0, 347.0), t(151.0, 365.0), t(157.0, 384.0));
@@ -300,7 +283,8 @@ fn save_icon() -> BezPath {
     path.close_path();
 
     // Contour 7
-    let p = t(364.0, 168.0); path.move_to(p);
+    let p = t(364.0, 168.0);
+    path.move_to(p);
     path.curve_to(t(360.0, 168.0), t(357.0, 170.0), t(357.0, 175.0));
     path.curve_to(t(357.0, 185.0), t(414.0, 215.0), t(428.0, 232.0));
     path.curve_to(t(442.0, 249.0), t(451.0, 280.0), t(459.0, 291.0));
@@ -330,8 +314,7 @@ use std::marker::PhantomData;
 use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
-type SystemToolbarCallback<State> =
-    Box<dyn Fn(&mut State, SystemToolbarButton) + Send + Sync>;
+type SystemToolbarCallback<State> = Box<dyn Fn(&mut State, SystemToolbarButton) + Send + Sync>;
 
 /// Public API to create a system toolbar view
 pub fn system_toolbar_view<State, Action>(
@@ -361,11 +344,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     type Element = Pod<SystemToolbarWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = SystemToolbarWidget::new();
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());
@@ -384,10 +363,11 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
         // But only if enough time has passed since the flash started
         // (to avoid resetting immediately due to save updating state)
         if let Some(start) = element.widget.flash_start
-            && start.elapsed().as_millis() >= FLASH_DURATION_MS {
-                element.widget.flash_on = false;
-                element.widget.flash_start = None;
-            }
+            && start.elapsed().as_millis() >= FLASH_DURATION_MS
+        {
+            element.widget.flash_on = false;
+            element.widget.flash_start = None;
+        }
     }
 
     fn teardown(

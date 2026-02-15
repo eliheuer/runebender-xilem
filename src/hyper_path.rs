@@ -248,12 +248,7 @@ impl HyperPath {
         if self.closed && num_points >= 3 {
             // Add a spline segment back to the first point to ensure the closing
             // segment is also a smooth hyperbezier curve
-            spec.spline_to(
-                None,
-                None,
-                to_spline_point(first_point),
-                true,
-            );
+            spec.spline_to(None, None, to_spline_point(first_point), true);
             spec.close();
         }
 
@@ -274,10 +269,7 @@ impl HyperPath {
                     result.line_to(Point::new(p.x, p.y));
                 }
                 kurbo_09::PathEl::QuadTo(p1, p2) => {
-                    result.quad_to(
-                        Point::new(p1.x, p1.y),
-                        Point::new(p2.x, p2.y),
-                    );
+                    result.quad_to(Point::new(p1.x, p1.y), Point::new(p2.x, p2.y));
                 }
                 kurbo_09::PathEl::CurveTo(p1, p2, p3) => {
                     result.curve_to(
@@ -302,19 +294,14 @@ impl HyperPath {
         }
 
         // Determine if the path is closed
-        let closed = !matches!(
-            contour.points[0].point_type,
-            workspace::PointType::Move
-        );
+        let closed = !matches!(contour.points[0].point_type, workspace::PointType::Move);
 
         // Convert only on-curve points (skip off-curve)
         // Preserve smooth/corner distinction from Hyper/HyperCorner point types
         let mut path_points: Vec<PathPoint> = contour
             .points
             .iter()
-            .filter(|pt| {
-                !matches!(pt.point_type, workspace::PointType::OffCurve)
-            })
+            .filter(|pt| !matches!(pt.point_type, workspace::PointType::OffCurve))
             .map(|pt| {
                 let smooth = match pt.point_type {
                     workspace::PointType::Hyper => true,
@@ -343,9 +330,7 @@ impl HyperPath {
     /// This saves only the on-curve hyperbezier points with their smooth/corner flags.
     /// Off-curve control points are NOT saved - they will be recomputed by the spline solver on load.
     pub fn to_contour(&self) -> workspace::Contour {
-        use crate::workspace::{
-            Contour, ContourPoint, PointType as WsPointType,
-        };
+        use crate::workspace::{Contour, ContourPoint, PointType as WsPointType};
 
         // Convert only the on-curve points, preserving smooth/corner distinction
         let mut points = Vec::new();
@@ -390,9 +375,7 @@ impl HyperPath {
     ///
     /// Note: This iterates over the solved bezier segments, not the
     /// original on-curve points.
-    pub fn iter_segments(
-        &self,
-    ) -> impl Iterator<Item = crate::path_segment::SegmentInfo> + '_ {
+    pub fn iter_segments(&self) -> impl Iterator<Item = crate::path_segment::SegmentInfo> + '_ {
         HyperSegmentIterator::new(&self.bezier)
     }
 }
@@ -428,9 +411,8 @@ impl<'a> Iterator for HyperSegmentIterator<'a> {
                     // Continue to next element
                 }
                 kurbo::PathEl::LineTo(p) => {
-                    let segment = crate::path_segment::Segment::Line(
-                        kurbo::Line::new(self.prev_point, *p),
-                    );
+                    let segment =
+                        crate::path_segment::Segment::Line(kurbo::Line::new(self.prev_point, *p));
                     let start_idx = self.index;
                     self.prev_point = *p;
                     self.index += 1;
@@ -441,9 +423,12 @@ impl<'a> Iterator for HyperSegmentIterator<'a> {
                     });
                 }
                 kurbo::PathEl::CurveTo(p1, p2, p3) => {
-                    let segment = crate::path_segment::Segment::Cubic(
-                        kurbo::CubicBez::new(self.prev_point, *p1, *p2, *p3),
-                    );
+                    let segment = crate::path_segment::Segment::Cubic(kurbo::CubicBez::new(
+                        self.prev_point,
+                        *p1,
+                        *p2,
+                        *p3,
+                    ));
                     let start_idx = self.index;
                     self.prev_point = *p3;
                     self.index += 1;
@@ -454,9 +439,11 @@ impl<'a> Iterator for HyperSegmentIterator<'a> {
                     });
                 }
                 kurbo::PathEl::QuadTo(p1, p2) => {
-                    let segment = crate::path_segment::Segment::Quadratic(
-                        kurbo::QuadBez::new(self.prev_point, *p1, *p2),
-                    );
+                    let segment = crate::path_segment::Segment::Quadratic(kurbo::QuadBez::new(
+                        self.prev_point,
+                        *p1,
+                        *p2,
+                    ));
                     let start_idx = self.index;
                     self.prev_point = *p2;
                     self.index += 1;

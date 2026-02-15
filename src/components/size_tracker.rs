@@ -3,14 +3,13 @@
 
 //! Size tracker widget - reports container width for responsive layouts
 
+use kurbo::Size;
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx,
-    PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
-    UpdateCtx, Widget,
+    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerEvent,
+    PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
 };
 use masonry::vello::Scene;
-use kurbo::Size;
 use std::marker::PhantomData;
 use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
@@ -65,10 +64,8 @@ impl Widget for SizeTrackerWidget {
         self.size = bc.max();
 
         // Report size change if width or height changed significantly
-        let width_changed =
-            (self.size.width - self.last_reported_width).abs() > 1.0;
-        let height_changed =
-            (self.size.height - self.last_reported_height).abs() > 1.0;
+        let width_changed = (self.size.width - self.last_reported_width).abs() > 1.0;
+        let height_changed = (self.size.height - self.last_reported_height).abs() > 1.0;
         if width_changed || height_changed {
             self.last_reported_width = self.size.width;
             self.last_reported_height = self.size.height;
@@ -81,12 +78,7 @@ impl Widget for SizeTrackerWidget {
         self.size
     }
 
-    fn paint(
-        &mut self,
-        _ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        _scene: &mut Scene,
-    ) {
+    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, _scene: &mut Scene) {
         // Invisible - no painting
     }
 
@@ -143,8 +135,7 @@ where
     }
 }
 
-type SizeCallback<State> =
-    Box<dyn Fn(&mut State, f64, f64) + Send + Sync>;
+type SizeCallback<State> = Box<dyn Fn(&mut State, f64, f64) + Send + Sync>;
 
 /// The Xilem View for SizeTrackerWidget
 #[must_use = "View values do nothing unless provided to Xilem."]
@@ -161,11 +152,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     type Element = Pod<SizeTrackerWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = SizeTrackerWidget::new();
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());
@@ -200,9 +187,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     ) -> MessageResult<Action> {
         match message.take_message::<SizeChanged>() {
             Some(sc) => {
-                (self.on_size_change)(
-                    app_state, sc.width, sc.height,
-                );
+                (self.on_size_change)(app_state, sc.width, sc.height);
                 MessageResult::Action(Action::default())
             }
             None => MessageResult::Stale,

@@ -9,12 +9,12 @@
 use std::sync::Arc;
 
 use masonry::properties::types::{AsUnit, UnitPoint};
+use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::{
-    ChildAlignment, CrossAxisAlignment, MainAxisAlignment, ZStackExt,
-    button, flex_col, label, sized_box, transformed, zstack,
+    ChildAlignment, CrossAxisAlignment, MainAxisAlignment, ZStackExt, button, flex_col, label,
+    sized_box, transformed, zstack,
 };
-use xilem::WidgetView;
 
 use crate::components::editor_view;
 use crate::data::AppState;
@@ -24,9 +24,7 @@ use crate::workspace::{Contour, ContourPoint, Glyph, PointType};
 // ===== Welcome View =====
 
 /// Welcome screen shown when no font is loaded
-pub fn welcome(
-    state: &mut AppState,
-) -> impl WidgetView<AppState> + use<> {
+pub fn welcome(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
     let error_text = format_error_text(&state.error_message);
 
     // Create or reuse the demo edit session with the hardcoded R glyph
@@ -42,11 +40,14 @@ pub fn welcome(
     // Layer welcome UI over interactive editor
     zstack((
         // Background: Interactive editor with demo R glyph
-        editor_view(session_arc, |state: &mut AppState, updated_session, _save_requested| {
-            // Save changes back to the welcome session so they persist
-            // (save_requested is ignored for the demo session)
-            state.welcome_session = Some(updated_session);
-        }),
+        editor_view(
+            session_arc,
+            |state: &mut AppState, updated_session, _save_requested| {
+                // Save changes back to the welcome session so they persist
+                // (save_requested is ignored for the demo session)
+                state.welcome_session = Some(updated_session);
+            },
+        ),
         // Foreground: Welcome UI in upper left (constrained size so it
         // doesn't block editor)
         transformed(build_welcome_ui(error_text))
@@ -66,9 +67,7 @@ fn format_error_text(error_message: &Option<String>) -> String {
 }
 
 /// Build the welcome UI panel
-fn build_welcome_ui(
-    error_text: String,
-) -> impl WidgetView<AppState> + use<> {
+fn build_welcome_ui(error_text: String) -> impl WidgetView<AppState> + use<> {
     sized_box(
         flex_col((
             label("Runebender Xilem")
@@ -226,9 +225,5 @@ fn build_outer_contour() -> Contour {
 
 /// Helper to create a ContourPoint
 fn contour_point(x: f64, y: f64, point_type: PointType) -> ContourPoint {
-    ContourPoint {
-        x,
-        y,
-        point_type,
-    }
+    ContourPoint { x, y, point_type }
 }

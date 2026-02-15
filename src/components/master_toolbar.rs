@@ -12,9 +12,8 @@ use crate::workspace::Workspace;
 use kurbo::{Affine, BezPath, Point, Rect, Shape, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
-    PaintCtx, PointerButton, PointerButtonEvent, PointerEvent,
-    PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
+    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
+    PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
     UpdateCtx, Widget,
 };
 use masonry::util::fill_color;
@@ -26,11 +25,11 @@ use xilem::{Pod, ViewCtx};
 
 // Import shared toolbar functionality
 use crate::components::toolbars::{
-    button_rect, calculate_toolbar_size, paint_button, paint_panel, ButtonState,
+    ButtonState, button_rect, calculate_toolbar_size, paint_button, paint_panel,
 };
 
-use crate::theme::toolbar::{ICON_SELECTED, ICON_UNSELECTED, ICON_HOVERED};
 use crate::theme::size::{TOOLBAR_ICON_PADDING, TOOLBAR_ITEM_SIZE};
+use crate::theme::toolbar::{ICON_HOVERED, ICON_SELECTED, ICON_UNSELECTED};
 
 /// Glyph to use for master preview (lowercase n is good for showing weight)
 const PREVIEW_GLYPH: &str = "n";
@@ -74,12 +73,7 @@ impl MasterToolbarWidget {
     }
 
     /// Paint a glyph icon in a button
-    fn paint_glyph_icon(
-        scene: &mut Scene,
-        path: &BezPath,
-        button_rect: Rect,
-        state: ButtonState,
-    ) {
+    fn paint_glyph_icon(scene: &mut Scene, path: &BezPath, button_rect: Rect, state: ButtonState) {
         let icon_bounds = path.bounding_box();
         if icon_bounds.width() <= 0.0 || icon_bounds.height() <= 0.0 {
             return;
@@ -142,22 +136,14 @@ impl Widget for MasterToolbarWidget {
         bc.constrain(size)
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         let size = ctx.size();
         paint_panel(scene, size);
 
         // Paint each master button
         for (i, master) in self.masters.iter().enumerate() {
             let rect = button_rect(i);
-            let state = ButtonState::new(
-                self.hover_index == Some(i),
-                self.active_master == i,
-            );
+            let state = ButtonState::new(self.hover_index == Some(i), self.active_master == i);
 
             paint_button(scene, rect, state);
 
@@ -207,12 +193,13 @@ impl Widget for MasterToolbarWidget {
             }) => {
                 let local_pos = ctx.local_position(state.position);
                 if let Some(index) = self.master_at_point(local_pos)
-                    && index != self.active_master {
-                        tracing::debug!("Master toolbar: clicked master {}", index);
-                        self.active_master = index;
-                        ctx.request_render();
-                        ctx.submit_action::<MasterSelected>(MasterSelected(index));
-                    }
+                    && index != self.active_master
+                {
+                    tracing::debug!("Master toolbar: clicked master {}", index);
+                    self.active_master = index;
+                    ctx.request_render();
+                    ctx.submit_action::<MasterSelected>(MasterSelected(index));
+                }
             }
             PointerEvent::Leave(_) => {
                 if self.hover_index.is_some() {
@@ -240,17 +227,11 @@ impl Widget for MasterToolbarWidget {
 pub fn generate_master_preview(workspace: &Workspace) -> Option<BezPath> {
     let glyph = workspace.get_glyph(PREVIEW_GLYPH)?;
     let path = glyph_to_bezpath_with_components(glyph, workspace);
-    if path.is_empty() {
-        None
-    } else {
-        Some(path)
-    }
+    if path.is_empty() { None } else { Some(path) }
 }
 
 /// Create MasterInfo list from a designspace project
-pub fn create_master_infos(
-    masters: &[crate::designspace::Master],
-) -> Vec<MasterInfo> {
+pub fn create_master_infos(masters: &[crate::designspace::Master]) -> Vec<MasterInfo> {
     masters
         .iter()
         .enumerate()
@@ -291,8 +272,7 @@ where
 }
 
 /// The Xilem View for MasterToolbarWidget
-type MasterToolbarCallback<State> =
-    Box<dyn Fn(&mut State, usize) + Send + Sync>;
+type MasterToolbarCallback<State> = Box<dyn Fn(&mut State, usize) + Send + Sync>;
 
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct MasterToolbarView<State, Action = ()> {
@@ -310,15 +290,8 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     type Element = Pod<MasterToolbarWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
-        let widget = MasterToolbarWidget::new(
-            self.masters.clone(),
-            self.active_master,
-        );
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
+        let widget = MasterToolbarWidget::new(self.masters.clone(), self.active_master);
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());
         (pod, ())

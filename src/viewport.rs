@@ -46,12 +46,12 @@ impl ViewPort {
     pub fn affine(&self) -> kurbo::Affine {
         // Build transformation: scale, flip Y, translate
         kurbo::Affine::new([
-            self.zoom,      // x scale
-            0.0,            // x skew
-            0.0,            // y skew
-            -self.zoom,     // y scale (negative for Y-flip)
-            self.offset.x,  // x translation
-            self.offset.y,  // y translation
+            self.zoom,     // x scale
+            0.0,           // x skew
+            0.0,           // y skew
+            -self.zoom,    // y scale (negative for Y-flip)
+            self.offset.x, // x translation
+            self.offset.y, // y translation
         ])
     }
 }
@@ -61,4 +61,3 @@ impl Default for ViewPort {
         Self::new()
     }
 }
-

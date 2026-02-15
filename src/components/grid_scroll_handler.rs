@@ -10,16 +10,13 @@
 use kurbo::{Point, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
-    NewWidget, PaintCtx, PointerEvent, PropertiesMut,
-    PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx,
-    Widget, WidgetMut, WidgetPod,
+    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, NewWidget, PaintCtx, PointerEvent,
+    PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget, WidgetMut,
+    WidgetPod,
 };
 use masonry::vello::Scene;
 use std::marker::PhantomData;
-use xilem::core::{
-    MessageContext, MessageResult, Mut, View, ViewMarker,
-};
+use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx, WidgetView};
 
 // ============================================================
@@ -47,18 +44,14 @@ pub struct GridScrollWidget {
 }
 
 impl GridScrollWidget {
-    pub fn new(
-        child: NewWidget<impl Widget + ?Sized>,
-    ) -> Self {
+    pub fn new(child: NewWidget<impl Widget + ?Sized>) -> Self {
         Self {
             child: child.erased().to_pod(),
         }
     }
 
     /// Get mutable access to the child widget
-    pub fn child_mut<'t>(
-        this: &'t mut WidgetMut<'_, Self>,
-    ) -> WidgetMut<'t, dyn Widget> {
+    pub fn child_mut<'t>(this: &'t mut WidgetMut<'_, Self>) -> WidgetMut<'t, dyn Widget> {
         this.ctx.get_mut(&mut this.widget.child)
     }
 }
@@ -66,10 +59,7 @@ impl GridScrollWidget {
 impl Widget for GridScrollWidget {
     type Action = GridScrollAction;
 
-    fn register_children(
-        &mut self,
-        ctx: &mut RegisterCtx<'_>,
-    ) {
+    fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
         ctx.register_child(&mut self.child);
     }
 
@@ -92,12 +82,7 @@ impl Widget for GridScrollWidget {
         size
     }
 
-    fn paint(
-        &mut self,
-        _ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        _scene: &mut Scene,
-    ) {
+    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, _scene: &mut Scene) {
         // Transparent — child painting is automatic
     }
 
@@ -137,19 +122,12 @@ impl Widget for GridScrollWidget {
                 ctx.request_focus();
                 // Convert scroll delta to row count.
                 let rows = match &scroll_event.delta {
-                    masonry::core::ScrollDelta::LineDelta(
-                        _,
-                        y,
-                    ) => -(*y as i32),
-                    masonry::core::ScrollDelta::PixelDelta(
-                        pos,
-                    ) => -(pos.y / 40.0) as i32,
+                    masonry::core::ScrollDelta::LineDelta(_, y) => -(*y as i32),
+                    masonry::core::ScrollDelta::PixelDelta(pos) => -(pos.y / 40.0) as i32,
                     _ => 0,
                 };
                 if rows != 0 {
-                    ctx.submit_action::<GridScrollAction>(
-                        GridScrollAction::Scroll(rows),
-                    );
+                    ctx.submit_action::<GridScrollAction>(GridScrollAction::Scroll(rows));
                     ctx.set_handled();
                 }
             }
@@ -170,8 +148,7 @@ impl Widget for GridScrollWidget {
                 return;
             }
 
-            let cmd = key_event.modifiers.meta()
-                || key_event.modifiers.ctrl();
+            let cmd = key_event.modifiers.meta() || key_event.modifiers.ctrl();
 
             // Cmd+S → save
             if cmd
@@ -180,9 +157,7 @@ impl Widget for GridScrollWidget {
                     Key::Character(c) if c == "s"
                 )
             {
-                ctx.submit_action::<GridScrollAction>(
-                    GridScrollAction::Save,
-                );
+                ctx.submit_action::<GridScrollAction>(GridScrollAction::Save);
                 ctx.set_handled();
                 return;
             }
@@ -191,15 +166,11 @@ impl Widget for GridScrollWidget {
             if !cmd {
                 match &key_event.key {
                     Key::Named(NamedKey::ArrowDown) => {
-                        ctx.submit_action::<GridScrollAction>(
-                            GridScrollAction::Scroll(1),
-                        );
+                        ctx.submit_action::<GridScrollAction>(GridScrollAction::Scroll(1));
                         ctx.set_handled();
                     }
                     Key::Named(NamedKey::ArrowUp) => {
-                        ctx.submit_action::<GridScrollAction>(
-                            GridScrollAction::Scroll(-1),
-                        );
+                        ctx.submit_action::<GridScrollAction>(GridScrollAction::Scroll(-1));
                         ctx.set_handled();
                     }
                     _ => {}
@@ -249,13 +220,9 @@ pub struct GridScrollHandlerView<V, State, Action = ()> {
     phantom: PhantomData<fn() -> (State, Action)>,
 }
 
-impl<V, State, Action> ViewMarker
-    for GridScrollHandlerView<V, State, Action>
-{
-}
+impl<V, State, Action> ViewMarker for GridScrollHandlerView<V, State, Action> {}
 
-impl<V, State: 'static, Action: 'static + Default>
-    View<State, Action, ViewCtx>
+impl<V, State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     for GridScrollHandlerView<V, State, Action>
 where
     V: WidgetView<State, Action>,
@@ -263,15 +230,9 @@ where
     type Element = Pod<GridScrollWidget>;
     type ViewState = V::ViewState;
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
-        let (child, child_state) =
-            self.inner.build(ctx, app_state);
-        let widget =
-            GridScrollWidget::new(child.new_widget);
+    fn build(&self, ctx: &mut ViewCtx, app_state: &mut State) -> (Self::Element, Self::ViewState) {
+        let (child, child_state) = self.inner.build(ctx, app_state);
+        let widget = GridScrollWidget::new(child.new_widget);
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());
         (pod, child_state)
@@ -285,15 +246,9 @@ where
         mut element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) {
-        let mut child =
-            GridScrollWidget::child_mut(&mut element);
-        self.inner.rebuild(
-            &prev.inner,
-            view_state,
-            ctx,
-            child.downcast(),
-            app_state,
-        );
+        let mut child = GridScrollWidget::child_mut(&mut element);
+        self.inner
+            .rebuild(&prev.inner, view_state, ctx, child.downcast(), app_state);
     }
 
     fn teardown(
@@ -302,10 +257,8 @@ where
         ctx: &mut ViewCtx,
         mut element: Mut<'_, Self::Element>,
     ) {
-        let mut child =
-            GridScrollWidget::child_mut(&mut element);
-        self.inner
-            .teardown(view_state, ctx, child.downcast());
+        let mut child = GridScrollWidget::child_mut(&mut element);
+        self.inner.teardown(view_state, ctx, child.downcast());
     }
 
     fn message(
@@ -316,33 +269,22 @@ where
         app_state: &mut State,
     ) -> MessageResult<Action> {
         // Handle container's own actions (scroll, save)
-        if let Some(action) =
-            message.take_message::<GridScrollAction>()
-        {
+        if let Some(action) = message.take_message::<GridScrollAction>() {
             match *action {
                 GridScrollAction::Scroll(delta) => {
                     (self.on_scroll)(app_state, delta);
-                    return MessageResult::Action(
-                        Action::default(),
-                    );
+                    return MessageResult::Action(Action::default());
                 }
                 GridScrollAction::Save => {
                     (self.on_save)(app_state);
-                    return MessageResult::Action(
-                        Action::default(),
-                    );
+                    return MessageResult::Action(Action::default());
                 }
             }
         }
 
         // Delegate to child for cell actions
-        let mut child =
-            GridScrollWidget::child_mut(&mut element);
-        self.inner.message(
-            view_state,
-            message,
-            child.downcast(),
-            app_state,
-        )
+        let mut child = GridScrollWidget::child_mut(&mut element);
+        self.inner
+            .message(view_state, message, child.downcast(), app_state)
     }
 }

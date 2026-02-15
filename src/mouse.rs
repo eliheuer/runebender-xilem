@@ -53,11 +53,7 @@ impl MouseEvent {
     }
 
     /// Create a new mouse event with modifiers
-    pub fn with_modifiers(
-        pos: Point,
-        button: Option<MouseButton>,
-        mods: Modifiers,
-    ) -> Self {
+    pub fn with_modifiers(pos: Point, button: Option<MouseButton>, mods: Modifiers) -> Self {
         Self { pos, button, mods }
     }
 }
@@ -154,12 +150,7 @@ impl Mouse {
         self.last_pos = event.pos;
 
         // Call appropriate delegate method
-        Self::call_button_down(
-            event.button,
-            delegate,
-            event,
-            data,
-        );
+        Self::call_button_down(event.button, delegate, event, data);
     }
 
     /// Call the appropriate button down delegate method
@@ -221,19 +212,9 @@ impl Mouse {
         delegate: &mut T,
         data: &mut T::Data,
     ) {
-        let drag = Self::create_drag(
-            self.down_pos,
-            self.last_pos,
-            event.pos,
-        );
+        let drag = Self::create_drag(self.down_pos, self.last_pos, event.pos);
 
-        Self::call_drag_ended(
-            self.current_button,
-            delegate,
-            event,
-            drag,
-            data,
-        );
+        Self::call_drag_ended(self.current_button, delegate, event, drag, data);
         self.reset_state();
     }
 
@@ -293,11 +274,7 @@ impl Mouse {
     }
 
     /// Create a Drag struct from positions
-    fn create_drag(
-        start: Point,
-        prev: Point,
-        current: Point,
-    ) -> Drag {
+    fn create_drag(start: Point, prev: Point, current: Point) -> Drag {
         Drag {
             start,
             prev,
@@ -356,19 +333,9 @@ impl Mouse {
         delegate: &mut T,
         data: &mut T::Data,
     ) {
-        let drag = Self::create_drag(
-            self.down_pos,
-            self.last_pos,
-            event.pos,
-        );
+        let drag = Self::create_drag(self.down_pos, self.last_pos, event.pos);
 
-        Self::call_drag_changed(
-            self.current_button,
-            delegate,
-            event,
-            drag,
-            data,
-        );
+        Self::call_drag_changed(self.current_button, delegate, event, drag, data);
 
         self.last_pos = event.pos;
     }
@@ -390,19 +357,9 @@ impl Mouse {
     ) {
         self.state = MouseState::Drag;
 
-        let drag = Self::create_drag(
-            self.down_pos,
-            self.last_pos,
-            event.pos,
-        );
+        let drag = Self::create_drag(self.down_pos, self.last_pos, event.pos);
 
-        Self::call_drag_began(
-            self.current_button,
-            delegate,
-            event,
-            drag,
-            data,
-        );
+        Self::call_drag_began(self.current_button, delegate, event, drag, data);
     }
 
     /// Call the appropriate drag began delegate method
@@ -450,11 +407,7 @@ impl Mouse {
     }
 
     /// Cancel any ongoing gesture
-    pub fn cancel<T: MouseDelegate>(
-        &mut self,
-        delegate: &mut T,
-        data: &mut T::Data,
-    ) {
+    pub fn cancel<T: MouseDelegate>(&mut self, delegate: &mut T, data: &mut T::Data) {
         delegate.cancel(data);
         self.reset_state();
     }
@@ -489,31 +442,13 @@ pub trait MouseDelegate {
     fn left_click(&mut self, _event: MouseEvent, _data: &mut Self::Data) {}
 
     /// Left mouse drag began (moved beyond threshold)
-    fn left_drag_began(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        _data: &mut Self::Data,
-    ) {
-    }
+    fn left_drag_began(&mut self, _event: MouseEvent, _drag: Drag, _data: &mut Self::Data) {}
 
     /// Left mouse drag continued (mouse moved while dragging)
-    fn left_drag_changed(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        _data: &mut Self::Data,
-    ) {
-    }
+    fn left_drag_changed(&mut self, _event: MouseEvent, _drag: Drag, _data: &mut Self::Data) {}
 
     /// Left mouse drag ended (button released after drag)
-    fn left_drag_ended(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        _data: &mut Self::Data,
-    ) {
-    }
+    fn left_drag_ended(&mut self, _event: MouseEvent, _drag: Drag, _data: &mut Self::Data) {}
 
     /// Right mouse button pressed
     fn right_down(&mut self, _event: MouseEvent, _data: &mut Self::Data) {}
@@ -525,31 +460,13 @@ pub trait MouseDelegate {
     fn right_click(&mut self, _event: MouseEvent, _data: &mut Self::Data) {}
 
     /// Right mouse drag began
-    fn right_drag_began(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        _data: &mut Self::Data,
-    ) {
-    }
+    fn right_drag_began(&mut self, _event: MouseEvent, _drag: Drag, _data: &mut Self::Data) {}
 
     /// Right mouse drag continued
-    fn right_drag_changed(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        _data: &mut Self::Data,
-    ) {
-    }
+    fn right_drag_changed(&mut self, _event: MouseEvent, _drag: Drag, _data: &mut Self::Data) {}
 
     /// Right mouse drag ended
-    fn right_drag_ended(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        _data: &mut Self::Data,
-    ) {
-    }
+    fn right_drag_ended(&mut self, _event: MouseEvent, _drag: Drag, _data: &mut Self::Data) {}
 
     /// Other mouse button pressed
     fn other_down(&mut self, _event: MouseEvent, _data: &mut Self::Data) {}
@@ -561,31 +478,13 @@ pub trait MouseDelegate {
     fn other_click(&mut self, _event: MouseEvent, _data: &mut Self::Data) {}
 
     /// Other mouse drag began
-    fn other_drag_began(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        _data: &mut Self::Data,
-    ) {
-    }
+    fn other_drag_began(&mut self, _event: MouseEvent, _drag: Drag, _data: &mut Self::Data) {}
 
     /// Other mouse drag continued
-    fn other_drag_changed(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        _data: &mut Self::Data,
-    ) {
-    }
+    fn other_drag_changed(&mut self, _event: MouseEvent, _drag: Drag, _data: &mut Self::Data) {}
 
     /// Other mouse drag ended
-    fn other_drag_ended(
-        &mut self,
-        _event: MouseEvent,
-        _drag: Drag,
-        _data: &mut Self::Data,
-    ) {
-    }
+    fn other_drag_ended(&mut self, _event: MouseEvent, _drag: Drag, _data: &mut Self::Data) {}
 
     /// Mouse moved (no button pressed)
     fn mouse_moved(&mut self, _event: MouseEvent, _data: &mut Self::Data) {}

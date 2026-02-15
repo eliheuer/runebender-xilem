@@ -139,8 +139,7 @@ impl SortBuffer {
         let elements_after_gap = old_len - self.gap_end;
         if elements_after_gap > 0 {
             // Extend buffer with default elements
-            self.buffer
-                .resize_with(new_capacity, Sort::default);
+            self.buffer.resize_with(new_capacity, Sort::default);
 
             // Copy elements from after old gap to end of new buffer
             let new_gap_end = new_capacity - elements_after_gap;
@@ -151,8 +150,7 @@ impl SortBuffer {
             self.gap_end = new_gap_end;
         } else {
             // No elements after gap, just extend
-            self.buffer
-                .resize_with(new_capacity, Sort::default);
+            self.buffer.resize_with(new_capacity, Sort::default);
             self.gap_end = new_capacity;
         }
     }
@@ -293,9 +291,10 @@ impl SortBuffer {
     pub fn find_active_sort(&self) -> Option<usize> {
         for i in 0..self.len() {
             if let Some(sort) = self.get(i)
-                && sort.is_active {
-                    return Some(i);
-                }
+                && sort.is_active
+            {
+                return Some(i);
+            }
         }
         None
     }

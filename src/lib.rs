@@ -13,20 +13,20 @@ mod components;
 mod cubic_path;
 mod data;
 mod designspace;
-mod hyper_path;
-mod quadratic_path;
 mod edit_session;
 mod edit_types;
 mod entity_id;
 mod glyph_renderer;
 mod hit_test;
+mod hyper_path;
 mod kerning;
 mod mouse;
 mod path;
+mod path_segment;
 mod point;
 mod point_list;
 mod quadrant;
-mod path_segment;
+mod quadratic_path;
 mod selection;
 mod settings;
 mod shaping;
@@ -51,7 +51,7 @@ pub fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
                 .add_directive("wgpu=warn".parse().unwrap())
                 .add_directive("naga=warn".parse().unwrap())
                 .add_directive("wgpu_core=warn".parse().unwrap())
-                .add_directive("wgpu_hal=warn".parse().unwrap())
+                .add_directive("wgpu_hal=warn".parse().unwrap()),
         )
         .init();
 
@@ -85,9 +85,7 @@ fn handle_command_line_args(initial_state: &mut AppState) {
 }
 
 /// Build the single-window UI (glyph grid tab + editor tab).
-fn app_logic(
-    state: &mut AppState,
-) -> impl Iterator<Item = WindowView<AppState>> + use<> {
+fn app_logic(state: &mut AppState) -> impl Iterator<Item = WindowView<AppState>> + use<> {
     let content = if state.has_font_loaded() {
         Either::A(tabbed_view(state))
     } else {
@@ -95,11 +93,7 @@ fn app_logic(
     };
 
     let window_size = LogicalSize::new(1280.0, 800.0);
-    let window_view = window(
-        state.main_window_id,
-        "Runebender Xilem",
-        content,
-    );
+    let window_view = window(state.main_window_id, "Runebender Xilem", content);
     let window_with_options = window_view.with_options(|options| {
         options
             .with_initial_inner_size(window_size)

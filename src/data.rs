@@ -4,14 +4,14 @@
 //! Application state and data structures
 
 use crate::components::GlyphCategory;
-use crate::designspace::{is_designspace_file, DesignspaceProject};
+use crate::designspace::{DesignspaceProject, is_designspace_file};
 use crate::edit_session::EditSession;
 use crate::theme;
 use crate::workspace::Workspace;
+use chrono::Local;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use chrono::Local;
 use xilem::WindowId;
 
 /// Which tab is currently active
@@ -192,7 +192,11 @@ impl AppState {
     pub fn loaded_file_path(&self) -> Option<PathBuf> {
         if let Some(ds) = &self.designspace {
             Some(ds.path.clone())
-        } else { self.workspace.as_ref().map(|ws| ws.read().unwrap().path.clone()) }
+        } else {
+            self.workspace
+                .as_ref()
+                .map(|ws| ws.read().unwrap().path.clone())
+        }
     }
 
     /// Get the last saved time string
@@ -203,9 +207,7 @@ impl AppState {
     /// Create a new empty font
     pub fn create_new_font(&mut self) {
         // TODO: Implement new font creation
-        self.error_message = Some(
-            "New font creation not yet implemented".to_string(),
-        );
+        self.error_message = Some("New font creation not yet implemented".to_string());
     }
 
     /// Get the current font display name
@@ -215,7 +217,9 @@ impl AppState {
             let master = ds.active_master();
             Some(format!("{} - {}", ds.display_name(), master.style_name))
         } else {
-            self.workspace.as_ref().map(|w| w.read().unwrap().display_name())
+            self.workspace
+                .as_ref()
+                .map(|w| w.read().unwrap().display_name())
         }
     }
 
@@ -236,8 +240,7 @@ impl AppState {
     pub fn toggle_glyph_selection(&mut self, name: String) {
         if self.selected_glyphs.contains(&name) {
             self.selected_glyphs.remove(&name);
-            self.selected_glyph =
-                self.selected_glyphs.iter().next().cloned();
+            self.selected_glyph = self.selected_glyphs.iter().next().cloned();
         } else {
             self.selected_glyphs.insert(name.clone());
             self.selected_glyph = Some(name);
@@ -252,21 +255,18 @@ impl AppState {
     }
 
     /// Calculate number of grid columns based on window width
-    /// Ensures cells are never narrower than their height (100px)
     pub fn grid_columns(&self) -> usize {
-        const CELL_HEIGHT: f64 = 120.0;
+        const CELL_WIDTH: f64 = 128.0;
         const GAP: f64 = 6.0;
         const MARGIN: f64 = 3.0 * 2.0; // Internal portal padding
 
         // Available width for cells (minus margins)
         let available = self.window_width - MARGIN;
 
-        // Calculate how many cells can fit at minimum width (= height)
-        // Each cell needs CELL_HEIGHT + GAP (except the last one)
-        // n * CELL_HEIGHT + (n-1) * GAP <= available
-        // n * (CELL_HEIGHT + GAP) - GAP <= available
-        // n <= (available + GAP) / (CELL_HEIGHT + GAP)
-        let max_cols = ((available + GAP) / (CELL_HEIGHT + GAP)).floor() as usize;
+        // Each cell needs CELL_WIDTH + GAP (except the last)
+        // n <= (available + GAP) / (CELL_WIDTH + GAP)
+        let max_cols =
+            ((available + GAP) / (CELL_WIDTH + GAP)).floor() as usize;
 
         // Clamp between 1 and 8 columns
         max_cols.clamp(1, 8)
@@ -274,8 +274,8 @@ impl AppState {
 
     /// How many grid rows fit in the visible area
     pub fn visible_grid_rows(&self) -> usize {
-        // Row height = cell (120) + gap (6) = 126
-        const ROW_HEIGHT: f64 = 126.0;
+        // Row height = cell (192) + gap (6) = 198
+        const ROW_HEIGHT: f64 = 198.0;
         // Toolbar row ~70, outer gaps top/bottom ~12, grid padding ~6
         const CHROME_HEIGHT: f64 = 88.0;
         let available = (self.window_height - CHROME_HEIGHT).max(0.0);
@@ -289,21 +289,17 @@ impl AppState {
     }
 
     /// Scroll the grid by `delta` rows (positive = down, negative = up)
-    pub fn scroll_grid(
-        &mut self,
-        delta: i32,
-        glyph_count: usize,
-    ) {
+    pub fn scroll_grid(&mut self, delta: i32, glyph_count: usize) {
         let total = self.total_grid_rows(glyph_count);
         let visible = self.visible_grid_rows();
         let max_row = total.saturating_sub(visible);
 
         if delta < 0 {
-            self.grid_scroll_row =
-                self.grid_scroll_row.saturating_sub(delta.unsigned_abs() as usize);
+            self.grid_scroll_row = self
+                .grid_scroll_row
+                .saturating_sub(delta.unsigned_abs() as usize);
         } else {
-            self.grid_scroll_row =
-                (self.grid_scroll_row + delta as usize).min(max_row);
+            self.grid_scroll_row = (self.grid_scroll_row + delta as usize).min(max_row);
         }
     }
 
@@ -323,12 +319,10 @@ impl AppState {
             .filter(|name| {
                 if let Some(glyph) = workspace.get_glyph(name) {
                     if glyph.codepoints.is_empty() {
-                        self.glyph_category_filter
-                            == GlyphCategory::Other
+                        self.glyph_category_filter == GlyphCategory::Other
                     } else {
-                        GlyphCategory::from_codepoint(
-                            glyph.codepoints[0],
-                        ) == self.glyph_category_filter
+                        GlyphCategory::from_codepoint(glyph.codepoints[0])
+                            == self.glyph_category_filter
                     }
                 } else {
                     false
@@ -341,7 +335,11 @@ impl AppState {
     pub fn selected_glyph_advance(&self) -> Option<f64> {
         let workspace = self.active_workspace()?;
         let glyph_name = self.selected_glyph.as_ref()?;
-        workspace.read().unwrap().get_glyph(glyph_name).map(|g| g.width)
+        workspace
+            .read()
+            .unwrap()
+            .get_glyph(glyph_name)
+            .map(|g| g.width)
     }
 
     /// Get the selected glyph's unicode value
@@ -355,16 +353,14 @@ impl AppState {
             return None;
         }
 
-        glyph.codepoints
+        glyph
+            .codepoints
             .first()
             .map(|c| format!("U+{:04X}", *c as u32))
     }
 
     /// Create an edit session for a glyph
-    pub fn create_edit_session(
-        &self,
-        glyph_name: &str,
-    ) -> Option<EditSession> {
+    pub fn create_edit_session(&self, glyph_name: &str) -> Option<EditSession> {
         let workspace_arc = self.active_workspace()?;
         let workspace = workspace_arc.read().unwrap();
         let glyph = workspace.get_glyph(glyph_name)?;
@@ -429,7 +425,10 @@ impl AppState {
                 );
             }
 
-            workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
+            workspace_arc
+                .write()
+                .unwrap()
+                .update_glyph(active_name, updated_glyph);
         }
     }
 
@@ -500,10 +499,7 @@ impl AppState {
     }
 
     /// Set the tool for the current editor session
-    pub fn set_editor_tool(
-        &mut self,
-        tool_id: crate::tools::ToolId,
-    ) {
+    pub fn set_editor_tool(&mut self, tool_id: crate::tools::ToolId) {
         let session = match &mut self.editor_session {
             Some(s) => s,
             None => return,
@@ -529,10 +525,7 @@ impl AppState {
     }
 
     /// Set the shape type for the shapes tool
-    pub fn set_shape_type(
-        &mut self,
-        shape_type: crate::tools::shapes::ShapeType,
-    ) {
+    pub fn set_shape_type(&mut self, shape_type: crate::tools::shapes::ShapeType) {
         let session = match &mut self.editor_session {
             Some(s) => s,
             None => return,
@@ -545,10 +538,7 @@ impl AppState {
     }
 
     /// Set the text direction for RTL/LTR text editing
-    pub fn set_text_direction(
-        &mut self,
-        direction: crate::shaping::TextDirection,
-    ) {
+    pub fn set_text_direction(&mut self, direction: crate::shaping::TextDirection) {
         let session = match &mut self.editor_session {
             Some(s) => s,
             None => return,
@@ -577,7 +567,10 @@ impl AppState {
         // Save to the active sort's glyph (if there is one)
         if let Some(active_name) = &session.active_sort_name {
             let updated_glyph = session.to_glyph();
-            workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
+            workspace_arc
+                .write()
+                .unwrap()
+                .update_glyph(active_name, updated_glyph);
         }
     }
 
@@ -630,7 +623,9 @@ impl AppState {
     /// Update the glyph's advance width
     pub fn update_glyph_width(&mut self, new_width: String) {
         // Parse the width value
-        let Ok(width) = new_width.parse::<f64>() else { return };
+        let Ok(width) = new_width.parse::<f64>() else {
+            return;
+        };
 
         // Get workspace arc first (before borrowing session mutably)
         let workspace_arc = self.active_workspace();
@@ -646,10 +641,14 @@ impl AppState {
 
         // Sync to workspace (inline to avoid borrow issues)
         if let Some(workspace_arc) = workspace_arc
-            && let Some(active_name) = &session.active_sort_name {
-                let updated_glyph = session.to_glyph();
-                workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
-            }
+            && let Some(active_name) = &session.active_sort_name
+        {
+            let updated_glyph = session.to_glyph();
+            workspace_arc
+                .write()
+                .unwrap()
+                .update_glyph(active_name, updated_glyph);
+        }
     }
 
     /// Update the glyph's left kerning group
@@ -672,10 +671,14 @@ impl AppState {
 
         // Sync to workspace (inline to avoid borrow issues)
         if let Some(workspace_arc) = workspace_arc
-            && let Some(active_name) = &session.active_sort_name {
-                let updated_glyph = session.to_glyph();
-                workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
-            }
+            && let Some(active_name) = &session.active_sort_name
+        {
+            let updated_glyph = session.to_glyph();
+            workspace_arc
+                .write()
+                .unwrap()
+                .update_glyph(active_name, updated_glyph);
+        }
     }
 
     /// Update the glyph's right kerning group
@@ -698,10 +701,14 @@ impl AppState {
 
         // Sync to workspace (inline to avoid borrow issues)
         if let Some(workspace_arc) = workspace_arc
-            && let Some(active_name) = &session.active_sort_name {
-                let updated_glyph = session.to_glyph();
-                workspace_arc.write().unwrap().update_glyph(active_name, updated_glyph);
-            }
+            && let Some(active_name) = &session.active_sort_name
+        {
+            let updated_glyph = session.to_glyph();
+            workspace_arc
+                .write()
+                .unwrap()
+                .update_glyph(active_name, updated_glyph);
+        }
     }
 
     /// Get the left kern value (kerning from previous glyph to current glyph)
@@ -864,10 +871,7 @@ impl AppState {
     ///
     /// Pass `None` to clear the mark color, or `Some(index)` where
     /// index is 0–11 corresponding to `theme::mark::COLORS`.
-    pub fn set_glyph_mark_color(
-        &mut self,
-        color_index: Option<usize>,
-    ) {
+    pub fn set_glyph_mark_color(&mut self, color_index: Option<usize>) {
         if self.selected_glyphs.is_empty() {
             return;
         }
@@ -875,14 +879,11 @@ impl AppState {
             Some(w) => w,
             None => return,
         };
-        let names: Vec<String> =
-            self.selected_glyphs.iter().cloned().collect();
+        let names: Vec<String> = self.selected_glyphs.iter().cloned().collect();
         let mut workspace = workspace_arc.write().unwrap();
         for name in &names {
             if let Some(glyph) = workspace.get_glyph_mut(name) {
-                glyph.mark_color = color_index.map(|i| {
-                    theme::mark::RGBA_STRINGS[i].to_string()
-                });
+                glyph.mark_color = color_index.map(|i| theme::mark::RGBA_STRINGS[i].to_string());
             }
         }
     }

@@ -27,8 +27,8 @@
 use kurbo::{Affine, BezPath, Shape};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, LayoutCtx, NoAction, PaintCtx,
-    PropertiesMut, PropertiesRef, RegisterCtx, Update, UpdateCtx, Widget,
+    AccessCtx, BoxConstraints, ChildrenIds, LayoutCtx, NoAction, PaintCtx, PropertiesMut,
+    PropertiesRef, RegisterCtx, Update, UpdateCtx, Widget,
 };
 use masonry::kurbo::Size;
 use masonry::vello::Scene;
@@ -139,12 +139,7 @@ impl Widget for GlyphWidget {
         bc.constrain(self.size)
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         if self.path.is_empty() {
             return;
         }
@@ -286,17 +281,11 @@ impl<State, Action> GlyphView<State, Action> {
 impl<State, Action> ViewMarker for GlyphView<State, Action> {}
 
 // Xilem View trait implementation (build, rebuild, teardown, message)
-impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
-    for GlyphView<State, Action>
-{
+impl<State: 'static, Action: 'static> View<State, Action, ViewCtx> for GlyphView<State, Action> {
     type Element = Pod<GlyphWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let mut widget = GlyphWidget::new(self.path.clone(), self.size, self.upm);
         if let Some(color) = self.color {
             widget = widget.with_color(color);
@@ -331,10 +320,11 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
 
         // Update other properties if they changed
         if self.color != prev.color
-            && let Some(color) = self.color {
-                widget.widget.set_color(color);
-                widget.ctx.request_render();
-            }
+            && let Some(color) = self.color
+        {
+            widget.widget.set_color(color);
+            widget.ctx.request_render();
+        }
 
         if self.upm != prev.upm {
             widget.widget.set_upm(self.upm);
@@ -342,10 +332,11 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
         }
 
         if self.baseline_offset != prev.baseline_offset
-            && let Some(offset) = self.baseline_offset {
-                widget.widget.set_baseline_offset(offset);
-                widget.ctx.request_render();
-            }
+            && let Some(offset) = self.baseline_offset
+        {
+            widget.widget.set_baseline_offset(offset);
+            widget.ctx.request_render();
+        }
 
         if self.size != prev.size {
             widget.widget.set_size(self.size);
@@ -477,12 +468,7 @@ impl Widget for MultiGlyphWidget {
         bc.constrain(self.size)
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         if self.paths.is_empty() {
             return;
         }
@@ -612,11 +598,7 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     type Element = Pod<MultiGlyphWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let mut widget = MultiGlyphWidget::new(self.paths.clone(), self.size, self.upm);
         if let Some(color) = self.color {
             widget = widget.with_color(color);
@@ -643,10 +625,11 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
         }
 
         if self.color != prev.color
-            && let Some(color) = self.color {
-                widget.widget.set_color(color);
-                widget.ctx.request_render();
-            }
+            && let Some(color) = self.color
+        {
+            widget.widget.set_color(color);
+            widget.ctx.request_render();
+        }
 
         if self.upm != prev.upm {
             widget.widget.set_upm(self.upm);
@@ -654,10 +637,11 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
         }
 
         if self.baseline_offset != prev.baseline_offset
-            && let Some(offset) = self.baseline_offset {
-                widget.widget.set_baseline_offset(offset);
-                widget.ctx.request_render();
-            }
+            && let Some(offset) = self.baseline_offset
+        {
+            widget.widget.set_baseline_offset(offset);
+            widget.ctx.request_render();
+        }
 
         if self.size != prev.size {
             widget.widget.set_size(self.size);

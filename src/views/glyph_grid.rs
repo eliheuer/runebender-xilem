@@ -9,33 +9,24 @@ use std::marker::PhantomData;
 use kurbo::{Affine, BezPath, Rect, RoundedRect, Shape, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx,
-    LayoutCtx, PaintCtx, PointerButton, PointerButtonEvent,
-    PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx,
-    StyleProperty, TextEvent, Update, UpdateCtx, Widget,
-    render_text,
+    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx, LayoutCtx, PaintCtx,
+    PointerButton, PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx,
+    StyleProperty, TextEvent, Update, UpdateCtx, Widget, render_text,
 };
 use masonry::properties::types::AsUnit;
 use masonry::vello::Scene;
 use masonry::vello::peniko::{Brush, Color, Fill};
 use parley::{FontContext, FontStack, LayoutContext};
 use xilem::core::one_of::Either;
-use xilem::core::{
-    MessageContext, MessageResult, Mut, View, ViewMarker,
-};
+use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
 use xilem::style::Style;
-use xilem::view::{
-    flex_col, flex_row, label, sized_box, zstack,
-    CrossAxisAlignment, FlexExt,
-};
+use xilem::view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, label, sized_box, zstack};
 use xilem::{Pod, ViewCtx, WidgetView};
 
 use crate::components::{
-    category_panel, create_master_infos, glyph_info_panel,
-    grid_scroll_handler, mark_color_panel, master_toolbar_view,
-    size_tracker, system_toolbar_view, GlyphCategory,
-    SystemToolbarButton, CATEGORY_PANEL_WIDTH,
-    GLYPH_INFO_PANEL_WIDTH,
+    CATEGORY_PANEL_WIDTH, GLYPH_INFO_PANEL_WIDTH, GlyphCategory, SystemToolbarButton,
+    category_panel, create_master_infos, glyph_anatomy_panel, glyph_info_panel,
+    grid_scroll_handler, mark_color_panel, master_toolbar_view, size_tracker, system_toolbar_view,
 };
 use crate::data::AppState;
 use crate::glyph_renderer;
@@ -54,17 +45,13 @@ const BENTO_GAP: f64 = 6.0;
 // ============================================================
 
 /// Tab 0: Glyph grid view with bento tile layout
-pub fn glyph_grid_tab(
-    state: &mut AppState,
-) -> impl WidgetView<AppState> + use<> {
+pub fn glyph_grid_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
     zstack((
         // Invisible: size tracker (measures window dimensions)
         size_tracker(|state: &mut AppState, width, height| {
             // Grid width = window - panels - outer padding - inner gaps
-            state.window_width = width
-                - CATEGORY_PANEL_WIDTH
-                - GLYPH_INFO_PANEL_WIDTH
-                - BENTO_GAP * 4.0;
+            state.window_width =
+                width - CATEGORY_PANEL_WIDTH - GLYPH_INFO_PANEL_WIDTH - BENTO_GAP * 4.0;
             state.window_height = height;
         }),
         // Bento tile layout
@@ -73,25 +60,20 @@ pub fn glyph_grid_tab(
             flex_row((
                 file_info_panel(state).flex(1.0),
                 master_toolbar_panel(state),
-                system_toolbar_view(
-                    |state: &mut AppState, button| match button {
-                        SystemToolbarButton::Save => {
-                            state.save_workspace();
-                        }
-                    },
-                ),
+                system_toolbar_view(|state: &mut AppState, button| match button {
+                    SystemToolbarButton::Save => {
+                        state.save_workspace();
+                    }
+                }),
             ))
             .gap(BENTO_GAP.px()),
             // Row 2: Three-column content (fills remaining height)
             flex_row((
                 flex_col((
-                    category_panel(
-                        state.glyph_category_filter,
-                        |state: &mut AppState, cat| {
-                            state.glyph_category_filter = cat;
-                            state.grid_scroll_row = 0;
-                        },
-                    )
+                    category_panel(state.glyph_category_filter, |state: &mut AppState, cat| {
+                        state.glyph_category_filter = cat;
+                        state.grid_scroll_row = 0;
+                    })
                     .flex(1.0),
                     mark_color_panel(
                         current_mark_color_index(state),
@@ -106,8 +88,7 @@ pub fn glyph_grid_tab(
                 grid_scroll_handler(
                     glyph_grid_view(state),
                     |state: &mut AppState, delta| {
-                        let count =
-                            state.cached_filtered_count;
+                        let count = state.cached_filtered_count;
                         state.scroll_grid(delta, count);
                     },
                     |state: &mut AppState| {
@@ -115,7 +96,18 @@ pub fn glyph_grid_tab(
                     },
                 )
                 .flex(1.0),
-                glyph_info_panel(state),
+                sized_box(
+                    flex_col((
+                        glyph_info_panel(state).flex(1.0),
+                        glyph_anatomy_panel(state),
+                    ))
+                    .gap(BENTO_GAP.px())
+                    .cross_axis_alignment(
+                        CrossAxisAlignment::Fill,
+                    ),
+                )
+                .width(GLYPH_INFO_PANEL_WIDTH.px())
+                .expand_height(),
             ))
             .gap(BENTO_GAP.px())
             .cross_axis_alignment(CrossAxisAlignment::Fill)
@@ -132,20 +124,14 @@ pub fn glyph_grid_tab(
 // ============================================================
 
 /// File info panel showing the loaded file path and last save time
-fn file_info_panel(
-    state: &AppState,
-) -> impl WidgetView<AppState> + use<> {
+fn file_info_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
     let path_display = state
         .loaded_file_path()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "No file loaded".to_string());
 
-    let (save_display, save_color) = match state.last_saved_display()
-    {
-        Some(s) => (
-            format!("Saved {}", s),
-            theme::grid::CELL_SELECTED_OUTLINE,
-        ),
+    let (save_display, save_color) = match state.last_saved_display() {
+        Some(s) => (format!("Saved {}", s), theme::grid::CELL_SELECTED_OUTLINE),
         None => (
             "Not saved".to_string(),
             theme::mark::COLORS[2], // Yellow
@@ -157,9 +143,7 @@ fn file_info_panel(
             label(path_display)
                 .text_size(16.0)
                 .color(theme::grid::CELL_TEXT),
-            label(save_display)
-                .text_size(16.0)
-                .color(save_color),
+            label(save_display).text_size(16.0).color(save_color),
         ))
         .gap(2.px())
         .cross_axis_alignment(CrossAxisAlignment::Start),
@@ -173,14 +157,11 @@ fn file_info_panel(
 }
 
 /// Master toolbar panel — only shown when designspace has multiple masters
-fn master_toolbar_panel(
-    state: &AppState,
-) -> impl WidgetView<AppState> + use<> {
+fn master_toolbar_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
     if let Some(ref designspace) = state.designspace
         && designspace.masters.len() > 1
     {
-        let master_infos =
-            create_master_infos(&designspace.masters);
+        let master_infos = create_master_infos(&designspace.masters);
         let active_master = designspace.active_master;
 
         return Either::A(master_toolbar_view(
@@ -220,32 +201,27 @@ fn current_mark_color_index(state: &AppState) -> Option<usize> {
 /// Glyph grid showing only rows that fit in the visible area.
 /// Scrolling is handled by `grid_scroll_handler` which adjusts
 /// `state.grid_scroll_row`.
-fn glyph_grid_view(
-    state: &mut AppState,
-) -> impl WidgetView<AppState> + use<> {
+fn glyph_grid_view(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
     let columns = state.grid_columns();
     let visible = state.visible_grid_rows();
     let upm = get_upm_from_state(state);
+    // window_width doesn't include the 2 flex_row gaps
+    // between category | grid | info columns
+    let grid_width =
+        state.window_width - 2.0 * BENTO_GAP;
     let selected_glyphs = state.selected_glyphs.clone();
 
     // Build only the visible slice of glyph data —
     // filter first, then slice, then build bezpaths.
     let (visible_data, filtered_count) =
-        build_visible_glyph_data(
-            state,
-            columns,
-            visible,
-            state.grid_scroll_row,
-        );
+        build_visible_glyph_data(state, columns, visible, state.grid_scroll_row);
     // Cache the filtered count so scroll callbacks don't
     // have to re-iterate all glyphs.
     state.cached_filtered_count = filtered_count;
 
     let rows_of_cells = build_glyph_rows(
-        &visible_data,
-        columns,
-        &selected_glyphs,
-        upm,
+        &visible_data, columns, &selected_glyphs, upm,
+        grid_width,
     );
 
     // Each row flexes to fill available height evenly
@@ -273,13 +249,14 @@ fn get_upm_from_state(state: &AppState) -> f64 {
 
 /// Type alias for glyph data tuple
 /// (name, path with components, codepoints, contour count,
-///  mark color palette index)
+///  mark color palette index, column span)
 type GlyphData = (
     String,
     Option<BezPath>,
     Vec<char>,
     usize,
     Option<usize>,
+    usize,
 );
 
 /// Build glyph data for only the visible rows.
@@ -306,10 +283,7 @@ fn build_visible_glyph_data(
         .iter()
         .filter(|name| {
             if let Some(glyph) = workspace.get_glyph(name) {
-                matches_category(
-                    &glyph.codepoints,
-                    category_filter,
-                )
+                matches_category(&glyph.codepoints, category_filter)
             } else {
                 false
             }
@@ -319,9 +293,7 @@ fn build_visible_glyph_data(
 
     // Step 2: Slice to only the visible window
     let start = scroll_row * columns;
-    let end =
-        ((scroll_row + visible_rows) * columns)
-            .min(filtered_names.len());
+    let end = ((scroll_row + visible_rows) * columns).min(filtered_names.len());
     let total_filtered = filtered_names.len();
     if start > total_filtered {
         return (Vec::new(), total_filtered);
@@ -330,28 +302,25 @@ fn build_visible_glyph_data(
 
     // Step 3: Build full glyph data (with bezpaths) for
     // only the visible glyphs
+    let upm = workspace.units_per_em.unwrap_or(1000.0);
     let data = visible_names
         .iter()
         .map(|name| {
-            build_single_glyph_data(&workspace, name)
+            build_single_glyph_data(&workspace, name, upm)
         })
         .collect();
     (data, total_filtered)
 }
 
 /// Check if a glyph matches the category filter
-fn matches_category(
-    codepoints: &[char],
-    category: GlyphCategory,
-) -> bool {
+fn matches_category(codepoints: &[char], category: GlyphCategory) -> bool {
     if category == GlyphCategory::All {
         return true;
     }
     if codepoints.is_empty() {
         return category == GlyphCategory::Other;
     }
-    let glyph_category =
-        GlyphCategory::from_codepoint(codepoints[0]);
+    let glyph_category = GlyphCategory::from_codepoint(codepoints[0]);
     glyph_category == category
 }
 
@@ -359,71 +328,194 @@ fn matches_category(
 fn build_single_glyph_data(
     workspace: &workspace::Workspace,
     name: &str,
+    upm: f64,
 ) -> GlyphData {
     if let Some(glyph) = workspace.get_glyph(name) {
         let count = glyph.contours.len();
         let codepoints = glyph.codepoints.clone();
-        let path =
-            glyph_renderer::glyph_to_bezpath_with_components(
-                glyph, workspace,
-            );
+        let path = glyph_renderer::glyph_to_bezpath_with_components(
+            glyph, workspace,
+        );
         let mark_index = glyph
             .mark_color
             .as_ref()
             .and_then(|s| rgba_string_to_palette_index(s));
+        let span = compute_col_span(name, glyph.width, upm);
         (
             name.to_string(),
             Some(path),
             codepoints,
             count,
             mark_index,
+            span,
         )
     } else {
-        (name.to_string(), None, Vec::new(), 0, None)
+        (name.to_string(), None, Vec::new(), 0, None, 1)
     }
+}
+
+/// Compute how many columns a glyph cell should span based
+/// on name length and advance width relative to UPM.
+fn compute_col_span(
+    name: &str,
+    advance_width: f64,
+    upm: f64,
+) -> usize {
+    // Span based on name length (chars that fit in one cell)
+    let name_span = if name.len() <= 14 {
+        1
+    } else if name.len() <= 26 {
+        2
+    } else {
+        3
+    };
+
+    // Span based on glyph advance width
+    let width_span = if upm > 0.0 {
+        let ratio = advance_width / upm;
+        if ratio <= 1.5 {
+            1
+        } else if ratio <= 2.8 {
+            2
+        } else if ratio <= 4.0 {
+            3
+        } else {
+            4
+        }
+    } else {
+        1
+    };
+
+    name_span.max(width_span).min(4)
 }
 
 /// Convert an RGBA string to a palette index by matching
 /// against the known palette strings
 fn rgba_string_to_palette_index(rgba: &str) -> Option<usize> {
-    theme::mark::RGBA_STRINGS
-        .iter()
-        .position(|&s| s == rgba)
+    theme::mark::RGBA_STRINGS.iter().position(|&s| s == rgba)
 }
 
-/// Build rows of glyph cells from glyph data
+/// Compute the pixel width for a cell spanning `span` columns.
+///
+/// A span-1 cell is one grid unit. A span-N cell covers N grid
+/// units plus the (N−1) gaps between them — bento-box style.
+fn cell_pixel_width(
+    span: usize,
+    cell_unit: f64,
+) -> f64 {
+    let s = span as f64;
+    s * cell_unit + (s - 1.0).max(0.0) * BENTO_GAP
+}
+
+/// Pack glyph data into rows of (index, span) pairs.
+///
+/// Each row's total span equals exactly `columns` — if items
+/// don't fill the row, the last item is expanded to absorb the
+/// remaining columns (bento-box: no gaps on the right).
+fn pack_rows(
+    glyph_data: &[GlyphData],
+    columns: usize,
+) -> Vec<Vec<(usize, usize)>> {
+    let mut rows: Vec<Vec<(usize, usize)>> = Vec::new();
+    let mut row: Vec<(usize, usize)> = Vec::new();
+    let mut row_span = 0;
+
+    for (i, (.., col_span)) in
+        glyph_data.iter().enumerate()
+    {
+        let span = (*col_span).min(columns);
+
+        if row_span + span > columns && !row.is_empty() {
+            // Expand last item to fill remaining columns
+            if let Some(last) = row.last_mut() {
+                last.1 += columns - row_span;
+            }
+            rows.push(std::mem::take(&mut row));
+            row_span = 0;
+        }
+
+        row.push((i, span));
+        row_span += span;
+    }
+
+    // Flush last row — expand last item to fill
+    if !row.is_empty() {
+        if let Some(last) = row.last_mut() {
+            last.1 += columns - row_span;
+        }
+        rows.push(row);
+    }
+
+    rows
+}
+
+/// Build rows of glyph cells with span-aware packing.
+///
+/// Uses exact pixel widths so that spanning cells align
+/// perfectly to the grid — a span-2 cell equals two single
+/// cells plus the gap between them. Rows are always filled
+/// to the full column count.
 fn build_glyph_rows(
     glyph_data: &[GlyphData],
     columns: usize,
     selected_glyphs: &HashSet<String>,
     upm: f64,
+    grid_width: f64,
 ) -> Vec<impl WidgetView<AppState> + use<>> {
-    glyph_data
-        .chunks(columns)
-        .map(|chunk| {
-            let row_items: Vec<_> = chunk
-                .iter()
-                .map(
-                    |(name, path_opt, codepoints, _, mark_color)| {
-                        let is_selected =
-                            selected_glyphs.contains(name);
-                        glyph_cell(
-                            name.clone(),
-                            path_opt.clone(),
-                            codepoints.clone(),
-                            is_selected,
-                            upm,
-                            *mark_color,
-                        )
-                        .flex(1.0)
-                    },
-                )
-                .collect();
-            flex_row(row_items)
+    // Single-column cell width (grid unit)
+    let cols = columns as f64;
+    let cell_unit =
+        (grid_width - (cols - 1.0) * BENTO_GAP) / cols;
+
+    let packed = pack_rows(glyph_data, columns);
+    let mut rows = Vec::new();
+
+    for row_slots in &packed {
+        let mut items: Vec<_> = Vec::new();
+        let mut used = 0;
+
+        for &(idx, span) in row_slots {
+            let (name, path_opt, codepoints, _, mark_color, _) =
+                &glyph_data[idx];
+            let is_selected =
+                selected_glyphs.contains(name);
+            let w = cell_pixel_width(span, cell_unit);
+            items.push(Either::A(
+                sized_box(glyph_cell(
+                    name.clone(),
+                    path_opt.clone(),
+                    codepoints.clone(),
+                    is_selected,
+                    upm,
+                    *mark_color,
+                ))
+                .width(w.px())
+                .expand_height(),
+            ));
+            used += span;
+        }
+
+        // Pad the last (partial) row with an invisible spacer
+        if used < columns {
+            let w =
+                cell_pixel_width(columns - used, cell_unit);
+            items.push(Either::B(
+                sized_box(label(""))
+                    .width(w.px())
+                    .expand_height(),
+            ));
+        }
+
+        rows.push(
+            flex_row(items)
                 .gap(BENTO_GAP.px())
-                .cross_axis_alignment(CrossAxisAlignment::Fill)
-        })
-        .collect()
+                .cross_axis_alignment(
+                    CrossAxisAlignment::Fill,
+                ),
+        );
+    }
+
+    rows
 }
 
 // ============================================================
@@ -493,7 +585,7 @@ thread_local! {
     > = std::cell::RefCell::new(LayoutContext::new());
 }
 /// Height reserved for the label area at the bottom of the cell
-const CELL_LABEL_HEIGHT: f64 = 44.0;
+const CELL_LABEL_HEIGHT: f64 = 56.0;
 /// Padding around the glyph preview and labels
 const CELL_PAD: f64 = 8.0;
 
@@ -547,19 +639,12 @@ impl GlyphCellWidget {
         } else if let Some(color) = self.mark() {
             (theme::grid::CELL_BACKGROUND, color)
         } else {
-            (
-                theme::grid::CELL_BACKGROUND,
-                theme::grid::CELL_OUTLINE,
-            )
+            (theme::grid::CELL_BACKGROUND, theme::grid::CELL_OUTLINE)
         }
     }
 
     /// Paint the glyph bezpath into the preview area
-    fn paint_glyph(
-        &self,
-        scene: &mut Scene,
-        preview_rect: Rect,
-    ) {
+    fn paint_glyph(&self, scene: &mut Scene, preview_rect: Rect) {
         let path = match &self.path {
             Some(p) if !p.is_empty() => p,
             _ => return,
@@ -567,17 +652,15 @@ impl GlyphCellWidget {
 
         let bounds = path.bounding_box();
         let scale = preview_rect.height() / self.upm;
-        let scale = scale * 0.8;
+        let scale = scale * 0.65;
 
         // Center horizontally based on bounding box
         let scaled_width = bounds.width() * scale;
-        let left_pad =
-            (preview_rect.width() - scaled_width) / 2.0;
-        let x_translation =
-            preview_rect.x0 + left_pad - bounds.x0 * scale;
+        let left_pad = (preview_rect.width() - scaled_width) / 2.0;
+        let x_translation = preview_rect.x0 + left_pad - bounds.x0 * scale;
 
-        // Baseline at ~6% from bottom of preview area
-        let baseline_offset = 0.06;
+        // Baseline at ~20% from bottom of preview area
+        let baseline_offset = 0.20;
         let baseline = preview_rect.height() * baseline_offset;
 
         let transform = Affine::new([
@@ -605,12 +688,7 @@ impl GlyphCellWidget {
     }
 
     /// Paint the name and unicode labels
-    fn paint_labels(
-        &self,
-        scene: &mut Scene,
-        label_rect: Rect,
-        is_hovered: bool,
-    ) {
+    fn paint_labels(&self, scene: &mut Scene, label_rect: Rect, is_hovered: bool) {
         let text_color = if self.is_selected || is_hovered {
             theme::grid::CELL_SELECTED_OUTLINE
         } else {
@@ -618,8 +696,7 @@ impl GlyphCellWidget {
         };
 
         let display_name = format_display_name(&self.glyph_name);
-        let unicode_display =
-            format_unicode_display(&self.codepoints);
+        let unicode_display = format_unicode_display(&self.codepoints);
 
         FONT_CX.with(|font_cell| {
             LAYOUT_CX.with(|layout_cell| {
@@ -627,37 +704,26 @@ impl GlyphCellWidget {
                 let mut layout_cx = layout_cell.borrow_mut();
 
                 // Name label
-                let mut builder = layout_cx.ranged_builder(
-                    &mut font_cx,
-                    &display_name,
-                    1.0,
-                    false,
-                );
-                builder.push_default(StyleProperty::FontSize(
-                    CELL_LABEL_SIZE as f32,
-                ));
-                builder.push_default(StyleProperty::FontStack(
-                    FontStack::Single(
-                        parley::FontFamily::Generic(
-                            parley::GenericFamily::SansSerif,
-                        ),
-                    ),
-                ));
-                builder.push_default(StyleProperty::Brush(
-                    BrushIndex(0),
-                ));
-                let mut name_layout =
-                    builder.build(&display_name);
+                let mut builder = layout_cx.ranged_builder(&mut font_cx, &display_name, 1.0, false);
+                builder.push_default(StyleProperty::FontSize(CELL_LABEL_SIZE as f32));
+                builder.push_default(StyleProperty::FontStack(FontStack::Single(
+                    parley::FontFamily::Generic(parley::GenericFamily::SansSerif),
+                )));
+                builder.push_default(StyleProperty::Brush(BrushIndex(0)));
+                let mut name_layout = builder.build(&display_name);
                 name_layout.break_all_lines(None);
 
                 let brushes = vec![Brush::Solid(text_color)];
-                let name_y = label_rect.y0 + 2.0;
+                // Anchor labels from bottom of label area
+                // Subtract less than full text height to
+                // compensate for visual line-height padding
+                let two_lines =
+                    CELL_LABEL_SIZE * 2.0 + 4.0;
+                let name_y =
+                    label_rect.y1 - two_lines + 5.0;
                 render_text(
                     scene,
-                    Affine::translate((
-                        label_rect.x0,
-                        name_y,
-                    )),
+                    Affine::translate((label_rect.x0, name_y)),
                     &name_layout,
                     &brushes,
                     false,
@@ -665,41 +731,20 @@ impl GlyphCellWidget {
 
                 // Unicode label
                 if !unicode_display.is_empty() {
-                    let mut builder = layout_cx.ranged_builder(
-                        &mut font_cx,
-                        &unicode_display,
-                        1.0,
-                        false,
-                    );
-                    builder.push_default(
-                        StyleProperty::FontSize(
-                            CELL_LABEL_SIZE as f32,
-                        ),
-                    );
-                    builder.push_default(
-                        StyleProperty::FontStack(
-                            FontStack::Single(
-                                parley::FontFamily::Generic(
-                                    parley::GenericFamily::SansSerif,
-                                ),
-                            ),
-                        ),
-                    );
-                    builder.push_default(
-                        StyleProperty::Brush(BrushIndex(0)),
-                    );
-                    let mut uni_layout =
-                        builder.build(&unicode_display);
+                    let mut builder =
+                        layout_cx.ranged_builder(&mut font_cx, &unicode_display, 1.0, false);
+                    builder.push_default(StyleProperty::FontSize(CELL_LABEL_SIZE as f32));
+                    builder.push_default(StyleProperty::FontStack(FontStack::Single(
+                        parley::FontFamily::Generic(parley::GenericFamily::SansSerif),
+                    )));
+                    builder.push_default(StyleProperty::Brush(BrushIndex(0)));
+                    let mut uni_layout = builder.build(&unicode_display);
                     uni_layout.break_all_lines(None);
 
-                    let uni_y =
-                        name_y + CELL_LABEL_SIZE + 2.0;
+                    let uni_y = name_y + CELL_LABEL_SIZE + 2.0;
                     render_text(
                         scene,
-                        Affine::translate((
-                            label_rect.x0,
-                            uni_y,
-                        )),
+                        Affine::translate((label_rect.x0, uni_y)),
                         &uni_layout,
                         &brushes,
                         false,
@@ -713,18 +758,9 @@ impl GlyphCellWidget {
 impl Widget for GlyphCellWidget {
     type Action = GlyphCellAction;
 
-    fn register_children(
-        &mut self,
-        _ctx: &mut RegisterCtx<'_>,
-    ) {
-    }
+    fn register_children(&mut self, _ctx: &mut RegisterCtx<'_>) {}
 
-    fn update(
-        &mut self,
-        ctx: &mut UpdateCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        event: &Update,
-    ) {
+    fn update(&mut self, ctx: &mut UpdateCtx<'_>, _props: &mut PropertiesMut<'_>, event: &Update) {
         if matches!(event, Update::HoveredChanged(_)) {
             ctx.request_render();
         }
@@ -740,15 +776,9 @@ impl Widget for GlyphCellWidget {
         bc.max()
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         let size = ctx.size();
-        let (bg_color, border_color) =
-            self.cell_colors(ctx.is_hovered());
+        let (bg_color, border_color) = self.cell_colors(ctx.is_hovered());
 
         // Panel background and border
         let panel_rect = RoundedRect::from_rect(
@@ -763,9 +793,7 @@ impl Widget for GlyphCellWidget {
             &panel_rect,
         );
         scene.stroke(
-            &kurbo::Stroke::new(
-                theme::size::TOOLBAR_BORDER_WIDTH,
-            ),
+            &kurbo::Stroke::new(theme::size::TOOLBAR_BORDER_WIDTH),
             Affine::IDENTITY,
             &Brush::Solid(border_color),
             None,
@@ -773,14 +801,8 @@ impl Widget for GlyphCellWidget {
         );
 
         // Glyph preview area (above labels, inset by padding)
-        let preview_height =
-            (size.height - CELL_LABEL_HEIGHT).max(0.0);
-        let preview_rect = Rect::new(
-            CELL_PAD,
-            CELL_PAD,
-            size.width - CELL_PAD,
-            preview_height,
-        );
+        let preview_height = (size.height - CELL_LABEL_HEIGHT).max(0.0);
+        let preview_rect = Rect::new(CELL_PAD, CELL_PAD, size.width - CELL_PAD, preview_height);
         self.paint_glyph(scene, preview_rect);
 
         // Label area (bottom of cell, inset by padding)
@@ -823,17 +845,11 @@ impl Widget for GlyphCellWidget {
             }) => {
                 let name = self.glyph_name.clone();
                 if state.count >= 2 {
-                    ctx.submit_action::<GlyphCellAction>(
-                        GlyphCellAction::Open(name),
-                    );
+                    ctx.submit_action::<GlyphCellAction>(GlyphCellAction::Open(name));
                 } else if state.modifiers.shift() {
-                    ctx.submit_action::<GlyphCellAction>(
-                        GlyphCellAction::ShiftSelect(name),
-                    );
+                    ctx.submit_action::<GlyphCellAction>(GlyphCellAction::ShiftSelect(name));
                 } else {
-                    ctx.submit_action::<GlyphCellAction>(
-                        GlyphCellAction::Select(name),
-                    );
+                    ctx.submit_action::<GlyphCellAction>(GlyphCellAction::Select(name));
                 }
                 // Don't set_handled — let Down bubble to the
                 // GridScrollWidget container so it grabs focus
@@ -856,8 +872,7 @@ impl Widget for GlyphCellWidget {
 // GlyphCellView (Xilem View wrapper)
 // ============================================================
 
-type GlyphCellCallback<State> =
-    Box<dyn Fn(&mut State, GlyphCellAction) + Send + Sync>;
+type GlyphCellCallback<State> = Box<dyn Fn(&mut State, GlyphCellAction) + Send + Sync>;
 
 fn glyph_cell_view<State, Action>(
     glyph_name: String,
@@ -866,10 +881,7 @@ fn glyph_cell_view<State, Action>(
     is_selected: bool,
     upm: f64,
     mark_color: Option<usize>,
-    callback: impl Fn(&mut State, GlyphCellAction)
-        + Send
-        + Sync
-        + 'static,
+    callback: impl Fn(&mut State, GlyphCellAction) + Send + Sync + 'static,
 ) -> GlyphCellView<State, Action>
 where
     State: 'static,
@@ -899,23 +911,15 @@ struct GlyphCellView<State, Action = ()> {
     phantom: PhantomData<fn() -> (State, Action)>,
 }
 
-impl<State, Action> ViewMarker
-    for GlyphCellView<State, Action>
-{
-}
+impl<State, Action> ViewMarker for GlyphCellView<State, Action> {}
 
-impl<State: 'static, Action: 'static + Default>
-    View<State, Action, ViewCtx>
+impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     for GlyphCellView<State, Action>
 {
     type Element = Pod<GlyphCellWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = GlyphCellWidget::new(
             self.glyph_name.clone(),
             self.path.clone(),
@@ -997,13 +1001,9 @@ impl<State: 'static, Action: 'static + Default>
 // Cell Formatting Helpers
 // ============================================================
 
-/// Format display name with truncation if too long
+/// Format display name — show full name, the cell clips overflow
 fn format_display_name(glyph_name: &str) -> String {
-    if glyph_name.len() > 12 {
-        format!("{}...", &glyph_name[..9])
-    } else {
-        glyph_name.to_string()
-    }
+    glyph_name.to_string()
 }
 
 /// Format Unicode codepoint display string
@@ -1018,4 +1018,3 @@ fn format_unicode_display(codepoints: &[char]) -> String {
 // ============================================================
 // Path Helpers
 // ============================================================
-

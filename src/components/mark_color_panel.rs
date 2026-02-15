@@ -9,19 +9,15 @@
 use kurbo::{Affine, Circle, Rect, RoundedRect, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx,
-    LayoutCtx, PaintCtx, PointerButton, PointerButtonEvent,
-    PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx,
-    StyleProperty, TextEvent, Update, UpdateCtx, Widget,
-    render_text,
+    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx, LayoutCtx, PaintCtx,
+    PointerButton, PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx,
+    StyleProperty, TextEvent, Update, UpdateCtx, Widget, render_text,
 };
 use masonry::vello::Scene;
 use masonry::vello::peniko::{Brush, Color, Fill};
 use parley::{FontContext, FontStack, LayoutContext};
 use std::marker::PhantomData;
-use xilem::core::{
-    MessageContext, MessageResult, Mut, View, ViewMarker,
-};
+use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 use crate::components::CATEGORY_PANEL_WIDTH;
@@ -83,18 +79,11 @@ impl MarkColorPanelWidget {
     }
 
     /// Center point for swatch at grid position (col, row)
-    fn swatch_center(
-        &self,
-        col: usize,
-        row: usize,
-    ) -> (f64, f64) {
+    fn swatch_center(&self, col: usize, row: usize) -> (f64, f64) {
         let top = self.swatches_top();
         let radius = SWATCH_SIZE / 2.0;
-        let cx = SWATCH_INSET
-            + radius
-            + col as f64 * (SWATCH_SIZE + SWATCH_GAP);
-        let cy =
-            top + radius + row as f64 * (SWATCH_SIZE + SWATCH_GAP);
+        let cx = SWATCH_INSET + radius + col as f64 * (SWATCH_SIZE + SWATCH_GAP);
+        let cy = top + radius + row as f64 * (SWATCH_SIZE + SWATCH_GAP);
         (cx, cy)
     }
 
@@ -117,10 +106,7 @@ impl MarkColorPanelWidget {
 
     /// Map a linear swatch index to (col, row) in the grid.
     /// Index 0–6 = color swatches, index 7 = clear swatch.
-    fn swatch_grid_pos(
-        &self,
-        index: usize,
-    ) -> (usize, usize) {
+    fn swatch_grid_pos(&self, index: usize) -> (usize, usize) {
         let col = index % SWATCH_COLS;
         let row = index / SWATCH_COLS;
         (col, row)
@@ -151,12 +137,7 @@ impl Widget for MarkColorPanelWidget {
         bc.constrain(Size::new(width, height))
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         let size = ctx.size();
 
         // --- Panel background and border ---
@@ -172,9 +153,7 @@ impl Widget for MarkColorPanelWidget {
             &panel_rect,
         );
         scene.stroke(
-            &kurbo::Stroke::new(
-                theme::size::TOOLBAR_BORDER_WIDTH,
-            ),
+            &kurbo::Stroke::new(theme::size::TOOLBAR_BORDER_WIDTH),
             Affine::IDENTITY,
             &Brush::Solid(theme::panel::OUTLINE),
             None,
@@ -186,22 +165,12 @@ impl Widget for MarkColorPanelWidget {
         let mut layout_cx = LayoutContext::new();
 
         let header_text = "Colors";
-        let mut builder = layout_cx.ranged_builder(
-            &mut font_cx,
-            header_text,
-            1.0,
-            false,
-        );
-        builder.push_default(StyleProperty::FontSize(
-            HEADER_FONT_SIZE as f32,
-        ));
-        builder.push_default(StyleProperty::FontStack(
-            FontStack::Single(parley::FontFamily::Generic(
-                parley::GenericFamily::SansSerif,
-            )),
-        ));
-        builder
-            .push_default(StyleProperty::Brush(BrushIndex(0)));
+        let mut builder = layout_cx.ranged_builder(&mut font_cx, header_text, 1.0, false);
+        builder.push_default(StyleProperty::FontSize(HEADER_FONT_SIZE as f32));
+        builder.push_default(StyleProperty::FontStack(FontStack::Single(
+            parley::FontFamily::Generic(parley::GenericFamily::SansSerif),
+        )));
+        builder.push_default(StyleProperty::Brush(BrushIndex(0)));
         let mut layout = builder.build(header_text);
         layout.break_all_lines(None);
 
@@ -246,8 +215,7 @@ impl Widget for MarkColorPanelWidget {
 
             // Selected ring (white outline for current glyph color)
             if self.selected_color == Some(i) {
-                let outer =
-                    Circle::new((cx, cy), radius + 1.5);
+                let outer = Circle::new((cx, cy), radius + 1.5);
                 scene.stroke(
                     &kurbo::Stroke::new(2.0),
                     Affine::IDENTITY,
@@ -281,20 +249,14 @@ impl Widget for MarkColorPanelWidget {
             Affine::IDENTITY,
             &x_color,
             None,
-            &kurbo::Line::new(
-                (cx - x_size, cy - x_size),
-                (cx + x_size, cy + x_size),
-            ),
+            &kurbo::Line::new((cx - x_size, cy - x_size), (cx + x_size, cy + x_size)),
         );
         scene.stroke(
             &stroke,
             Affine::IDENTITY,
             &x_color,
             None,
-            &kurbo::Line::new(
-                (cx + x_size, cy - x_size),
-                (cx - x_size, cy + x_size),
-            ),
+            &kurbo::Line::new((cx + x_size, cy - x_size), (cx - x_size, cy + x_size)),
         );
 
         // Hover ring for clear swatch
@@ -343,25 +305,19 @@ impl Widget for MarkColorPanelWidget {
                 ..
             }) => {
                 let pos = ctx.local_position(state.position);
-                if let Some(index) = self.swatch_at_pos(pos.x, pos.y)
-                {
+                if let Some(index) = self.swatch_at_pos(pos.x, pos.y) {
                     let color = if index < theme::mark::COUNT {
                         Some(index)
                     } else {
                         None // Clear swatch
                     };
-                    ctx.submit_action::<MarkColorSelected>(
-                        MarkColorSelected(color),
-                    );
+                    ctx.submit_action::<MarkColorSelected>(MarkColorSelected(color));
                 }
                 ctx.set_handled();
             }
             PointerEvent::Move(pointer_move) => {
-                let pos = ctx.local_position(
-                    pointer_move.current.position,
-                );
-                let new_hover =
-                    self.swatch_at_pos(pos.x, pos.y);
+                let pos = ctx.local_position(pointer_move.current.position);
+                let new_hover = self.swatch_at_pos(pos.x, pos.y);
                 if new_hover != self.hover_index {
                     self.hover_index = new_hover;
                     ctx.request_render();
@@ -390,15 +346,11 @@ impl Widget for MarkColorPanelWidget {
 // Xilem View wrapper
 // ============================================================
 
-type MarkColorCallback<State> =
-    Box<dyn Fn(&mut State, Option<usize>) + Send + Sync>;
+type MarkColorCallback<State> = Box<dyn Fn(&mut State, Option<usize>) + Send + Sync>;
 
 pub fn mark_color_panel<State, Action>(
     current_color: Option<usize>,
-    callback: impl Fn(&mut State, Option<usize>)
-        + Send
-        + Sync
-        + 'static,
+    callback: impl Fn(&mut State, Option<usize>) + Send + Sync + 'static,
 ) -> MarkColorPanelView<State, Action>
 where
     State: 'static,
@@ -418,25 +370,16 @@ pub struct MarkColorPanelView<State, Action = ()> {
     phantom: PhantomData<fn() -> (State, Action)>,
 }
 
-impl<State, Action> ViewMarker
-    for MarkColorPanelView<State, Action>
-{
-}
+impl<State, Action> ViewMarker for MarkColorPanelView<State, Action> {}
 
-impl<State: 'static, Action: 'static + Default>
-    View<State, Action, ViewCtx>
+impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     for MarkColorPanelView<State, Action>
 {
     type Element = Pod<MarkColorPanelWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
-        let widget =
-            MarkColorPanelWidget::new(self.current_color);
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
+        let widget = MarkColorPanelWidget::new(self.current_color);
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());
         (pod, ())

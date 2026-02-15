@@ -13,8 +13,7 @@ use kurbo::{Point, Rect};
 ///
 /// Used to determine which point in a bounding box should be used as the
 /// reference for coordinate display and editing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Quadrant {
     /// Top-left corner
     TopLeft,
@@ -36,7 +35,6 @@ pub enum Quadrant {
     /// Bottom-right corner
     BottomRight,
 }
-
 
 #[allow(dead_code)]
 impl Quadrant {

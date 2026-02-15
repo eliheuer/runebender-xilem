@@ -11,9 +11,8 @@ use crate::tools::ToolId;
 use kurbo::{BezPath, Point, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
-    PaintCtx, PointerButton, PointerButtonEvent, PointerEvent,
-    PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
+    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
+    PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
     UpdateCtx, Widget,
 };
 use masonry::vello::Scene;
@@ -21,8 +20,7 @@ use tracing;
 
 // Import shared toolbar functionality
 use crate::components::toolbars::{
-    button_rect, calculate_toolbar_size, paint_button, paint_icon,
-    paint_panel, ButtonState,
+    ButtonState, button_rect, calculate_toolbar_size, paint_button, paint_icon, paint_panel,
 };
 
 /// Available tools in display order
@@ -67,7 +65,6 @@ impl EditModeToolbarWidget {
         }
     }
 
-
     /// Find which tool was clicked
     fn tool_at_point(&self, point: Point) -> Option<ToolId> {
         for (i, &tool) in TOOLBAR_TOOLS.iter().enumerate() {
@@ -109,12 +106,7 @@ impl Widget for EditModeToolbarWidget {
         bc.constrain(size)
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         let size = ctx.size();
 
         // Draw background panel
@@ -197,8 +189,7 @@ impl Widget for EditModeToolbarWidget {
                 }
             }
             PointerEvent::Move(pointer_move) => {
-                let local_pos =
-                    ctx.local_position(pointer_move.current.position);
+                let local_pos = ctx.local_position(pointer_move.current.position);
                 let new_hover = self.tool_at_point(local_pos);
                 if new_hover != self.hover_tool {
                     self.hover_tool = new_hover;
@@ -224,7 +215,6 @@ impl Widget for EditModeToolbarWidget {
         // No text handling needed
     }
 }
-
 
 // --- Icon Definitions ---
 
@@ -483,8 +473,7 @@ where
 
 /// The Xilem View for EditModeToolbarWidget
 /// Callback type for toolbar button clicks
-type EditModeToolbarCallback<State> =
-    Box<dyn Fn(&mut State, ToolId) + Send + Sync>;
+type EditModeToolbarCallback<State> = Box<dyn Fn(&mut State, ToolId) + Send + Sync>;
 
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct EditModeToolbarView<State, Action = ()> {
@@ -501,11 +490,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     type Element = Pod<EditModeToolbarWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = EditModeToolbarWidget::new(self.selected_tool);
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());
@@ -666,36 +651,36 @@ fn shapes_icon() -> BezPath {
     let mut bez = BezPath::new();
 
     // Rounded rectangle contour
-    bez.move_to((460.0, 222.0));  // 768-546
+    bez.move_to((460.0, 222.0)); // 768-546
     bez.line_to((538.0, 222.0));
-    bez.line_to((538.0, 32.0));  // 768-736
+    bez.line_to((538.0, 32.0)); // 768-736
     bez.curve_to((538.0, 12.0), (526.0, 0.0), (506.0, 0.0));
     bez.line_to((32.0, 0.0));
     bez.curve_to((12.0, 0.0), (0.0, 12.0), (0.0, 32.0));
-    bez.line_to((0.0, 506.0));  // 768-262
+    bez.line_to((0.0, 506.0)); // 768-262
     bez.curve_to((0.0, 526.0), (12.0, 538.0), (32.0, 538.0));
     bez.line_to((220.0, 538.0));
-    bez.line_to((220.0, 460.0));  // 768-308
+    bez.line_to((220.0, 460.0)); // 768-308
     bez.line_to((102.0, 460.0));
     bez.curve_to((86.0, 460.0), (78.0, 452.0), (78.0, 436.0));
-    bez.line_to((78.0, 102.0));  // 768-666
+    bez.line_to((78.0, 102.0)); // 768-666
     bez.curve_to((78.0, 86.0), (86.0, 78.0), (102.0, 78.0));
     bez.line_to((436.0, 78.0));
     bez.curve_to((452.0, 78.0), (460.0, 86.0), (460.0, 102.0));
     bez.close_path();
 
     // Circle contour (outer)
-    bez.move_to((486.0, 784.0));  // 768-(-16)
-    bez.curve_to((648.0, 784.0), (782.0, 652.0), (782.0, 488.0));  // 768-116, 768-280
-    bez.curve_to((782.0, 324.0), (648.0, 192.0), (486.0, 192.0));  // 768-444, 768-576
+    bez.move_to((486.0, 784.0)); // 768-(-16)
+    bez.curve_to((648.0, 784.0), (782.0, 652.0), (782.0, 488.0)); // 768-116, 768-280
+    bez.curve_to((782.0, 324.0), (648.0, 192.0), (486.0, 192.0)); // 768-444, 768-576
     bez.curve_to((322.0, 192.0), (192.0, 324.0), (192.0, 488.0));
     bez.curve_to((192.0, 652.0), (322.0, 784.0), (486.0, 784.0));
     bez.close_path();
 
     // Circle contour (inner - hole)
-    bez.move_to((486.0, 704.0));  // 768-64
-    bez.curve_to((368.0, 704.0), (270.0, 608.0), (270.0, 488.0));  // 768-160, 768-280
-    bez.curve_to((270.0, 368.0), (368.0, 272.0), (486.0, 272.0));  // 768-400, 768-496
+    bez.move_to((486.0, 704.0)); // 768-64
+    bez.curve_to((368.0, 704.0), (270.0, 608.0), (270.0, 488.0)); // 768-160, 768-280
+    bez.curve_to((270.0, 368.0), (368.0, 272.0), (486.0, 272.0)); // 768-400, 768-496
     bez.curve_to((606.0, 272.0), (702.0, 368.0), (702.0, 488.0));
     bez.curve_to((702.0, 608.0), (606.0, 704.0), (486.0, 704.0));
     bez.close_path();

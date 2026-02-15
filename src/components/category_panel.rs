@@ -10,18 +10,15 @@
 use kurbo::{Affine, Rect, RoundedRect, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx,
-    LayoutCtx, PaintCtx, PointerButton, PointerButtonEvent,
-    PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx,
+    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx, LayoutCtx, PaintCtx,
+    PointerButton, PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx,
     StyleProperty, TextEvent, Update, UpdateCtx, Widget, render_text,
 };
 use masonry::vello::Scene;
 use masonry::vello::peniko::{Brush, Color, Fill};
 use parley::{FontContext, FontStack, LayoutContext};
 use std::marker::PhantomData;
-use xilem::core::{
-    MessageContext, MessageResult, Mut, View, ViewMarker,
-};
+use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 use crate::theme;
@@ -96,9 +93,7 @@ impl GlyphCategory {
     }
 
     pub fn from_codepoint(c: char) -> GlyphCategory {
-        use unicode_general_category::{
-            GeneralCategory, get_general_category,
-        };
+        use unicode_general_category::{GeneralCategory, get_general_category};
 
         match get_general_category(c) {
             GeneralCategory::UppercaseLetter
@@ -117,9 +112,7 @@ impl GlyphCategory {
             | GeneralCategory::ClosePunctuation
             | GeneralCategory::InitialPunctuation
             | GeneralCategory::FinalPunctuation
-            | GeneralCategory::OtherPunctuation => {
-                GlyphCategory::Punctuation
-            }
+            | GeneralCategory::OtherPunctuation => GlyphCategory::Punctuation,
 
             GeneralCategory::MathSymbol
             | GeneralCategory::CurrencySymbol
@@ -132,9 +125,7 @@ impl GlyphCategory {
 
             GeneralCategory::SpaceSeparator
             | GeneralCategory::LineSeparator
-            | GeneralCategory::ParagraphSeparator => {
-                GlyphCategory::Separator
-            }
+            | GeneralCategory::ParagraphSeparator => GlyphCategory::Separator,
 
             _ => GlyphCategory::Other,
         }
@@ -184,7 +175,6 @@ impl CategoryListWidget {
             None
         }
     }
-
 }
 
 impl Widget for CategoryListWidget {
@@ -211,22 +201,14 @@ impl Widget for CategoryListWidget {
         bc.constrain(Size::new(width, height))
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         let size = ctx.size();
         let width = size.width;
         let cats = GlyphCategory::all_categories();
 
         // --- Panel background and border ---
         let panel_rect = RoundedRect::from_rect(
-            Rect::from_origin_size(
-                kurbo::Point::ZERO,
-                size,
-            ),
+            Rect::from_origin_size(kurbo::Point::ZERO, size),
             theme::size::PANEL_RADIUS,
         );
         scene.fill(
@@ -237,9 +219,7 @@ impl Widget for CategoryListWidget {
             &panel_rect,
         );
         scene.stroke(
-            &kurbo::Stroke::new(
-                theme::size::TOOLBAR_BORDER_WIDTH,
-            ),
+            &kurbo::Stroke::new(theme::size::TOOLBAR_BORDER_WIDTH),
             Affine::IDENTITY,
             &Brush::Solid(theme::panel::OUTLINE),
             None,
@@ -251,22 +231,12 @@ impl Widget for CategoryListWidget {
         let mut layout_cx = LayoutContext::new();
 
         let header_text = "Categories";
-        let mut builder = layout_cx.ranged_builder(
-            &mut font_cx,
-            header_text,
-            1.0,
-            false,
-        );
-        builder.push_default(StyleProperty::FontSize(
-            HEADER_FONT_SIZE as f32,
-        ));
-        builder.push_default(StyleProperty::FontStack(
-            FontStack::Single(parley::FontFamily::Generic(
-                parley::GenericFamily::SansSerif,
-            )),
-        ));
-        builder
-            .push_default(StyleProperty::Brush(BrushIndex(0)));
+        let mut builder = layout_cx.ranged_builder(&mut font_cx, header_text, 1.0, false);
+        builder.push_default(StyleProperty::FontSize(HEADER_FONT_SIZE as f32));
+        builder.push_default(StyleProperty::FontStack(FontStack::Single(
+            parley::FontFamily::Generic(parley::GenericFamily::SansSerif),
+        )));
+        builder.push_default(StyleProperty::Brush(BrushIndex(0)));
         let mut layout = builder.build(header_text);
         layout.break_all_lines(None);
 
@@ -302,9 +272,7 @@ impl Widget for CategoryListWidget {
                 scene.stroke(
                     &kurbo::Stroke::new(1.5),
                     Affine::IDENTITY,
-                    &Brush::Solid(
-                        theme::grid::CELL_SELECTED_OUTLINE,
-                    ),
+                    &Brush::Solid(theme::grid::CELL_SELECTED_OUTLINE),
                     None,
                     &highlight,
                 );
@@ -321,28 +289,16 @@ impl Widget for CategoryListWidget {
 
             // Render label
             let name = cat.display_name();
-            let mut builder = layout_cx.ranged_builder(
-                &mut font_cx,
-                name,
-                1.0,
-                false,
-            );
-            builder.push_default(StyleProperty::FontSize(
-                ITEM_FONT_SIZE as f32,
-            ));
-            builder.push_default(StyleProperty::FontStack(
-                FontStack::Single(parley::FontFamily::Generic(
-                    parley::GenericFamily::SansSerif,
-                )),
-            ));
-            builder.push_default(StyleProperty::Brush(
-                BrushIndex(0),
-            ));
+            let mut builder = layout_cx.ranged_builder(&mut font_cx, name, 1.0, false);
+            builder.push_default(StyleProperty::FontSize(ITEM_FONT_SIZE as f32));
+            builder.push_default(StyleProperty::FontStack(FontStack::Single(
+                parley::FontFamily::Generic(parley::GenericFamily::SansSerif),
+            )));
+            builder.push_default(StyleProperty::Brush(BrushIndex(0)));
             let mut item_layout = builder.build(name);
             item_layout.break_all_lines(None);
 
-            let text_y = row_y
-                + (ROW_HEIGHT - item_layout.height() as f64) / 2.0;
+            let text_y = row_y + (ROW_HEIGHT - item_layout.height() as f64) / 2.0;
             let brushes = vec![Brush::Solid(text_color)];
             render_text(
                 scene,
@@ -384,18 +340,13 @@ impl Widget for CategoryListWidget {
             }) => {
                 let pos = ctx.local_position(state.position);
                 if let Some(index) = self.row_at_y(pos.y) {
-                    let cat =
-                        GlyphCategory::all_categories()[index];
-                    ctx.submit_action::<CategorySelected>(
-                        CategorySelected(cat),
-                    );
+                    let cat = GlyphCategory::all_categories()[index];
+                    ctx.submit_action::<CategorySelected>(CategorySelected(cat));
                 }
                 ctx.set_handled();
             }
             PointerEvent::Move(pointer_move) => {
-                let pos = ctx.local_position(
-                    pointer_move.current.position,
-                );
+                let pos = ctx.local_position(pointer_move.current.position);
                 let new_hover = self.row_at_y(pos.y);
                 if new_hover != self.hover_index {
                     self.hover_index = new_hover;
@@ -425,15 +376,11 @@ impl Widget for CategoryListWidget {
 // Xilem View wrapper
 // ============================================================
 
-type CategoryCallback<State> =
-    Box<dyn Fn(&mut State, GlyphCategory) + Send + Sync>;
+type CategoryCallback<State> = Box<dyn Fn(&mut State, GlyphCategory) + Send + Sync>;
 
 pub fn category_panel<State, Action>(
     selected: GlyphCategory,
-    callback: impl Fn(&mut State, GlyphCategory)
-        + Send
-        + Sync
-        + 'static,
+    callback: impl Fn(&mut State, GlyphCategory) + Send + Sync + 'static,
 ) -> CategoryPanelView<State, Action>
 where
     State: 'static,
@@ -453,23 +400,15 @@ pub struct CategoryPanelView<State, Action = ()> {
     phantom: PhantomData<fn() -> (State, Action)>,
 }
 
-impl<State, Action> ViewMarker
-    for CategoryPanelView<State, Action>
-{
-}
+impl<State, Action> ViewMarker for CategoryPanelView<State, Action> {}
 
-impl<State: 'static, Action: 'static + Default>
-    View<State, Action, ViewCtx>
+impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     for CategoryPanelView<State, Action>
 {
     type Element = Pod<CategoryListWidget>;
     type ViewState = ();
 
-    fn build(
-        &self,
-        ctx: &mut ViewCtx,
-        _app_state: &mut State,
-    ) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = CategoryListWidget::new(self.selected);
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());

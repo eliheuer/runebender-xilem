@@ -59,8 +59,8 @@ use crate::point::{PathPoint, PointType};
 use crate::point_list::PathPoints;
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, CubicBez, Line, ParamCurve, ParamCurveArclen, Point};
-use masonry::vello::kurbo::Stroke;
 use masonry::vello::Scene;
+use masonry::vello::kurbo::Stroke;
 use std::sync::Arc;
 
 /// Maximum recursion depth for slicing paths
@@ -78,8 +78,7 @@ pub struct KnifeTool {
 }
 
 /// The state of the knife gesture
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 enum GestureState {
     /// Ready for a new cut
     #[default]
@@ -112,7 +111,6 @@ impl Default for KnifeTool {
         }
     }
 }
-
 
 impl KnifeTool {
     /// Get the current line endpoints, applying shift-lock if active
@@ -173,12 +171,7 @@ impl Tool for KnifeTool {
         ToolId::Knife
     }
 
-    fn paint(
-        &mut self,
-        scene: &mut Scene,
-        session: &EditSession,
-        _transform: &Affine,
-    ) {
+    fn paint(&mut self, scene: &mut Scene, session: &EditSession, _transform: &Affine) {
         use crate::theme::tool_preview;
 
         if let Some((start, current)) = self.current_points() {
@@ -188,10 +181,8 @@ impl Tool for KnifeTool {
 
             // Draw knife line (dashed) - consistent with pen tool preview
             let line = Line::new(screen_start, screen_current);
-            let stroke = Stroke::new(tool_preview::LINE_WIDTH).with_dashes(
-                tool_preview::LINE_DASH_OFFSET,
-                tool_preview::LINE_DASH,
-            );
+            let stroke = Stroke::new(tool_preview::LINE_WIDTH)
+                .with_dashes(tool_preview::LINE_DASH_OFFSET, tool_preview::LINE_DASH);
             scene.stroke(
                 &stroke,
                 Affine::IDENTITY,
@@ -217,20 +208,8 @@ impl Tool for KnifeTool {
                     kurbo::Point::new(screen_pt.x + mark_size, screen_pt.y - mark_size),
                 );
 
-                scene.stroke(
-                    &mark_stroke,
-                    Affine::IDENTITY,
-                    green,
-                    None,
-                    &x1,
-                );
-                scene.stroke(
-                    &mark_stroke,
-                    Affine::IDENTITY,
-                    green,
-                    None,
-                    &x2,
-                );
+                scene.stroke(&mark_stroke, Affine::IDENTITY, green, None, &x1);
+                scene.stroke(&mark_stroke, Affine::IDENTITY, green, None, &x2);
             }
         }
     }
@@ -258,12 +237,7 @@ impl MouseDelegate for KnifeTool {
         self.shift_locked = event.mods.shift;
     }
 
-    fn left_drag_began(
-        &mut self,
-        event: MouseEvent,
-        drag: Drag,
-        data: &mut EditSession,
-    ) {
+    fn left_drag_began(&mut self, event: MouseEvent, drag: Drag, data: &mut EditSession) {
         let start = data.viewport.screen_to_design(drag.start);
         let current = data.viewport.screen_to_design(drag.current);
         self.gesture = GestureState::Begun { start, current };
@@ -271,24 +245,14 @@ impl MouseDelegate for KnifeTool {
         self.update_intersections(data);
     }
 
-    fn left_drag_changed(
-        &mut self,
-        _event: MouseEvent,
-        drag: Drag,
-        data: &mut EditSession,
-    ) {
+    fn left_drag_changed(&mut self, _event: MouseEvent, drag: Drag, data: &mut EditSession) {
         if let GestureState::Begun { current, .. } = &mut self.gesture {
             *current = data.viewport.screen_to_design(drag.current);
             self.update_intersections(data);
         }
     }
 
-    fn left_drag_ended(
-        &mut self,
-        _event: MouseEvent,
-        drag: Drag,
-        data: &mut EditSession,
-    ) {
+    fn left_drag_ended(&mut self, _event: MouseEvent, drag: Drag, data: &mut EditSession) {
         if let GestureState::Begun { current, .. } = &mut self.gesture {
             let now = data.viewport.screen_to_design(drag.current);
             if now != *current {
@@ -298,12 +262,13 @@ impl MouseDelegate for KnifeTool {
         }
 
         if let Some(line) = self.current_line()
-            && !self.intersections.is_empty() {
-                let new_paths = slice_paths(&data.paths, line);
-                let paths_vec = Arc::make_mut(&mut data.paths);
-                paths_vec.clear();
-                paths_vec.extend(new_paths);
-            }
+            && !self.intersections.is_empty()
+        {
+            let new_paths = slice_paths(&data.paths, line);
+            let paths_vec = Arc::make_mut(&mut data.paths);
+            paths_vec.clear();
+            paths_vec.extend(new_paths);
+        }
 
         self.gesture = GestureState::Finished;
     }
@@ -439,11 +404,7 @@ fn order_points(path: &CubicPath, start: Hit, end: Hit) -> (Hit, Hit) {
 /// Split a path at two intersection points
 ///
 /// Returns two new closed paths.
-fn split_path_at_intersections(
-    path: &CubicPath,
-    start: Hit,
-    end: Hit,
-) -> (CubicPath, CubicPath) {
+fn split_path_at_intersections(path: &CubicPath, start: Hit, end: Hit) -> (CubicPath, CubicPath) {
     let mut one_points: Vec<PathPoint> = Vec::new();
     let mut two_points: Vec<PathPoint> = Vec::new();
     let mut two_is_done = false;
@@ -461,43 +422,19 @@ fn split_path_at_intersections(
             let cut_t = start.segment_t;
 
             // Add points up to the cut
-            append_subsegment_points(
-                &mut one_points,
-                &points,
-                seg_info,
-                0.0,
-                cut_t,
-            );
+            append_subsegment_points(&mut one_points, &points, seg_info, 0.0, cut_t);
 
             // Check if both cuts are in the same segment
             if seg_info.start_index == end.segment_info.start_index {
                 // Add the part after the second cut to path one
-                append_subsegment_points(
-                    &mut one_points,
-                    &points,
-                    seg_info,
-                    end.segment_t,
-                    1.0,
-                );
+                append_subsegment_points(&mut one_points, &points, seg_info, end.segment_t, 1.0);
 
                 // Add the part between cuts to path two
-                append_subsegment_points(
-                    &mut two_points,
-                    &points,
-                    seg_info,
-                    cut_t,
-                    end.segment_t,
-                );
+                append_subsegment_points(&mut two_points, &points, seg_info, cut_t, end.segment_t);
                 two_is_done = true;
             } else {
                 // Add the part after the first cut to path two
-                append_subsegment_points(
-                    &mut two_points,
-                    &points,
-                    seg_info,
-                    cut_t,
-                    1.0,
-                );
+                append_subsegment_points(&mut two_points, &points, seg_info, cut_t, 1.0);
             }
 
             // Add closing line point for path two
@@ -528,23 +465,11 @@ fn split_path_at_intersections(
             let cut_t = end.segment_t;
 
             // Add the part after the cut to path one
-            append_subsegment_points(
-                &mut one_points,
-                &points,
-                seg_info,
-                cut_t,
-                1.0,
-            );
+            append_subsegment_points(&mut one_points, &points, seg_info, cut_t, 1.0);
 
             // Add the part before the cut to path two
             if !two_is_done {
-                append_subsegment_points(
-                    &mut two_points,
-                    &points,
-                    seg_info,
-                    0.0,
-                    cut_t,
-                );
+                append_subsegment_points(&mut two_points, &points, seg_info, 0.0, cut_t);
             }
             break;
         } else if !two_is_done {
@@ -598,11 +523,7 @@ fn split_path_at_intersections(
 /// is an attempted fix that does not fully resolve the issue. When cutting
 /// closed cubic paths, this can corrupt off-curve points in unrelated parts
 /// of the outline.
-fn append_segment_points(
-    dest: &mut Vec<PathPoint>,
-    points: &[PathPoint],
-    seg_info: &SegmentInfo,
-) {
+fn append_segment_points(dest: &mut Vec<PathPoint>, points: &[PathPoint], seg_info: &SegmentInfo) {
     let start = seg_info.start_index;
     let end = seg_info.end_index;
 
@@ -620,9 +541,7 @@ fn append_segment_points(
     if start == end && matches!(seg_info.segment, Segment::Cubic(_)) {
         // Wraparound case: extract control points from geometry
         if let Segment::Cubic(cubic) = &seg_info.segment {
-            tracing::debug!(
-                "  Wraparound cubic detected - extracting all points from geometry"
-            );
+            tracing::debug!("  Wraparound cubic detected - extracting all points from geometry");
 
             // Add start point if not duplicate
             if dest.last().map(|p| p.point) != Some(cubic.p0) {
@@ -658,9 +577,7 @@ fn append_segment_points(
             });
 
             // Don't add closing point - it's the same as start and will be added by next segment
-            tracing::debug!(
-                "  Wraparound complete - NOT adding closing point (same as start)"
-            );
+            tracing::debug!("  Wraparound complete - NOT adding closing point (same as start)");
             return; // Early return
         }
     }

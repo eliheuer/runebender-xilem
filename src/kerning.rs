@@ -112,16 +112,17 @@ fn lookup_glyph_to_group(
     if let Some(group_name) = second_group_hint {
         // Verify the glyph is actually in this group
         if let Some(group_members) = groups.get(group_name)
-            && group_members.contains(&second_glyph.to_string()) {
-                let value = if reverse {
-                    lookup_pair(kerning_pairs, group_name, first_glyph)
-                } else {
-                    lookup_pair(kerning_pairs, first_glyph, group_name)
-                };
-                if value.is_some() {
-                    return value;
-                }
+            && group_members.contains(&second_glyph.to_string())
+        {
+            let value = if reverse {
+                lookup_pair(kerning_pairs, group_name, first_glyph)
+            } else {
+                lookup_pair(kerning_pairs, first_glyph, group_name)
+            };
+            if value.is_some() {
+                return value;
             }
+        }
     }
 
     // Search all groups for the second glyph
@@ -154,11 +155,13 @@ fn lookup_group_to_group(
     let mut left_groups = Vec::new();
     if let Some(hint) = left_group_hint
         && let Some(members) = groups.get(hint)
-            && members.contains(&left_glyph.to_string()) {
-                left_groups.push(hint);
-            }
+        && members.contains(&left_glyph.to_string())
+    {
+        left_groups.push(hint);
+    }
     for (group_name, members) in groups {
-        if members.contains(&left_glyph.to_string()) && !left_groups.contains(&group_name.as_str()) {
+        if members.contains(&left_glyph.to_string()) && !left_groups.contains(&group_name.as_str())
+        {
             left_groups.push(group_name.as_str());
         }
     }
@@ -167,11 +170,14 @@ fn lookup_group_to_group(
     let mut right_groups = Vec::new();
     if let Some(hint) = right_group_hint
         && let Some(members) = groups.get(hint)
-            && members.contains(&right_glyph.to_string()) {
-                right_groups.push(hint);
-            }
+        && members.contains(&right_glyph.to_string())
+    {
+        right_groups.push(hint);
+    }
     for (group_name, members) in groups {
-        if members.contains(&right_glyph.to_string()) && !right_groups.contains(&group_name.as_str()) {
+        if members.contains(&right_glyph.to_string())
+            && !right_groups.contains(&group_name.as_str())
+        {
             right_groups.push(group_name.as_str());
         }
     }
@@ -202,8 +208,8 @@ mod tests {
 
         // Group pairs (public.kern1.round can have multiple second members)
         let mut round_left_pairs = HashMap::new();
-        round_left_pairs.insert("A".to_string(), -40.0);  // Group + glyph
-        round_left_pairs.insert("public.kern2.round".to_string(), -20.0);  // Group + group
+        round_left_pairs.insert("A".to_string(), -40.0); // Group + glyph
+        round_left_pairs.insert("public.kern2.round".to_string(), -20.0); // Group + group
         kerning.insert("public.kern1.round".to_string(), round_left_pairs);
 
         // Glyph + group pairs
@@ -243,7 +249,14 @@ mod tests {
         let groups = make_groups();
 
         // T + o (where o is in public.kern2.round group)
-        let result = lookup_kerning(&kerning, &groups, "T", None, "o", Some("public.kern2.round"));
+        let result = lookup_kerning(
+            &kerning,
+            &groups,
+            "T",
+            None,
+            "o",
+            Some("public.kern2.round"),
+        );
         assert_eq!(result, -30.0);
     }
 
@@ -253,7 +266,14 @@ mod tests {
         let groups = make_groups();
 
         // O + A (where O is in public.kern1.round group)
-        let result = lookup_kerning(&kerning, &groups, "O", Some("public.kern1.round"), "A", None);
+        let result = lookup_kerning(
+            &kerning,
+            &groups,
+            "O",
+            Some("public.kern1.round"),
+            "A",
+            None,
+        );
         assert_eq!(result, -40.0);
     }
 
@@ -291,7 +311,10 @@ mod tests {
 
         // Add a glyph-to-glyph pair that should override group kerning
         kerning.insert("O".to_string(), HashMap::new());
-        kerning.get_mut("O").unwrap().insert("o".to_string(), -100.0);
+        kerning
+            .get_mut("O")
+            .unwrap()
+            .insert("o".to_string(), -100.0);
 
         // O + o should use the glyph-to-glyph pair (-100) instead of group-to-group (-20)
         let result = lookup_kerning(

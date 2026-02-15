@@ -3,9 +3,7 @@
 
 //! Path segments (lines and curves) for hit-testing and subdivision
 
-use kurbo::{
-    CubicBez, Line, ParamCurve, ParamCurveNearest, Point, QuadBez,
-};
+use kurbo::{CubicBez, Line, ParamCurve, ParamCurveNearest, Point, QuadBez};
 
 /// A segment of a path (line, quadratic, or cubic bezier curve)
 #[derive(Debug, Clone, Copy)]
@@ -124,10 +122,7 @@ impl Segment {
     /// insert that point without changing the curve's shape. The de
     /// Casteljau algorithm gives us the exact control points needed
     /// to maintain the curve perfectly.
-    pub fn subdivide_cubic(
-        cubic: CubicBez,
-        t: f64,
-    ) -> (CubicBez, CubicBez) {
+    pub fn subdivide_cubic(cubic: CubicBez, t: f64) -> (CubicBez, CubicBez) {
         // Extract the original curve's control points
         // P0 is the start point, P3 is the end point
         // P1 and P2 are the off-curve control points
@@ -219,10 +214,7 @@ impl Segment {
     /// that point without changing the curve's shape. The de Casteljau
     /// algorithm gives us the exact control points needed to maintain
     /// the curve perfectly.
-    pub fn subdivide_quadratic(
-        quad: QuadBez,
-        t: f64,
-    ) -> (QuadBez, QuadBez) {
+    pub fn subdivide_quadratic(quad: QuadBez, t: f64) -> (QuadBez, QuadBez) {
         let p0 = quad.p0;
         let p1 = quad.p1;
         let p2 = quad.p2;

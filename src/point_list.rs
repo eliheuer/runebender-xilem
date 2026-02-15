@@ -56,14 +56,8 @@ impl PathPoints {
     ///
     /// Returns the index and a reference to the point if found.
     #[allow(dead_code)]
-    pub fn find_by_id(
-        &self,
-        id: EntityId,
-    ) -> Option<(usize, &PathPoint)> {
-        self.points
-            .iter()
-            .enumerate()
-            .find(|(_, pt)| pt.id == id)
+    pub fn find_by_id(&self, id: EntityId) -> Option<(usize, &PathPoint)> {
+        self.points.iter().enumerate().find(|(_, pt)| pt.id == id)
     }
 
     /// Get mutable access to the points

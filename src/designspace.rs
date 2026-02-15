@@ -172,9 +172,9 @@ impl DesignspaceProject {
 
         // No exact match - find master closest to weight 400
         // Look for weight axis (could be named "Weight" or have tag "wght")
-        let weight_axis = axes.iter().find(|a| {
-            a.tag.eq_ignore_ascii_case("wght") || a.name.eq_ignore_ascii_case("weight")
-        });
+        let weight_axis = axes
+            .iter()
+            .find(|a| a.tag.eq_ignore_ascii_case("wght") || a.name.eq_ignore_ascii_case("weight"));
 
         if let Some(weight_axis) = weight_axis {
             let target_weight = 400.0;
@@ -204,7 +204,10 @@ impl DesignspaceProject {
     }
 
     /// Check if a master's location matches the target location
-    fn location_matches(master_loc: &HashMap<String, f64>, target_loc: &HashMap<String, f64>) -> bool {
+    fn location_matches(
+        master_loc: &HashMap<String, f64>,
+        target_loc: &HashMap<String, f64>,
+    ) -> bool {
         // Check that all target axes are matched (with small epsilon for float comparison)
         for (axis_name, &target_value) in target_loc {
             match master_loc.get(axis_name) {
@@ -268,13 +271,13 @@ impl DesignspaceProject {
         let location = Self::parse_location(source);
 
         // Get names
-        let name = source
-            .name
-            .clone()
-            .unwrap_or_else(|| ufo_path.file_stem()
+        let name = source.name.clone().unwrap_or_else(|| {
+            ufo_path
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("Unknown")
-                .to_string());
+                .to_string()
+        });
 
         let style_name = source
             .stylename
@@ -399,16 +402,20 @@ impl DesignspaceProject {
         for master in &mut self.masters {
             if master.modified {
                 tracing::info!("Saving modified master: {}", master.name);
-                let workspace = master.workspace.read()
+                let workspace = master
+                    .workspace
+                    .read()
                     .map_err(|e| anyhow::anyhow!("Failed to lock workspace: {}", e))?;
-                workspace.save()
-                    .with_context(|| format!("Failed to save UFO: {}", master.ufo_path.display()))?;
+                workspace.save().with_context(|| {
+                    format!("Failed to save UFO: {}", master.ufo_path.display())
+                })?;
                 master.modified = false;
             }
         }
 
         // Save the designspace document (preserves structure)
-        self.designspace_doc.save(&self.path)
+        self.designspace_doc
+            .save(&self.path)
             .with_context(|| format!("Failed to save designspace: {}", self.path.display()))?;
 
         tracing::info!("Designspace saved successfully");
