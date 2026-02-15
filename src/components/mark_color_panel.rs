@@ -40,15 +40,15 @@ const HEADER_GAP: f64 = 8.0;
 /// Font size for the header label
 const HEADER_FONT_SIZE: f64 = 16.0;
 /// Swatch diameter
-const SWATCH_SIZE: f64 = 24.0;
+const SWATCH_SIZE: f64 = 22.0;
 /// Gap between swatches
 const SWATCH_GAP: f64 = 4.0;
 /// Number of columns in the swatch grid
-const SWATCH_COLS: usize = 7;
+const SWATCH_COLS: usize = 8;
 /// Horizontal inset for the swatch grid
-const SWATCH_INSET: f64 = 10.0;
+const SWATCH_INSET: f64 = 8.0;
 /// Total panel height
-const PANEL_HEIGHT: f64 = 100.0;
+const PANEL_HEIGHT: f64 = 66.0;
 
 // ============================================================
 // Action
@@ -98,12 +98,12 @@ impl MarkColorPanelWidget {
         (cx, cy)
     }
 
-    /// Hit-test: which swatch index (0–11 for colors, 12 for
+    /// Hit-test: which swatch index (0–6 for colors, 7 for
     /// clear) is at the given position? Returns None if no hit.
     fn swatch_at_pos(&self, x: f64, y: f64) -> Option<usize> {
         let radius = SWATCH_SIZE / 2.0;
-        // 13 color swatches + 1 clear = 14 total
-        for i in 0..14 {
+        // 7 color swatches + 1 clear = 8 total
+        for i in 0..8 {
             let (col, row) = self.swatch_grid_pos(i);
             let (cx, cy) = self.swatch_center(col, row);
             let dx = x - cx;
@@ -116,7 +116,7 @@ impl MarkColorPanelWidget {
     }
 
     /// Map a linear swatch index to (col, row) in the grid.
-    /// Index 0–12 = color swatches, index 13 = clear swatch.
+    /// Index 0–6 = color swatches, index 7 = clear swatch.
     fn swatch_grid_pos(
         &self,
         index: usize,
@@ -258,8 +258,8 @@ impl Widget for MarkColorPanelWidget {
             }
         }
 
-        // --- Clear swatch (index 13) ---
-        let (col, row) = self.swatch_grid_pos(13);
+        // --- Clear swatch (index 7) ---
+        let (col, row) = self.swatch_grid_pos(7);
         let (cx, cy) = self.swatch_center(col, row);
         let circle = Circle::new((cx, cy), radius);
 
@@ -298,7 +298,7 @@ impl Widget for MarkColorPanelWidget {
         );
 
         // Hover ring for clear swatch
-        if self.hover_index == Some(13) {
+        if self.hover_index == Some(7) {
             scene.stroke(
                 &kurbo::Stroke::new(1.5),
                 Affine::IDENTITY,

@@ -140,10 +140,17 @@ fn file_info_panel(
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "No file loaded".to_string());
 
-    let save_display = state
-        .last_saved_display()
-        .map(|s| format!("Saved {}", s))
-        .unwrap_or_else(|| "Not saved".to_string());
+    let (save_display, save_color) = match state.last_saved_display()
+    {
+        Some(s) => (
+            format!("Saved {}", s),
+            theme::grid::CELL_SELECTED_OUTLINE,
+        ),
+        None => (
+            "Not saved".to_string(),
+            theme::mark::COLORS[2], // Yellow
+        ),
+    };
 
     sized_box(
         flex_col((
@@ -152,7 +159,7 @@ fn file_info_panel(
                 .color(theme::grid::CELL_TEXT),
             label(save_display)
                 .text_size(16.0)
-                .color(theme::grid::CELL_TEXT),
+                .color(save_color),
         ))
         .gap(2.px())
         .cross_axis_alignment(CrossAxisAlignment::Start),

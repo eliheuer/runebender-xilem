@@ -144,8 +144,7 @@ const MARK_YELLOW: Color = Color::from_rgb8(0xFF, 0xDD, 0x33);
 const MARK_LIGHT_GREEN: Color = Color::from_rgb8(0x88, 0xDD, 0x44);
 const MARK_GREEN: Color = Color::from_rgb8(0x44, 0xBB, 0x44);
 const MARK_TEAL: Color = Color::from_rgb8(0x44, 0xBB, 0xAA);
-const MARK_LIGHT_BLUE: Color = Color::from_rgb8(0x44, 0x99, 0xDD);
-const MARK_BLUE: Color = Color::from_rgb8(0x44, 0x66, 0xEE);
+const MARK_BLUE: Color = Color::from_rgb8(0x1E, 0x50, 0xC8);
 const MARK_PURPLE: Color = Color::from_rgb8(0x99, 0x55, 0xDD);
 const MARK_PINK: Color = Color::from_rgb8(0xDD, 0x55, 0xAA);
 const MARK_BROWN: Color = Color::from_rgb8(0xAA, 0x77, 0x44);
@@ -334,43 +333,31 @@ pub mod selection {
 pub mod mark {
     use super::Color;
 
-    /// 13 preset mark colors (matching Glyphs.app palette + light gray)
-    pub const COLORS: [Color; 13] = [
+    /// 7 preset mark colors
+    pub const COLORS: [Color; 7] = [
         super::MARK_RED,
         super::MARK_ORANGE,
         super::MARK_YELLOW,
-        super::MARK_LIGHT_GREEN,
         super::MARK_GREEN,
-        super::MARK_TEAL,
-        super::MARK_LIGHT_BLUE,
         super::MARK_BLUE,
         super::MARK_PURPLE,
         super::MARK_PINK,
-        super::MARK_BROWN,
-        super::MARK_GRAY,
-        super::MARK_LIGHT_GRAY,
     ];
 
     /// RGBA strings for UFO storage (matching COLORS array order)
     /// Format: "R,G,B,A" with 0–1 floats
-    pub const RGBA_STRINGS: [&str; 13] = [
+    pub const RGBA_STRINGS: [&str; 7] = [
         "1,0.251,0.251,1",
         "1,0.6,0.2,1",
         "1,0.867,0.2,1",
-        "0.533,0.867,0.267,1",
         "0.267,0.733,0.267,1",
-        "0.267,0.733,0.667,1",
-        "0.267,0.6,0.867,1",
-        "0.267,0.4,0.933,1",
+        "0.118,0.314,0.784,1",
         "0.6,0.333,0.867,1",
         "0.867,0.333,0.667,1",
-        "0.667,0.467,0.267,1",
-        "0.533,0.533,0.533,1",
-        "0.733,0.733,0.733,1",
     ];
 
     /// Number of colors in the palette
-    pub const COUNT: usize = 13;
+    pub const COUNT: usize = 7;
 }
 
 /// Tool preview styles (for consistent visual feedback across tools)
