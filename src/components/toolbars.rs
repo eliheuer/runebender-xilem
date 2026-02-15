@@ -115,11 +115,16 @@ pub fn paint_button(
     };
     fill_color(scene, &button_rrect, bg_color);
 
-    // Draw outline around button
+    // Draw outline — green when selected or hovered
+    let outline_color = if state.is_selected || state.is_hovered {
+        crate::theme::grid::CELL_SELECTED_OUTLINE
+    } else {
+        BUTTON_OUTLINE
+    };
     stroke(
         scene,
         &button_rrect,
-        BUTTON_OUTLINE,
+        outline_color,
         TOOLBAR_BORDER_WIDTH,
     );
 }

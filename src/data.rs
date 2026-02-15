@@ -254,7 +254,7 @@ impl AppState {
     /// Calculate number of grid columns based on window width
     /// Ensures cells are never narrower than their height (100px)
     pub fn grid_columns(&self) -> usize {
-        const CELL_HEIGHT: f64 = 100.0;
+        const CELL_HEIGHT: f64 = 120.0;
         const GAP: f64 = 6.0;
         const MARGIN: f64 = 3.0 * 2.0; // Internal portal padding
 
@@ -274,8 +274,8 @@ impl AppState {
 
     /// How many grid rows fit in the visible area
     pub fn visible_grid_rows(&self) -> usize {
-        // Row height = cell (100) + gap (6) = 106
-        const ROW_HEIGHT: f64 = 106.0;
+        // Row height = cell (120) + gap (6) = 126
+        const ROW_HEIGHT: f64 = 126.0;
         // Toolbar row ~70, outer gaps top/bottom ~12, grid padding ~6
         const CHROME_HEIGHT: f64 = 88.0;
         let available = (self.window_height - CHROME_HEIGHT).max(0.0);

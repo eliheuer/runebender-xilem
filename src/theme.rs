@@ -55,17 +55,17 @@ const PANEL_LINE: Color = BASE_I;
 // TOOLBAR BUTTONS AND ICONS (Edit Mode, Shapes, Workspace)
 // ============================================================================
 // Button backgrounds (the filled rectangle behind each icon)
-const TOOLBAR_BUTTON_UNSELECTED: Color = BASE_E;
-const TOOLBAR_BUTTON_HOVERED: Color = BASE_H;
-const TOOLBAR_BUTTON_SELECTED: Color = BASE_I;
+const TOOLBAR_BUTTON_UNSELECTED: Color = PANEL_BACKGROUND;
+const TOOLBAR_BUTTON_HOVERED: Color = PANEL_BACKGROUND;
+const TOOLBAR_BUTTON_SELECTED: Color = PANEL_BACKGROUND;
 
 // Button outlines (the border around each button)
-const TOOLBAR_BUTTON_OUTLINE: Color = BASE_A;
+const TOOLBAR_BUTTON_OUTLINE: Color = BASE_F;
 
 // Icon colors (the SVG path stroke/fill inside each button)
-const TOOLBAR_ICON_UNSELECTED: Color = BASE_I;
-const TOOLBAR_ICON_HOVERED: Color = BASE_K;
-const TOOLBAR_ICON_SELECTED: Color = BASE_B;
+const TOOLBAR_ICON_UNSELECTED: Color = BASE_F;
+const TOOLBAR_ICON_HOVERED: Color = GRID_CELL_SELECTED_OUTLINE;
+const TOOLBAR_ICON_SELECTED: Color = GRID_CELL_SELECTED_OUTLINE;
 
 // ============================================================================
 // GLYPH GRID VIEW
