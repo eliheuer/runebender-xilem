@@ -6,7 +6,7 @@
 //! This toolbar provides buttons for common file operations like save.
 //! It appears in both the glyph grid view and editor view.
 
-use kurbo::{BezPath, Point, Size};
+use kurbo::{Affine, BezPath, Point, Shape, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
     AccessCtx, BoxConstraints, EventCtx, LayoutCtx, PaintCtx,
@@ -18,7 +18,7 @@ use std::time::Instant;
 
 // Import shared toolbar functionality
 use crate::components::toolbars::{
-    button_rect, calculate_toolbar_size, paint_button, paint_icon,
+    button_rect, calculate_toolbar_size, paint_button,
     paint_panel, ButtonState,
 };
 
@@ -184,7 +184,38 @@ impl SystemToolbarWidget {
 
         paint_button(scene, rect, state);
         let icon = Self::icon_for_button(SystemToolbarButton::Save);
-        paint_icon(scene, icon, rect, state);
+        // Paint icon with less padding than default for
+        // a larger icon in this single-button toolbar
+        let icon_padding = 6.0;
+        let icon_bounds = icon.bounding_box();
+        let icon_center = icon_bounds.center();
+        let button_center = rect.center();
+        let icon_size =
+            icon_bounds.width().max(icon_bounds.height());
+        let target =
+            crate::theme::size::TOOLBAR_ITEM_SIZE
+                - icon_padding * 2.0;
+        let scale = target / icon_size;
+        let transform = Affine::translate((
+            button_center.x,
+            button_center.y,
+        )) * Affine::scale(scale)
+            * Affine::translate((
+                -icon_center.x,
+                -icon_center.y,
+            ));
+        let icon_color = if state.is_selected {
+            crate::theme::toolbar::ICON_SELECTED
+        } else if state.is_hovered {
+            crate::theme::toolbar::ICON_HOVERED
+        } else {
+            crate::theme::toolbar::ICON_UNSELECTED
+        };
+        masonry::util::fill_color(
+            scene,
+            &(transform * icon),
+            icon_color,
+        );
     }
 }
 

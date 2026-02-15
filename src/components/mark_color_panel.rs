@@ -205,7 +205,7 @@ impl Widget for MarkColorPanelWidget {
         let mut layout = builder.build(header_text);
         layout.break_all_lines(None);
 
-        let header_color: Color = theme::grid::CELL_OUTLINE;
+        let header_color: Color = theme::grid::CELL_TEXT;
         let header_brushes = vec![Brush::Solid(header_color)];
         render_text(
             scene,

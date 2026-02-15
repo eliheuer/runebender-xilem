@@ -139,14 +139,14 @@ fn no_selection_content() -> impl WidgetView<AppState> + use<> {
 fn info_row_header(text: &str) -> impl WidgetView<AppState> + use<> {
     label(text.to_string())
         .text_size(16.0)
-        .color(theme::grid::CELL_OUTLINE)
+        .color(theme::grid::CELL_SELECTED_OUTLINE)
 }
 
 /// Value row
 fn info_row_value(value: &str) -> impl WidgetView<AppState> + use<> {
     label(value.to_string())
         .text_size(16.0)
-        .color(theme::grid::CELL_OUTLINE)
+        .color(theme::grid::CELL_TEXT)
 }
 
 /// Row with label and value side by side
@@ -158,12 +158,12 @@ fn info_row_label_value(
         sized_box(
             label(label_text.to_string())
                 .text_size(16.0)
-                .color(theme::grid::CELL_OUTLINE)
+                .color(theme::grid::CELL_TEXT)
         )
         .width(50.px()),
         label(value_text.to_string())
             .text_size(16.0)
-            .color(theme::grid::CELL_OUTLINE),
+            .color(theme::grid::CELL_TEXT),
     ))
     .gap(8.px())
 }
