@@ -78,7 +78,7 @@ const GRID_CELL_SELECTED_OUTLINE: Color = Color::from_rgb8(0x90, 0xee, 0x90);
 
 // Glyph rendering in grid
 const GRID_GLYPH_COLOR: Color = BASE_J;
-const GRID_CELL_TEXT: Color = BASE_L;
+const GRID_CELL_TEXT: Color = BASE_H;
 
 // ============================================================================
 // PATHS AND OUTLINES
@@ -272,7 +272,6 @@ pub mod grid {
     pub const CELL_SELECTED_BACKGROUND: Color =
         super::GRID_CELL_SELECTED_BACKGROUND;
     pub const CELL_SELECTED_OUTLINE: Color = super::GRID_CELL_SELECTED_OUTLINE;
-    #[allow(dead_code)]
     pub const CELL_TEXT: Color = super::GRID_CELL_TEXT;
     pub const GLYPH_COLOR: Color = super::GRID_GLYPH_COLOR;
 

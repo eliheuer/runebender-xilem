@@ -270,7 +270,7 @@ impl Widget for CategoryListWidget {
         let mut layout = builder.build(header_text);
         layout.break_all_lines(None);
 
-        let header_color: Color = theme::grid::CELL_OUTLINE;
+        let header_color: Color = theme::grid::CELL_TEXT;
         let header_brushes = vec![Brush::Solid(header_color)];
         render_text(
             scene,
@@ -314,9 +314,9 @@ impl Widget for CategoryListWidget {
             let text_color = if is_selected {
                 theme::grid::CELL_SELECTED_OUTLINE
             } else if is_hovered {
-                theme::grid::CELL_OUTLINE
+                theme::grid::CELL_TEXT
             } else {
-                theme::grid::CELL_OUTLINE
+                theme::grid::CELL_TEXT
             };
 
             // Render label

@@ -149,10 +149,10 @@ fn file_info_panel(
         flex_col((
             label(path_display)
                 .text_size(16.0)
-                .color(theme::grid::CELL_OUTLINE),
+                .color(theme::grid::CELL_TEXT),
             label(save_display)
                 .text_size(16.0)
-                .color(theme::grid::CELL_OUTLINE),
+                .color(theme::grid::CELL_TEXT),
         ))
         .gap(2.px())
         .cross_axis_alignment(CrossAxisAlignment::Start),
@@ -607,7 +607,7 @@ impl GlyphCellWidget {
         let text_color = if self.is_selected || is_hovered {
             theme::grid::CELL_SELECTED_OUTLINE
         } else {
-            self.mark().unwrap_or(theme::grid::CELL_OUTLINE)
+            self.mark().unwrap_or(theme::grid::CELL_TEXT)
         };
 
         let display_name = format_display_name(&self.glyph_name);
