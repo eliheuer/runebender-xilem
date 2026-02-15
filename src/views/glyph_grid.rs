@@ -137,7 +137,7 @@ fn file_info_panel(
 ) -> impl WidgetView<AppState> + use<> {
     let path_display = state
         .loaded_file_path()
-        .map(|p| shorten_path(&p, 3))
+        .map(|p| p.display().to_string())
         .unwrap_or_else(|| "No file loaded".to_string());
 
     let save_display = state
@@ -148,11 +148,11 @@ fn file_info_panel(
     sized_box(
         flex_col((
             label(path_display)
-                .text_size(14.0)
-                .color(theme::text::PRIMARY),
+                .text_size(16.0)
+                .color(theme::grid::CELL_OUTLINE),
             label(save_display)
-                .text_size(14.0)
-                .color(theme::text::SECONDARY),
+                .text_size(16.0)
+                .color(theme::grid::CELL_OUTLINE),
         ))
         .gap(2.px())
         .cross_axis_alignment(CrossAxisAlignment::Start),
@@ -476,7 +476,7 @@ enum GlyphCellAction {
 // ============================================================
 
 /// Font size for cell labels
-const CELL_LABEL_SIZE: f64 = 12.0;
+const CELL_LABEL_SIZE: f64 = 16.0;
 
 thread_local! {
     static FONT_CX: std::cell::RefCell<FontContext> =
@@ -486,11 +486,9 @@ thread_local! {
     > = std::cell::RefCell::new(LayoutContext::new());
 }
 /// Height reserved for the label area at the bottom of the cell
-const CELL_LABEL_HEIGHT: f64 = 32.0;
-/// Padding above the glyph preview area
-const CELL_TOP_PAD: f64 = 4.0;
-/// Horizontal text inset
-const CELL_TEXT_INSET: f64 = 6.0;
+const CELL_LABEL_HEIGHT: f64 = 44.0;
+/// Padding around the glyph preview and labels
+const CELL_PAD: f64 = 8.0;
 
 /// Custom widget that renders a glyph cell and handles
 /// click, double-click, and shift-click events.
@@ -531,7 +529,7 @@ impl GlyphCellWidget {
     fn cell_colors(&self, is_hovered: bool) -> (Color, Color) {
         if self.is_selected {
             (
-                theme::grid::CELL_SELECTED_BACKGROUND,
+                theme::grid::CELL_BACKGROUND,
                 theme::grid::CELL_SELECTED_OUTLINE,
             )
         } else if is_hovered {
@@ -585,9 +583,11 @@ impl GlyphCellWidget {
         ]);
 
         let transformed_path = transform * path;
-        let color = self
-            .mark()
-            .unwrap_or(theme::grid::GLYPH_COLOR);
+        let color = if self.is_selected {
+            theme::grid::CELL_SELECTED_OUTLINE
+        } else {
+            self.mark().unwrap_or(theme::grid::CELL_OUTLINE)
+        };
         scene.fill(
             Fill::NonZero,
             Affine::IDENTITY,
@@ -602,9 +602,13 @@ impl GlyphCellWidget {
         &self,
         scene: &mut Scene,
         label_rect: Rect,
+        is_hovered: bool,
     ) {
-        let text_color =
-            self.mark().unwrap_or(theme::text::PRIMARY);
+        let text_color = if self.is_selected || is_hovered {
+            theme::grid::CELL_SELECTED_OUTLINE
+        } else {
+            self.mark().unwrap_or(theme::grid::CELL_OUTLINE)
+        };
 
         let display_name = format_display_name(&self.glyph_name);
         let unicode_display =
@@ -644,7 +648,7 @@ impl GlyphCellWidget {
                 render_text(
                     scene,
                     Affine::translate((
-                        label_rect.x0 + CELL_TEXT_INSET,
+                        label_rect.x0,
                         name_y,
                     )),
                     &name_layout,
@@ -686,7 +690,7 @@ impl GlyphCellWidget {
                     render_text(
                         scene,
                         Affine::translate((
-                            label_rect.x0 + CELL_TEXT_INSET,
+                            label_rect.x0,
                             uni_y,
                         )),
                         &uni_layout,
@@ -761,25 +765,25 @@ impl Widget for GlyphCellWidget {
             &panel_rect,
         );
 
-        // Glyph preview area (above labels)
+        // Glyph preview area (above labels, inset by padding)
         let preview_height =
             (size.height - CELL_LABEL_HEIGHT).max(0.0);
         let preview_rect = Rect::new(
-            0.0,
-            CELL_TOP_PAD,
-            size.width,
-            CELL_TOP_PAD + preview_height - CELL_TOP_PAD,
+            CELL_PAD,
+            CELL_PAD,
+            size.width - CELL_PAD,
+            preview_height,
         );
         self.paint_glyph(scene, preview_rect);
 
-        // Label area (bottom of cell)
+        // Label area (bottom of cell, inset by padding)
         let label_rect = Rect::new(
-            0.0,
+            CELL_PAD,
             preview_height,
-            size.width,
-            size.height,
+            size.width - CELL_PAD,
+            size.height - CELL_PAD,
         );
-        self.paint_labels(scene, label_rect);
+        self.paint_labels(scene, label_rect, ctx.is_hovered());
     }
 
     fn accessibility_role(&self) -> Role {
@@ -1008,18 +1012,3 @@ fn format_unicode_display(codepoints: &[char]) -> String {
 // Path Helpers
 // ============================================================
 
-/// Shorten a path to show only the last N components with ".." prefix
-fn shorten_path(
-    path: &std::path::Path,
-    components: usize,
-) -> String {
-    let parts: Vec<_> = path.components().collect();
-    if parts.len() <= components {
-        return path.display().to_string();
-    }
-
-    let start = parts.len() - components;
-    let shortened: std::path::PathBuf =
-        parts[start..].iter().collect();
-    format!("../{}", shortened.display())
-}

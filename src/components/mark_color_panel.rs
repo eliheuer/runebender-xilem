@@ -38,7 +38,7 @@ const HEADER_TOP: f64 = 10.0;
 /// Gap between header and first swatch row
 const HEADER_GAP: f64 = 8.0;
 /// Font size for the header label
-const HEADER_FONT_SIZE: f64 = 12.0;
+const HEADER_FONT_SIZE: f64 = 16.0;
 /// Swatch diameter
 const SWATCH_SIZE: f64 = 24.0;
 /// Gap between swatches
@@ -205,7 +205,7 @@ impl Widget for MarkColorPanelWidget {
         let mut layout = builder.build(header_text);
         layout.break_all_lines(None);
 
-        let header_color: Color = theme::text::SECONDARY;
+        let header_color: Color = theme::grid::CELL_OUTLINE;
         let header_brushes = vec![Brush::Solid(header_color)];
         render_text(
             scene,

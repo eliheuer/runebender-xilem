@@ -42,9 +42,9 @@ const ROW_HEIGHT: f64 = 24.0;
 /// Gap between header and first item
 const HEADER_GAP: f64 = 6.0;
 /// Font size for the header label
-const HEADER_FONT_SIZE: f64 = 12.0;
+const HEADER_FONT_SIZE: f64 = 16.0;
 /// Font size for category labels
-const ITEM_FONT_SIZE: f64 = 14.0;
+const ITEM_FONT_SIZE: f64 = 16.0;
 /// Corner radius on the selected-row highlight
 const HIGHLIGHT_RADIUS: f64 = 4.0;
 /// Horizontal inset for the highlight rect
@@ -270,7 +270,7 @@ impl Widget for CategoryListWidget {
         let mut layout = builder.build(header_text);
         layout.break_all_lines(None);
 
-        let header_color: Color = theme::text::SECONDARY;
+        let header_color: Color = theme::grid::CELL_OUTLINE;
         let header_brushes = vec![Brush::Solid(header_color)];
         render_text(
             scene,
@@ -288,7 +288,7 @@ impl Widget for CategoryListWidget {
             let is_selected = cat == self.selected;
             let is_hovered = self.hover_index == Some(i);
 
-            // Selected highlight
+            // Selected highlight (outline only)
             if is_selected {
                 let highlight = RoundedRect::from_rect(
                     Rect::new(
@@ -299,11 +299,11 @@ impl Widget for CategoryListWidget {
                     ),
                     HIGHLIGHT_RADIUS,
                 );
-                scene.fill(
-                    Fill::NonZero,
+                scene.stroke(
+                    &kurbo::Stroke::new(1.5),
                     Affine::IDENTITY,
                     &Brush::Solid(
-                        theme::grid::CELL_SELECTED_BACKGROUND,
+                        theme::grid::CELL_SELECTED_OUTLINE,
                     ),
                     None,
                     &highlight,
@@ -314,9 +314,9 @@ impl Widget for CategoryListWidget {
             let text_color = if is_selected {
                 theme::grid::CELL_SELECTED_OUTLINE
             } else if is_hovered {
-                theme::text::PRIMARY
+                theme::grid::CELL_OUTLINE
             } else {
-                theme::text::SECONDARY
+                theme::grid::CELL_OUTLINE
             };
 
             // Render label
