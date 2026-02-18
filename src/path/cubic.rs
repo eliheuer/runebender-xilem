@@ -3,10 +3,10 @@
 
 //! Cubic bezier path representation
 
-use crate::entity_id::EntityId;
+use crate::model::entity_id::EntityId;
 use super::point::{PathPoint, PointType};
 use super::point_list::PathPoints;
-use crate::workspace;
+use crate::model::workspace;
 use kurbo::{BezPath, Shape};
 
 /// A single contour represented as a cubic bezier path
@@ -124,7 +124,7 @@ impl CubicPath {
     /// Convert this cubic path to a workspace contour (for saving)
     pub fn to_contour(&self) -> workspace::Contour {
         use super::point::PointType;
-        use crate::workspace::{Contour, ContourPoint, PointType as WsPointType};
+        use crate::model::workspace::{Contour, ContourPoint, PointType as WsPointType};
 
         let mut contour_points: Vec<PathPoint> = self.points.to_vec();
 

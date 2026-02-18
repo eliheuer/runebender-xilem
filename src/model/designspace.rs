@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use crate::workspace::Workspace;
+use super::workspace::Workspace;
 
 // ============================================================================
 // DATA STRUCTURES

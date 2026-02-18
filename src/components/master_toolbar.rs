@@ -7,8 +7,8 @@
 //! to switch between font masters. Each button shows the "n" glyph rendered
 //! from that master.
 
-use crate::glyph_renderer::glyph_to_bezpath_with_components;
-use crate::workspace::Workspace;
+use crate::model::glyph_renderer::glyph_to_bezpath_with_components;
+use crate::model::workspace::Workspace;
 use kurbo::{Affine, BezPath, Point, Rect, Shape, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
@@ -231,7 +231,7 @@ pub fn generate_master_preview(workspace: &Workspace) -> Option<BezPath> {
 }
 
 /// Create MasterInfo list from a designspace project
-pub fn create_master_infos(masters: &[crate::designspace::Master]) -> Vec<MasterInfo> {
+pub fn create_master_infos(masters: &[crate::model::designspace::Master]) -> Vec<MasterInfo> {
     masters
         .iter()
         .enumerate()

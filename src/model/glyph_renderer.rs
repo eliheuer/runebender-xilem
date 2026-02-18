@@ -3,7 +3,7 @@
 
 //! Glyph rendering - converts glyph contours to Kurbo paths
 
-use crate::workspace::{Contour, ContourPoint, Glyph, PointType, Workspace};
+use super::workspace::{Contour, ContourPoint, Glyph, PointType, Workspace};
 use kurbo::{Affine, BezPath, Point, Shape};
 
 /// Convert a Norad Glyph to a Kurbo BezPath (contours only)
@@ -281,7 +281,7 @@ fn add_closing_curve(
 
 /// Append a hyperbezier contour to a BezPath using the spline solver
 fn append_hyperbezier_contour(path: &mut BezPath, contour: &Contour) {
-    use crate::entity_id::EntityId;
+    use super::entity_id::EntityId;
     use crate::path::HyperPath;
     use crate::path::{PathPoint, PointType as PathPointType};
     use crate::path::PathPoints;

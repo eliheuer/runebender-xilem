@@ -27,8 +27,8 @@ use xilem::{Pod, ViewCtx, WidgetView};
 
 use crate::data::AppState;
 use crate::theme;
-use crate::workspace::{Contour, PointType};
-use crate::{glyph_renderer, workspace};
+use crate::model::workspace::{Contour, PointType};
+use crate::model::{glyph_renderer, workspace};
 
 // ============================================================
 // Public API

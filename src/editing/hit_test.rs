@@ -3,7 +3,7 @@
 
 //! Hit testing utilities for finding entities under the cursor
 
-use crate::entity_id::EntityId;
+use crate::model::EntityId;
 use kurbo::Point;
 
 /// Default maximum distance for clicking on a point (in screen pixels)

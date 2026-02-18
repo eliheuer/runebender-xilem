@@ -4,10 +4,10 @@
 //! Application state and data structures
 
 use crate::components::{GlyphCategory, NavDirection};
-use crate::designspace::{DesignspaceProject, is_designspace_file};
+use crate::model::designspace::{DesignspaceProject, is_designspace_file};
 use crate::editing::EditSession;
 use crate::theme;
-use crate::workspace::Workspace;
+use crate::model::workspace::Workspace;
 use chrono::Local;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -833,7 +833,7 @@ impl AppState {
         let prev_glyph = workspace.get_glyph(prev_name)?;
         let curr_glyph = workspace.get_glyph(curr_name)?;
 
-        let kern_value = crate::kerning::lookup_kerning(
+        let kern_value = crate::model::kerning::lookup_kerning(
             &workspace.kerning,
             &workspace.groups,
             prev_name,
@@ -877,7 +877,7 @@ impl AppState {
         let curr_glyph = workspace.get_glyph(curr_name)?;
         let next_glyph = workspace.get_glyph(next_name)?;
 
-        let kern_value = crate::kerning::lookup_kerning(
+        let kern_value = crate::model::kerning::lookup_kerning(
             &workspace.kerning,
             &workspace.groups,
             curr_name,

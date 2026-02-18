@@ -19,7 +19,7 @@ use xilem::view::{
 use crate::components::editor_view;
 use crate::data::AppState;
 use crate::editing::EditSession;
-use crate::workspace::{Contour, ContourPoint, Glyph, PointType};
+use crate::model::workspace::{Contour, ContourPoint, Glyph, PointType};
 
 // ===== Welcome View =====
 

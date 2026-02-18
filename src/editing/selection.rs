@@ -3,7 +3,7 @@
 
 //! Selection management for editing
 
-use crate::entity_id::EntityId;
+use crate::model::EntityId;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 

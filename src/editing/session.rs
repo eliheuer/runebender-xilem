@@ -12,7 +12,7 @@ use crate::path::Path;
 use crate::shaping::{ArabicShaper, GlyphProvider, TextDirection};
 use crate::sort::SortBuffer;
 use crate::tools::{ToolBox, ToolId};
-use crate::workspace::{Glyph, Workspace};
+use crate::model::workspace::{Glyph, Workspace};
 use kurbo::{Point, Rect};
 use std::sync::{Arc, RwLock};
 
@@ -46,7 +46,7 @@ pub struct EditSession {
     /// Currently selected component (if any)
     /// Components are selected separately from points since they have
     /// different selection/drag behavior
-    pub selected_component: Option<crate::entity_id::EntityId>,
+    pub selected_component: Option<crate::model::EntityId>,
 
     /// Coordinate selection (for the coordinate pane)
     pub coord_selection: CoordinateSelection,
@@ -656,7 +656,7 @@ impl EditSession {
     ///
     /// Returns the EntityId of the component if the point is inside its filled area.
     /// Components are tested in reverse order so topmost components are hit first.
-    pub fn hit_test_component(&self, screen_pos: Point) -> Option<crate::entity_id::EntityId> {
+    pub fn hit_test_component(&self, screen_pos: Point) -> Option<crate::model::EntityId> {
         use kurbo::Shape;
 
         // Convert screen position to design space
@@ -718,7 +718,7 @@ impl EditSession {
     }
 
     /// Select a component by its EntityId
-    pub fn select_component(&mut self, id: crate::entity_id::EntityId) {
+    pub fn select_component(&mut self, id: crate::model::EntityId) {
         // Clear point selection when selecting a component
         self.selection = Selection::new();
         self.selected_component = Some(id);
@@ -787,7 +787,7 @@ impl EditSession {
             return;
         }
 
-        use crate::entity_id::EntityId;
+        use crate::model::EntityId;
         use std::collections::HashSet;
 
         // We need to mutate paths, so convert Arc<Vec<Path>> to
@@ -929,10 +929,10 @@ impl EditSession {
     /// to contours, preserving all other metadata from the original
     /// glyph.
     pub fn to_glyph(&self) -> Glyph {
-        use crate::workspace::Glyph;
+        use crate::model::workspace::Glyph;
 
         // Convert paths back to contours
-        let contours: Vec<crate::workspace::Contour> =
+        let contours: Vec<crate::model::workspace::Contour> =
             self.paths.iter().map(|path| path.to_contour()).collect();
 
         // Create updated glyph with new contours but preserve other
@@ -1039,7 +1039,7 @@ impl EditSession {
         path: &Path,
         viewport: &ViewPort,
         offset_x: f64,
-    ) -> Vec<(crate::entity_id::EntityId, Point, bool)> {
+    ) -> Vec<(crate::model::EntityId, Point, bool)> {
         match path {
             Path::Cubic(cubic) => cubic
                 .points()
@@ -1143,7 +1143,7 @@ impl EditSession {
     fn collect_adjacent_off_curve_points(
         paths: &[Path],
         selection: &Selection,
-        points_to_move: &mut std::collections::HashSet<crate::entity_id::EntityId>,
+        points_to_move: &mut std::collections::HashSet<crate::model::EntityId>,
     ) {
         for path in paths.iter() {
             match path {
@@ -1164,7 +1164,7 @@ impl EditSession {
     fn collect_adjacent_for_cubic(
         cubic: &crate::path::CubicPath,
         selection: &Selection,
-        points_to_move: &mut std::collections::HashSet<crate::entity_id::EntityId>,
+        points_to_move: &mut std::collections::HashSet<crate::model::EntityId>,
     ) {
         let points: Vec<_> = cubic.points.iter().collect();
         let len = points.len();
@@ -1198,7 +1198,7 @@ impl EditSession {
     fn collect_adjacent_for_quadratic(
         quadratic: &crate::path::QuadraticPath,
         selection: &Selection,
-        points_to_move: &mut std::collections::HashSet<crate::entity_id::EntityId>,
+        points_to_move: &mut std::collections::HashSet<crate::model::EntityId>,
     ) {
         let points: Vec<_> = quadratic.points.iter().collect();
         let len = points.len();
@@ -1232,7 +1232,7 @@ impl EditSession {
     fn collect_adjacent_for_hyper(
         hyper: &HyperPath,
         selection: &Selection,
-        points_to_move: &mut std::collections::HashSet<crate::entity_id::EntityId>,
+        points_to_move: &mut std::collections::HashSet<crate::model::EntityId>,
     ) {
         let points: Vec<_> = hyper.points.iter().collect();
         let len = points.len();
@@ -1288,7 +1288,7 @@ impl EditSession {
     /// Apply point movement to paths
     fn apply_point_movement(
         paths: &mut [Path],
-        points_to_move: &std::collections::HashSet<crate::entity_id::EntityId>,
+        points_to_move: &std::collections::HashSet<crate::model::EntityId>,
         delta: kurbo::Vec2,
     ) {
         for path in paths.iter_mut() {
@@ -1313,7 +1313,7 @@ impl EditSession {
     /// Move points in a point list by delta
     fn move_points_in_list(
         points: &mut [crate::path::PathPoint],
-        points_to_move: &std::collections::HashSet<crate::entity_id::EntityId>,
+        points_to_move: &std::collections::HashSet<crate::model::EntityId>,
         delta: kurbo::Vec2,
     ) {
         for point in points.iter_mut() {
@@ -1458,7 +1458,7 @@ impl EditSession {
         segment_info: &crate::path::SegmentInfo,
         t: f64,
     ) -> bool {
-        use crate::entity_id::EntityId;
+        use crate::model::EntityId;
         use crate::path::{PathPoint, PointType};
 
         let point_pos = segment_info.segment.eval(t);
@@ -1520,7 +1520,7 @@ impl EditSession {
         left: kurbo::CubicBez,
         right: kurbo::CubicBez,
     ) -> Vec<crate::path::PathPoint> {
-        use crate::entity_id::EntityId;
+        use crate::model::EntityId;
         use crate::path::{PathPoint, PointType};
 
         vec![
@@ -1559,7 +1559,7 @@ impl EditSession {
         quad_bez: kurbo::QuadBez,
         t: f64,
     ) -> bool {
-        use crate::entity_id::EntityId;
+        use crate::model::EntityId;
         use crate::path::Segment;
         use crate::path::{PathPoint, PointType};
 
@@ -1659,7 +1659,7 @@ impl<'a> GlyphProvider for WorkspaceGlyphProvider<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::Glyph;
+    use crate::model::workspace::Glyph;
 
     fn create_test_glyph() -> Glyph {
         Glyph {

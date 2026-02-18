@@ -8,7 +8,7 @@
 //! the spline solver for G2 continuity.
 
 use crate::editing::{EditSession, EditType, MouseDelegate, MouseEvent};
-use crate::entity_id::EntityId;
+use crate::model::EntityId;
 use crate::path::HyperPath;
 use crate::path::Path;
 use crate::tools::{Tool, ToolId};

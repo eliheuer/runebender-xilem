@@ -520,7 +520,7 @@ fn text_buffer_preview_pane_centered(
                         .and_then(|g| g.left_group.as_deref());
 
                     // Look up kerning value
-                    let kern_value = crate::kerning::lookup_kerning(
+                    let kern_value = crate::model::kerning::lookup_kerning(
                         &workspace_guard.kerning,
                         &workspace_guard.groups,
                         prev_name,
@@ -560,7 +560,7 @@ fn text_buffer_preview_pane_centered(
                     // Use glyph_to_bezpath_with_components to include components
                     let workspace_guard = workspace.read().unwrap();
                     if let Some(glyph) = workspace_guard.glyphs.get(name) {
-                        glyph_path = crate::glyph_renderer::glyph_to_bezpath_with_components(
+                        glyph_path = crate::model::glyph_renderer::glyph_to_bezpath_with_components(
                             glyph,
                             &workspace_guard,
                         );
@@ -623,8 +623,8 @@ fn text_buffer_preview_pane_centered(
 /// Recursively resolves component references and applies transforms.
 fn append_component_path(
     path: &mut BezPath,
-    component: &crate::workspace::Component,
-    workspace: &crate::workspace::Workspace,
+    component: &crate::model::workspace::Component,
+    workspace: &crate::model::workspace::Workspace,
     parent_transform: kurbo::Affine,
 ) {
     // Look up the base glyph

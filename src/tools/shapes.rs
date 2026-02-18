@@ -11,7 +11,7 @@
 //! Ported from Runebender Druid implementation.
 
 use crate::editing::{EditSession, EditType, MouseDelegate, MouseEvent};
-use crate::entity_id::EntityId;
+use crate::model::EntityId;
 use crate::path::{CubicPath, Path, PathPoint, PathPoints, PointType};
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, Point, Rect, Shape};

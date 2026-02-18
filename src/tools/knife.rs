@@ -49,7 +49,7 @@
 //! - Consider whether the segment iterator itself is producing incorrect wraparound segments
 
 use crate::editing::{Drag, EditSession, EditType, MouseDelegate, MouseEvent};
-use crate::entity_id::EntityId;
+use crate::model::EntityId;
 use crate::path::{CubicPath, Path, PathPoint, PathPoints, PointType, Segment, SegmentInfo};
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, CubicBez, Line, ParamCurve, ParamCurveArclen, Point};

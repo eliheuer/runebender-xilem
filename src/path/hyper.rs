@@ -7,10 +7,10 @@
 //! are automatically computed by the spline solver to create smooth G2
 //! continuous curves.
 
-use crate::entity_id::EntityId;
+use crate::model::entity_id::EntityId;
 use super::point::{PathPoint, PointType};
 use super::point_list::PathPoints;
-use crate::workspace;
+use crate::model::workspace;
 use kurbo::{BezPath, Point, Shape};
 use spline::SplineSpec;
 use std::sync::Arc;
@@ -330,7 +330,7 @@ impl HyperPath {
     /// This saves only the on-curve hyperbezier points with their smooth/corner flags.
     /// Off-curve control points are NOT saved - they will be recomputed by the spline solver on load.
     pub fn to_contour(&self) -> workspace::Contour {
-        use crate::workspace::{Contour, ContourPoint, PointType as WsPointType};
+        use crate::model::workspace::{Contour, ContourPoint, PointType as WsPointType};
 
         // Convert only the on-curve points, preserving smooth/corner distinction
         let mut points = Vec::new();
