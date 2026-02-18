@@ -3,7 +3,7 @@
 
 //! Application state and data structures
 
-use crate::components::GlyphCategory;
+use crate::components::{GlyphCategory, NavDirection};
 use crate::designspace::{DesignspaceProject, is_designspace_file};
 use crate::edit_session::EditSession;
 use crate::theme;
@@ -301,6 +301,100 @@ impl AppState {
         } else {
             self.grid_scroll_row = (self.grid_scroll_row + delta as usize).min(max_row);
         }
+    }
+
+    /// Ordered list of glyph names matching the current
+    /// category filter. Cheap — no bezpath computation.
+    pub fn filtered_glyph_names(&self) -> Vec<String> {
+        let workspace_arc = match self.active_workspace() {
+            Some(w) => w,
+            None => return Vec::new(),
+        };
+        let workspace = workspace_arc.read().unwrap();
+        let names = workspace.glyph_names();
+        if self.glyph_category_filter == GlyphCategory::All {
+            return names;
+        }
+        names
+            .into_iter()
+            .filter(|name| {
+                if let Some(glyph) = workspace.get_glyph(name) {
+                    if glyph.codepoints.is_empty() {
+                        self.glyph_category_filter
+                            == GlyphCategory::Other
+                    } else {
+                        GlyphCategory::from_codepoint(
+                            glyph.codepoints[0],
+                        ) == self.glyph_category_filter
+                    }
+                } else {
+                    false
+                }
+            })
+            .collect()
+    }
+
+    /// Move the grid selection in the given direction.
+    ///
+    /// Left/Right move by one cell; Up/Down jump by one row
+    /// (column-count cells). The viewport auto-scrolls to keep
+    /// the selection visible.
+    pub fn navigate_grid_selection(
+        &mut self,
+        direction: NavDirection,
+    ) {
+        let names = self.filtered_glyph_names();
+        if names.is_empty() {
+            return;
+        }
+        self.cached_filtered_count = names.len();
+
+        let columns = self.grid_columns() as isize;
+
+        // Find current selection index
+        let current_index = self
+            .selected_glyph
+            .as_ref()
+            .and_then(|sel| names.iter().position(|n| n == sel));
+
+        let target = match current_index {
+            None => 0, // No selection → first glyph
+            Some(idx) => {
+                let idx = idx as isize;
+                let delta = match direction {
+                    NavDirection::Left => -1,
+                    NavDirection::Right => 1,
+                    NavDirection::Up => -columns,
+                    NavDirection::Down => columns,
+                };
+                let t = idx + delta;
+                t.clamp(0, names.len() as isize - 1) as usize
+            }
+        };
+
+        self.select_glyph(names[target].clone());
+        self.scroll_to_glyph_index(target);
+    }
+
+    /// Adjust `grid_scroll_row` so that the glyph at `index`
+    /// (within the filtered list) is visible.
+    fn scroll_to_glyph_index(&mut self, index: usize) {
+        let columns = self.grid_columns();
+        let row = index / columns;
+        let visible = self.visible_grid_rows();
+        let total = self.total_grid_rows(
+            self.cached_filtered_count,
+        );
+        let max_row = total.saturating_sub(visible);
+
+        if row < self.grid_scroll_row {
+            self.grid_scroll_row = row;
+        } else if row >= self.grid_scroll_row + visible {
+            self.grid_scroll_row =
+                (row + 1).saturating_sub(visible);
+        }
+        self.grid_scroll_row =
+            self.grid_scroll_row.min(max_row);
     }
 
     /// Count of glyphs matching the current category filter
