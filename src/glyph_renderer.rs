@@ -282,9 +282,9 @@ fn add_closing_curve(
 /// Append a hyperbezier contour to a BezPath using the spline solver
 fn append_hyperbezier_contour(path: &mut BezPath, contour: &Contour) {
     use crate::entity_id::EntityId;
-    use crate::hyper_path::HyperPath;
-    use crate::point::{PathPoint, PointType as PathPointType};
-    use crate::point_list::PathPoints;
+    use crate::path::HyperPath;
+    use crate::path::{PathPoint, PointType as PathPointType};
+    use crate::path::PathPoints;
 
     // Convert workspace contour points to PathPoints
     let path_points: Vec<PathPoint> = contour

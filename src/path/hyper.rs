@@ -8,8 +8,8 @@
 //! continuous curves.
 
 use crate::entity_id::EntityId;
-use crate::point::{PathPoint, PointType};
-use crate::point_list::PathPoints;
+use super::point::{PathPoint, PointType};
+use super::point_list::PathPoints;
 use crate::workspace;
 use kurbo::{BezPath, Point, Shape};
 use spline::SplineSpec;
@@ -106,8 +106,8 @@ impl HyperPath {
     ///
     /// This expands the solved spline into explicit on-curve and off-curve control points.
     /// Use this when you want manual control over individual bezier segments.
-    pub fn to_cubic(&self) -> crate::cubic_path::CubicPath {
-        use crate::cubic_path::CubicPath;
+    pub fn to_cubic(&self) -> super::cubic::CubicPath {
+        use super::cubic::CubicPath;
 
         // Convert the solved bezier path to PathPoints with explicit control points
         let mut points = Vec::new();
@@ -167,7 +167,7 @@ impl HyperPath {
             }
         }
 
-        CubicPath::new(crate::point_list::PathPoints::from_vec(points), self.closed)
+        CubicPath::new(super::point_list::PathPoints::from_vec(points), self.closed)
     }
 
     /// Get the bounding box of this path
@@ -375,7 +375,7 @@ impl HyperPath {
     ///
     /// Note: This iterates over the solved bezier segments, not the
     /// original on-curve points.
-    pub fn iter_segments(&self) -> impl Iterator<Item = crate::path_segment::SegmentInfo> + '_ {
+    pub fn iter_segments(&self) -> impl Iterator<Item = super::segment::SegmentInfo> + '_ {
         HyperSegmentIterator::new(&self.bezier)
     }
 }
@@ -398,7 +398,7 @@ impl<'a> HyperSegmentIterator<'a> {
 }
 
 impl<'a> Iterator for HyperSegmentIterator<'a> {
-    type Item = crate::path_segment::SegmentInfo;
+    type Item = super::segment::SegmentInfo;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -412,18 +412,18 @@ impl<'a> Iterator for HyperSegmentIterator<'a> {
                 }
                 kurbo::PathEl::LineTo(p) => {
                     let segment =
-                        crate::path_segment::Segment::Line(kurbo::Line::new(self.prev_point, *p));
+                        super::segment::Segment::Line(kurbo::Line::new(self.prev_point, *p));
                     let start_idx = self.index;
                     self.prev_point = *p;
                     self.index += 1;
-                    return Some(crate::path_segment::SegmentInfo {
+                    return Some(super::segment::SegmentInfo {
                         segment,
                         start_index: start_idx,
                         end_index: self.index,
                     });
                 }
                 kurbo::PathEl::CurveTo(p1, p2, p3) => {
-                    let segment = crate::path_segment::Segment::Cubic(kurbo::CubicBez::new(
+                    let segment = super::segment::Segment::Cubic(kurbo::CubicBez::new(
                         self.prev_point,
                         *p1,
                         *p2,
@@ -432,14 +432,14 @@ impl<'a> Iterator for HyperSegmentIterator<'a> {
                     let start_idx = self.index;
                     self.prev_point = *p3;
                     self.index += 1;
-                    return Some(crate::path_segment::SegmentInfo {
+                    return Some(super::segment::SegmentInfo {
                         segment,
                         start_index: start_idx,
                         end_index: self.index,
                     });
                 }
                 kurbo::PathEl::QuadTo(p1, p2) => {
-                    let segment = crate::path_segment::Segment::Quadratic(kurbo::QuadBez::new(
+                    let segment = super::segment::Segment::Quadratic(kurbo::QuadBez::new(
                         self.prev_point,
                         *p1,
                         *p2,
@@ -447,7 +447,7 @@ impl<'a> Iterator for HyperSegmentIterator<'a> {
                     let start_idx = self.index;
                     self.prev_point = *p2;
                     self.index += 1;
-                    return Some(crate::path_segment::SegmentInfo {
+                    return Some(super::segment::SegmentInfo {
                         segment,
                         start_index: start_idx,
                         end_index: self.index,

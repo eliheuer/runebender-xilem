@@ -48,15 +48,11 @@
 //! - Add comprehensive unit tests for wraparound segment handling
 //! - Consider whether the segment iterator itself is producing incorrect wraparound segments
 
-use crate::cubic_path::CubicPath;
 use crate::edit_session::EditSession;
 use crate::edit_types::EditType;
 use crate::entity_id::EntityId;
 use crate::mouse::{Drag, MouseDelegate, MouseEvent};
-use crate::path::Path;
-use crate::path_segment::{Segment, SegmentInfo};
-use crate::point::{PathPoint, PointType};
-use crate::point_list::PathPoints;
+use crate::path::{CubicPath, Path, PathPoint, PathPoints, PointType, Segment, SegmentInfo};
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, CubicBez, Line, ParamCurve, ParamCurveArclen, Point};
 use masonry::vello::Scene;
