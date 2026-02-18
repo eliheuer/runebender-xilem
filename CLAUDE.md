@@ -34,8 +34,53 @@ The entire UI is rebuilt from `AppState` on each update. State mutations happen 
 ### Key State Types
 
 - **`AppState`** (`src/data.rs`) — Central app state: loaded workspace, selected glyph, active edit session, current tab, window metadata
-- **`Workspace`** (`src/workspace.rs`) — Font data model wrapping `norad` UFO types. Thread-safe via `Arc<RwLock<Workspace>>`. Glyphs sorted by Unicode codepoint
-- **`EditSession`** (`src/edit_session.rs`) — Per-glyph editing state: editable paths, selection, current tool, viewport, undo/redo history, text buffer for multi-glyph editing
+- **`Workspace`** (`src/model/workspace.rs`) — Font data model wrapping `norad` UFO types. Thread-safe via `Arc<RwLock<Workspace>>`. Glyphs sorted by Unicode codepoint
+- **`EditSession`** (`src/editing/session.rs`) — Per-glyph editing state: editable paths, selection, current tool, viewport, undo/redo history, text buffer for multi-glyph editing
+
+### Module Layout
+
+```
+src/
+├── lib.rs                # Root app_logic(), window setup
+├── main.rs               # Entry point
+├── data.rs               # AppState — central hub
+├── theme.rs              # Color constants
+├── settings.rs           # Config constants
+│
+├── path/                 # Path representation & geometry
+│   ├── mod.rs            # Path enum, re-exports
+│   ├── cubic.rs          # Cubic bezier paths (UFO default)
+│   ├── quadratic.rs      # Quadratic/TrueType paths
+│   ├── hyper.rs          # Hyperbezier paths (spline solver)
+│   ├── point.rs          # PathPoint, PointType
+│   ├── point_list.rs     # PathPoints collection
+│   ├── segment.rs        # Segment types for hit-testing
+│   └── quadrant.rs       # Quadrant geometry utility
+│
+├── editing/              # Editing model & interaction
+│   ├── mod.rs            # Re-exports
+│   ├── session.rs        # Per-glyph editing state
+│   ├── selection.rs      # Entity selection set
+│   ├── edit_types.rs     # Undo grouping types
+│   ├── undo.rs           # Undo/redo system
+│   ├── hit_test.rs       # Cursor hit-testing
+│   ├── mouse.rs          # Mouse event state machine
+│   └── viewport.rs       # Design↔screen coordinate transform
+│
+├── model/                # Font data model
+│   ├── mod.rs            # Re-exports EntityId
+│   ├── workspace.rs      # UFO font data (Workspace, Glyph, etc.)
+│   ├── designspace.rs    # Variable font designspace support
+│   ├── kerning.rs        # Kerning lookup algorithm
+│   ├── entity_id.rs      # Unique entity identifiers
+│   └── glyph_renderer.rs # Glyph contour → BezPath conversion
+│
+├── components/           # UI components & widgets
+├── views/                # Top-level views (welcome, grid, editor)
+├── tools/                # Editing tools (Select, Pen, Knife, etc.)
+├── shaping/              # Text shaping (Arabic joining, etc.)
+└── sort/                 # Multi-glyph text buffer
+```
 
 ### UI Layer
 
@@ -46,10 +91,10 @@ The entire UI is rebuilt from `AppState` on each update. State mutations happen 
 
 ### Path Abstraction
 
-`src/path.rs` defines a `Path` enum supporting three curve types, each in its own module:
-- **Cubic** (`cubic_path.rs`) — Standard cubic bezier (UFO default)
-- **Quadratic** (`quadratic_path.rs`) — TrueType-style
-- **Hyper** (`hyper_path.rs`) — Hyperbezier (smooth curves from on-curve points only, solved via `spline` crate)
+`src/path/mod.rs` defines a `Path` enum supporting three curve types:
+- **Cubic** (`path/cubic.rs`) — Standard cubic bezier (UFO default)
+- **Quadratic** (`path/quadratic.rs`) — TrueType-style
+- **Hyper** (`path/hyper.rs`) — Hyperbezier (smooth curves from on-curve points only, solved via `spline` crate)
 
 All convert to `kurbo::BezPath` for rendering.
 
@@ -90,7 +135,7 @@ Xilem views must be `Send + Sync` (required for `portal()` scrolling). Pre-compu
 - **Reduce nesting**: Extract helpers, use early returns with `?`, avoid deep closures
 - **Variable names**: Full words, not abbreviations
 - **Function order**: Public before private, constructors first
-- Reference examples: `src/theme.rs`, `src/settings.rs`, `src/undo.rs`, `src/workspace.rs`
+- Reference examples: `src/theme.rs`, `src/settings.rs`, `src/editing/undo.rs`, `src/model/workspace.rs`
 
 ## Key Dependencies
 
