@@ -5,7 +5,7 @@
 
 use crate::components::CoordinateSelection;
 use crate::hit_test::{self, HitTestResult};
-use crate::hyper_path::HyperPath;
+use crate::path::HyperPath;
 use crate::path::Path;
 use crate::selection::Selection;
 use crate::shaping::{ArabicShaper, GlyphProvider, TextDirection};
@@ -629,7 +629,7 @@ impl EditSession {
         &self,
         screen_pos: Point,
         max_dist: f64,
-    ) -> Option<(crate::path_segment::SegmentInfo, f64)> {
+    ) -> Option<(crate::path::SegmentInfo, f64)> {
         // Convert screen position to design space
         let mut design_pos = self.viewport.screen_to_design(screen_pos);
 
@@ -813,6 +813,7 @@ impl EditSession {
     /// - Normal: 1 unit
     /// - Shift: 10 units
     /// - Cmd/Ctrl: 100 units
+    /// TODO: move this to settings and make constants
     pub fn nudge_selection(&mut self, dx: f64, dy: f64, shift: bool, ctrl: bool) {
         let multiplier = if ctrl {
             100.0
@@ -895,10 +896,10 @@ impl EditSession {
     /// Returns true if the point was successfully inserted.
     pub fn insert_point_on_segment(
         &mut self,
-        segment_info: &crate::path_segment::SegmentInfo,
+        segment_info: &crate::path::SegmentInfo,
         t: f64,
     ) -> bool {
-        use crate::path_segment::Segment;
+        use crate::path::Segment;
 
         // Find the path containing this segment
         let paths_vec = Arc::make_mut(&mut self.paths);
@@ -1077,8 +1078,8 @@ impl EditSession {
     fn find_closest_segment(
         paths: &[Path],
         design_pos: kurbo::Point,
-    ) -> Option<(crate::path_segment::SegmentInfo, f64, f64)> {
-        let mut closest: Option<(crate::path_segment::SegmentInfo, f64, f64)> = None;
+    ) -> Option<(crate::path::SegmentInfo, f64, f64)> {
+        let mut closest: Option<(crate::path::SegmentInfo, f64, f64)> = None;
 
         for path in paths.iter() {
             Self::process_path_segments(path, design_pos, &mut closest);
@@ -1090,7 +1091,7 @@ impl EditSession {
     fn process_path_segments(
         path: &Path,
         design_pos: kurbo::Point,
-        closest: &mut Option<(crate::path_segment::SegmentInfo, f64, f64)>,
+        closest: &mut Option<(crate::path::SegmentInfo, f64, f64)>,
     ) {
         match path {
             Path::Cubic(cubic) => {
@@ -1109,9 +1110,9 @@ impl EditSession {
     fn process_path_segment_iterator<I>(
         segments: I,
         design_pos: kurbo::Point,
-        closest: &mut Option<(crate::path_segment::SegmentInfo, f64, f64)>,
+        closest: &mut Option<(crate::path::SegmentInfo, f64, f64)>,
     ) where
-        I: Iterator<Item = crate::path_segment::SegmentInfo>,
+        I: Iterator<Item = crate::path::SegmentInfo>,
     {
         for segment_info in segments {
             let (t, dist_sq) = segment_info.segment.nearest(design_pos);
@@ -1121,8 +1122,8 @@ impl EditSession {
 
     /// Update the closest segment if this one is closer
     fn update_closest_segment(
-        closest: &mut Option<(crate::path_segment::SegmentInfo, f64, f64)>,
-        segment_info: crate::path_segment::SegmentInfo,
+        closest: &mut Option<(crate::path::SegmentInfo, f64, f64)>,
+        segment_info: crate::path::SegmentInfo,
         t: f64,
         dist_sq: f64,
     ) {
@@ -1161,7 +1162,7 @@ impl EditSession {
 
     /// Collect adjacent off-curve points for a cubic path
     fn collect_adjacent_for_cubic(
-        cubic: &crate::cubic_path::CubicPath,
+        cubic: &crate::path::CubicPath,
         selection: &Selection,
         points_to_move: &mut std::collections::HashSet<crate::entity_id::EntityId>,
     ) {
@@ -1195,7 +1196,7 @@ impl EditSession {
 
     /// Collect adjacent off-curve points for a quadratic path
     fn collect_adjacent_for_quadratic(
-        quadratic: &crate::quadratic_path::QuadraticPath,
+        quadratic: &crate::path::QuadraticPath,
         selection: &Selection,
         points_to_move: &mut std::collections::HashSet<crate::entity_id::EntityId>,
     ) {
@@ -1311,7 +1312,7 @@ impl EditSession {
 
     /// Move points in a point list by delta
     fn move_points_in_list(
-        points: &mut [crate::point::PathPoint],
+        points: &mut [crate::path::PathPoint],
         points_to_move: &std::collections::HashSet<crate::entity_id::EntityId>,
         delta: kurbo::Vec2,
     ) {
@@ -1365,11 +1366,11 @@ impl EditSession {
     }
 
     /// Toggle point types in a point list
-    fn toggle_points_in_list(points: &mut [crate::point::PathPoint], selection: &Selection) {
+    fn toggle_points_in_list(points: &mut [crate::path::PathPoint], selection: &Selection) {
         for point in points.iter_mut() {
             if selection.contains(&point.id) {
                 // Only toggle on-curve points
-                if let crate::point::PointType::OnCurve { smooth } = &mut point.typ {
+                if let crate::path::PointType::OnCurve { smooth } = &mut point.typ {
                     *smooth = !*smooth;
                 }
             }
@@ -1379,8 +1380,8 @@ impl EditSession {
     /// Find the path containing a segment and return its points
     fn find_path_containing_segment<'a>(
         path: &'a mut Path,
-        segment_info: &crate::path_segment::SegmentInfo,
-    ) -> Option<&'a mut Vec<crate::point::PathPoint>> {
+        segment_info: &crate::path::SegmentInfo,
+    ) -> Option<&'a mut Vec<crate::path::PathPoint>> {
         match path {
             Path::Cubic(cubic) => {
                 if Self::cubic_contains_segment(cubic, segment_info) {
@@ -1408,8 +1409,8 @@ impl EditSession {
 
     /// Check if a cubic path contains a specific segment
     fn cubic_contains_segment(
-        cubic: &crate::cubic_path::CubicPath,
-        segment_info: &crate::path_segment::SegmentInfo,
+        cubic: &crate::path::CubicPath,
+        segment_info: &crate::path::SegmentInfo,
     ) -> bool {
         for seg in cubic.iter_segments() {
             if seg.start_index == segment_info.start_index
@@ -1423,8 +1424,8 @@ impl EditSession {
 
     /// Check if a quadratic path contains a specific segment
     fn quadratic_contains_segment(
-        quadratic: &crate::quadratic_path::QuadraticPath,
-        segment_info: &crate::path_segment::SegmentInfo,
+        quadratic: &crate::path::QuadraticPath,
+        segment_info: &crate::path::SegmentInfo,
     ) -> bool {
         for seg in quadratic.iter_segments() {
             if seg.start_index == segment_info.start_index
@@ -1439,7 +1440,7 @@ impl EditSession {
     /// Check if a hyper path contains a specific segment
     fn hyper_contains_segment(
         hyper: &HyperPath,
-        segment_info: &crate::path_segment::SegmentInfo,
+        segment_info: &crate::path::SegmentInfo,
     ) -> bool {
         for seg in hyper.iter_segments() {
             if seg.start_index == segment_info.start_index
@@ -1453,12 +1454,12 @@ impl EditSession {
 
     /// Insert a point on a line segment
     fn insert_point_on_line(
-        points: &mut Vec<crate::point::PathPoint>,
-        segment_info: &crate::path_segment::SegmentInfo,
+        points: &mut Vec<crate::path::PathPoint>,
+        segment_info: &crate::path::SegmentInfo,
         t: f64,
     ) -> bool {
         use crate::entity_id::EntityId;
-        use crate::point::{PathPoint, PointType};
+        use crate::path::{PathPoint, PointType};
 
         let point_pos = segment_info.segment.eval(t);
         let new_point = PathPoint {
@@ -1476,12 +1477,12 @@ impl EditSession {
 
     /// Insert a point on a cubic curve segment
     fn insert_point_on_cubic(
-        points: &mut Vec<crate::point::PathPoint>,
-        segment_info: &crate::path_segment::SegmentInfo,
+        points: &mut Vec<crate::path::PathPoint>,
+        segment_info: &crate::path::SegmentInfo,
         cubic_bez: kurbo::CubicBez,
         t: f64,
     ) -> bool {
-        use crate::path_segment::Segment;
+        use crate::path::Segment;
 
         // For a cubic curve, subdivide it using de Casteljau
         // algorithm
@@ -1518,9 +1519,9 @@ impl EditSession {
     fn create_cubic_subdivision_points(
         left: kurbo::CubicBez,
         right: kurbo::CubicBez,
-    ) -> Vec<crate::point::PathPoint> {
+    ) -> Vec<crate::path::PathPoint> {
         use crate::entity_id::EntityId;
-        use crate::point::{PathPoint, PointType};
+        use crate::path::{PathPoint, PointType};
 
         vec![
             PathPoint {
@@ -1553,14 +1554,14 @@ impl EditSession {
 
     /// Insert a point on a quadratic curve segment
     fn insert_point_on_quadratic(
-        points: &mut Vec<crate::point::PathPoint>,
-        segment_info: &crate::path_segment::SegmentInfo,
+        points: &mut Vec<crate::path::PathPoint>,
+        segment_info: &crate::path::SegmentInfo,
         quad_bez: kurbo::QuadBez,
         t: f64,
     ) -> bool {
         use crate::entity_id::EntityId;
-        use crate::path_segment::Segment;
-        use crate::point::{PathPoint, PointType};
+        use crate::path::Segment;
+        use crate::path::{PathPoint, PointType};
 
         // For a quadratic curve, subdivide it using de Casteljau
         // algorithm

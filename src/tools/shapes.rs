@@ -10,14 +10,11 @@
 //!
 //! Ported from Runebender Druid implementation.
 
-use crate::cubic_path::CubicPath;
 use crate::edit_session::EditSession;
 use crate::edit_types::EditType;
 use crate::entity_id::EntityId;
 use crate::mouse::{MouseDelegate, MouseEvent};
-use crate::path::Path;
-use crate::point::{PathPoint, PointType};
-use crate::point_list::PathPoints;
+use crate::path::{CubicPath, Path, PathPoint, PathPoints, PointType};
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, Point, Rect, Shape};
 use masonry::vello::Scene;

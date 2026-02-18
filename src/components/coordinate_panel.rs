@@ -7,7 +7,7 @@
 //! and includes a quadrant picker to choose which corner/edge to use as the
 //! reference point for multi-point selections.
 
-use crate::quadrant::Quadrant;
+use crate::path::Quadrant;
 use kurbo::{Circle, Point, Rect};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{

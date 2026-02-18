@@ -4,8 +4,8 @@
 //! Cubic bezier path representation
 
 use crate::entity_id::EntityId;
-use crate::point::{PathPoint, PointType};
-use crate::point_list::PathPoints;
+use super::point::{PathPoint, PointType};
+use super::point_list::PathPoints;
 use crate::workspace;
 use kurbo::{BezPath, Shape};
 
@@ -123,7 +123,7 @@ impl CubicPath {
 
     /// Convert this cubic path to a workspace contour (for saving)
     pub fn to_contour(&self) -> workspace::Contour {
-        use crate::point::PointType;
+        use super::point::PointType;
         use crate::workspace::{Contour, ContourPoint, PointType as WsPointType};
 
         let mut contour_points: Vec<PathPoint> = self.points.to_vec();
@@ -159,7 +159,7 @@ impl CubicPath {
     ///
     /// Returns an iterator that yields SegmentInfo for each segment
     /// (line or curve)
-    pub fn iter_segments(&self) -> impl Iterator<Item = crate::path_segment::SegmentInfo> + '_ {
+    pub fn iter_segments(&self) -> impl Iterator<Item = super::segment::SegmentInfo> + '_ {
         SegmentIterator::new(&self.points, self.closed)
     }
 
@@ -281,7 +281,7 @@ struct SegmentIterator {
 }
 
 impl SegmentIterator {
-    fn new(points: &crate::point_list::PathPoints, closed: bool) -> Self {
+    fn new(points: &super::point_list::PathPoints, closed: bool) -> Self {
         let points_vec: Vec<PathPoint> = points.iter().cloned().collect();
 
         // Find first on-curve point
@@ -310,17 +310,17 @@ impl SegmentIterator {
         &mut self,
         point_idx: usize,
         point: kurbo::Point,
-    ) -> Option<crate::path_segment::SegmentInfo> {
+    ) -> Option<super::segment::SegmentInfo> {
         let start_idx = self.prev_on_curve_idx;
         let end_idx = point_idx;
         let segment =
-            crate::path_segment::Segment::Line(kurbo::Line::new(self.prev_on_curve, point));
+            super::segment::Segment::Line(kurbo::Line::new(self.prev_on_curve, point));
 
         self.prev_on_curve = point;
         self.prev_on_curve_idx = point_idx;
         self.index = point_idx + 1;
 
-        Some(crate::path_segment::SegmentInfo {
+        Some(super::segment::SegmentInfo {
             segment,
             start_index: start_idx,
             end_index: end_idx,
@@ -332,7 +332,7 @@ impl SegmentIterator {
         &mut self,
         point_idx: usize,
         cp1: kurbo::Point,
-    ) -> Option<crate::path_segment::SegmentInfo> {
+    ) -> Option<super::segment::SegmentInfo> {
         // Cubic curve: need 2 off-curve + 1 on-curve
         if point_idx + 2 >= self.points.len() {
             return None;
@@ -343,7 +343,7 @@ impl SegmentIterator {
 
         let start_idx = self.prev_on_curve_idx;
         let end_idx = point_idx + 2;
-        let segment = crate::path_segment::Segment::Cubic(kurbo::CubicBez::new(
+        let segment = super::segment::Segment::Cubic(kurbo::CubicBez::new(
             self.prev_on_curve,
             cp1,
             cp2,
@@ -354,7 +354,7 @@ impl SegmentIterator {
         self.prev_on_curve_idx = point_idx + 2;
         self.index = point_idx + 3;
 
-        Some(crate::path_segment::SegmentInfo {
+        Some(super::segment::SegmentInfo {
             segment,
             start_index: start_idx,
             end_index: end_idx,
@@ -363,7 +363,7 @@ impl SegmentIterator {
 }
 
 impl Iterator for SegmentIterator {
-    type Item = crate::path_segment::SegmentInfo;
+    type Item = super::segment::SegmentInfo;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.points.len() {

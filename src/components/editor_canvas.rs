@@ -6,7 +6,7 @@
 use crate::edit_session::EditSession;
 use crate::edit_types::EditType;
 use crate::mouse::Mouse;
-use crate::point::PointType;
+use crate::path::PointType;
 use crate::settings;
 use crate::sort::TextCursor;
 use crate::theme;
@@ -2727,7 +2727,7 @@ fn draw_paths_with_points(scene: &mut Scene, session: &EditSession, transform: &
 /// Draw control handles for a cubic path
 fn draw_control_handles(
     scene: &mut Scene,
-    cubic: &crate::cubic_path::CubicPath,
+    cubic: &crate::path::CubicPath,
     transform: &Affine,
 ) {
     let points: Vec<_> = cubic.points.iter().collect();
@@ -2788,7 +2788,7 @@ fn draw_control_handles(
 /// Draw points for a cubic path
 fn draw_points(
     scene: &mut Scene,
-    cubic: &crate::cubic_path::CubicPath,
+    cubic: &crate::path::CubicPath,
     session: &EditSession,
     transform: &Affine,
 ) {
@@ -2916,7 +2916,7 @@ fn draw_hyper_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
 /// Draw control handles for a quadratic path
 fn draw_control_handles_quadratic(
     scene: &mut Scene,
-    quadratic: &crate::quadratic_path::QuadraticPath,
+    quadratic: &crate::path::QuadraticPath,
     transform: &Affine,
 ) {
     let points: Vec<_> = quadratic.points.iter().collect();
@@ -2977,7 +2977,7 @@ fn draw_control_handles_quadratic(
 /// Draw points for a quadratic path
 fn draw_points_quadratic(
     scene: &mut Scene,
-    quadratic: &crate::quadratic_path::QuadraticPath,
+    quadratic: &crate::path::QuadraticPath,
     session: &EditSession,
     transform: &Affine,
 ) {
@@ -3003,7 +3003,7 @@ fn draw_points_quadratic(
 /// Draw control handles for a hyper path
 fn draw_control_handles_hyper(
     scene: &mut Scene,
-    hyper: &crate::hyper_path::HyperPath,
+    hyper: &crate::path::HyperPath,
     transform: &Affine,
 ) {
     let points: Vec<_> = hyper.points.iter().collect();
@@ -3063,7 +3063,7 @@ fn draw_control_handles_hyper(
 /// Draw points for a hyper path
 fn draw_points_hyper(
     scene: &mut Scene,
-    hyper: &crate::hyper_path::HyperPath,
+    hyper: &crate::path::HyperPath,
     session: &EditSession,
     transform: &Affine,
 ) {

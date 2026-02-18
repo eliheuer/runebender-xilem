@@ -4,7 +4,7 @@
 //! Point collection for bezier paths
 
 use crate::entity_id::EntityId;
-use crate::point::PathPoint;
+use super::point::PathPoint;
 use std::sync::Arc;
 
 /// A collection of points in a bezier path

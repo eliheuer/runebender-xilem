@@ -10,7 +10,7 @@
 use crate::edit_session::EditSession;
 use crate::edit_types::EditType;
 use crate::entity_id::EntityId;
-use crate::hyper_path::HyperPath;
+use crate::path::HyperPath;
 use crate::mouse::{MouseDelegate, MouseEvent};
 use crate::path::Path;
 use crate::tools::{Tool, ToolId};
@@ -42,7 +42,7 @@ pub struct HyperPenTool {
     mouse_pos: Option<kurbo::Point>,
 
     /// Snapped segment information
-    snapped_segment: Option<(crate::path_segment::SegmentInfo, f64)>,
+    snapped_segment: Option<(crate::path::SegmentInfo, f64)>,
 
     /// The ID of the path we're currently drawing
     active_path_id: Option<EntityId>,

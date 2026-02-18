@@ -3,10 +3,23 @@
 
 //! Path abstraction for glyph outlines
 
-use crate::cubic_path::CubicPath;
+pub mod cubic;
+pub mod hyper;
+pub mod point;
+pub mod point_list;
+pub mod quadrant;
+pub mod quadratic;
+pub mod segment;
+
+pub use cubic::CubicPath;
+pub use hyper::HyperPath;
+pub use point::{PathPoint, PointType};
+pub use point_list::PathPoints;
+pub use quadrant::Quadrant;
+pub use quadratic::QuadraticPath;
+pub use segment::{Segment, SegmentInfo};
+
 use crate::entity_id::EntityId;
-use crate::hyper_path::HyperPath;
-use crate::quadratic_path::QuadraticPath;
 use crate::workspace;
 use kurbo::BezPath;
 
