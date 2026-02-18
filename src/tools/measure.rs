@@ -7,9 +7,7 @@
 //!
 //! Ported from Runebender Druid implementation.
 
-use crate::edit_session::EditSession;
-use crate::edit_types::EditType;
-use crate::mouse::{MouseDelegate, MouseEvent};
+use crate::editing::{EditSession, EditType, MouseDelegate, MouseEvent};
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, Circle, Line, Point, Rect, Size};
 use masonry::core::{BrushIndex, StyleProperty, render_text};
@@ -75,7 +73,7 @@ impl MouseDelegate for MeasureTool {
     fn left_drag_changed(
         &mut self,
         _event: MouseEvent,
-        drag: crate::mouse::Drag,
+        drag: crate::editing::Drag,
         _data: &mut EditSession,
     ) {
         if self.dragging

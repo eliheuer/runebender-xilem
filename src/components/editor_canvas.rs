@@ -3,14 +3,14 @@
 
 //! Glyph editor canvas widget - the main canvas for editing glyphs
 
-use crate::edit_session::EditSession;
-use crate::edit_types::EditType;
-use crate::mouse::Mouse;
+use crate::editing::EditSession;
+use crate::editing::EditType;
+use crate::editing::Mouse;
 use crate::path::PointType;
 use crate::settings;
 use crate::sort::TextCursor;
 use crate::theme;
-use crate::undo::UndoState;
+use crate::editing::UndoState;
 use kurbo::{Affine, Circle, Point, Rect as KurboRect, Stroke};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
@@ -198,7 +198,7 @@ impl EditorWidget {
             self.session.paths = Arc::new(new_paths);
 
             // Clear selection since point IDs will have changed
-            self.session.selection = crate::selection::Selection::new();
+            self.session.selection = crate::editing::Selection::new();
         }
 
         converted
@@ -1696,7 +1696,7 @@ impl EditorWidget {
         local_pos: Point,
         state: &masonry::core::PointerState,
     ) {
-        use crate::mouse::{Modifiers, MouseButton, MouseEvent};
+        use crate::editing::{Modifiers, MouseButton, MouseEvent};
         use crate::tools::{ToolBox, ToolId};
 
         let mods = Modifiers {
@@ -1792,7 +1792,7 @@ impl EditorWidget {
     }
 
     fn dispatch_tool_mouse_move(&mut self, _ctx: &mut EventCtx<'_>, local_pos: Point) {
-        use crate::mouse::MouseEvent;
+        use crate::editing::MouseEvent;
         use crate::tools::{ToolBox, ToolId};
 
         let mouse_event = MouseEvent::new(local_pos, None);
@@ -1865,7 +1865,7 @@ impl EditorWidget {
         local_pos: Point,
         state: &masonry::core::PointerState,
     ) {
-        use crate::mouse::{Modifiers, MouseButton, MouseEvent};
+        use crate::editing::{Modifiers, MouseButton, MouseEvent};
         use crate::tools::{ToolBox, ToolId};
 
         let mods = Modifiers {
@@ -2355,7 +2355,7 @@ impl EditorWidget {
         let select_tool = crate::tools::ToolBox::for_id(crate::tools::ToolId::Select);
         let mut tool = std::mem::replace(&mut self.session.current_tool, select_tool);
         self.mouse.cancel(&mut tool, &mut self.session);
-        self.mouse = crate::mouse::Mouse::new();
+        self.mouse = crate::editing::Mouse::new();
 
         self.session.current_tool = crate::tools::ToolBox::for_id(tool_id);
 

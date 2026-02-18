@@ -4,14 +4,14 @@
 //! Edit session - manages editing state for a single glyph
 
 use crate::components::CoordinateSelection;
-use crate::hit_test::{self, HitTestResult};
+use super::hit_test::{self, HitTestResult};
+use super::selection::Selection;
+use super::viewport::ViewPort;
 use crate::path::HyperPath;
 use crate::path::Path;
-use crate::selection::Selection;
 use crate::shaping::{ArabicShaper, GlyphProvider, TextDirection};
 use crate::sort::SortBuffer;
 use crate::tools::{ToolBox, ToolId};
-use crate::viewport::ViewPort;
 use crate::workspace::{Glyph, Workspace};
 use kurbo::{Point, Rect};
 use std::sync::{Arc, RwLock};

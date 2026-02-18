@@ -10,10 +10,8 @@
 //!
 //! Ported from Runebender Druid implementation.
 
-use crate::edit_session::EditSession;
-use crate::edit_types::EditType;
+use crate::editing::{EditSession, EditType, MouseDelegate, MouseEvent};
 use crate::entity_id::EntityId;
-use crate::mouse::{MouseDelegate, MouseEvent};
 use crate::path::{CubicPath, Path, PathPoint, PathPoints, PointType};
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, Point, Rect, Shape};
@@ -112,7 +110,7 @@ impl MouseDelegate for ShapesTool {
     fn left_drag_began(
         &mut self,
         _event: MouseEvent,
-        drag: crate::mouse::Drag,
+        drag: crate::editing::Drag,
         data: &mut EditSession,
     ) {
         // Convert to design space
@@ -127,7 +125,7 @@ impl MouseDelegate for ShapesTool {
     fn left_drag_changed(
         &mut self,
         _event: MouseEvent,
-        drag: crate::mouse::Drag,
+        drag: crate::editing::Drag,
         data: &mut EditSession,
     ) {
         if let GestureState::Begun { start, .. } = self.gesture {
@@ -140,7 +138,7 @@ impl MouseDelegate for ShapesTool {
     fn left_drag_ended(
         &mut self,
         _event: MouseEvent,
-        drag: crate::mouse::Drag,
+        drag: crate::editing::Drag,
         data: &mut EditSession,
     ) {
         if let GestureState::Begun { start, .. } = self.gesture {

@@ -110,11 +110,11 @@ fn prepare_coordinate_data(coordinate_selection: &CoordinateSelection) -> Coordi
 
 /// Build the quadrant selector widget (3x3 grid picker)
 fn build_quadrant_selector<State: 'static, F>(
-    session: Arc<crate::edit_session::EditSession>,
+    session: Arc<crate::editing::EditSession>,
     on_session_update: F,
 ) -> impl WidgetView<State>
 where
-    F: Fn(&mut State, crate::edit_session::EditSession) + Send + Sync + 'static,
+    F: Fn(&mut State, crate::editing::EditSession) + Send + Sync + 'static,
 {
     sized_box(coordinate_panel_view(session, on_session_update))
         .width(layout::QUADRANT_SIZE.px())
@@ -206,11 +206,11 @@ fn build_panel_container<State: 'static>(
 /// └─────────────────────────┘
 /// ```
 pub fn coordinate_panel<State: 'static, F>(
-    session: Arc<crate::edit_session::EditSession>,
+    session: Arc<crate::editing::EditSession>,
     on_session_update: F,
 ) -> impl WidgetView<State>
 where
-    F: Fn(&mut State, crate::edit_session::EditSession) + Send + Sync + 'static,
+    F: Fn(&mut State, crate::editing::EditSession) + Send + Sync + 'static,
 {
     // Step 1: Prepare coordinate data (clone strings for use in closures)
     let coord_data = prepare_coordinate_data(&session.coord_selection);
@@ -284,13 +284,13 @@ impl Default for CoordinateSelection {
 
 /// Coordinate panel widget
 pub struct CoordinatePanelWidget {
-    session: crate::edit_session::EditSession,
+    session: crate::editing::EditSession,
     /// Current widget size (updated during layout)
     widget_size: Size,
 }
 
 impl CoordinatePanelWidget {
-    pub fn new(session: crate::edit_session::EditSession) -> Self {
+    pub fn new(session: crate::editing::EditSession) -> Self {
         Self {
             session,
             widget_size: Size::ZERO,
@@ -380,7 +380,7 @@ impl CoordinatePanelWidget {
 /// Action emitted by the coord panel widget when the quadrant is changed
 #[derive(Debug, Clone)]
 pub struct SessionUpdate {
-    pub session: crate::edit_session::EditSession,
+    pub session: crate::editing::EditSession,
 }
 
 impl Widget for CoordinatePanelWidget {
@@ -574,11 +574,11 @@ use xilem::{Pod, ViewCtx};
 
 /// Create a coordinate panel view from an EditSession
 pub fn coordinate_panel_view<State, F>(
-    session: Arc<crate::edit_session::EditSession>,
+    session: Arc<crate::editing::EditSession>,
     on_session_update: F,
 ) -> CoordinatePanelView<State, F>
 where
-    F: Fn(&mut State, crate::edit_session::EditSession) + Send + Sync + 'static,
+    F: Fn(&mut State, crate::editing::EditSession) + Send + Sync + 'static,
 {
     CoordinatePanelView {
         session,
@@ -590,7 +590,7 @@ where
 /// The Xilem View for CoordinatePanelWidget
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct CoordinatePanelView<State, F> {
-    session: Arc<crate::edit_session::EditSession>,
+    session: Arc<crate::editing::EditSession>,
     on_session_update: F,
     phantom: PhantomData<fn() -> State>,
 }
@@ -598,7 +598,7 @@ pub struct CoordinatePanelView<State, F> {
 impl<State, F> ViewMarker for CoordinatePanelView<State, F> {}
 
 // Xilem View trait implementation
-impl<State: 'static, F: Fn(&mut State, crate::edit_session::EditSession) + Send + Sync + 'static>
+impl<State: 'static, F: Fn(&mut State, crate::editing::EditSession) + Send + Sync + 'static>
     View<State, (), ViewCtx> for CoordinatePanelView<State, F>
 {
     type Element = Pod<CoordinatePanelWidget>;

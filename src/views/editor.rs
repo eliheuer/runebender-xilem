@@ -159,7 +159,7 @@ fn master_toolbar_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
 
 /// Helper to create coordinate panel from session data
 fn coordinate_panel_from_session(
-    session: &Arc<crate::edit_session::EditSession>,
+    session: &Arc<crate::editing::EditSession>,
 ) -> impl WidgetView<AppState> + use<> {
     tracing::debug!(
         "[coordinate_panel_from_session] Building view with \
@@ -181,7 +181,7 @@ fn coordinate_panel_from_session(
 
 /// Glyph preview pane showing the rendered glyph
 fn glyph_preview_pane(
-    session: Arc<crate::edit_session::EditSession>,
+    session: Arc<crate::editing::EditSession>,
     _glyph_name: String,
 ) -> impl WidgetView<AppState> + use<> {
     const PANEL_HEIGHT: f64 = 140.0;
@@ -390,7 +390,7 @@ fn active_glyph_panel_centered(state: &AppState) -> impl WidgetView<AppState> + 
 // ===== Preview Pane Helpers =====
 
 /// Build the glyph path from session paths
-fn build_glyph_path(session: &crate::edit_session::EditSession) -> BezPath {
+fn build_glyph_path(session: &crate::editing::EditSession) -> BezPath {
     let mut glyph_path = BezPath::new();
     for path in session.paths.iter() {
         glyph_path.extend(path.to_bezpath());
@@ -400,7 +400,7 @@ fn build_glyph_path(session: &crate::edit_session::EditSession) -> BezPath {
 
 /// Format Unicode codepoint display string
 #[allow(dead_code)]
-fn format_unicode_display(session: &crate::edit_session::EditSession) -> String {
+fn format_unicode_display(session: &crate::editing::EditSession) -> String {
     if let Some(first_char) = session.glyph.codepoints.first() {
         format!("U+{:04X}", *first_char as u32)
     } else {
@@ -450,7 +450,7 @@ fn build_glyph_labels(
 /// Text buffer preview pane showing rendered glyphs from the font (mini preview mode)
 /// Centered version with fixed width for displaying a line of text
 fn text_buffer_preview_pane_centered(
-    session: Arc<crate::edit_session::EditSession>,
+    session: Arc<crate::editing::EditSession>,
 ) -> impl WidgetView<AppState> + use<> {
     // Panel dimensions to match other bottom panels
     const PANEL_HEIGHT: f64 = 140.0;

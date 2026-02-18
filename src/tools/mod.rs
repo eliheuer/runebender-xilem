@@ -3,9 +3,7 @@
 
 //! Tool system for glyph editing
 
-use crate::edit_session::EditSession;
-use crate::edit_types::EditType;
-use crate::mouse::{Drag, MouseDelegate, MouseEvent};
+use crate::editing::{Drag, EditSession, EditType, MouseDelegate, MouseEvent};
 use kurbo::Affine;
 use masonry::vello::Scene;
 

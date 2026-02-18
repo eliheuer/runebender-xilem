@@ -3,10 +3,7 @@
 
 //! Select tool for selecting and moving points
 
-use crate::edit_session::EditSession;
-use crate::edit_types::EditType;
-use crate::mouse::{Drag, MouseDelegate, MouseEvent};
-use crate::selection::Selection;
+use crate::editing::{Drag, EditSession, EditType, MouseDelegate, MouseEvent, Selection};
 use crate::tools::{Tool, ToolId};
 use kurbo::Affine;
 use kurbo::Point;

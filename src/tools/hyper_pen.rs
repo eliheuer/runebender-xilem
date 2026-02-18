@@ -7,11 +7,9 @@
 //! Off-curve control points are automatically generated and positioned by
 //! the spline solver for G2 continuity.
 
-use crate::edit_session::EditSession;
-use crate::edit_types::EditType;
+use crate::editing::{EditSession, EditType, MouseDelegate, MouseEvent};
 use crate::entity_id::EntityId;
 use crate::path::HyperPath;
-use crate::mouse::{MouseDelegate, MouseEvent};
 use crate::path::Path;
 use crate::tools::{Tool, ToolId};
 use kurbo::Affine;

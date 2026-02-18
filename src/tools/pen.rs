@@ -3,10 +3,8 @@
 
 //! Pen tool for drawing new paths
 
-use crate::edit_session::EditSession;
-use crate::edit_types::EditType;
+use crate::editing::{EditSession, EditType, MouseDelegate, MouseEvent};
 use crate::entity_id::EntityId;
-use crate::mouse::{MouseDelegate, MouseEvent};
 use crate::path::{CubicPath, Path, PathPoint, PathPoints, PointType};
 use crate::tools::{Tool, ToolId};
 use kurbo::Affine;

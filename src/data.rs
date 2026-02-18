@@ -5,7 +5,7 @@
 
 use crate::components::{GlyphCategory, NavDirection};
 use crate::designspace::{DesignspaceProject, is_designspace_file};
-use crate::edit_session::EditSession;
+use crate::editing::EditSession;
 use crate::theme;
 use crate::workspace::Workspace;
 use chrono::Local;
@@ -579,7 +579,7 @@ impl AppState {
                     session.cap_height = workspace.cap_height;
 
                     // Clear selection since points have new IDs
-                    session.selection = crate::selection::Selection::new();
+                    session.selection = crate::editing::Selection::new();
                     session.selected_component = None;
 
                     tracing::info!(
