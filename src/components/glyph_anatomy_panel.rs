@@ -5,7 +5,8 @@
 //!
 //! Displays the selected glyph's outline stroke with control points
 //! and handle lines — a static "x-ray" view into the glyph's
-//! structure.
+//! structure. Panel height adapts to available space via flex
+//! layout; the glyph is centered with uniform padding.
 
 use kurbo::{
     Affine, BezPath, Circle, Line, Rect, RoundedRect, Shape,
@@ -35,9 +36,8 @@ use crate::{glyph_renderer, workspace};
 
 /// Create a glyph anatomy panel view from app state.
 ///
-/// Reads the selected glyph's contours from the workspace and
-/// passes them to the widget. Shows blank when nothing is
-/// selected.
+/// The panel fills all available vertical space (via flex
+/// layout) and centers the glyph with uniform padding.
 pub fn glyph_anatomy_panel(
     state: &AppState,
 ) -> impl WidgetView<AppState> + use<> {
@@ -68,15 +68,43 @@ fn extract_contours(
     }
 }
 
+/// Build a bezpath from contours (used by the widget for
+/// both layout and paint).
+fn build_outline_from_contours(
+    contours: &[Contour],
+) -> BezPath {
+    let glyph = workspace::Glyph {
+        name: String::new(),
+        width: 0.0,
+        height: None,
+        codepoints: Vec::new(),
+        contours: contours.to_vec(),
+        components: Vec::new(),
+        left_group: None,
+        right_group: None,
+        mark_color: None,
+    };
+    glyph_renderer::glyph_to_bezpath(&glyph)
+}
+
 // ============================================================
 // Constants
 // ============================================================
 
-/// Padding inside the panel
+/// Padding inside the panel (uniform on all sides)
 const PANEL_PAD: f64 = 16.0;
 
-/// Fixed height of the anatomy panel
-const PANEL_HEIGHT: f64 = 320.0;
+/// Smaller point radius for the preview panel
+const PREVIEW_POINT_RADIUS: f64 = 2.5;
+
+/// Smaller square half-size for corner points
+const PREVIEW_CORNER_HALF: f64 = 2.0;
+
+/// Smaller off-curve point radius
+const PREVIEW_OFFCURVE_RADIUS: f64 = 1.8;
+
+/// Thinner handle lines
+const PREVIEW_HANDLE_WIDTH: f64 = 0.75;
 
 // ============================================================
 // Custom Masonry Widget
@@ -91,24 +119,8 @@ impl GlyphAnatomyWidget {
         Self { contours }
     }
 
-    /// Build the glyph outline bezpath from contours
-    fn build_outline(&self) -> BezPath {
-        let glyph = workspace::Glyph {
-            name: String::new(),
-            width: 0.0,
-            height: None,
-            codepoints: Vec::new(),
-            contours: self.contours.clone(),
-            components: Vec::new(),
-            left_group: None,
-            right_group: None,
-            mark_color: None,
-        };
-        glyph_renderer::glyph_to_bezpath(&glyph)
-    }
-
     /// Compute a transform that centers the glyph's bounding box
-    /// in the panel, scaled to fill the available width.
+    /// in the panel with uniform padding.
     fn compute_transform(
         &self,
         outline: &BezPath,
@@ -129,7 +141,7 @@ impl GlyphAnatomyWidget {
             return Affine::IDENTITY;
         }
 
-        // Scale to fill width, but cap at height
+        // Scale to fit, preserving aspect ratio
         let scale_x = draw_w / glyph_w;
         let scale_y = draw_h / glyph_h;
         let scale = scale_x.min(scale_y);
@@ -143,8 +155,6 @@ impl GlyphAnatomyWidget {
             PANEL_PAD + (draw_h - scaled_h) / 2.0;
 
         // UFO Y-up → screen Y-down: flip Y
-        // Map bounds.max_y (top of glyph in UFO) to y_offset
-        // (top of draw area on screen)
         Affine::new([
             scale,
             0.0,
@@ -162,13 +172,14 @@ impl GlyphAnatomyWidget {
         transform: Affine,
         outline: &BezPath,
     ) {
+        let color = theme::grid::CELL_SELECTED_OUTLINE;
         let transformed = transform * outline;
         let stroke =
             kurbo::Stroke::new(theme::size::PATH_STROKE_WIDTH);
         scene.stroke(
             &stroke,
             Affine::IDENTITY,
-            &Brush::Solid(theme::path::STROKE),
+            &Brush::Solid(color),
             None,
             &transformed,
         );
@@ -181,9 +192,10 @@ impl GlyphAnatomyWidget {
         scene: &mut Scene,
         transform: Affine,
     ) {
-        let handle_color = Brush::Solid(theme::handle::LINE);
+        let color =
+            Brush::Solid(theme::grid::CELL_SELECTED_OUTLINE);
         let stroke =
-            kurbo::Stroke::new(theme::size::HANDLE_LINE_WIDTH);
+            kurbo::Stroke::new(PREVIEW_HANDLE_WIDTH);
 
         for contour in &self.contours {
             let pts = &contour.points;
@@ -213,7 +225,7 @@ impl GlyphAnatomyWidget {
                     scene.stroke(
                         &stroke,
                         Affine::IDENTITY,
-                        &handle_color,
+                        &color,
                         None,
                         &Line::new(p0, p1),
                     );
@@ -222,12 +234,15 @@ impl GlyphAnatomyWidget {
         }
     }
 
-    /// Draw control points colored by type
+    /// Draw control points — all in selection color
     fn paint_points(
         &self,
         scene: &mut Scene,
         transform: Affine,
     ) {
+        let color = theme::grid::CELL_SELECTED_OUTLINE;
+        let bg = theme::panel::BACKGROUND;
+
         for contour in &self.contours {
             for pt in &contour.points {
                 let screen = transform
@@ -237,27 +252,27 @@ impl GlyphAnatomyWidget {
                         draw_circle_point(
                             scene,
                             screen,
-                            theme::size::SMOOTH_POINT_RADIUS,
-                            theme::point::SMOOTH_INNER,
-                            theme::point::SMOOTH_OUTER,
+                            PREVIEW_POINT_RADIUS,
+                            bg,
+                            color,
                         );
                     }
                     PointType::Line | PointType::Move => {
                         draw_square_point(
                             scene,
                             screen,
-                            theme::size::CORNER_POINT_HALF_SIZE,
-                            theme::point::CORNER_INNER,
-                            theme::point::CORNER_OUTER,
+                            PREVIEW_CORNER_HALF,
+                            bg,
+                            color,
                         );
                     }
                     PointType::OffCurve => {
                         draw_circle_point(
                             scene,
                             screen,
-                            theme::size::OFFCURVE_POINT_RADIUS,
-                            theme::point::OFFCURVE_INNER,
-                            theme::point::OFFCURVE_OUTER,
+                            PREVIEW_OFFCURVE_RADIUS,
+                            bg,
+                            color,
                         );
                     }
                     PointType::Hyper
@@ -265,9 +280,9 @@ impl GlyphAnatomyWidget {
                         draw_circle_point(
                             scene,
                             screen,
-                            theme::size::HYPER_POINT_RADIUS,
-                            theme::point::HYPER_INNER,
-                            theme::point::HYPER_OUTER,
+                            PREVIEW_POINT_RADIUS,
+                            bg,
+                            color,
                         );
                     }
                 }
@@ -366,10 +381,10 @@ impl Widget for GlyphAnatomyWidget {
         _props: &mut PropertiesMut<'_>,
         bc: &BoxConstraints,
     ) -> Size {
-        bc.constrain(Size::new(
-            bc.max().width,
-            PANEL_HEIGHT,
-        ))
+        // Fill all available space from the flex layout.
+        // The glyph is centered with uniform padding by
+        // compute_transform regardless of panel dimensions.
+        bc.max()
     }
 
     fn paint(
@@ -410,7 +425,8 @@ impl Widget for GlyphAnatomyWidget {
             return;
         }
 
-        let outline = self.build_outline();
+        let outline =
+            build_outline_from_contours(&self.contours);
         if outline.is_empty() {
             return;
         }
@@ -497,9 +513,6 @@ impl View<AppState, (), ViewCtx> for GlyphAnatomyView {
         mut element: Mut<'_, Self::Element>,
         _app_state: &mut AppState,
     ) {
-        // Always update — contour count alone can't detect
-        // switching between glyphs with the same number of
-        // contours.
         element.widget.contours = self.contours.clone();
         element.ctx.request_render();
     }

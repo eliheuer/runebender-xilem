@@ -54,7 +54,6 @@ pub fn glyph_info_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
 
     sized_box(content)
         .width(GLYPH_INFO_PANEL_WIDTH.px())
-        .expand_height()
         .background_color(theme::panel::BACKGROUND)
         .border_color(theme::panel::OUTLINE)
         .border_width(1.5)

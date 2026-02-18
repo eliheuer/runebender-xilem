@@ -28,7 +28,7 @@ pub use editor_canvas::editor_view;
 pub use glyph_anatomy_panel::glyph_anatomy_panel;
 pub use glyph_info_panel::{GLYPH_INFO_PANEL_WIDTH, glyph_info_panel};
 pub use glyph_preview_widget::{glyph_view, multi_glyph_view};
-pub use grid_scroll_handler::grid_scroll_handler;
+pub use grid_scroll_handler::{NavDirection, grid_scroll_handler};
 pub use mark_color_panel::mark_color_panel;
 pub use master_toolbar::{create_master_infos, master_toolbar_view};
 pub use shapes_toolbar::shapes_toolbar_view;

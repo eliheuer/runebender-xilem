@@ -23,11 +23,22 @@ use xilem::{Pod, ViewCtx, WidgetView};
 // Action
 // ============================================================
 
+/// Arrow-key navigation direction in the glyph grid
+#[derive(Clone, Copy, Debug)]
+pub enum NavDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
 /// Actions emitted by the grid scroll handler widget
 #[derive(Clone, Copy, Debug)]
 pub enum GridScrollAction {
     /// Scroll by `delta` rows (positive = down)
     Scroll(i32),
+    /// Arrow-key navigation
+    Navigate(NavDirection),
     /// Save requested (Cmd+S)
     Save,
 }
@@ -162,18 +173,28 @@ impl Widget for GridScrollWidget {
                 return;
             }
 
-            // Arrow keys → scroll (no modifier)
+            // Arrow keys → navigate selection (no modifier)
             if !cmd {
-                match &key_event.key {
-                    Key::Named(NamedKey::ArrowDown) => {
-                        ctx.submit_action::<GridScrollAction>(GridScrollAction::Scroll(1));
-                        ctx.set_handled();
-                    }
+                let dir = match &key_event.key {
                     Key::Named(NamedKey::ArrowUp) => {
-                        ctx.submit_action::<GridScrollAction>(GridScrollAction::Scroll(-1));
-                        ctx.set_handled();
+                        Some(NavDirection::Up)
                     }
-                    _ => {}
+                    Key::Named(NamedKey::ArrowDown) => {
+                        Some(NavDirection::Down)
+                    }
+                    Key::Named(NamedKey::ArrowLeft) => {
+                        Some(NavDirection::Left)
+                    }
+                    Key::Named(NamedKey::ArrowRight) => {
+                        Some(NavDirection::Right)
+                    }
+                    _ => None,
+                };
+                if let Some(d) = dir {
+                    ctx.submit_action::<GridScrollAction>(
+                        GridScrollAction::Navigate(d),
+                    );
+                    ctx.set_handled();
                 }
             }
         }
@@ -194,6 +215,7 @@ impl Widget for GridScrollWidget {
 pub fn grid_scroll_handler<State, Action, V>(
     inner: V,
     on_scroll: impl Fn(&mut State, i32) + Send + Sync + 'static,
+    on_navigate: impl Fn(&mut State, NavDirection) + Send + Sync + 'static,
     on_save: impl Fn(&mut State) + Send + Sync + 'static,
 ) -> GridScrollHandlerView<V, State, Action>
 where
@@ -204,18 +226,22 @@ where
     GridScrollHandlerView {
         inner,
         on_scroll: Box::new(on_scroll),
+        on_navigate: Box::new(on_navigate),
         on_save: Box::new(on_save),
         phantom: PhantomData,
     }
 }
 
 type ScrollCb<S> = Box<dyn Fn(&mut S, i32) + Send + Sync>;
+type NavigateCb<S> =
+    Box<dyn Fn(&mut S, NavDirection) + Send + Sync>;
 type SaveCb<S> = Box<dyn Fn(&mut S) + Send + Sync>;
 
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct GridScrollHandlerView<V, State, Action = ()> {
     inner: V,
     on_scroll: ScrollCb<State>,
+    on_navigate: NavigateCb<State>,
     on_save: SaveCb<State>,
     phantom: PhantomData<fn() -> (State, Action)>,
 }
@@ -273,6 +299,10 @@ where
             match *action {
                 GridScrollAction::Scroll(delta) => {
                     (self.on_scroll)(app_state, delta);
+                    return MessageResult::Action(Action::default());
+                }
+                GridScrollAction::Navigate(dir) => {
+                    (self.on_navigate)(app_state, dir);
                     return MessageResult::Action(Action::default());
                 }
                 GridScrollAction::Save => {

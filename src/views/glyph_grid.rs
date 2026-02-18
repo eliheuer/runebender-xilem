@@ -91,6 +91,11 @@ pub fn glyph_grid_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<>
                         let count = state.cached_filtered_count;
                         state.scroll_grid(delta, count);
                     },
+                    |state: &mut AppState, direction| {
+                        state.navigate_grid_selection(
+                            direction,
+                        );
+                    },
                     |state: &mut AppState| {
                         state.save_workspace();
                     },
@@ -98,8 +103,9 @@ pub fn glyph_grid_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<>
                 .flex(1.0),
                 sized_box(
                     flex_col((
-                        glyph_info_panel(state).flex(1.0),
-                        glyph_anatomy_panel(state),
+                        glyph_info_panel(state),
+                        glyph_anatomy_panel(state)
+                            .flex(1.0),
                     ))
                     .gap(BENTO_GAP.px())
                     .cross_axis_alignment(
