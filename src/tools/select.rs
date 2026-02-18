@@ -210,7 +210,7 @@ impl SelectTool {
     fn handle_point_selection(
         &self,
         data: &mut EditSession,
-        entity: crate::entity_id::EntityId,
+        entity: crate::model::EntityId,
         shift: bool,
     ) {
         if shift {

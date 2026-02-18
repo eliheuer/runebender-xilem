@@ -618,7 +618,7 @@ impl EditorWidget {
                             .and_then(|g| g.left_group.as_deref());
 
                         // Look up kerning value
-                        let kern_value = crate::kerning::lookup_kerning(
+                        let kern_value = crate::model::kerning::lookup_kerning(
                             &workspace.kerning,
                             &workspace.groups,
                             prev_name,
@@ -891,9 +891,9 @@ impl EditorWidget {
     fn render_glyph_components(
         &self,
         scene: &mut Scene,
-        glyph: &crate::workspace::Glyph,
+        glyph: &crate::model::workspace::Glyph,
         transform: &Affine,
-        workspace: &crate::workspace::Workspace,
+        workspace: &crate::model::workspace::Workspace,
         is_active_sort: bool,
         use_component_color: bool,
     ) {
@@ -1318,7 +1318,7 @@ impl EditorWidget {
                             .and_then(|g| g.left_group.as_deref());
 
                         // Look up kerning value
-                        let kern_value = crate::kerning::lookup_kerning(
+                        let kern_value = crate::model::kerning::lookup_kerning(
                             &workspace.kerning,
                             &workspace.groups,
                             prev_name,
@@ -1470,7 +1470,7 @@ impl EditorWidget {
                                 .and_then(|g| g.left_group.as_deref());
 
                             // Look up kerning value
-                            let kern_value = crate::kerning::lookup_kerning(
+                            let kern_value = crate::model::kerning::lookup_kerning(
                                 &workspace_guard.kerning,
                                 &workspace_guard.groups,
                                 prev_name,
@@ -1680,7 +1680,7 @@ impl EditorWidget {
         let prev_glyph = workspace.get_glyph(prev_name);
         let curr_glyph = workspace.get_glyph(curr_name);
 
-        crate::kerning::lookup_kerning(
+        crate::model::kerning::lookup_kerning(
             &workspace.kerning,
             &workspace.groups,
             prev_name,

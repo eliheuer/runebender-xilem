@@ -19,8 +19,8 @@ pub use quadrant::Quadrant;
 pub use quadratic::QuadraticPath;
 pub use segment::{Segment, SegmentInfo};
 
-use crate::entity_id::EntityId;
-use crate::workspace;
+use crate::model::entity_id::EntityId;
+use crate::model::workspace;
 use kurbo::BezPath;
 
 /// A path in a glyph outline

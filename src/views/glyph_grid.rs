@@ -29,9 +29,9 @@ use crate::components::{
     grid_scroll_handler, mark_color_panel, master_toolbar_view, size_tracker, system_toolbar_view,
 };
 use crate::data::AppState;
-use crate::glyph_renderer;
+use crate::model::glyph_renderer;
 use crate::theme;
-use crate::workspace;
+use crate::model::workspace;
 
 // ============================================================
 // Bento Layout Constants

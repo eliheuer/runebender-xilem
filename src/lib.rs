@@ -11,11 +11,8 @@ use xilem::{EventLoopBuilder, WidgetView, WindowView, Xilem, window};
 
 mod components;
 mod data;
-mod designspace;
 mod editing;
-mod entity_id;
-mod glyph_renderer;
-mod kerning;
+mod model;
 mod path;
 mod settings;
 mod shaping;
@@ -23,7 +20,6 @@ mod sort;
 mod theme;
 mod tools;
 mod views;
-mod workspace;
 
 use data::AppState;
 use views::{editor_tab, glyph_grid_tab, welcome};

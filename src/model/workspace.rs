@@ -9,7 +9,7 @@ use norad::{Font, Glyph as NoradGlyph};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::entity_id::EntityId;
+use super::entity_id::EntityId;
 
 // ============================================================================
 // DATA STRUCTURES

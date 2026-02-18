@@ -3,8 +3,8 @@
 
 //! Point types for bezier paths
 
-use crate::entity_id::EntityId;
-use crate::workspace::{self, PointType as WsPointType};
+use crate::model::entity_id::EntityId;
+use crate::model::workspace::{self, PointType as WsPointType};
 use kurbo::Point;
 
 /// A point type in a bezier path
