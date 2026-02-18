@@ -6,9 +6,7 @@
 //! This tool activates text editing mode, allowing the user to edit multiple
 //! glyphs in a text buffer.
 
-use crate::edit_session::EditSession;
-use crate::edit_types::EditType;
-use crate::mouse::{Drag, MouseDelegate, MouseEvent};
+use crate::editing::{Drag, EditSession, EditType, MouseDelegate, MouseEvent};
 use crate::tools::{Tool, ToolId};
 use kurbo::Affine;
 use masonry::vello::Scene;
