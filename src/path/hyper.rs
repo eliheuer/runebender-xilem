@@ -7,9 +7,9 @@
 //! are automatically computed by the spline solver to create smooth G2
 //! continuous curves.
 
-use crate::model::entity_id::EntityId;
 use super::point::{PathPoint, PointType};
 use super::point_list::PathPoints;
+use crate::model::entity_id::EntityId;
 use crate::model::workspace;
 use kurbo::{BezPath, Point, Shape};
 use spline::SplineSpec;

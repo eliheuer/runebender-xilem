@@ -8,27 +8,21 @@
 //! structure. Panel height adapts to available space via flex
 //! layout; the glyph is centered with uniform padding.
 
-use kurbo::{
-    Affine, BezPath, Circle, Line, Rect, RoundedRect, Shape,
-    Size,
-};
+use kurbo::{Affine, BezPath, Circle, Line, Rect, RoundedRect, Shape, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
-    PaintCtx, PointerEvent, PropertiesMut, PropertiesRef,
-    RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
+    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerEvent,
+    PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
 };
 use masonry::vello::Scene;
 use masonry::vello::peniko::{Brush, Fill};
-use xilem::core::{
-    MessageContext, MessageResult, Mut, View, ViewMarker,
-};
+use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx, WidgetView};
 
 use crate::data::AppState;
-use crate::theme;
 use crate::model::workspace::{Contour, PointType};
 use crate::model::{glyph_renderer, workspace};
+use crate::theme;
 
 // ============================================================
 // Public API
@@ -38,12 +32,8 @@ use crate::model::{glyph_renderer, workspace};
 ///
 /// The panel fills all available vertical space (via flex
 /// layout) and centers the glyph with uniform padding.
-pub fn glyph_anatomy_panel(
-    state: &AppState,
-) -> impl WidgetView<AppState> + use<> {
-    let contours = if let Some(ref glyph_name) =
-        state.selected_glyph
-    {
+pub fn glyph_anatomy_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
+    let contours = if let Some(ref glyph_name) = state.selected_glyph {
         extract_contours(state, glyph_name)
     } else {
         Vec::new()
@@ -53,10 +43,7 @@ pub fn glyph_anatomy_panel(
 }
 
 /// Extract glyph contours for the selected glyph
-fn extract_contours(
-    state: &AppState,
-    glyph_name: &str,
-) -> Vec<Contour> {
+fn extract_contours(state: &AppState, glyph_name: &str) -> Vec<Contour> {
     let workspace_arc = match state.active_workspace() {
         Some(w) => w,
         None => return Vec::new(),
@@ -70,9 +57,7 @@ fn extract_contours(
 
 /// Build a bezpath from contours (used by the widget for
 /// both layout and paint).
-fn build_outline_from_contours(
-    contours: &[Contour],
-) -> BezPath {
+fn build_outline_from_contours(contours: &[Contour]) -> BezPath {
     let glyph = workspace::Glyph {
         name: String::new(),
         width: 0.0,
@@ -121,11 +106,7 @@ impl GlyphAnatomyWidget {
 
     /// Compute a transform that centers the glyph's bounding box
     /// in the panel with uniform padding.
-    fn compute_transform(
-        &self,
-        outline: &BezPath,
-        size: Size,
-    ) -> Affine {
+    fn compute_transform(&self, outline: &BezPath, size: Size) -> Affine {
         let bounds = outline.bounding_box();
         let glyph_w = bounds.width();
         let glyph_h = bounds.height();
@@ -149,10 +130,8 @@ impl GlyphAnatomyWidget {
         // Center horizontally and vertically
         let scaled_w = glyph_w * scale;
         let scaled_h = glyph_h * scale;
-        let x_offset =
-            PANEL_PAD + (draw_w - scaled_w) / 2.0;
-        let y_offset =
-            PANEL_PAD + (draw_h - scaled_h) / 2.0;
+        let x_offset = PANEL_PAD + (draw_w - scaled_w) / 2.0;
+        let y_offset = PANEL_PAD + (draw_h - scaled_h) / 2.0;
 
         // UFO Y-up → screen Y-down: flip Y
         Affine::new([
@@ -166,16 +145,10 @@ impl GlyphAnatomyWidget {
     }
 
     /// Draw the glyph outline (stroked, not filled)
-    fn paint_outline(
-        &self,
-        scene: &mut Scene,
-        transform: Affine,
-        outline: &BezPath,
-    ) {
+    fn paint_outline(&self, scene: &mut Scene, transform: Affine, outline: &BezPath) {
         let color = theme::grid::CELL_SELECTED_OUTLINE;
         let transformed = transform * outline;
-        let stroke =
-            kurbo::Stroke::new(theme::size::PATH_STROKE_WIDTH);
+        let stroke = kurbo::Stroke::new(theme::size::PATH_STROKE_WIDTH);
         scene.stroke(
             &stroke,
             Affine::IDENTITY,
@@ -187,15 +160,9 @@ impl GlyphAnatomyWidget {
 
     /// Draw handle lines between on-curve and adjacent off-curve
     /// points.
-    fn paint_handles(
-        &self,
-        scene: &mut Scene,
-        transform: Affine,
-    ) {
-        let color =
-            Brush::Solid(theme::grid::CELL_SELECTED_OUTLINE);
-        let stroke =
-            kurbo::Stroke::new(PREVIEW_HANDLE_WIDTH);
+    fn paint_handles(&self, scene: &mut Scene, transform: Affine) {
+        let color = Brush::Solid(theme::grid::CELL_SELECTED_OUTLINE);
+        let stroke = kurbo::Stroke::new(PREVIEW_HANDLE_WIDTH);
 
         for contour in &self.contours {
             let pts = &contour.points;
@@ -207,83 +174,39 @@ impl GlyphAnatomyWidget {
                 let curr = &pts[i];
                 let next = &pts[(i + 1) % n];
 
-                let curr_off = matches!(
-                    curr.point_type,
-                    PointType::OffCurve
-                );
-                let next_off = matches!(
-                    next.point_type,
-                    PointType::OffCurve
-                );
+                let curr_off = matches!(curr.point_type, PointType::OffCurve);
+                let next_off = matches!(next.point_type, PointType::OffCurve);
 
                 // Draw line if exactly one endpoint is off-curve
                 if curr_off != next_off {
-                    let p0 = transform
-                        * kurbo::Point::new(curr.x, curr.y);
-                    let p1 = transform
-                        * kurbo::Point::new(next.x, next.y);
-                    scene.stroke(
-                        &stroke,
-                        Affine::IDENTITY,
-                        &color,
-                        None,
-                        &Line::new(p0, p1),
-                    );
+                    let p0 = transform * kurbo::Point::new(curr.x, curr.y);
+                    let p1 = transform * kurbo::Point::new(next.x, next.y);
+                    scene.stroke(&stroke, Affine::IDENTITY, &color, None, &Line::new(p0, p1));
                 }
             }
         }
     }
 
     /// Draw control points — all in selection color
-    fn paint_points(
-        &self,
-        scene: &mut Scene,
-        transform: Affine,
-    ) {
+    fn paint_points(&self, scene: &mut Scene, transform: Affine) {
         let color = theme::grid::CELL_SELECTED_OUTLINE;
         let bg = theme::panel::BACKGROUND;
 
         for contour in &self.contours {
             for pt in &contour.points {
-                let screen = transform
-                    * kurbo::Point::new(pt.x, pt.y);
+                let screen = transform * kurbo::Point::new(pt.x, pt.y);
                 match pt.point_type {
                     PointType::Curve | PointType::QCurve => {
-                        draw_circle_point(
-                            scene,
-                            screen,
-                            PREVIEW_POINT_RADIUS,
-                            bg,
-                            color,
-                        );
+                        draw_circle_point(scene, screen, PREVIEW_POINT_RADIUS, bg, color);
                     }
                     PointType::Line | PointType::Move => {
-                        draw_square_point(
-                            scene,
-                            screen,
-                            PREVIEW_CORNER_HALF,
-                            bg,
-                            color,
-                        );
+                        draw_square_point(scene, screen, PREVIEW_CORNER_HALF, bg, color);
                     }
                     PointType::OffCurve => {
-                        draw_circle_point(
-                            scene,
-                            screen,
-                            PREVIEW_OFFCURVE_RADIUS,
-                            bg,
-                            color,
-                        );
+                        draw_circle_point(scene, screen, PREVIEW_OFFCURVE_RADIUS, bg, color);
                     }
-                    PointType::Hyper
-                    | PointType::HyperCorner => {
-                        draw_circle_point(
-                            scene,
-                            screen,
-                            PREVIEW_POINT_RADIUS,
-                            bg,
-                            color,
-                        );
+                    PointType::Hyper | PointType::HyperCorner => {
+                        draw_circle_point(scene, screen, PREVIEW_POINT_RADIUS, bg, color);
                     }
                 }
             }
@@ -361,11 +284,7 @@ fn draw_square_point(
 impl Widget for GlyphAnatomyWidget {
     type Action = ();
 
-    fn register_children(
-        &mut self,
-        _ctx: &mut RegisterCtx<'_>,
-    ) {
-    }
+    fn register_children(&mut self, _ctx: &mut RegisterCtx<'_>) {}
 
     fn update(
         &mut self,
@@ -387,20 +306,12 @@ impl Widget for GlyphAnatomyWidget {
         bc.max()
     }
 
-    fn paint(
-        &mut self,
-        ctx: &mut PaintCtx<'_>,
-        _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
-    ) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         let size = ctx.size();
 
         // Panel background and border
         let panel_rect = RoundedRect::from_rect(
-            Rect::from_origin_size(
-                kurbo::Point::ZERO,
-                size,
-            ),
+            Rect::from_origin_size(kurbo::Point::ZERO, size),
             theme::size::PANEL_RADIUS,
         );
         scene.fill(
@@ -411,9 +322,7 @@ impl Widget for GlyphAnatomyWidget {
             &panel_rect,
         );
         scene.stroke(
-            &kurbo::Stroke::new(
-                theme::size::TOOLBAR_BORDER_WIDTH,
-            ),
+            &kurbo::Stroke::new(theme::size::TOOLBAR_BORDER_WIDTH),
             Affine::IDENTITY,
             &Brush::Solid(theme::panel::OUTLINE),
             None,
@@ -425,14 +334,12 @@ impl Widget for GlyphAnatomyWidget {
             return;
         }
 
-        let outline =
-            build_outline_from_contours(&self.contours);
+        let outline = build_outline_from_contours(&self.contours);
         if outline.is_empty() {
             return;
         }
 
-        let transform =
-            self.compute_transform(&outline, size);
+        let transform = self.compute_transform(&outline, size);
 
         // Draw layers back-to-front
         self.paint_outline(scene, transform, &outline);
@@ -477,9 +384,7 @@ impl Widget for GlyphAnatomyWidget {
 // Xilem View wrapper
 // ============================================================
 
-fn glyph_anatomy_view(
-    contours: Vec<Contour>,
-) -> GlyphAnatomyView {
+fn glyph_anatomy_view(contours: Vec<Contour>) -> GlyphAnatomyView {
     GlyphAnatomyView { contours }
 }
 
@@ -499,8 +404,7 @@ impl View<AppState, (), ViewCtx> for GlyphAnatomyView {
         ctx: &mut ViewCtx,
         _app_state: &mut AppState,
     ) -> (Self::Element, Self::ViewState) {
-        let widget =
-            GlyphAnatomyWidget::new(self.contours.clone());
+        let widget = GlyphAnatomyWidget::new(self.contours.clone());
         let pod = ctx.create_pod(widget);
         (pod, ())
     }

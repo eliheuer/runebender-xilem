@@ -3,8 +3,8 @@
 
 //! Point collection for bezier paths
 
-use crate::model::entity_id::EntityId;
 use super::point::PathPoint;
+use crate::model::entity_id::EntityId;
 use std::sync::Arc;
 
 /// A collection of points in a bezier path

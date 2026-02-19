@@ -3,9 +3,9 @@
 
 //! Quadratic bezier path representation
 
-use crate::model::entity_id::EntityId;
 use super::point::{PathPoint, PointType};
 use super::point_list::PathPoints;
+use crate::model::entity_id::EntityId;
 use crate::model::workspace;
 use kurbo::{BezPath, Shape};
 
@@ -323,8 +323,7 @@ impl SegmentIterator {
     ) -> Option<super::segment::SegmentInfo> {
         let start_idx = self.prev_on_curve_idx;
         let end_idx = point_idx;
-        let segment =
-            super::segment::Segment::Line(kurbo::Line::new(self.prev_on_curve, point));
+        let segment = super::segment::Segment::Line(kurbo::Line::new(self.prev_on_curve, point));
 
         self.prev_on_curve = point;
         self.prev_on_curve_idx = point_idx;
@@ -352,11 +351,8 @@ impl SegmentIterator {
 
         let start_idx = self.prev_on_curve_idx;
         let end_idx = point_idx + 1;
-        let segment = super::segment::Segment::Quadratic(kurbo::QuadBez::new(
-            self.prev_on_curve,
-            cp,
-            end,
-        ));
+        let segment =
+            super::segment::Segment::Quadratic(kurbo::QuadBez::new(self.prev_on_curve, cp, end));
 
         self.prev_on_curve = end;
         self.prev_on_curve_idx = point_idx + 1;

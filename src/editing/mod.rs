@@ -12,7 +12,7 @@ pub mod undo;
 pub mod viewport;
 
 pub use edit_types::EditType;
-pub use mouse::{Drag, Mouse, Modifiers, MouseButton, MouseDelegate, MouseEvent};
+pub use mouse::{Drag, Modifiers, Mouse, MouseButton, MouseDelegate, MouseEvent};
 pub use selection::Selection;
 pub use session::EditSession;
 pub use undo::UndoState;

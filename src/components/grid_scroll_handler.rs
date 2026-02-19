@@ -176,24 +176,14 @@ impl Widget for GridScrollWidget {
             // Arrow keys → navigate selection (no modifier)
             if !cmd {
                 let dir = match &key_event.key {
-                    Key::Named(NamedKey::ArrowUp) => {
-                        Some(NavDirection::Up)
-                    }
-                    Key::Named(NamedKey::ArrowDown) => {
-                        Some(NavDirection::Down)
-                    }
-                    Key::Named(NamedKey::ArrowLeft) => {
-                        Some(NavDirection::Left)
-                    }
-                    Key::Named(NamedKey::ArrowRight) => {
-                        Some(NavDirection::Right)
-                    }
+                    Key::Named(NamedKey::ArrowUp) => Some(NavDirection::Up),
+                    Key::Named(NamedKey::ArrowDown) => Some(NavDirection::Down),
+                    Key::Named(NamedKey::ArrowLeft) => Some(NavDirection::Left),
+                    Key::Named(NamedKey::ArrowRight) => Some(NavDirection::Right),
                     _ => None,
                 };
                 if let Some(d) = dir {
-                    ctx.submit_action::<GridScrollAction>(
-                        GridScrollAction::Navigate(d),
-                    );
+                    ctx.submit_action::<GridScrollAction>(GridScrollAction::Navigate(d));
                     ctx.set_handled();
                 }
             }
@@ -233,8 +223,7 @@ where
 }
 
 type ScrollCb<S> = Box<dyn Fn(&mut S, i32) + Send + Sync>;
-type NavigateCb<S> =
-    Box<dyn Fn(&mut S, NavDirection) + Send + Sync>;
+type NavigateCb<S> = Box<dyn Fn(&mut S, NavDirection) + Send + Sync>;
 type SaveCb<S> = Box<dyn Fn(&mut S) + Send + Sync>;
 
 #[must_use = "View values do nothing unless provided to Xilem."]

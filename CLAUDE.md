@@ -43,7 +43,6 @@ The entire UI is rebuilt from `AppState` on each update. State mutations happen 
 src/
 ├── lib.rs                # Root app_logic(), window setup
 ├── main.rs               # Entry point
-├── data.rs               # AppState — central hub
 ├── theme.rs              # Color constants
 ├── settings.rs           # Config constants
 │
@@ -59,7 +58,11 @@ src/
 │
 ├── editing/              # Editing model & interaction
 │   ├── mod.rs            # Re-exports
-│   ├── session.rs        # Per-glyph editing state
+│   ├── session/          # Per-glyph editing state (EditSession)
+│   │   ├── mod.rs        # Struct, constructors, component methods, tests
+│   │   ├── text_buffer.rs # Sort creation, Arabic shaping, buffer management
+│   │   ├── hit_testing.rs # Point/segment/component hit tests
+│   │   └── path_editing.rs # Point movement, deletion, contour operations
 │   ├── selection.rs      # Entity selection set
 │   ├── edit_types.rs     # Undo grouping types
 │   ├── undo.rs           # Undo/redo system
@@ -75,8 +78,30 @@ src/
 │   ├── entity_id.rs      # Unique entity identifiers
 │   └── glyph_renderer.rs # Glyph contour → BezPath conversion
 │
+├── data/                 # AppState — central hub
+│   ├── mod.rs            # AppState struct, Tab enum, new(), Default
+│   ├── file_io.rs        # Font loading/saving (open, load, save)
+│   ├── grid.rs           # Glyph grid operations (columns, scroll, filter)
+│   ├── editor.rs         # Editor session management
+│   └── kerning.rs        # Kerning & glyph property updates
+│
 ├── components/           # UI components & widgets
+│   ├── editor_canvas/    # Main glyph editor canvas
+│   │   ├── mod.rs        # EditorWidget struct, Widget impl
+│   │   ├── paint.rs      # Paint helpers (background, glyph modes)
+│   │   ├── text_buffer.rs # Text buffer rendering (multi-sort layout)
+│   │   ├── pointer.rs    # Pointer event handlers
+│   │   ├── keyboard.rs   # Keyboard shortcut handlers
+│   │   ├── drawing.rs    # Standalone drawing functions (points, metrics)
+│   │   └── view.rs       # Xilem View wrapper (EditorView)
+│   └── ...               # Other components (toolbars, panels)
+│
 ├── views/                # Top-level views (welcome, grid, editor)
+│   ├── editor.rs         # Glyph editing tab
+│   ├── welcome.rs        # Welcome screen
+│   └── glyph_grid/       # Glyph grid tab
+│       ├── mod.rs        # Grid tab view, toolbar panels, grid building
+│       └── glyph_cell.rs # GlyphCellWidget, GlyphCellView wrapper
 ├── tools/                # Editing tools (Select, Pen, Knife, etc.)
 ├── shaping/              # Text shaping (Arabic joining, etc.)
 └── sort/                 # Multi-glyph text buffer
@@ -86,7 +111,7 @@ src/
 
 - **`src/lib.rs`** — Root `app_logic()` switches between welcome screen and tabbed editor
 - **`src/views/`** — Top-level views: `welcome.rs`, `glyph_grid.rs` (grid tab), `editor.rs` (glyph editing tab)
-- **`src/components/`** — UI components: `editor_canvas.rs` (main canvas widget), `glyph_preview_widget.rs`, toolbars, panels
+- **`src/components/`** — UI components: `editor_canvas/` (main canvas widget), `glyph_preview_widget.rs`, toolbars, panels
 - **`src/tools/`** — Editing tools implementing a `Tool` trait: Select, Pen, HyperPen, Preview, Knife, Measure, Shapes, Text
 
 ### Path Abstraction
