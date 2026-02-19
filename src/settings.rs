@@ -15,10 +15,6 @@ const MIN_ZOOM: f64 = 0.02;
 /// Maximum zoom level (50x original size)
 const MAX_ZOOM: f64 = 50.0;
 
-/// Zoom scale factor for scroll wheel sensitivity
-#[allow(dead_code)]
-const ZOOM_SCALE: f64 = 0.001;
-
 // ============================================================================
 // PERFORMANCE SETTINGS
 // ============================================================================
@@ -44,10 +40,6 @@ pub mod editor {
 
     /// Maximum zoom level (50x original size)
     pub const MAX_ZOOM: f64 = super::MAX_ZOOM;
-
-    /// Zoom scale factor for scroll wheel sensitivity
-    #[allow(dead_code)]
-    pub const ZOOM_SCALE: f64 = super::ZOOM_SCALE;
 }
 
 /// Performance optimization settings

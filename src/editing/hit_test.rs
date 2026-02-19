@@ -1,17 +1,18 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Hit testing utilities for finding entities under the cursor
+//! Hit testing for finding points and segments under the cursor.
+//!
+//! Given a screen-space click position, `find_closest` iterates candidate
+//! points and returns the nearest one within a threshold. On-curve points
+//! receive a small distance penalty so that nearby off-curve handles are
+//! easier to grab. Used by the Select tool and other pointer interactions.
 
 use crate::model::EntityId;
 use kurbo::Point;
 
 /// Default maximum distance for clicking on a point (in screen pixels)
 pub const MIN_CLICK_DISTANCE: f64 = 10.0;
-
-/// Maximum distance for clicking on a segment (stricter)
-#[allow(dead_code)]
-pub const SEGMENT_CLICK_DISTANCE: f64 = 6.0;
 
 /// Penalty added to on-curve points to favor selecting off-curve points
 /// This makes it easier to grab handles when they're near on-curve points

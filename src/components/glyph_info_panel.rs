@@ -12,6 +12,7 @@ use xilem::style::Style;
 use xilem::view::{CrossAxisAlignment, flex_col, flex_row, label, sized_box};
 
 use crate::data::AppState;
+use crate::model::read_workspace;
 use crate::theme;
 
 /// Width of the glyph info panel
@@ -22,7 +23,7 @@ pub fn glyph_info_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
     let content = if let Some(ref glyph_name) = state.selected_glyph {
         // Get glyph data if available
         let glyph_data = state.active_workspace().and_then(|w| {
-            let workspace = w.read().unwrap();
+            let workspace = read_workspace(&w);
             workspace.get_glyph(glyph_name).map(|g| {
                 (
                     g.name.clone(),

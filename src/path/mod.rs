@@ -1,7 +1,13 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Path abstraction for glyph outlines
+//! Path abstraction for glyph outlines — the editable representation.
+//!
+//! The `Path` enum wraps three curve types: `Cubic` (standard UFO beziers),
+//! `Quadratic` (TrueType-style), and `Hyper` (hyperbezier splines with only
+//! on-curve points). All three convert to `kurbo::BezPath` for rendering.
+//! Paths are created from `workspace::Contour` data when a glyph is opened
+//! for editing, and converted back when the session is saved.
 
 pub mod cubic;
 pub mod hyper;
@@ -19,7 +25,6 @@ pub use quadrant::Quadrant;
 pub use quadratic::QuadraticPath;
 pub use segment::{Segment, SegmentInfo};
 
-use crate::model::entity_id::EntityId;
 use crate::model::workspace;
 use kurbo::BezPath;
 
@@ -44,62 +49,6 @@ impl Path {
             Path::Quadratic(quadratic) => quadratic.to_bezpath(),
             Path::Hyper(hyper) => hyper.to_bezpath(),
         }
-    }
-
-    /// Get the unique identifier for this path
-    #[allow(dead_code)]
-    pub fn id(&self) -> EntityId {
-        match self {
-            Path::Cubic(cubic) => cubic.id,
-            Path::Quadratic(quadratic) => quadratic.id,
-            Path::Hyper(hyper) => hyper.id,
-        }
-    }
-
-    /// Get the number of points in this path
-    #[allow(dead_code)]
-    pub fn len(&self) -> usize {
-        match self {
-            Path::Cubic(cubic) => cubic.len(),
-            Path::Quadratic(quadratic) => quadratic.len(),
-            Path::Hyper(hyper) => hyper.len(),
-        }
-    }
-
-    /// Check if this path is empty
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        match self {
-            Path::Cubic(cubic) => cubic.is_empty(),
-            Path::Quadratic(quadratic) => quadratic.is_empty(),
-            Path::Hyper(hyper) => hyper.is_empty(),
-        }
-    }
-
-    /// Check if this path is closed
-    #[allow(dead_code)]
-    pub fn is_closed(&self) -> bool {
-        match self {
-            Path::Cubic(cubic) => cubic.closed,
-            Path::Quadratic(quadratic) => quadratic.closed,
-            Path::Hyper(hyper) => hyper.closed,
-        }
-    }
-
-    /// Get the bounding box of this path
-    #[allow(dead_code)]
-    pub fn bounding_box(&self) -> Option<kurbo::Rect> {
-        match self {
-            Path::Cubic(cubic) => cubic.bounding_box(),
-            Path::Quadratic(quadratic) => quadratic.bounding_box(),
-            Path::Hyper(hyper) => hyper.bounding_box(),
-        }
-    }
-
-    /// Check if this path is a hyperbezier path
-    #[allow(dead_code)]
-    pub fn is_hyper(&self) -> bool {
-        matches!(self, Path::Hyper(_))
     }
 
     /// Convert from a workspace contour (norad format)

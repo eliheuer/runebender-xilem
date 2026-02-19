@@ -4,7 +4,7 @@
 //! Glyph rendering - converts glyph contours to Kurbo paths
 
 use super::workspace::{Contour, ContourPoint, Glyph, PointType, Workspace};
-use kurbo::{Affine, BezPath, Point, Shape};
+use kurbo::{Affine, BezPath, Point};
 
 /// Convert a Norad Glyph to a Kurbo BezPath (contours only)
 pub fn glyph_to_bezpath(glyph: &Glyph) -> BezPath {
@@ -320,16 +320,5 @@ fn append_hyperbezier_contour(path: &mut BezPath, contour: &Contour) {
             kurbo::PathEl::CurveTo(p1, p2, p3) => path.curve_to(*p1, *p2, *p3),
             kurbo::PathEl::ClosePath => path.close_path(),
         }
-    }
-}
-
-/// Get the bounding box of a glyph for scaling/centering
-#[allow(dead_code)]
-pub fn glyph_bounds(glyph: &Glyph) -> Option<kurbo::Rect> {
-    let path = glyph_to_bezpath(glyph);
-    if path.is_empty() {
-        None
-    } else {
-        Some(path.bounding_box())
     }
 }

@@ -14,5 +14,5 @@ pub mod viewport;
 pub use edit_types::EditType;
 pub use mouse::{Drag, Modifiers, Mouse, MouseButton, MouseDelegate, MouseEvent};
 pub use selection::Selection;
-pub use session::EditSession;
+pub use session::{EditSession, FontMetrics};
 pub use undo::UndoState;

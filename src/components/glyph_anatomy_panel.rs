@@ -20,6 +20,7 @@ use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx, WidgetView};
 
 use crate::data::AppState;
+use crate::model::read_workspace;
 use crate::model::workspace::{Contour, PointType};
 use crate::model::{glyph_renderer, workspace};
 use crate::theme;
@@ -48,7 +49,7 @@ fn extract_contours(state: &AppState, glyph_name: &str) -> Vec<Contour> {
         Some(w) => w,
         None => return Vec::new(),
     };
-    let workspace = workspace_arc.read().unwrap();
+    let workspace = read_workspace(&workspace_arc);
     match workspace.get_glyph(glyph_name) {
         Some(g) => g.contours.clone(),
         None => Vec::new(),

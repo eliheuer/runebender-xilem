@@ -4,12 +4,11 @@
 //! Text buffer rendering for EditorWidget (multi-sort layout)
 
 use super::EditorWidget;
+use crate::model::read_workspace;
 use crate::theme;
 use kurbo::{Affine, Point, Stroke};
-use masonry::core::{BrushIndex, StyleProperty, render_text};
 use masonry::vello::Scene;
 use masonry::vello::peniko::Brush;
-use parley::{FontContext, FontFamily, FontStack, GenericFamily, LayoutContext};
 
 impl EditorWidget {
     /// Render the text buffer with multiple sorts (Phase 3)
@@ -95,7 +94,7 @@ impl EditorWidget {
                     if let Some(prev_name) = &prev_glyph_name
                         && let Some(workspace_arc) = &self.session.workspace
                     {
-                        let workspace = workspace_arc.read().unwrap();
+                        let workspace = read_workspace(workspace_arc);
 
                         // Get current glyph's left kerning group
                         let curr_group = workspace
@@ -138,7 +137,7 @@ impl EditorWidget {
                     // Update previous glyph info for next iteration
                     prev_glyph_name = Some(name.clone());
                     if let Some(workspace_arc) = &self.session.workspace {
-                        let workspace = workspace_arc.read().unwrap();
+                        let workspace = read_workspace(workspace_arc);
                         prev_glyph_group = workspace
                             .get_glyph(name)
                             .and_then(|g| g.right_group.clone());
@@ -296,7 +295,7 @@ impl EditorWidget {
         // Render components for the active glyph
         // Use distinct color only in non-text mode (to distinguish from editable paths)
         if let Some(workspace) = &self.session.workspace {
-            let workspace_guard = workspace.read().unwrap();
+            let workspace_guard = read_workspace(workspace);
             let use_component_color = !self.session.text_mode_active;
             self.render_glyph_components(
                 scene,
@@ -323,7 +322,7 @@ impl EditorWidget {
             None => return,
         };
 
-        let workspace_guard = workspace.read().unwrap();
+        let workspace_guard = read_workspace(workspace);
         let glyph = match workspace_guard.glyphs.get(glyph_name) {
             Some(g) => g,
             None => {
@@ -657,73 +656,5 @@ impl EditorWidget {
             x_offset + advance_width,
             baseline_y + self.session.ascender,
         ); // Top
-    }
-
-    /// Render width and sidebearing labels for text mode (Glyphs.app style)
-    ///
-    /// Shows LSB, width, and RSB in light gray text at the bottom of the sort
-    #[allow(dead_code)]
-    #[allow(clippy::too_many_arguments)]
-    fn render_sort_labels(
-        &self,
-        scene: &mut Scene,
-        x_offset: f64,
-        baseline_y: f64,
-        lsb: f64,
-        width: f64,
-        rsb: f64,
-        transform: &Affine,
-    ) {
-        // Text styling
-        let font_size = 14.0;
-        let text_color = masonry::vello::peniko::Color::from_rgb8(0x80, 0x80, 0x80); // Gray
-        let brushes = vec![Brush::Solid(text_color)];
-
-        // Position labels below the descender
-        let label_y = baseline_y + self.session.descender - 16.0;
-
-        // Helper function to render a single label
-        let render_label = |scene: &mut Scene, text: String, x: f64, y: f64| {
-            let mut font_cx = FontContext::default();
-            let mut layout_cx = LayoutContext::new();
-
-            let mut builder = layout_cx.ranged_builder(&mut font_cx, &text, 1.0, false);
-            builder.push_default(StyleProperty::FontSize(font_size));
-            builder.push_default(StyleProperty::FontStack(FontStack::Single(
-                FontFamily::Generic(GenericFamily::SansSerif),
-            )));
-            builder.push_default(StyleProperty::Brush(BrushIndex(0)));
-            let mut layout = builder.build(&text);
-            layout.break_all_lines(None);
-
-            // Center the text horizontally at the given x position
-            let text_width = layout.width() as f64;
-            let text_height = layout.height() as f64;
-
-            // Transform the position from font space to screen space
-            let screen_pos = *transform * Point::new(x, y);
-
-            // Render text in screen space (no flip)
-            render_text(
-                scene,
-                Affine::translate((
-                    screen_pos.x - text_width / 2.0,
-                    screen_pos.y - text_height / 2.0,
-                )),
-                &layout,
-                &brushes,
-                false,
-            );
-        };
-
-        // Render three labels: LSB, Width, RSB
-        render_label(scene, format!("{:.0}", lsb), x_offset, label_y);
-        render_label(
-            scene,
-            format!("{:.0}", width),
-            x_offset + width / 2.0,
-            label_y,
-        );
-        render_label(scene, format!("{:.0}", rsb), x_offset + width, label_y);
     }
 }

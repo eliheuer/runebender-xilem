@@ -4,7 +4,6 @@
 //! Point collection for bezier paths
 
 use super::point::PathPoint;
-use crate::model::entity_id::EntityId;
 use std::sync::Arc;
 
 /// A collection of points in a bezier path
@@ -41,23 +40,9 @@ impl PathPoints {
         self.points.is_empty()
     }
 
-    /// Get a point by index
-    #[allow(dead_code)]
-    pub fn get(&self, index: usize) -> Option<&PathPoint> {
-        self.points.get(index)
-    }
-
     /// Iterate over all points
     pub fn iter(&self) -> impl Iterator<Item = &PathPoint> {
         self.points.iter()
-    }
-
-    /// Find a point by its entity ID
-    ///
-    /// Returns the index and a reference to the point if found.
-    #[allow(dead_code)]
-    pub fn find_by_id(&self, id: EntityId) -> Option<(usize, &PathPoint)> {
-        self.points.iter().enumerate().find(|(_, pt)| pt.id == id)
     }
 
     /// Get mutable access to the points

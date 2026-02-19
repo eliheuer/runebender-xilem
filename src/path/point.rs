@@ -1,7 +1,13 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Point types for bezier paths
+//! Point types for bezier paths — the atoms of editable outlines.
+//!
+//! `PathPoint` pairs a `kurbo::Point` position with a `PointType` (on-curve
+//! smooth/corner, or off-curve handle) and a unique `EntityId`. Points are
+//! stored in `PathPoints` collections inside each `CubicPath`, `QuadraticPath`,
+//! or `HyperPath`. The `PointType` determines drawing style (filled circle vs.
+//! open square) and drag behavior (smooth points maintain tangent continuity).
 
 use crate::model::entity_id::EntityId;
 use crate::model::workspace::{self, PointType as WsPointType};

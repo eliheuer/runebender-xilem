@@ -7,7 +7,7 @@ use super::point::{PathPoint, PointType};
 use super::point_list::PathPoints;
 use crate::model::entity_id::EntityId;
 use crate::model::workspace;
-use kurbo::{BezPath, Shape};
+use kurbo::BezPath;
 
 /// A single contour represented as a quadratic bezier path
 ///
@@ -83,16 +83,6 @@ impl QuadraticPath {
         }
 
         path
-    }
-
-    /// Get the bounding box of this path
-    pub fn bounding_box(&self) -> Option<kurbo::Rect> {
-        let bez = self.to_bezpath();
-        if bez.is_empty() {
-            None
-        } else {
-            Some(bez.bounding_box())
-        }
     }
 
     /// Convert from a workspace contour (norad format)

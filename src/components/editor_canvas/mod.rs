@@ -111,13 +111,6 @@ impl EditorWidget {
         }
     }
 
-    /// Set the canvas size
-    #[allow(dead_code)]
-    pub fn with_size(mut self, size: Size) -> Self {
-        self.size = size;
-        self
-    }
-
     /// Record an edit operation for undo
     ///
     /// This manages undo grouping:

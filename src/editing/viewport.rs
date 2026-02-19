@@ -1,7 +1,13 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Viewport transformation between design space and screen space
+//! Viewport transformation between design space and screen space.
+//!
+//! Font coordinates use Y-up (origin at baseline); screen coordinates use
+//! Y-down (origin at top-left). `ViewPort` stores an offset and zoom level
+//! and provides `to_screen` / `to_design` conversions that handle the Y-flip,
+//! scaling, and translation. Used by `EditorWidget` to map pointer events
+//! into design coordinates and to position glyphs on screen.
 
 /// Viewport transformation between design space and screen space
 #[derive(Debug, Clone)]

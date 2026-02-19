@@ -4,6 +4,7 @@
 //! Pointer event handlers for EditorWidget
 
 use super::EditorWidget;
+use crate::model::{read_workspace, write_workspace};
 use crate::settings;
 use kurbo::Point;
 use masonry::core::{EventCtx, ScrollDelta};
@@ -158,10 +159,11 @@ impl EditorWidget {
             _ => return 0.0,
         };
 
-        let workspace = match &self.session.workspace {
-            Some(ws) => ws.read().unwrap(),
+        let workspace_arc = match &self.session.workspace {
+            Some(ws) => ws,
             None => return 0.0,
         };
+        let workspace = read_workspace(workspace_arc);
 
         let prev_glyph = workspace.get_glyph(prev_name);
         let curr_glyph = workspace.get_glyph(curr_name);
@@ -262,7 +264,7 @@ impl EditorWidget {
         };
 
         let new_kern_value = self.kern_original_value + self.kern_current_offset;
-        let mut workspace = workspace_arc.write().unwrap();
+        let mut workspace = write_workspace(workspace_arc);
 
         if new_kern_value == 0.0 {
             if let Some(first_pairs) = workspace.kerning.get_mut(prev_name) {
@@ -272,7 +274,7 @@ impl EditorWidget {
             workspace
                 .kerning
                 .entry(prev_name.clone())
-                .or_insert_with(std::collections::HashMap::new)
+                .or_default()
                 .insert(curr_name.clone(), new_kern_value);
         }
     }
@@ -503,7 +505,7 @@ impl EditorWidget {
                     if let Some(prev_name) = &prev_glyph_name
                         && let Some(workspace_arc) = &self.session.workspace
                     {
-                        let workspace = workspace_arc.read().unwrap();
+                        let workspace = read_workspace(workspace_arc);
 
                         // Get current glyph's left kerning group
                         let curr_group = workspace
@@ -547,7 +549,7 @@ impl EditorWidget {
                     // Update previous glyph info for next iteration
                     prev_glyph_name = Some(name.clone());
                     if let Some(workspace_arc) = &self.session.workspace {
-                        let workspace = workspace_arc.read().unwrap();
+                        let workspace = read_workspace(workspace_arc);
                         prev_glyph_group = workspace
                             .get_glyph(name)
                             .and_then(|g| g.right_group.clone());
@@ -618,7 +620,7 @@ impl EditorWidget {
             }
         };
 
-        let workspace_guard = workspace.read().unwrap();
+        let workspace_guard = read_workspace(workspace);
         let glyph = match workspace_guard.glyphs.get(&glyph_name) {
             Some(g) => g,
             None => {

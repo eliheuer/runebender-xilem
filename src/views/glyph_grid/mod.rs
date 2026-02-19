@@ -1,7 +1,13 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Glyph grid view - displays all glyphs in a scrollable grid
+//! Glyph grid view — the font overview tab showing all glyphs in a grid.
+//!
+//! Builds a responsive grid of glyph cells, a category filter sidebar, and
+//! info/anatomy panels. Glyph cells (in the `glyph_cell` sub-module) render
+//! a preview of each glyph's outline and handle click/double-click for
+//! selection and opening the editor. The grid reflows based on window width
+//! and supports arrow-key navigation and multi-select.
 
 mod glyph_cell;
 
@@ -23,6 +29,7 @@ use crate::components::{
 };
 use crate::data::AppState;
 use crate::model::glyph_renderer;
+use crate::model::read_workspace;
 use crate::model::workspace;
 use crate::theme;
 
@@ -180,7 +187,7 @@ fn master_toolbar_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
 fn current_mark_color_index(state: &AppState) -> Option<usize> {
     let glyph_name = state.selected_glyph.as_ref()?;
     let workspace_arc = state.active_workspace()?;
-    let workspace = workspace_arc.read().unwrap();
+    let workspace = read_workspace(&workspace_arc);
     let glyph = workspace.get_glyph(glyph_name)?;
     glyph
         .mark_color
@@ -230,7 +237,7 @@ fn glyph_grid_view(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
 fn get_upm_from_state(state: &AppState) -> f64 {
     state
         .active_workspace()
-        .and_then(|w| w.read().unwrap().units_per_em)
+        .and_then(|w| read_workspace(&w).units_per_em)
         .unwrap_or(1000.0)
 }
 
@@ -261,7 +268,7 @@ fn build_visible_glyph_data(
         Some(w) => w,
         None => return (Vec::new(), 0),
     };
-    let workspace = workspace_arc.read().unwrap();
+    let workspace = read_workspace(&workspace_arc);
     let category_filter = state.glyph_category_filter;
 
     // Step 1: Collect filtered glyph names (cheap — no bezpath)

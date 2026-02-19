@@ -117,15 +117,18 @@ fn build_new_font_button() -> impl WidgetView<AppState> + use<> {
 fn create_demo_session() -> EditSession {
     let glyph = create_r_glyph();
 
+    let metrics = crate::editing::FontMetrics {
+        units_per_em: 1024.0,    // UPM - from VirtuaGrotesk
+        ascender: 832.0,         // from VirtuaGrotesk
+        descender: -256.0,       // from VirtuaGrotesk
+        x_height: Some(576.0),   // from VirtuaGrotesk
+        cap_height: Some(768.0), // from VirtuaGrotesk
+    };
     let mut session = EditSession::new(
         "R".to_string(),
-        std::path::PathBuf::from("demo.ufo"), // Dummy path for demo
+        std::path::PathBuf::from("demo.ufo"),
         glyph,
-        1024.0,      // UPM (units per em) - from VirtuaGrotesk
-        832.0,       // ascender - from VirtuaGrotesk
-        -256.0,      // descender - from VirtuaGrotesk
-        Some(576.0), // x_height - from VirtuaGrotesk
-        Some(768.0), // cap_height - from VirtuaGrotesk
+        metrics,
     );
 
     // Center the glyph perfectly in the window

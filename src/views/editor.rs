@@ -1,7 +1,13 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Editor view - main glyph editing interface
+//! Editor view — the main glyph editing tab.
+//!
+//! Builds the full editor layout: canvas (via `EditorWidget`), toolbars,
+//! coordinate panel, and a text-buffer preview strip showing neighboring
+//! glyphs with live kerning. This is the view shown when `Tab::Editor` is
+//! active. The `build_text_buffer_preview` function renders the multi-glyph
+//! text strip with real-time path rendering and kerning lookups.
 
 use std::sync::Arc;
 
@@ -22,6 +28,7 @@ use crate::components::{
     workspace_toolbar_view,
 };
 use crate::data::AppState;
+use crate::model::read_workspace;
 use crate::theme;
 use crate::theme::size::{UI_PANEL_GAP, UI_PANEL_MARGIN};
 use crate::tools::shapes::ShapeType;
@@ -398,55 +405,6 @@ fn build_glyph_path(session: &crate::editing::EditSession) -> BezPath {
     glyph_path
 }
 
-/// Format Unicode codepoint display string
-#[allow(dead_code)]
-fn format_unicode_display(session: &crate::editing::EditSession) -> String {
-    if let Some(first_char) = session.glyph.codepoints.first() {
-        format!("U+{:04X}", *first_char as u32)
-    } else {
-        String::new()
-    }
-}
-
-/// Build the glyph preview view (either glyph or empty label)
-#[allow(dead_code)]
-fn build_glyph_preview(
-    glyph_path: &BezPath,
-    preview_size: f64,
-    upm: f64,
-) -> Either<impl WidgetView<AppState> + use<>, impl WidgetView<AppState> + use<>> {
-    if !glyph_path.is_empty() {
-        Either::A(
-            glyph_view(glyph_path.clone(), preview_size, preview_size, upm)
-                .color(theme::panel::GLYPH_PREVIEW)
-                .baseline_offset(0.15),
-        )
-    } else {
-        Either::B(label(""))
-    }
-}
-
-/// Build the glyph name and Unicode labels
-#[allow(dead_code)]
-fn build_glyph_labels(
-    glyph_name: String,
-    unicode_display: String,
-) -> impl WidgetView<AppState> + use<> {
-    sized_box(
-        flex_col((
-            label(glyph_name)
-                .text_size(18.0)
-                .color(theme::text::PRIMARY),
-            label(unicode_display)
-                .text_size(18.0)
-                .color(theme::text::PRIMARY),
-            sized_box(label("")).height(4.px()),
-        ))
-        .gap(2.px()),
-    )
-    .height(32.px())
-}
-
 /// Text buffer preview pane showing rendered glyphs from the font (mini preview mode)
 /// Centered version with fixed width for displaying a line of text
 fn text_buffer_preview_pane_centered(
@@ -512,7 +470,7 @@ fn text_buffer_preview_pane_centered(
 
                 // Apply kerning if we have a previous glyph
                 if let Some(prev_name) = &prev_glyph_name {
-                    let workspace_guard = workspace.read().unwrap();
+                    let workspace_guard = read_workspace(workspace);
 
                     // Get current glyph's left kerning group
                     let curr_group = workspace_guard
@@ -546,7 +504,7 @@ fn text_buffer_preview_pane_centered(
                     }
                     // Also include components from the session glyph
                     // We need to render components separately since session.paths only has editable contours
-                    let workspace_guard = workspace.read().unwrap();
+                    let workspace_guard = read_workspace(workspace);
                     for component in &session.glyph.components {
                         append_component_path(
                             &mut glyph_path,
@@ -558,7 +516,7 @@ fn text_buffer_preview_pane_centered(
                 } else {
                     // For inactive sorts: load from workspace (saved state)
                     // Use glyph_to_bezpath_with_components to include components
-                    let workspace_guard = workspace.read().unwrap();
+                    let workspace_guard = read_workspace(workspace);
                     if let Some(glyph) = workspace_guard.glyphs.get(name) {
                         glyph_path = crate::model::glyph_renderer::glyph_to_bezpath_with_components(
                             glyph,
@@ -579,9 +537,7 @@ fn text_buffer_preview_pane_centered(
 
                 // Update previous glyph info for next iteration
                 prev_glyph_name = Some(name.clone());
-                prev_glyph_group = workspace
-                    .read()
-                    .unwrap()
+                prev_glyph_group = read_workspace(workspace)
                     .get_glyph(name)
                     .and_then(|g| g.right_group.clone());
             }

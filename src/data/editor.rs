@@ -5,6 +5,7 @@
 
 use super::{AppState, Tab};
 use crate::editing::EditSession;
+use crate::model::{read_workspace, write_workspace};
 use std::sync::Arc;
 
 #[allow(dead_code)]
@@ -12,19 +13,22 @@ impl AppState {
     /// Create an edit session for a glyph
     pub fn create_edit_session(&self, glyph_name: &str) -> Option<EditSession> {
         let workspace_arc = self.active_workspace()?;
-        let workspace = workspace_arc.read().unwrap();
+        let workspace = read_workspace(&workspace_arc);
         let glyph = workspace.get_glyph(glyph_name)?;
 
         // Create session with text buffer for text editing support
+        let metrics = crate::editing::FontMetrics {
+            units_per_em: workspace.units_per_em.unwrap_or(1000.0),
+            ascender: workspace.ascender.unwrap_or(800.0),
+            descender: workspace.descender.unwrap_or(-200.0),
+            x_height: workspace.x_height,
+            cap_height: workspace.cap_height,
+        };
         let mut session = EditSession::new_with_text_buffer(
             glyph_name.to_string(),
             workspace.path.clone(),
             glyph.clone(),
-            workspace.units_per_em.unwrap_or(1000.0),
-            workspace.ascender.unwrap_or(800.0),
-            workspace.descender.unwrap_or(-200.0),
-            workspace.x_height,
-            workspace.cap_height,
+            metrics,
         );
 
         // Set workspace reference for text mode character mapping (Phase 5)
@@ -52,33 +56,18 @@ impl AppState {
 
     /// Sync the current editor session to the workspace
     fn sync_editor_to_workspace(&mut self) {
-        let session = match &self.editor_session {
-            Some(s) => s,
-            None => return,
+        let Some(session) = &self.editor_session else {
+            return;
         };
-
-        let workspace_arc = match self.active_workspace() {
-            Some(w) => w,
-            None => return,
+        let Some(workspace_arc) = self.active_workspace() else {
+            return;
         };
 
         let updated_glyph = session.to_glyph();
 
         // Save to the active sort's glyph (if there is one)
         if let Some(active_name) = &session.active_sort_name {
-            // Debug logging only for glyph "a"
-            if active_name == "a" {
-                println!(
-                    "[close_editor] Synced glyph 'a' with {} contours to \
-                     workspace",
-                    updated_glyph.contours.len()
-                );
-            }
-
-            workspace_arc
-                .write()
-                .unwrap()
-                .update_glyph(active_name, updated_glyph);
+            write_workspace(&workspace_arc).update_glyph(active_name, updated_glyph);
         }
     }
 
@@ -101,9 +90,8 @@ impl AppState {
         }
 
         // Get the new workspace
-        let workspace_arc = match self.active_workspace() {
-            Some(w) => w,
-            None => return,
+        let Some(workspace_arc) = self.active_workspace() else {
+            return;
         };
 
         // Update the editor session to use the new master's data
@@ -113,7 +101,7 @@ impl AppState {
 
             // Reload the active sort's glyph from the new master
             if let Some(glyph_name) = session.active_sort_name.clone() {
-                let workspace = workspace_arc.read().unwrap();
+                let workspace = read_workspace(&workspace_arc);
 
                 if let Some(glyph) = workspace.get_glyph(&glyph_name) {
                     // Update the glyph data
@@ -150,9 +138,8 @@ impl AppState {
 
     /// Set the tool for the current editor session
     pub fn set_editor_tool(&mut self, tool_id: crate::tools::ToolId) {
-        let session = match &mut self.editor_session {
-            Some(s) => s,
-            None => return,
+        let Some(session) = &mut self.editor_session else {
+            return;
         };
 
         // Phase 4: When switching to text tool, enter text mode
@@ -176,9 +163,8 @@ impl AppState {
 
     /// Set the shape type for the shapes tool
     pub fn set_shape_type(&mut self, shape_type: crate::tools::shapes::ShapeType) {
-        let session = match &mut self.editor_session {
-            Some(s) => s,
-            None => return,
+        let Some(session) = &mut self.editor_session else {
+            return;
         };
 
         // Update the shape type if the current tool is the shapes tool
@@ -189,9 +175,8 @@ impl AppState {
 
     /// Set the text direction for RTL/LTR text editing
     pub fn set_text_direction(&mut self, direction: crate::shaping::TextDirection) {
-        let session = match &mut self.editor_session {
-            Some(s) => s,
-            None => return,
+        let Some(session) = &mut self.editor_session else {
+            return;
         };
 
         session.text_direction = direction;
@@ -209,18 +194,14 @@ impl AppState {
 
     /// Sync a session's changes to the workspace
     fn sync_session_to_workspace(&mut self, session: &EditSession) {
-        let workspace_arc = match self.active_workspace() {
-            Some(w) => w,
-            None => return,
+        let Some(workspace_arc) = self.active_workspace() else {
+            return;
         };
 
         // Save to the active sort's glyph (if there is one)
         if let Some(active_name) = &session.active_sort_name {
             let updated_glyph = session.to_glyph();
-            workspace_arc
-                .write()
-                .unwrap()
-                .update_glyph(active_name, updated_glyph);
+            write_workspace(&workspace_arc).update_glyph(active_name, updated_glyph);
         }
     }
 }

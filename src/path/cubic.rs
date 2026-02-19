@@ -1,13 +1,18 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Cubic bezier path representation
+//! Cubic bezier path representation (the default curve type for UFO fonts).
+//!
+//! A `CubicPath` stores one contour as a sequence of on-curve and off-curve
+//! points. `to_bezpath()` walks the points and emits `kurbo` move/curve/line
+//! commands. `from_contour()` converts from the workspace's `Contour` format,
+//! assigning each point a unique `EntityId` for selection and hit testing.
 
 use super::point::{PathPoint, PointType};
 use super::point_list::PathPoints;
 use crate::model::entity_id::EntityId;
 use crate::model::workspace;
-use kurbo::{BezPath, Shape};
+use kurbo::BezPath;
 
 /// A single contour represented as a cubic bezier path
 ///
@@ -82,16 +87,6 @@ impl CubicPath {
         }
 
         path
-    }
-
-    /// Get the bounding box of this path
-    pub fn bounding_box(&self) -> Option<kurbo::Rect> {
-        let bez = self.to_bezpath();
-        if bez.is_empty() {
-            None
-        } else {
-            Some(bez.bounding_box())
-        }
     }
 
     /// Convert from a workspace contour (norad format)
