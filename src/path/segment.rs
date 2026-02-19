@@ -282,3 +282,175 @@ fn line_nearest_param(line: Line, point: Point) -> f64 {
     // (not before the start or after the end)
     t.clamp(0.0, 1.0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- nearest ---
+
+    #[test]
+    fn line_nearest_at_midpoint() {
+        let seg = Segment::Line(Line::new((0.0, 0.0), (10.0, 0.0)));
+        let (t, dist_sq) = seg.nearest(Point::new(5.0, 3.0));
+        assert!((t - 0.5).abs() < 1e-6);
+        assert!((dist_sq - 9.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn line_nearest_clamps_to_endpoint() {
+        let seg = Segment::Line(Line::new((0.0, 0.0), (10.0, 0.0)));
+        // Point past the end of the segment
+        let (t, _) = seg.nearest(Point::new(20.0, 0.0));
+        assert!((t - 1.0).abs() < 1e-6);
+        // Point before the start
+        let (t, _) = seg.nearest(Point::new(-5.0, 0.0));
+        assert!(t.abs() < 1e-6);
+    }
+
+    #[test]
+    fn cubic_nearest_at_start_and_end() {
+        let cubic = CubicBez::new((0.0, 0.0), (1.0, 2.0), (3.0, 2.0), (4.0, 0.0));
+        let seg = Segment::Cubic(cubic);
+        let (t, dist_sq) = seg.nearest(Point::new(0.0, 0.0));
+        assert!(t < 0.01);
+        assert!(dist_sq < 1e-6);
+        let (t, dist_sq) = seg.nearest(Point::new(4.0, 0.0));
+        assert!(t > 0.99);
+        assert!(dist_sq < 1e-6);
+    }
+
+    // --- eval ---
+
+    #[test]
+    fn eval_line_endpoints() {
+        let seg = Segment::Line(Line::new((1.0, 2.0), (5.0, 8.0)));
+        let start = seg.eval(0.0);
+        let end = seg.eval(1.0);
+        assert!((start.x - 1.0).abs() < 1e-10);
+        assert!((start.y - 2.0).abs() < 1e-10);
+        assert!((end.x - 5.0).abs() < 1e-10);
+        assert!((end.y - 8.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn eval_line_midpoint() {
+        let seg = Segment::Line(Line::new((0.0, 0.0), (10.0, 10.0)));
+        let mid = seg.eval(0.5);
+        assert!((mid.x - 5.0).abs() < 1e-10);
+        assert!((mid.y - 5.0).abs() < 1e-10);
+    }
+
+    // --- subdivide_cubic ---
+
+    #[test]
+    fn subdivide_cubic_at_midpoint() {
+        let cubic = CubicBez::new((0.0, 0.0), (1.0, 3.0), (3.0, 3.0), (4.0, 0.0));
+        let (left, right) = Segment::subdivide_cubic(cubic, 0.5);
+
+        // Left starts at original start
+        assert!((left.p0.x - 0.0).abs() < 1e-10);
+        assert!((left.p0.y - 0.0).abs() < 1e-10);
+
+        // Right ends at original end
+        assert!((right.p3.x - 4.0).abs() < 1e-10);
+        assert!((right.p3.y - 0.0).abs() < 1e-10);
+
+        // Left end == right start (continuity at split)
+        assert!((left.p3.x - right.p0.x).abs() < 1e-10);
+        assert!((left.p3.y - right.p0.y).abs() < 1e-10);
+    }
+
+    #[test]
+    fn subdivide_cubic_preserves_curve() {
+        let cubic = CubicBez::new((0.0, 0.0), (1.0, 3.0), (3.0, 3.0), (4.0, 0.0));
+        let t_split = 0.3;
+        let (left, right) = Segment::subdivide_cubic(cubic, t_split);
+
+        // Sample the original curve and the split halves; they should match
+        for i in 0..=10 {
+            let t = i as f64 / 10.0;
+            let original_pt = cubic.eval(t);
+
+            let sub_pt = if t <= t_split {
+                // Map [0, t_split] to [0, 1] for the left half
+                left.eval(t / t_split)
+            } else {
+                // Map [t_split, 1] to [0, 1] for the right half
+                right.eval((t - t_split) / (1.0 - t_split))
+            };
+
+            assert!(
+                (original_pt.x - sub_pt.x).abs() < 1e-6,
+                "x mismatch at t={t}: {:.6} vs {:.6}",
+                original_pt.x,
+                sub_pt.x
+            );
+            assert!(
+                (original_pt.y - sub_pt.y).abs() < 1e-6,
+                "y mismatch at t={t}: {:.6} vs {:.6}",
+                original_pt.y,
+                sub_pt.y
+            );
+        }
+    }
+
+    #[test]
+    fn subdivide_cubic_at_extremes() {
+        let cubic = CubicBez::new((0.0, 0.0), (1.0, 2.0), (3.0, 2.0), (4.0, 0.0));
+
+        // Split at t=0: left should be degenerate, right should be the whole
+        let (left, right) = Segment::subdivide_cubic(cubic, 0.0);
+        assert!((left.p0.x - left.p3.x).abs() < 1e-10);
+        assert!((right.p3.x - 4.0).abs() < 1e-10);
+
+        // Split at t=1: right should be degenerate, left should be the whole
+        let (left, right) = Segment::subdivide_cubic(cubic, 1.0);
+        assert!((left.p0.x - 0.0).abs() < 1e-10);
+        assert!((right.p0.x - right.p3.x).abs() < 1e-10);
+    }
+
+    // --- subdivide_quadratic ---
+
+    #[test]
+    fn subdivide_quadratic_preserves_curve() {
+        let quad = QuadBez::new((0.0, 0.0), (2.0, 4.0), (4.0, 0.0));
+        let t_split = 0.4;
+        let (left, right) = Segment::subdivide_quadratic(quad, t_split);
+
+        // Continuity at split point
+        assert!((left.p2.x - right.p0.x).abs() < 1e-10);
+        assert!((left.p2.y - right.p0.y).abs() < 1e-10);
+
+        // Sample and compare
+        for i in 0..=10 {
+            let t = i as f64 / 10.0;
+            let original_pt = quad.eval(t);
+
+            let sub_pt = if t <= t_split {
+                left.eval(t / t_split)
+            } else {
+                right.eval((t - t_split) / (1.0 - t_split))
+            };
+
+            assert!(
+                (original_pt.x - sub_pt.x).abs() < 1e-6,
+                "x mismatch at t={t}"
+            );
+            assert!(
+                (original_pt.y - sub_pt.y).abs() < 1e-6,
+                "y mismatch at t={t}"
+            );
+        }
+    }
+
+    // --- line_nearest_param ---
+
+    #[test]
+    fn line_nearest_param_degenerate() {
+        // Zero-length line
+        let line = Line::new((5.0, 5.0), (5.0, 5.0));
+        let t = line_nearest_param(line, Point::new(10.0, 10.0));
+        assert!((t - 0.0).abs() < 1e-10);
+    }
+}

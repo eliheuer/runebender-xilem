@@ -10,3 +10,4 @@ pub mod kerning;
 pub mod workspace;
 
 pub use entity_id::EntityId;
+pub use workspace::{read_workspace, write_workspace};

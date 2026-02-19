@@ -4,7 +4,9 @@
 //! Kerning and glyph property operations for AppState
 
 use super::AppState;
-use std::sync::Arc;
+use crate::model::workspace::Workspace;
+use crate::model::{read_workspace, write_workspace};
+use std::sync::{Arc, RwLock};
 
 #[allow(dead_code)]
 impl AppState {
@@ -18,9 +20,8 @@ impl AppState {
         // Get workspace arc first (before borrowing session mutably)
         let workspace_arc = self.active_workspace();
 
-        let session = match &mut self.editor_session {
-            Some(s) => s,
-            None => return,
+        let Some(session) = &mut self.editor_session else {
+            return;
         };
 
         // Update the glyph in the session
@@ -32,10 +33,7 @@ impl AppState {
             && let Some(active_name) = &session.active_sort_name
         {
             let updated_glyph = session.to_glyph();
-            workspace_arc
-                .write()
-                .unwrap()
-                .update_glyph(active_name, updated_glyph);
+            write_workspace(&workspace_arc).update_glyph(active_name, updated_glyph);
         }
     }
 
@@ -44,9 +42,8 @@ impl AppState {
         // Get workspace arc first (before borrowing session mutably)
         let workspace_arc = self.active_workspace();
 
-        let session = match &mut self.editor_session {
-            Some(s) => s,
-            None => return,
+        let Some(session) = &mut self.editor_session else {
+            return;
         };
 
         // Update the glyph in the session
@@ -62,10 +59,7 @@ impl AppState {
             && let Some(active_name) = &session.active_sort_name
         {
             let updated_glyph = session.to_glyph();
-            workspace_arc
-                .write()
-                .unwrap()
-                .update_glyph(active_name, updated_glyph);
+            write_workspace(&workspace_arc).update_glyph(active_name, updated_glyph);
         }
     }
 
@@ -74,9 +68,8 @@ impl AppState {
         // Get workspace arc first (before borrowing session mutably)
         let workspace_arc = self.active_workspace();
 
-        let session = match &mut self.editor_session {
-            Some(s) => s,
-            None => return,
+        let Some(session) = &mut self.editor_session else {
+            return;
         };
 
         // Update the glyph in the session
@@ -92,10 +85,7 @@ impl AppState {
             && let Some(active_name) = &session.active_sort_name
         {
             let updated_glyph = session.to_glyph();
-            workspace_arc
-                .write()
-                .unwrap()
-                .update_glyph(active_name, updated_glyph);
+            write_workspace(&workspace_arc).update_glyph(active_name, updated_glyph);
         }
     }
 
@@ -123,7 +113,7 @@ impl AppState {
         let curr_name = session.active_sort_name.as_ref()?;
 
         // Look up kerning
-        let workspace = workspace_arc.read().unwrap();
+        let workspace = read_workspace(&workspace_arc);
         let prev_glyph = workspace.get_glyph(prev_name)?;
         let curr_glyph = workspace.get_glyph(curr_name)?;
 
@@ -167,7 +157,7 @@ impl AppState {
         let curr_name = session.active_sort_name.as_ref()?;
 
         // Look up kerning
-        let workspace = workspace_arc.read().unwrap();
+        let workspace = read_workspace(&workspace_arc);
         let curr_glyph = workspace.get_glyph(curr_name)?;
         let next_glyph = workspace.get_glyph(next_name)?;
 
@@ -189,24 +179,17 @@ impl AppState {
 
     /// Update the left kern value (kerning from previous glyph to current glyph)
     pub fn update_left_kern(&mut self, new_value: String) {
-        let session = match &self.editor_session {
-            Some(s) => s,
-            None => return,
+        let Some(session) = &self.editor_session else {
+            return;
         };
-
-        let workspace_arc = match self.active_workspace() {
-            Some(w) => w,
-            None => return,
+        let Some(workspace_arc) = self.active_workspace() else {
+            return;
         };
-
-        let buffer = match &session.text_buffer {
-            Some(b) => b,
-            None => return,
+        let Some(buffer) = &session.text_buffer else {
+            return;
         };
-
-        let active_index = match session.active_sort_index {
-            Some(i) => i,
-            None => return,
+        let Some(active_index) = session.active_sort_index else {
+            return;
         };
 
         // Can't set left kerning if we're the first glyph
@@ -215,9 +198,8 @@ impl AppState {
         }
 
         // Get previous glyph name
-        let prev_sort = match buffer.get(active_index - 1) {
-            Some(s) => s,
-            None => return,
+        let Some(prev_sort) = buffer.get(active_index - 1) else {
+            return;
         };
 
         let prev_name = match &prev_sort.kind {
@@ -226,55 +208,26 @@ impl AppState {
         };
 
         // Get current glyph name
-        let curr_name = match &session.active_sort_name {
-            Some(n) => n.clone(),
-            None => return,
-        };
-
-        // Parse the new value (empty string means remove kerning)
-        let kern_value = if new_value.is_empty() || new_value == "-" {
-            // Remove kerning pair
-            let mut workspace = workspace_arc.write().unwrap();
-            if let Some(first_pairs) = workspace.kerning.get_mut(&prev_name) {
-                first_pairs.remove(&curr_name);
-            }
+        let Some(curr_name) = session.active_sort_name.clone() else {
             return;
-        } else {
-            match new_value.parse::<f64>() {
-                Ok(v) => v,
-                Err(_) => return, // Invalid number, ignore
-            }
         };
 
-        // Update kerning in workspace
-        let mut workspace = workspace_arc.write().unwrap();
-        workspace
-            .kerning
-            .entry(prev_name.clone())
-            .or_insert_with(std::collections::HashMap::new)
-            .insert(curr_name, kern_value);
+        update_kern_pair(&workspace_arc, prev_name, curr_name, new_value);
     }
 
     /// Update the right kern value (kerning from current glyph to next glyph)
     pub fn update_right_kern(&mut self, new_value: String) {
-        let session = match &self.editor_session {
-            Some(s) => s,
-            None => return,
+        let Some(session) = &self.editor_session else {
+            return;
         };
-
-        let workspace_arc = match self.active_workspace() {
-            Some(w) => w,
-            None => return,
+        let Some(workspace_arc) = self.active_workspace() else {
+            return;
         };
-
-        let buffer = match &session.text_buffer {
-            Some(b) => b,
-            None => return,
+        let Some(buffer) = &session.text_buffer else {
+            return;
         };
-
-        let active_index = match session.active_sort_index {
-            Some(i) => i,
-            None => return,
+        let Some(active_index) = session.active_sort_index else {
+            return;
         };
 
         // Can't set right kerning if we're the last glyph
@@ -283,9 +236,8 @@ impl AppState {
         }
 
         // Get next glyph name
-        let next_sort = match buffer.get(active_index + 1) {
-            Some(s) => s,
-            None => return,
+        let Some(next_sort) = buffer.get(active_index + 1) else {
+            return;
         };
 
         let next_name = match &next_sort.kind {
@@ -294,32 +246,40 @@ impl AppState {
         };
 
         // Get current glyph name
-        let curr_name = match &session.active_sort_name {
-            Some(n) => n.clone(),
-            None => return,
-        };
-
-        // Parse the new value (empty string means remove kerning)
-        let kern_value = if new_value.is_empty() || new_value == "-" {
-            // Remove kerning pair
-            let mut workspace = workspace_arc.write().unwrap();
-            if let Some(first_pairs) = workspace.kerning.get_mut(&curr_name) {
-                first_pairs.remove(&next_name);
-            }
+        let Some(curr_name) = session.active_sort_name.clone() else {
             return;
-        } else {
-            match new_value.parse::<f64>() {
-                Ok(v) => v,
-                Err(_) => return, // Invalid number, ignore
-            }
         };
 
-        // Update kerning in workspace
-        let mut workspace = workspace_arc.write().unwrap();
-        workspace
-            .kerning
-            .entry(curr_name.clone())
-            .or_insert_with(std::collections::HashMap::new)
-            .insert(next_name, kern_value);
+        update_kern_pair(&workspace_arc, curr_name, next_name, new_value);
     }
+}
+
+/// Parse a kern value string and update (or remove) the kerning pair.
+///
+/// If `new_value` is empty or "-", removes the pair. Otherwise parses
+/// as `f64` and inserts into the workspace kerning table.
+fn update_kern_pair(
+    workspace_arc: &Arc<RwLock<Workspace>>,
+    first_name: String,
+    second_name: String,
+    new_value: String,
+) {
+    if new_value.is_empty() || new_value == "-" {
+        let mut workspace = write_workspace(workspace_arc);
+        if let Some(first_pairs) = workspace.kerning.get_mut(&first_name) {
+            first_pairs.remove(&second_name);
+        }
+        return;
+    }
+
+    let Ok(kern_value) = new_value.parse::<f64>() else {
+        return;
+    };
+
+    let mut workspace = write_workspace(workspace_arc);
+    workspace
+        .kerning
+        .entry(first_name)
+        .or_default()
+        .insert(second_name, kern_value);
 }

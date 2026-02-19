@@ -70,20 +70,6 @@ pub struct Drag {
     pub current: Point,
 }
 
-impl Drag {
-    /// Get the delta from start to current
-    #[allow(dead_code)]
-    pub fn delta_from_start(&self) -> (f64, f64) {
-        (self.current.x - self.start.x, self.current.y - self.start.y)
-    }
-
-    /// Get the delta from previous to current
-    #[allow(dead_code)]
-    pub fn delta_from_prev(&self) -> (f64, f64) {
-        (self.current.x - self.prev.x, self.current.y - self.prev.y)
-    }
-}
-
 /// Mouse state machine internal state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MouseState {
@@ -410,12 +396,6 @@ impl Mouse {
     pub fn cancel<T: MouseDelegate>(&mut self, delegate: &mut T, data: &mut T::Data) {
         delegate.cancel(data);
         self.reset_state();
-    }
-
-    /// Get the current mouse position
-    #[allow(dead_code)]
-    pub fn pos(&self) -> Point {
-        self.last_pos
     }
 }
 

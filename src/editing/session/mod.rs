@@ -1,7 +1,16 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Edit session - manages editing state for a single glyph
+//! Per-glyph editing session that owns all mutable editing state.
+//!
+//! An `EditSession` holds the editable path data, selection, viewport, undo
+//! history, active tool, and (optionally) a multi-glyph text buffer. When the
+//! user opens a glyph for editing, `AppState` creates an `EditSession`; when
+//! they close it, changes are synced back to the shared `Workspace`.
+//!
+//! Sub-modules split the implementation: `text_buffer` handles sort/buffer
+//! creation and shaping, `hit_testing` handles point/segment hit tests, and
+//! `path_editing` handles point movement, deletion, and contour operations.
 
 mod hit_testing;
 mod path_editing;
@@ -17,8 +26,19 @@ use crate::sort::SortBuffer;
 use crate::tools::{ToolBox, ToolId};
 use std::sync::{Arc, RwLock};
 
-// CoordinateSelection has been moved to components::coordinate_panel
-// module
+/// Font-level metrics grouped for passing to `EditSession` constructors.
+///
+/// These values come from the UFO's `fontinfo.plist` and are used to draw
+/// metric guides (ascender, descender, x-height, cap-height lines) in the
+/// editor canvas.
+#[derive(Debug, Clone, Copy)]
+pub struct FontMetrics {
+    pub units_per_em: f64,
+    pub ascender: f64,
+    pub descender: f64,
+    pub x_height: Option<f64>,
+    pub cap_height: Option<f64>,
+}
 
 /// Editing session for text buffer editing
 ///
@@ -63,7 +83,6 @@ pub struct EditSession {
     pub viewport_initialized: bool,
 
     /// Font metrics (for drawing guides)
-    #[allow(dead_code)] // Stored for potential future use
     pub units_per_em: f64,
     pub ascender: f64,
     pub descender: f64,
@@ -108,17 +127,13 @@ pub struct EditSession {
 }
 
 impl EditSession {
-    /// Create a new editing session for a glyph (legacy, use new_with_text_buffer instead)
-    #[allow(clippy::too_many_arguments)]
+    /// Create a new editing session for a glyph (legacy, use
+    /// new_with_text_buffer instead)
     pub fn new(
         glyph_name: String,
         ufo_path: std::path::PathBuf,
         glyph: Glyph,
-        units_per_em: f64,
-        ascender: f64,
-        descender: f64,
-        x_height: Option<f64>,
-        cap_height: Option<f64>,
+        metrics: FontMetrics,
     ) -> Self {
         // Convert glyph contours to editable paths
         let paths: Vec<Path> = glyph.contours.iter().map(Path::from_contour).collect();
@@ -139,11 +154,11 @@ impl EditSession {
             current_tool: ToolBox::for_id(ToolId::Select),
             viewport: ViewPort::new(),
             viewport_initialized: false,
-            units_per_em,
-            ascender,
-            descender,
-            x_height,
-            cap_height,
+            units_per_em: metrics.units_per_em,
+            ascender: metrics.ascender,
+            descender: metrics.descender,
+            x_height: metrics.x_height,
+            cap_height: metrics.cap_height,
             text_buffer: None,
             text_mode_active: false,
             workspace: None,
@@ -157,18 +172,14 @@ impl EditSession {
 
     /// Create a new editing session with text buffer initialized
     ///
-    /// This creates a session with a text buffer containing the initial glyph as the first sort.
-    /// The session starts in select mode (text_mode_active = false) with the first sort active.
-    #[allow(clippy::too_many_arguments)]
+    /// This creates a session with a text buffer containing the initial
+    /// glyph as the first sort. The session starts in select mode
+    /// (text_mode_active = false) with the first sort active.
     pub fn new_with_text_buffer(
         glyph_name: String,
         ufo_path: std::path::PathBuf,
         glyph: Glyph,
-        units_per_em: f64,
-        ascender: f64,
-        descender: f64,
-        x_height: Option<f64>,
-        cap_height: Option<f64>,
+        metrics: FontMetrics,
     ) -> Self {
         // Convert glyph contours to editable paths
         let paths: Vec<Path> = glyph.contours.iter().map(Path::from_contour).collect();
@@ -199,11 +210,11 @@ impl EditSession {
             current_tool: ToolBox::for_id(ToolId::Select),
             viewport: ViewPort::new(),
             viewport_initialized: false,
-            units_per_em,
-            ascender,
-            descender,
-            x_height,
-            cap_height,
+            units_per_em: metrics.units_per_em,
+            ascender: metrics.ascender,
+            descender: metrics.descender,
+            x_height: metrics.x_height,
+            cap_height: metrics.cap_height,
             text_buffer: Some(buffer),
             text_mode_active: false, // Start in select mode (not text mode)
             workspace: None,
@@ -335,6 +346,16 @@ mod tests {
         }
     }
 
+    fn test_metrics() -> FontMetrics {
+        FontMetrics {
+            units_per_em: 1000.0,
+            ascender: 800.0,
+            descender: -200.0,
+            x_height: Some(500.0),
+            cap_height: Some(700.0),
+        }
+    }
+
     #[test]
     fn test_session_without_text_buffer() {
         let glyph = create_test_glyph();
@@ -342,11 +363,7 @@ mod tests {
             "a".to_string(),
             std::path::PathBuf::from("/test.ufo"),
             glyph,
-            1000.0,
-            800.0,
-            -200.0,
-            Some(500.0),
-            Some(700.0),
+            test_metrics(),
         );
 
         assert!(!session.has_text_buffer());
@@ -361,11 +378,7 @@ mod tests {
             "a".to_string(),
             std::path::PathBuf::from("/test.ufo"),
             glyph,
-            1000.0,
-            800.0,
-            -200.0,
-            Some(500.0),
-            Some(700.0),
+            test_metrics(),
         );
 
         assert!(session.has_text_buffer());
@@ -389,11 +402,7 @@ mod tests {
             "a".to_string(),
             std::path::PathBuf::from("/test.ufo"),
             glyph,
-            1000.0,
-            800.0,
-            -200.0,
-            Some(500.0),
-            Some(700.0),
+            test_metrics(),
         );
 
         assert!(!session.text_mode_active);
@@ -414,11 +423,7 @@ mod tests {
             "a".to_string(),
             std::path::PathBuf::from("/test.ufo"),
             glyph,
-            1000.0, // UPM
-            800.0,  // ascender
-            -200.0, // descender
-            Some(500.0),
-            Some(700.0),
+            test_metrics(),
         );
 
         // Line height = UPM - descender = 1000 - (-200) = 1200
@@ -432,11 +437,7 @@ mod tests {
             "a".to_string(),
             std::path::PathBuf::from("/test.ufo"),
             glyph,
-            1000.0,
-            800.0,
-            -200.0,
-            Some(500.0),
-            Some(700.0),
+            test_metrics(),
         );
 
         assert!(!session.has_text_buffer());

@@ -7,6 +7,7 @@
 use super::EditSession;
 use crate::editing::selection::Selection;
 use crate::model::workspace::Glyph;
+use crate::model::write_workspace;
 use crate::path::{HyperPath, Path};
 use kurbo::Point;
 use std::sync::Arc;
@@ -51,7 +52,7 @@ impl EditSession {
     /// - Normal: 1 unit
     /// - Shift: 10 units
     /// - Cmd/Ctrl: 100 units
-    /// TODO: move this to settings and make constants
+    ///   TODO: move this to settings and make constants
     pub fn nudge_selection(&mut self, dx: f64, dy: f64, shift: bool, ctrl: bool) {
         let multiplier = if ctrl {
             100.0
@@ -210,7 +211,7 @@ impl EditSession {
         self.glyph = Arc::new(updated_glyph.clone());
 
         // Update the workspace
-        let mut workspace = workspace_lock.write().unwrap();
+        let mut workspace = write_workspace(workspace_lock);
         workspace.glyphs.insert(glyph_name, updated_glyph);
     }
 

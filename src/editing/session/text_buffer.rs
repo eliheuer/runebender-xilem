@@ -4,6 +4,7 @@
 //! Text buffer and sort management methods for EditSession
 
 use super::{EditSession, WorkspaceGlyphProvider};
+use crate::model::read_workspace;
 use crate::path::Path;
 use crate::shaping::{ArabicShaper, TextDirection};
 use kurbo::Point;
@@ -28,7 +29,7 @@ impl EditSession {
         );
 
         let workspace_lock = self.workspace.as_ref()?;
-        let workspace = workspace_lock.read().unwrap();
+        let workspace = read_workspace(workspace_lock);
 
         tracing::debug!(
             "[create_sort_from_char] Workspace has {} glyphs",
@@ -90,7 +91,7 @@ impl EditSession {
         }
 
         let workspace_lock = self.workspace.as_ref()?;
-        let workspace = workspace_lock.read().unwrap();
+        let workspace = read_workspace(workspace_lock);
         let font = WorkspaceGlyphProvider::new(&workspace);
 
         // Get the current text from buffer to determine context
@@ -141,7 +142,7 @@ impl EditSession {
         }
 
         let workspace_lock = self.workspace.as_ref()?.clone();
-        let workspace = workspace_lock.read().unwrap();
+        let workspace = read_workspace(&workspace_lock);
         let font = WorkspaceGlyphProvider::new(&workspace);
 
         let buffer = self.text_buffer.as_mut()?;
@@ -262,7 +263,7 @@ impl EditSession {
                     return false;
                 }
             };
-            let workspace = workspace_lock.read().unwrap();
+            let workspace = read_workspace(workspace_lock);
 
             let glyph = match workspace.glyphs.get(&glyph_name) {
                 Some(g) => g,
@@ -316,7 +317,7 @@ impl EditSession {
             None => return false,
         };
 
-        let workspace_guard = workspace.read().unwrap();
+        let workspace_guard = read_workspace(&workspace);
         let glyph = match workspace_guard.glyphs.get(glyph_name) {
             Some(g) => g.clone(),
             None => {

@@ -241,8 +241,6 @@ pub mod toolbar {
 pub mod coordinate_panel {
     use super::Color;
     pub const GRID_LINE: Color = super::PANEL_LINE;
-    #[allow(dead_code)]
-    pub const TEXT: Color = super::PRIMARY_UI_TEXT;
 
     // Dot colors - selected (lighter for better visibility)
     pub const DOT_SELECTED_INNER: Color = super::BASE_H; // 0x80 - Light gray
@@ -272,18 +270,12 @@ pub mod grid {
     pub const CELL_SELECTED_OUTLINE: Color = super::GRID_CELL_SELECTED_OUTLINE;
     pub const CELL_TEXT: Color = super::GRID_CELL_TEXT;
     pub const GLYPH_COLOR: Color = super::GRID_GLYPH_COLOR;
-
-    /// Editor canvas grid lines
-    #[allow(dead_code)]
-    pub const LINE: Color = super::GRID_LINE;
 }
 
 /// Colors for paths and outlines
 pub mod path {
     use super::Color;
     pub const STROKE: Color = super::PATH_STROKE;
-    #[allow(dead_code)]
-    pub const FILL: Color = super::PATH_FILL;
     pub const PREVIEW_FILL: Color = super::PATH_PREVIEW_FILL;
 }
 

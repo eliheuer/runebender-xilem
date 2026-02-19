@@ -18,7 +18,6 @@ use xilem::{Pod, ViewCtx};
 #[derive(Clone, Copy, Debug)]
 pub struct SizeChanged {
     pub width: f64,
-    #[allow(dead_code)]
     pub height: f64,
 }
 

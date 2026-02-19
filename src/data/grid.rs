@@ -5,6 +5,7 @@
 
 use super::AppState;
 use crate::components::{GlyphCategory, NavDirection};
+use crate::model::{read_workspace, write_workspace};
 use crate::theme;
 
 #[allow(dead_code)]
@@ -12,7 +13,7 @@ impl AppState {
     /// Get the number of glyphs in the current font
     pub fn glyph_count(&self) -> Option<usize> {
         self.active_workspace()
-            .map(|w| w.read().unwrap().glyph_count())
+            .map(|w| read_workspace(&w).glyph_count())
     }
 
     /// Select a glyph by name (clears multi-selection)
@@ -36,7 +37,7 @@ impl AppState {
     /// Get all glyph names
     pub fn glyph_names(&self) -> Vec<String> {
         self.active_workspace()
-            .map(|w| w.read().unwrap().glyph_names())
+            .map(|w| read_workspace(&w).glyph_names())
             .unwrap_or_default()
     }
 
@@ -91,11 +92,10 @@ impl AppState {
     /// Ordered list of glyph names matching the current
     /// category filter. Cheap — no bezpath computation.
     pub fn filtered_glyph_names(&self) -> Vec<String> {
-        let workspace_arc = match self.active_workspace() {
-            Some(w) => w,
-            None => return Vec::new(),
+        let Some(workspace_arc) = self.active_workspace() else {
+            return Vec::new();
         };
-        let workspace = workspace_arc.read().unwrap();
+        let workspace = read_workspace(&workspace_arc);
         let names = workspace.glyph_names();
         if self.glyph_category_filter == GlyphCategory::All {
             return names;
@@ -179,11 +179,10 @@ impl AppState {
         if self.glyph_category_filter == GlyphCategory::All {
             return names.len();
         }
-        let workspace_arc = match self.active_workspace() {
-            Some(w) => w,
-            None => return names.len(),
+        let Some(workspace_arc) = self.active_workspace() else {
+            return names.len();
         };
-        let workspace = workspace_arc.read().unwrap();
+        let workspace = read_workspace(&workspace_arc);
         names
             .iter()
             .filter(|name| {
@@ -205,9 +204,7 @@ impl AppState {
     pub fn selected_glyph_advance(&self) -> Option<f64> {
         let workspace = self.active_workspace()?;
         let glyph_name = self.selected_glyph.as_ref()?;
-        workspace
-            .read()
-            .unwrap()
+        read_workspace(&workspace)
             .get_glyph(glyph_name)
             .map(|g| g.width)
     }
@@ -216,7 +213,7 @@ impl AppState {
     pub fn selected_glyph_unicode(&self) -> Option<String> {
         let workspace_arc = self.active_workspace()?;
         let glyph_name = self.selected_glyph.as_ref()?;
-        let workspace = workspace_arc.read().unwrap();
+        let workspace = read_workspace(&workspace_arc);
         let glyph = workspace.get_glyph(glyph_name)?;
 
         if glyph.codepoints.is_empty() {
@@ -237,12 +234,11 @@ impl AppState {
         if self.selected_glyphs.is_empty() {
             return;
         }
-        let workspace_arc = match self.active_workspace() {
-            Some(w) => w,
-            None => return,
+        let Some(workspace_arc) = self.active_workspace() else {
+            return;
         };
         let names: Vec<String> = self.selected_glyphs.iter().cloned().collect();
-        let mut workspace = workspace_arc.write().unwrap();
+        let mut workspace = write_workspace(&workspace_arc);
         for name in &names {
             if let Some(glyph) = workspace.get_glyph_mut(name) {
                 glyph.mark_color = color_index.map(|i| theme::mark::RGBA_STRINGS[i].to_string());

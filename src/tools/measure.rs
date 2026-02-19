@@ -101,14 +101,6 @@ impl MouseDelegate for MeasureTool {
 // ===== Helper Methods =====
 
 impl MeasureTool {
-    /// Paint coordinate labels on all points in all paths
-    /// Note: Currently disabled since Vello doesn't support text rendering yet
-    #[allow(dead_code)]
-    fn paint_coords(&self, _scene: &mut Scene, _session: &EditSession) {
-        // TODO: Implement when Vello text rendering is available
-        // For now, we just show the measurement line, not coordinate labels
-    }
-
     /// Paint the measurement line and all associated info
     fn paint_measurement(&self, scene: &mut Scene, session: &EditSession, line: Line) {
         // Draw the measurement line using theme colors (same as pen/knife preview)

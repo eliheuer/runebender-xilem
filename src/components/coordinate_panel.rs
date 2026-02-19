@@ -195,7 +195,7 @@ fn build_panel_container<State: 'static>(
 /// Complete coordinate info panel with quadrant picker and editable inputs
 ///
 /// Layout structure:
-/// ```
+/// ```text
 /// ┌─────────────────────────┐
 /// │  ┌──────┐  ┌───┐ ┌───┐  │
 /// │  │ 3x3  │  │ X │ │ Y │  │

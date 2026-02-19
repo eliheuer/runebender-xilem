@@ -1,7 +1,12 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Unique identifiers for paths, points, guides, and components
+//! Unique identifiers for paths, points, guides, and components.
+//!
+//! Each `EntityId` is a monotonically increasing `u64` generated from a global
+//! atomic counter. IDs are used as keys in `Selection` sets and for matching
+//! click targets to path elements during hit testing. They are never reused
+//! within a session, so deleted points leave no dangling references.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -15,12 +20,6 @@ impl EntityId {
     /// Create a new unique entity ID
     pub fn next() -> Self {
         Self(ENTITY_COUNTER.fetch_add(1, Ordering::Relaxed))
-    }
-
-    /// Get the raw ID value (useful for debugging)
-    #[allow(dead_code)]
-    pub fn raw(&self) -> u64 {
-        self.0
     }
 }
 

@@ -1,13 +1,20 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Font workspace management - handles UFO loading and glyph access
+//! Font data model wrapping `norad` UFO types for thread-safe access.
+//!
+//! `Workspace` loads a `.ufo` font file and stores its glyphs, metrics,
+//! kerning, and group data in owned Rust structs. It is shared across threads
+//! via `Arc<RwLock<Workspace>>`; the `read_workspace` / `write_workspace`
+//! helpers at the bottom of this file acquire the lock with poison recovery.
+//! Glyphs are sorted by Unicode codepoint for stable grid display order.
 
 use anyhow::{Context, Result};
 use kurbo::Affine;
 use norad::{Font, Glyph as NoradGlyph};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::entity_id::EntityId;
 
@@ -79,16 +86,6 @@ pub struct Component {
 }
 
 impl Component {
-    /// Create a new component with identity transform
-    #[allow(dead_code)]
-    pub fn new(base: String) -> Self {
-        Self {
-            base,
-            transform: Affine::IDENTITY,
-            id: EntityId::next(),
-        }
-    }
-
     /// Create a component from norad's Component type
     pub fn from_norad(norad_comp: &norad::Component) -> Self {
         // norad's AffineTransform has: x_scale, xy_scale, yx_scale, y_scale, x_offset, y_offset
@@ -122,25 +119,6 @@ impl Component {
             None, // identifier
             None, // lib
         )
-    }
-
-    /// Get the x offset (translation)
-    #[allow(dead_code)]
-    pub fn x_offset(&self) -> f64 {
-        self.transform.as_coeffs()[4]
-    }
-
-    /// Get the y offset (translation)
-    #[allow(dead_code)]
-    pub fn y_offset(&self) -> f64 {
-        self.transform.as_coeffs()[5]
-    }
-
-    /// Set the x and y offset (translation) while preserving other transform values
-    #[allow(dead_code)]
-    pub fn set_offset(&mut self, x: f64, y: f64) {
-        let coeffs = self.transform.as_coeffs();
-        self.transform = Affine::new([coeffs[0], coeffs[1], coeffs[2], coeffs[3], x, y]);
     }
 
     /// Translate the component by a delta
@@ -614,4 +592,30 @@ impl Workspace {
             PointType::HyperCorner => norad::PointType::Line,
         }
     }
+}
+
+// ============================================================================
+// RWLOCK HELPERS
+// ============================================================================
+
+/// Acquire a read lock on a shared workspace, recovering from poison.
+///
+/// If the lock is poisoned (a thread panicked while holding it), this
+/// recovers the inner data instead of panicking. This keeps the app
+/// running even after an unexpected failure in another thread.
+pub fn read_workspace(ws: &Arc<RwLock<Workspace>>) -> RwLockReadGuard<'_, Workspace> {
+    ws.read().unwrap_or_else(|poisoned| {
+        tracing::warn!("Workspace RwLock was poisoned, recovering");
+        poisoned.into_inner()
+    })
+}
+
+/// Acquire a write lock on a shared workspace, recovering from poison.
+///
+/// See [`read_workspace`] for details on poison recovery.
+pub fn write_workspace(ws: &Arc<RwLock<Workspace>>) -> RwLockWriteGuard<'_, Workspace> {
+    ws.write().unwrap_or_else(|poisoned| {
+        tracing::warn!("Workspace RwLock was poisoned, recovering");
+        poisoned.into_inner()
+    })
 }

@@ -11,7 +11,7 @@ use super::point::{PathPoint, PointType};
 use super::point_list::PathPoints;
 use crate::model::entity_id::EntityId;
 use crate::model::workspace;
-use kurbo::{BezPath, Point, Shape};
+use kurbo::{BezPath, Point};
 use spline::SplineSpec;
 use std::sync::Arc;
 
@@ -80,11 +80,6 @@ impl HyperPath {
     /// Get the number of points in this path
     pub fn len(&self) -> usize {
         self.points.len()
-    }
-
-    /// Check if this path is empty
-    pub fn is_empty(&self) -> bool {
-        self.points.is_empty()
     }
 
     /// Get a reference to the points in this path
@@ -168,15 +163,6 @@ impl HyperPath {
         }
 
         CubicPath::new(super::point_list::PathPoints::from_vec(points), self.closed)
-    }
-
-    /// Get the bounding box of this path
-    pub fn bounding_box(&self) -> Option<kurbo::Rect> {
-        if self.bezier.is_empty() {
-            None
-        } else {
-            Some(self.bezier.bounding_box())
-        }
     }
 
     /// Add a new on-curve point to the path

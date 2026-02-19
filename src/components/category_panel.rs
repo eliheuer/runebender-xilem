@@ -256,7 +256,6 @@ impl Widget for CategoryListWidget {
         for (i, &cat) in cats.iter().enumerate() {
             let row_y = top + (i as f64) * ROW_HEIGHT;
             let is_selected = cat == self.selected;
-            let is_hovered = self.hover_index == Some(i);
 
             // Selected highlight (outline only)
             if is_selected {
@@ -281,8 +280,6 @@ impl Widget for CategoryListWidget {
             // Text color
             let text_color = if is_selected {
                 theme::grid::CELL_SELECTED_OUTLINE
-            } else if is_hovered {
-                theme::grid::CELL_TEXT
             } else {
                 theme::grid::CELL_TEXT
             };

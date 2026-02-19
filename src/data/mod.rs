@@ -1,7 +1,13 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Application state and data structures
+//! Central application state (`AppState`) that drives the Xilem reactive UI.
+//!
+//! `AppState` owns the loaded font workspace, the active edit session, grid
+//! selection, and window metadata. Every UI rebuild reads from `AppState`;
+//! mutations happen in event callbacks and propagate through the Xilem view
+//! tree. Sub-modules split the methods by domain: file I/O, grid navigation,
+//! editor lifecycle, and kerning.
 
 mod editor;
 mod file_io;

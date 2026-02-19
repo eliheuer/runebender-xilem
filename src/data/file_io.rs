@@ -5,6 +5,7 @@
 
 use super::AppState;
 use crate::model::designspace::{DesignspaceProject, is_designspace_file};
+use crate::model::read_workspace;
 use crate::model::workspace::Workspace;
 use chrono::Local;
 use std::path::PathBuf;
@@ -90,7 +91,7 @@ impl AppState {
         } else {
             self.workspace
                 .as_ref()
-                .map(|ws| ws.read().unwrap().path.clone())
+                .map(|ws| read_workspace(ws).path.clone())
         }
     }
 
@@ -114,7 +115,7 @@ impl AppState {
         } else {
             self.workspace
                 .as_ref()
-                .map(|w| w.read().unwrap().display_name())
+                .map(|w| read_workspace(w).display_name())
         }
     }
 
@@ -141,15 +142,12 @@ impl AppState {
         }
 
         // Handle single UFO saving
-        let workspace_arc = match &self.workspace {
-            Some(w) => w,
-            None => {
-                self.error_message = Some("No workspace to save".to_string());
-                return;
-            }
+        let Some(workspace_arc) = &self.workspace else {
+            self.error_message = Some("No workspace to save".to_string());
+            return;
         };
 
-        let workspace = workspace_arc.read().unwrap();
+        let workspace = read_workspace(workspace_arc);
         match workspace.save() {
             Ok(()) => {
                 tracing::info!("Saved: {}", workspace.path.display());

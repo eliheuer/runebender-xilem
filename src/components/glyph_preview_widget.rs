@@ -262,19 +262,6 @@ impl<State, Action> GlyphView<State, Action> {
         self.color = Some(color);
         self
     }
-
-    /// Set the baseline offset (0.0 = bottom, 1.0 = top)
-    pub fn baseline_offset(mut self, offset: f64) -> Self {
-        self.baseline_offset = Some(offset);
-        self
-    }
-
-    /// Set the advance width for stable horizontal centering
-    #[allow(dead_code)]
-    pub fn advance_width(mut self, width: f64) -> Self {
-        self.advance_width = Some(width);
-        self
-    }
 }
 
 // Marker trait implementation (required for Xilem Views)

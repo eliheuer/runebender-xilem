@@ -426,30 +426,6 @@ fn knife_icon() -> BezPath {
     bez
 }
 
-#[allow(dead_code)]
-fn rect_icon() -> BezPath {
-    let mut bez = BezPath::new();
-    bez.move_to((0.0, 500.0));
-    bez.line_to((220.0, 500.0));
-    bez.line_to((220.0, 0.0));
-    bez.line_to((0.0, 0.0));
-    bez.line_to((0.0, 500.0));
-    bez.close_path();
-    bez
-}
-
-#[allow(dead_code)]
-fn ellipse_icon() -> BezPath {
-    let mut bez = BezPath::new();
-    bez.move_to((110.0, 0.0));
-    bez.curve_to((50.0, 0.0), (0.0, 100.0), (0.0, 240.0));
-    bez.curve_to((0.0, 380.0), (50.0, 480.0), (110.0, 480.0));
-    bez.curve_to((170.0, 480.0), (220.0, 380.0), (220.0, 240.0));
-    bez.curve_to((220.0, 100.0), (170.0, 0.0), (110.0, 0.0));
-    bez.close_path();
-    bez
-}
-
 // ===== XILEM VIEW WRAPPER =====
 
 use std::marker::PhantomData;

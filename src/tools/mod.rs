@@ -1,7 +1,13 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Tool system for glyph editing
+//! Tool system for glyph editing — dispatches pointer/paint events to tools.
+//!
+//! Each tool (Select, Pen, HyperPen, Knife, Measure, Shapes, Text, Preview)
+//! implements the `Tool` trait, which extends `MouseDelegate` with `paint()`
+//! and `edit_type()` methods. `ToolBox` is an enum that wraps all tool
+//! variants and delegates calls to the active one. The editor canvas holds
+//! the `ToolBox` inside `EditSession` and forwards pointer events to it.
 
 use crate::editing::{Drag, EditSession, EditType, MouseDelegate, MouseEvent};
 use kurbo::Affine;
@@ -164,23 +170,6 @@ impl ToolBox {
         }
     }
 
-    /// Handle mouse moved
-    ///
-    /// Called indirectly through MouseDelegate trait implementation
-    #[allow(dead_code)]
-    pub fn mouse_moved(&mut self, event: MouseEvent, session: &mut EditSession) {
-        match self {
-            ToolBox::Select(tool) => tool.mouse_moved(event, session),
-            ToolBox::Pen(tool) => tool.mouse_moved(event, session),
-            ToolBox::HyperPen(tool) => tool.mouse_moved(event, session),
-            ToolBox::Preview(tool) => tool.mouse_moved(event, session),
-            ToolBox::Knife(tool) => tool.mouse_moved(event, session),
-            ToolBox::Measure(tool) => tool.mouse_moved(event, session),
-            ToolBox::Shapes(tool) => tool.mouse_moved(event, session),
-            ToolBox::Text(tool) => tool.mouse_moved(event, session),
-        }
-    }
-
     /// Handle drag began
     pub fn drag_began(&mut self, event: MouseEvent, drag: Drag, session: &mut EditSession) {
         match self {
@@ -268,23 +257,6 @@ impl ToolBox {
             ToolBox::Text(tool) => {
                 tool.left_drag_ended(event, drag, session);
             }
-        }
-    }
-
-    /// Cancel current operation
-    ///
-    /// Called indirectly through MouseDelegate trait implementation
-    #[allow(dead_code)]
-    pub fn cancel(&mut self, session: &mut EditSession) {
-        match self {
-            ToolBox::Select(tool) => tool.cancel(session),
-            ToolBox::Pen(tool) => tool.cancel(session),
-            ToolBox::HyperPen(tool) => tool.cancel(session),
-            ToolBox::Preview(tool) => tool.cancel(session),
-            ToolBox::Knife(tool) => tool.cancel(session),
-            ToolBox::Measure(tool) => tool.cancel(session),
-            ToolBox::Shapes(tool) => tool.cancel(session),
-            ToolBox::Text(tool) => tool.cancel(session),
         }
     }
 }

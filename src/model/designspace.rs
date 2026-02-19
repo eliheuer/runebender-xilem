@@ -334,12 +334,6 @@ impl DesignspaceProject {
         &self.masters[self.active_master]
     }
 
-    /// Get the active master mutably
-    #[allow(dead_code)]
-    pub fn active_master_mut(&mut self) -> &mut Master {
-        &mut self.masters[self.active_master]
-    }
-
     /// Switch to a different master by index
     ///
     /// Returns true if the switch was successful, false if index out of bounds
@@ -362,12 +356,6 @@ impl DesignspaceProject {
         self.masters[self.active_master].modified = true;
     }
 
-    /// Check if any master has unsaved changes
-    #[allow(dead_code)]
-    pub fn has_unsaved_changes(&self) -> bool {
-        self.masters.iter().any(|m| m.modified)
-    }
-
     /// Get the display name for this designspace
     pub fn display_name(&self) -> String {
         self.path
@@ -383,15 +371,6 @@ impl DesignspaceProject {
             .read()
             .map(|ws| ws.glyph_count())
             .unwrap_or(0)
-    }
-
-    /// Get glyph names from the active master
-    #[allow(dead_code)]
-    pub fn glyph_names(&self) -> Vec<String> {
-        self.active_workspace()
-            .read()
-            .map(|ws| ws.glyph_names())
-            .unwrap_or_default()
     }
 
     /// Save all modified masters and the designspace file

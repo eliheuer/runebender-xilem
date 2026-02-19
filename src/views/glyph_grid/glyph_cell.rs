@@ -92,12 +92,7 @@ impl GlyphCellWidget {
 
     /// Get (background, border) colors for this cell
     fn cell_colors(&self, is_hovered: bool) -> (Color, Color) {
-        if self.is_selected {
-            (
-                theme::grid::CELL_BACKGROUND,
-                theme::grid::CELL_SELECTED_OUTLINE,
-            )
-        } else if is_hovered {
+        if self.is_selected || is_hovered {
             (
                 theme::grid::CELL_BACKGROUND,
                 theme::grid::CELL_SELECTED_OUTLINE,
@@ -301,25 +296,23 @@ impl Widget for GlyphCellWidget {
         _props: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
-        match event {
-            PointerEvent::Down(PointerButtonEvent {
-                button: Some(PointerButton::Primary),
-                state,
-                ..
-            }) => {
-                let name = self.glyph_name.clone();
-                if state.count >= 2 {
-                    ctx.submit_action::<GlyphCellAction>(GlyphCellAction::Open(name));
-                } else if state.modifiers.shift() {
-                    ctx.submit_action::<GlyphCellAction>(GlyphCellAction::ShiftSelect(name));
-                } else {
-                    ctx.submit_action::<GlyphCellAction>(GlyphCellAction::Select(name));
-                }
-                // Don't set_handled — let Down bubble to the
-                // GridScrollWidget container so it grabs focus
-                // for arrow key scrolling.
+        if let PointerEvent::Down(PointerButtonEvent {
+            button: Some(PointerButton::Primary),
+            state,
+            ..
+        }) = event
+        {
+            let name = self.glyph_name.clone();
+            if state.count >= 2 {
+                ctx.submit_action::<GlyphCellAction>(GlyphCellAction::Open(name));
+            } else if state.modifiers.shift() {
+                ctx.submit_action::<GlyphCellAction>(GlyphCellAction::ShiftSelect(name));
+            } else {
+                ctx.submit_action::<GlyphCellAction>(GlyphCellAction::Select(name));
             }
-            _ => {}
+            // Don't set_handled — let Down bubble to the
+            // GridScrollWidget container so it grabs focus
+            // for arrow key scrolling.
         }
     }
 
