@@ -3,8 +3,7 @@
 
 //! Runebender Xilem: A font editor built with Xilem
 
-use xilem::EventLoop;
-use xilem::winit::error::EventLoopError;
+use xilem::{EventLoop, winit::error::EventLoopError};
 
 fn main() -> Result<(), EventLoopError> {
     runebender::run(EventLoop::with_user_event())

@@ -283,8 +283,8 @@ fn add_closing_curve(
 fn append_hyperbezier_contour(path: &mut BezPath, contour: &Contour) {
     use super::entity_id::EntityId;
     use crate::path::HyperPath;
-    use crate::path::{PathPoint, PointType as PathPointType};
     use crate::path::PathPoints;
+    use crate::path::{PathPoint, PointType as PathPointType};
 
     // Convert workspace contour points to PathPoints
     let path_points: Vec<PathPoint> = contour
