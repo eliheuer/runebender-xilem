@@ -176,11 +176,9 @@ impl EditorWidget {
                     // Determine metrics color based on kern mode
                     let metrics_color = if self.kern_mode_active {
                         if Some(data.index) == self.kern_sort_index {
-                            // Active dragged glyph: bright turquoise-green
-                            masonry::vello::peniko::Color::from_rgb8(0x00, 0xff, 0xcc)
+                            theme::kerning::ACTIVE_GLYPH
                         } else if Some(data.index + 1) == self.kern_sort_index {
-                            // Previous glyph: orange (selection marquee color)
-                            masonry::vello::peniko::Color::from_rgb8(0xff, 0xaa, 0x33)
+                            theme::kerning::PREVIOUS_GLYPH
                         } else {
                             // Normal gray
                             theme::metrics::GUIDE
@@ -416,8 +414,7 @@ impl EditorWidget {
 
                 // Determine fill color based on context
                 let fill_color = if is_selected {
-                    // Brighter blue for selected component
-                    peniko::Color::from_rgb8(0x88, 0xbb, 0xff)
+                    theme::component::SELECTED_FILL
                 } else if use_component_color {
                     // Blue for components in active sort (non-text mode)
                     theme::component::FILL

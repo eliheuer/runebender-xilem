@@ -92,11 +92,18 @@ const PATH_PREVIEW_FILL: Color = BASE_L;
 // Components are rendered in a distinct color to differentiate from editable paths
 // ============================================================================
 const COMPONENT_FILL: Color = Color::from_rgb8(0x66, 0x99, 0xCC); // Blue-gray tint
+const COMPONENT_SELECTED_FILL: Color = Color::from_rgb8(0x88, 0xBB, 0xFF); // Brighter blue
 
 // ============================================================================
 // METRICS GUIDES
 // ============================================================================
 const METRICS_GUIDE: Color = BASE_F;
+
+// ============================================================================
+// KERNING MODE HIGHLIGHTS
+// ============================================================================
+const KERN_ACTIVE_GLYPH: Color = Color::from_rgb8(0x00, 0xFF, 0xCC);
+const KERN_PREVIOUS_GLYPH: Color = Color::from_rgb8(0xFF, 0xAA, 0x33);
 
 // ============================================================================
 // GRID
@@ -136,6 +143,16 @@ const SELECTION_RECT_FILL: Color = Color::from_rgba8(0xff, 0xaa, 0x33, 0x20);
 const SELECTION_RECT_STROKE: Color = Color::from_rgb8(0xff, 0xaa, 0x33);
 
 // ============================================================================
+// TEXT CURSOR
+// ============================================================================
+const TEXT_CURSOR: Color = Color::from_rgb8(0x00, 0x7A, 0xFF);
+
+// ============================================================================
+// MEASURE TOOL
+// ============================================================================
+const MEASURE_TEXT: Color = BASE_C;
+
+// ============================================================================
 // MARK COLORS (glyph workflow markers, Glyphs.app-style palette)
 // ============================================================================
 const MARK_RED: Color = Color::from_rgb8(0xFF, 0x40, 0x40);
@@ -150,6 +167,7 @@ const MARK_PINK: Color = Color::from_rgb8(0xDD, 0x55, 0xAA);
 const MARK_BROWN: Color = Color::from_rgb8(0xAA, 0x77, 0x44);
 const MARK_GRAY: Color = Color::from_rgb8(0x88, 0x88, 0x88);
 const MARK_LIGHT_GRAY: Color = Color::from_rgb8(0xBB, 0xBB, 0xBB);
+const MARK_SELECTED_RING: Color = Color::WHITE;
 
 // ============================================================================
 // PUBLIC API - Don't edit below this line unless you know what you're doing
@@ -284,12 +302,23 @@ pub mod component {
     use super::Color;
     /// Fill color for components - distinct from editable paths
     pub const FILL: Color = super::COMPONENT_FILL;
+    /// Fill color for selected component
+    pub const SELECTED_FILL: Color = super::COMPONENT_SELECTED_FILL;
 }
 
 /// Colors for font metrics guides
 pub mod metrics {
     use super::Color;
     pub const GUIDE: Color = super::METRICS_GUIDE;
+}
+
+/// Colors for kerning mode metric highlights
+pub mod kerning {
+    use super::Color;
+    /// Active (dragged) glyph metrics
+    pub const ACTIVE_GLYPH: Color = super::KERN_ACTIVE_GLYPH;
+    /// Previous glyph metrics
+    pub const PREVIOUS_GLYPH: Color = super::KERN_PREVIOUS_GLYPH;
 }
 
 /// Colors for control point lines (handles)
@@ -349,6 +378,22 @@ pub mod mark {
 
     /// Number of colors in the palette
     pub const COUNT: usize = 7;
+
+    /// Color for selected mark ring indicator
+    pub const SELECTED_RING: Color = super::MARK_SELECTED_RING;
+}
+
+/// Text cursor color
+pub mod cursor {
+    use super::Color;
+    pub const COLOR: Color = super::TEXT_CURSOR;
+}
+
+/// Measure tool colors
+pub mod measure {
+    use super::Color;
+    /// Text color for measurement labels
+    pub const TEXT: Color = super::MEASURE_TEXT;
 }
 
 /// Tool preview styles (for consistent visual feedback across tools)
