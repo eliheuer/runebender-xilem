@@ -64,37 +64,41 @@ impl<State: 'static, F: Fn(&mut State, EditSession, bool) + 'static> View<State,
         // selection changed). We compare Arc pointers - if they're
         // different, the session was updated
         if !Arc::ptr_eq(&self.session, &prev.session) {
+            let mut widget = element.downcast::<EditorWidget>();
+
+            // During an active pointer gesture (button down or
+            // drag), the widget owns live editing state: the tool's
+            // internal state (e.g. DraggingPoints) and in-progress
+            // path modifications. Overwriting the session here
+            // would reset the tool to Ready and revert path edits,
+            // breaking the drag. Skip the overwrite — the widget's
+            // own throttled emits keep the panels up-to-date.
+            if widget.widget.mouse.is_active() {
+                widget.ctx.request_render();
+                return;
+            }
+
             tracing::debug!(
                 "[EditorView::rebuild] Session Arc changed, \
                  updating widget"
             );
-            tracing::debug!(
-                "[EditorView::rebuild] Old tool: {:?}, New tool: \
-                 {:?}",
-                prev.session.current_tool.id(),
-                self.session.current_tool.id()
-            );
-
-            // Get mutable access to the widget
-            let mut widget = element.downcast::<EditorWidget>();
 
             // Preserve viewport state before updating session
             let old_viewport = widget.widget.session.viewport.clone();
-            let old_viewport_initialized = widget.widget.session.viewport_initialized;
+            let old_viewport_initialized =
+                widget.widget.session.viewport_initialized;
 
             // Update the session, but preserve:
-            // - Mouse state (to avoid breaking active drag
-            //   operations)
-            // - Undo state
-            // - Canvas size
-            // - Viewport state (to avoid re-initialization and flickering)
-            // This allows tool changes and other session updates to
-            // take effect
+            // - Viewport state (to avoid re-initialization and
+            //   flickering)
+            // This allows tool changes and other session updates
+            // to take effect
             widget.widget.session = (*self.session).clone();
 
             // Restore viewport state
             widget.widget.session.viewport = old_viewport;
-            widget.widget.session.viewport_initialized = old_viewport_initialized;
+            widget.widget.session.viewport_initialized =
+                old_viewport_initialized;
 
             widget.ctx.request_render();
         }

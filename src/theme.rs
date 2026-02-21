@@ -106,6 +106,12 @@ const KERN_ACTIVE_GLYPH: Color = Color::from_rgb8(0x00, 0xFF, 0xCC);
 const KERN_PREVIOUS_GLYPH: Color = Color::from_rgb8(0xFF, 0xAA, 0x33);
 
 // ============================================================================
+// DESIGN GRID (unit grid overlay in editor, visible when zoomed in)
+// ============================================================================
+const DESIGN_GRID_FINE: Color = Color::from_rgba8(0x88, 0x88, 0x88, 0x28);
+const DESIGN_GRID_COARSE: Color = Color::from_rgba8(0x88, 0x88, 0x88, 0x38);
+
+// ============================================================================
 // GRID
 // ============================================================================
 const GRID_LINE: Color = BASE_D;
@@ -304,6 +310,15 @@ pub mod component {
     pub const FILL: Color = super::COMPONENT_FILL;
     /// Fill color for selected component
     pub const SELECTED_FILL: Color = super::COMPONENT_SELECTED_FILL;
+}
+
+/// Colors for the design-space unit grid overlay
+pub mod design_grid {
+    use super::Color;
+    /// Fine grid line color (semi-transparent)
+    pub const FINE: Color = super::DESIGN_GRID_FINE;
+    /// Coarse grid line color (more opaque)
+    pub const COARSE: Color = super::DESIGN_GRID_COARSE;
 }
 
 /// Colors for font metrics guides

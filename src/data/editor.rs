@@ -192,6 +192,48 @@ impl AppState {
         self.editor_session = Some(session);
     }
 
+    /// Update a coordinate of the current selection from text input
+    ///
+    /// Parses the input value as f64, computes a delta from the
+    /// current reference point, and moves the selection accordingly.
+    /// Only X and Y fields are supported; W/H are display-only.
+    pub fn update_selection_coordinate(
+        &mut self,
+        field: crate::components::coordinate_panel::CoordField,
+        value: String,
+    ) {
+        use crate::components::coordinate_panel::CoordField;
+
+        let new_val: f64 = match value.parse() {
+            Ok(v) => v,
+            Err(_) => return, // Ignore non-numeric input
+        };
+
+        let Some(session) = &mut self.editor_session else {
+            return;
+        };
+
+        if session.selection.is_empty() {
+            return;
+        }
+
+        let reference = session.coord_selection.reference_point();
+        let delta = match field {
+            CoordField::X => kurbo::Vec2::new(new_val - reference.x, 0.0),
+            CoordField::Y => kurbo::Vec2::new(0.0, new_val - reference.y),
+            CoordField::Width | CoordField::Height => return,
+        };
+
+        if delta.x.abs() < 1e-9 && delta.y.abs() < 1e-9 {
+            return;
+        }
+
+        session.move_selection(delta);
+        session.snap_selection_to_grid();
+        session.update_coord_selection();
+        session.sync_to_workspace();
+    }
+
     /// Sync a session's changes to the workspace
     fn sync_session_to_workspace(&mut self, session: &EditSession) {
         let Some(workspace_arc) = self.active_workspace() else {

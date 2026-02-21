@@ -183,6 +183,9 @@ fn coordinate_panel_from_session(
             );
             state.editor_session = Some(updated_session);
         },
+        |state: &mut AppState, field, value| {
+            state.update_selection_coordinate(field, value);
+        },
     )
 }
 
@@ -249,10 +252,10 @@ fn active_glyph_panel_centered(state: &AppState) -> impl WidgetView<AppState> + 
         return Either::B(sized_box(label("")).width(0.px()).height(0.px()));
     }
 
-    // Get current values
+    // Compute LSB/RSB from live paths, not the stale
+    // session.glyph.contours, so they update during drags
     let width = session.glyph.width;
-    let lsb = session.glyph.left_side_bearing();
-    let rsb = session.glyph.right_side_bearing();
+    let (lsb, rsb) = live_sidebearings(session);
     let left_group = session.glyph.left_group.as_deref().unwrap_or("");
     let right_group = session.glyph.right_group.as_deref().unwrap_or("");
 
@@ -403,6 +406,40 @@ fn build_glyph_path(session: &crate::editing::EditSession) -> BezPath {
         glyph_path.extend(path.to_bezpath());
     }
     glyph_path
+}
+
+/// Compute LSB and RSB from the live editing paths
+///
+/// During drags, `session.glyph.contours` is stale — the live data
+/// is in `session.paths`. This iterates all points to find the
+/// x-extent, then derives sidebearings from the advance width.
+fn live_sidebearings(session: &crate::editing::EditSession) -> (f64, f64) {
+    use crate::path::Path;
+
+    let width = session.glyph.width;
+
+    let mut min_x: Option<f64> = None;
+    let mut max_x: Option<f64> = None;
+
+    for path in session.paths.iter() {
+        let points = match path {
+            Path::Cubic(c) => c.points(),
+            Path::Quadratic(q) => q.points(),
+            Path::Hyper(h) => h.points(),
+        };
+        for point in points.iter() {
+            let x = point.point.x;
+            min_x = Some(min_x.map_or(x, |m: f64| m.min(x)));
+            max_x = Some(max_x.map_or(x, |m: f64| m.max(x)));
+        }
+    }
+
+    let lsb = min_x.unwrap_or(0.0);
+    let rsb = match max_x {
+        Some(mx) => width - mx,
+        None => width,
+    };
+    (lsb, rsb)
 }
 
 /// Text buffer preview pane showing rendered glyphs from the font (mini preview mode)

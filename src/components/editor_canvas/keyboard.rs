@@ -128,6 +128,14 @@ impl EditorWidget {
             return true;
         }
 
+        if self.handle_copy_points(ctx, cmd, key) {
+            return true;
+        }
+
+        if self.handle_paste_points(ctx, cmd, key) {
+            return true;
+        }
+
         if self.handle_save(ctx, cmd, key) {
             return true;
         }
@@ -207,6 +215,9 @@ impl EditorWidget {
             self.undo();
         }
 
+        self.session.sync_to_workspace();
+        self.session.update_coord_selection();
+        self.emit_session_update(ctx, false);
         ctx.request_render();
         ctx.set_handled();
         true
@@ -287,7 +298,11 @@ impl EditorWidget {
         );
 
         if self.convert_selected_hyper_to_cubic() {
-            tracing::info!("Successfully converted hyperbezier paths to cubic");
+            tracing::info!(
+                "Converted hyperbezier paths to cubic"
+            );
+            self.session.sync_to_workspace();
+            self.emit_session_update(ctx, false);
             ctx.request_render();
             ctx.set_handled();
             return true;
@@ -314,6 +329,151 @@ impl EditorWidget {
         true
     }
 
+    fn handle_copy_points(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        cmd: bool,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use masonry::core::keyboard::Key;
+
+        if !cmd || !matches!(key, Key::Character(c) if c == "c") {
+            return false;
+        }
+
+        if self.session.selection.is_empty() {
+            return false;
+        }
+
+        // Collect paths that contain any selected point
+        let selection = &self.session.selection;
+        let copied: Vec<_> = self
+            .session
+            .paths
+            .iter()
+            .filter(|path| match path {
+                crate::path::Path::Cubic(c) => c.points.iter().any(|pt| selection.contains(&pt.id)),
+                crate::path::Path::Quadratic(q) => {
+                    q.points.iter().any(|pt| selection.contains(&pt.id))
+                }
+                crate::path::Path::Hyper(h) => h.points.iter().any(|pt| selection.contains(&pt.id)),
+            })
+            .cloned()
+            .collect();
+
+        if !copied.is_empty() {
+            self.point_clipboard = Some(copied);
+        }
+
+        ctx.set_handled();
+        true
+    }
+
+    fn handle_paste_points(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        cmd: bool,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use crate::model::EntityId;
+        use crate::path::{CubicPath, HyperPath, PathPoint, PathPoints, QuadraticPath};
+        use masonry::core::keyboard::Key;
+        use std::sync::Arc;
+
+        if !cmd || !matches!(key, Key::Character(c) if c == "v") {
+            return false;
+        }
+
+        let clipboard = match &self.point_clipboard {
+            Some(c) => c.clone(),
+            None => return false,
+        };
+
+        // Small offset so pasted contours are visually distinct
+        let offset = kurbo::Vec2::new(20.0, 20.0);
+
+        // Clone each path with fresh EntityIds and offset
+        let mut new_paths: Vec<crate::path::Path> = Vec::new();
+        let mut new_selection = crate::editing::Selection::new();
+
+        for path in &clipboard {
+            match path {
+                crate::path::Path::Cubic(cubic) => {
+                    let new_points: Vec<PathPoint> = cubic
+                        .points
+                        .iter()
+                        .map(|pt| {
+                            let id = EntityId::next();
+                            new_selection.insert(id);
+                            PathPoint {
+                                id,
+                                point: pt.point + offset,
+                                typ: pt.typ,
+                            }
+                        })
+                        .collect();
+                    new_paths.push(crate::path::Path::Cubic(CubicPath::new(
+                        PathPoints::from_vec(new_points),
+                        cubic.closed,
+                    )));
+                }
+                crate::path::Path::Quadratic(quad) => {
+                    let new_points: Vec<PathPoint> = quad
+                        .points
+                        .iter()
+                        .map(|pt| {
+                            let id = EntityId::next();
+                            new_selection.insert(id);
+                            PathPoint {
+                                id,
+                                point: pt.point + offset,
+                                typ: pt.typ,
+                            }
+                        })
+                        .collect();
+                    new_paths.push(crate::path::Path::Quadratic(QuadraticPath::new(
+                        PathPoints::from_vec(new_points),
+                        quad.closed,
+                    )));
+                }
+                crate::path::Path::Hyper(hyper) => {
+                    let new_points: Vec<PathPoint> = hyper
+                        .points
+                        .iter()
+                        .map(|pt| {
+                            let id = EntityId::next();
+                            new_selection.insert(id);
+                            PathPoint {
+                                id,
+                                point: pt.point + offset,
+                                typ: pt.typ,
+                            }
+                        })
+                        .collect();
+                    let mut new_hyper =
+                        HyperPath::from_points(PathPoints::from_vec(new_points), hyper.closed);
+                    new_hyper.after_change();
+                    new_paths.push(crate::path::Path::Hyper(new_hyper));
+                }
+            }
+        }
+
+        // Append pasted paths to session
+        let paths_vec = Arc::make_mut(&mut self.session.paths);
+        paths_vec.extend(new_paths);
+
+        // Select the pasted points
+        self.session.selection = new_selection;
+
+        self.record_edit(EditType::Normal);
+        self.session.sync_to_workspace();
+        self.session.update_coord_selection();
+        self.emit_session_update(ctx, false);
+        ctx.request_render();
+        ctx.set_handled();
+        true
+    }
+
     fn handle_delete_points(
         &mut self,
         ctx: &mut EventCtx<'_>,
@@ -335,6 +495,8 @@ impl EditorWidget {
         self.session.delete_selection();
         self.record_edit(EditType::Normal);
         self.session.sync_to_workspace();
+        self.session.update_coord_selection();
+        self.emit_session_update(ctx, false);
         ctx.request_render();
         ctx.set_handled();
         true
@@ -358,6 +520,8 @@ impl EditorWidget {
         self.session.toggle_point_type();
         self.record_edit(EditType::Normal);
         self.session.sync_to_workspace();
+        self.session.update_coord_selection();
+        self.emit_session_update(ctx, false);
         ctx.request_render();
         ctx.set_handled();
         true
@@ -381,6 +545,7 @@ impl EditorWidget {
         self.session.reverse_contours();
         self.record_edit(EditType::Normal);
         self.session.sync_to_workspace();
+        self.emit_session_update(ctx, false);
         ctx.request_render();
         ctx.set_handled();
         true
@@ -436,59 +601,35 @@ impl EditorWidget {
         use masonry::core::keyboard::{Key, NamedKey};
 
         let (dx, dy) = match key {
-            Key::Named(NamedKey::ArrowLeft) => {
-                tracing::debug!("Arrow Left pressed");
-                (-1.0, 0.0)
-            }
-            Key::Named(NamedKey::ArrowRight) => {
-                tracing::debug!("Arrow Right pressed");
-                (1.0, 0.0)
-            }
-            Key::Named(NamedKey::ArrowUp) => {
-                tracing::debug!("Arrow Up pressed");
-                (0.0, 1.0) // Design space: Y increases upward
-            }
-            Key::Named(NamedKey::ArrowDown) => {
-                tracing::debug!("Arrow Down pressed");
-                (0.0, -1.0) // Design space: Y increases upward
-            }
+            Key::Named(NamedKey::ArrowLeft) => (-1.0, 0.0),
+            Key::Named(NamedKey::ArrowRight) => (1.0, 0.0),
+            // Design space: Y increases upward
+            Key::Named(NamedKey::ArrowUp) => (0.0, 1.0),
+            Key::Named(NamedKey::ArrowDown) => (0.0, -1.0),
             _ => return,
         };
 
-        // Check if we have a component selected (takes priority over points)
+        // Check if we have a component selected (takes priority
+        // over points)
         if self.session.selected_component.is_some() {
-            tracing::debug!(
-                "Nudging selected component: dx={} dy={} shift={} ctrl={}",
-                dx,
-                dy,
-                shift,
-                ctrl
-            );
-
-            // Calculate the actual nudge amount
-            let multiplier = if ctrl {
-                100.0
+            let amount = if ctrl {
+                settings::nudge::CMD
             } else if shift {
-                10.0
+                settings::nudge::SHIFT
             } else {
-                1.0
+                settings::nudge::BASE
             };
-            let delta = kurbo::Vec2::new(dx * multiplier, dy * multiplier);
+            let delta = kurbo::Vec2::new(dx * amount, dy * amount);
             self.session.move_selected_component(delta);
         } else {
-            tracing::debug!(
-                "Nudging selection: dx={} dy={} shift={} ctrl={} \
-                 selection_len={}",
-                dx,
-                dy,
-                shift,
-                ctrl,
-                self.session.selection.len()
-            );
-
             self.session.nudge_selection(dx, dy, shift, ctrl);
+            self.session.snap_selection_to_grid();
         }
 
+        self.record_edit(EditType::Drag);
+        self.session.sync_to_workspace();
+        self.session.update_coord_selection();
+        self.emit_session_update(ctx, false);
         ctx.request_render();
         ctx.set_handled();
     }

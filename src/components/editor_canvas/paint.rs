@@ -4,7 +4,7 @@
 //! Paint helper methods for EditorWidget
 
 use super::EditorWidget;
-use super::drawing::{draw_metrics_guides, draw_paths_with_points};
+use super::drawing::{draw_design_grid, draw_metrics_guides, draw_paths_with_points};
 use crate::theme;
 use kurbo::{Affine, Stroke};
 use masonry::kurbo::Size;
@@ -32,6 +32,10 @@ impl EditorWidget {
         transform: &Affine,
         is_preview_mode: bool,
     ) {
+        if !is_preview_mode {
+            draw_design_grid(scene, &self.session, self.size);
+        }
+
         self.render_text_buffer(scene, transform, is_preview_mode);
 
         if !is_preview_mode {
@@ -46,6 +50,7 @@ impl EditorWidget {
         is_preview_mode: bool,
     ) {
         if !is_preview_mode {
+            draw_design_grid(scene, &self.session, self.size);
             draw_metrics_guides(scene, transform, &self.session, self.size);
         }
 

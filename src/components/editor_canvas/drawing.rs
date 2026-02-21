@@ -12,6 +12,144 @@ use masonry::util::fill_color;
 use masonry::vello::Scene;
 use masonry::vello::peniko::Brush;
 
+/// Draw a design-space unit grid when zoomed in past the threshold.
+///
+/// Two detail levels activate at different zoom thresholds:
+/// - Mid zoom: coarser grid (fine=8, coarse=32)
+/// - Close zoom: finer grid (fine=2, coarse=8)
+///
+/// Lines outside the visible canvas are culled to keep drawing cheap.
+pub(crate) fn draw_design_grid(scene: &mut Scene, session: &EditSession, canvas_size: Size) {
+    use crate::settings;
+
+    let zoom = session.viewport.zoom;
+
+    // Determine which grid levels to draw
+    let draw_mid = zoom >= settings::design_grid::mid::MIN_ZOOM;
+    let draw_close = zoom >= settings::design_grid::close::MIN_ZOOM;
+
+    if !draw_mid {
+        return;
+    }
+
+    // Convert canvas corners to design space to find visible range
+    let top_left = session.viewport.screen_to_design(Point::ZERO);
+    let bottom_right = session
+        .viewport
+        .screen_to_design(Point::new(canvas_size.width, canvas_size.height));
+
+    // design y is flipped: top_left.y > bottom_right.y
+    let min_x = top_left.x.min(bottom_right.x);
+    let max_x = top_left.x.max(bottom_right.x);
+    let min_y = top_left.y.min(bottom_right.y);
+    let max_y = top_left.y.max(bottom_right.y);
+
+    let transform = session.viewport.affine();
+    let fine_stroke = Stroke::new(0.5);
+    let coarse_stroke = Stroke::new(1.0);
+    let fine_brush = Brush::Solid(theme::design_grid::FINE);
+    let coarse_brush = Brush::Solid(theme::design_grid::COARSE);
+
+    // Draw mid-level grid (fine=8, coarse=32)
+    draw_grid_level(
+        scene,
+        &transform,
+        settings::design_grid::mid::FINE,
+        settings::design_grid::mid::COARSE_N,
+        min_x,
+        max_x,
+        min_y,
+        max_y,
+        &fine_stroke,
+        &coarse_stroke,
+        &fine_brush,
+        &coarse_brush,
+    );
+
+    // Draw close-level grid (fine=2, coarse=8)
+    if draw_close {
+        draw_grid_level(
+            scene,
+            &transform,
+            settings::design_grid::close::FINE,
+            settings::design_grid::close::COARSE_N,
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+            &fine_stroke,
+            &coarse_stroke,
+            &fine_brush,
+            &coarse_brush,
+        );
+    }
+}
+
+/// Draw a single grid level with the given spacing and coarse interval.
+///
+/// Lines that coincide with a coarser grid (multiples of
+/// `coarse_n * spacing`) are skipped when drawing fine lines, since
+/// the coarse stroke covers them.
+fn draw_grid_level(
+    scene: &mut Scene,
+    transform: &Affine,
+    spacing: f64,
+    coarse_n: u32,
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+    fine_stroke: &Stroke,
+    coarse_stroke: &Stroke,
+    fine_brush: &Brush,
+    coarse_brush: &Brush,
+) {
+    let start_x = (min_x / spacing).floor() as i64;
+    let end_x = (max_x / spacing).ceil() as i64;
+    let start_y = (min_y / spacing).floor() as i64;
+    let end_y = (max_y / spacing).ceil() as i64;
+
+    // Vertical lines (constant x)
+    for ix in start_x..=end_x {
+        let x = ix as f64 * spacing;
+        let is_coarse = coarse_n > 0 && (ix.unsigned_abs() % coarse_n as u64 == 0);
+        let (stroke, brush) = if is_coarse {
+            (coarse_stroke, coarse_brush)
+        } else {
+            (fine_stroke, fine_brush)
+        };
+        let p0 = *transform * Point::new(x, min_y);
+        let p1 = *transform * Point::new(x, max_y);
+        scene.stroke(
+            stroke,
+            Affine::IDENTITY,
+            brush,
+            None,
+            &kurbo::Line::new(p0, p1),
+        );
+    }
+
+    // Horizontal lines (constant y)
+    for iy in start_y..=end_y {
+        let y = iy as f64 * spacing;
+        let is_coarse = coarse_n > 0 && (iy.unsigned_abs() % coarse_n as u64 == 0);
+        let (stroke, brush) = if is_coarse {
+            (coarse_stroke, coarse_brush)
+        } else {
+            (fine_stroke, fine_brush)
+        };
+        let p0 = *transform * Point::new(min_x, y);
+        let p1 = *transform * Point::new(max_x, y);
+        scene.stroke(
+            stroke,
+            Affine::IDENTITY,
+            brush,
+            None,
+            &kurbo::Line::new(p0, p1),
+        );
+    }
+}
+
 /// Draw font metric guidelines
 pub(crate) fn draw_metrics_guides(
     scene: &mut Scene,

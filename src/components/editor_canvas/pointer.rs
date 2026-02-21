@@ -42,6 +42,9 @@ impl EditorWidget {
         }
 
         self.dispatch_tool_mouse_down(ctx, local_pos, state);
+        // Propagate selection change to panels immediately
+        self.session.update_coord_selection();
+        self.emit_session_update(ctx, false);
     }
 
     fn handle_double_click(
@@ -52,6 +55,10 @@ impl EditorWidget {
     ) -> bool {
         if !self.is_double_click(design_pos) {
             return false;
+        }
+
+        if self.handle_point_double_click(ctx, local_pos) {
+            return true;
         }
 
         if self.handle_component_double_click(ctx, local_pos) {
@@ -67,6 +74,27 @@ impl EditorWidget {
         }
 
         false
+    }
+
+    /// Double-click on a point toggles smooth ↔ corner
+    fn handle_point_double_click(&mut self, ctx: &mut EventCtx<'_>, local_pos: Point) -> bool {
+        let hit = match self.session.hit_test_point(local_pos, None) {
+            Some(h) => h,
+            None => return false,
+        };
+
+        // Select just this point
+        self.session.selection = crate::editing::Selection::new();
+        self.session.selection.insert(hit.entity);
+
+        // Toggle smooth ↔ corner
+        self.session.toggle_point_type();
+
+        self.record_edit(crate::editing::EditType::Normal);
+        self.session.sync_to_workspace();
+        self.emit_session_update(ctx, false);
+        ctx.request_render();
+        true
     }
 
     fn handle_component_double_click(&mut self, ctx: &mut EventCtx<'_>, local_pos: Point) -> bool {
@@ -368,6 +396,7 @@ impl EditorWidget {
             .mouse_up(mouse_event, &mut tool, &mut self.session);
 
         if let Some(edit_type) = tool.edit_type() {
+            self.session.snap_selection_to_grid();
             self.record_edit(edit_type);
             self.session.sync_to_workspace();
         }
@@ -458,9 +487,15 @@ impl EditorWidget {
             false
         };
 
-        // Update tracking (even if this is a double-click, it could be triple-click next)
-        self.last_click_time = Some(now);
-        self.last_click_position = Some(position);
+        if is_double {
+            // Reset tracking so the next click starts fresh
+            // and doesn't cascade into triple/quadruple clicks
+            self.last_click_time = None;
+            self.last_click_position = None;
+        } else {
+            self.last_click_time = Some(now);
+            self.last_click_position = Some(position);
+        }
 
         is_double
     }

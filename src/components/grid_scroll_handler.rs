@@ -41,6 +41,10 @@ pub enum GridScrollAction {
     Navigate(NavDirection),
     /// Save requested (Cmd+S)
     Save,
+    /// Copy selected glyph outlines (Cmd+C)
+    Copy,
+    /// Paste clipboard outlines (Cmd+V)
+    Paste,
 }
 
 // ============================================================
@@ -173,6 +177,30 @@ impl Widget for GridScrollWidget {
                 return;
             }
 
+            // Cmd+C → copy glyph outlines
+            if cmd
+                && matches!(
+                    &key_event.key,
+                    Key::Character(c) if c == "c"
+                )
+            {
+                ctx.submit_action::<GridScrollAction>(GridScrollAction::Copy);
+                ctx.set_handled();
+                return;
+            }
+
+            // Cmd+V → paste glyph outlines
+            if cmd
+                && matches!(
+                    &key_event.key,
+                    Key::Character(c) if c == "v"
+                )
+            {
+                ctx.submit_action::<GridScrollAction>(GridScrollAction::Paste);
+                ctx.set_handled();
+                return;
+            }
+
             // Arrow keys → navigate selection (no modifier)
             if !cmd {
                 let dir = match &key_event.key {
@@ -207,6 +235,8 @@ pub fn grid_scroll_handler<State, Action, V>(
     on_scroll: impl Fn(&mut State, i32) + Send + Sync + 'static,
     on_navigate: impl Fn(&mut State, NavDirection) + Send + Sync + 'static,
     on_save: impl Fn(&mut State) + Send + Sync + 'static,
+    on_copy: impl Fn(&mut State) + Send + Sync + 'static,
+    on_paste: impl Fn(&mut State) + Send + Sync + 'static,
 ) -> GridScrollHandlerView<V, State, Action>
 where
     State: 'static,
@@ -218,20 +248,24 @@ where
         on_scroll: Box::new(on_scroll),
         on_navigate: Box::new(on_navigate),
         on_save: Box::new(on_save),
+        on_copy: Box::new(on_copy),
+        on_paste: Box::new(on_paste),
         phantom: PhantomData,
     }
 }
 
 type ScrollCb<S> = Box<dyn Fn(&mut S, i32) + Send + Sync>;
 type NavigateCb<S> = Box<dyn Fn(&mut S, NavDirection) + Send + Sync>;
-type SaveCb<S> = Box<dyn Fn(&mut S) + Send + Sync>;
+type VoidCb<S> = Box<dyn Fn(&mut S) + Send + Sync>;
 
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct GridScrollHandlerView<V, State, Action = ()> {
     inner: V,
     on_scroll: ScrollCb<State>,
     on_navigate: NavigateCb<State>,
-    on_save: SaveCb<State>,
+    on_save: VoidCb<State>,
+    on_copy: VoidCb<State>,
+    on_paste: VoidCb<State>,
     phantom: PhantomData<fn() -> (State, Action)>,
 }
 
@@ -296,6 +330,14 @@ where
                 }
                 GridScrollAction::Save => {
                     (self.on_save)(app_state);
+                    return MessageResult::Action(Action::default());
+                }
+                GridScrollAction::Copy => {
+                    (self.on_copy)(app_state);
+                    return MessageResult::Action(Action::default());
+                }
+                GridScrollAction::Paste => {
+                    (self.on_paste)(app_state);
                     return MessageResult::Action(Action::default());
                 }
             }

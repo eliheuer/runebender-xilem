@@ -44,25 +44,135 @@ impl EditSession {
 
         // Second pass: move all identified points
         Self::apply_point_movement(paths_vec, &points_to_move, delta);
+
+        // Third pass: enforce smooth constraints — when a handle
+        // adjacent to a smooth on-curve point is dragged, rotate the
+        // opposite handle to maintain collinearity
+        Self::enforce_smooth_constraints(paths_vec, &points_to_move);
+    }
+
+    /// Snap selected on-curve points to the nearest design grid line.
+    ///
+    /// Off-curve handles are shifted by the same amount as their
+    /// parent on-curve point so the curve shape is preserved. Points
+    /// that are not selected (and were not moved) are left untouched.
+    pub fn snap_selection_to_grid(&mut self) {
+        use crate::settings;
+        use std::collections::HashMap;
+
+        if !settings::snap::ENABLED || self.selection.is_empty() {
+            return;
+        }
+
+        let spacing = settings::snap::SPACING;
+        if spacing <= 0.0 {
+            return;
+        }
+
+        let paths_vec = Arc::make_mut(&mut self.paths);
+
+        // First pass: compute snap offsets for selected on-curve
+        // points and record which off-curve neighbors to shift.
+        let mut snap_offsets: HashMap<crate::model::EntityId, kurbo::Vec2> = HashMap::new();
+
+        for path in paths_vec.iter() {
+            let (points_slice, closed) = match path {
+                Path::Cubic(c) => {
+                    let v: Vec<_> = c.points.iter().collect();
+                    (v, c.closed)
+                }
+                Path::Quadratic(q) => {
+                    let v: Vec<_> = q.points.iter().collect();
+                    (v, q.closed)
+                }
+                Path::Hyper(h) => {
+                    let v: Vec<_> = h.points.iter().collect();
+                    (v, h.closed)
+                }
+            };
+
+            let len = points_slice.len();
+            for (i, pt) in points_slice.iter().enumerate() {
+                if !pt.is_on_curve() || !self.selection.contains(&pt.id) {
+                    continue;
+                }
+
+                let snapped_x = (pt.point.x / spacing).round() * spacing;
+                let snapped_y = (pt.point.y / spacing).round() * spacing;
+                let offset = kurbo::Vec2::new(snapped_x - pt.point.x, snapped_y - pt.point.y);
+
+                if offset.x.abs() < 1e-9 && offset.y.abs() < 1e-9 {
+                    continue; // Already on grid
+                }
+
+                snap_offsets.insert(pt.id, offset);
+
+                // Shift adjacent off-curve handles by the same amount
+                if let Some(prev) = Self::get_previous_index(i, len, closed)
+                    && points_slice[prev].is_off_curve()
+                {
+                    snap_offsets.entry(points_slice[prev].id).or_insert(offset);
+                }
+                if let Some(next) = Self::get_next_index(i, len, closed)
+                    && points_slice[next].is_off_curve()
+                {
+                    snap_offsets.entry(points_slice[next].id).or_insert(offset);
+                }
+            }
+        }
+
+        if snap_offsets.is_empty() {
+            return;
+        }
+
+        // Second pass: apply the offsets
+        for path in paths_vec.iter_mut() {
+            match path {
+                Path::Cubic(c) => {
+                    for pt in c.points.make_mut().iter_mut() {
+                        if let Some(off) = snap_offsets.get(&pt.id) {
+                            pt.point = Point::new(pt.point.x + off.x, pt.point.y + off.y);
+                        }
+                    }
+                }
+                Path::Quadratic(q) => {
+                    for pt in q.points.make_mut().iter_mut() {
+                        if let Some(off) = snap_offsets.get(&pt.id) {
+                            pt.point = Point::new(pt.point.x + off.x, pt.point.y + off.y);
+                        }
+                    }
+                }
+                Path::Hyper(h) => {
+                    let mut changed = false;
+                    for pt in h.points.make_mut().iter_mut() {
+                        if let Some(off) = snap_offsets.get(&pt.id) {
+                            pt.point = Point::new(pt.point.x + off.x, pt.point.y + off.y);
+                            changed = true;
+                        }
+                    }
+                    if changed {
+                        h.after_change();
+                    }
+                }
+            }
+        }
     }
 
     /// Nudge selected points in a direction
     ///
-    /// Nudge amounts:
-    /// - Normal: 1 unit
-    /// - Shift: 10 units
-    /// - Cmd/Ctrl: 100 units
-    ///   TODO: move this to settings and make constants
+    /// Nudge amounts are configured in `settings::nudge`.
     pub fn nudge_selection(&mut self, dx: f64, dy: f64, shift: bool, ctrl: bool) {
-        let multiplier = if ctrl {
-            100.0
+        use crate::settings;
+
+        let amount = if ctrl {
+            settings::nudge::CMD
         } else if shift {
-            10.0
+            settings::nudge::SHIFT
         } else {
-            1.0
+            settings::nudge::BASE
         };
 
-        let delta = kurbo::Vec2::new(dx * multiplier, dy * multiplier);
+        let delta = kurbo::Vec2::new(dx * amount, dy * amount);
         self.move_selection(delta);
     }
 
@@ -399,6 +509,135 @@ impl EditSession {
                 point.point = Point::new(point.point.x + delta.x, point.point.y + delta.y);
             }
         }
+    }
+
+    /// Enforce smooth constraints after handle movement
+    ///
+    /// For each smooth on-curve point: if exactly one adjacent
+    /// off-curve handle was moved (and the on-curve itself was NOT
+    /// moved), rotate the opposite handle to maintain collinearity,
+    /// preserving its distance from the on-curve point.
+    fn enforce_smooth_constraints(
+        paths: &mut [Path],
+        points_moved: &std::collections::HashSet<crate::model::EntityId>,
+    ) {
+        for path in paths.iter_mut() {
+            match path {
+                Path::Cubic(cubic) => {
+                    Self::enforce_smooth_for_points(
+                        cubic.points.make_mut(),
+                        cubic.closed,
+                        points_moved,
+                    );
+                }
+                Path::Quadratic(quadratic) => {
+                    Self::enforce_smooth_for_points(
+                        quadratic.points.make_mut(),
+                        quadratic.closed,
+                        points_moved,
+                    );
+                }
+                // Hyper paths have no user-visible off-curve handles
+                Path::Hyper(_) => {}
+            }
+        }
+    }
+
+    /// Enforce smooth constraints on a single point list
+    fn enforce_smooth_for_points(
+        points: &mut [crate::path::PathPoint],
+        closed: bool,
+        points_moved: &std::collections::HashSet<crate::model::EntityId>,
+    ) {
+        let len = points.len();
+        if len < 3 {
+            return;
+        }
+
+        // Collect adjustments first, then apply (avoids borrow issues)
+        let mut adjustments: Vec<(usize, Point)> = Vec::new();
+
+        for i in 0..len {
+            // Only care about smooth on-curve points
+            let is_smooth = matches!(
+                points[i].typ,
+                crate::path::PointType::OnCurve { smooth: true }
+            );
+            if !is_smooth {
+                continue;
+            }
+
+            // Skip if the on-curve point itself was moved
+            if points_moved.contains(&points[i].id) {
+                continue;
+            }
+
+            let prev_i = match Self::get_previous_index(i, len, closed) {
+                Some(idx) => idx,
+                None => continue,
+            };
+            let next_i = match Self::get_next_index(i, len, closed) {
+                Some(idx) => idx,
+                None => continue,
+            };
+
+            // Both neighbors must be off-curve handles
+            if !points[prev_i].is_off_curve() || !points[next_i].is_off_curve() {
+                continue;
+            }
+
+            let prev_moved = points_moved.contains(&points[prev_i].id);
+            let next_moved = points_moved.contains(&points[next_i].id);
+
+            // Exactly one handle must have been moved
+            if prev_moved == next_moved {
+                continue;
+            }
+
+            let oncurve = points[i].point;
+
+            if prev_moved {
+                // prev handle was moved → constrain next handle
+                let moved_handle = points[prev_i].point;
+                let opposite = points[next_i].point;
+                let new_pos = Self::constrained_opposite(oncurve, moved_handle, opposite);
+                adjustments.push((next_i, new_pos));
+            } else {
+                // next handle was moved → constrain prev handle
+                let moved_handle = points[next_i].point;
+                let opposite = points[prev_i].point;
+                let new_pos = Self::constrained_opposite(oncurve, moved_handle, opposite);
+                adjustments.push((prev_i, new_pos));
+            }
+        }
+
+        for (idx, pos) in adjustments {
+            points[idx].point = pos;
+        }
+    }
+
+    /// Compute the constrained position of the opposite handle
+    ///
+    /// Given a smooth on-curve point, the moved handle, and the
+    /// opposite handle, return the new position for the opposite
+    /// handle that maintains collinearity while preserving its
+    /// original distance from the on-curve point.
+    fn constrained_opposite(oncurve: Point, moved_handle: Point, opposite: Point) -> Point {
+        let dx = moved_handle.x - oncurve.x;
+        let dy = moved_handle.y - oncurve.y;
+        let angle = dy.atan2(dx);
+
+        // Preserve original distance of opposite handle
+        let opp_dx = opposite.x - oncurve.x;
+        let opp_dy = opposite.y - oncurve.y;
+        let distance = (opp_dx * opp_dx + opp_dy * opp_dy).sqrt();
+
+        // Place opposite handle at angle + PI
+        let opposite_angle = angle + std::f64::consts::PI;
+        Point::new(
+            oncurve.x + distance * opposite_angle.cos(),
+            oncurve.y + distance * opposite_angle.sin(),
+        )
     }
 
     /// Retain a path after deletion (remove selected points)
