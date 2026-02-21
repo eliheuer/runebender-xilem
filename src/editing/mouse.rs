@@ -96,6 +96,15 @@ pub struct Mouse {
 }
 
 impl Mouse {
+    /// Check whether a button is currently down or a drag is active
+    ///
+    /// During pointer capture the widget owns live editing state
+    /// (tool state, modified paths) that must not be overwritten by
+    /// a view rebuild. Callers use this to guard session updates.
+    pub fn is_active(&self) -> bool {
+        matches!(self.state, MouseState::Down | MouseState::Drag)
+    }
+
     /// Create a new mouse state machine
     pub fn new() -> Self {
         Self {

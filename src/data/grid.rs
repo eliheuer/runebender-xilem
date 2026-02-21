@@ -3,9 +3,9 @@
 
 //! Glyph grid operations for AppState
 
-use super::AppState;
+use super::{AppState, GlyphClipboard};
 use crate::components::{GlyphCategory, NavDirection};
-use crate::model::{read_workspace, write_workspace};
+use crate::model::{EntityId, read_workspace, write_workspace};
 use crate::theme;
 
 #[allow(dead_code)]
@@ -224,6 +224,61 @@ impl AppState {
             .codepoints
             .first()
             .map(|c| format!("U+{:04X}", *c as u32))
+    }
+
+    /// Copy the selected glyph's outlines to the internal clipboard
+    pub fn copy_glyph(&mut self) {
+        let Some(glyph_name) = self.selected_glyph.as_ref() else {
+            return;
+        };
+        let Some(workspace_arc) = self.active_workspace() else {
+            return;
+        };
+        let workspace = read_workspace(&workspace_arc);
+        let Some(glyph) = workspace.get_glyph(glyph_name) else {
+            return;
+        };
+        self.clipboard = Some(GlyphClipboard {
+            contours: glyph.contours.clone(),
+            components: glyph.components.clone(),
+            width: glyph.width,
+        });
+    }
+
+    /// Paste clipboard outlines into all selected glyphs
+    pub fn paste_glyph(&mut self) {
+        let Some(ref clipboard) = self.clipboard else {
+            return;
+        };
+        let clipboard = clipboard.clone();
+        let Some(workspace_arc) = self.active_workspace() else {
+            return;
+        };
+        let names: Vec<String> = if self.selected_glyphs.is_empty() {
+            self.selected_glyph.iter().cloned().collect()
+        } else {
+            self.selected_glyphs.iter().cloned().collect()
+        };
+        if names.is_empty() {
+            return;
+        }
+        let mut workspace = write_workspace(&workspace_arc);
+        for name in &names {
+            if let Some(glyph) = workspace.get_glyph_mut(name) {
+                glyph.contours = clipboard.contours.clone();
+                glyph.width = clipboard.width;
+                // Clone components with fresh EntityIds
+                glyph.components = clipboard
+                    .components
+                    .iter()
+                    .map(|c| {
+                        let mut comp = c.clone();
+                        comp.id = EntityId::next();
+                        comp
+                    })
+                    .collect();
+            }
+        }
     }
 
     /// Set mark color for all selected glyphs by palette index

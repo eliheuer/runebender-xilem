@@ -16,6 +16,7 @@ use crate::editing::EditSession;
 use crate::editing::EditType;
 use crate::editing::Mouse;
 use crate::editing::UndoState;
+use crate::path::Path;
 use crate::sort::TextCursor;
 use kurbo::Point;
 use masonry::accesskit::{Node, Role};
@@ -85,6 +86,9 @@ pub struct EditorWidget {
 
     /// Current horizontal offset from start position during kern drag
     pub(super) kern_current_offset: f64,
+
+    /// Clipboard for copied paths (contours with selected points)
+    pub(super) point_clipboard: Option<Vec<Path>>,
 }
 
 impl EditorWidget {
@@ -108,6 +112,7 @@ impl EditorWidget {
             kern_start_x: 0.0,
             kern_original_value: 0.0,
             kern_current_offset: 0.0,
+            point_clipboard: None,
         }
     }
 

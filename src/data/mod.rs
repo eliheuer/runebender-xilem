@@ -16,10 +16,18 @@ mod kerning;
 
 use crate::components::GlyphCategory;
 use crate::editing::EditSession;
-use crate::model::workspace::Workspace;
+use crate::model::workspace::{self, Workspace};
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 use xilem::WindowId;
+
+/// Clipboard contents for glyph outline copy/paste
+#[derive(Debug, Clone)]
+pub struct GlyphClipboard {
+    pub contours: Vec<workspace::Contour>,
+    pub components: Vec<workspace::Component>,
+    pub width: f64,
+}
 
 /// Which tab is currently active
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +92,9 @@ pub struct AppState {
     /// Updated by `glyph_grid_view` on each rebuild so the scroll
     /// callback can use it without re-iterating all glyphs.
     pub cached_filtered_count: usize,
+
+    /// Internal clipboard for glyph outline copy/paste
+    pub clipboard: Option<GlyphClipboard>,
 }
 
 #[allow(dead_code)]
@@ -107,6 +118,7 @@ impl AppState {
             grid_scroll_row: 0,
             window_height: 800.0,
             cached_filtered_count: 0,
+            clipboard: None,
         }
     }
 

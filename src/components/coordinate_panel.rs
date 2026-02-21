@@ -63,6 +63,17 @@ mod layout {
 // LAYOUT BUILDING FUNCTIONS
 // ============================================================================
 
+/// Which coordinate field is being edited
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoordField {
+    X,
+    Y,
+    #[allow(dead_code)]
+    Width,
+    #[allow(dead_code)]
+    Height,
+}
+
 /// Coordinate data extracted from the session
 #[derive(Clone)]
 struct CoordinateData {
@@ -122,13 +133,15 @@ where
 }
 
 /// Build a single coordinate input field
-fn build_coord_input<State: 'static>(value: String, placeholder: &str) -> impl WidgetView<State> {
+fn build_coord_input<State: 'static>(
+    value: String,
+    placeholder: &str,
+    on_change: impl Fn(&mut State, String) + Send + Sync + 'static,
+) -> impl WidgetView<State> {
     sized_box(
-        xilem::view::text_input(value, |_state: &mut State, _new_value| {
-            // TODO: Handle coordinate updates
-        })
-        .text_alignment(parley::Alignment::Center)
-        .placeholder(placeholder),
+        xilem::view::text_input(value, on_change)
+            .text_alignment(parley::Alignment::Center)
+            .placeholder(placeholder),
     )
     .width(layout::INPUT_WIDTH.px())
 }
@@ -138,19 +151,32 @@ fn build_coord_input<State: 'static>(value: String, placeholder: &str) -> impl W
 /// Creates two rows:
 /// - Row 1: X and Y inputs
 /// - Row 2: W and H inputs
-fn build_coordinate_inputs<State: 'static>(data: CoordinateData) -> impl WidgetView<State> {
+fn build_coordinate_inputs<State: 'static>(
+    data: CoordinateData,
+    on_coord_change: Arc<dyn Fn(&mut State, CoordField, String) + Send + Sync>,
+) -> impl WidgetView<State> {
     // Row 1: X and Y position inputs
+    let cb_x = Arc::clone(&on_coord_change);
+    let cb_y = Arc::clone(&on_coord_change);
     let row1 = flex_row((
-        build_coord_input(data.x, "X"),
-        build_coord_input(data.y, "Y"),
+        build_coord_input(data.x, "X", move |state: &mut State, val| {
+            cb_x(state, CoordField::X, val);
+        }),
+        build_coord_input(data.y, "Y", move |state: &mut State, val| {
+            cb_y(state, CoordField::Y, val);
+        }),
     ))
     .gap(layout::GAP_BETWEEN_INPUTS.px())
     .cross_axis_alignment(CrossAxisAlignment::Center);
 
-    // Row 2: Width and Height inputs
+    // Row 2: Width and Height inputs (display-only for now)
     let row2 = flex_row((
-        build_coord_input(data.width, "W"),
-        build_coord_input(data.height, "H"),
+        build_coord_input(data.width, "W", |_state: &mut State, _val| {
+            // W/H editing not yet supported (scaling)
+        }),
+        build_coord_input(data.height, "H", |_state: &mut State, _val| {
+            // W/H editing not yet supported (scaling)
+        }),
     ))
     .gap(layout::GAP_BETWEEN_INPUTS.px())
     .cross_axis_alignment(CrossAxisAlignment::Center);
@@ -205,12 +231,14 @@ fn build_panel_container<State: 'static>(
 /// │  └──────┘  └───┘ └───┘  │
 /// └─────────────────────────┘
 /// ```
-pub fn coordinate_panel<State: 'static, F>(
+pub fn coordinate_panel<State: 'static, F, G>(
     session: Arc<crate::editing::EditSession>,
     on_session_update: F,
+    on_coord_change: G,
 ) -> impl WidgetView<State>
 where
     F: Fn(&mut State, crate::editing::EditSession) + Send + Sync + 'static,
+    G: Fn(&mut State, CoordField, String) + Send + Sync + 'static,
 {
     // Step 1: Prepare coordinate data (clone strings for use in closures)
     let coord_data = prepare_coordinate_data(&session.coord_selection);
@@ -219,8 +247,8 @@ where
     let quadrant_selector = build_quadrant_selector(session, on_session_update);
 
     // Step 3: Build the coordinate input fields
-    // Clone the data so it can be moved into the view closures
-    let coordinate_inputs = build_coordinate_inputs::<State>(coord_data.clone());
+    let on_coord_change = Arc::new(on_coord_change);
+    let coordinate_inputs = build_coordinate_inputs::<State>(coord_data.clone(), on_coord_change);
 
     // Step 4: Assemble the final panel
     build_panel_container(quadrant_selector, coordinate_inputs)
@@ -660,9 +688,7 @@ impl<State: 'static, F: Fn(&mut State, crate::editing::EditSession) + Send + Syn
                     update.session.coord_selection.quadrant
                 );
                 (self.on_session_update)(app_state, update.session);
-                // Use RequestRebuild instead of Action to avoid destroying the
-                // window
-                MessageResult::RequestRebuild
+                MessageResult::Action(())
             }
             None => MessageResult::Stale,
         }

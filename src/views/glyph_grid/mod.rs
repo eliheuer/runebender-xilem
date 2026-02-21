@@ -97,6 +97,12 @@ pub fn glyph_grid_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<>
                     |state: &mut AppState| {
                         state.save_workspace();
                     },
+                    |state: &mut AppState| {
+                        state.copy_glyph();
+                    },
+                    |state: &mut AppState| {
+                        state.paste_glyph();
+                    },
                 )
                 .flex(1.0),
                 sized_box(
