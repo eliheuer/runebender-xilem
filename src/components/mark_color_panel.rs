@@ -219,7 +219,7 @@ impl Widget for MarkColorPanelWidget {
                 scene.stroke(
                     &kurbo::Stroke::new(2.0),
                     Affine::IDENTITY,
-                    &Brush::Solid(Color::WHITE),
+                    &Brush::Solid(theme::mark::SELECTED_RING),
                     None,
                     &outer,
                 );

@@ -7,10 +7,11 @@
 
 use kurbo::{Affine, Line, Point, Stroke};
 use masonry::vello::Scene;
-use masonry::vello::peniko::{Brush, Color};
+use masonry::vello::peniko::Brush;
 
 use super::buffer::SortBuffer;
 use super::data::SortKind;
+use crate::theme;
 
 /// Text cursor with blinking animation
 #[derive(Debug, Clone)]
@@ -93,8 +94,7 @@ impl TextCursor {
             Point::new(position.x, position.y + height * 0.2),
         );
 
-        // Cursor color - bright blue
-        let cursor_color = Color::from_rgb8(0x00, 0x7A, 0xFF);
+        let cursor_color = theme::cursor::COLOR;
 
         scene.stroke(
             &Stroke::new(2.0),

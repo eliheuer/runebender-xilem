@@ -8,6 +8,7 @@
 //! Ported from Runebender Druid implementation.
 
 use crate::editing::{EditSession, EditType, MouseDelegate, MouseEvent};
+use crate::theme;
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, Circle, Line, Point, Rect, Size};
 use masonry::core::{BrushIndex, StyleProperty, render_text};
@@ -317,7 +318,7 @@ fn draw_info_bubble(scene: &mut Scene, pos: Point, label: impl Into<String>) {
     // Draw dark gray text on top
     let text_pos = Point::new(pos.x - text_width / 2.0, pos.y - text_height / 2.0);
 
-    let text_color = Color::from_rgb8(0x30, 0x30, 0x30); // Dark gray
+    let text_color = theme::measure::TEXT;
     let brushes = vec![Brush::Solid(text_color)];
 
     render_text(
