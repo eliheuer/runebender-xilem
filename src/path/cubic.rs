@@ -318,6 +318,7 @@ impl SegmentIterator {
             segment,
             start_index: start_idx,
             end_index: end_idx,
+            path_index: 0,
         })
     }
 
@@ -348,6 +349,7 @@ impl SegmentIterator {
             segment,
             start_index: start_idx,
             end_index: end_idx,
+            path_index: 0,
         })
     }
 }

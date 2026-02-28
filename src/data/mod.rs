@@ -18,6 +18,7 @@ use crate::components::GlyphCategory;
 use crate::editing::EditSession;
 use crate::model::workspace::{self, Workspace};
 use std::collections::HashSet;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
 use xilem::WindowId;
 
@@ -95,6 +96,9 @@ pub struct AppState {
 
     /// Internal clipboard for glyph outline copy/paste
     pub clipboard: Option<GlyphClipboard>,
+
+    /// Flag to suppress reload when we just saved (self-save detection)
+    pub save_in_progress: Arc<AtomicBool>,
 }
 
 #[allow(dead_code)]
@@ -119,6 +123,7 @@ impl AppState {
             window_height: 800.0,
             cached_filtered_count: 0,
             clipboard: None,
+            save_in_progress: Arc::new(AtomicBool::new(false)),
         }
     }
 

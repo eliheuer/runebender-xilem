@@ -108,6 +108,10 @@ impl EditorWidget {
         shift: bool,
         ctrl: bool,
     ) -> bool {
+        if self.handle_toggle_panels(ctx, key) {
+            return true;
+        }
+
         if self.handle_ctrl_space_toggle(ctx, ctrl, key) {
             return true;
         }
@@ -162,6 +166,29 @@ impl EditorWidget {
     // ============================================================================
     // KEYBOARD SHORTCUT HANDLERS
     // ============================================================================
+
+    fn handle_toggle_panels(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use masonry::core::keyboard::{Key, NamedKey};
+
+        if !matches!(key, Key::Named(NamedKey::Tab)) {
+            return false;
+        }
+
+        // Don't toggle panels in text edit mode (Tab may be used for other purposes)
+        if self.session.text_mode_active {
+            return false;
+        }
+
+        self.session.panels_visible = !self.session.panels_visible;
+        self.emit_session_update(ctx, false);
+        ctx.request_render();
+        ctx.set_handled();
+        true
+    }
 
     fn handle_ctrl_space_toggle(
         &mut self,

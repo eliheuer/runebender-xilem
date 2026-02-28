@@ -42,6 +42,9 @@ thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# File watching
+notify = "8"
+
 # File dialogs
 rfd = "0.15"
 

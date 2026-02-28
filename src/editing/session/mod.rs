@@ -16,6 +16,8 @@ mod hit_testing;
 mod path_editing;
 mod text_buffer;
 
+pub use path_editing::snap_point_to_grid;
+
 use super::selection::Selection;
 use super::viewport::ViewPort;
 use crate::components::CoordinateSelection;
@@ -124,6 +126,11 @@ pub struct EditSession {
     /// Text direction for rendering and cursor movement
     /// Defaults to LTR, can be toggled via toolbar when text tool is active
     pub text_direction: TextDirection,
+
+    /// Whether bottom panels (glyph preview, text buffer preview,
+    /// active glyph metrics, coordinate panel) are visible.
+    /// Toggle with Tab key.
+    pub panels_visible: bool,
 }
 
 impl EditSession {
@@ -167,6 +174,7 @@ impl EditSession {
             active_sort_name: Some(glyph_name),
             active_sort_x_offset: 0.0,
             text_direction: TextDirection::default(),
+            panels_visible: true,
         }
     }
 
@@ -223,6 +231,7 @@ impl EditSession {
             active_sort_name: Some(glyph_name),
             active_sort_x_offset: 0.0, // First sort is at position 0
             text_direction: TextDirection::default(),
+            panels_visible: true,
         }
     }
 
