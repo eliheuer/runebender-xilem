@@ -104,22 +104,38 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
         )
         .translate((UI_PANEL_MARGIN, UI_PANEL_MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_LEFT)),
-        // Bottom-left: glyph preview panel
-        transformed(glyph_preview_pane(session_arc.clone(), glyph_name.clone()))
-            .translate((UI_PANEL_MARGIN, -UI_PANEL_MARGIN))
-            .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_LEFT)),
-        // Bottom-center-top: text buffer preview panel (above active glyph, standard margin)
-        transformed(text_buffer_preview_pane_centered(session_arc.clone()))
-            .translate((0.0, -(UI_PANEL_MARGIN + 140.0 + UI_PANEL_MARGIN)))
-            .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
-        // Bottom-center-bottom: active glyph panel
-        transformed(active_glyph_panel_centered(state))
-            .translate((0.0, -UI_PANEL_MARGIN))
-            .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
-        // Bottom-right: coordinate panel (locked to corner like workspace toolbar)
-        transformed(coordinate_panel_from_session(&session_arc))
-            .translate((-UI_PANEL_MARGIN, -UI_PANEL_MARGIN))
-            .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_RIGHT)),
+        // Bottom-left: glyph preview panel (hidden when panels toggled off)
+        transformed(if session.panels_visible {
+            Either::A(glyph_preview_pane(session_arc.clone(), glyph_name.clone()))
+        } else {
+            Either::B(sized_box(label("")).width(0.px()).height(0.px()))
+        })
+        .translate((UI_PANEL_MARGIN, -UI_PANEL_MARGIN))
+        .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_LEFT)),
+        // Bottom-center-top: text buffer preview panel (hidden when panels toggled off)
+        transformed(if session.panels_visible {
+            Either::A(text_buffer_preview_pane_centered(session_arc.clone()))
+        } else {
+            Either::B(sized_box(label("")).width(0.px()).height(0.px()))
+        })
+        .translate((0.0, -(UI_PANEL_MARGIN + 140.0 + UI_PANEL_MARGIN)))
+        .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
+        // Bottom-center-bottom: active glyph panel (hidden when panels toggled off)
+        transformed(if session.panels_visible {
+            Either::A(active_glyph_panel_centered(state))
+        } else {
+            Either::B(sized_box(label("")).width(0.px()).height(0.px()))
+        })
+        .translate((0.0, -UI_PANEL_MARGIN))
+        .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
+        // Bottom-right: coordinate panel (hidden when panels toggled off)
+        transformed(if session.panels_visible {
+            Either::A(coordinate_panel_from_session(&session_arc))
+        } else {
+            Either::B(sized_box(label("")).width(0.px()).height(0.px()))
+        })
+        .translate((-UI_PANEL_MARGIN, -UI_PANEL_MARGIN))
+        .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_RIGHT)),
         // Top-right: Master toolbar (if designspace) + Workspace toolbar
         transformed(
             flex_row((

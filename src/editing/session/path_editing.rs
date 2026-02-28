@@ -12,6 +12,22 @@ use crate::path::{HyperPath, Path};
 use kurbo::Point;
 use std::sync::Arc;
 
+/// Snap a point to the nearest grid position
+pub fn snap_point_to_grid(point: Point) -> Point {
+    use crate::settings;
+    if !settings::snap::ENABLED {
+        return point;
+    }
+    let spacing = settings::snap::SPACING;
+    if spacing <= 0.0 {
+        return point;
+    }
+    Point::new(
+        (point.x / spacing).round() * spacing,
+        (point.y / spacing).round() * spacing,
+    )
+}
+
 impl EditSession {
     /// Move selected points by a delta in design space
     ///
@@ -250,26 +266,36 @@ impl EditSession {
     ) -> bool {
         use crate::path::Segment;
 
-        // Find the path containing this segment
         let paths_vec = Arc::make_mut(&mut self.paths);
 
-        for path in paths_vec.iter_mut() {
-            if let Some(points) = Self::find_path_containing_segment(path, segment_info) {
-                match segment_info.segment {
-                    Segment::Line(_line) => {
-                        return Self::insert_point_on_line(points, segment_info, t);
-                    }
-                    Segment::Cubic(cubic_bez) => {
-                        return Self::insert_point_on_cubic(points, segment_info, cubic_bez, t);
-                    }
-                    Segment::Quadratic(quad_bez) => {
-                        return Self::insert_point_on_quadratic(points, segment_info, quad_bez, t);
-                    }
-                }
+        // Use the path_index stored in SegmentInfo to go directly
+        // to the correct contour instead of searching by index
+        // pairs (which are ambiguous across contours).
+        let path = match paths_vec.get_mut(segment_info.path_index) {
+            Some(p) => p,
+            None => return false,
+        };
+
+        let points = match Self::get_path_points_mut(path) {
+            Some(p) => p,
+            None => return false,
+        };
+
+        match segment_info.segment {
+            Segment::Line(_line) => {
+                Self::insert_point_on_line(points, segment_info, t)
+            }
+            Segment::Cubic(cubic_bez) => {
+                Self::insert_point_on_cubic(
+                    points, segment_info, cubic_bez, t,
+                )
+            }
+            Segment::Quadratic(quad_bez) => {
+                Self::insert_point_on_quadratic(
+                    points, segment_info, quad_bez, t,
+                )
             }
         }
-
-        false
     }
 
     /// Convert the current editing state back to a Glyph
@@ -694,76 +720,17 @@ impl EditSession {
         }
     }
 
-    /// Find the path containing a segment and return its points
-    fn find_path_containing_segment<'a>(
-        path: &'a mut Path,
-        segment_info: &crate::path::SegmentInfo,
-    ) -> Option<&'a mut Vec<crate::path::PathPoint>> {
+    /// Get mutable access to a path's point list
+    fn get_path_points_mut(
+        path: &mut Path,
+    ) -> Option<&mut Vec<crate::path::PathPoint>> {
         match path {
-            Path::Cubic(cubic) => {
-                if Self::cubic_contains_segment(cubic, segment_info) {
-                    Some(cubic.points.make_mut())
-                } else {
-                    None
-                }
-            }
+            Path::Cubic(cubic) => Some(cubic.points.make_mut()),
             Path::Quadratic(quadratic) => {
-                if Self::quadratic_contains_segment(quadratic, segment_info) {
-                    Some(quadratic.points.make_mut())
-                } else {
-                    None
-                }
+                Some(quadratic.points.make_mut())
             }
-            Path::Hyper(hyper) => {
-                if Self::hyper_contains_segment(hyper, segment_info) {
-                    Some(hyper.points.make_mut())
-                } else {
-                    None
-                }
-            }
+            Path::Hyper(hyper) => Some(hyper.points.make_mut()),
         }
-    }
-
-    /// Check if a cubic path contains a specific segment
-    fn cubic_contains_segment(
-        cubic: &crate::path::CubicPath,
-        segment_info: &crate::path::SegmentInfo,
-    ) -> bool {
-        for seg in cubic.iter_segments() {
-            if seg.start_index == segment_info.start_index
-                && seg.end_index == segment_info.end_index
-            {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Check if a quadratic path contains a specific segment
-    fn quadratic_contains_segment(
-        quadratic: &crate::path::QuadraticPath,
-        segment_info: &crate::path::SegmentInfo,
-    ) -> bool {
-        for seg in quadratic.iter_segments() {
-            if seg.start_index == segment_info.start_index
-                && seg.end_index == segment_info.end_index
-            {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Check if a hyper path contains a specific segment
-    fn hyper_contains_segment(hyper: &HyperPath, segment_info: &crate::path::SegmentInfo) -> bool {
-        for seg in hyper.iter_segments() {
-            if seg.start_index == segment_info.start_index
-                && seg.end_index == segment_info.end_index
-            {
-                return true;
-            }
-        }
-        false
     }
 
     /// Insert a point on a line segment
@@ -776,6 +743,7 @@ impl EditSession {
         use crate::path::{PathPoint, PointType};
 
         let point_pos = segment_info.segment.eval(t);
+        let point_pos = snap_point_to_grid(point_pos);
         let new_point = PathPoint {
             id: EntityId::next(),
             point: point_pos,

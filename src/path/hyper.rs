@@ -406,6 +406,7 @@ impl<'a> Iterator for HyperSegmentIterator<'a> {
                         segment,
                         start_index: start_idx,
                         end_index: self.index,
+                        path_index: 0,
                     });
                 }
                 kurbo::PathEl::CurveTo(p1, p2, p3) => {
@@ -422,6 +423,7 @@ impl<'a> Iterator for HyperSegmentIterator<'a> {
                         segment,
                         start_index: start_idx,
                         end_index: self.index,
+                        path_index: 0,
                     });
                 }
                 kurbo::PathEl::QuadTo(p1, p2) => {
@@ -437,6 +439,7 @@ impl<'a> Iterator for HyperSegmentIterator<'a> {
                         segment,
                         start_index: start_idx,
                         end_index: self.index,
+                        path_index: 0,
                     });
                 }
                 kurbo::PathEl::ClosePath => {

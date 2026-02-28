@@ -272,8 +272,10 @@ impl EditSession {
     ) -> Option<(crate::path::SegmentInfo, f64, f64)> {
         let mut closest: Option<(crate::path::SegmentInfo, f64, f64)> = None;
 
-        for path in paths.iter() {
-            Self::process_path_segments(path, design_pos, &mut closest);
+        for (path_idx, path) in paths.iter().enumerate() {
+            Self::process_path_segments(
+                path, path_idx, design_pos, &mut closest,
+            );
         }
         closest
     }
@@ -281,18 +283,34 @@ impl EditSession {
     /// Process segments from a single path and update closest segment
     fn process_path_segments(
         path: &Path,
+        path_index: usize,
         design_pos: kurbo::Point,
         closest: &mut Option<(crate::path::SegmentInfo, f64, f64)>,
     ) {
         match path {
             Path::Cubic(cubic) => {
-                Self::process_path_segment_iterator(cubic.iter_segments(), design_pos, closest);
+                Self::process_path_segment_iterator(
+                    cubic.iter_segments(),
+                    path_index,
+                    design_pos,
+                    closest,
+                );
             }
             Path::Quadratic(quadratic) => {
-                Self::process_path_segment_iterator(quadratic.iter_segments(), design_pos, closest);
+                Self::process_path_segment_iterator(
+                    quadratic.iter_segments(),
+                    path_index,
+                    design_pos,
+                    closest,
+                );
             }
             Path::Hyper(hyper) => {
-                Self::process_path_segment_iterator(hyper.iter_segments(), design_pos, closest);
+                Self::process_path_segment_iterator(
+                    hyper.iter_segments(),
+                    path_index,
+                    design_pos,
+                    closest,
+                );
             }
         }
     }
@@ -300,12 +318,14 @@ impl EditSession {
     /// Process an iterator of segments and update closest segment
     fn process_path_segment_iterator<I>(
         segments: I,
+        path_index: usize,
         design_pos: kurbo::Point,
         closest: &mut Option<(crate::path::SegmentInfo, f64, f64)>,
     ) where
         I: Iterator<Item = crate::path::SegmentInfo>,
     {
-        for segment_info in segments {
+        for mut segment_info in segments {
+            segment_info.path_index = path_index;
             let (t, dist_sq) = segment_info.segment.nearest(design_pos);
             Self::update_closest_segment(closest, segment_info, t, dist_sq);
         }

@@ -285,6 +285,15 @@ impl PenTool {
             // Evaluate the segment at parameter t to get the snapped
             // position in design space
             let snapped_design_pos = segment_info.segment.eval(*t);
+            // Snap to grid for line segments only
+            let snapped_design_pos = match segment_info.segment {
+                crate::path::Segment::Line(_) => {
+                    crate::editing::session::snap_point_to_grid(
+                        snapped_design_pos,
+                    )
+                }
+                _ => snapped_design_pos,
+            };
             // Convert to screen space
             Some(session.viewport.to_screen(snapped_design_pos))
         } else {

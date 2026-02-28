@@ -25,6 +25,10 @@ pub struct SegmentInfo {
     pub start_index: usize,
     /// The index of the ending point in the path
     pub end_index: usize,
+    /// The index of the path within `session.paths` that owns this
+    /// segment. Used to disambiguate segments with identical local
+    /// indices across different contours.
+    pub path_index: usize,
 }
 
 impl Segment {
