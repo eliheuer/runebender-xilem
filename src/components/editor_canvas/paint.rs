@@ -10,7 +10,7 @@ use kurbo::{Affine, Stroke};
 use masonry::kurbo::Size;
 use masonry::util::fill_color;
 use masonry::vello::Scene;
-use masonry::vello::peniko::Brush;
+use masonry::vello::peniko::{Brush, ImageBrush};
 
 impl EditorWidget {
     // ============================================================================
@@ -36,6 +36,7 @@ impl EditorWidget {
             draw_design_grid(scene, &self.session, self.size);
         }
 
+        self.paint_background_image(scene, transform);
         self.render_text_buffer(scene, transform, is_preview_mode);
 
         if !is_preview_mode {
@@ -53,6 +54,8 @@ impl EditorWidget {
             draw_design_grid(scene, &self.session, self.size);
             draw_metrics_guides(scene, transform, &self.session, self.size);
         }
+
+        self.paint_background_image(scene, transform);
 
         let glyph_path = self.build_glyph_path();
         if glyph_path.is_empty() {
@@ -107,6 +110,130 @@ impl EditorWidget {
         let mut tool = std::mem::replace(&mut self.session.current_tool, select_tool);
         tool.paint(scene, &self.session, transform);
         self.session.current_tool = tool;
+    }
+
+    /// Paint the background reference image (if any) behind the glyph.
+    ///
+    /// The image is rendered in design space with opacity, then
+    /// optionally a selection border and resize handles are drawn.
+    fn paint_background_image(
+        &self,
+        scene: &mut Scene,
+        transform: &Affine,
+    ) {
+        let bg = match &self.session.background_image {
+            Some(bg) => bg,
+            None => return,
+        };
+
+        // Build transform: viewport × translate(position) × scale ×
+        // y-flip (images are Y-down, design space is Y-up)
+        let image_transform = *transform
+            * Affine::translate(bg.position.to_vec2())
+            * Affine::scale_non_uniform(bg.scale_x, -bg.scale_y)
+            * Affine::translate((0.0, -(bg.height as f64)));
+
+        let brush = ImageBrush::new(bg.image_data.clone())
+            .with_alpha(bg.opacity as f32);
+        scene.draw_image(&brush, image_transform);
+
+        // Draw selection UI when selected and not locked
+        if bg.selected && !bg.locked {
+            self.paint_image_selection(scene, transform, bg);
+        }
+    }
+
+    /// Draw the selection border and all 8 resize handles for the
+    /// background image.
+    fn paint_image_selection(
+        &self,
+        scene: &mut Scene,
+        transform: &Affine,
+        bg: &crate::editing::background_image::BackgroundImage,
+    ) {
+        let bounds = bg.bounds();
+
+        // --- Dashed selection border ---
+        let p0 = *transform * kurbo::Point::new(bounds.x0, bounds.y0);
+        let p1 = *transform * kurbo::Point::new(bounds.x1, bounds.y0);
+        let p2 = *transform * kurbo::Point::new(bounds.x1, bounds.y1);
+        let p3 = *transform * kurbo::Point::new(bounds.x0, bounds.y1);
+        let mut border_path = kurbo::BezPath::new();
+        border_path.move_to(p0);
+        border_path.line_to(p1);
+        border_path.line_to(p2);
+        border_path.line_to(p3);
+        border_path.close_path();
+
+        let stroke = Stroke::new(
+            theme::background_image::SELECTION_BORDER_WIDTH,
+        );
+        let dash_pattern = [6.0, 4.0];
+        let dashed = stroke.with_dashes(0.0, dash_pattern);
+        let border_brush =
+            Brush::Solid(theme::background_image::SELECTION_BORDER);
+        scene.stroke(
+            &dashed,
+            Affine::IDENTITY,
+            &border_brush,
+            None,
+            &border_path,
+        );
+
+        let handle_r = theme::background_image::HANDLE_RADIUS;
+        let handle_stroke = Stroke::new(
+            theme::background_image::HANDLE_STROKE_WIDTH,
+        );
+        let fill_brush =
+            Brush::Solid(theme::background_image::HANDLE_FILL);
+        let stroke_brush =
+            Brush::Solid(theme::background_image::HANDLE_STROKE);
+
+        // --- Corner handles (circles) — proportional scaling ---
+        for corner in &bg.corner_positions() {
+            let sp = *transform * *corner;
+            let circle = kurbo::Circle::new(sp, handle_r);
+            scene.fill(
+                peniko::Fill::NonZero,
+                Affine::IDENTITY,
+                &fill_brush,
+                None,
+                &circle,
+            );
+            scene.stroke(
+                &handle_stroke,
+                Affine::IDENTITY,
+                &stroke_brush,
+                None,
+                &circle,
+            );
+        }
+
+        // --- Side handles (squares) — free single-axis scaling ---
+        let half = handle_r;
+        for side in &bg.side_positions() {
+            let sp = *transform * *side;
+            let rect = kurbo::Rect::new(
+                sp.x - half,
+                sp.y - half,
+                sp.x + half,
+                sp.y + half,
+            );
+            scene.fill(
+                peniko::Fill::NonZero,
+                Affine::IDENTITY,
+                &fill_brush,
+                None,
+                &rect,
+            );
+            scene.stroke(
+                &handle_stroke,
+                Affine::IDENTITY,
+                &stroke_brush,
+                None,
+                &rect,
+            );
+        }
     }
 
     /// Initialize viewport positioning to center the glyph

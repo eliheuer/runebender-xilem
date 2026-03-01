@@ -156,6 +156,14 @@ impl EditorWidget {
             return true;
         }
 
+        if self.handle_import_image(ctx, cmd, shift, key) {
+            return true;
+        }
+
+        if self.handle_toggle_image_lock(ctx, cmd, shift, key) {
+            return true;
+        }
+
         if self.handle_tool_switching(ctx, cmd, shift, key) {
             return true;
         }
@@ -519,6 +527,20 @@ impl EditorWidget {
             return false;
         }
 
+        // Delete selected background image if present
+        if self
+            .session
+            .background_image
+            .as_ref()
+            .is_some_and(|bg| bg.selected)
+        {
+            self.session.background_image = None;
+            self.emit_session_update(ctx, false);
+            ctx.request_render();
+            ctx.set_handled();
+            return true;
+        }
+
         self.session.delete_selection();
         self.record_edit(EditType::Normal);
         self.session.sync_to_workspace();
@@ -576,6 +598,104 @@ impl EditorWidget {
         ctx.request_render();
         ctx.set_handled();
         true
+    }
+
+    /// Cmd+Shift+I: Import a background image via file dialog.
+    ///
+    /// This is a workaround for the lack of drag-and-drop support in
+    /// masonry. winit 0.30 supports `WindowEvent::DroppedFile` but
+    /// masonry_winit discards it in a `_ => ()` catch-all. Once an
+    /// `on_dropped_file()` hook is added to masonry's `AppDriver`
+    /// trait, this shortcut can be supplemented with drag-and-drop.
+    /// See: https://github.com/linebender/xilem (upstream PR needed)
+    fn handle_import_image(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        cmd: bool,
+        shift: bool,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use masonry::core::keyboard::Key;
+
+        if !cmd || !shift {
+            return false;
+        }
+
+        if !matches!(key, Key::Character(c) if c.eq_ignore_ascii_case("i")) {
+            return false;
+        }
+
+        let path = rfd::FileDialog::new()
+            .set_title("Import Background Image")
+            .add_filter("Images", &["png", "jpg", "jpeg"])
+            .pick_file();
+
+        let path = match path {
+            Some(p) => p,
+            None => return true, // Dialog cancelled
+        };
+
+        match crate::editing::BackgroundImage::load(
+            &path,
+            self.session.ascender,
+            self.session.descender,
+            self.session.glyph.width,
+        ) {
+            Ok(bg_image) => {
+                tracing::info!(
+                    "Imported background image: {}",
+                    path.display()
+                );
+                self.session.background_image = Some(bg_image);
+                self.emit_session_update(ctx, false);
+                ctx.request_render();
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to import image: {e}"
+                );
+            }
+        }
+
+        ctx.set_handled();
+        true
+    }
+
+    /// Cmd+Shift+L: Toggle background image lock
+    fn handle_toggle_image_lock(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        cmd: bool,
+        shift: bool,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use masonry::core::keyboard::Key;
+
+        if !cmd || !shift {
+            return false;
+        }
+
+        if !matches!(key, Key::Character(c) if c.eq_ignore_ascii_case("l")) {
+            return false;
+        }
+
+        if let Some(bg) = &mut self.session.background_image {
+            bg.locked = !bg.locked;
+            // Deselect when locking
+            if bg.locked {
+                bg.selected = false;
+            }
+            tracing::info!(
+                "Background image locked: {}",
+                bg.locked
+            );
+            self.emit_session_update(ctx, false);
+            ctx.request_render();
+            ctx.set_handled();
+            return true;
+        }
+
+        false
     }
 
     fn handle_tool_switching(
