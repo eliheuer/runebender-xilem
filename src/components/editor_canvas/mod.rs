@@ -89,6 +89,30 @@ pub struct EditorWidget {
 
     /// Clipboard for copied paths (contours with selected points)
     pub(super) point_clipboard: Option<Vec<Path>>,
+
+    /// Whether the user is currently dragging the background image
+    pub(super) dragging_image: bool,
+
+    /// Last design-space position during image drag
+    pub(super) image_drag_origin: Point,
+
+    /// Which resize handle is being dragged (None = not resizing)
+    pub(super) resizing_handle: Option<crate::editing::background_image::ResizeHandle>,
+
+    /// The fixed anchor point during resize
+    pub(super) resize_anchor: Point,
+
+    /// Original scale_x when resize drag started
+    pub(super) resize_original_scale_x: f64,
+
+    /// Original scale_y when resize drag started
+    pub(super) resize_original_scale_y: f64,
+
+    /// Original position when resize drag started
+    pub(super) resize_original_position: Point,
+
+    /// Distance from anchor to the initial pointer in design space
+    pub(super) resize_initial_distance: f64,
 }
 
 impl EditorWidget {
@@ -113,6 +137,14 @@ impl EditorWidget {
             kern_original_value: 0.0,
             kern_current_offset: 0.0,
             point_clipboard: None,
+            dragging_image: false,
+            image_drag_origin: Point::ZERO,
+            resizing_handle: None,
+            resize_anchor: Point::ZERO,
+            resize_original_scale_x: 1.0,
+            resize_original_scale_y: 1.0,
+            resize_original_position: Point::ZERO,
+            resize_initial_distance: 1.0,
         }
     }
 

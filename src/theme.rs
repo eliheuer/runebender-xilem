@@ -176,6 +176,11 @@ const MARK_LIGHT_GRAY: Color = Color::from_rgb8(0xBB, 0xBB, 0xBB);
 const MARK_SELECTED_RING: Color = Color::WHITE;
 
 // ============================================================================
+// BACKGROUND IMAGE (for tracing reference images)
+// ============================================================================
+const BACKGROUND_IMAGE_SELECTION_BORDER: Color = Color::from_rgb8(0x44, 0x88, 0xFF);
+
+// ============================================================================
 // PUBLIC API - Don't edit below this line unless you know what you're doing
 // ============================================================================
 
@@ -444,6 +449,25 @@ pub mod tool_preview {
     pub const CLOSE_ZONE_RADIUS: f64 = 8.0;
     /// Radius of snap indicator
     pub const SNAP_INDICATOR_RADIUS: f64 = 6.0;
+}
+
+/// Background image constants (for tracing reference images)
+pub mod background_image {
+    use super::Color;
+    pub const DEFAULT_OPACITY: f64 = 0.5;
+    pub const SELECTION_BORDER: Color = super::BACKGROUND_IMAGE_SELECTION_BORDER;
+    pub const SELECTION_BORDER_WIDTH: f64 = 2.0;
+    /// Radius of corner resize handles (in screen pixels)
+    pub const HANDLE_RADIUS: f64 = 5.0;
+    /// Hit-test radius for grabbing a handle (in screen pixels,
+    /// slightly larger than visual for easier grabbing)
+    pub const HANDLE_HIT_RADIUS: f64 = 8.0;
+    /// Fill color for resize handles
+    pub const HANDLE_FILL: Color = Color::WHITE;
+    /// Stroke color for resize handles
+    pub const HANDLE_STROKE: Color = super::BACKGROUND_IMAGE_SELECTION_BORDER;
+    /// Stroke width for resize handle outlines
+    pub const HANDLE_STROKE_WIDTH: f64 = 1.5;
 }
 
 /// Sizes for rendering

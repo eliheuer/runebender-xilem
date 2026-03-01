@@ -18,6 +18,7 @@ mod text_buffer;
 
 pub use path_editing::snap_point_to_grid;
 
+use super::background_image::BackgroundImage;
 use super::selection::Selection;
 use super::viewport::ViewPort;
 use crate::components::CoordinateSelection;
@@ -131,6 +132,10 @@ pub struct EditSession {
     /// active glyph metrics, coordinate panel) are visible.
     /// Toggle with Tab key.
     pub panels_visible: bool,
+
+    /// Background reference image for tracing (session-only, not
+    /// persisted to UFO)
+    pub background_image: Option<BackgroundImage>,
 }
 
 impl EditSession {
@@ -175,6 +180,7 @@ impl EditSession {
             active_sort_x_offset: 0.0,
             text_direction: TextDirection::default(),
             panels_visible: true,
+            background_image: None,
         }
     }
 
@@ -232,6 +238,7 @@ impl EditSession {
             active_sort_x_offset: 0.0, // First sort is at position 0
             text_direction: TextDirection::default(),
             panels_visible: true,
+            background_image: None,
         }
     }
 

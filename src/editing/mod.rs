@@ -3,6 +3,7 @@
 
 //! Editing model and interaction
 
+pub mod background_image;
 pub mod edit_types;
 pub mod hit_test;
 pub mod mouse;
@@ -11,6 +12,7 @@ pub mod session;
 pub mod undo;
 pub mod viewport;
 
+pub use background_image::BackgroundImage;
 pub use edit_types::EditType;
 pub use mouse::{Drag, Modifiers, Mouse, MouseButton, MouseDelegate, MouseEvent};
 pub use selection::Selection;

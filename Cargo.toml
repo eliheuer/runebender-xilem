@@ -35,6 +35,9 @@ serde_json = "1.0"
 # Unicode
 unicode-general-category = "0.6"
 
+# Image loading
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
 # Utilities
 anyhow = "1.0"
 chrono = "0.4"

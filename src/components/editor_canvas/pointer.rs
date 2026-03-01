@@ -41,6 +41,16 @@ impl EditorWidget {
             return;
         }
 
+        // Check for background image hit (select/drag)
+        if self.handle_image_pointer_down(ctx, design_pos) {
+            return;
+        }
+
+        // Click missed the image — deselect it
+        if let Some(bg) = &mut self.session.background_image {
+            bg.selected = false;
+        }
+
         self.dispatch_tool_mouse_down(ctx, local_pos, state);
         // Propagate selection change to panels immediately
         self.session.update_coord_selection();
@@ -247,9 +257,223 @@ impl EditorWidget {
             return;
         }
 
+        if self.resizing_handle.is_some() {
+            self.handle_image_resize(ctx, local_pos);
+            return;
+        }
+
+        if self.dragging_image {
+            self.handle_image_drag(ctx, local_pos);
+            return;
+        }
+
         self.dispatch_tool_mouse_move(ctx, local_pos);
         self.maybe_request_render(ctx);
         self.maybe_emit_throttled_update(ctx);
+    }
+
+    // ============================================================================
+    // BACKGROUND IMAGE INTERACTION
+    // ============================================================================
+
+    /// Check if a pointer down hits a resize handle or the image body.
+    /// Resize handles are tested first (they sit on top of the image).
+    fn handle_image_pointer_down(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        design_pos: Point,
+    ) -> bool {
+        let bg = match &self.session.background_image {
+            Some(bg) => bg,
+            None => return false,
+        };
+
+        // Compute a hit radius in design space that corresponds to
+        // the screen-pixel hit radius at the current zoom level.
+        let hit_radius_design =
+            crate::theme::background_image::HANDLE_HIT_RADIUS
+                / self.session.viewport.zoom;
+
+        // Check resize handles first (only when selected + unlocked)
+        if bg.selected
+            && !bg.locked
+            && let Some(handle) =
+                bg.hit_test_handle(design_pos, hit_radius_design)
+        {
+            let anchor = bg.anchor_for(handle);
+            let dist = anchor.distance(design_pos).max(1.0);
+            self.resizing_handle = Some(handle);
+            self.resize_anchor = anchor;
+            self.resize_original_scale_x = bg.scale_x;
+            self.resize_original_scale_y = bg.scale_y;
+            self.resize_original_position = bg.position;
+            self.resize_initial_distance = dist;
+            ctx.request_render();
+            return true;
+        }
+
+        // Then check if the click is inside the image body
+        if !bg.contains(design_pos) {
+            return false;
+        }
+
+        let bg = self.session.background_image.as_mut().unwrap();
+        bg.selected = true;
+
+        if !bg.locked {
+            self.dragging_image = true;
+            self.image_drag_origin = design_pos;
+        }
+
+        self.emit_session_update(ctx, false);
+        ctx.request_render();
+        true
+    }
+
+    /// Move the background image during a drag.
+    fn handle_image_drag(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        local_pos: Point,
+    ) {
+        let design_pos =
+            self.session.viewport.screen_to_design(local_pos);
+        let delta = design_pos - self.image_drag_origin;
+
+        if let Some(bg) = &mut self.session.background_image {
+            bg.position.x += delta.x;
+            bg.position.y += delta.y;
+        }
+
+        self.image_drag_origin = design_pos;
+        ctx.request_render();
+    }
+
+    /// Resize the image by dragging a handle.
+    ///
+    /// Corner handles: proportional (aspect-locked) — both scale_x
+    /// and scale_y change by the same ratio.
+    /// Side handles: single-axis — only the axis perpendicular to the
+    /// dragged edge changes.
+    fn handle_image_resize(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        local_pos: Point,
+    ) {
+        use crate::editing::background_image::ResizeHandle;
+
+        let handle = match self.resizing_handle {
+            Some(h) => h,
+            None => return,
+        };
+        let design_pos =
+            self.session.viewport.screen_to_design(local_pos);
+        let anchor = self.resize_anchor;
+
+        // Compute new scales depending on handle type
+        let (new_sx, new_sy) = if handle.is_corner() {
+            // Proportional: ratio from anchor distance
+            let current_dist =
+                anchor.distance(design_pos).max(1.0);
+            let ratio =
+                current_dist / self.resize_initial_distance;
+            let sx = self.resize_original_scale_x * ratio;
+            let sy = self.resize_original_scale_y * ratio;
+            (sx, sy)
+        } else {
+            // Single-axis: use the component along the resize axis
+            let orig_sx = self.resize_original_scale_x;
+            let orig_sy = self.resize_original_scale_y;
+            match handle {
+                ResizeHandle::Left | ResizeHandle::Right => {
+                    let orig_w = self.session.background_image
+                        .as_ref()
+                        .map_or(1.0, |bg| bg.width as f64);
+                    let new_w =
+                        (design_pos.x - anchor.x).abs().max(1.0);
+                    let sx = new_w / orig_w;
+                    (sx, orig_sy)
+                }
+                ResizeHandle::Top | ResizeHandle::Bottom => {
+                    let orig_h = self.session.background_image
+                        .as_ref()
+                        .map_or(1.0, |bg| bg.height as f64);
+                    let new_h =
+                        (design_pos.y - anchor.y).abs().max(1.0);
+                    let sy = new_h / orig_h;
+                    (orig_sx, sy)
+                }
+                _ => unreachable!(),
+            }
+        };
+
+        if let Some(bg) = &mut self.session.background_image {
+            let new_w = bg.width as f64 * new_sx;
+            let new_h = bg.height as f64 * new_sy;
+
+            // Recompute position so the anchor stays fixed.
+            // In design space, position is the bottom-left corner
+            // and Y increases upward.
+            let new_pos = match handle {
+                // Corners
+                ResizeHandle::TopLeft => {
+                    kurbo::Point::new(
+                        anchor.x - new_w,
+                        anchor.y,
+                    )
+                }
+                ResizeHandle::TopRight => {
+                    kurbo::Point::new(anchor.x, anchor.y)
+                }
+                ResizeHandle::BottomLeft => {
+                    kurbo::Point::new(
+                        anchor.x - new_w,
+                        anchor.y - new_h,
+                    )
+                }
+                ResizeHandle::BottomRight => {
+                    kurbo::Point::new(
+                        anchor.x,
+                        anchor.y - new_h,
+                    )
+                }
+                // Sides: only one axis changes, keep the other
+                ResizeHandle::Top => {
+                    // Anchor is bottom-center; position.x unchanged
+                    kurbo::Point::new(
+                        bg.position.x,
+                        anchor.y,
+                    )
+                }
+                ResizeHandle::Bottom => {
+                    // Anchor is top-center; new bottom = anchor - h
+                    kurbo::Point::new(
+                        bg.position.x,
+                        anchor.y - new_h,
+                    )
+                }
+                ResizeHandle::Left => {
+                    // Anchor is right-center; new left = anchor - w
+                    kurbo::Point::new(
+                        anchor.x - new_w,
+                        bg.position.y,
+                    )
+                }
+                ResizeHandle::Right => {
+                    // Anchor is left-center; position.x = anchor
+                    kurbo::Point::new(
+                        anchor.x,
+                        bg.position.y,
+                    )
+                }
+            };
+
+            bg.scale_x = new_sx;
+            bg.scale_y = new_sy;
+            bg.position = new_pos;
+        }
+
+        ctx.request_render();
     }
 
     fn handle_kern_mode_drag(&mut self, ctx: &mut EventCtx<'_>, local_pos: Point) {
@@ -352,6 +576,22 @@ impl EditorWidget {
 
         if self.kern_mode_active {
             self.handle_kern_mode_release(ctx);
+            return;
+        }
+
+        if self.resizing_handle.is_some() {
+            self.resizing_handle = None;
+            self.emit_session_update(ctx, false);
+            ctx.release_pointer();
+            ctx.request_render();
+            return;
+        }
+
+        if self.dragging_image {
+            self.dragging_image = false;
+            self.emit_session_update(ctx, false);
+            ctx.release_pointer();
+            ctx.request_render();
             return;
         }
 
