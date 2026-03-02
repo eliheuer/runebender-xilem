@@ -12,7 +12,7 @@ A font editor built with [Xilem](https://github.com/linebender/xilem), a Rust UI
 
 ## Building from source
 
-Make sure [Rust](https://rust-lang.org/) is installed on your system, clone the repository and build/run the application:
+Make sure [Rust](https://rust-lang.org/) is installed on your system (MSRV: 1.88), clone the repository and build/run the application:
 
 ```bash
 git clone https://github.com/eliheuer/runebender-xilem.git
@@ -22,26 +22,59 @@ cargo run
 
 ## Usage
 
-**Open a specific UFO file directly:**
-
 ```bash
-cargo run -- assets/untitled.ufo
+cargo run                            # Opens a file picker
+cargo run -- assets/untitled.ufo     # Open a specific UFO file
+cargo run -- --verbose               # Run with verbose logging
 ```
 
 ## Keyboard Shortcuts
 
+### General
+
 | Shortcut | Action |
 |----------|--------|
 | `Cmd/Ctrl` + `S` | Save |
+| `Cmd/Ctrl` + `Z` | Undo |
+| `Cmd/Ctrl` + `Shift` + `Z` | Redo |
 | `Cmd/Ctrl` + `+` or `=` | Zoom in |
 | `Cmd/Ctrl` + `-` | Zoom out |
 | `Cmd/Ctrl` + `0` | Fit glyph to window |
-| `Cmd/Ctrl` + `Shift` + `H` | Convert selected hyperbezier paths to cubic |
+| `Tab` | Toggle side panels |
 | `Space` (hold) | Temporary preview mode |
-| `Backspace` / `Delete` | Delete selected points |
+
+### Editing
+
+| Shortcut | Action |
+|----------|--------|
+| `Backspace` / `Delete` | Delete selected points or background image |
 | Arrow keys | Nudge selection (1 unit) |
 | `Shift` + Arrow keys | Nudge selection (10 units) |
 | `Cmd/Ctrl` + Arrow keys | Nudge selection (100 units) |
+| `T` | Toggle point type (smooth/corner) |
+| `R` | Reverse contour direction |
+| `Cmd/Ctrl` + `C` | Copy selected contours |
+| `Cmd/Ctrl` + `V` | Paste contours |
+| `Cmd/Ctrl` + `Shift` + `H` | Convert hyperbezier paths to cubic |
+
+### Tools
+
+| Shortcut | Action |
+|----------|--------|
+| `V` | Select tool |
+| `P` | Pen tool |
+| `H` | Hyperbezier pen tool |
+| `K` | Knife tool |
+
+### Background Image & Autotrace
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd/Ctrl` + `Shift` + `I` | Import background image (file dialog) |
+| `Cmd/Ctrl` + `Shift` + `T` | Autotrace background image into bezier paths |
+| `Cmd/Ctrl` + `Shift` + `L` | Toggle background image lock |
+
+Import a reference image (PNG/JPEG) with `Cmd+Shift+I`, position and scale it behind your glyph using the drag handles, then press `Cmd+Shift+T` to trace it into editable cubic bezier contours using [img2bez](https://github.com/eliheuer/img2bez). The background image is kept after tracing so you can compare the result.
 
 ## Features
 
@@ -49,7 +82,11 @@ cargo run -- assets/untitled.ufo
 
 Runebender Xilem supports on-curve hyperbezier paths - smooth curves defined by only their on-curve points, with control points automatically computed by a spline solver. This makes drawing visually smooth curves easier.
 
-See [docs/hyperbezier-ufo-extension.md](docs/hyperbezier-ufo-extension.md) for the complete specification. Try using the Hyperbezier toold from the edit mode toolbar or load the example file `hyper-matisse.ufo` from the assets directory.
+See [docs/hyperbezier-ufo-extension.md](docs/hyperbezier-ufo-extension.md) for the complete specification. Try using the Hyperbezier tool from the edit mode toolbar or load the example file `hyper-matisse.ufo` from the assets directory.
+
+### Background Image Tracing
+
+Import bitmap images (scanned sketches, reference drawings) as background layers in the glyph editor. Position and scale the image to match your glyph metrics, then autotrace it into editable bezier outlines. Tracing is powered by [img2bez](https://github.com/eliheuer/img2bez). Tracing parameters (corner detection threshold, grid snapping) can be adjusted in `src/settings.rs`.
 
 ## Contributing
 
