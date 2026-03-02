@@ -58,6 +58,21 @@ const NUDGE_SHIFT: f64 = 8.0;
 const NUDGE_CMD: f64 = 32.0;
 
 // ============================================================================
+// IMG2BEZ TRACING SETTINGS
+// ============================================================================
+/// Corner detection threshold for img2bez tracing.
+///
+/// Range: 0.0 (everything is a corner) to ~1.34 (nothing is a corner).
+/// Lower = more corners detected = tighter curve fits.
+/// Higher = fewer corners = smoother curves.
+const TRACE_ALPHAMAX: f64 = 1.0;
+
+/// Coordinate grid size for snapping traced contour points.
+/// All output points are rounded to multiples of this value.
+/// 0 = no snapping.
+const TRACE_GRID: i32 = 2;
+
+// ============================================================================
 // PERFORMANCE SETTINGS
 // ============================================================================
 /// Throttle drag updates to every Nth frame to reduce Xilem rebuild churn.
@@ -124,6 +139,15 @@ pub mod nudge {
 
     /// Cmd-arrow nudge
     pub const CMD: f64 = super::NUDGE_CMD;
+}
+
+/// img2bez tracing settings (bitmap → bezier conversion)
+pub mod tracing {
+    /// Corner detection threshold (0.0–1.34)
+    pub const ALPHAMAX: f64 = super::TRACE_ALPHAMAX;
+
+    /// Grid size for coordinate snapping (0 = off)
+    pub const GRID: i32 = super::TRACE_GRID;
 }
 
 /// Performance optimization settings
