@@ -70,11 +70,11 @@ cargo run -- --verbose               # Run with verbose logging
 
 | Shortcut | Action |
 |----------|--------|
-| `Cmd/Ctrl` + `Shift` + `I` | Import background image (file dialog) |
-| `Cmd/Ctrl` + `Shift` + `T` | Autotrace background image into bezier paths |
-| `Cmd/Ctrl` + `Shift` + `L` | Toggle background image lock |
+| `Cmd/Ctrl` + `I` | Import background image (file dialog) |
+| `Cmd/Ctrl` + `T` | Autotrace background image into bezier paths |
+| `Cmd/Ctrl` + `L` | Toggle background image lock |
 
-Import a reference image (PNG/JPEG) with `Cmd+Shift+I`, position and scale it behind your glyph using the drag handles, then press `Cmd+Shift+T` to trace it into editable cubic bezier contours using [img2bez](https://github.com/eliheuer/img2bez). The background image is kept after tracing so you can compare the result.
+Import a reference image (PNG/JPEG) with `Cmd+I`, position and scale it behind your glyph using the drag handles, then press `Cmd+T` to trace it into editable cubic bezier contours using [img2bez](https://github.com/eliheuer/img2bez). The background image is kept after tracing so you can compare the result.
 
 ## Features
 
