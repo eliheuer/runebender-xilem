@@ -156,15 +156,15 @@ impl EditorWidget {
             return true;
         }
 
-        if self.handle_import_image(ctx, cmd, shift, key) {
+        if self.handle_import_image(ctx, cmd, key) {
             return true;
         }
 
-        if self.handle_toggle_image_lock(ctx, cmd, shift, key) {
+        if self.handle_toggle_image_lock(ctx, cmd, key) {
             return true;
         }
 
-        if self.handle_trace_image(ctx, cmd, shift, key) {
+        if self.handle_trace_image(ctx, cmd, key) {
             return true;
         }
 
@@ -604,7 +604,7 @@ impl EditorWidget {
         true
     }
 
-    /// Cmd+Shift+I: Import a background image via file dialog.
+    /// Cmd+I: Import a background image via file dialog.
     ///
     /// This is a workaround for the lack of drag-and-drop support in
     /// masonry. winit 0.30 supports `WindowEvent::DroppedFile` but
@@ -616,12 +616,11 @@ impl EditorWidget {
         &mut self,
         ctx: &mut EventCtx<'_>,
         cmd: bool,
-        shift: bool,
         key: &masonry::core::keyboard::Key,
     ) -> bool {
         use masonry::core::keyboard::Key;
 
-        if !cmd || !shift {
+        if !cmd {
             return false;
         }
 
@@ -665,17 +664,16 @@ impl EditorWidget {
         true
     }
 
-    /// Cmd+Shift+L: Toggle background image lock
+    /// Cmd+L: Toggle background image lock
     fn handle_toggle_image_lock(
         &mut self,
         ctx: &mut EventCtx<'_>,
         cmd: bool,
-        shift: bool,
         key: &masonry::core::keyboard::Key,
     ) -> bool {
         use masonry::core::keyboard::Key;
 
-        if !cmd || !shift {
+        if !cmd {
             return false;
         }
 
@@ -702,17 +700,16 @@ impl EditorWidget {
         false
     }
 
-    /// Cmd+Shift+T: Trace background image using img2bez
+    /// Cmd+T: Trace background image using img2bez
     fn handle_trace_image(
         &mut self,
         ctx: &mut EventCtx<'_>,
         cmd: bool,
-        shift: bool,
         key: &masonry::core::keyboard::Key,
     ) -> bool {
         use masonry::core::keyboard::Key;
 
-        if !cmd || !shift {
+        if !cmd {
             return false;
         }
 
