@@ -1,29 +1,78 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Grid scroll handler — container widget that wraps the glyph
-//! grid and handles scroll wheel, arrow keys, and Cmd+S.
+//! Grid scroll handler — replaces xilem's `portal()` for the
+//! glyph grid.
 //!
-//! Events bubble up from child glyph cell widgets to this
-//! container, which holds keyboard focus for arrow key scrolling.
+//! # Why not portal?
+//!
+//! Xilem provides `portal()` as its built-in scroll container,
+//! but it didn't work well for the glyph grid for three reasons:
+//!
+//! 1. **Performance.** Portal clips painting to a viewport, but
+//!    xilem's reactive model still rebuilds the *entire* view
+//!    tree on every state change. With portal wrapping all glyph
+//!    cells, every rebuild would construct views for hundreds of
+//!    off-screen glyphs and compute their bezpaths — even though
+//!    only a few rows are visible.
+//!
+//! 2. **Virtual rendering.** By handling scroll state ourselves
+//!    (via `AppState.grid_scroll_row`), the view layer in
+//!    `src/views/glyph_grid/mod.rs` can do virtual rendering —
+//!    it only builds xilem views for the rows currently visible
+//!    on screen. This is the key performance win.
+//!
+//! 3. **Keyboard integration.** The grid needs arrow-key
+//!    navigation and Cmd shortcuts (save, copy, paste) routed
+//!    through a single focused widget. Portal handles scroll
+//!    wheel and scroll bars, but doesn't accept keyboard focus
+//!    and has no keyboard event handling (its `on_text_event`
+//!    is empty).
+//!
+//! # How it works
+//!
+//! [`GridScrollWidget`] is a transparent container that wraps the
+//! grid's flex column. It accepts focus and captures:
+//! - **Scroll wheel** → [`GridScrollAction::Scroll`]
+//! - **Arrow keys** → [`GridScrollAction::Navigate`]
+//! - **Cmd+S/C/V** → Save, Copy, Paste actions
+//!
+//! The xilem [`GridScrollHandlerView`] wrapper routes these
+//! actions to a single `on_action` callback that updates
+//! `AppState`. The state change triggers a reactive rebuild, and
+//! the grid view layer re-slices to show the new visible rows.
+//!
+//! The widget itself does no painting — its child (the grid flex
+//! column built by `glyph_grid_view()`) handles all rendering.
+//! Child glyph cell actions (click, double-click) pass through
+//! the view wrapper's `message()` method to their own handlers.
+
+use std::marker::PhantomData;
 
 use kurbo::{Point, Size};
 use masonry::accesskit::{Node, Role};
+use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, NewWidget, PaintCtx, PointerEvent,
-    PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget, WidgetMut,
-    WidgetPod,
+    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
+    NewWidget, PaintCtx, PointerEvent, PropertiesMut,
+    PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Update,
+    UpdateCtx, Widget, WidgetMut, WidgetPod,
 };
 use masonry::vello::Scene;
-use std::marker::PhantomData;
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{
+    MessageContext, MessageResult, Mut, View, ViewMarker,
+};
 use xilem::{Pod, ViewCtx, WidgetView};
 
+/// Pixels per scroll "row" for trackpad pixel-based deltas.
+/// Line-based scroll (mouse wheel) already arrives in rows.
+const PIXELS_PER_SCROLL_ROW: f64 = 40.0;
+
 // ============================================================
-// Action
+// Actions
 // ============================================================
 
-/// Arrow-key navigation direction in the glyph grid
+/// Arrow-key navigation direction in the glyph grid.
 #[derive(Clone, Copy, Debug)]
 pub enum NavDirection {
     Left,
@@ -32,18 +81,19 @@ pub enum NavDirection {
     Down,
 }
 
-/// Actions emitted by the grid scroll handler widget
+/// Actions emitted by [`GridScrollWidget`] and handled by the
+/// view layer's `on_action` callback.
 #[derive(Clone, Copy, Debug)]
 pub enum GridScrollAction {
-    /// Scroll by `delta` rows (positive = down)
+    /// Scroll by `delta` rows (positive = down, negative = up).
     Scroll(i32),
-    /// Arrow-key navigation
+    /// Arrow-key navigation in the given direction.
     Navigate(NavDirection),
-    /// Save requested (Cmd+S)
+    /// Save the current workspace (Cmd+S).
     Save,
-    /// Copy selected glyph outlines (Cmd+C)
+    /// Copy selected glyph outlines (Cmd+C).
     Copy,
-    /// Paste clipboard outlines (Cmd+V)
+    /// Paste clipboard outlines (Cmd+V).
     Paste,
 }
 
@@ -51,28 +101,84 @@ pub enum GridScrollAction {
 // Widget
 // ============================================================
 
-/// Container widget that wraps the glyph grid and captures
-/// scroll wheel, arrow keys, and Cmd+S. Events bubble up from
-/// child widgets (glyph cells) to this container.
+/// A transparent container that wraps the glyph grid, accepts
+/// keyboard focus, and emits [`GridScrollAction`]s.
+///
+/// Child widgets (glyph cells) handle their own painting and
+/// pointer events. This widget only intercepts scroll, arrow
+/// keys, and Cmd shortcuts.
 pub struct GridScrollWidget {
     child: WidgetPod<dyn Widget>,
 }
 
 impl GridScrollWidget {
+    /// Wrap a child widget in a new scroll handler container.
     pub fn new(child: NewWidget<impl Widget + ?Sized>) -> Self {
         Self {
             child: child.erased().to_pod(),
         }
     }
 
-    /// Get mutable access to the child widget
-    pub fn child_mut<'t>(this: &'t mut WidgetMut<'_, Self>) -> WidgetMut<'t, dyn Widget> {
+    /// Borrow the child widget mutably (used by the view layer
+    /// to forward rebuild/teardown/message calls).
+    pub fn child_mut<'t>(
+        this: &'t mut WidgetMut<'_, Self>,
+    ) -> WidgetMut<'t, dyn Widget> {
         this.ctx.get_mut(&mut this.widget.child)
     }
 }
 
 impl Widget for GridScrollWidget {
     type Action = GridScrollAction;
+
+    fn accepts_focus(&self) -> bool {
+        true
+    }
+
+    fn on_pointer_event(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &PointerEvent,
+    ) {
+        if let PointerEvent::Down(_) = event {
+            ctx.request_focus();
+        }
+
+        if let PointerEvent::Scroll(scroll) = event {
+            let rows = scroll_delta_to_rows(&scroll.delta);
+            if rows != 0 {
+                ctx.request_focus();
+                ctx.submit_action::<GridScrollAction>(
+                    GridScrollAction::Scroll(rows),
+                );
+                ctx.set_handled();
+            }
+        }
+    }
+
+    fn on_text_event(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &TextEvent,
+    ) {
+        let TextEvent::Keyboard(key_event) = event else {
+            return;
+        };
+        if key_event.state != KeyState::Down {
+            return;
+        }
+
+        let cmd = key_event.modifiers.meta()
+            || key_event.modifiers.ctrl();
+
+        if let Some(action) = key_to_action(&key_event.key, cmd)
+        {
+            ctx.submit_action::<GridScrollAction>(action);
+            ctx.set_handled();
+        }
+    }
 
     fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
         ctx.register_child(&mut self.child);
@@ -97,8 +203,13 @@ impl Widget for GridScrollWidget {
         size
     }
 
-    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, _scene: &mut Scene) {
-        // Transparent — child painting is automatic
+    fn paint(
+        &mut self,
+        _ctx: &mut PaintCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        _scene: &mut Scene,
+    ) {
+        // Transparent — child paints itself automatically.
     }
 
     fn accessibility_role(&self) -> Role {
@@ -116,127 +227,82 @@ impl Widget for GridScrollWidget {
     fn children_ids(&self) -> ChildrenIds {
         ChildrenIds::from_slice(&[self.child.id()])
     }
+}
 
-    fn accepts_focus(&self) -> bool {
-        true
+// ============================================================
+// Keyboard & Scroll Helpers
+// ============================================================
+
+/// Map a key press to a grid action, if any.
+///
+/// Cmd+S/C/V map to Save/Copy/Paste. Arrow keys (without Cmd)
+/// map to Navigate in the corresponding direction.
+fn key_to_action(
+    key: &Key,
+    cmd: bool,
+) -> Option<GridScrollAction> {
+    if cmd {
+        return match key {
+            Key::Character(c) if c == "s" => {
+                Some(GridScrollAction::Save)
+            }
+            Key::Character(c) if c == "c" => {
+                Some(GridScrollAction::Copy)
+            }
+            Key::Character(c) if c == "v" => {
+                Some(GridScrollAction::Paste)
+            }
+            _ => None,
+        };
     }
 
-    fn on_pointer_event(
-        &mut self,
-        ctx: &mut EventCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        event: &PointerEvent,
-    ) {
-        match event {
-            // Grab focus when user clicks in the grid area
-            // (bubbles from cells that don't set_handled on Down)
-            PointerEvent::Down(_) => {
-                ctx.request_focus();
-            }
-            PointerEvent::Scroll(scroll_event) => {
-                ctx.request_focus();
-                // Convert scroll delta to row count.
-                let rows = match &scroll_event.delta {
-                    masonry::core::ScrollDelta::LineDelta(_, y) => -(*y as i32),
-                    masonry::core::ScrollDelta::PixelDelta(pos) => -(pos.y / 40.0) as i32,
-                    _ => 0,
-                };
-                if rows != 0 {
-                    ctx.submit_action::<GridScrollAction>(GridScrollAction::Scroll(rows));
-                    ctx.set_handled();
-                }
-            }
-            _ => {}
+    match key {
+        Key::Named(NamedKey::ArrowUp) => {
+            Some(GridScrollAction::Navigate(NavDirection::Up))
         }
+        Key::Named(NamedKey::ArrowDown) => {
+            Some(GridScrollAction::Navigate(NavDirection::Down))
+        }
+        Key::Named(NamedKey::ArrowLeft) => {
+            Some(GridScrollAction::Navigate(NavDirection::Left))
+        }
+        Key::Named(NamedKey::ArrowRight) => {
+            Some(GridScrollAction::Navigate(
+                NavDirection::Right,
+            ))
+        }
+        _ => None,
     }
+}
 
-    fn on_text_event(
-        &mut self,
-        ctx: &mut EventCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        event: &TextEvent,
-    ) {
-        use masonry::core::keyboard::{Key, KeyState, NamedKey};
-
-        if let TextEvent::Keyboard(key_event) = event {
-            if key_event.state != KeyState::Down {
-                return;
-            }
-
-            let cmd = key_event.modifiers.meta() || key_event.modifiers.ctrl();
-
-            // Cmd+S → save
-            if cmd
-                && matches!(
-                    &key_event.key,
-                    Key::Character(c) if c == "s"
-                )
-            {
-                ctx.submit_action::<GridScrollAction>(GridScrollAction::Save);
-                ctx.set_handled();
-                return;
-            }
-
-            // Cmd+C → copy glyph outlines
-            if cmd
-                && matches!(
-                    &key_event.key,
-                    Key::Character(c) if c == "c"
-                )
-            {
-                ctx.submit_action::<GridScrollAction>(GridScrollAction::Copy);
-                ctx.set_handled();
-                return;
-            }
-
-            // Cmd+V → paste glyph outlines
-            if cmd
-                && matches!(
-                    &key_event.key,
-                    Key::Character(c) if c == "v"
-                )
-            {
-                ctx.submit_action::<GridScrollAction>(GridScrollAction::Paste);
-                ctx.set_handled();
-                return;
-            }
-
-            // Arrow keys → navigate selection (no modifier)
-            if !cmd {
-                let dir = match &key_event.key {
-                    Key::Named(NamedKey::ArrowUp) => Some(NavDirection::Up),
-                    Key::Named(NamedKey::ArrowDown) => Some(NavDirection::Down),
-                    Key::Named(NamedKey::ArrowLeft) => Some(NavDirection::Left),
-                    Key::Named(NamedKey::ArrowRight) => Some(NavDirection::Right),
-                    _ => None,
-                };
-                if let Some(d) = dir {
-                    ctx.submit_action::<GridScrollAction>(GridScrollAction::Navigate(d));
-                    ctx.set_handled();
-                }
-            }
+/// Convert a scroll delta (line-based or pixel-based) into a
+/// row count. Positive = scroll down, negative = scroll up.
+fn scroll_delta_to_rows(delta: &ScrollDelta) -> i32 {
+    match delta {
+        ScrollDelta::LineDelta(_, y) => -(*y as i32),
+        ScrollDelta::PixelDelta(pos) => {
+            -(pos.y / PIXELS_PER_SCROLL_ROW) as i32
         }
+        _ => 0,
     }
 }
 
 // ============================================================
-// Xilem View wrapper
+// Xilem View Wrapper
 // ============================================================
 
-/// Create a grid scroll handler that wraps a child view.
+/// Wrap a child view in a [`GridScrollWidget`] that captures
+/// scroll, arrow-key, and Cmd shortcut events.
 ///
-/// The container captures scroll events, arrow keys, and Cmd+S
-/// while delegating pointer/click events to child widgets.
-///
-/// `on_scroll` receives the row delta (positive = down).
-/// `on_save` is called when Cmd+S is pressed.
+/// All captured events are delivered as [`GridScrollAction`]s
+/// to the `on_action` callback. Pointer and paint events pass
+/// through to child widgets unchanged.
 pub fn grid_scroll_handler<State, Action, V>(
     inner: V,
-    on_scroll: impl Fn(&mut State, i32) + Send + Sync + 'static,
-    on_navigate: impl Fn(&mut State, NavDirection) + Send + Sync + 'static,
-    on_save: impl Fn(&mut State) + Send + Sync + 'static,
-    on_copy: impl Fn(&mut State) + Send + Sync + 'static,
-    on_paste: impl Fn(&mut State) + Send + Sync + 'static,
+    on_action: impl Fn(&mut State, GridScrollAction)
+        + Send
+        + Sync
+        + 'static,
 ) -> GridScrollHandlerView<V, State, Action>
 where
     State: 'static,
@@ -245,33 +311,45 @@ where
 {
     GridScrollHandlerView {
         inner,
-        on_scroll: Box::new(on_scroll),
-        on_navigate: Box::new(on_navigate),
-        on_save: Box::new(on_save),
-        on_copy: Box::new(on_copy),
-        on_paste: Box::new(on_paste),
+        on_action: Box::new(on_action),
         phantom: PhantomData,
     }
 }
 
-type ScrollCb<S> = Box<dyn Fn(&mut S, i32) + Send + Sync>;
-type NavigateCb<S> = Box<dyn Fn(&mut S, NavDirection) + Send + Sync>;
-type VoidCb<S> = Box<dyn Fn(&mut S) + Send + Sync>;
+/// Boxed callback for [`GridScrollHandlerView`].
+type ActionCallback<S> =
+    Box<dyn Fn(&mut S, GridScrollAction) + Send + Sync>;
 
+/// The [`View`] created by [`grid_scroll_handler`].
+///
+/// Pairs a child view with a [`GridScrollWidget`] container
+/// and routes widget actions to the `on_action` callback.
 #[must_use = "View values do nothing unless provided to Xilem."]
 pub struct GridScrollHandlerView<V, State, Action = ()> {
     inner: V,
-    on_scroll: ScrollCb<State>,
-    on_navigate: NavigateCb<State>,
-    on_save: VoidCb<State>,
-    on_copy: VoidCb<State>,
-    on_paste: VoidCb<State>,
+    on_action: ActionCallback<State>,
+    // Tells the compiler this struct is generic over State and
+    // Action without storing them. The fn() -> wrapper avoids
+    // implying ownership (which would affect Send/Sync).
     phantom: PhantomData<fn() -> (State, Action)>,
 }
 
-impl<V, State, Action> ViewMarker for GridScrollHandlerView<V, State, Action> {}
+impl<V, State, Action> ViewMarker
+    for GridScrollHandlerView<V, State, Action>
+{
+}
 
-impl<V, State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
+// The View impl below is xilem boilerplate that connects
+// GridScrollWidget to the reactive view tree. The four methods
+// map to the widget lifecycle:
+//
+//   build    — create the widget for the first time
+//   rebuild  — update the widget when state changes
+//   teardown — clean up when the view is removed
+//   message  — handle actions from the widget
+
+impl<V, State: 'static, Action: 'static + Default>
+    View<State, Action, ViewCtx>
     for GridScrollHandlerView<V, State, Action>
 where
     V: WidgetView<State, Action>,
@@ -279,8 +357,13 @@ where
     type Element = Pod<GridScrollWidget>;
     type ViewState = V::ViewState;
 
-    fn build(&self, ctx: &mut ViewCtx, app_state: &mut State) -> (Self::Element, Self::ViewState) {
-        let (child, child_state) = self.inner.build(ctx, app_state);
+    fn build(
+        &self,
+        ctx: &mut ViewCtx,
+        app_state: &mut State,
+    ) -> (Self::Element, Self::ViewState) {
+        let (child, child_state) =
+            self.inner.build(ctx, app_state);
         let widget = GridScrollWidget::new(child.new_widget);
         let pod = ctx.create_pod(widget);
         ctx.record_action(pod.new_widget.id());
@@ -295,9 +378,15 @@ where
         mut element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) {
-        let mut child = GridScrollWidget::child_mut(&mut element);
-        self.inner
-            .rebuild(&prev.inner, view_state, ctx, child.downcast(), app_state);
+        let mut child =
+            GridScrollWidget::child_mut(&mut element);
+        self.inner.rebuild(
+            &prev.inner,
+            view_state,
+            ctx,
+            child.downcast(),
+            app_state,
+        );
     }
 
     fn teardown(
@@ -306,8 +395,10 @@ where
         ctx: &mut ViewCtx,
         mut element: Mut<'_, Self::Element>,
     ) {
-        let mut child = GridScrollWidget::child_mut(&mut element);
-        self.inner.teardown(view_state, ctx, child.downcast());
+        let mut child =
+            GridScrollWidget::child_mut(&mut element);
+        self.inner
+            .teardown(view_state, ctx, child.downcast());
     }
 
     fn message(
@@ -317,35 +408,22 @@ where
         mut element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<Action> {
-        // Handle container's own actions (scroll, save)
-        if let Some(action) = message.take_message::<GridScrollAction>() {
-            match *action {
-                GridScrollAction::Scroll(delta) => {
-                    (self.on_scroll)(app_state, delta);
-                    return MessageResult::Action(Action::default());
-                }
-                GridScrollAction::Navigate(dir) => {
-                    (self.on_navigate)(app_state, dir);
-                    return MessageResult::Action(Action::default());
-                }
-                GridScrollAction::Save => {
-                    (self.on_save)(app_state);
-                    return MessageResult::Action(Action::default());
-                }
-                GridScrollAction::Copy => {
-                    (self.on_copy)(app_state);
-                    return MessageResult::Action(Action::default());
-                }
-                GridScrollAction::Paste => {
-                    (self.on_paste)(app_state);
-                    return MessageResult::Action(Action::default());
-                }
-            }
+        // Check for our own scroll/keyboard actions first.
+        if let Some(action) =
+            message.take_message::<GridScrollAction>()
+        {
+            (self.on_action)(app_state, *action);
+            return MessageResult::Action(Action::default());
         }
 
-        // Delegate to child for cell actions
-        let mut child = GridScrollWidget::child_mut(&mut element);
-        self.inner
-            .message(view_state, message, child.downcast(), app_state)
+        // Not ours — delegate to child (e.g. glyph cell clicks).
+        let mut child =
+            GridScrollWidget::child_mut(&mut element);
+        self.inner.message(
+            view_state,
+            message,
+            child.downcast(),
+            app_state,
+        )
     }
 }
