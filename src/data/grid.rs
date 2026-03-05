@@ -45,7 +45,7 @@ impl AppState {
     pub fn grid_columns(&self) -> usize {
         const CELL_WIDTH: f64 = 128.0;
         const GAP: f64 = 6.0;
-        const MARGIN: f64 = 3.0 * 2.0; // Internal portal padding
+        const MARGIN: f64 = 3.0 * 2.0; // Outer grid padding
 
         // Available width for cells (minus margins)
         let available = self.window_width - MARGIN;

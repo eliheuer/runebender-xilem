@@ -87,21 +87,28 @@ pub fn glyph_grid_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<>
                 // (captures scroll wheel, arrow keys, Cmd+S)
                 grid_scroll_handler(
                     glyph_grid_view(state),
-                    |state: &mut AppState, delta| {
-                        let count = state.cached_filtered_count;
-                        state.scroll_grid(delta, count);
-                    },
-                    |state: &mut AppState, direction| {
-                        state.navigate_grid_selection(direction);
-                    },
-                    |state: &mut AppState| {
-                        state.save_workspace();
-                    },
-                    |state: &mut AppState| {
-                        state.copy_glyph();
-                    },
-                    |state: &mut AppState| {
-                        state.paste_glyph();
+                    |state: &mut AppState, action| {
+                        use crate::components::GridScrollAction;
+                        match action {
+                            GridScrollAction::Scroll(delta) => {
+                                let count =
+                                    state.cached_filtered_count;
+                                state.scroll_grid(delta, count);
+                            }
+                            GridScrollAction::Navigate(dir) => {
+                                state
+                                    .navigate_grid_selection(dir);
+                            }
+                            GridScrollAction::Save => {
+                                state.save_workspace();
+                            }
+                            GridScrollAction::Copy => {
+                                state.copy_glyph();
+                            }
+                            GridScrollAction::Paste => {
+                                state.paste_glyph();
+                            }
+                        }
                     },
                 )
                 .flex(1.0),
