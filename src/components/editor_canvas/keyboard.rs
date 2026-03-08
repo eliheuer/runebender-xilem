@@ -164,7 +164,7 @@ impl EditorWidget {
             return true;
         }
 
-        if self.handle_trace_image(ctx, cmd, key) {
+        if self.handle_trace_image(ctx, cmd, shift, key) {
             return true;
         }
 
@@ -700,11 +700,14 @@ impl EditorWidget {
         false
     }
 
-    /// Cmd+T: Trace background image using img2bez
+    /// Cmd+T: Trace background image using img2bez.
+    /// Cmd+Shift+T: Refit existing outlines onto the background image
+    /// (preserves point count/types for variable font compatibility).
     fn handle_trace_image(
         &mut self,
         ctx: &mut EventCtx<'_>,
         cmd: bool,
+        shift: bool,
         key: &masonry::core::keyboard::Key,
     ) -> bool {
         use masonry::core::keyboard::Key;
@@ -721,17 +724,38 @@ impl EditorWidget {
             Some(bg) => bg,
             None => {
                 tracing::warn!(
-                    "Cmd+Shift+T: no background image to trace"
+                    "Cmd+T: no background image to trace"
                 );
                 return true;
             }
         };
 
-        match crate::editing::tracing::trace_background_image(bg)
-        {
+        // Cmd+Shift+T with existing outlines → refit
+        let has_outlines = !self.session.paths.is_empty();
+        let result = if shift && has_outlines {
+            tracing::info!(
+                "Refitting {} existing contours onto image",
+                self.session.paths.len()
+            );
+            crate::editing::tracing::refit_background_image(
+                bg,
+                &self.session.paths,
+            )
+        } else {
+            // Cmd+T or Cmd+Shift+T with no outlines → fresh trace
+            crate::editing::tracing::trace_background_image(bg)
+        };
+
+        match result {
             Ok(output) => {
+                let action = if shift && has_outlines {
+                    "Refitted"
+                } else {
+                    "Traced"
+                };
                 tracing::info!(
-                    "Traced {} contours",
+                    "{} {} contours",
+                    action,
                     output.paths.len()
                 );
                 self.session.paths =
@@ -749,7 +773,7 @@ impl EditorWidget {
             }
             Err(e) => {
                 tracing::error!(
-                    "Failed to trace image: {e}"
+                    "Failed to trace/refit image: {e}"
                 );
             }
         }

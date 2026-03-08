@@ -40,7 +40,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 
 # Image tracing (bitmap → bezier contours)
 # TODO: switch to crates.io version once img2bez is published.
-img2bez = { git = "https://github.com/eliheuer/img2bez", default-features = false }
+img2bez = { path = "../img2bez", default-features = false }
 
 # Utilities
 anyhow = "1.0"
