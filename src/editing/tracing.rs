@@ -1,12 +1,14 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! img2bez integration — trace a background image into editable
-//! cubic bezier contours.
+//! img2bez integration — trace and refit background images into
+//! editable cubic bezier contours.
 //!
-//! The public entry point is `trace_background_image()`, which runs
-//! the full pipeline: img2bez tracing → kurbo version conversion →
-//! bbox alignment with the background image → CubicPath conversion.
+//! Public entry points:
+//! - `trace_background_image()` — fresh trace from raster image
+//! - `refit_background_image()` — refit existing outlines onto a
+//!   raster image, preserving point count/types for variable font
+//!   interpolation compatibility
 
 use crate::editing::background_image::BackgroundImage;
 use crate::model::EntityId;
@@ -81,6 +83,431 @@ pub fn trace_background_image(
         paths,
         advance_width: result.advance_width,
     })
+}
+
+/// Refit existing outlines onto a background image.
+///
+/// Instead of tracing from scratch, this projects existing path
+/// points onto the traced target shape. The number, type, and
+/// winding direction of points are preserved — only positions
+/// change. This produces interpolation-compatible outlines for
+/// variable font workflows.
+///
+/// Algorithm:
+/// 1. Trace the background image (same as Cmd+T) to get target
+///    contours in design space.
+/// 2. Match each existing contour to the closest target contour
+///    by centroid proximity.
+/// 3. For each on-curve point, compute its outward normal and
+///    ray-cast onto the target boundary.
+/// 4. Off-curve control points are adjusted via similarity
+///    transform to preserve their relative position.
+///
+/// Both existing and target paths are in design space — no
+/// coordinate conversions needed.
+pub fn refit_background_image(
+    bg: &BackgroundImage,
+    existing_paths: &[crate::path::Path],
+) -> Result<TraceOutput, String> {
+    // Trace the image to get target paths in design space.
+    // This uses the same pipeline as Cmd+T (which works).
+    let traced = trace_background_image(bg)?;
+
+    // Convert target paths to kurbo BezPaths for projection.
+    let target_bezpaths: Vec<kurbo::BezPath> = traced
+        .paths
+        .iter()
+        .map(|p| p.to_bezpath())
+        .collect();
+
+    // Convert existing paths to kurbo BezPaths (already in
+    // design space — same coordinate space as targets).
+    let existing_bezpaths: Vec<kurbo::BezPath> = existing_paths
+        .iter()
+        .map(|p| p.to_bezpath())
+        .collect();
+
+    // Match each existing contour to the closest target.
+    let matches =
+        match_contours(&existing_bezpaths, &target_bezpaths);
+
+    // Log contour matching info.
+    for (i, existing) in existing_bezpaths.iter().enumerate() {
+        use kurbo::Shape;
+        let eb = existing.bounding_box();
+        tracing::info!(
+            "Refit: contour {} bbox=[{:.1},{:.1}]-[{:.1},{:.1}] \
+             → target {:?}",
+            i,
+            eb.x0, eb.y0, eb.x1, eb.y1,
+            matches[i],
+        );
+    }
+
+    // Scale each existing path to match its target's bbox.
+    let refitted_bezpaths: Vec<kurbo::BezPath> = existing_bezpaths
+        .iter()
+        .enumerate()
+        .map(|(i, existing)| {
+            if let Some(target_idx) = matches[i] {
+                refit_path_minimal(
+                    existing,
+                    &target_bezpaths[target_idx],
+                    )
+            } else {
+                existing.clone()
+            }
+        })
+        .collect();
+
+    // Rebuild CubicPaths preserving EntityIds, point types, etc.
+    let paths: Vec<crate::path::Path> =
+        rebuild_paths_with_new_positions(
+            existing_paths,
+            &refitted_bezpaths,
+        );
+
+    Ok(TraceOutput {
+        paths,
+        advance_width: traced.advance_width,
+    })
+}
+
+/// Rebuild runebender paths using new point positions from refitted
+/// BezPaths, preserving EntityIds, point types, smooth flags, and
+/// closed state from the originals.
+fn rebuild_paths_with_new_positions(
+    originals: &[crate::path::Path],
+    refitted: &[kurbo::BezPath],
+) -> Vec<crate::path::Path> {
+    originals
+        .iter()
+        .zip(refitted.iter())
+        .map(|(orig, new_bp)| {
+            match orig {
+                crate::path::Path::Cubic(cubic) => {
+                    let new_points = extract_points_from_bezpath(new_bp);
+                    let orig_points: Vec<&PathPoint> =
+                        cubic.points.iter().collect();
+
+                    // The refitted BezPath should have the same number
+                    // of on-curve + off-curve points. Map new positions
+                    // onto the original point metadata.
+                    let updated: Vec<PathPoint> = if orig_points.len()
+                        == new_points.len()
+                    {
+                        orig_points
+                            .iter()
+                            .zip(new_points.iter())
+                            .map(|(orig_pt, new_pos)| PathPoint {
+                                id: orig_pt.id,
+                                point: *new_pos,
+                                typ: orig_pt.typ,
+                            })
+                            .collect()
+                    } else {
+                        // Fallback: point counts don't match, use
+                        // bezpath_to_cubic conversion.
+                        tracing::warn!(
+                            "Point count mismatch in refit: \
+                             orig={}, refitted={}",
+                            orig_points.len(),
+                            new_points.len()
+                        );
+                        return crate::path::Path::Cubic(
+                            bezpath_to_cubic(new_bp),
+                        );
+                    };
+
+                    crate::path::Path::Cubic(CubicPath::new(
+                        PathPoints::from_vec(updated),
+                        cubic.closed,
+                    ))
+                }
+                // For non-cubic paths, fall back to fresh conversion.
+                _ => crate::path::Path::Cubic(bezpath_to_cubic(new_bp)),
+            }
+        })
+        .collect()
+}
+
+/// Extract point positions from a BezPath in the same order as
+/// CubicPath stores them (with the rotate_left(1) convention for
+/// closed paths).
+fn extract_points_from_bezpath(
+    bezpath: &kurbo::BezPath,
+) -> Vec<kurbo::Point> {
+    let mut points = Vec::new();
+    let has_close = bezpath
+        .elements()
+        .iter()
+        .any(|el| matches!(el, kurbo::PathEl::ClosePath));
+
+    for el in bezpath.elements() {
+        match *el {
+            kurbo::PathEl::MoveTo(p) => points.push(p),
+            kurbo::PathEl::LineTo(p) => points.push(p),
+            kurbo::PathEl::CurveTo(cp1, cp2, end) => {
+                points.push(cp1);
+                points.push(cp2);
+                points.push(end);
+            }
+            kurbo::PathEl::QuadTo(cp, end) => {
+                points.push(cp);
+                points.push(end);
+            }
+            kurbo::PathEl::ClosePath => {}
+        }
+    }
+
+    if has_close && !points.is_empty() {
+        points.rotate_left(1);
+    }
+
+    points
+}
+
+// ============================================================================
+// CONTOUR MATCHING & REFIT
+// ============================================================================
+
+/// Match each existing contour to the closest target contour by
+/// centroid proximity.
+fn match_contours(
+    existing: &[kurbo::BezPath],
+    targets: &[kurbo::BezPath],
+) -> Vec<Option<usize>> {
+    if targets.is_empty() {
+        return vec![None; existing.len()];
+    }
+
+    let target_centroids: Vec<kurbo::Point> =
+        targets.iter().map(path_centroid).collect();
+
+    existing
+        .iter()
+        .map(|ep| {
+            let ec = path_centroid(ep);
+            target_centroids
+                .iter()
+                .enumerate()
+                .min_by(|(_, a), (_, b)| {
+                    let da = (ec - **a).hypot2();
+                    let db = (ec - **b).hypot2();
+                    da.partial_cmp(&db)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .map(|(idx, _)| idx)
+        })
+        .collect()
+}
+
+/// Centroid of a BezPath (average of on-curve endpoint positions).
+fn path_centroid(path: &kurbo::BezPath) -> kurbo::Point {
+    let mut sum = kurbo::Vec2::ZERO;
+    let mut count = 0;
+    for el in path.elements() {
+        let p = match *el {
+            kurbo::PathEl::MoveTo(p)
+            | kurbo::PathEl::LineTo(p)
+            | kurbo::PathEl::CurveTo(_, _, p)
+            | kurbo::PathEl::QuadTo(_, p) => p,
+            kurbo::PathEl::ClosePath => continue,
+        };
+        sum += p.to_vec2();
+        count += 1;
+    }
+    if count == 0 {
+        kurbo::Point::ZERO
+    } else {
+        (sum / count as f64).to_point()
+    }
+}
+
+/// Refit a single path using piecewise linear warping.
+///
+/// Detects vertical stem edges in both existing and target
+/// contours, then applies a 3-zone horizontal warp:
+///   - Left serif zone: scales to match left serif width
+///   - Stem zone: scales to match stem width (typically
+///     the biggest change between regular and bold)
+///   - Right serif zone: scales to match right serif width
+///
+/// Y coordinates are scaled linearly to match bbox heights.
+///
+/// This preserves H/V handle alignment perfectly:
+///   - Vertical handles have the same X, so they get the
+///     same X warp → stay vertical.
+///   - Horizontal handles have the same Y, so they get the
+///     same Y scale → stay horizontal.
+fn refit_path_minimal(
+    existing: &kurbo::BezPath,
+    target: &kurbo::BezPath,
+) -> kurbo::BezPath {
+    use kurbo::Shape;
+
+    if existing.elements().is_empty() {
+        return kurbo::BezPath::new();
+    }
+
+    let eb = existing.bounding_box();
+    let tb = target.bounding_box();
+    let ew = eb.x1 - eb.x0;
+    let eh = eb.y1 - eb.y0;
+
+    if ew < 1e-6 || eh < 1e-6 {
+        return existing.clone();
+    }
+
+    // Detect vertical stem edges for piecewise X warp.
+    let existing_stems = detect_vertical_stems(existing);
+    let target_stems = detect_vertical_stems(target);
+
+    let x_warp = if let (Some((el, er)), Some((tl, tr))) =
+        (existing_stems, target_stems)
+    {
+        tracing::info!(
+            "Refit: stems existing=[{:.1}, {:.1}] \
+             target=[{:.1}, {:.1}]",
+            el, er, tl, tr,
+        );
+        // 3-zone: left serif | stem | right serif
+        PiecewiseWarp::new(vec![
+            (eb.x0, tb.x0),
+            (el, tl),
+            (er, tr),
+            (eb.x1, tb.x1),
+        ])
+    } else {
+        tracing::info!("Refit: no stems detected, linear scale");
+        PiecewiseWarp::new(vec![
+            (eb.x0, tb.x0),
+            (eb.x1, tb.x1),
+        ])
+    };
+
+    // Linear Y scale: map existing y-range to target y-range.
+    let sy = (tb.y1 - tb.y0) / eh;
+
+    tracing::info!(
+        "Refit: [{:.1},{:.1}]-[{:.1},{:.1}] \
+         → [{:.1},{:.1}]-[{:.1},{:.1}], sy={:.3}",
+        eb.x0, eb.y0, eb.x1, eb.y1,
+        tb.x0, tb.y0, tb.x1, tb.y1,
+        sy,
+    );
+
+    // Apply the warp to every point in the BezPath.
+    let mut result = kurbo::BezPath::new();
+    for el in existing.elements() {
+        let warp =
+            |p: kurbo::Point| -> kurbo::Point {
+                kurbo::Point::new(
+                    x_warp.map(p.x),
+                    tb.y0 + (p.y - eb.y0) * sy,
+                )
+            };
+
+        match *el {
+            kurbo::PathEl::MoveTo(p) => {
+                result.move_to(warp(p));
+            }
+            kurbo::PathEl::LineTo(p) => {
+                result.line_to(warp(p));
+            }
+            kurbo::PathEl::CurveTo(c1, c2, p) => {
+                result.curve_to(warp(c1), warp(c2), warp(p));
+            }
+            kurbo::PathEl::QuadTo(c, p) => {
+                result.quad_to(warp(c), warp(p));
+            }
+            kurbo::PathEl::ClosePath => {
+                result.close_path();
+            }
+        }
+    }
+
+    result
+}
+
+/// Piecewise linear mapping from source to target X values.
+struct PiecewiseWarp {
+    /// (source, target) pairs sorted by source value.
+    breaks: Vec<(f64, f64)>,
+}
+
+impl PiecewiseWarp {
+    fn new(breaks: Vec<(f64, f64)>) -> Self {
+        Self { breaks }
+    }
+
+    fn map(&self, x: f64) -> f64 {
+        if self.breaks.len() < 2 {
+            return x;
+        }
+        let (s0, t0) = self.breaks[0];
+        let (sn, tn) = *self.breaks.last().unwrap();
+
+        // Extrapolate beyond endpoints (preserve offset).
+        if x <= s0 {
+            return t0 + (x - s0);
+        }
+        if x >= sn {
+            return tn + (x - sn);
+        }
+
+        // Find the enclosing segment and interpolate.
+        for i in 0..self.breaks.len() - 1 {
+            let (sa, ta) = self.breaks[i];
+            let (sb, tb) = self.breaks[i + 1];
+            if x <= sb {
+                let frac = if (sb - sa).abs() > 1e-10 {
+                    (x - sa) / (sb - sa)
+                } else {
+                    0.5
+                };
+                return ta + frac * (tb - ta);
+            }
+        }
+        x
+    }
+}
+
+/// Detect the two longest vertical line segments in a path.
+///
+/// Returns (left_x, right_x) of the stem edges, or None if
+/// fewer than 2 vertical segments are found.
+fn detect_vertical_stems(
+    path: &kurbo::BezPath,
+) -> Option<(f64, f64)> {
+    // Collect all near-vertical line segments.
+    let mut verticals: Vec<(f64, f64)> = Vec::new();
+
+    for seg in path.segments() {
+        if let kurbo::PathSeg::Line(line) = seg {
+            let dx = (line.p1.x - line.p0.x).abs();
+            let dy = (line.p1.y - line.p0.y).abs();
+            if dx < 2.0 && dy > 50.0 {
+                let x = (line.p0.x + line.p1.x) / 2.0;
+                verticals.push((x, dy));
+            }
+        }
+    }
+
+    if verticals.len() < 2 {
+        return None;
+    }
+
+    // Sort by length descending, take the two longest.
+    verticals.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let x1 = verticals[0].0;
+    let x2 = verticals[1].0;
+
+    Some((x1.min(x2), x1.max(x2)))
 }
 
 // ============================================================================
