@@ -6,11 +6,21 @@
 use super::EditorWidget;
 use super::drawing::{draw_design_grid, draw_metrics_guides, draw_paths_with_points};
 use crate::theme;
-use kurbo::{Affine, Stroke};
+use kurbo::{Affine, RoundedRect, Stroke};
+use masonry::core::{BrushIndex, StyleProperty, render_text};
 use masonry::kurbo::Size;
 use masonry::util::fill_color;
 use masonry::vello::Scene;
-use masonry::vello::peniko::{Brush, ImageBrush};
+use masonry::vello::peniko::{Brush, Fill, ImageBrush};
+use parley::{FontContext, FontStack, LayoutContext};
+
+thread_local! {
+    static MENU_FONT_CX: std::cell::RefCell<FontContext> =
+        std::cell::RefCell::new(FontContext::default());
+    static MENU_LAYOUT_CX: std::cell::RefCell<
+        LayoutContext<BrushIndex>,
+    > = std::cell::RefCell::new(LayoutContext::new());
+}
 
 impl EditorWidget {
     // ============================================================================
@@ -234,6 +244,132 @@ impl EditorWidget {
                 &rect,
             );
         }
+    }
+
+    // ====================================================================
+    // CONTEXT MENU
+    // ====================================================================
+
+    /// Paint the right-click context menu overlay.
+    pub(super) fn paint_context_menu(&self, scene: &mut Scene) {
+        let menu = match &self.context_menu {
+            Some(m) => m,
+            None => return,
+        };
+
+        let item_h = theme::context_menu::ITEM_HEIGHT;
+        let pad = theme::context_menu::PADDING;
+        let menu_w = theme::context_menu::MENU_WIDTH;
+        let radius = theme::context_menu::BORDER_RADIUS;
+        let total_h =
+            pad * 2.0 + menu.items.len() as f64 * item_h;
+
+        // Menu background with rounded corners
+        let menu_rect = kurbo::Rect::new(
+            menu.position.x,
+            menu.position.y,
+            menu.position.x + menu_w,
+            menu.position.y + total_h,
+        );
+        let rounded = RoundedRect::from_rect(menu_rect, radius);
+        let bg_brush =
+            Brush::Solid(theme::context_menu::BACKGROUND);
+        scene.fill(
+            Fill::NonZero,
+            Affine::IDENTITY,
+            &bg_brush,
+            None,
+            &rounded,
+        );
+
+        // Border
+        let border_brush =
+            Brush::Solid(theme::context_menu::BORDER);
+        let border_stroke = Stroke::new(1.0);
+        scene.stroke(
+            &border_stroke,
+            Affine::IDENTITY,
+            &border_brush,
+            None,
+            &rounded,
+        );
+
+        // Draw each item
+        MENU_FONT_CX.with(|font_cell| {
+            MENU_LAYOUT_CX.with(|layout_cell| {
+                let mut font_cx = font_cell.borrow_mut();
+                let mut layout_cx = layout_cell.borrow_mut();
+
+                for (i, item) in menu.items.iter().enumerate() {
+                    let item_y =
+                        menu.position.y + pad + i as f64 * item_h;
+
+                    // Hover highlight
+                    if menu.hover_index == Some(i) {
+                        let hover_rect = kurbo::Rect::new(
+                            menu.position.x + 2.0,
+                            item_y,
+                            menu.position.x + menu_w - 2.0,
+                            item_y + item_h,
+                        );
+                        let hover_rounded =
+                            RoundedRect::from_rect(hover_rect, 3.0);
+                        let hover_brush =
+                            Brush::Solid(theme::context_menu::HOVER);
+                        scene.fill(
+                            Fill::NonZero,
+                            Affine::IDENTITY,
+                            &hover_brush,
+                            None,
+                            &hover_rounded,
+                        );
+                    }
+
+                    // Text label
+                    let mut builder = layout_cx.ranged_builder(
+                        &mut font_cx,
+                        &item.label,
+                        1.0,
+                        false,
+                    );
+                    builder.push_default(StyleProperty::FontSize(
+                        theme::context_menu::FONT_SIZE,
+                    ));
+                    builder.push_default(
+                        StyleProperty::FontStack(FontStack::Single(
+                            parley::FontFamily::Generic(
+                                parley::GenericFamily::SansSerif,
+                            ),
+                        )),
+                    );
+                    builder.push_default(
+                        StyleProperty::Brush(BrushIndex(0)),
+                    );
+                    let mut text_layout =
+                        builder.build(&item.label);
+                    text_layout.break_all_lines(None);
+
+                    let text_x = menu.position.x
+                        + theme::context_menu::TEXT_INSET;
+                    // Vertically center text in item
+                    let text_y = item_y
+                        + (item_h - theme::context_menu::FONT_SIZE
+                            as f64)
+                            / 2.0;
+
+                    let brushes = vec![Brush::Solid(
+                        theme::context_menu::TEXT,
+                    )];
+                    render_text(
+                        scene,
+                        Affine::translate((text_x, text_y)),
+                        &text_layout,
+                        &brushes,
+                        false,
+                    );
+                }
+            });
+        });
     }
 
     /// Initialize viewport positioning to center the glyph

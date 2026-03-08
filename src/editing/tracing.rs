@@ -386,15 +386,59 @@ fn refit_path_minimal(
         ])
     };
 
-    // Linear Y scale: map existing y-range to target y-range.
-    let sy = (tb.y1 - tb.y0) / eh;
+    // Detect horizontal edges for piecewise Y warp.
+    // Only warp Y if there are INTERIOR horizontal stems
+    // (like a crossbar in "H" or "E"). If the detected
+    // horizontal lines are just the bbox edges (as in "I"),
+    // keep Y unchanged — the baseline and cap height should
+    // be preserved from the original outline.
+    let existing_h = detect_horizontal_stems(existing);
+    let target_h = detect_horizontal_stems(target);
+
+    let y_warp = if let Some((eb_lo, eb_hi)) = existing_h {
+        let at_bottom = (eb_lo - eb.y0).abs() < 10.0;
+        let at_top = (eb_hi - eb.y1).abs() < 10.0;
+
+        if at_bottom && at_top {
+            // Stems are at bbox edges (no interior crossbar).
+            // Keep Y unchanged to preserve baseline/cap height.
+            tracing::info!(
+                "Refit: h-stems at bbox edges, keeping Y",
+            );
+            PiecewiseWarp::new(vec![
+                (eb.y0, eb.y0),
+                (eb.y1, eb.y1),
+            ])
+        } else {
+            // Interior horizontal stems found — warp Y.
+            let (tb_lo, tb_hi) = target_h
+                .unwrap_or((tb.y0, tb.y1));
+            tracing::info!(
+                "Refit: h-stems existing=[{:.1}, {:.1}] \
+                 target=[{:.1}, {:.1}]",
+                eb_lo, eb_hi, tb_lo, tb_hi,
+            );
+            PiecewiseWarp::new(vec![
+                (eb.y0, tb.y0),
+                (eb_lo, tb_lo),
+                (eb_hi, tb_hi),
+                (eb.y1, tb.y1),
+            ])
+        }
+    } else {
+        // No horizontal stems at all — keep Y unchanged.
+        tracing::info!("Refit: no h-stems, keeping Y");
+        PiecewiseWarp::new(vec![
+            (eb.y0, eb.y0),
+            (eb.y1, eb.y1),
+        ])
+    };
 
     tracing::info!(
         "Refit: [{:.1},{:.1}]-[{:.1},{:.1}] \
-         → [{:.1},{:.1}]-[{:.1},{:.1}], sy={:.3}",
+         → [{:.1},{:.1}]-[{:.1},{:.1}]",
         eb.x0, eb.y0, eb.x1, eb.y1,
         tb.x0, tb.y0, tb.x1, tb.y1,
-        sy,
     );
 
     // Apply the warp to every point in the BezPath.
@@ -404,7 +448,7 @@ fn refit_path_minimal(
             |p: kurbo::Point| -> kurbo::Point {
                 kurbo::Point::new(
                     x_warp.map(p.x),
-                    tb.y0 + (p.y - eb.y0) * sy,
+                    y_warp.map(p.y),
                 )
             };
 
@@ -430,43 +474,117 @@ fn refit_path_minimal(
     result
 }
 
-/// Piecewise linear mapping from source to target X values.
+/// Smooth monotone warp using cubic Hermite interpolation.
+///
+/// Unlike a piecewise linear warp, this transitions gradually
+/// between zones. Bracket curves that span the stem-to-serif
+/// boundary are warped smoothly instead of kinked, preserving
+/// collinearity of points and handle relationships.
+///
+/// Uses Fritsch-Carlson method for monotonicity.
 struct PiecewiseWarp {
-    /// (source, target) pairs sorted by source value.
-    breaks: Vec<(f64, f64)>,
+    /// (source, target) knots sorted by source value.
+    knots: Vec<(f64, f64)>,
+    /// Tangent slope at each knot.
+    tangents: Vec<f64>,
 }
 
 impl PiecewiseWarp {
-    fn new(breaks: Vec<(f64, f64)>) -> Self {
-        Self { breaks }
+    fn new(knots: Vec<(f64, f64)>) -> Self {
+        let n = knots.len();
+        if n < 2 {
+            return Self {
+                knots,
+                tangents: vec![1.0],
+            };
+        }
+
+        // Compute segment slopes (deltas).
+        let mut deltas = Vec::with_capacity(n - 1);
+        for i in 0..n - 1 {
+            let dx = knots[i + 1].0 - knots[i].0;
+            let dy = knots[i + 1].1 - knots[i].1;
+            deltas.push(if dx.abs() > 1e-10 {
+                dy / dx
+            } else {
+                1.0
+            });
+        }
+
+        // Initial tangents: average of adjacent slopes.
+        let mut tangents = vec![0.0; n];
+        tangents[0] = deltas[0];
+        tangents[n - 1] = deltas[n - 2];
+        for i in 1..n - 1 {
+            if deltas[i - 1].signum() != deltas[i].signum() {
+                tangents[i] = 0.0;
+            } else {
+                tangents[i] =
+                    (deltas[i - 1] + deltas[i]) / 2.0;
+            }
+        }
+
+        // Fritsch-Carlson monotonicity adjustment.
+        for i in 0..n - 1 {
+            if deltas[i].abs() < 1e-10 {
+                tangents[i] = 0.0;
+                tangents[i + 1] = 0.0;
+            } else {
+                let alpha = tangents[i] / deltas[i];
+                let beta = tangents[i + 1] / deltas[i];
+                let mag_sq = alpha * alpha + beta * beta;
+                if mag_sq > 9.0 {
+                    let tau = 3.0 / mag_sq.sqrt();
+                    tangents[i] = tau * alpha * deltas[i];
+                    tangents[i + 1] =
+                        tau * beta * deltas[i];
+                }
+            }
+        }
+
+        Self { knots, tangents }
     }
 
     fn map(&self, x: f64) -> f64 {
-        if self.breaks.len() < 2 {
+        let n = self.knots.len();
+        if n < 2 {
             return x;
         }
-        let (s0, t0) = self.breaks[0];
-        let (sn, tn) = *self.breaks.last().unwrap();
+        let (s0, t0) = self.knots[0];
+        let (sn, tn) = self.knots[n - 1];
 
-        // Extrapolate beyond endpoints (preserve offset).
+        // Extrapolate beyond endpoints using edge tangent.
         if x <= s0 {
-            return t0 + (x - s0);
+            return t0 + self.tangents[0] * (x - s0);
         }
         if x >= sn {
-            return tn + (x - sn);
+            return tn + self.tangents[n - 1] * (x - sn);
         }
 
-        // Find the enclosing segment and interpolate.
-        for i in 0..self.breaks.len() - 1 {
-            let (sa, ta) = self.breaks[i];
-            let (sb, tb) = self.breaks[i + 1];
+        // Find the enclosing segment and evaluate
+        // cubic Hermite.
+        for i in 0..n - 1 {
+            let (sa, ya) = self.knots[i];
+            let (sb, yb) = self.knots[i + 1];
             if x <= sb {
-                let frac = if (sb - sa).abs() > 1e-10 {
-                    (x - sa) / (sb - sa)
-                } else {
-                    0.5
-                };
-                return ta + frac * (tb - ta);
+                let h = sb - sa;
+                if h.abs() < 1e-10 {
+                    return ya;
+                }
+                let t = (x - sa) / h;
+                let t2 = t * t;
+                let t3 = t2 * t;
+
+                // Hermite basis functions.
+                let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
+                let h10 = t3 - 2.0 * t2 + t;
+                let h01 = -2.0 * t3 + 3.0 * t2;
+                let h11 = t3 - t2;
+
+                return h00 * ya
+                    + h10 * h * self.tangents[i]
+                    + h01 * yb
+                    + h11 * h * self.tangents[i + 1];
             }
         }
         x
@@ -508,6 +626,42 @@ fn detect_vertical_stems(
     let x2 = verticals[1].0;
 
     Some((x1.min(x2), x1.max(x2)))
+}
+
+/// Detect the two longest horizontal line segments in a path.
+///
+/// Returns (bottom_y, top_y) of the horizontal edges, or None
+/// if fewer than 2 horizontal segments are found.
+fn detect_horizontal_stems(
+    path: &kurbo::BezPath,
+) -> Option<(f64, f64)> {
+    let mut horizontals: Vec<(f64, f64)> = Vec::new();
+
+    for seg in path.segments() {
+        if let kurbo::PathSeg::Line(line) = seg {
+            let dx = (line.p1.x - line.p0.x).abs();
+            let dy = (line.p1.y - line.p0.y).abs();
+            if dy < 2.0 && dx > 50.0 {
+                let y = (line.p0.y + line.p1.y) / 2.0;
+                horizontals.push((y, dx));
+            }
+        }
+    }
+
+    if horizontals.len() < 2 {
+        return None;
+    }
+
+    // Sort by length descending, take the two longest.
+    horizontals.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let y1 = horizontals[0].0;
+    let y2 = horizontals[1].0;
+
+    Some((y1.min(y2), y1.max(y2)))
 }
 
 // ============================================================================

@@ -996,4 +996,167 @@ impl EditorWidget {
             x_offset
         );
     }
+
+    // ========================================================================
+    // CONTEXT MENU
+    // ========================================================================
+
+    /// Handle a right-click: show context menu if over background image.
+    pub(super) fn handle_right_click(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        local_pos: Point,
+    ) {
+        use super::{ContextMenu, ContextMenuAction, ContextMenuItem};
+
+        // Close any existing menu first
+        self.context_menu = None;
+
+        let design_pos =
+            self.session.viewport.screen_to_design(local_pos);
+
+        let bg = match &self.session.background_image {
+            Some(bg) => bg,
+            None => return,
+        };
+
+        if !bg.contains(design_pos) {
+            return;
+        }
+
+        // Build menu items based on current lock state
+        let items = if bg.locked {
+            vec![ContextMenuItem {
+                label: "Unlock Image".into(),
+                action: ContextMenuAction::UnlockImage,
+            }]
+        } else {
+            vec![ContextMenuItem {
+                label: "Lock Image".into(),
+                action: ContextMenuAction::LockImage,
+            }]
+        };
+
+        self.context_menu = Some(ContextMenu {
+            position: local_pos,
+            items,
+            hover_index: None,
+        });
+
+        ctx.request_render();
+    }
+
+    /// Handle a left-click while the context menu is open.
+    pub(super) fn handle_context_menu_click(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        local_pos: Point,
+    ) {
+        use crate::theme;
+
+        if let Some(menu) = &self.context_menu {
+            let item_h = theme::context_menu::ITEM_HEIGHT;
+            let pad = theme::context_menu::PADDING;
+            let menu_w = theme::context_menu::MENU_WIDTH;
+            let menu_x = menu.position.x;
+            let menu_y = menu.position.y;
+            let total_h =
+                pad * 2.0 + menu.items.len() as f64 * item_h;
+
+            // Check if click is inside the menu bounds
+            if local_pos.x >= menu_x
+                && local_pos.x <= menu_x + menu_w
+                && local_pos.y >= menu_y
+                && local_pos.y <= menu_y + total_h
+            {
+                let idx = ((local_pos.y - menu_y - pad) / item_h)
+                    .floor() as usize;
+                if idx < menu.items.len() {
+                    let action = menu.items[idx].action;
+                    self.context_menu = None;
+                    self.execute_context_action(ctx, action);
+                    return;
+                }
+            }
+        }
+
+        // Click outside menu — dismiss
+        self.context_menu = None;
+        ctx.request_render();
+    }
+
+    /// Update hover highlight as the mouse moves over the menu.
+    pub(super) fn update_context_menu_hover(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        local_pos: Point,
+    ) {
+        use crate::theme;
+
+        let menu = match &mut self.context_menu {
+            Some(m) => m,
+            None => return,
+        };
+
+        let item_h = theme::context_menu::ITEM_HEIGHT;
+        let pad = theme::context_menu::PADDING;
+        let menu_w = theme::context_menu::MENU_WIDTH;
+        let menu_x = menu.position.x;
+        let menu_y = menu.position.y;
+        let total_h =
+            pad * 2.0 + menu.items.len() as f64 * item_h;
+
+        let new_hover = if local_pos.x >= menu_x
+            && local_pos.x <= menu_x + menu_w
+            && local_pos.y >= menu_y
+            && local_pos.y <= menu_y + total_h
+        {
+            let idx = ((local_pos.y - menu_y - pad) / item_h)
+                .floor() as usize;
+            if idx < menu.items.len() {
+                Some(idx)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if new_hover != menu.hover_index {
+            menu.hover_index = new_hover;
+            ctx.request_render();
+        }
+    }
+
+    /// Execute a context menu action.
+    fn execute_context_action(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        action: super::ContextMenuAction,
+    ) {
+        use super::ContextMenuAction;
+
+        match action {
+            ContextMenuAction::LockImage => {
+                if let Some(bg) =
+                    &mut self.session.background_image
+                {
+                    bg.locked = true;
+                    bg.selected = false;
+                    tracing::info!("Background image locked");
+                }
+            }
+            ContextMenuAction::UnlockImage => {
+                if let Some(bg) =
+                    &mut self.session.background_image
+                {
+                    bg.locked = false;
+                    tracing::info!("Background image unlocked");
+                }
+            }
+        }
+
+        self.emit_session_update(ctx, false);
+        ctx.request_render();
+    }
 }
