@@ -454,7 +454,7 @@ pub mod tool_preview {
 /// Background image constants (for tracing reference images)
 pub mod background_image {
     use super::Color;
-    pub const DEFAULT_OPACITY: f64 = 0.5;
+    pub const DEFAULT_OPACITY: f64 = 0.3;
     pub const SELECTION_BORDER: Color = super::BACKGROUND_IMAGE_SELECTION_BORDER;
     pub const SELECTION_BORDER_WIDTH: f64 = 2.0;
     /// Radius of corner resize handles (in screen pixels)
@@ -468,6 +468,21 @@ pub mod background_image {
     pub const HANDLE_STROKE: Color = super::BACKGROUND_IMAGE_SELECTION_BORDER;
     /// Stroke width for resize handle outlines
     pub const HANDLE_STROKE_WIDTH: f64 = 1.5;
+}
+
+/// Context menu constants
+pub mod context_menu {
+    use super::Color;
+    pub const BACKGROUND: Color = Color::from_rgb8(0x2A, 0x2A, 0x2A);
+    pub const BORDER: Color = Color::from_rgb8(0x55, 0x55, 0x55);
+    pub const TEXT: Color = Color::from_rgb8(0xDD, 0xDD, 0xDD);
+    pub const HOVER: Color = Color::from_rgb8(0x3A, 0x3A, 0x3A);
+    pub const ITEM_HEIGHT: f64 = 28.0;
+    pub const MENU_WIDTH: f64 = 180.0;
+    pub const PADDING: f64 = 4.0;
+    pub const TEXT_INSET: f64 = 12.0;
+    pub const BORDER_RADIUS: f64 = 4.0;
+    pub const FONT_SIZE: f32 = 13.0;
 }
 
 /// Sizes for rendering

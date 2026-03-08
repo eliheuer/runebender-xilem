@@ -113,6 +113,38 @@ pub struct EditorWidget {
 
     /// Distance from anchor to the initial pointer in design space
     pub(super) resize_initial_distance: f64,
+
+    /// Context menu state (screen-space position, None = hidden)
+    pub(super) context_menu: Option<ContextMenu>,
+}
+
+// ============================================================================
+// CONTEXT MENU
+// ============================================================================
+
+/// A right-click context menu shown over the editor canvas.
+#[derive(Debug, Clone)]
+pub(super) struct ContextMenu {
+    /// Screen-space position of the menu's top-left corner.
+    pub position: Point,
+    /// Menu items.
+    pub items: Vec<ContextMenuItem>,
+    /// Index of the item currently under the cursor (for hover).
+    pub hover_index: Option<usize>,
+}
+
+/// A single item in the context menu.
+#[derive(Debug, Clone)]
+pub(super) struct ContextMenuItem {
+    pub label: String,
+    pub action: ContextMenuAction,
+}
+
+/// Actions that a context menu item can trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ContextMenuAction {
+    LockImage,
+    UnlockImage,
 }
 
 impl EditorWidget {
@@ -145,6 +177,7 @@ impl EditorWidget {
             resize_original_scale_y: 1.0,
             resize_original_position: Point::ZERO,
             resize_initial_distance: 1.0,
+            context_menu: None,
         }
     }
 
@@ -298,10 +331,12 @@ impl Widget for EditorWidget {
 
         if self.session.text_buffer.is_some() {
             self.paint_text_buffer_mode(scene, &transform, is_preview_mode);
-            return;
+        } else {
+            self.paint_single_glyph_mode(scene, &transform, is_preview_mode);
         }
 
-        self.paint_single_glyph_mode(scene, &transform, is_preview_mode);
+        // Context menu is painted last so it appears on top
+        self.paint_context_menu(scene);
     }
 
     fn on_pointer_event(
@@ -319,10 +354,34 @@ impl Widget for EditorWidget {
                 state,
                 ..
             }) => {
+                // If context menu is open, check for click on item
+                if self.context_menu.is_some() {
+                    let local_pos =
+                        ctx.local_position(state.position);
+                    self.handle_context_menu_click(ctx, local_pos);
+                    return;
+                }
                 self.handle_pointer_down(ctx, state);
             }
 
+            PointerEvent::Down(PointerButtonEvent {
+                button: Some(PointerButton::Secondary),
+                state,
+                ..
+            }) => {
+                let local_pos =
+                    ctx.local_position(state.position);
+                self.handle_right_click(ctx, local_pos);
+            }
+
             PointerEvent::Move(PointerUpdate { current, .. }) => {
+                // Update context menu hover state
+                if self.context_menu.is_some() {
+                    let local_pos =
+                        ctx.local_position(current.position);
+                    self.update_context_menu_hover(ctx, local_pos);
+                    return;
+                }
                 self.handle_pointer_move(ctx, current);
             }
 

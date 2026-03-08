@@ -72,9 +72,10 @@ cargo run -- --verbose               # Run with verbose logging
 |----------|--------|
 | `Cmd/Ctrl` + `I` | Import background image (file dialog) |
 | `Cmd/Ctrl` + `T` | Autotrace background image into bezier paths |
+| `Cmd/Ctrl` + `Shift` + `T` | Refit existing outlines to match background image |
 | `Cmd/Ctrl` + `L` | Toggle background image lock |
 
-Import a reference image (PNG/JPEG) with `Cmd+I`, position and scale it behind your glyph using the drag handles, then press `Cmd+T` to trace it into editable cubic bezier contours using [img2bez](https://github.com/eliheuer/img2bez). The background image is kept after tracing so you can compare the result.
+Import a reference image (PNG/JPEG) with `Cmd+I`, position and scale it behind your glyph using the drag handles, then press `Cmd+T` to trace it into editable cubic bezier contours using [img2bez](https://github.com/eliheuer/img2bez). Use `Cmd+Shift+T` to refit existing outlines onto the background image — this warps the current outlines to match the target shape while preserving point count, types, and winding direction for variable font interpolation compatibility. The background image is kept after tracing so you can compare the result.
 
 ## Features
 
