@@ -20,6 +20,11 @@ pub const GLYPH_INFO_PANEL_WIDTH: f64 = 220.0;
 
 /// Glyph info panel view for the right sidebar
 pub fn glyph_info_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
+    // Show active master name if a designspace is loaded
+    let master_name = state.designspace.as_ref().map(|ds| {
+        ds.active_master().style_name.clone()
+    });
+
     let content = if let Some(ref glyph_name) = state.selected_glyph {
         // Get glyph data if available
         let glyph_data = state.active_workspace().and_then(|w| {
@@ -39,6 +44,7 @@ pub fn glyph_info_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
         if let Some((name, width, codepoints, left_group, right_group, contour_count)) = glyph_data
         {
             Either::A(glyph_info_content(
+                master_name.clone(),
                 name,
                 width,
                 codepoints,
@@ -47,10 +53,10 @@ pub fn glyph_info_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
                 contour_count,
             ))
         } else {
-            Either::B(no_selection_content())
+            Either::B(no_selection_content(master_name.clone()))
         }
     } else {
-        Either::B(no_selection_content())
+        Either::B(no_selection_content(master_name.clone()))
     };
 
     sized_box(content)
@@ -63,6 +69,7 @@ pub fn glyph_info_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
 
 /// Content when a glyph is selected
 fn glyph_info_content(
+    master_name: Option<String>,
     name: String,
     width: f64,
     codepoints: Vec<char>,
@@ -91,36 +98,59 @@ fn glyph_info_content(
         .map(|s| s.replace("public.kern2.", ""))
         .unwrap_or_else(|| "(empty)".to_string());
 
+    let master_display =
+        master_name.unwrap_or_else(|| "(single UFO)".to_string());
+
     flex_col((
-        // Glyph Name header
-        info_row_header("Glyph Name"),
-        info_row_value(&name),
-        sized_box(label("")).height(8.px()),
-        // Metrics section
-        info_row_header("Width"),
-        info_row_value(&format!("{:.0}", width)),
-        sized_box(label("")).height(8.px()),
-        // Kerning Groups section
-        info_row_header("Kerning Groups"),
-        info_row_label_value("Left", &left_group_display),
-        info_row_label_value("Right", &right_group_display),
-        sized_box(label("")).height(8.px()),
-        // Unicode section
-        info_row_header("Unicode"),
-        info_row_value(&unicode_display),
-        sized_box(label("")).height(8.px()),
-        // Stats section
-        info_row_header("Contours"),
-        info_row_value(&format!("{}", contour_count)),
+        // Master + Glyph Name + Width
+        flex_col((
+            info_row_header("Master"),
+            info_row_value(&master_display),
+            sized_box(label("")).height(8.px()),
+            info_row_header("Glyph Name"),
+            info_row_value(&name),
+        ))
+        .gap(2.px())
+        .cross_axis_alignment(CrossAxisAlignment::Start),
+        // Width + Kerning Groups
+        flex_col((
+            sized_box(label("")).height(8.px()),
+            info_row_header("Width"),
+            info_row_value(&format!("{:.0}", width)),
+            sized_box(label("")).height(8.px()),
+            info_row_header("Kerning Groups"),
+            info_row_label_value("Left", &left_group_display),
+            info_row_label_value("Right", &right_group_display),
+        ))
+        .gap(2.px())
+        .cross_axis_alignment(CrossAxisAlignment::Start),
+        // Unicode + Contours
+        flex_col((
+            sized_box(label("")).height(8.px()),
+            info_row_header("Unicode"),
+            info_row_value(&unicode_display),
+            sized_box(label("")).height(8.px()),
+            info_row_header("Contours"),
+            info_row_value(&format!("{}", contour_count)),
+        ))
+        .gap(2.px())
+        .cross_axis_alignment(CrossAxisAlignment::Start),
     ))
-    .gap(2.px())
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .padding(12.0)
 }
 
 /// Content when no glyph is selected
-fn no_selection_content() -> impl WidgetView<AppState> + use<> {
+fn no_selection_content(
+    master_name: Option<String>,
+) -> impl WidgetView<AppState> + use<> {
+    let master_display =
+        master_name.unwrap_or_else(|| "(single UFO)".to_string());
+
     flex_col((
+        info_row_header("Master"),
+        info_row_value(&master_display),
+        sized_box(label("")).height(8.px()),
         info_row_header("Glyph Name"),
         info_row_value("No Selection"),
         sized_box(label("")).height(8.px()),

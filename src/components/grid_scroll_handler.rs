@@ -95,6 +95,8 @@ pub enum GridScrollAction {
     Copy,
     /// Paste clipboard outlines (Cmd+V).
     Paste,
+    /// Open the selected glyph in the editor (Enter).
+    OpenSelected,
 }
 
 // ============================================================
@@ -270,6 +272,9 @@ fn key_to_action(
             Some(GridScrollAction::Navigate(
                 NavDirection::Right,
             ))
+        }
+        Key::Named(NamedKey::Enter) => {
+            Some(GridScrollAction::OpenSelected)
         }
         _ => None,
     }

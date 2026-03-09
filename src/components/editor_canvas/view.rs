@@ -20,7 +20,7 @@ pub fn editor_view<State, F>(
     on_session_update: F,
 ) -> EditorView<State, F>
 where
-    F: Fn(&mut State, EditSession, bool),
+    F: Fn(&mut State, EditSession, bool, bool),
 {
     EditorView {
         session,
@@ -39,7 +39,7 @@ pub struct EditorView<State, F> {
 
 impl<State, F> ViewMarker for EditorView<State, F> {}
 
-impl<State: 'static, F: Fn(&mut State, EditSession, bool) + 'static> View<State, (), ViewCtx>
+impl<State: 'static, F: Fn(&mut State, EditSession, bool, bool) + 'static> View<State, (), ViewCtx>
     for EditorView<State, F>
 {
     type Element = Pod<EditorWidget>;
@@ -129,7 +129,12 @@ impl<State: 'static, F: Fn(&mut State, EditSession, bool) + 'static> View<State,
                     update.session.selection.len(),
                     update.save_requested
                 );
-                (self.on_session_update)(app_state, update.session, update.save_requested);
+                (self.on_session_update)(
+                    app_state,
+                    update.session,
+                    update.save_requested,
+                    update.close_requested,
+                );
                 tracing::debug!(
                     "[EditorView::message] Callback complete, \
                      returning Action(())"

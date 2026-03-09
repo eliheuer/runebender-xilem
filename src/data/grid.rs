@@ -16,6 +16,14 @@ impl AppState {
             .map(|w| read_workspace(&w).glyph_count())
     }
 
+    /// Select the first glyph in the font (for initial state)
+    pub fn select_first_glyph(&mut self) {
+        let names = self.glyph_names();
+        if let Some(first) = names.into_iter().next() {
+            self.select_glyph(first);
+        }
+    }
+
     /// Select a glyph by name (clears multi-selection)
     pub fn select_glyph(&mut self, name: String) {
         self.selected_glyphs.clear();

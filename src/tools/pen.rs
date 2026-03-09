@@ -38,6 +38,13 @@ pub struct PenTool {
     /// Snapped segment information (segment + parameter t on segment)
     /// When Some, the preview dot should snap to this curve position
     snapped_segment: Option<(crate::path::SegmentInfo, f64)>,
+
+    /// Design-space position where the current click started
+    /// (used to detect drag-to-create-handles)
+    drag_origin: Option<kurbo::Point>,
+
+    /// Whether we're currently dragging out handles for a smooth point
+    dragging_handles: bool,
 }
 
 // ===== Tool Implementation =====
@@ -70,10 +77,18 @@ impl Tool for PenTool {
             self.draw_path_points(scene, session, &brush, hovering_close);
         }
 
+        // Draw handle lines when dragging out a smooth point
+        if self.dragging_handles && self.current_path_points.len() >= 3
+        {
+            self.draw_drag_handles(scene, session, &brush);
+        }
+
         // Draw preview circle at current mouse position (showing where
         // next point will be). If snapped to a curve, show the preview
         // dot on the curve instead of at mouse position
-        self.draw_preview_dot(scene, session, &brush);
+        if !self.dragging_handles {
+            self.draw_preview_dot(scene, session, &brush);
+        }
     }
 
     fn edit_type(&self) -> Option<EditType> {
@@ -91,7 +106,21 @@ impl Tool for PenTool {
 impl MouseDelegate for PenTool {
     type Data = EditSession;
 
+    fn left_down(&mut self, event: MouseEvent, data: &mut EditSession) {
+        let design_pos = data.viewport.screen_to_design(event.pos);
+        self.drag_origin = Some(design_pos);
+        self.dragging_handles = false;
+    }
+
     fn left_click(&mut self, event: MouseEvent, data: &mut EditSession) {
+        // If we just finished dragging handles, the point was already
+        // added in left_drag_ended — nothing to do here.
+        if self.dragging_handles {
+            self.dragging_handles = false;
+            self.drag_origin = None;
+            return;
+        }
+
         // Check if we're snapped to a curve segment
         // If so, insert a point on the segment instead of starting a
         // new path
@@ -100,6 +129,7 @@ impl MouseDelegate for PenTool {
             data.insert_point_on_segment(segment_info, *t);
             // Clear snapping after insertion
             self.snapped_segment = None;
+            self.drag_origin = None;
             return;
         }
 
@@ -111,10 +141,11 @@ impl MouseDelegate for PenTool {
         if self.should_close_path(design_pos) {
             tracing::debug!("Pen tool: closing path at first point");
             self.close_path(data);
+            self.drag_origin = None;
             return;
         }
 
-        // Create a new on-curve point
+        // Create a new corner on-curve point (no drag = no handles)
         let point = PathPoint {
             id: EntityId::next(),
             point: design_pos,
@@ -123,12 +154,120 @@ impl MouseDelegate for PenTool {
 
         self.current_path_points.push(point);
         self.drawing = true;
+        self.drag_origin = None;
 
         tracing::debug!(
-            "Pen tool: added point at {:?}, total points: {}",
+            "Pen tool: added corner point at {:?}, total points: {}",
             design_pos,
             self.current_path_points.len()
         );
+    }
+
+    fn left_drag_began(
+        &mut self,
+        event: MouseEvent,
+        _drag: crate::editing::Drag,
+        data: &mut EditSession,
+    ) {
+        // Don't create handles when snapped to a segment
+        if self.snapped_segment.is_some() {
+            return;
+        }
+
+        let origin = match self.drag_origin {
+            Some(p) => p,
+            None => return,
+        };
+
+        // Check if we should close the path instead
+        if self.should_close_path(origin) {
+            return;
+        }
+
+        self.dragging_handles = true;
+
+        // Add: incoming off-curve handle, smooth on-curve, outgoing
+        // off-curve handle. The handles start at the on-curve
+        // position and will be updated as the user drags.
+        let design_pos = data.viewport.screen_to_design(event.pos);
+
+        let handle_in = PathPoint {
+            id: EntityId::next(),
+            point: origin, // will be mirrored during drag
+            typ: PointType::OffCurve { auto: false },
+        };
+        let on_curve = PathPoint {
+            id: EntityId::next(),
+            point: origin,
+            typ: PointType::OnCurve { smooth: true },
+        };
+        let handle_out = PathPoint {
+            id: EntityId::next(),
+            point: design_pos,
+            typ: PointType::OffCurve { auto: false },
+        };
+
+        self.current_path_points.push(handle_in);
+        self.current_path_points.push(on_curve);
+        self.current_path_points.push(handle_out);
+        self.drawing = true;
+
+        tracing::debug!(
+            "Pen tool: started smooth point with handles at {:?}",
+            origin
+        );
+    }
+
+    fn left_drag_changed(
+        &mut self,
+        event: MouseEvent,
+        _drag: crate::editing::Drag,
+        data: &mut EditSession,
+    ) {
+        if !self.dragging_handles {
+            return;
+        }
+
+        let origin = match self.drag_origin {
+            Some(p) => p,
+            None => return,
+        };
+
+        let design_pos = data.viewport.screen_to_design(event.pos);
+        let len = self.current_path_points.len();
+        if len < 3 {
+            return;
+        }
+
+        // Update outgoing handle (last point) to follow the mouse
+        self.current_path_points[len - 1].point = design_pos;
+
+        // Mirror the incoming handle (third-to-last point) through
+        // the on-curve point for collinearity
+        let dx = design_pos.x - origin.x;
+        let dy = design_pos.y - origin.y;
+        self.current_path_points[len - 3].point =
+            kurbo::Point::new(origin.x - dx, origin.y - dy);
+    }
+
+    fn left_drag_ended(
+        &mut self,
+        _event: MouseEvent,
+        _drag: crate::editing::Drag,
+        _data: &mut EditSession,
+    ) {
+        if !self.dragging_handles {
+            self.drag_origin = None;
+            return;
+        }
+
+        tracing::debug!(
+            "Pen tool: finished smooth point, total points: {}",
+            self.current_path_points.len()
+        );
+
+        // Keep dragging_handles true so left_click knows to skip
+        // (it will be cleared there)
     }
 
     fn mouse_moved(&mut self, event: MouseEvent, data: &mut EditSession) {
@@ -326,6 +465,60 @@ impl PenTool {
             let stroke = kurbo::Stroke::new(1.5);
             scene.stroke(&stroke, Affine::IDENTITY, brush, None, &indicator_circle);
         }
+    }
+
+    /// Draw handle lines and dots when dragging out a smooth point
+    fn draw_drag_handles(
+        &self,
+        scene: &mut Scene,
+        session: &EditSession,
+        brush: &masonry::vello::peniko::Brush,
+    ) {
+        let len = self.current_path_points.len();
+        let handle_in = &self.current_path_points[len - 3];
+        let on_curve = &self.current_path_points[len - 2];
+        let handle_out = &self.current_path_points[len - 1];
+
+        let p_in = session.viewport.to_screen(handle_in.point);
+        let p_on = session.viewport.to_screen(on_curve.point);
+        let p_out = session.viewport.to_screen(handle_out.point);
+
+        // Draw handle lines
+        let stroke = kurbo::Stroke::new(1.0);
+        let mut line = kurbo::BezPath::new();
+        line.move_to(p_in);
+        line.line_to(p_on);
+        line.line_to(p_out);
+        scene.stroke(
+            &stroke,
+            Affine::IDENTITY,
+            brush,
+            None,
+            &line,
+        );
+
+        // Draw handle dots
+        let dot_r = crate::theme::tool_preview::DOT_RADIUS;
+        for p in [p_in, p_out] {
+            let circle = kurbo::Circle::new(p, dot_r);
+            scene.fill(
+                peniko::Fill::NonZero,
+                Affine::IDENTITY,
+                brush,
+                None,
+                &circle,
+            );
+        }
+
+        // Draw on-curve dot (slightly larger)
+        let on_circle = kurbo::Circle::new(p_on, dot_r * 1.5);
+        scene.fill(
+            peniko::Fill::NonZero,
+            Affine::IDENTITY,
+            brush,
+            None,
+            &on_circle,
+        );
     }
 
     /// Check if we should close the path (clicking near first point)

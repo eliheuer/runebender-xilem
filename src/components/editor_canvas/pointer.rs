@@ -41,8 +41,10 @@ impl EditorWidget {
             return;
         }
 
-        // Check for background image hit (select/drag)
-        if self.handle_image_pointer_down(ctx, design_pos) {
+        // Skip image interaction when in preview/pan mode
+        if !self.is_preview_mode()
+            && self.handle_image_pointer_down(ctx, design_pos)
+        {
             return;
         }
 
@@ -313,17 +315,16 @@ impl EditorWidget {
         }
 
         // Then check if the click is inside the image body
-        if !bg.contains(design_pos) {
+        // Locked images are transparent to clicks — let tools
+        // (select marquee, deselect, etc.) work through them.
+        if bg.locked || !bg.contains(design_pos) {
             return false;
         }
 
         let bg = self.session.background_image.as_mut().unwrap();
         bg.selected = true;
-
-        if !bg.locked {
-            self.dragging_image = true;
-            self.image_drag_origin = design_pos;
-        }
+        self.dragging_image = true;
+        self.image_drag_origin = design_pos;
 
         self.emit_session_update(ctx, false);
         ctx.request_render();
@@ -632,10 +633,17 @@ impl EditorWidget {
 
         let select_tool = ToolBox::for_id(ToolId::Select);
         let mut tool = std::mem::replace(&mut self.session.current_tool, select_tool);
+
+        // Capture edit_type BEFORE mouse_up, because left_drag_ended
+        // resets tool state to Ready (which returns None for edit_type)
+        let edit_type = tool.edit_type();
+
         self.mouse
             .mouse_up(mouse_event, &mut tool, &mut self.session);
 
-        if let Some(edit_type) = tool.edit_type() {
+        if let Some(edit_type) = edit_type {
+            // Final snap on release (real-time snap during drag
+            // handles most of it, this is a safety net)
             self.session.snap_selection_to_grid();
             self.record_edit(edit_type);
             self.session.sync_to_workspace();
