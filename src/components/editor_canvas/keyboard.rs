@@ -68,6 +68,7 @@ impl EditorWidget {
                 ctx.submit_action::<SessionUpdate>(SessionUpdate {
                     session: self.session.clone(),
                     save_requested: false,
+                    close_requested: false,
                 });
 
                 ctx.request_render();
@@ -88,6 +89,7 @@ impl EditorWidget {
                 ctx.submit_action::<SessionUpdate>(SessionUpdate {
                     session: self.session.clone(),
                     save_requested: false,
+                    close_requested: false,
                 });
 
                 ctx.request_render();
@@ -169,6 +171,10 @@ impl EditorWidget {
         }
 
         if self.handle_tool_switching(ctx, cmd, shift, key) {
+            return true;
+        }
+
+        if self.handle_close_editor(ctx, key) {
             return true;
         }
 
@@ -821,6 +827,32 @@ impl EditorWidget {
         true
     }
 
+    /// Handle Enter key to close editor and return to glyph grid
+    fn handle_close_editor(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use masonry::core::keyboard::{Key, NamedKey};
+
+        if !matches!(key, Key::Named(NamedKey::Enter)) {
+            return false;
+        }
+
+        // Don't close if in text edit mode (Enter inserts line break)
+        if self.session.text_mode_active {
+            return false;
+        }
+
+        ctx.submit_action::<SessionUpdate>(SessionUpdate {
+            session: self.session.clone(),
+            save_requested: false,
+            close_requested: true,
+        });
+        ctx.set_handled();
+        true
+    }
+
     /// Handle arrow keys for nudging
     pub(super) fn handle_arrow_keys(
         &mut self,
@@ -839,6 +871,19 @@ impl EditorWidget {
             Key::Named(NamedKey::ArrowDown) => (0.0, -1.0),
             _ => return,
         };
+
+        // Nudge selected background image (1 unit per press)
+        if let Some(bg) = &mut self.session.background_image
+            && bg.selected
+            && !bg.locked
+        {
+            bg.position.x += dx;
+            bg.position.y += dy;
+            self.emit_session_update(ctx, false);
+            ctx.request_render();
+            ctx.set_handled();
+            return;
+        }
 
         // Check if we have a component selected (takes priority
         // over points)
@@ -953,6 +998,7 @@ impl EditorWidget {
                 ctx.submit_action::<SessionUpdate>(SessionUpdate {
                     session: self.session.clone(),
                     save_requested: false,
+                    close_requested: false,
                 });
                 ctx.request_render();
                 ctx.set_handled();
@@ -977,6 +1023,7 @@ impl EditorWidget {
                 ctx.submit_action::<SessionUpdate>(SessionUpdate {
                     session: self.session.clone(),
                     save_requested: false,
+                    close_requested: false,
                 });
                 ctx.request_render();
                 ctx.set_handled();
@@ -1001,6 +1048,7 @@ impl EditorWidget {
                     ctx.submit_action::<SessionUpdate>(SessionUpdate {
                         session: self.session.clone(),
                         save_requested: false,
+                        close_requested: false,
                     });
                     ctx.request_render();
                     ctx.set_handled();
@@ -1038,6 +1086,7 @@ impl EditorWidget {
                         ctx.submit_action::<SessionUpdate>(SessionUpdate {
                             session: self.session.clone(),
                             save_requested: false,
+                            close_requested: false,
                         });
                         ctx.request_render();
                         ctx.set_handled();

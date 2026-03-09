@@ -69,10 +69,16 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
         // Background: the editor canvas (full screen)
         editor_view(
             session_arc.clone(),
-            |state: &mut AppState, updated_session, save_requested| {
+            |state: &mut AppState,
+             updated_session,
+             save_requested,
+             close_requested| {
                 state.update_editor_session(updated_session);
                 if save_requested {
                     state.save_workspace();
+                }
+                if close_requested {
+                    state.close_editor();
                 }
             },
         ),

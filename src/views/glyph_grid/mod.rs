@@ -108,6 +108,13 @@ pub fn glyph_grid_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<>
                             GridScrollAction::Paste => {
                                 state.paste_glyph();
                             }
+                            GridScrollAction::OpenSelected => {
+                                if let Some(name) =
+                                    state.selected_glyph.clone()
+                                {
+                                    state.open_editor(name);
+                                }
+                            }
                         }
                     },
                 )

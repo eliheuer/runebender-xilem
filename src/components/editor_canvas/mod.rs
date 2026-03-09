@@ -273,6 +273,7 @@ impl EditorWidget {
         ctx.submit_action::<SessionUpdate>(SessionUpdate {
             session: self.session.clone(),
             save_requested,
+            close_requested: false,
         });
     }
 }
@@ -283,6 +284,8 @@ pub struct SessionUpdate {
     pub session: EditSession,
     /// If true, save the current state to disk
     pub save_requested: bool,
+    /// If true, close the editor and return to glyph grid
+    pub close_requested: bool,
 }
 
 impl Widget for EditorWidget {

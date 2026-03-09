@@ -318,6 +318,11 @@ impl SelectTool {
 // ===== Drag Handling Helpers =====
 
 /// Handle dragging points (during drag)
+///
+/// Moves selected points by the mouse delta, then snaps the first
+/// selected on-curve point to the design grid. The snap correction
+/// is folded into `last_pos` so that the fractional remainder
+/// carries over to the next frame, giving smooth grid-locked dragging.
 fn handle_dragging_points(event: MouseEvent, data: &mut EditSession, last_pos: &mut Point) {
     // Convert current mouse position to design space
     let current_pos = data.viewport.screen_to_design(event.pos);
@@ -325,11 +330,69 @@ fn handle_dragging_points(event: MouseEvent, data: &mut EditSession, last_pos: &
     // Calculate delta in design space
     let delta = Vec2::new(current_pos.x - last_pos.x, current_pos.y - last_pos.y);
 
-    // Move selected points
+    // Move selected points by raw mouse delta
     data.move_selection(delta);
 
-    // Update last position
-    *last_pos = current_pos;
+    // Find the first selected on-curve point and snap it to grid.
+    // Apply the same snap correction to ALL selected points so they
+    // move together.
+    let snap_correction = find_snap_correction(data);
+    if snap_correction.x.abs() > 1e-9 || snap_correction.y.abs() > 1e-9 {
+        data.move_selection(snap_correction);
+    }
+
+    // Update last_pos: advance by the raw delta PLUS the snap
+    // correction. This ensures the un-snapped remainder accumulates
+    // correctly across frames.
+    *last_pos = Point::new(
+        last_pos.x + delta.x + snap_correction.x,
+        last_pos.y + delta.y + snap_correction.y,
+    );
+}
+
+/// Find the snap correction for the first selected point.
+///
+/// On-curve points always snap to grid. Off-curve points also snap
+/// to grid when manually dragged; the smooth-point collinearity
+/// enforcement (which runs inside `move_selection`) only adjusts
+/// the *opposite* handle, so the dragged off-curve stays snapped.
+fn find_snap_correction(data: &EditSession) -> Vec2 {
+    use crate::editing::session::snap_point_to_grid;
+    use crate::path::Path;
+
+    let mut first_selected: Option<kurbo::Point> = None;
+
+    for path in data.paths.iter() {
+        let points = match path {
+            Path::Cubic(c) => c.points(),
+            Path::Quadratic(q) => q.points(),
+            Path::Hyper(h) => h.points(),
+        };
+        for pt in points.iter() {
+            if !data.selection.contains(&pt.id) {
+                continue;
+            }
+            // Prefer on-curve as snap reference
+            if pt.is_on_curve() {
+                let snapped = snap_point_to_grid(pt.point);
+                return Vec2::new(
+                    snapped.x - pt.point.x,
+                    snapped.y - pt.point.y,
+                );
+            }
+            if first_selected.is_none() {
+                first_selected = Some(pt.point);
+            }
+        }
+    }
+
+    // Fall back to off-curve point
+    if let Some(pos) = first_selected {
+        let snapped = snap_point_to_grid(pos);
+        return Vec2::new(snapped.x - pos.x, snapped.y - pos.y);
+    }
+
+    Vec2::ZERO
 }
 
 /// Handle dragging component (during drag)
@@ -424,27 +487,13 @@ fn update_selection_for_marquee(
         }
     }
 
-    // Apply toggle logic if shift is held
+    // Apply additive logic if shift is held
     if toggle {
-        // Symmetric difference: (previous ∪ new) - (previous ∩ new)
-        // This toggles: adds new points, removes previously selected
-        // points that are also in new
-        let mut result = Selection::new();
-
-        // Add points that are in previous but not in new
-        for id in previous_selection.iter() {
-            if !new_selection.contains(id) {
-                result.insert(*id);
-            }
-        }
-
-        // Add points that are in new but not in previous
+        // Union: keep previous selection and add new points
+        let mut result = previous_selection.clone();
         for id in new_selection.iter() {
-            if !previous_selection.contains(id) {
-                result.insert(*id);
-            }
+            result.insert(*id);
         }
-
         data.selection = result;
     } else {
         // Normal mode: replace selection with points in rectangle

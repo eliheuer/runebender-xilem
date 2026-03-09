@@ -54,6 +54,7 @@ impl AppState {
                 self.workspace = Some(Arc::new(RwLock::new(workspace)));
                 self.designspace = None; // Clear any loaded designspace
                 self.error_message = None;
+                self.select_first_glyph();
             }
             Err(e) => {
                 let error = format!("Failed to load UFO: {}", e);
@@ -76,6 +77,7 @@ impl AppState {
                 self.designspace = Some(project);
                 self.workspace = None; // Clear any loaded single UFO
                 self.error_message = None;
+                self.select_first_glyph();
             }
             Err(e) => {
                 let error = format!("Failed to load designspace: {}", e);

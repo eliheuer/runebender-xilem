@@ -42,9 +42,12 @@ pub fn welcome(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
         // Background: Interactive editor with demo R glyph
         editor_view(
             session_arc,
-            |state: &mut AppState, updated_session, _save_requested| {
+            |state: &mut AppState,
+             updated_session,
+             _save_requested,
+             _close_requested| {
                 // Save changes back to the welcome session so they persist
-                // (save_requested is ignored for the demo session)
+                // (save/close_requested are ignored for the demo session)
                 state.welcome_session = Some(updated_session);
             },
         ),
