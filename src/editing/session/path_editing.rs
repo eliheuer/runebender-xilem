@@ -219,6 +219,331 @@ impl EditSession {
         self.move_selection(delta);
     }
 
+    // ================================================================
+    // SELECTION BOUNDING BOX
+    // ================================================================
+
+    /// Compute the bounding box of all selected points
+    ///
+    /// Returns None if nothing is selected.
+    pub fn selection_bounding_box(&self) -> Option<kurbo::Rect> {
+        if self.selection.is_empty() {
+            return None;
+        }
+
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        let mut found = false;
+
+        for path in self.paths.iter() {
+            let points = match path {
+                Path::Cubic(c) => c.points(),
+                Path::Quadratic(q) => q.points(),
+                Path::Hyper(h) => h.points(),
+            };
+            for pt in points.iter() {
+                if self.selection.contains(&pt.id) {
+                    min_x = min_x.min(pt.point.x);
+                    min_y = min_y.min(pt.point.y);
+                    max_x = max_x.max(pt.point.x);
+                    max_y = max_y.max(pt.point.y);
+                    found = true;
+                }
+            }
+        }
+
+        if found {
+            Some(kurbo::Rect::new(min_x, min_y, max_x, max_y))
+        } else {
+            None
+        }
+    }
+
+    // ================================================================
+    // TRANSFORM SELECTION
+    // ================================================================
+
+    /// Apply an affine transform to all selected points
+    ///
+    /// Adjacent off-curve handles of selected on-curve points are
+    /// also transformed. After the transform, points are snapped to
+    /// grid and smooth constraints are enforced.
+    pub fn transform_selection(&mut self, affine: kurbo::Affine) {
+        if self.selection.is_empty() {
+            return;
+        }
+
+        use crate::model::EntityId;
+        use std::collections::HashSet;
+
+        let paths_vec = Arc::make_mut(&mut self.paths);
+
+        // Build set of points to transform (selected + adjacent
+        // off-curve handles of selected on-curve points)
+        let mut points_to_transform: HashSet<EntityId> =
+            self.selection.iter().copied().collect();
+
+        Self::collect_adjacent_off_curve_points(
+            paths_vec,
+            &self.selection,
+            &mut points_to_transform,
+        );
+
+        // Apply the affine transform to each point
+        for path in paths_vec.iter_mut() {
+            match path {
+                Path::Cubic(cubic) => {
+                    for pt in cubic.points.make_mut().iter_mut() {
+                        if points_to_transform.contains(&pt.id) {
+                            pt.point = affine * pt.point;
+                        }
+                    }
+                }
+                Path::Quadratic(quadratic) => {
+                    for pt in quadratic.points.make_mut().iter_mut()
+                    {
+                        if points_to_transform.contains(&pt.id) {
+                            pt.point = affine * pt.point;
+                        }
+                    }
+                }
+                Path::Hyper(hyper) => {
+                    let mut changed = false;
+                    for pt in hyper.points.make_mut().iter_mut() {
+                        if points_to_transform.contains(&pt.id) {
+                            pt.point = affine * pt.point;
+                            changed = true;
+                        }
+                    }
+                    if changed {
+                        hyper.after_change();
+                    }
+                }
+            }
+        }
+
+        // If the transform is a reflection (negative determinant),
+        // reverse affected contours to maintain winding direction
+        if affine.determinant() < 0.0 {
+            Self::reverse_affected_contours(
+                paths_vec,
+                &points_to_transform,
+            );
+        }
+
+        // Enforce smooth constraints with all transformed points
+        // as "disturbed"
+        Self::enforce_smooth_constraints(
+            paths_vec,
+            &points_to_transform,
+        );
+    }
+
+    /// Flip selected points horizontally around the selection center
+    pub fn flip_selection_horizontal(&mut self) {
+        let center = match self.selection_bounding_box() {
+            Some(rect) => rect.center(),
+            None => return,
+        };
+
+        let affine = kurbo::Affine::translate(center.to_vec2())
+            .then_scale_non_uniform(-1.0, 1.0)
+            .then_translate(-center.to_vec2());
+
+        self.transform_selection(affine);
+        self.last_transform = Some(affine);
+    }
+
+    /// Flip selected points vertically around the selection center
+    pub fn flip_selection_vertical(&mut self) {
+        let center = match self.selection_bounding_box() {
+            Some(rect) => rect.center(),
+            None => return,
+        };
+
+        let affine = kurbo::Affine::translate(center.to_vec2())
+            .then_scale_non_uniform(1.0, -1.0)
+            .then_translate(-center.to_vec2());
+
+        self.transform_selection(affine);
+        self.last_transform = Some(affine);
+    }
+
+    /// Rotate selected points by the given angle (in degrees)
+    /// around the selection center
+    pub fn rotate_selection(&mut self, degrees: f64) {
+        let center = match self.selection_bounding_box() {
+            Some(rect) => rect.center(),
+            None => return,
+        };
+
+        let radians = degrees * std::f64::consts::PI / 180.0;
+        let affine = kurbo::Affine::rotate_about(radians, center);
+
+        self.transform_selection(affine);
+        self.last_transform = Some(affine);
+    }
+
+    /// Scale selected points by (sx, sy) around the selection center
+    #[allow(dead_code)]
+    pub fn scale_selection(&mut self, sx: f64, sy: f64) {
+        let center = match self.selection_bounding_box() {
+            Some(rect) => rect.center(),
+            None => return,
+        };
+
+        let affine = kurbo::Affine::translate(center.to_vec2())
+            .then_scale_non_uniform(sx, sy)
+            .then_translate(-center.to_vec2());
+
+        self.transform_selection(affine);
+        self.last_transform = Some(affine);
+    }
+
+    /// Skew selected points by (sx, sy) degrees around the
+    /// selection center
+    #[allow(dead_code)]
+    pub fn skew_selection(&mut self, sx_deg: f64, sy_deg: f64) {
+        let center = match self.selection_bounding_box() {
+            Some(rect) => rect.center(),
+            None => return,
+        };
+
+        let sx = (sx_deg * std::f64::consts::PI / 180.0).tan();
+        let sy = (sy_deg * std::f64::consts::PI / 180.0).tan();
+
+        // Translate to origin, skew, translate back
+        let to_origin = kurbo::Affine::translate(-center.to_vec2());
+        let skew = kurbo::Affine::skew(sx, sy);
+        let back = kurbo::Affine::translate(center.to_vec2());
+        let affine = back * skew * to_origin;
+
+        self.transform_selection(affine);
+        self.last_transform = Some(affine);
+    }
+
+    /// Duplicate selected contours
+    ///
+    /// Clones all paths containing selected points, assigns fresh
+    /// EntityIds, offsets by (+20, +20), and updates the selection
+    /// to the new points.
+    pub fn duplicate_selection(&mut self) {
+        use crate::model::EntityId;
+        use crate::path::{
+            CubicPath, HyperPath, PathPoint, PathPoints,
+            QuadraticPath,
+        };
+
+        if self.selection.is_empty() {
+            return;
+        }
+
+        let offset = kurbo::Vec2::new(20.0, 20.0);
+        let selection = &self.selection;
+
+        // Collect paths to duplicate
+        let paths_to_dup: Vec<_> = self
+            .paths
+            .iter()
+            .filter(|path| match path {
+                Path::Cubic(c) => {
+                    c.points.iter().any(|pt| selection.contains(&pt.id))
+                }
+                Path::Quadratic(q) => {
+                    q.points.iter().any(|pt| selection.contains(&pt.id))
+                }
+                Path::Hyper(h) => {
+                    h.points.iter().any(|pt| selection.contains(&pt.id))
+                }
+            })
+            .cloned()
+            .collect();
+
+        if paths_to_dup.is_empty() {
+            return;
+        }
+
+        let mut new_paths = Vec::new();
+        let mut new_selection = Selection::new();
+
+        for path in &paths_to_dup {
+            match path {
+                Path::Cubic(cubic) => {
+                    let new_points: Vec<PathPoint> = cubic
+                        .points
+                        .iter()
+                        .map(|pt| {
+                            let id = EntityId::next();
+                            new_selection.insert(id);
+                            PathPoint {
+                                id,
+                                point: pt.point + offset,
+                                typ: pt.typ,
+                            }
+                        })
+                        .collect();
+                    new_paths.push(Path::Cubic(CubicPath::new(
+                        PathPoints::from_vec(new_points),
+                        cubic.closed,
+                    )));
+                }
+                Path::Quadratic(quad) => {
+                    let new_points: Vec<PathPoint> = quad
+                        .points
+                        .iter()
+                        .map(|pt| {
+                            let id = EntityId::next();
+                            new_selection.insert(id);
+                            PathPoint {
+                                id,
+                                point: pt.point + offset,
+                                typ: pt.typ,
+                            }
+                        })
+                        .collect();
+                    new_paths.push(Path::Quadratic(
+                        QuadraticPath::new(
+                            PathPoints::from_vec(new_points),
+                            quad.closed,
+                        ),
+                    ));
+                }
+                Path::Hyper(hyper) => {
+                    let new_points: Vec<PathPoint> = hyper
+                        .points
+                        .iter()
+                        .map(|pt| {
+                            let id = EntityId::next();
+                            new_selection.insert(id);
+                            PathPoint {
+                                id,
+                                point: pt.point + offset,
+                                typ: pt.typ,
+                            }
+                        })
+                        .collect();
+                    let mut new_hyper = HyperPath::from_points(
+                        PathPoints::from_vec(new_points),
+                        hyper.closed,
+                    );
+                    new_hyper.after_change();
+                    new_paths.push(Path::Hyper(new_hyper));
+                }
+            }
+        }
+
+        // Append new paths and update selection
+        let paths_vec = Arc::make_mut(&mut self.paths);
+        paths_vec.extend(new_paths);
+        self.selection = new_selection;
+    }
+
+    // ================================================================
+    // DELETE / TOGGLE / REVERSE
+    // ================================================================
+
     /// Delete selected points
     ///
     /// This removes selected points from paths. If all points in a
@@ -348,6 +673,99 @@ impl EditSession {
             right_group: self.glyph.right_group.clone(),
             mark_color: self.glyph.mark_color.clone(),
         }
+    }
+
+    /// Apply a boolean operation (union, subtract, intersect, XOR)
+    /// to all contours in the glyph.
+    ///
+    /// For Union: merges all overlapping contours into one.
+    /// For Subtract/Intersect/Exclude: applies the operation
+    /// between the first contour and all remaining contours.
+    pub fn boolean_op(
+        &mut self,
+        op: linesweeper::BinaryOp,
+    ) {
+        use crate::editing::tracing::bezpath_to_cubic;
+
+        if self.paths.len() < 2 {
+            tracing::warn!(
+                "Boolean ops need at least 2 contours"
+            );
+            return;
+        }
+
+        // Convert all paths to kurbo::BezPath
+        let bezpaths: Vec<kurbo::BezPath> = self
+            .paths
+            .iter()
+            .map(|p| p.to_bezpath())
+            .collect();
+
+        // Combine all contours into two BezPaths for the
+        // binary op. For union, we put everything into set_a
+        // and use an empty set_b. For other ops, first contour
+        // is set_a, rest are set_b.
+        let (set_a, set_b) = match op {
+            linesweeper::BinaryOp::Union => {
+                // Merge all contours into one BezPath
+                let mut combined = kurbo::BezPath::new();
+                for bp in &bezpaths {
+                    for el in bp.elements() {
+                        combined.push(*el);
+                    }
+                }
+                (combined, kurbo::BezPath::new())
+            }
+            _ => {
+                // First contour vs all others
+                let mut rest = kurbo::BezPath::new();
+                for bp in bezpaths.iter().skip(1) {
+                    for el in bp.elements() {
+                        rest.push(*el);
+                    }
+                }
+                (bezpaths[0].clone(), rest)
+            }
+        };
+
+        let result = match linesweeper::binary_op(
+            &set_a,
+            &set_b,
+            linesweeper::FillRule::NonZero,
+            op,
+        ) {
+            Ok(contours) => contours,
+            Err(e) => {
+                tracing::error!(
+                    "Boolean operation failed: {e}"
+                );
+                return;
+            }
+        };
+
+        // Convert result contours back to our Path type
+        let new_paths: Vec<Path> = result
+            .contours()
+            .map(|contour| {
+                Path::Cubic(bezpath_to_cubic(&contour.path))
+            })
+            .collect();
+
+        if new_paths.is_empty() {
+            tracing::warn!(
+                "Boolean op produced no contours"
+            );
+            return;
+        }
+
+        tracing::info!(
+            "Boolean op: {} contours → {} contours",
+            self.paths.len(),
+            new_paths.len()
+        );
+
+        self.selection = Selection::new();
+        self.paths = Arc::new(new_paths);
     }
 
     /// Sync current edits to the workspace immediately
@@ -845,6 +1263,44 @@ impl EditSession {
             oncurve.x + opp_dist * opposite_angle.cos(),
             oncurve.y + opp_dist * opposite_angle.sin(),
         )
+    }
+
+    /// Reverse contours that contain any of the given point IDs
+    ///
+    /// Used after reflection transforms (negative determinant) to
+    /// maintain correct winding direction.
+    fn reverse_affected_contours(
+        paths: &mut [Path],
+        affected: &std::collections::HashSet<crate::model::EntityId>,
+    ) {
+        for path in paths.iter_mut() {
+            let contains_affected = match path {
+                Path::Cubic(c) => {
+                    c.points.iter().any(|pt| affected.contains(&pt.id))
+                }
+                Path::Quadratic(q) => {
+                    q.points.iter().any(|pt| affected.contains(&pt.id))
+                }
+                Path::Hyper(h) => {
+                    h.points.iter().any(|pt| affected.contains(&pt.id))
+                }
+            };
+
+            if !contains_affected {
+                continue;
+            }
+
+            match path {
+                Path::Cubic(c) => c.points.make_mut().reverse(),
+                Path::Quadratic(q) => {
+                    q.points.make_mut().reverse()
+                }
+                Path::Hyper(h) => {
+                    h.points.make_mut().reverse();
+                    h.after_change();
+                }
+            }
+        }
     }
 
     /// Retain a path after deletion (remove selected points)

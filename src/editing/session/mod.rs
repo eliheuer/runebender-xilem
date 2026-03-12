@@ -136,6 +136,9 @@ pub struct EditSession {
     /// Background reference image for tracing (session-only, not
     /// persisted to UFO)
     pub background_image: Option<BackgroundImage>,
+
+    /// Last transform applied (for repeat-last-transform)
+    pub last_transform: Option<kurbo::Affine>,
 }
 
 impl EditSession {
@@ -181,6 +184,7 @@ impl EditSession {
             text_direction: TextDirection::default(),
             panels_visible: true,
             background_image: None,
+            last_transform: None,
         }
     }
 
@@ -239,6 +243,7 @@ impl EditSession {
             text_direction: TextDirection::default(),
             panels_visible: true,
             background_image: None,
+            last_transform: None,
         }
     }
 

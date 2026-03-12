@@ -162,11 +162,35 @@ impl EditorWidget {
             return true;
         }
 
-        if self.handle_toggle_image_lock(ctx, cmd, key) {
+        if self.handle_toggle_image_lock(ctx, cmd, shift, key) {
             return true;
         }
 
         if self.handle_trace_image(ctx, cmd, shift, key) {
+            return true;
+        }
+
+        if self.handle_quiver_trace(ctx, cmd, shift, key) {
+            return true;
+        }
+
+        if self.handle_flip_horizontal(ctx, shift, cmd, key) {
+            return true;
+        }
+
+        if self.handle_flip_vertical(ctx, shift, cmd, key) {
+            return true;
+        }
+
+        if self.handle_rotate_selection(ctx, cmd, shift, key) {
+            return true;
+        }
+
+        if self.handle_duplicate(ctx, cmd, shift, key) {
+            return true;
+        }
+
+        if self.handle_remove_overlap(ctx, cmd, shift, key) {
             return true;
         }
 
@@ -597,6 +621,7 @@ impl EditorWidget {
             return false;
         }
 
+        // Bare "r" only — Cmd+Shift+R is rotate
         if !matches!(key, Key::Character(c) if c == "r") {
             return false;
         }
@@ -675,11 +700,12 @@ impl EditorWidget {
         &mut self,
         ctx: &mut EventCtx<'_>,
         cmd: bool,
+        shift: bool,
         key: &masonry::core::keyboard::Key,
     ) -> bool {
         use masonry::core::keyboard::Key;
 
-        if !cmd {
+        if !cmd || shift {
             return false;
         }
 
@@ -704,6 +730,75 @@ impl EditorWidget {
         }
 
         false
+    }
+
+    /// Cmd+Shift+Y: Trace background image using QuiverAI
+    /// (cloud-based alternative to img2bez).
+    fn handle_quiver_trace(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        cmd: bool,
+        shift: bool,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use masonry::core::keyboard::Key;
+
+        if !cmd || !shift {
+            return false;
+        }
+
+        if !matches!(key, Key::Character(c) if c.eq_ignore_ascii_case("y"))
+        {
+            return false;
+        }
+
+        let bg = match &self.session.background_image {
+            Some(bg) => bg,
+            None => {
+                tracing::warn!(
+                    "Cmd+Shift+Y: no background image \
+                     to trace"
+                );
+                return true;
+            }
+        };
+
+        let advance_width = self.session.glyph.width;
+
+        tracing::info!("Tracing with QuiverAI...");
+        let result = crate::editing::quiver::trace_with_quiver(
+            bg,
+            advance_width,
+        );
+
+        match result {
+            Ok(output) => {
+                tracing::info!(
+                    "QuiverAI traced {} contours",
+                    output.paths.len()
+                );
+                self.session.paths =
+                    std::sync::Arc::new(output.paths);
+                let glyph = std::sync::Arc::make_mut(
+                    &mut self.session.glyph,
+                );
+                glyph.width = output.advance_width;
+                self.session.selection =
+                    crate::editing::Selection::new();
+                self.record_edit(EditType::Normal);
+                self.session.sync_to_workspace();
+                self.emit_session_update(ctx, false);
+                ctx.request_render();
+            }
+            Err(e) => {
+                tracing::error!(
+                    "QuiverAI trace failed: {e}"
+                );
+            }
+        }
+
+        ctx.set_handled();
+        true
     }
 
     /// Cmd+T: Trace background image using img2bez.
@@ -787,6 +882,188 @@ impl EditorWidget {
         ctx.set_handled();
         true
     }
+
+    // ============================================================================
+    // TRANSFORM SHORTCUTS
+    // ============================================================================
+
+    /// Shift+H: Flip selection horizontally
+    fn handle_flip_horizontal(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        shift: bool,
+        cmd: bool,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use masonry::core::keyboard::Key;
+
+        if !shift || cmd || self.session.text_mode_active {
+            return false;
+        }
+
+        if !matches!(key, Key::Character(c) if c.eq_ignore_ascii_case("h")) {
+            return false;
+        }
+
+        if self.session.selection.is_empty() {
+            return false;
+        }
+
+        self.session.flip_selection_horizontal();
+        self.record_edit(EditType::Transform);
+        self.session.sync_to_workspace();
+        self.session.update_coord_selection();
+        self.emit_session_update(ctx, false);
+        ctx.request_render();
+        ctx.set_handled();
+        true
+    }
+
+    /// Shift+V: Flip selection vertically
+    fn handle_flip_vertical(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        shift: bool,
+        cmd: bool,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use masonry::core::keyboard::Key;
+
+        if !shift || cmd || self.session.text_mode_active {
+            return false;
+        }
+
+        if !matches!(key, Key::Character(c) if c.eq_ignore_ascii_case("v")) {
+            return false;
+        }
+
+        if self.session.selection.is_empty() {
+            return false;
+        }
+
+        self.session.flip_selection_vertical();
+        self.record_edit(EditType::Transform);
+        self.session.sync_to_workspace();
+        self.session.update_coord_selection();
+        self.emit_session_update(ctx, false);
+        ctx.request_render();
+        ctx.set_handled();
+        true
+    }
+
+    /// Cmd+Shift+R: Rotate 90 CW, Cmd+Shift+L: Rotate 90 CCW
+    fn handle_rotate_selection(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        cmd: bool,
+        shift: bool,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use masonry::core::keyboard::Key;
+
+        if !cmd || !shift || self.session.text_mode_active {
+            return false;
+        }
+
+        let degrees = if matches!(
+            key, Key::Character(c) if c.eq_ignore_ascii_case("r")
+        ) {
+            -90.0 // Clockwise in Y-up coordinate system
+        } else if matches!(
+            key, Key::Character(c) if c.eq_ignore_ascii_case("l")
+        ) {
+            90.0 // Counter-clockwise
+        } else {
+            return false;
+        };
+
+        if self.session.selection.is_empty() {
+            return false;
+        }
+
+        self.session.rotate_selection(degrees);
+        self.record_edit(EditType::Transform);
+        self.session.sync_to_workspace();
+        self.session.update_coord_selection();
+        self.emit_session_update(ctx, false);
+        ctx.request_render();
+        ctx.set_handled();
+        true
+    }
+
+    /// Cmd+D: Duplicate, Cmd+Shift+D: Duplicate + repeat last
+    /// transform
+    fn handle_duplicate(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        cmd: bool,
+        shift: bool,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use masonry::core::keyboard::Key;
+
+        if !cmd || self.session.text_mode_active {
+            return false;
+        }
+
+        if !matches!(key, Key::Character(c) if c.eq_ignore_ascii_case("d")) {
+            return false;
+        }
+
+        if self.session.selection.is_empty() {
+            return false;
+        }
+
+        self.session.duplicate_selection();
+
+        // Cmd+Shift+D: also apply last transform to the duplicate
+        if shift {
+            if let Some(affine) = self.session.last_transform {
+                self.session.transform_selection(affine);
+            }
+        }
+
+        self.record_edit(EditType::Normal);
+        self.session.sync_to_workspace();
+        self.session.update_coord_selection();
+        self.emit_session_update(ctx, false);
+        ctx.request_render();
+        ctx.set_handled();
+        true
+    }
+
+    /// Cmd+Shift+O: Remove overlap (union all contours)
+    fn handle_remove_overlap(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        cmd: bool,
+        shift: bool,
+        key: &masonry::core::keyboard::Key,
+    ) -> bool {
+        use masonry::core::keyboard::Key;
+
+        if !cmd || !shift || self.session.text_mode_active {
+            return false;
+        }
+
+        if !matches!(key, Key::Character(c) if c.eq_ignore_ascii_case("o")) {
+            return false;
+        }
+
+        self.session.boolean_op(
+            linesweeper::BinaryOp::Union,
+        );
+        self.record_edit(EditType::Normal);
+        self.session.sync_to_workspace();
+        self.emit_session_update(ctx, false);
+        ctx.request_render();
+        ctx.set_handled();
+        true
+    }
+
+    // ============================================================================
+    // TOOL SWITCHING
+    // ============================================================================
 
     fn handle_tool_switching(
         &mut self,

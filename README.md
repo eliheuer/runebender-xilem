@@ -57,6 +57,17 @@ cargo run -- --verbose               # Run with verbose logging
 | `Cmd/Ctrl` + `V` | Paste contours |
 | `Cmd/Ctrl` + `Shift` + `H` | Convert hyperbezier paths to cubic |
 
+### Transforms
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd/Ctrl` + `D` | Duplicate selection |
+| `Cmd/Ctrl` + `Shift` + `D` | Duplicate + repeat last transform |
+| `Shift` + `H` | Flip selection horizontally |
+| `Shift` + `V` | Flip selection vertically |
+| `Cmd/Ctrl` + `Shift` + `R` | Rotate selection 90° clockwise |
+| `Cmd/Ctrl` + `Shift` + `L` | Rotate selection 90° counter-clockwise |
+
 ### Tools
 
 | Shortcut | Action |
@@ -74,8 +85,11 @@ cargo run -- --verbose               # Run with verbose logging
 | `Cmd/Ctrl` + `T` | Autotrace background image into bezier paths |
 | `Cmd/Ctrl` + `Shift` + `T` | Refit existing outlines to match background image |
 | `Cmd/Ctrl` + `L` | Toggle background image lock |
+| `Cmd/Ctrl` + `Shift` + `Y` | Trace background image using QuiverAI (cloud) |
 
 Import a reference image (PNG/JPEG) with `Cmd+I`, position and scale it behind your glyph using the drag handles, then press `Cmd+T` to trace it into editable cubic bezier contours using [img2bez](https://github.com/eliheuer/img2bez). Use `Cmd+Shift+T` to refit existing outlines onto the background image — this warps the current outlines to match the target shape while preserving point count, types, and winding direction for variable font interpolation compatibility. The background image is kept after tracing so you can compare the result.
+
+As an alternative to img2bez, press `Cmd+Shift+Y` to trace using [QuiverAI](https://quiver.ai/), a cloud-based AI vectorization service. This requires an API key — see the [QuiverAI Support](#quiverai-support) section below for setup. QuiverAI produces clean SVG paths with minimal control points — useful for complex shapes where traditional tracing struggles. Note: requires internet and uses API credits.
 
 ## Features
 
@@ -87,7 +101,38 @@ See [docs/hyperbezier-ufo-extension.md](docs/hyperbezier-ufo-extension.md) for t
 
 ### Background Image Tracing
 
-Import bitmap images (scanned sketches, reference drawings) as background layers in the glyph editor. Position and scale the image to match your glyph metrics, then autotrace it into editable bezier outlines. Tracing is powered by [img2bez](https://github.com/eliheuer/img2bez). Tracing parameters (corner detection threshold, grid snapping) can be adjusted in `src/settings.rs`.
+Import bitmap images (scanned sketches, reference drawings) as background layers in the glyph editor. Position and scale the image to match your glyph metrics, then autotrace it into editable bezier outlines. Two tracing backends are available:
+
+- **img2bez** (`Cmd+T`) — Local, deterministic bitmap-to-bezier tracing powered by [img2bez](https://github.com/eliheuer/img2bez). Works offline, instant results, font-aware (computes advance width and LSB). Tracing parameters (corner detection threshold, grid snapping) can be adjusted in `src/settings.rs`.
+- **QuiverAI** (`Cmd+Shift+Y`) — Cloud-based AI vectorization powered by [QuiverAI](https://quiver.ai/). Produces clean SVG paths with minimal control points — useful for complex shapes where traditional tracing struggles.
+
+### QuiverAI Support
+
+Runebender supports [QuiverAI](https://quiver.ai/) as an optional cloud-based alternative to img2bez for tracing background images into vector outlines. QuiverAI uses an AI model to convert raster images to SVG, producing clean paths with organized structure.
+
+**Setup:**
+
+1. Create an account at [quiver.ai](https://quiver.ai/) and generate an API key from Settings > Developers > API Keys
+2. Add your key to the Runebender config file at `~/.config/runebender/config.toml`:
+   ```toml
+   [quiver]
+   api_key = "your-quiverai-api-key-here"
+   ```
+   The config directory and a template file are created automatically on first launch. Alternatively, you can set the `QUIVERAI_API_KEY` environment variable.
+
+**Usage:**
+
+1. Import a background image with `Cmd+I`
+2. Position and scale the image behind your glyph
+3. Press `Cmd+Shift+Y` to trace with QuiverAI (or `Cmd+T` for local img2bez tracing)
+4. The traced outlines replace the current paths and are fully editable
+5. Undo with `Cmd+Z` if needed — the background image is preserved
+
+**Notes:**
+- Requires an internet connection and uses 1 API credit per trace
+- QuiverAI outputs general-purpose SVG, not font-specific outlines — you may need to adjust metrics after tracing
+- img2bez remains the recommended default for most font tracing workflows
+- Both backends produce the same output format (editable cubic bezier contours) and support undo
 
 ## Contributing
 

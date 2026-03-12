@@ -10,6 +10,7 @@ use xilem::core::one_of::Either;
 use xilem::view::indexed_stack;
 use xilem::{EventLoopBuilder, WidgetView, WindowView, Xilem, window};
 
+pub mod config;
 mod components;
 mod data;
 mod editing;
@@ -40,6 +41,9 @@ pub fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
                 .add_directive("wgpu_hal=warn".parse().unwrap()),
         )
         .init();
+
+    // Ensure config directory and template exist
+    config::ensure_config_dir();
 
     let mut initial_state = AppState::new();
 

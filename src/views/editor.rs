@@ -23,9 +23,9 @@ use xilem::view::{
 
 use crate::components::workspace_toolbar::WorkspaceToolbarButton;
 use crate::components::{
-    coordinate_panel, create_master_infos, edit_mode_toolbar_view, editor_view, glyph_view,
-    master_toolbar_view, multi_glyph_view, shapes_toolbar_view, text_direction_toolbar_view,
-    workspace_toolbar_view,
+    TransformAction, coordinate_panel, create_master_infos, edit_mode_toolbar_view, editor_view,
+    glyph_view, master_toolbar_view, multi_glyph_view, shapes_toolbar_view,
+    text_direction_toolbar_view, transform_panel, workspace_toolbar_view,
 };
 use crate::data::AppState;
 use crate::model::read_workspace;
@@ -142,6 +142,20 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
         })
         .translate((-UI_PANEL_MARGIN, -UI_PANEL_MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_RIGHT)),
+        // Right side: transform panel (vertically centered)
+        transformed(if session.panels_visible {
+            let has_selection = !session.selection.is_empty();
+            let contour_count = session.paths.len();
+            Either::A(transform_panel(
+                has_selection,
+                contour_count,
+                apply_transform,
+            ))
+        } else {
+            Either::B(sized_box(label("")).width(0.px()).height(0.px()))
+        })
+        .translate((-UI_PANEL_MARGIN, 0.0))
+        .alignment(ChildAlignment::SelfAligned(UnitPoint::new(1.0, 0.5))),
         // Top-right: Master toolbar (if designspace) + Workspace toolbar
         transformed(
             flex_row((
@@ -662,4 +676,58 @@ fn append_component_path(
     for nested_component in &base_glyph.components {
         append_component_path(path, nested_component, workspace, combined_transform);
     }
+}
+
+// ===== Transform Panel Dispatch =====
+
+/// Apply a transform action from the transform panel
+fn apply_transform(
+    state: &mut AppState,
+    action: TransformAction,
+) {
+    let Some(session) = &mut state.editor_session else {
+        return;
+    };
+
+    match action {
+        TransformAction::FlipH => {
+            session.flip_selection_horizontal();
+        }
+        TransformAction::FlipV => {
+            session.flip_selection_vertical();
+        }
+        TransformAction::RotateCW => {
+            session.rotate_selection(-90.0);
+        }
+        TransformAction::RotateCCW => {
+            session.rotate_selection(90.0);
+        }
+        TransformAction::Duplicate => {
+            session.duplicate_selection();
+        }
+        TransformAction::DuplicateRepeat => {
+            session.duplicate_selection();
+            if let Some(affine) = session.last_transform {
+                session.transform_selection(affine);
+            }
+        }
+        TransformAction::Union => {
+            session.boolean_op(linesweeper::BinaryOp::Union);
+        }
+        TransformAction::Subtract => {
+            session.boolean_op(
+                linesweeper::BinaryOp::Difference,
+            );
+        }
+        TransformAction::Intersect => {
+            session.boolean_op(
+                linesweeper::BinaryOp::Intersection,
+            );
+        }
+        TransformAction::Exclude => {
+            session.boolean_op(linesweeper::BinaryOp::Xor);
+        }
+    }
+
+    session.sync_to_workspace();
 }

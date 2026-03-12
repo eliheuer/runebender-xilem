@@ -714,7 +714,9 @@ fn convert_img2bez_bezpath(
 /// appropriate types: CurveTo endpoints are smooth on-curve,
 /// LineTo/MoveTo endpoints are corner on-curve, and CurveTo
 /// control points are off-curve handles.
-fn bezpath_to_cubic(bezpath: &kurbo::BezPath) -> CubicPath {
+pub(crate) fn bezpath_to_cubic(
+    bezpath: &kurbo::BezPath,
+) -> CubicPath {
     let mut points = Vec::new();
     let has_close = bezpath
         .elements()

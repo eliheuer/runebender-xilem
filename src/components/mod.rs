@@ -18,6 +18,7 @@ pub mod size_tracker;
 pub mod system_toolbar;
 pub mod text_direction_toolbar;
 pub mod toolbars;
+pub mod transform_panel;
 pub mod workspace_toolbar;
 
 // Re-export commonly used widget views and types
@@ -35,4 +36,5 @@ pub use shapes_toolbar::shapes_toolbar_view;
 pub use size_tracker::size_tracker;
 pub use system_toolbar::{SystemToolbarButton, system_toolbar_view};
 pub use text_direction_toolbar::text_direction_toolbar_view;
+pub use transform_panel::{TransformAction, transform_panel};
 pub use workspace_toolbar::workspace_toolbar_view;
