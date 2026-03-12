@@ -75,8 +75,7 @@ pub struct BackgroundImage {
     pub locked: bool,
     /// Whether the image is currently selected.
     pub selected: bool,
-    /// Original file path (kept for future img2bez tracing).
-    #[allow(dead_code)]
+    /// Original file path (used by img2bez and QuiverAI tracing).
     pub source_path: PathBuf,
 }
 

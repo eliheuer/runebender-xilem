@@ -31,6 +31,7 @@ spline = { git = "https://github.com/linebender/spline" }
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+toml = "0.8"
 
 # Unicode
 unicode-general-category = "0.6"
@@ -41,6 +42,13 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 # Image tracing (bitmap → bezier contours)
 # TODO: switch to crates.io version once img2bez is published.
 img2bez = { path = "../img2bez", default-features = false }
+
+# QuiverAI vectorization (optional cloud-based alternative to img2bez)
+reqwest = { version = "0.12", features = ["blocking", "json", "multipart"] }
+base64 = "0.22"
+
+# Boolean path operations (remove overlap, union, subtract, etc.)
+linesweeper = "0.2"
 
 # Utilities
 anyhow = "1.0"

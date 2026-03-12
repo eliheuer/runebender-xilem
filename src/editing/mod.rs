@@ -9,6 +9,7 @@ pub mod hit_test;
 pub mod mouse;
 pub mod selection;
 pub mod session;
+pub mod quiver;
 pub mod tracing;
 pub mod undo;
 pub mod viewport;

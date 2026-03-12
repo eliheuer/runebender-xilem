@@ -31,4 +31,7 @@ pub enum EditType {
 
     /// Nudge right (combines with other Right nudges)
     NudgeRight,
+
+    /// Transform operation (flip, rotate, scale, etc.)
+    Transform,
 }
