@@ -139,6 +139,11 @@ pub struct EditSession {
 
     /// Last transform applied (for repeat-last-transform)
     pub last_transform: Option<kurbo::Affine>,
+
+    /// Interpolation compatibility errors for the current
+    /// glyph (empty when not editing a designspace or when
+    /// all masters are compatible).
+    pub compat_errors: Vec<crate::editing::compat::CompatError>,
 }
 
 impl EditSession {
@@ -185,6 +190,7 @@ impl EditSession {
             panels_visible: true,
             background_image: None,
             last_transform: None,
+            compat_errors: Vec::new(),
         }
     }
 
@@ -244,6 +250,7 @@ impl EditSession {
             panels_visible: true,
             background_image: None,
             last_transform: None,
+            compat_errors: Vec::new(),
         }
     }
 

@@ -145,6 +145,16 @@ pub(super) struct ContextMenuItem {
 pub(super) enum ContextMenuAction {
     LockImage,
     UnlockImage,
+    /// Set the right-clicked point as the contour start node.
+    SetStartPoint(crate::model::EntityId),
+    /// Reverse the direction of the contour containing the
+    /// right-clicked point.
+    ReverseContour(crate::model::EntityId),
+    /// Move a contour earlier in the contour list (fixes
+    /// interpolation order mismatches).
+    MoveContourUp(usize),
+    /// Move a contour later in the contour list.
+    MoveContourDown(usize),
 }
 
 impl EditorWidget {
@@ -475,7 +485,8 @@ impl Widget for EditorWidget {
             }
 
             // Handle arrow keys for nudging
-            self.handle_arrow_keys(ctx, &key_event.key, shift, cmd);
+            let alt = key_event.modifiers.alt();
+            self.handle_arrow_keys(ctx, &key_event.key, shift, cmd, alt);
         }
     }
 

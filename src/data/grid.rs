@@ -32,10 +32,45 @@ impl AppState {
     }
 
     /// Toggle a glyph in/out of multi-selection (shift-click)
+    ///
+    /// When there is already a selected glyph (the "anchor"),
+    /// shift-click selects the entire range between the anchor
+    /// and the clicked glyph in the filtered grid order. This
+    /// matches Glyphs.app behavior.
     pub fn toggle_glyph_selection(&mut self, name: String) {
+        // If we have an anchor glyph, do range selection
+        if let Some(ref anchor) = self.selected_glyph {
+            let names = self.filtered_glyph_names();
+            let anchor_idx = names
+                .iter()
+                .position(|n| n == anchor);
+            let target_idx = names
+                .iter()
+                .position(|n| n == &name);
+
+            if let (Some(a), Some(b)) =
+                (anchor_idx, target_idx)
+            {
+                let lo = a.min(b);
+                let hi = a.max(b);
+                for n in &names[lo..=hi] {
+                    self.selected_glyphs.insert(n.clone());
+                }
+                // Keep the anchor as-is so further
+                // shift-clicks extend from the same point
+                return;
+            }
+        }
+
+        // Fallback: simple toggle (no anchor or glyph not
+        // found in filtered list)
         if self.selected_glyphs.contains(&name) {
             self.selected_glyphs.remove(&name);
-            self.selected_glyph = self.selected_glyphs.iter().next().cloned();
+            self.selected_glyph = self
+                .selected_glyphs
+                .iter()
+                .next()
+                .cloned();
         } else {
             self.selected_glyphs.insert(name.clone());
             self.selected_glyph = Some(name);

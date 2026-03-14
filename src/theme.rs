@@ -139,6 +139,10 @@ const OFFCURVE_POINT_OUTER: Color = Color::from_rgb8(0x99, 0x00, 0xff);
 const HYPER_POINT_INNER: Color = Color::from_rgb8(0x66, 0xcc, 0xdd);
 const HYPER_POINT_OUTER: Color = Color::from_rgb8(0x00, 0x99, 0xaa);
 
+// Start node (first on-curve point) - same green as corner points
+const START_NODE_INNER: Color = Color::from_rgb8(0x6a, 0xe7, 0x56);
+const START_NODE_OUTER: Color = Color::from_rgb8(0x20, 0x8e, 0x56);
+
 const SELECTED_POINT_INNER: Color = Color::from_rgb8(0xff, 0xee, 0x55);
 const SELECTED_POINT_OUTER: Color = Color::from_rgb8(0xff, 0xaa, 0x33);
 
@@ -360,6 +364,8 @@ pub mod point {
     pub const HYPER_OUTER: Color = super::HYPER_POINT_OUTER;
     pub const SELECTED_INNER: Color = super::SELECTED_POINT_INNER;
     pub const SELECTED_OUTER: Color = super::SELECTED_POINT_OUTER;
+    pub const START_NODE_INNER: Color = super::START_NODE_INNER;
+    pub const START_NODE_OUTER: Color = super::START_NODE_OUTER;
 }
 
 /// Colors for selection rectangle (marquee)
@@ -506,6 +512,11 @@ pub mod size {
     pub const HYPER_POINT_RADIUS: f64 = 4.0;
     /// Radius for hyperbezier on-curve points when selected
     pub const HYPER_POINT_SELECTED_RADIUS: f64 = 5.0;
+
+    /// Half-size for start node triangle
+    pub const START_NODE_HALF_SIZE: f64 = 5.5;
+    /// Half-size for start node triangle when selected
+    pub const START_NODE_SELECTED_HALF_SIZE: f64 = 6.5;
 
     /// Width of path strokes
     pub const PATH_STROKE_WIDTH: f64 = 1.0;

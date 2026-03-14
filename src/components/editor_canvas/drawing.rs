@@ -250,6 +250,11 @@ pub(crate) fn draw_paths_with_points(scene: &mut Scene, session: &EditSession, t
             }
         }
     }
+
+    // Third pass: draw interpolation error indicators
+    if !session.compat_errors.is_empty() {
+        draw_compat_errors(scene, session, transform);
+    }
 }
 
 /// Draw control handles for a cubic path
@@ -316,20 +321,46 @@ fn draw_points(
     session: &EditSession,
     transform: &Affine,
 ) {
-    for pt in cubic.points.iter() {
+    let points: Vec<_> = cubic.points.iter().collect();
+    let start_idx = if cubic.closed {
+        points.iter().position(|p| p.is_on_curve())
+    } else {
+        None
+    };
+
+    for (i, pt) in points.iter().enumerate() {
         let screen_pos = *transform * pt.point;
         let is_selected = session.selection.contains(&pt.id);
 
         match pt.typ {
             PointType::OnCurve { smooth } => {
                 if smooth {
-                    draw_smooth_point(scene, screen_pos, is_selected);
+                    draw_smooth_point(
+                        scene, screen_pos, is_selected,
+                    );
                 } else {
-                    draw_corner_point(scene, screen_pos, is_selected);
+                    draw_corner_point(
+                        scene, screen_pos, is_selected,
+                    );
+                }
+
+                // Draw start node arrow beside the point
+                if start_idx == Some(i) {
+                    let next_pt =
+                        next_point_pos(&points, i, cubic.closed);
+                    let next_screen = *transform * next_pt;
+                    draw_start_arrow(
+                        scene,
+                        screen_pos,
+                        next_screen,
+                        is_selected,
+                    );
                 }
             }
             PointType::OffCurve { .. } => {
-                draw_offcurve_point(scene, screen_pos, is_selected);
+                draw_offcurve_point(
+                    scene, screen_pos, is_selected,
+                );
             }
         }
     }
@@ -389,6 +420,92 @@ fn draw_corner_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
         screen_pos.y + half_size,
     );
     fill_color(scene, &inner_rect, inner_color);
+}
+
+/// Get the design-space position of the next point in a
+/// point list, wrapping for closed paths.
+fn next_point_pos(
+    points: &[&crate::path::PathPoint],
+    index: usize,
+    closed: bool,
+) -> Point {
+    if index + 1 < points.len() {
+        points[index + 1].point
+    } else if closed && !points.is_empty() {
+        points[0].point
+    } else {
+        // Fallback: offset right
+        points[index].point + kurbo::Vec2::new(1.0, 0.0)
+    }
+}
+
+/// Draw a small arrow beside the start point, pointing in
+/// the contour direction. The arrow is offset perpendicular
+/// to the contour direction so it sits next to the point
+/// shape rather than replacing it (like Glyphs.app).
+fn draw_start_arrow(
+    scene: &mut Scene,
+    screen_pos: Point,
+    next_screen: Point,
+    is_selected: bool,
+) {
+    use kurbo::BezPath;
+
+    let arrow_size = theme::size::START_NODE_HALF_SIZE;
+
+    let color = if is_selected {
+        theme::point::SELECTED_OUTER
+    } else {
+        theme::point::START_NODE_OUTER
+    };
+
+    // Direction toward the next point
+    let dx = next_screen.x - screen_pos.x;
+    let dy = next_screen.y - screen_pos.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len < 0.001 {
+        return;
+    }
+
+    // Unit vectors: forward and perpendicular
+    let fx = dx / len;
+    let fy = dy / len;
+    // Perpendicular (pointing "left" of the direction)
+    let px = -fy;
+    let py = fx;
+
+    // Offset the arrow center perpendicular to the contour,
+    // away from the point by ~8px
+    let offset = 8.0;
+    let center = Point::new(
+        screen_pos.x + px * offset,
+        screen_pos.y + py * offset,
+    );
+
+    // Triangle: tip points in contour direction
+    let tip = Point::new(
+        center.x + fx * arrow_size,
+        center.y + fy * arrow_size,
+    );
+    let base_left = Point::new(
+        center.x - fx * arrow_size * 0.5
+            + px * arrow_size * 0.5,
+        center.y - fy * arrow_size * 0.5
+            + py * arrow_size * 0.5,
+    );
+    let base_right = Point::new(
+        center.x - fx * arrow_size * 0.5
+            - px * arrow_size * 0.5,
+        center.y - fy * arrow_size * 0.5
+            - py * arrow_size * 0.5,
+    );
+
+    let mut tri = BezPath::new();
+    tri.move_to(tip);
+    tri.line_to(base_left);
+    tri.line_to(base_right);
+    tri.close_path();
+    fill_color(scene, &tri, color);
 }
 
 /// Draw an off-curve point as a small circle
@@ -505,20 +622,47 @@ fn draw_points_quadratic(
     session: &EditSession,
     transform: &Affine,
 ) {
-    for pt in quadratic.points.iter() {
+    let points: Vec<_> = quadratic.points.iter().collect();
+    let start_idx = if quadratic.closed {
+        points.iter().position(|p| p.is_on_curve())
+    } else {
+        None
+    };
+
+    for (i, pt) in points.iter().enumerate() {
         let screen_pos = *transform * pt.point;
         let is_selected = session.selection.contains(&pt.id);
 
         match pt.typ {
             PointType::OnCurve { smooth } => {
                 if smooth {
-                    draw_smooth_point(scene, screen_pos, is_selected);
+                    draw_smooth_point(
+                        scene, screen_pos, is_selected,
+                    );
                 } else {
-                    draw_corner_point(scene, screen_pos, is_selected);
+                    draw_corner_point(
+                        scene, screen_pos, is_selected,
+                    );
+                }
+
+                if start_idx == Some(i) {
+                    let next_pt = next_point_pos(
+                        &points,
+                        i,
+                        quadratic.closed,
+                    );
+                    draw_start_arrow(
+                        scene,
+                        screen_pos,
+                        *transform * next_pt,
+                        is_selected,
+                    );
                 }
             }
             PointType::OffCurve { .. } => {
-                draw_offcurve_point(scene, screen_pos, is_selected);
+                draw_offcurve_point(
+                    scene, screen_pos, is_selected,
+                );
             }
         }
     }
@@ -591,18 +735,201 @@ fn draw_points_hyper(
     session: &EditSession,
     transform: &Affine,
 ) {
-    for pt in hyper.points.iter() {
+    let points: Vec<_> = hyper.points.iter().collect();
+    let start_idx = if hyper.closed {
+        points.iter().position(|p| p.is_on_curve())
+    } else {
+        None
+    };
+
+    for (i, pt) in points.iter().enumerate() {
         let screen_pos = *transform * pt.point;
         let is_selected = session.selection.contains(&pt.id);
 
         match pt.typ {
             PointType::OnCurve { .. } => {
-                // All hyperbezier on-curve points use the hyper point style
-                draw_hyper_point(scene, screen_pos, is_selected);
+                draw_hyper_point(
+                    scene, screen_pos, is_selected,
+                );
+
+                if start_idx == Some(i) {
+                    let next_pt = next_point_pos(
+                        &points, i, hyper.closed,
+                    );
+                    draw_start_arrow(
+                        scene,
+                        screen_pos,
+                        *transform * next_pt,
+                        is_selected,
+                    );
+                }
             }
             PointType::OffCurve { .. } => {
-                draw_offcurve_point(scene, screen_pos, is_selected);
+                draw_offcurve_point(
+                    scene, screen_pos, is_selected,
+                );
             }
         }
     }
+}
+
+// ================================================================
+// INTERPOLATION ERROR INDICATORS
+// ================================================================
+
+/// Draw red rounded rects around contours that have
+/// interpolation compatibility errors, plus a summary badge.
+fn draw_compat_errors(
+    scene: &mut Scene,
+    session: &EditSession,
+    transform: &Affine,
+) {
+    use kurbo::Shape;
+    use masonry::vello::peniko;
+
+    let error_color =
+        peniko::Color::from_rgb8(0xff, 0x33, 0x33);
+    let error_stroke = Stroke::new(2.0);
+
+    // Collect contour indices that have errors
+    let mut error_contours =
+        std::collections::HashSet::new();
+    let mut has_global_error = false;
+
+    for err in &session.compat_errors {
+        match err.contour_index() {
+            Some(ci) => {
+                error_contours.insert(ci);
+            }
+            None => {
+                has_global_error = true;
+            }
+        }
+    }
+
+    for (ci, path) in session.paths.iter().enumerate() {
+        if !has_global_error
+            && !error_contours.contains(&ci)
+        {
+            continue;
+        }
+
+        let bezpath = path.to_bezpath();
+        let bbox = bezpath.bounding_box();
+        if bbox.width() < 0.001 && bbox.height() < 0.001
+        {
+            continue;
+        }
+
+        // Transform bbox corners to screen space
+        let padding = 12.0;
+        let screen_min =
+            *transform * Point::new(bbox.x0, bbox.y0);
+        let screen_max =
+            *transform * Point::new(bbox.x1, bbox.y1);
+        let screen_rect = kurbo::Rect::new(
+            screen_min.x.min(screen_max.x) - padding,
+            screen_min.y.min(screen_max.y) - padding,
+            screen_min.x.max(screen_max.x) + padding,
+            screen_min.y.max(screen_max.y) + padding,
+        );
+        let rounded = screen_rect.to_rounded_rect(padding);
+
+        let brush = Brush::Solid(error_color);
+        scene.stroke(
+            &error_stroke,
+            Affine::IDENTITY,
+            &brush,
+            None,
+            &rounded,
+        );
+    }
+
+    // Summary badge — build label text first to measure,
+    // then position above the bottom panels.
+    let count = session.compat_errors.len();
+
+    // Build per-error detail lines
+    let mut detail_lines: Vec<String> = session
+        .compat_errors
+        .iter()
+        .take(6)
+        .map(|e| e.description())
+        .collect();
+    if count > 6 {
+        detail_lines.push(format!(
+            "… and {} more",
+            count - 6,
+        ));
+    }
+
+    let label = format!(
+        "{count} interpolation error{}\n{}",
+        if count == 1 { "" } else { "s" },
+        detail_lines.join("\n"),
+    );
+
+    let mut font_cx = parley::FontContext::default();
+    let mut layout_cx = parley::LayoutContext::new();
+    let mut builder = layout_cx.ranged_builder(
+        &mut font_cx,
+        &label,
+        1.0,
+        false,
+    );
+    builder.push_default(
+        masonry::core::StyleProperty::FontSize(13.0),
+    );
+    builder.push_default(
+        masonry::core::StyleProperty::FontStack(
+            parley::FontStack::Single(
+                parley::FontFamily::Generic(
+                    parley::GenericFamily::SansSerif,
+                ),
+            ),
+        ),
+    );
+    builder.push_default(
+        masonry::core::StyleProperty::Brush(
+            masonry::core::BrushIndex(0),
+        ),
+    );
+    let mut layout = builder.build(&label);
+    layout.break_all_lines(None);
+
+    let text_w = layout.width() as f64;
+    let text_h = layout.height() as f64;
+    let pad = 6.0;
+    let x = 10.0;
+    // Position above bottom panels (~200px from bottom)
+    let y = 10.0 + 50.0;
+
+    // Red background pill
+    let bg_rect = kurbo::Rect::new(
+        x,
+        y,
+        x + text_w + pad * 2.0,
+        y + text_h + pad * 2.0,
+    )
+    .to_rounded_rect(4.0);
+    let bg_brush = Brush::Solid(error_color);
+    scene.fill(
+        peniko::Fill::NonZero,
+        Affine::IDENTITY,
+        &bg_brush,
+        None,
+        &bg_rect,
+    );
+
+    // White text
+    let text_color =
+        peniko::Color::from_rgb8(0xff, 0xff, 0xff);
+    let brushes = vec![Brush::Solid(text_color)];
+    masonry::core::render_text(
+        scene,
+        Affine::translate((x + pad, y + pad)),
+        &layout,
+        &brushes,
+        false,
+    );
 }

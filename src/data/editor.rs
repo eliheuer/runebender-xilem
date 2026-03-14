@@ -34,7 +34,59 @@ impl AppState {
         // Set workspace reference for text mode character mapping (Phase 5)
         session.workspace = Some(Arc::clone(&workspace_arc));
 
+        // Run interpolation compatibility check if in
+        // designspace mode
+        session.compat_errors = self
+            .other_masters_for_compat()
+            .map(|masters| {
+                crate::editing::compat::check_compat(
+                    glyph_name,
+                    &glyph,
+                    &masters,
+                )
+            })
+            .unwrap_or_default();
+
+        if !session.compat_errors.is_empty() {
+            tracing::warn!(
+                "Glyph '{}': {} interpolation error(s)",
+                glyph_name,
+                session.compat_errors.len(),
+            );
+            for err in &session.compat_errors {
+                tracing::warn!("  {}", err.description());
+            }
+        }
+
         Some(session)
+    }
+
+    /// Collect all masters except the active one for
+    /// compatibility checking. Returns None if not in
+    /// designspace mode.
+    fn other_masters_for_compat(
+        &self,
+    ) -> Option<Vec<(String, Arc<std::sync::RwLock<crate::model::workspace::Workspace>>)>>
+    {
+        let ds = self.designspace.as_ref()?;
+        let active = ds.active_master;
+        let masters: Vec<_> = ds
+            .masters
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != active)
+            .map(|(_, m)| {
+                (
+                    m.style_name.clone(),
+                    Arc::clone(&m.workspace),
+                )
+            })
+            .collect();
+        if masters.is_empty() {
+            None
+        } else {
+            Some(masters)
+        }
     }
 
     /// Open or focus an editor for a glyph
@@ -94,6 +146,10 @@ impl AppState {
             return;
         };
 
+        // Pre-compute compat errors before borrowing session
+        // mutably (avoids borrow conflict with self)
+        let compat_masters = self.other_masters_for_compat();
+
         // Update the editor session to use the new master's data
         if let Some(ref mut session) = self.editor_session {
             // Update workspace reference
@@ -125,6 +181,26 @@ impl AppState {
                     // Clear selection since points have new IDs
                     session.selection = crate::editing::Selection::new();
                     session.selected_component = None;
+
+                    // Re-run interpolation compatibility check
+                    session.compat_errors = compat_masters
+                        .as_ref()
+                        .map(|masters| {
+                            crate::editing::compat::check_compat(
+                                &glyph_name,
+                                glyph,
+                                masters,
+                            )
+                        })
+                        .unwrap_or_default();
+
+                    if !session.compat_errors.is_empty() {
+                        tracing::warn!(
+                            "Glyph '{}': {} interpolation error(s) after master switch",
+                            glyph_name,
+                            session.compat_errors.len(),
+                        );
+                    }
 
                     tracing::info!(
                         "Switched editor to master {}, reloaded glyph '{}'",
