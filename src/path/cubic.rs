@@ -129,20 +129,54 @@ impl CubicPath {
             contour_points.rotate_right(1);
         }
 
-        // Convert points back to workspace format
+        // Convert points back to workspace format.
+        // Determine Curve vs Line from the actual preceding point,
+        // not from the smooth flag (smooth is about tangent
+        // continuity, not segment type).
+        let len = contour_points.len();
         let points: Vec<ContourPoint> = contour_points
             .iter()
-            .map(|pt| {
+            .enumerate()
+            .map(|(i, pt)| {
                 let point_type = match pt.typ {
-                    PointType::OnCurve { smooth: true } => WsPointType::Curve,
-                    PointType::OnCurve { smooth: false } => WsPointType::Line,
-                    PointType::OffCurve { .. } => WsPointType::OffCurve,
+                    PointType::OffCurve { .. } => {
+                        WsPointType::OffCurve
+                    }
+                    PointType::OnCurve { .. } => {
+                        // Check if the preceding point is
+                        // off-curve. If so, this ends a curve
+                        // segment (Curve). Otherwise it ends a
+                        // line segment (Line).
+                        // For the first point of an open path,
+                        // use Move.
+                        if i == 0 && !self.closed {
+                            WsPointType::Move
+                        } else {
+                            let prev = if i > 0 {
+                                i - 1
+                            } else {
+                                len - 1
+                            };
+                            if contour_points[prev]
+                                .is_off_curve()
+                            {
+                                WsPointType::Curve
+                            } else {
+                                WsPointType::Line
+                            }
+                        }
+                    }
                 };
 
+                let smooth = matches!(
+                    pt.typ,
+                    PointType::OnCurve { smooth: true }
+                );
                 ContourPoint {
                     x: pt.point.x,
                     y: pt.point.y,
                     point_type,
+                    smooth,
                 }
             })
             .collect();
@@ -432,3 +466,4 @@ impl Iterator for SegmentIterator {
         None
     }
 }
+

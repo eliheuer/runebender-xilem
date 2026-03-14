@@ -10,6 +10,11 @@
 use masonry::vello::peniko::Color;
 
 // ============================================================================
+// STROKE SCALE — change this to 2.0 for thicker contour/handle/metric lines
+// ============================================================================
+const STROKE_SCALE: f64 = 1.5;
+
+// ============================================================================
 // BASE COLORS -- Generic colors for UI, a dark to light gradient by default
 // ============================================================================
 const BASE_A: Color = Color::from_rgb8(0x10, 0x10, 0x10);
@@ -97,7 +102,7 @@ const COMPONENT_SELECTED_FILL: Color = Color::from_rgb8(0x88, 0xBB, 0xFF); // Br
 // ============================================================================
 // METRICS GUIDES
 // ============================================================================
-const METRICS_GUIDE: Color = BASE_F;
+const METRICS_GUIDE: Color = GRID_CELL_SELECTED_OUTLINE;
 
 // ============================================================================
 // KERNING MODE HIGHLIGHTS
@@ -108,8 +113,8 @@ const KERN_PREVIOUS_GLYPH: Color = Color::from_rgb8(0xFF, 0xAA, 0x33);
 // ============================================================================
 // DESIGN GRID (unit grid overlay in editor, visible when zoomed in)
 // ============================================================================
-const DESIGN_GRID_FINE: Color = Color::from_rgba8(0x88, 0x88, 0x88, 0x28);
-const DESIGN_GRID_COARSE: Color = Color::from_rgba8(0x88, 0x88, 0x88, 0x38);
+const DESIGN_GRID_FINE: Color = Color::from_rgba8(0x88, 0x88, 0x88, 0x40);
+const DESIGN_GRID_COARSE: Color = Color::from_rgba8(0x88, 0x88, 0x88, 0x58);
 
 // ============================================================================
 // GRID
@@ -532,14 +537,14 @@ pub mod size {
     /// Half-size for start node triangle when selected
     pub const START_NODE_SELECTED_HALF_SIZE: f64 = 6.5;
 
-    /// Width of path strokes
-    pub const PATH_STROKE_WIDTH: f64 = 1.0;
+    /// Width of path strokes (scaled by STROKE_SCALE)
+    pub const PATH_STROKE_WIDTH: f64 = 1.0 * super::STROKE_SCALE;
 
-    /// Width of control point lines
-    pub const HANDLE_LINE_WIDTH: f64 = 1.0;
+    /// Width of control point lines (scaled by STROKE_SCALE)
+    pub const HANDLE_LINE_WIDTH: f64 = 1.0 * super::STROKE_SCALE;
 
-    /// Width of metric guide lines
-    pub const METRIC_LINE_WIDTH: f64 = 1.0;
+    /// Width of metric guide lines (scaled by STROKE_SCALE)
+    pub const METRIC_LINE_WIDTH: f64 = 1.0 * super::STROKE_SCALE;
 
     // ===== UI Layout =====
     /// Margin from screen edges for floating UI panels

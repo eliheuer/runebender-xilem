@@ -384,6 +384,16 @@ impl Widget for EditorWidget {
             }) => {
                 let local_pos =
                     ctx.local_position(state.position);
+                // If context menu is open, treat right-click
+                // the same as left-click (select item or
+                // dismiss). This handles macOS ctrl+click
+                // where ctrl stays held.
+                if self.context_menu.is_some() {
+                    self.handle_context_menu_click(
+                        ctx, local_pos,
+                    );
+                    return;
+                }
                 self.handle_right_click(ctx, local_pos);
             }
 

@@ -76,48 +76,34 @@ impl PathPoint {
     /// Convert from a workspace contour point (norad format)
     pub fn from_contour_point(pt: &workspace::ContourPoint) -> Self {
         let point = Point::new(pt.x, pt.y);
-        let typ = PointType::from_workspace_type(pt.point_type);
+        let typ = match pt.point_type {
+            WsPointType::OffCurve => {
+                PointType::OffCurve { auto: false }
+            }
+            WsPointType::Hyper => {
+                PointType::OnCurve { smooth: true }
+            }
+            WsPointType::HyperCorner => {
+                PointType::OnCurve { smooth: false }
+            }
+            _ => PointType::OnCurve { smooth: pt.smooth },
+        };
         Self::new(point, typ)
     }
 
-    /// Convert from a workspace contour point for quadratic paths
-    ///
-    /// QCurve points are treated as smooth on-curve points
-    pub fn from_contour_point_quadratic(pt: &workspace::ContourPoint) -> Self {
+    /// Convert from a workspace contour point for quadratic
+    /// paths
+    pub fn from_contour_point_quadratic(
+        pt: &workspace::ContourPoint,
+    ) -> Self {
         let point = Point::new(pt.x, pt.y);
-        let typ = PointType::from_workspace_type_quadratic(pt.point_type);
+        let typ = match pt.point_type {
+            WsPointType::OffCurve => {
+                PointType::OffCurve { auto: false }
+            }
+            _ => PointType::OnCurve { smooth: pt.smooth },
+        };
         Self::new(point, typ)
     }
 }
 
-impl PointType {
-    /// Convert from workspace point type (norad format)
-    pub fn from_workspace_type(pt_type: WsPointType) -> Self {
-        match pt_type {
-            WsPointType::Move | WsPointType::Line => PointType::OnCurve { smooth: false },
-            WsPointType::Curve => PointType::OnCurve { smooth: true },
-            WsPointType::OffCurve => PointType::OffCurve { auto: false },
-            WsPointType::QCurve => {
-                // For now, treat QCurve as a smooth on-curve point.
-                // Proper quadratic support would require more work.
-                PointType::OnCurve { smooth: true }
-            }
-            WsPointType::Hyper => PointType::OnCurve { smooth: true },
-            WsPointType::HyperCorner => PointType::OnCurve { smooth: false },
-        }
-    }
-
-    fn from_workspace_type_quadratic(pt_type: WsPointType) -> Self {
-        match pt_type {
-            WsPointType::Move | WsPointType::Line => PointType::OnCurve { smooth: false },
-            WsPointType::QCurve | WsPointType::Curve => {
-                // In quadratic paths, Curve points behave like QCurve.
-                PointType::OnCurve { smooth: true }
-            }
-            WsPointType::OffCurve => PointType::OffCurve { auto: false },
-            // Hyperbezier points shouldn't appear in quadratic paths
-            WsPointType::Hyper => PointType::OnCurve { smooth: true },
-            WsPointType::HyperCorner => PointType::OnCurve { smooth: false },
-        }
-    }
-}

@@ -231,5 +231,10 @@ fn build_outer_contour() -> Contour {
 
 /// Helper to create a ContourPoint
 fn contour_point(x: f64, y: f64, point_type: PointType) -> ContourPoint {
-    ContourPoint { x, y, point_type }
+    ContourPoint {
+        x,
+        y,
+        point_type,
+        smooth: false,
+    }
 }
