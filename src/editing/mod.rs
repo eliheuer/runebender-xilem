@@ -4,6 +4,7 @@
 //! Editing model and interaction
 
 pub mod background_image;
+pub mod compat;
 pub mod edit_types;
 pub mod hit_test;
 pub mod mouse;

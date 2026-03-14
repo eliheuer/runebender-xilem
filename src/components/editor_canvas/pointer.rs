@@ -1009,17 +1009,100 @@ impl EditorWidget {
     // CONTEXT MENU
     // ========================================================================
 
-    /// Handle a right-click: show context menu if over background image.
+    /// Handle a right-click: show context menu for on-curve
+    /// points or background images.
     pub(super) fn handle_right_click(
         &mut self,
         ctx: &mut EventCtx<'_>,
         local_pos: Point,
     ) {
-        use super::{ContextMenu, ContextMenuAction, ContextMenuItem};
+        use super::{
+            ContextMenu, ContextMenuAction, ContextMenuItem,
+        };
 
         // Close any existing menu first
         self.context_menu = None;
 
+        // Check if we right-clicked on an on-curve point,
+        // or if there's a selected on-curve point. Either
+        // the click target or the current selection works.
+        let target_entity = self
+            .session
+            .hit_test_point(local_pos, None)
+            .filter(|h| {
+                self.session.is_on_curve_point(h.entity)
+            })
+            .map(|h| h.entity)
+            .or_else(|| {
+                self.session.first_selected_on_curve()
+            });
+
+        if let Some(entity) = target_entity {
+            let mut items = vec![
+                ContextMenuItem {
+                    label: "Set Start Point".into(),
+                    action:
+                        ContextMenuAction::SetStartPoint(
+                            entity,
+                        ),
+                },
+                ContextMenuItem {
+                    label: "Reverse Contour".into(),
+                    action:
+                        ContextMenuAction::ReverseContour(
+                            entity,
+                        ),
+                },
+            ];
+
+            // Add contour reorder items when there are
+            // multiple contours
+            if let Some(ci) = self
+                .session
+                .contour_index_for_entity(entity)
+            {
+                let count = self.session.paths.len();
+                if count > 1 {
+                    if ci > 0 {
+                        items.push(ContextMenuItem {
+                            label: format!(
+                                "Move Contour Up \
+                                 ({ci} → {})",
+                                ci - 1,
+                            ),
+                            action:
+                                ContextMenuAction::MoveContourUp(
+                                    ci,
+                                ),
+                        });
+                    }
+                    if ci + 1 < count {
+                        items.push(ContextMenuItem {
+                            label: format!(
+                                "Move Contour Down \
+                                 ({ci} → {})",
+                                ci + 1,
+                            ),
+                            action:
+                                ContextMenuAction::MoveContourDown(
+                                    ci,
+                                ),
+                        });
+                    }
+                }
+            }
+
+            self.context_menu = Some(ContextMenu {
+                position: local_pos,
+                items,
+                hover_index: None,
+            });
+
+            ctx.request_render();
+            return;
+        }
+
+        // Check background image
         let design_pos =
             self.session.viewport.screen_to_design(local_pos);
 
@@ -1161,6 +1244,45 @@ impl EditorWidget {
                     bg.locked = false;
                     tracing::info!("Background image unlocked");
                 }
+            }
+            ContextMenuAction::SetStartPoint(entity) => {
+                self.session.set_start_point(entity);
+                self.record_edit(
+                    crate::editing::EditType::Normal,
+                );
+                self.session.sync_to_workspace();
+                tracing::info!("Set start point");
+            }
+            ContextMenuAction::ReverseContour(entity) => {
+                self.session
+                    .reverse_contour_containing(entity);
+                self.record_edit(
+                    crate::editing::EditType::Normal,
+                );
+                self.session.sync_to_workspace();
+                tracing::info!("Reversed contour direction");
+            }
+            ContextMenuAction::MoveContourUp(ci) => {
+                self.session.move_contour_up(ci);
+                self.record_edit(
+                    crate::editing::EditType::Normal,
+                );
+                self.session.sync_to_workspace();
+                tracing::info!(
+                    "Moved contour {ci} → {}",
+                    ci - 1,
+                );
+            }
+            ContextMenuAction::MoveContourDown(ci) => {
+                self.session.move_contour_down(ci);
+                self.record_edit(
+                    crate::editing::EditType::Normal,
+                );
+                self.session.sync_to_workspace();
+                tracing::info!(
+                    "Moved contour {ci} → {}",
+                    ci + 1,
+                );
             }
         }
 

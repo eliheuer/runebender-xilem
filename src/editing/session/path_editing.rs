@@ -67,6 +67,38 @@ impl EditSession {
         Self::enforce_smooth_constraints(paths_vec, &points_to_move);
     }
 
+    /// Move only the explicitly selected points, without dragging
+    /// adjacent off-curve handles along. This is the "independent
+    /// move" mode activated by holding Option/Alt during a drag.
+    pub fn move_selection_independent(
+        &mut self,
+        delta: kurbo::Vec2,
+    ) {
+        if self.selection.is_empty() {
+            return;
+        }
+
+        let paths_vec = Arc::make_mut(&mut self.paths);
+
+        // Move only the selected points — skip
+        // collect_adjacent_off_curve_points entirely
+        let points_to_move: std::collections::HashSet<_> =
+            self.selection.iter().copied().collect();
+
+        Self::apply_point_movement(
+            paths_vec,
+            &points_to_move,
+            delta,
+        );
+
+        // Still enforce smooth constraints so tangent handles
+        // stay collinear where applicable
+        Self::enforce_smooth_constraints(
+            paths_vec,
+            &points_to_move,
+        );
+    }
+
     /// Snap selected on-curve points to the nearest design grid line.
     ///
     /// Off-curve handles are shifted by the same amount as their
@@ -673,6 +705,175 @@ impl EditSession {
             right_group: self.glyph.right_group.clone(),
             mark_color: self.glyph.mark_color.clone(),
         }
+    }
+
+    /// Return the first selected on-curve point's entity ID,
+    /// if any.
+    pub fn first_selected_on_curve(
+        &self,
+    ) -> Option<crate::model::EntityId> {
+        for path in self.paths.iter() {
+            let points = match path {
+                Path::Cubic(c) => &c.points,
+                Path::Quadratic(q) => &q.points,
+                Path::Hyper(h) => &h.points,
+            };
+            for pt in points.iter() {
+                if pt.is_on_curve()
+                    && self.selection.contains(&pt.id)
+                {
+                    return Some(pt.id);
+                }
+            }
+        }
+        None
+    }
+
+    /// Check whether an entity ID refers to an on-curve point.
+    pub fn is_on_curve_point(
+        &self,
+        entity: crate::model::EntityId,
+    ) -> bool {
+        for path in self.paths.iter() {
+            let points = match path {
+                Path::Cubic(c) => &c.points,
+                Path::Quadratic(q) => &q.points,
+                Path::Hyper(h) => &h.points,
+            };
+            for pt in points.iter() {
+                if pt.id == entity {
+                    return pt.is_on_curve();
+                }
+            }
+        }
+        false
+    }
+
+    /// Set a specific on-curve point as the start node of its
+    /// contour by rotating the point list.
+    pub fn set_start_point(
+        &mut self,
+        entity: crate::model::EntityId,
+    ) {
+        let paths_vec = Arc::make_mut(&mut self.paths);
+
+        for path in paths_vec.iter_mut() {
+            let (points, closed) = match path {
+                Path::Cubic(c) => (&mut c.points, c.closed),
+                Path::Quadratic(q) => {
+                    (&mut q.points, q.closed)
+                }
+                Path::Hyper(h) => (&mut h.points, h.closed),
+            };
+
+            if !closed {
+                continue;
+            }
+
+            // Find the point index
+            let idx = points
+                .iter()
+                .position(|p| p.id == entity);
+            let idx = match idx {
+                Some(i) => i,
+                None => continue,
+            };
+
+            if idx == 0 {
+                return; // Already the start
+            }
+
+            // Rotate so this point is at index 0
+            let mut vec = points.to_vec();
+            vec.rotate_left(idx);
+            *points =
+                crate::path::point_list::PathPoints::from_vec(
+                    vec,
+                );
+            return;
+        }
+    }
+
+    /// Reverse the contour that contains the given point.
+    pub fn reverse_contour_containing(
+        &mut self,
+        entity: crate::model::EntityId,
+    ) {
+        let paths_vec = Arc::make_mut(&mut self.paths);
+
+        for path in paths_vec.iter_mut() {
+            let points = match path {
+                Path::Cubic(c) => &mut c.points,
+                Path::Quadratic(q) => &mut q.points,
+                Path::Hyper(h) => &mut h.points,
+            };
+
+            let contains = points
+                .iter()
+                .any(|p| p.id == entity);
+            if !contains {
+                continue;
+            }
+
+            let mut vec = points.to_vec();
+            vec.reverse();
+            *points =
+                crate::path::point_list::PathPoints::from_vec(
+                    vec,
+                );
+            return;
+        }
+    }
+
+    /// Find which contour (path index) contains the given entity.
+    /// Returns None if the entity is not found in any contour.
+    pub fn contour_index_for_entity(
+        &self,
+        entity: crate::model::EntityId,
+    ) -> Option<usize> {
+        for (i, path) in self.paths.iter().enumerate() {
+            let points = match path {
+                Path::Cubic(c) => &c.points,
+                Path::Quadratic(q) => &q.points,
+                Path::Hyper(h) => &h.points,
+            };
+            if points.iter().any(|p| p.id == entity) {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    /// Move a contour earlier in the contour list (toward
+    /// index 0). This changes the contour order which
+    /// affects interpolation compatibility.
+    pub fn move_contour_up(
+        &mut self,
+        contour_index: usize,
+    ) {
+        if contour_index == 0
+            || contour_index >= self.paths.len()
+        {
+            return;
+        }
+        let paths = Arc::make_mut(&mut self.paths);
+        paths.swap(contour_index, contour_index - 1);
+        self.selection = Selection::new();
+    }
+
+    /// Move a contour later in the contour list (toward the
+    /// end). This changes the contour order which affects
+    /// interpolation compatibility.
+    pub fn move_contour_down(
+        &mut self,
+        contour_index: usize,
+    ) {
+        if contour_index + 1 >= self.paths.len() {
+            return;
+        }
+        let paths = Arc::make_mut(&mut self.paths);
+        paths.swap(contour_index, contour_index + 1);
+        self.selection = Selection::new();
     }
 
     /// Apply a boolean operation (union, subtract, intersect, XOR)

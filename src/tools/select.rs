@@ -330,15 +330,24 @@ fn handle_dragging_points(event: MouseEvent, data: &mut EditSession, last_pos: &
     // Calculate delta in design space
     let delta = Vec2::new(current_pos.x - last_pos.x, current_pos.y - last_pos.y);
 
-    // Move selected points by raw mouse delta
-    data.move_selection(delta);
+    // Option/Alt: move on-curve points independently of their
+    // adjacent off-curve handles (Glyphs-style behavior)
+    if event.mods.alt {
+        data.move_selection_independent(delta);
+    } else {
+        data.move_selection(delta);
+    }
 
     // Find the first selected on-curve point and snap it to grid.
     // Apply the same snap correction to ALL selected points so they
     // move together.
     let snap_correction = find_snap_correction(data);
     if snap_correction.x.abs() > 1e-9 || snap_correction.y.abs() > 1e-9 {
-        data.move_selection(snap_correction);
+        if event.mods.alt {
+            data.move_selection_independent(snap_correction);
+        } else {
+            data.move_selection(snap_correction);
+        }
     }
 
     // Update last_pos: advance by the raw delta PLUS the snap

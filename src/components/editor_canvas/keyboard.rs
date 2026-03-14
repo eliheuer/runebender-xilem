@@ -1131,12 +1131,16 @@ impl EditorWidget {
     }
 
     /// Handle arrow keys for nudging
+    ///
+    /// When `alt` is true (Option key held), on-curve points move
+    /// independently of their adjacent off-curve handles.
     pub(super) fn handle_arrow_keys(
         &mut self,
         ctx: &mut EventCtx<'_>,
         key: &masonry::core::keyboard::Key,
         shift: bool,
         ctrl: bool,
+        alt: bool,
     ) {
         use masonry::core::keyboard::{Key, NamedKey};
 
@@ -1174,6 +1178,20 @@ impl EditorWidget {
             };
             let delta = kurbo::Vec2::new(dx * amount, dy * amount);
             self.session.move_selected_component(delta);
+        } else if alt {
+            // Option/Alt: nudge on-curve points independently
+            use crate::settings;
+            let amount = if ctrl {
+                settings::nudge::CMD
+            } else if shift {
+                settings::nudge::SHIFT
+            } else {
+                settings::nudge::BASE
+            };
+            let delta =
+                kurbo::Vec2::new(dx * amount, dy * amount);
+            self.session
+                .move_selection_independent(delta);
         } else {
             self.session.nudge_selection(dx, dy, shift, ctrl);
             self.session.snap_selection_to_grid();
