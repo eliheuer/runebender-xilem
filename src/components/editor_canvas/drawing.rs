@@ -12,6 +12,19 @@ use masonry::util::fill_color;
 use masonry::vello::Scene;
 use masonry::vello::peniko::Brush;
 
+/// Compute a scale multiplier for point/handle sizes based on
+/// zoom level. At normal zoom (≤4) returns 1.0; at very high
+/// zoom the points grow gradually so they remain easy to grab.
+fn point_scale(zoom: f64) -> f64 {
+    const THRESHOLD: f64 = 4.0;
+    if zoom <= THRESHOLD {
+        1.0
+    } else {
+        // Gentle log growth above the threshold
+        1.0 + (zoom / THRESHOLD).ln() * 0.5
+    }
+}
+
 /// Draw a design-space unit grid when zoomed in past the threshold.
 ///
 /// Two detail levels activate at different zoom thresholds:
@@ -50,6 +63,10 @@ pub(crate) fn draw_design_grid(scene: &mut Scene, session: &EditSession, canvas_
     let fine_brush = Brush::Solid(theme::design_grid::FINE);
     let coarse_brush = Brush::Solid(theme::design_grid::COARSE);
 
+    // Anchor the grid to the active sort's origin so that
+    // x=0 of the current sort always lands on a coarse line.
+    let origin_x = session.active_sort_x_offset;
+
     // Draw mid-level grid (fine=8, coarse=32)
     draw_grid_level(
         scene,
@@ -64,6 +81,7 @@ pub(crate) fn draw_design_grid(scene: &mut Scene, session: &EditSession, canvas_
         &coarse_stroke,
         &fine_brush,
         &coarse_brush,
+        origin_x,
     );
 
     // Draw close-level grid (fine=2, coarse=8)
@@ -81,6 +99,7 @@ pub(crate) fn draw_design_grid(scene: &mut Scene, session: &EditSession, canvas_
             &coarse_stroke,
             &fine_brush,
             &coarse_brush,
+            origin_x,
         );
     }
 }
@@ -103,16 +122,22 @@ fn draw_grid_level(
     coarse_stroke: &Stroke,
     fine_brush: &Brush,
     coarse_brush: &Brush,
+    origin_x: f64,
 ) {
-    let start_x = (min_x / spacing).floor() as i64;
-    let end_x = (max_x / spacing).ceil() as i64;
+    // Compute grid indices relative to the origin so that
+    // the origin always falls on a coarse grid line.
+    let start_x =
+        ((min_x - origin_x) / spacing).floor() as i64;
+    let end_x =
+        ((max_x - origin_x) / spacing).ceil() as i64;
     let start_y = (min_y / spacing).floor() as i64;
     let end_y = (max_y / spacing).ceil() as i64;
 
     // Vertical lines (constant x)
     for ix in start_x..=end_x {
-        let x = ix as f64 * spacing;
-        let is_coarse = coarse_n > 0 && (ix.unsigned_abs() % coarse_n as u64 == 0);
+        let x = origin_x + ix as f64 * spacing;
+        let is_coarse = coarse_n > 0
+            && (ix.unsigned_abs() % coarse_n as u64 == 0);
         let (stroke, brush) = if is_coarse {
             (coarse_stroke, coarse_brush)
         } else {
@@ -132,7 +157,8 @@ fn draw_grid_level(
     // Horizontal lines (constant y)
     for iy in start_y..=end_y {
         let y = iy as f64 * spacing;
-        let is_coarse = coarse_n > 0 && (iy.unsigned_abs() % coarse_n as u64 == 0);
+        let is_coarse = coarse_n > 0
+            && (iy.unsigned_abs() % coarse_n as u64 == 0);
         let (stroke, brush) = if is_coarse {
             (coarse_stroke, coarse_brush)
         } else {
@@ -321,6 +347,7 @@ fn draw_points(
     session: &EditSession,
     transform: &Affine,
 ) {
+    let scale = point_scale(session.viewport.zoom);
     let points: Vec<_> = cubic.points.iter().collect();
     let start_idx = if cubic.closed {
         points.iter().position(|p| p.is_on_curve())
@@ -337,10 +364,12 @@ fn draw_points(
                 if smooth {
                     draw_smooth_point(
                         scene, screen_pos, is_selected,
+                        scale,
                     );
                 } else {
                     draw_corner_point(
                         scene, screen_pos, is_selected,
+                        scale,
                     );
                 }
 
@@ -354,12 +383,14 @@ fn draw_points(
                         screen_pos,
                         next_screen,
                         is_selected,
+                        scale,
                     );
                 }
             }
             PointType::OffCurve { .. } => {
                 draw_offcurve_point(
                     scene, screen_pos, is_selected,
+                    scale,
                 );
             }
         }
@@ -367,12 +398,18 @@ fn draw_points(
 }
 
 /// Draw a smooth on-curve point as a circle
-fn draw_smooth_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
-    let radius = if is_selected {
-        theme::size::SMOOTH_POINT_SELECTED_RADIUS
-    } else {
-        theme::size::SMOOTH_POINT_RADIUS
-    };
+fn draw_smooth_point(
+    scene: &mut Scene,
+    screen_pos: Point,
+    is_selected: bool,
+    scale: f64,
+) {
+    let radius = scale
+        * if is_selected {
+            theme::size::SMOOTH_POINT_SELECTED_RADIUS
+        } else {
+            theme::size::SMOOTH_POINT_RADIUS
+        };
 
     let (inner_color, outer_color) = if is_selected {
         (theme::point::SELECTED_INNER, theme::point::SELECTED_OUTER)
@@ -381,7 +418,8 @@ fn draw_smooth_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
     };
 
     // Outer circle (border)
-    let outer_circle = Circle::new(screen_pos, radius + 1.0);
+    let outer_circle =
+        Circle::new(screen_pos, radius + 1.0 * scale);
     fill_color(scene, &outer_circle, outer_color);
 
     // Inner circle
@@ -390,12 +428,18 @@ fn draw_smooth_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
 }
 
 /// Draw a corner on-curve point as a square
-fn draw_corner_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
-    let half_size = if is_selected {
-        theme::size::CORNER_POINT_SELECTED_HALF_SIZE
-    } else {
-        theme::size::CORNER_POINT_HALF_SIZE
-    };
+fn draw_corner_point(
+    scene: &mut Scene,
+    screen_pos: Point,
+    is_selected: bool,
+    scale: f64,
+) {
+    let half_size = scale
+        * if is_selected {
+            theme::size::CORNER_POINT_SELECTED_HALF_SIZE
+        } else {
+            theme::size::CORNER_POINT_HALF_SIZE
+        };
 
     let (inner_color, outer_color) = if is_selected {
         (theme::point::SELECTED_INNER, theme::point::SELECTED_OUTER)
@@ -404,11 +448,12 @@ fn draw_corner_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
     };
 
     // Outer square (border)
+    let border = 1.0 * scale;
     let outer_rect = KurboRect::new(
-        screen_pos.x - half_size - 1.0,
-        screen_pos.y - half_size - 1.0,
-        screen_pos.x + half_size + 1.0,
-        screen_pos.y + half_size + 1.0,
+        screen_pos.x - half_size - border,
+        screen_pos.y - half_size - border,
+        screen_pos.x + half_size + border,
+        screen_pos.y + half_size + border,
     );
     fill_color(scene, &outer_rect, outer_color);
 
@@ -448,10 +493,11 @@ fn draw_start_arrow(
     screen_pos: Point,
     next_screen: Point,
     is_selected: bool,
+    scale: f64,
 ) {
     use kurbo::BezPath;
 
-    let arrow_size = theme::size::START_NODE_HALF_SIZE;
+    let arrow_size = theme::size::START_NODE_HALF_SIZE * scale;
 
     let color = if is_selected {
         theme::point::SELECTED_OUTER
@@ -476,7 +522,7 @@ fn draw_start_arrow(
 
     // Offset the arrow center perpendicular to the contour,
     // away from the point by ~8px
-    let offset = 8.0;
+    let offset = 8.0 * scale;
     let center = Point::new(
         screen_pos.x + px * offset,
         screen_pos.y + py * offset,
@@ -509,12 +555,18 @@ fn draw_start_arrow(
 }
 
 /// Draw an off-curve point as a small circle
-fn draw_offcurve_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
-    let radius = if is_selected {
-        theme::size::OFFCURVE_POINT_SELECTED_RADIUS
-    } else {
-        theme::size::OFFCURVE_POINT_RADIUS
-    };
+fn draw_offcurve_point(
+    scene: &mut Scene,
+    screen_pos: Point,
+    is_selected: bool,
+    scale: f64,
+) {
+    let radius = scale
+        * if is_selected {
+            theme::size::OFFCURVE_POINT_SELECTED_RADIUS
+        } else {
+            theme::size::OFFCURVE_POINT_RADIUS
+        };
 
     let (inner_color, outer_color) = if is_selected {
         (theme::point::SELECTED_INNER, theme::point::SELECTED_OUTER)
@@ -523,7 +575,8 @@ fn draw_offcurve_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) 
     };
 
     // Outer circle (border)
-    let outer_circle = Circle::new(screen_pos, radius + 1.0);
+    let outer_circle =
+        Circle::new(screen_pos, radius + 1.0 * scale);
     fill_color(scene, &outer_circle, outer_color);
 
     // Inner circle
@@ -532,12 +585,18 @@ fn draw_offcurve_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) 
 }
 
 /// Draw a hyperbezier on-curve point as a circle (cyan/teal color)
-fn draw_hyper_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
-    let radius = if is_selected {
-        theme::size::HYPER_POINT_SELECTED_RADIUS
-    } else {
-        theme::size::HYPER_POINT_RADIUS
-    };
+fn draw_hyper_point(
+    scene: &mut Scene,
+    screen_pos: Point,
+    is_selected: bool,
+    scale: f64,
+) {
+    let radius = scale
+        * if is_selected {
+            theme::size::HYPER_POINT_SELECTED_RADIUS
+        } else {
+            theme::size::HYPER_POINT_RADIUS
+        };
 
     let (inner_color, outer_color) = if is_selected {
         (theme::point::SELECTED_INNER, theme::point::SELECTED_OUTER)
@@ -546,7 +605,8 @@ fn draw_hyper_point(scene: &mut Scene, screen_pos: Point, is_selected: bool) {
     };
 
     // Outer circle (border)
-    let outer_circle = Circle::new(screen_pos, radius + 1.0);
+    let outer_circle =
+        Circle::new(screen_pos, radius + 1.0 * scale);
     fill_color(scene, &outer_circle, outer_color);
 
     // Inner circle
@@ -622,6 +682,7 @@ fn draw_points_quadratic(
     session: &EditSession,
     transform: &Affine,
 ) {
+    let scale = point_scale(session.viewport.zoom);
     let points: Vec<_> = quadratic.points.iter().collect();
     let start_idx = if quadratic.closed {
         points.iter().position(|p| p.is_on_curve())
@@ -638,10 +699,12 @@ fn draw_points_quadratic(
                 if smooth {
                     draw_smooth_point(
                         scene, screen_pos, is_selected,
+                        scale,
                     );
                 } else {
                     draw_corner_point(
                         scene, screen_pos, is_selected,
+                        scale,
                     );
                 }
 
@@ -656,12 +719,14 @@ fn draw_points_quadratic(
                         screen_pos,
                         *transform * next_pt,
                         is_selected,
+                        scale,
                     );
                 }
             }
             PointType::OffCurve { .. } => {
                 draw_offcurve_point(
                     scene, screen_pos, is_selected,
+                    scale,
                 );
             }
         }
@@ -735,6 +800,7 @@ fn draw_points_hyper(
     session: &EditSession,
     transform: &Affine,
 ) {
+    let scale = point_scale(session.viewport.zoom);
     let points: Vec<_> = hyper.points.iter().collect();
     let start_idx = if hyper.closed {
         points.iter().position(|p| p.is_on_curve())
@@ -750,6 +816,7 @@ fn draw_points_hyper(
             PointType::OnCurve { .. } => {
                 draw_hyper_point(
                     scene, screen_pos, is_selected,
+                    scale,
                 );
 
                 if start_idx == Some(i) {
@@ -761,12 +828,14 @@ fn draw_points_hyper(
                         screen_pos,
                         *transform * next_pt,
                         is_selected,
+                        scale,
                     );
                 }
             }
             PointType::OffCurve { .. } => {
                 draw_offcurve_point(
                     scene, screen_pos, is_selected,
+                    scale,
                 );
             }
         }

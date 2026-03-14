@@ -144,6 +144,11 @@ pub struct EditSession {
     /// glyph (empty when not editing a designspace or when
     /// all masters are compatible).
     pub compat_errors: Vec<crate::editing::compat::CompatError>,
+
+    /// Segment currently under cursor when option/alt key is held.
+    /// Used for visual hover feedback before option-click to convert
+    /// line → curve.
+    pub hovered_segment: Option<crate::path::SegmentInfo>,
 }
 
 impl EditSession {
@@ -191,6 +196,7 @@ impl EditSession {
             background_image: None,
             last_transform: None,
             compat_errors: Vec::new(),
+            hovered_segment: None,
         }
     }
 
@@ -251,6 +257,7 @@ impl EditSession {
             background_image: None,
             last_transform: None,
             compat_errors: Vec::new(),
+            hovered_segment: None,
         }
     }
 

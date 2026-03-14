@@ -4,12 +4,15 @@
 //! Select tool for selecting and moving points
 
 use crate::editing::{Drag, EditSession, EditType, MouseDelegate, MouseEvent, Selection};
+use crate::path::Segment;
 use crate::tools::{Tool, ToolId};
+use crate::theme;
 use kurbo::Affine;
 use kurbo::Point;
 use kurbo::Rect;
 use kurbo::Vec2;
 use masonry::vello::Scene;
+use masonry::vello::peniko::Brush;
 use tracing;
 
 // ===== SelectTool Struct =====
@@ -58,22 +61,83 @@ impl Tool for SelectTool {
         ToolId::Select
     }
 
-    fn paint(&mut self, scene: &mut Scene, _session: &EditSession, _transform: &Affine) {
+    fn paint(&mut self, scene: &mut Scene, session: &EditSession, _transform: &Affine) {
+        // Draw hovered segment highlight (option-click feedback)
+        if let Some(ref seg_info) = session.hovered_segment {
+            let stroke = kurbo::Stroke::new(theme::segment::HOVER_WIDTH);
+            let brush = Brush::Solid(theme::segment::HOVER);
+            let offset_x = session.active_sort_x_offset;
+
+            // Convert segment to screen-space BezPath for drawing
+            match &seg_info.segment {
+                Segment::Line(line) => {
+                    let p0 = session.viewport.to_screen(
+                        Point::new(line.p0.x + offset_x, line.p0.y),
+                    );
+                    let p1 = session.viewport.to_screen(
+                        Point::new(line.p1.x + offset_x, line.p1.y),
+                    );
+                    let screen_line = kurbo::Line::new(p0, p1);
+                    scene.stroke(
+                        &stroke, Affine::IDENTITY, &brush,
+                        None, &screen_line,
+                    );
+                }
+                Segment::Cubic(cubic) => {
+                    let p0 = session.viewport.to_screen(
+                        Point::new(cubic.p0.x + offset_x, cubic.p0.y),
+                    );
+                    let p1 = session.viewport.to_screen(
+                        Point::new(cubic.p1.x + offset_x, cubic.p1.y),
+                    );
+                    let p2 = session.viewport.to_screen(
+                        Point::new(cubic.p2.x + offset_x, cubic.p2.y),
+                    );
+                    let p3 = session.viewport.to_screen(
+                        Point::new(cubic.p3.x + offset_x, cubic.p3.y),
+                    );
+                    let mut path = kurbo::BezPath::new();
+                    path.move_to(p0);
+                    path.curve_to(p1, p2, p3);
+                    scene.stroke(
+                        &stroke, Affine::IDENTITY, &brush,
+                        None, &path,
+                    );
+                }
+                Segment::Quadratic(quad) => {
+                    let p0 = session.viewport.to_screen(
+                        Point::new(quad.p0.x + offset_x, quad.p0.y),
+                    );
+                    let p1 = session.viewport.to_screen(
+                        Point::new(quad.p1.x + offset_x, quad.p1.y),
+                    );
+                    let p2 = session.viewport.to_screen(
+                        Point::new(quad.p2.x + offset_x, quad.p2.y),
+                    );
+                    let mut path = kurbo::BezPath::new();
+                    path.move_to(p0);
+                    path.quad_to(p1, p2);
+                    scene.stroke(
+                        &stroke, Affine::IDENTITY, &brush,
+                        None, &path,
+                    );
+                }
+            }
+        }
+
         // Draw selection rectangle if in marquee mode
         let State::MarqueeSelect { rect, .. } = &self.state else {
             return;
         };
 
         use masonry::util::fill_color;
-        use masonry::vello::peniko::Brush;
 
         // Fill the selection rectangle with semi-transparent orange
-        fill_color(scene, rect, crate::theme::selection::RECT_FILL);
+        fill_color(scene, rect, theme::selection::RECT_FILL);
 
         // Stroke the selection rectangle with dashed bright orange
-        // Create a dashed stroke pattern: 4px dash, 4px gap
         let stroke = kurbo::Stroke::new(1.5).with_dashes(0.0, [4.0, 4.0]);
-        let brush = Brush::Solid(crate::theme::selection::RECT_STROKE);
+        let brush = Brush::Solid(theme::selection::RECT_STROKE);
         scene.stroke(&stroke, Affine::IDENTITY, &brush, None, rect);
     }
 
@@ -186,6 +250,21 @@ impl MouseDelegate for SelectTool {
 
         // Return to ready state
         self.state = State::Ready;
+    }
+
+    fn mouse_moved(&mut self, event: MouseEvent, data: &mut EditSession) {
+        // When option/alt is held, highlight the segment under the
+        // cursor to show it can be converted (line → curve)
+        if event.mods.alt {
+            if let Some((seg_info, _t)) =
+                data.hit_test_segments(event.pos, 10.0)
+            {
+                data.hovered_segment = Some(seg_info);
+                return;
+            }
+        }
+        // Clear hover when alt is released or cursor moves away
+        data.hovered_segment = None;
     }
 
     fn cancel(&mut self, data: &mut EditSession) {

@@ -147,6 +147,11 @@ const SELECTED_POINT_INNER: Color = Color::from_rgb8(0xff, 0xee, 0x55);
 const SELECTED_POINT_OUTER: Color = Color::from_rgb8(0xff, 0xaa, 0x33);
 
 // ============================================================================
+// SEGMENT HOVER (option-click to convert line → curve)
+// ============================================================================
+const SEGMENT_HOVER: Color = Color::from_rgb8(0xff, 0xaa, 0x33);
+
+// ============================================================================
 // SELECTION RECTANGLE (Marquee)
 // ============================================================================
 const SELECTION_RECT_FILL: Color = Color::from_rgba8(0xff, 0xaa, 0x33, 0x20);
@@ -420,6 +425,15 @@ pub mod measure {
     use super::Color;
     /// Text color for measurement labels
     pub const TEXT: Color = super::MEASURE_TEXT;
+}
+
+/// Segment hover highlight (option-click to convert line → curve)
+pub mod segment {
+    use super::Color;
+    /// Highlight color for hovered segment
+    pub const HOVER: Color = super::SEGMENT_HOVER;
+    /// Stroke width for hovered segment highlight
+    pub const HOVER_WIDTH: f64 = 3.0;
 }
 
 /// Tool preview styles (for consistent visual feedback across tools)
