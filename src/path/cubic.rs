@@ -371,11 +371,18 @@ impl Iterator for SegmentIterator {
             let point = self.points[self.index].point;
             let point_idx = self.index;
 
-            return if is_on_curve {
-                self.next_line_segment_at(point_idx, point)
-            } else {
+            if is_on_curve {
+                return self.next_line_segment_at(point_idx, point);
+            } else if let Some(seg) =
                 self.next_cubic_segment_at(point_idx, point)
-            };
+            {
+                return Some(seg);
+            } else {
+                // Not enough points for a cubic — trailing
+                // off-curves are part of the closing segment.
+                // Skip past them so the closing handler runs.
+                self.index = self.points.len();
+            }
         }
 
         // Emit the closing segment for closed paths
