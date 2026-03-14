@@ -1085,15 +1085,29 @@ impl EditorWidget {
         // Check if we right-clicked on an on-curve point,
         // or if there's a selected on-curve point. Either
         // the click target or the current selection works.
-        let target_entity = self
+        let hit = self
             .session
-            .hit_test_point(local_pos, None)
+            .hit_test_point(local_pos, None);
+        tracing::info!(
+            "Right-click at ({:.0}, {:.0}): hit={:?}, \
+             selection_count={}",
+            local_pos.x,
+            local_pos.y,
+            hit.as_ref().map(|h| h.entity),
+            self.session.selection.len(),
+        );
+        let target_entity = hit
             .filter(|h| {
                 self.session.is_on_curve_point(h.entity)
             })
             .map(|h| h.entity)
             .or_else(|| {
-                self.session.first_selected_on_curve()
+                let sel = self.session.first_selected_on_curve();
+                tracing::info!(
+                    "  Fallback to selected on-curve: {:?}",
+                    sel,
+                );
+                sel
             });
 
         if let Some(entity) = target_entity {
@@ -1219,8 +1233,9 @@ impl EditorWidget {
                 && local_pos.y >= menu_y
                 && local_pos.y <= menu_y + total_h
             {
-                let idx = ((local_pos.y - menu_y - pad) / item_h)
-                    .floor() as usize;
+                let raw_idx =
+                    (local_pos.y - menu_y - pad) / item_h;
+                let idx = raw_idx.floor() as usize;
                 if idx < menu.items.len() {
                     let action = menu.items[idx].action;
                     self.context_menu = None;

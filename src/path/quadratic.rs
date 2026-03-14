@@ -130,20 +130,47 @@ impl QuadraticPath {
             contour_points.rotate_right(1);
         }
 
-        // Convert points back to workspace format
+        // Convert points back to workspace format.
+        // Determine QCurve vs Line from the preceding point,
+        // not from the smooth flag.
+        let len = contour_points.len();
         let points: Vec<ContourPoint> = contour_points
             .iter()
-            .map(|pt| {
+            .enumerate()
+            .map(|(i, pt)| {
                 let point_type = match pt.typ {
-                    PointType::OnCurve { smooth: true } => WsPointType::QCurve,
-                    PointType::OnCurve { smooth: false } => WsPointType::Line,
-                    PointType::OffCurve { .. } => WsPointType::OffCurve,
+                    PointType::OffCurve { .. } => {
+                        WsPointType::OffCurve
+                    }
+                    PointType::OnCurve { .. } => {
+                        if i == 0 && !self.closed {
+                            WsPointType::Move
+                        } else {
+                            let prev = if i > 0 {
+                                i - 1
+                            } else {
+                                len - 1
+                            };
+                            if contour_points[prev]
+                                .is_off_curve()
+                            {
+                                WsPointType::QCurve
+                            } else {
+                                WsPointType::Line
+                            }
+                        }
+                    }
                 };
 
+                let smooth = matches!(
+                    pt.typ,
+                    PointType::OnCurve { smooth: true }
+                );
                 ContourPoint {
                     x: pt.point.x,
                     y: pt.point.y,
                     point_type,
+                    smooth,
                 }
             })
             .collect();

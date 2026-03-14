@@ -53,6 +53,8 @@ pub struct ContourPoint {
     pub x: f64,
     pub y: f64,
     pub point_type: PointType,
+    /// UFO smooth attribute — tangent continuity
+    pub smooth: bool,
 }
 
 /// Point type classification
@@ -349,6 +351,7 @@ impl Workspace {
         ContourPoint {
             x: pt.x,
             y: pt.y,
+            smooth: pt.smooth,
             point_type: if is_hyperbezier {
                 // In hyperbezier contours:
                 // - type="curve" -> smooth hyperbezier point
@@ -572,10 +575,10 @@ impl Workspace {
             x,
             y,
             Self::to_norad_point_type(pt.point_type),
-            false, // smooth - don't set for hyperbeziers
-            None,  // name
-            None,  // identifier
-            None,  // lib (plist dictionary)
+            pt.smooth,
+            None, // name
+            None, // identifier
+            None, // lib (plist dictionary)
         )
     }
 

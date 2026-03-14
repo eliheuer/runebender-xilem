@@ -346,6 +346,7 @@ impl HyperPath {
                 x: path_point.point.x,
                 y: path_point.point.y,
                 point_type,
+                smooth: false,
             });
         }
 
