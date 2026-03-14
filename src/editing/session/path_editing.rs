@@ -1019,11 +1019,35 @@ impl EditSession {
             }
         };
 
+        // Collect original on-curve point types so we can
+        // restore them on output points that didn't move.
+        let original_types: Vec<(Point, crate::path::PointType)> =
+            self.paths
+                .iter()
+                .flat_map(|p| match p {
+                    Path::Cubic(c) => c.points().iter().cloned()
+                        .collect::<Vec<_>>(),
+                    Path::Quadratic(q) => q.points().iter()
+                        .cloned().collect::<Vec<_>>(),
+                    Path::Hyper(h) => h.points().iter()
+                        .cloned().collect::<Vec<_>>(),
+                })
+                .filter(|pt| pt.is_on_curve())
+                .map(|pt| (pt.point, pt.typ))
+                .collect();
+
         // Convert result contours back to our Path type
         let new_paths: Vec<Path> = result
             .contours()
             .map(|contour| {
-                Path::Cubic(bezpath_to_cubic(&contour.path))
+                let mut cubic = bezpath_to_cubic(&contour.path);
+                // Restore original point types for points that
+                // match an input position (within tolerance).
+                restore_original_point_types(
+                    &mut cubic,
+                    &original_types,
+                );
+                Path::Cubic(cubic)
             })
             .collect();
 
@@ -1869,6 +1893,39 @@ impl EditSession {
         } else {
             // Handle wrap-around for closed paths
             total_len - start_index - 1 + end_index
+        }
+    }
+}
+
+/// Restore original point types on a CubicPath after a boolean op.
+///
+/// Matches output on-curve points to input points by position.
+/// Points that match an original position get their original type
+/// restored; new points (intersections) keep the type assigned by
+/// `bezpath_to_cubic`.
+fn restore_original_point_types(
+    cubic: &mut crate::path::CubicPath,
+    originals: &[(Point, crate::path::PointType)],
+) {
+    // Position tolerance — points within this distance are
+    // considered the same.
+    const TOLERANCE: f64 = 0.5;
+    let tol_sq = TOLERANCE * TOLERANCE;
+
+    let points = cubic.points.make_mut();
+    for pt in points.iter_mut() {
+        if !pt.is_on_curve() {
+            continue;
+        }
+        // Find closest original point
+        if let Some((_, orig_typ)) = originals.iter().find(
+            |(orig_pos, _)| {
+                let dx = pt.point.x - orig_pos.x;
+                let dy = pt.point.y - orig_pos.y;
+                dx * dx + dy * dy < tol_sq
+            },
+        ) {
+            pt.typ = *orig_typ;
         }
     }
 }

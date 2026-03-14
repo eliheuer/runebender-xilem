@@ -780,5 +780,53 @@ pub(crate) fn bezpath_to_cubic(
         points.rotate_left(1);
     }
 
+    // Post-process: determine smoothness from neighbor types.
+    // An on-curve point is smooth only if both adjacent points
+    // are off-curve (i.e., it sits between two curve segments).
+    fix_on_curve_smoothness(&mut points, has_close);
+
     CubicPath::new(PathPoints::from_vec(points), has_close)
+}
+
+/// Set `smooth` on each on-curve point based on its neighbors.
+///
+/// A point is smooth when it has off-curve handles on both sides.
+/// If either neighbor is on-curve (line junction) it is a corner.
+fn fix_on_curve_smoothness(
+    points: &mut [PathPoint],
+    closed: bool,
+) {
+    let len = points.len();
+    if len == 0 {
+        return;
+    }
+
+    for i in 0..len {
+        if !points[i].is_on_curve() {
+            continue;
+        }
+
+        let prev_idx = if i > 0 {
+            Some(i - 1)
+        } else if closed {
+            Some(len - 1)
+        } else {
+            None
+        };
+        let next_idx = if i + 1 < len {
+            Some(i + 1)
+        } else if closed {
+            Some(0)
+        } else {
+            None
+        };
+
+        let prev_off = prev_idx
+            .is_some_and(|j| points[j].is_off_curve());
+        let next_off = next_idx
+            .is_some_and(|j| points[j].is_off_curve());
+        let smooth = prev_off && next_off;
+
+        points[i].typ = PointType::OnCurve { smooth };
+    }
 }
