@@ -682,6 +682,81 @@ impl EditSession {
         }
     }
 
+    /// Convert a line segment to a cubic curve by inserting two
+    /// off-curve control points at 1/3 and 2/3 along the line.
+    ///
+    /// This is the "option-click on segment" operation from Glyphs.
+    /// The resulting curve initially follows the same straight line
+    /// but the user can then drag the new handles to shape it.
+    ///
+    /// Returns true if the conversion succeeded.
+    pub fn convert_line_to_curve(
+        &mut self,
+        segment_info: &crate::path::SegmentInfo,
+    ) -> bool {
+        use crate::model::EntityId;
+        use crate::path::{PathPoint, PointType, Segment};
+
+        // Only convert line segments
+        let Segment::Line(line) = segment_info.segment else {
+            return false;
+        };
+
+        let paths_vec = Arc::make_mut(&mut self.paths);
+        let path = match paths_vec.get_mut(segment_info.path_index) {
+            Some(p) => p,
+            None => return false,
+        };
+        let points = match Self::get_path_points_mut(path) {
+            Some(p) => p,
+            None => return false,
+        };
+
+        // Place off-curve handles at 1/3 and 2/3 along the line
+        let p0 = line.p0;
+        let p1 = line.p1;
+        let ctrl1 = Point::new(
+            p0.x + (p1.x - p0.x) / 3.0,
+            p0.y + (p1.y - p0.y) / 3.0,
+        );
+        let ctrl2 = Point::new(
+            p0.x + (p1.x - p0.x) * 2.0 / 3.0,
+            p0.y + (p1.y - p0.y) * 2.0 / 3.0,
+        );
+
+        let ctrl1_pt = PathPoint {
+            id: EntityId::next(),
+            point: ctrl1,
+            typ: PointType::OffCurve { auto: false },
+        };
+        let ctrl2_pt = PathPoint {
+            id: EntityId::next(),
+            point: ctrl2,
+            typ: PointType::OffCurve { auto: false },
+        };
+
+        // Select the two new off-curve points for immediate editing
+        self.selection = Selection::new();
+        self.selection.insert(ctrl1_pt.id);
+        self.selection.insert(ctrl2_pt.id);
+
+        // Insert the two off-curve points between start and end.
+        // For normal segments (end > start), insert before end_index.
+        // For the closing segment (end <= start, wraps around),
+        // insert after start_index.
+        let insert_idx = if segment_info.end_index > segment_info.start_index {
+            segment_info.end_index
+        } else {
+            // Closing segment: insert after start_index
+            segment_info.start_index + 1
+        };
+        // Insert in reverse order so indices stay correct
+        points.insert(insert_idx, ctrl2_pt);
+        points.insert(insert_idx, ctrl1_pt);
+
+        true
+    }
+
     /// Convert the current editing state back to a Glyph
     ///
     /// This creates a new Glyph with the edited paths converted back
@@ -1505,11 +1580,22 @@ impl EditSession {
     }
 
     /// Retain a path after deletion (remove selected points)
+    ///
+    /// For cubic paths, when an off-curve point is deleted its
+    /// partner off-curve in the same cubic segment is also removed
+    /// so the segment becomes a clean line instead of leaving a
+    /// malformed single-handle cubic.
     fn retain_path_after_deletion(path: &mut Path, selection: &Selection) -> bool {
         match path {
             Path::Cubic(cubic) => {
                 let points = cubic.points.make_mut();
-                points.retain(|point| !selection.contains(&point.id));
+                // Collect partner off-curve IDs before mutating
+                let extra_ids =
+                    Self::partner_offcurve_ids(points, selection);
+                points.retain(|point| {
+                    !selection.contains(&point.id)
+                        && !extra_ids.contains(&point.id)
+                });
                 points.len() >= 2
             }
             Path::Quadratic(quadratic) => {
@@ -1525,6 +1611,54 @@ impl EditSession {
                 len >= 2
             }
         }
+    }
+
+    /// For each selected off-curve point, find its partner off-curve
+    /// in the same cubic segment so both can be removed together.
+    ///
+    /// In a cubic path, off-curve points come in pairs between
+    /// on-curve points. Deleting one without the other leaves a
+    /// malformed segment with a single handle drawn to both
+    /// adjacent on-curve points.
+    fn partner_offcurve_ids(
+        points: &[crate::path::PathPoint],
+        selection: &Selection,
+    ) -> std::collections::HashSet<crate::model::EntityId> {
+        use crate::path::PointType;
+        let mut partners = std::collections::HashSet::new();
+
+        for (i, pt) in points.iter().enumerate() {
+            // Only care about selected off-curve points
+            if !selection.contains(&pt.id) {
+                continue;
+            }
+            if !matches!(pt.typ, PointType::OffCurve { .. }) {
+                continue;
+            }
+
+            // Look for the adjacent off-curve in the same segment.
+            // In a well-formed cubic the pair is either (i-1, i) or
+            // (i, i+1) where both are off-curve.
+            let len = points.len();
+            let prev = if i > 0 { i - 1 } else { len - 1 };
+            let next = if i + 1 < len { i + 1 } else { 0 };
+
+            if points[next].is_off_curve() {
+                partners.insert(points[next].id);
+            } else if points[prev].is_off_curve() {
+                partners.insert(points[prev].id);
+            }
+        }
+
+        // Don't mark a point that is *itself* already selected
+        // (avoid double-counting)
+        for pt in points {
+            if selection.contains(&pt.id) {
+                partners.remove(&pt.id);
+            }
+        }
+
+        partners
     }
 
     /// Toggle point types in a path

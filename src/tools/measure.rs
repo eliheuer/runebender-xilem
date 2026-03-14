@@ -73,15 +73,20 @@ impl MouseDelegate for MeasureTool {
 
     fn left_drag_changed(
         &mut self,
-        _event: MouseEvent,
+        event: MouseEvent,
         drag: crate::editing::Drag,
         _data: &mut EditSession,
     ) {
         if self.dragging
             && let Some(start) = self.drag_start
         {
-            // TODO: Add shift-key axis locking support when we have modifier key state
-            self.line = Some(Line::new(start, drag.current));
+            let end = if event.mods.shift {
+                // Lock to horizontal or vertical axis
+                constrain_to_axis(start, drag.current)
+            } else {
+                drag.current
+            };
+            self.line = Some(Line::new(start, end));
         }
     }
 
@@ -160,40 +165,35 @@ impl MeasureTool {
         const T_SCALE: f64 = (1u64 << 63) as f64;
         let mut intersections = vec![0, T_SCALE as u64];
 
-        // Find all intersections with path segments
-        for path in session.paths.iter() {
-            match path {
-                crate::path::Path::Cubic(cubic) => {
-                    for seg_info in cubic.iter_segments() {
-                        // Use intersection function from knife tool
-                        let hits = crate::tools::knife::intersect_line_segment(
-                            design_line,
-                            &seg_info.segment,
-                        );
-                        for (_seg_t, line_t) in hits {
-                            let t_fixed = (line_t.clamp(0.0, 1.0) * T_SCALE) as u64;
-                            intersections.push(t_fixed);
-                        }
-                    }
-                }
-                crate::path::Path::Hyper(hyper) => {
-                    for seg_info in hyper.iter_segments() {
-                        // Use intersection function from knife tool
-                        let hits = crate::tools::knife::intersect_line_segment(
-                            design_line,
-                            &seg_info.segment,
-                        );
-                        for (_seg_t, line_t) in hits {
-                            let t_fixed = (line_t.clamp(0.0, 1.0) * T_SCALE) as u64;
-                            intersections.push(t_fixed);
-                        }
-                    }
-                }
-                crate::path::Path::Quadratic(_) => {
-                    // Quadratic paths not yet supported for measurement
-                }
-            }
-        }
+        // Active sort: shift the measurement line into
+        // sort-local coordinates (paths are stored without
+        // the x_offset)
+        let offset = session.active_sort_x_offset;
+        let local_line = Line::new(
+            Point::new(
+                design_line.p0.x - offset,
+                design_line.p0.y,
+            ),
+            Point::new(
+                design_line.p1.x - offset,
+                design_line.p1.y,
+            ),
+        );
+
+        // Find all intersections with active sort paths
+        Self::intersect_session_paths(
+            &local_line,
+            session,
+            &mut intersections,
+        );
+
+        // Also intersect with inactive sort bezpaths
+        // from the text buffer
+        self.intersect_inactive_sorts(
+            &design_line,
+            session,
+            &mut intersections,
+        );
 
         intersections.sort_unstable();
 
@@ -231,9 +231,189 @@ impl MeasureTool {
 
         result
     }
+
+    /// Intersect a design-space line with the active
+    /// session's editable paths.
+    fn intersect_session_paths(
+        line: &Line,
+        session: &EditSession,
+        intersections: &mut Vec<u64>,
+    ) {
+        const T_SCALE: f64 = (1u64 << 63) as f64;
+
+        for path in session.paths.iter() {
+            match path {
+                crate::path::Path::Cubic(cubic) => {
+                    for seg in cubic.iter_segments() {
+                        let hits =
+                            crate::tools::knife::intersect_line_segment(
+                                *line,
+                                &seg.segment,
+                            );
+                        for (_, lt) in hits {
+                            intersections.push(
+                                (lt.clamp(0.0, 1.0) * T_SCALE)
+                                    as u64,
+                            );
+                        }
+                    }
+                }
+                crate::path::Path::Hyper(hyper) => {
+                    for seg in hyper.iter_segments() {
+                        let hits =
+                            crate::tools::knife::intersect_line_segment(
+                                *line,
+                                &seg.segment,
+                            );
+                        for (_, lt) in hits {
+                            intersections.push(
+                                (lt.clamp(0.0, 1.0) * T_SCALE)
+                                    as u64,
+                            );
+                        }
+                    }
+                }
+                crate::path::Path::Quadratic(_) => {}
+            }
+        }
+    }
+
+    /// Intersect the measurement line with all inactive
+    /// sorts in the text buffer. Each sort's glyph is
+    /// loaded from the workspace and offset by its
+    /// laid-out x position.
+    fn intersect_inactive_sorts(
+        &self,
+        design_line: &Line,
+        session: &EditSession,
+        intersections: &mut Vec<u64>,
+    ) {
+        use crate::model::read_workspace;
+        use crate::path::Path as EditorPath;
+
+        const T_SCALE: f64 = (1u64 << 63) as f64;
+
+        let buffer = match &session.text_buffer {
+            Some(b) => b,
+            None => return,
+        };
+        let workspace_lock = match &session.workspace {
+            Some(ws) => ws,
+            None => return,
+        };
+
+        // Lay out sorts to compute x offsets (simplified
+        // LTR-only layout matching the render code)
+        let workspace = read_workspace(workspace_lock);
+        let mut x_offset = 0.0;
+        let mut prev_glyph_name: Option<String> = None;
+        let mut prev_right_group: Option<String> = None;
+
+        for sort in buffer.iter() {
+            match &sort.kind {
+                crate::sort::SortKind::Glyph {
+                    name,
+                    advance_width,
+                    ..
+                } => {
+                    // Apply kerning
+                    if let Some(prev) = &prev_glyph_name {
+                        let curr_group = workspace
+                            .get_glyph(name)
+                            .and_then(|g| {
+                                g.left_group.as_deref()
+                            });
+                        let kv =
+                            crate::model::kerning::lookup_kerning(
+                                &workspace.kerning,
+                                &workspace.groups,
+                                prev,
+                                prev_right_group.as_deref(),
+                                name,
+                                curr_group,
+                            );
+                        x_offset += kv;
+                    }
+
+                    // Skip the active sort (already handled
+                    // via session.paths)
+                    if !sort.is_active
+                        && let Some(glyph) =
+                            workspace.glyphs.get(name)
+                    {
+                            // Shift the measure line into this
+                            // sort's local space
+                            let local_line = Line::new(
+                                Point::new(
+                                    design_line.p0.x
+                                        - x_offset,
+                                    design_line.p0.y,
+                                ),
+                                Point::new(
+                                    design_line.p1.x
+                                        - x_offset,
+                                    design_line.p1.y,
+                                ),
+                            );
+
+                            for contour in &glyph.contours {
+                                let path =
+                                    EditorPath::from_contour(
+                                        contour,
+                                    );
+                                if let EditorPath::Cubic(c) =
+                                    &path
+                                {
+                                    for seg in
+                                        c.iter_segments()
+                                    {
+                                        let hits = crate::tools::knife::intersect_line_segment(
+                                            local_line,
+                                            &seg.segment,
+                                        );
+                                        for (_, lt) in hits
+                                        {
+                                            intersections.push(
+                                                (lt.clamp(0.0, 1.0) * T_SCALE) as u64,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                    }
+
+                    x_offset += advance_width;
+                    prev_right_group = workspace
+                        .get_glyph(name)
+                        .and_then(|g| g.right_group.clone());
+                    prev_glyph_name = Some(name.clone());
+                }
+                crate::sort::SortKind::LineBreak => {
+                    x_offset = 0.0;
+                    prev_glyph_name = None;
+                    prev_right_group = None;
+                }
+            }
+        }
+    }
 }
 
 // ===== Standalone Helper Functions =====
+
+/// Constrain a point to the horizontal or vertical axis
+/// relative to an origin, whichever is closer to the actual
+/// direction.
+fn constrain_to_axis(origin: Point, point: Point) -> Point {
+    let dx = (point.x - origin.x).abs();
+    let dy = (point.y - origin.y).abs();
+    if dx >= dy {
+        // Horizontal lock
+        Point::new(point.x, origin.y)
+    } else {
+        // Vertical lock
+        Point::new(origin.x, point.y)
+    }
+}
 
 /// Convert atan2 to angle in degrees
 fn atan_to_angle(atan: f64) -> f64 {

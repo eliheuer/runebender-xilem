@@ -28,6 +28,21 @@ impl AppState {
         let glyph = Arc::make_mut(&mut session.glyph);
         glyph.width = width;
 
+        // Update the text buffer sort's advance_width so the
+        // metrics box and layout reflect the change immediately
+        if let Some(index) = session.active_sort_index {
+            if let Some(buffer) = &mut session.text_buffer {
+                if let Some(sort) = buffer.get_mut(index) {
+                    if let crate::sort::SortKind::Glyph {
+                        ref mut advance_width, ..
+                    } = sort.kind
+                    {
+                        *advance_width = width;
+                    }
+                }
+            }
+        }
+
         // Sync to workspace (inline to avoid borrow issues)
         if let Some(workspace_arc) = workspace_arc
             && let Some(active_name) = &session.active_sort_name

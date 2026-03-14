@@ -278,6 +278,10 @@ struct SegmentIterator {
     index: usize,
     prev_on_curve: kurbo::Point,
     prev_on_curve_idx: usize,
+    /// Index of the first on-curve point (for closing segment)
+    first_on_curve_idx: usize,
+    /// Whether the closing segment has been emitted
+    close_emitted: bool,
 }
 
 impl SegmentIterator {
@@ -292,7 +296,8 @@ impl SegmentIterator {
             .map(|(i, p)| (i, p.point))
             .unwrap_or((0, kurbo::Point::ZERO));
 
-        let index = if closed { 0 } else { start_idx + 1 };
+        // Skip the first on-curve point for closed paths
+        let index = start_idx + 1;
 
         Self {
             points: points_vec,
@@ -300,6 +305,8 @@ impl SegmentIterator {
             index,
             prev_on_curve: start_pt,
             prev_on_curve_idx: start_idx,
+            first_on_curve_idx: start_idx,
+            close_emitted: false,
         }
     }
 }
@@ -362,18 +369,58 @@ impl Iterator for SegmentIterator {
     type Item = super::segment::SegmentInfo;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.points.len() {
-            return None;
+        if self.index < self.points.len() {
+            let is_on_curve = self.points[self.index].is_on_curve();
+            let point = self.points[self.index].point;
+            let point_idx = self.index;
+
+            return if is_on_curve {
+                self.next_line_segment_at(point_idx, point)
+            } else {
+                self.next_quadratic_segment_at(point_idx, point)
+            };
         }
 
-        let is_on_curve = self.points[self.index].is_on_curve();
-        let point = self.points[self.index].point;
-        let point_idx = self.index;
+        // Emit the closing segment for closed paths
+        if self.closed
+            && !self.close_emitted
+            && self.prev_on_curve_idx != self.first_on_curve_idx
+        {
+            self.close_emitted = true;
+            let first = &self.points[self.first_on_curve_idx];
 
-        if is_on_curve {
-            self.next_line_segment_at(point_idx, point)
-        } else {
-            self.next_quadratic_segment_at(point_idx, point)
+            // Check for a trailing off-curve point (quadratic)
+            let trailing_off = (self.prev_on_curve_idx + 1
+                ..self.points.len())
+                .find(|&i| self.points[i].is_off_curve());
+
+            if let Some(off_idx) = trailing_off {
+                let cp = self.points[off_idx].point;
+                let segment = super::segment::Segment::Quadratic(
+                    kurbo::QuadBez::new(
+                        self.prev_on_curve, cp, first.point,
+                    ),
+                );
+                return Some(super::segment::SegmentInfo {
+                    segment,
+                    start_index: self.prev_on_curve_idx,
+                    end_index: self.first_on_curve_idx,
+                    path_index: 0,
+                });
+            }
+
+            // Closing line segment
+            let segment = super::segment::Segment::Line(
+                kurbo::Line::new(self.prev_on_curve, first.point),
+            );
+            return Some(super::segment::SegmentInfo {
+                segment,
+                start_index: self.prev_on_curve_idx,
+                end_index: self.first_on_curve_idx,
+                path_index: 0,
+            });
         }
+
+        None
     }
 }

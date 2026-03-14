@@ -37,6 +37,11 @@ impl EditorWidget {
             return;
         }
 
+        // Option/Alt + click on a line segment → convert to curve
+        if self.handle_option_click_segment(ctx, local_pos, state) {
+            return;
+        }
+
         if self.handle_kern_mode_activation(ctx, state, design_pos) {
             return;
         }
@@ -104,6 +109,48 @@ impl EditorWidget {
 
         self.record_edit(crate::editing::EditType::Normal);
         self.session.sync_to_workspace();
+        self.emit_session_update(ctx, false);
+        ctx.request_render();
+        true
+    }
+
+    /// Option/Alt + click on a segment: convert line → curve
+    fn handle_option_click_segment(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        local_pos: Point,
+        state: &masonry::core::PointerState,
+    ) -> bool {
+        use crate::path::Segment;
+        use crate::tools::ToolId;
+
+        // Only when select tool is active and alt is held
+        if self.session.current_tool.id() != ToolId::Select {
+            return false;
+        }
+        if !state.modifiers.alt() {
+            return false;
+        }
+
+        let Some((seg_info, _t)) =
+            self.session.hit_test_segments(local_pos, 10.0)
+        else {
+            return false;
+        };
+
+        // Only convert line segments
+        if !matches!(seg_info.segment, Segment::Line(_)) {
+            return false;
+        }
+
+        tracing::info!(
+            "Option-click on line segment → converting to curve"
+        );
+        self.session.convert_line_to_curve(&seg_info);
+        self.session.hovered_segment = None;
+        self.record_edit(crate::editing::EditType::Normal);
+        self.session.sync_to_workspace();
+        self.session.update_coord_selection();
         self.emit_session_update(ctx, false);
         ctx.request_render();
         true
@@ -269,7 +316,7 @@ impl EditorWidget {
             return;
         }
 
-        self.dispatch_tool_mouse_move(ctx, local_pos);
+        self.dispatch_tool_mouse_move(ctx, local_pos, &current.modifiers);
         self.maybe_request_render(ctx);
         self.maybe_emit_throttled_update(ctx);
     }
@@ -532,11 +579,23 @@ impl EditorWidget {
         }
     }
 
-    fn dispatch_tool_mouse_move(&mut self, _ctx: &mut EventCtx<'_>, local_pos: Point) {
-        use crate::editing::MouseEvent;
+    fn dispatch_tool_mouse_move(
+        &mut self,
+        _ctx: &mut EventCtx<'_>,
+        local_pos: Point,
+        modifiers: &masonry::core::keyboard::Modifiers,
+    ) {
+        use crate::editing::{Modifiers, MouseEvent};
         use crate::tools::{ToolBox, ToolId};
 
-        let mouse_event = MouseEvent::new(local_pos, None);
+        let mods = Modifiers {
+            shift: modifiers.shift(),
+            ctrl: modifiers.ctrl(),
+            alt: modifiers.alt(),
+            meta: modifiers.meta(),
+        };
+        let mouse_event =
+            MouseEvent::with_modifiers(local_pos, None, mods);
         let select_tool = ToolBox::for_id(ToolId::Select);
         let mut tool = std::mem::replace(&mut self.session.current_tool, select_tool);
         self.mouse
