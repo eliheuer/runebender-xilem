@@ -774,6 +774,11 @@ pub(crate) fn bezpath_to_cubic(
         }
     }
 
+    // Remove duplicate on-curve points at the same position.
+    // Boolean ops can produce segments that share endpoints,
+    // resulting in stacked on-curve points.
+    dedup_on_curve_points(&mut points);
+
     // For closed paths, apply CubicPath's convention:
     // rotate_left(1) so the first point becomes last
     if has_close && !points.is_empty() {
@@ -786,6 +791,24 @@ pub(crate) fn bezpath_to_cubic(
     fix_on_curve_smoothness(&mut points, has_close);
 
     CubicPath::new(PathPoints::from_vec(points), has_close)
+}
+
+/// Remove consecutive on-curve points at the same position.
+///
+/// Boolean operations can produce path segments that share
+/// endpoints, resulting in duplicate on-curve points stacked
+/// on top of each other. This removes the duplicates.
+fn dedup_on_curve_points(points: &mut Vec<PathPoint>) {
+    const EPSILON: f64 = 0.5;
+
+    points.dedup_by(|b, a| {
+        // Only dedup if both are on-curve
+        if !a.is_on_curve() || !b.is_on_curve() {
+            return false;
+        }
+        (a.point.x - b.point.x).abs() < EPSILON
+            && (a.point.y - b.point.y).abs() < EPSILON
+    });
 }
 
 /// Set `smooth` on each on-curve point based on its neighbors.

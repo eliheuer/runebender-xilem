@@ -47,7 +47,7 @@ const SECONDARY_UI_TEXT: Color = BASE_G;
 // ============================================================================
 // GLYPH PREVIEW COLOR (glyph panel, text buffer preview panel)
 // ============================================================================
-const GLYPH_PREVIEW_COLOR: Color = BASE_J;
+const GLYPH_PREVIEW_COLOR: Color = MARK_YELLOW;
 
 // ============================================================================
 // UI PANELS (Toolbar, Coordinate Panel, Glyph Preview)
@@ -90,7 +90,7 @@ const GRID_CELL_TEXT: Color = BASE_H;
 // ============================================================================
 const PATH_STROKE: Color = BASE_L;
 const PATH_FILL: Color = BASE_F;
-const PATH_PREVIEW_FILL: Color = BASE_L;
+const PATH_PREVIEW_FILL: Color = BASE_H;
 
 // ============================================================================
 // COMPONENT COLORS

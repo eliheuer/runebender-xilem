@@ -410,25 +410,124 @@ impl EditorWidget {
             return false;
         }
 
+        tracing::info!(
+            "Copy: selection has {} items",
+            self.session.selection.len()
+        );
+
         if self.session.selection.is_empty() {
             return false;
         }
 
-        // Collect paths that contain any selected point
+        // Extract only the selected on-curve points and their
+        // adjacent off-curve handles from each path.
         let selection = &self.session.selection;
-        let copied: Vec<_> = self
-            .session
-            .paths
-            .iter()
-            .filter(|path| match path {
-                crate::path::Path::Cubic(c) => c.points.iter().any(|pt| selection.contains(&pt.id)),
-                crate::path::Path::Quadratic(q) => {
-                    q.points.iter().any(|pt| selection.contains(&pt.id))
+        let mut copied: Vec<crate::path::Path> = Vec::new();
+
+        for path in self.session.paths.iter() {
+            let (all_points, closed) = match path {
+                crate::path::Path::Cubic(c) => {
+                    (c.points.to_vec(), c.closed)
                 }
-                crate::path::Path::Hyper(h) => h.points.iter().any(|pt| selection.contains(&pt.id)),
-            })
-            .cloned()
-            .collect();
+                crate::path::Path::Quadratic(q) => {
+                    (q.points.to_vec(), q.closed)
+                }
+                crate::path::Path::Hyper(h) => {
+                    (h.points.to_vec(), h.closed)
+                }
+            };
+
+            // Check if any on-curve point in this path is selected
+            let has_selected = all_points
+                .iter()
+                .any(|pt| pt.is_on_curve() && selection.contains(&pt.id));
+            if !has_selected {
+                continue;
+            }
+
+            // If ALL on-curve points are selected, copy the whole path
+            let all_on_curve_selected = all_points
+                .iter()
+                .filter(|pt| pt.is_on_curve())
+                .all(|pt| selection.contains(&pt.id));
+            if all_on_curve_selected {
+                copied.push(path.clone());
+                continue;
+            }
+
+            // Partial selection: extract selected on-curve points
+            // and their adjacent off-curve handles
+            let len = all_points.len();
+            let mut keep = vec![false; len];
+
+            for (i, pt) in all_points.iter().enumerate() {
+                if pt.is_on_curve()
+                    && selection.contains(&pt.id)
+                {
+                    keep[i] = true;
+                    // Include adjacent off-curve handles
+                    let prev = if i > 0 {
+                        i - 1
+                    } else if closed {
+                        len - 1
+                    } else {
+                        continue;
+                    };
+                    let next = if i + 1 < len {
+                        i + 1
+                    } else if closed {
+                        0
+                    } else {
+                        continue;
+                    };
+                    if all_points[prev].is_off_curve() {
+                        keep[prev] = true;
+                    }
+                    if all_points[next].is_off_curve() {
+                        keep[next] = true;
+                    }
+                }
+            }
+
+            let extracted: Vec<_> = all_points
+                .into_iter()
+                .enumerate()
+                .filter(|(i, _)| keep[*i])
+                .map(|(_, pt)| pt)
+                .collect();
+
+            if extracted.is_empty() {
+                continue;
+            }
+
+            // Build a new open path from extracted points
+            match path {
+                crate::path::Path::Cubic(_) => {
+                    copied.push(crate::path::Path::Cubic(
+                        crate::path::CubicPath::new(
+                            crate::path::PathPoints::from_vec(extracted),
+                            false, // open — will be closed on paste
+                        ),
+                    ));
+                }
+                crate::path::Path::Quadratic(_) => {
+                    copied.push(crate::path::Path::Quadratic(
+                        crate::path::QuadraticPath::new(
+                            crate::path::PathPoints::from_vec(extracted),
+                            false,
+                        ),
+                    ));
+                }
+                crate::path::Path::Hyper(_) => {
+                    let mut h = crate::path::HyperPath::from_points(
+                        crate::path::PathPoints::from_vec(extracted),
+                        false,
+                    );
+                    h.after_change();
+                    copied.push(crate::path::Path::Hyper(h));
+                }
+            }
+        }
 
         if !copied.is_empty() {
             self.point_clipboard = Some(copied);
@@ -453,15 +552,20 @@ impl EditorWidget {
             return false;
         }
 
+        tracing::info!(
+            "Paste: clipboard has {} paths",
+            self.point_clipboard.as_ref().map_or(0, |c| c.len())
+        );
+
         let clipboard = match &self.point_clipboard {
             Some(c) => c.clone(),
             None => return false,
         };
 
-        // Small offset so pasted contours are visually distinct
-        let offset = kurbo::Vec2::new(20.0, 20.0);
-
-        // Clone each path with fresh EntityIds and offset
+        // Clone each path with fresh EntityIds.
+        // No offset — paste at original coordinates (useful for
+        // copying contours between sorts at the same position).
+        // Open paths are closed with a line segment.
         let mut new_paths: Vec<crate::path::Path> = Vec::new();
         let mut new_selection = crate::editing::Selection::new();
 
@@ -476,14 +580,15 @@ impl EditorWidget {
                             new_selection.insert(id);
                             PathPoint {
                                 id,
-                                point: pt.point + offset,
+                                point: pt.point,
                                 typ: pt.typ,
                             }
                         })
                         .collect();
+                    // Close open paths with a line segment
                     new_paths.push(crate::path::Path::Cubic(CubicPath::new(
                         PathPoints::from_vec(new_points),
-                        cubic.closed,
+                        true,
                     )));
                 }
                 crate::path::Path::Quadratic(quad) => {
@@ -495,14 +600,14 @@ impl EditorWidget {
                             new_selection.insert(id);
                             PathPoint {
                                 id,
-                                point: pt.point + offset,
+                                point: pt.point,
                                 typ: pt.typ,
                             }
                         })
                         .collect();
                     new_paths.push(crate::path::Path::Quadratic(QuadraticPath::new(
                         PathPoints::from_vec(new_points),
-                        quad.closed,
+                        true,
                     )));
                 }
                 crate::path::Path::Hyper(hyper) => {
@@ -514,13 +619,13 @@ impl EditorWidget {
                             new_selection.insert(id);
                             PathPoint {
                                 id,
-                                point: pt.point + offset,
+                                point: pt.point,
                                 typ: pt.typ,
                             }
                         })
                         .collect();
                     let mut new_hyper =
-                        HyperPath::from_points(PathPoints::from_vec(new_points), hyper.closed);
+                        HyperPath::from_points(PathPoints::from_vec(new_points), true);
                     new_hyper.after_change();
                     new_paths.push(crate::path::Path::Hyper(new_hyper));
                 }
