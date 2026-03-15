@@ -860,65 +860,90 @@ fn draw_compat_errors(
         peniko::Color::from_rgb8(0xff, 0x33, 0x33);
     let error_stroke = Stroke::new(2.0);
 
-    // Collect contour indices that have errors
+    // Collect (contour_index, point_index) pairs for
+    // point-level errors, and track global/contour errors
+    let mut error_points: Vec<(usize, usize)> = Vec::new();
     let mut error_contours =
         std::collections::HashSet::new();
     let mut has_global_error = false;
 
     for err in &session.compat_errors {
-        match err.contour_index() {
-            Some(ci) => {
+        match (err.contour_index(), err.point_index()) {
+            (Some(ci), Some(pi)) => {
+                error_points.push((ci, pi));
                 error_contours.insert(ci);
             }
-            None => {
+            (Some(ci), None) => {
+                error_contours.insert(ci);
+            }
+            _ => {
                 has_global_error = true;
             }
         }
     }
 
-    for (ci, path) in session.paths.iter().enumerate() {
-        if !has_global_error
-            && !error_contours.contains(&ci)
-        {
-            continue;
-        }
-
-        let bezpath = path.to_bezpath();
-        let bbox = bezpath.bounding_box();
-        if bbox.width() < 0.001 && bbox.height() < 0.001
-        {
-            continue;
-        }
-
-        // Transform bbox corners to screen space
-        let padding = 12.0;
-        let screen_min =
-            *transform * Point::new(bbox.x0, bbox.y0);
-        let screen_max =
-            *transform * Point::new(bbox.x1, bbox.y1);
-        let screen_rect = kurbo::Rect::new(
-            screen_min.x.min(screen_max.x) - padding,
-            screen_min.y.min(screen_max.y) - padding,
-            screen_min.x.max(screen_max.x) + padding,
-            screen_min.y.max(screen_max.y) + padding,
-        );
-        let rounded = screen_rect.to_rounded_rect(padding);
-
+    // Draw red circles around specific error points
+    if !error_points.is_empty() {
+        let radius = 8.0;
         let brush = Brush::Solid(error_color);
-        scene.stroke(
-            &error_stroke,
-            Affine::IDENTITY,
-            &brush,
-            None,
-            &rounded,
-        );
+        for &(ci, pi) in &error_points {
+            if let Some(path) = session.paths.get(ci) {
+                let points: Vec<_> =
+                    path.points().iter().collect();
+                if let Some(pt) = points.get(pi) {
+                    let screen_pt = *transform
+                        * Point::new(pt.point.x, pt.point.y);
+                    let circle = kurbo::Circle::new(
+                        screen_pt, radius,
+                    );
+                    scene.stroke(
+                        &error_stroke,
+                        Affine::IDENTITY,
+                        &brush,
+                        None,
+                        &circle,
+                    );
+                }
+            }
+        }
+    } else if has_global_error {
+        // For global errors (missing glyph, contour count),
+        // outline all contours
+        for path in session.paths.iter() {
+            let bezpath = path.to_bezpath();
+            let bbox = bezpath.bounding_box();
+            if bbox.width() < 0.001
+                && bbox.height() < 0.001
+            {
+                continue;
+            }
+            let padding = 12.0;
+            let screen_min =
+                *transform * Point::new(bbox.x0, bbox.y0);
+            let screen_max =
+                *transform * Point::new(bbox.x1, bbox.y1);
+            let screen_rect = kurbo::Rect::new(
+                screen_min.x.min(screen_max.x) - padding,
+                screen_min.y.min(screen_max.y) - padding,
+                screen_min.x.max(screen_max.x) + padding,
+                screen_min.y.max(screen_max.y) + padding,
+            );
+            let rounded =
+                screen_rect.to_rounded_rect(padding);
+            let brush = Brush::Solid(error_color);
+            scene.stroke(
+                &error_stroke,
+                Affine::IDENTITY,
+                &brush,
+                None,
+                &rounded,
+            );
+        }
     }
 
-    // Summary badge — build label text first to measure,
-    // then position above the bottom panels.
+    // Error text badge — positioned below the toolbar
     let count = session.compat_errors.len();
 
-    // Build per-error detail lines
     let mut detail_lines: Vec<String> = session
         .compat_errors
         .iter()
@@ -969,9 +994,11 @@ fn draw_compat_errors(
     let text_w = layout.width() as f64;
     let text_h = layout.height() as f64;
     let pad = 6.0;
-    let x = 10.0;
-    // Position above bottom panels (~200px from bottom)
-    let y = 10.0 + 50.0;
+    let margin = crate::theme::size::UI_PANEL_MARGIN;
+    let toolbar_h = crate::theme::size::TOOLBAR_ITEM_SIZE
+        + 2.0 * crate::theme::size::TOOLBAR_PADDING;
+    let x = margin;
+    let y = margin + toolbar_h + margin;
 
     // Red background pill
     let bg_rect = kurbo::Rect::new(
