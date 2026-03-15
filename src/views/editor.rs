@@ -11,7 +11,7 @@
 
 use std::sync::Arc;
 
-use kurbo::BezPath;
+use kurbo::{BezPath, Shape};
 use masonry::properties::Padding;
 use masonry::properties::types::{AsUnit, UnitPoint};
 use xilem::WidgetView;
@@ -244,40 +244,48 @@ fn coordinate_panel_from_session(
     )
 }
 
-/// Glyph preview pane showing the rendered glyph
+/// Glyph preview pane — compact panel sized to fit the glyph
 fn glyph_preview_pane(
     session: Arc<crate::editing::EditSession>,
     _glyph_name: String,
 ) -> impl WidgetView<AppState> + use<> {
     const PANEL_HEIGHT: f64 = 140.0;
-    const PANEL_WIDTH: f64 = 240.0; // Match coordinate panel width
-    const GLYPH_SIZE: f64 = 100.0; // Fit within 140px height with padding
+    const MARGIN: f64 = 0.1; // 10% margin used in fit_to_bounds
 
-    // Get the glyph outline path from the session
     let glyph_path = build_glyph_path(&session);
     let upm = session.ascender - session.descender;
 
-    // Centered glyph preview with upward offset
+    // Size panel width from the glyph's visual bounding box
+    // so the glyph fills the space with equal margins
+    let bounds = glyph_path.bounding_box();
+    let usable_h = PANEL_HEIGHT * (1.0 - 2.0 * MARGIN);
+    let aspect = if bounds.height() > 0.0 {
+        bounds.width() / bounds.height()
+    } else {
+        1.0
+    };
+    let fitted_w = usable_h * aspect;
+    let panel_width = (fitted_w / (1.0 - 2.0 * MARGIN))
+        .max(60.0)
+        .min(200.0);
+
     let glyph_preview = if !glyph_path.is_empty() {
         Either::A(
-            glyph_view(glyph_path, GLYPH_SIZE, GLYPH_SIZE, upm).color(theme::panel::GLYPH_PREVIEW),
+            glyph_view(
+                glyph_path,
+                panel_width,
+                PANEL_HEIGHT,
+                upm,
+            )
+            .color(theme::panel::GLYPH_PREVIEW)
+            .fit_to_bounds(),
         )
     } else {
         Either::B(label(""))
     };
 
-    sized_box(
-        flex_col((
-            // Add spacing at top to push content up
-            sized_box(label("")).height(0.px()),
-            glyph_preview,
-            // Add more spacing at bottom to shift visual center up
-            sized_box(label("")).height(15.px()),
-        ))
-        .main_axis_alignment(xilem::view::MainAxisAlignment::Center)
-        .cross_axis_alignment(xilem::view::CrossAxisAlignment::Center),
-    )
-    .width(PANEL_WIDTH.px())
+    sized_box(glyph_preview)
+    .width(panel_width.px())
     .height(PANEL_HEIGHT.px())
     .background_color(theme::panel::BACKGROUND)
     .border_color(theme::panel::OUTLINE)

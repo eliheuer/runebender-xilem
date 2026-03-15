@@ -49,6 +49,9 @@ pub struct GlyphWidget {
     /// Optional advance width for stable horizontal centering
     /// When provided, centers based on this width instead of bounding box
     advance_width: Option<f64>,
+    /// When true, fit the glyph to the widget bounds with equal
+    /// margins on all sides (ignores UPM and baseline positioning)
+    fit_to_bounds: bool,
 }
 
 impl GlyphWidget {
@@ -61,6 +64,7 @@ impl GlyphWidget {
             upm,
             baseline_offset: 0.16, // Higher = more space at bottom
             advance_width: None,
+            fit_to_bounds: false,
         }
     }
 
@@ -107,6 +111,12 @@ impl GlyphWidget {
         self.size = size;
     }
 
+    /// Fit the glyph to the widget bounds with equal margins
+    pub fn with_fit_to_bounds(mut self, fit: bool) -> Self {
+        self.fit_to_bounds = fit;
+        self
+    }
+
     /// Update the advance width (for use in View::rebuild)
     pub fn set_advance_width(&mut self, width: Option<f64>) {
         self.advance_width = width;
@@ -144,50 +154,53 @@ impl Widget for GlyphWidget {
             return;
         }
 
-        // Get the bounding box of the glyph path
         let bounds = self.path.bounding_box();
         let widget_size = ctx.size();
 
-        // Calculate uniform scale based on UPM (units per em)
-        // This ensures all glyphs are rendered at the same scale
-        let scale = widget_size.height / self.upm;
-        let scale = scale * 0.8; // 20% smaller (0.8 = 80% of original)
-
-        // Center the glyph horizontally
-        // If advance_width is provided, use it for stable centering
-        // (prevents shifting during edits)
-        // Otherwise, fall back to bounding box centering
-        let x_translation = if let Some(advance_width) = self.advance_width {
-            // Center based on advance width - stays constant while editing
-            // Calculate where to position x=0 in font space so the advance
-            // width is centered
-            let scaled_advance = advance_width * scale;
-            (widget_size.width - scaled_advance) / 2.0
+        let transformed_path = if self.fit_to_bounds {
+            // Fit glyph to widget with equal margins on all sides
+            let margin = 0.1; // 10% margin on each side
+            let usable_w = widget_size.width * (1.0 - 2.0 * margin);
+            let usable_h = widget_size.height * (1.0 - 2.0 * margin);
+            let scale = (usable_w / bounds.width())
+                .min(usable_h / bounds.height());
+            let scaled_w = bounds.width() * scale;
+            let scaled_h = bounds.height() * scale;
+            let x_off = (widget_size.width - scaled_w) / 2.0
+                - bounds.x0 * scale;
+            let y_off = (widget_size.height - scaled_h) / 2.0
+                + bounds.y1 * scale;
+            let transform =
+                Affine::new([scale, 0.0, 0.0, -scale, x_off, y_off]);
+            transform * &self.path
         } else {
-            // Fall back to bounding box centering
-            // Center the visual bounding box of the glyph
-            let scaled_width = bounds.width() * scale;
-            let l_pad = (widget_size.width - scaled_width) / 2.0;
-            l_pad - bounds.x0 * scale
+            // UPM-based scaling with baseline positioning
+            let scale = widget_size.height / self.upm;
+            let scale = scale * 0.8;
+
+            let x_translation =
+                if let Some(advance_width) = self.advance_width {
+                    let scaled_advance = advance_width * scale;
+                    (widget_size.width - scaled_advance) / 2.0
+                } else {
+                    let scaled_width = bounds.width() * scale;
+                    let l_pad =
+                        (widget_size.width - scaled_width) / 2.0;
+                    l_pad - bounds.x0 * scale
+                };
+
+            let baseline = widget_size.height * self.baseline_offset;
+
+            let transform = Affine::new([
+                scale,
+                0.0,
+                0.0,
+                -scale,
+                x_translation,
+                widget_size.height - baseline,
+            ]);
+            transform * &self.path
         };
-
-        // Position baseline to center glyphs vertically
-        // (adjusted for better visual balance)
-        // Higher percentage = baseline higher in cell = more space at bottom,
-        // less at top
-        let baseline = widget_size.height * self.baseline_offset;
-
-        let transform = Affine::new([
-            scale,                         // x scale
-            0.0,                           // x skew
-            0.0,                           // y skew
-            -scale,                        // y scale (negative to flip Y axis)
-            x_translation,                 // x translation (centering)
-            widget_size.height - baseline, // y translation (baseline positioning)
-        ]);
-
-        // Apply transform to path
-        let transformed_path = transform * &self.path;
 
         // Render the glyph using NonZero fill rule
         // This ensures overlapping shapes (like Arabic connectors) fill correctly
@@ -239,6 +252,7 @@ pub fn glyph_view<State, Action>(
         upm,
         baseline_offset: None,
         advance_width: None,
+        fit_to_bounds: false,
         phantom: PhantomData,
     }
 }
@@ -252,6 +266,7 @@ pub struct GlyphView<State, Action = ()> {
     upm: f64,
     baseline_offset: Option<f64>,
     advance_width: Option<f64>,
+    fit_to_bounds: bool,
     phantom: PhantomData<fn() -> (State, Action)>,
 }
 
@@ -260,6 +275,18 @@ impl<State, Action> GlyphView<State, Action> {
     /// Set the glyph fill color
     pub fn color(mut self, color: Color) -> Self {
         self.color = Some(color);
+        self
+    }
+
+    /// Set the advance width for stable horizontal centering
+    pub fn advance_width(mut self, width: f64) -> Self {
+        self.advance_width = Some(width);
+        self
+    }
+
+    /// Fit the glyph to widget bounds with equal margins
+    pub fn fit_to_bounds(mut self) -> Self {
+        self.fit_to_bounds = true;
         self
     }
 }
@@ -282,6 +309,9 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx> for GlyphView
         }
         if let Some(width) = self.advance_width {
             widget = widget.with_advance_width(width);
+        }
+        if self.fit_to_bounds {
+            widget = widget.with_fit_to_bounds(true);
         }
         (ctx.create_pod(widget), ())
     }
@@ -504,6 +534,18 @@ impl Widget for MultiGlyphWidget {
             widget_size.height - baseline,
         ]);
 
+        // Clip to widget bounds so glyphs don't overflow
+        let clip_rect = kurbo::Rect::from_origin_size(
+            kurbo::Point::ZERO,
+            widget_size,
+        );
+        scene.push_layer(
+            masonry::vello::peniko::Mix::Clip,
+            1.0,
+            kurbo::Affine::IDENTITY,
+            &clip_rect,
+        );
+
         // Render each glyph path SEPARATELY to avoid winding conflicts
         let brush = Brush::Solid(self.color);
         for path in &self.paths {
@@ -518,6 +560,8 @@ impl Widget for MultiGlyphWidget {
                 );
             }
         }
+
+        scene.pop_layer();
     }
 
     fn accessibility_role(&self) -> Role {

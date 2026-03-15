@@ -333,6 +333,19 @@ impl Widget for EditorWidget {
 
     fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
         let canvas_size = ctx.size();
+
+        // Clip to widget bounds so nothing bleeds into adjacent panels
+        let clip_rect = kurbo::Rect::from_origin_size(
+            kurbo::Point::ZERO,
+            canvas_size,
+        );
+        scene.push_layer(
+            masonry::vello::peniko::Mix::Clip,
+            1.0,
+            kurbo::Affine::IDENTITY,
+            &clip_rect,
+        );
+
         self.paint_background(scene, canvas_size);
 
         if !self.session.viewport_initialized {
@@ -350,6 +363,8 @@ impl Widget for EditorWidget {
 
         // Context menu is painted last so it appears on top
         self.paint_context_menu(scene);
+
+        scene.pop_layer();
     }
 
     fn on_pointer_event(
