@@ -12,13 +12,14 @@
 use std::sync::Arc;
 
 use kurbo::BezPath;
+use masonry::properties::Padding;
 use masonry::properties::types::{AsUnit, UnitPoint};
 use xilem::WidgetView;
 use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::{
-    ChildAlignment, ZStackExt, flex_col, flex_row, label, sized_box, text_input, transformed,
-    zstack,
+    ChildAlignment, ZStackExt, flex_col, flex_row, label, sized_box, split,
+    text_input, transformed, zstack,
 };
 
 use crate::components::workspace_toolbar::WorkspaceToolbarButton;
@@ -64,8 +65,12 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
     let show_shapes_toolbar = current_tool == ToolId::Shapes;
     let show_text_direction_toolbar = current_tool == ToolId::Text;
 
-    // Use zstack to layer UI elements over the canvas
-    Either::A(zstack((
+    // Editor canvas with floating overlays on top,
+    // text buffer preview in a separate bottom panel
+    let has_text_buffer =
+        session.text_buffer.is_some() && session.panels_visible;
+
+    let canvas_with_overlays = zstack((
         // Background: the editor canvas (full screen)
         editor_view(
             session_arc.clone(),
@@ -82,7 +87,7 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
                 }
             },
         ),
-        // Foreground: floating toolbars (edit mode + optional sub-toolbar) positioned in top-left
+        // Foreground: floating toolbars
         transformed(
             flex_col((
                 edit_mode_toolbar_view(current_tool, |state: &mut AppState, tool_id| {
@@ -110,7 +115,7 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
         )
         .translate((UI_PANEL_MARGIN, UI_PANEL_MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_LEFT)),
-        // Bottom-left: glyph preview panel (hidden when panels toggled off)
+        // Bottom-left: glyph preview panel
         transformed(if session.panels_visible {
             Either::A(glyph_preview_pane(session_arc.clone(), glyph_name.clone()))
         } else {
@@ -118,15 +123,7 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
         })
         .translate((UI_PANEL_MARGIN, -UI_PANEL_MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_LEFT)),
-        // Bottom-center-top: text buffer preview panel (hidden when panels toggled off)
-        transformed(if session.panels_visible {
-            Either::A(text_buffer_preview_pane_centered(session_arc.clone()))
-        } else {
-            Either::B(sized_box(label("")).width(0.px()).height(0.px()))
-        })
-        .translate((0.0, -(UI_PANEL_MARGIN + 140.0 + UI_PANEL_MARGIN)))
-        .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
-        // Bottom-center-bottom: active glyph panel (hidden when panels toggled off)
+        // Bottom-center: active glyph panel
         transformed(if session.panels_visible {
             Either::A(active_glyph_panel_centered(state))
         } else {
@@ -134,7 +131,7 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
         })
         .translate((0.0, -UI_PANEL_MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM)),
-        // Bottom-right: coordinate panel (hidden when panels toggled off)
+        // Bottom-right: coordinate panel
         transformed(if session.panels_visible {
             Either::A(coordinate_panel_from_session(&session_arc))
         } else {
@@ -142,7 +139,7 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
         })
         .translate((-UI_PANEL_MARGIN, -UI_PANEL_MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::BOTTOM_RIGHT)),
-        // Right side: transform panel (vertically centered)
+        // Right side: transform panel
         transformed(if session.panels_visible {
             let has_selection = !session.selection.is_empty();
             let contour_count = session.paths.len();
@@ -156,12 +153,10 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
         })
         .translate((-UI_PANEL_MARGIN, 0.0))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::new(1.0, 0.5))),
-        // Top-right: Master toolbar (if designspace) + Workspace toolbar
+        // Top-right: Master toolbar + Workspace toolbar
         transformed(
             flex_row((
-                // Master toolbar (only shown when designspace is loaded)
                 master_toolbar_panel(state),
-                // Workspace toolbar for navigation
                 workspace_toolbar_view(|state: &mut AppState, button| match button {
                     WorkspaceToolbarButton::GlyphGrid => {
                         state.close_editor();
@@ -172,7 +167,31 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
         )
         .translate((-UI_PANEL_MARGIN, UI_PANEL_MARGIN))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_RIGHT)),
-    )))
+    ));
+
+    // Vertical split: canvas on top, text preview on bottom.
+    // When no text buffer, use a minimal 0px bottom panel.
+    Either::A(
+        sized_box(
+            split(
+                canvas_with_overlays,
+                text_buffer_preview_bottom(
+                    if has_text_buffer {
+                        Some(session_arc.clone())
+                    } else {
+                        None
+                    },
+                ),
+            )
+            .split_axis(xilem::view::Axis::Vertical)
+            .split_point(if has_text_buffer { 0.85 } else { 1.0 })
+            .min_size(200.px(), 0.px())
+            .bar_size(0.px())
+            .min_bar_area(6.px())
+            .draggable(has_text_buffer),
+        )
+        .background_color(theme::panel::BACKGROUND),
+    )
 }
 
 // ===== Helper Views =====
@@ -419,7 +438,8 @@ fn active_glyph_panel_centered(state: &AppState) -> impl WidgetView<AppState> + 
     // Combine all three rows with consistent 8px vertical gap
     let content = flex_col((top_row, middle_row, bottom_row))
         .gap(8.px())
-        .main_axis_alignment(xilem::view::MainAxisAlignment::Center);
+        .main_axis_alignment(xilem::view::MainAxisAlignment::Center)
+        .must_fill_major_axis(true);
 
     Either::A(
         sized_box(content)
@@ -429,7 +449,12 @@ fn active_glyph_panel_centered(state: &AppState) -> impl WidgetView<AppState> + 
             .border_color(theme::panel::OUTLINE)
             .border_width(1.5)
             .corner_radius(8.0)
-            .padding(12.0),
+            .padding(Padding {
+                left: 12.0,
+                right: 12.0,
+                top: 0.0,
+                bottom: 0.0,
+            }),
     )
 }
 
@@ -478,39 +503,50 @@ fn live_sidebearings(session: &crate::editing::EditSession) -> (f64, f64) {
     (lsb, rsb)
 }
 
-/// Text buffer preview pane showing rendered glyphs from the font (mini preview mode)
-/// Centered version with fixed width for displaying a line of text
-fn text_buffer_preview_pane_centered(
-    session: Arc<crate::editing::EditSession>,
+/// Bottom panel text buffer preview (Glyphs-style).
+///
+/// Full-width panel with dark background, rendered outside the
+/// canvas zstack so it never blocks pointer events.
+fn text_buffer_preview_bottom(
+    session: Option<Arc<crate::editing::EditSession>>,
 ) -> impl WidgetView<AppState> + use<> {
-    // Panel dimensions to match other bottom panels
-    const PANEL_HEIGHT: f64 = 140.0;
-    // Width calculation for centered panel: window width - side panels - margins - gaps
-    // At 1200px window: (1200 - 240*2 - 16*4) = 640px leaves 16px gaps
-    const PANEL_WIDTH: f64 = 640.0; // Extended width for text buffer preview (now on top)
-
-    // Only show if text buffer exists
-    if session.text_buffer.is_none() {
-        return Either::B(sized_box(label("")).height(PANEL_HEIGHT.px()));
-    }
-
-    // Get workspace reference to load glyphs
-    let workspace = match &session.workspace {
-        Some(ws) => ws,
-        None => return Either::B(sized_box(label("")).width(0.px()).height(0.px())),
+    let session = match session {
+        Some(s) => s,
+        None => {
+            return Either::B(
+                sized_box(label("")).width(0.px()).height(0.px()),
+            );
+        }
     };
 
-    let buffer = session.text_buffer.as_ref().unwrap();
+    let workspace = match &session.workspace {
+        Some(ws) => ws,
+        None => {
+            return Either::B(
+                sized_box(label("")).width(0.px()).height(0.px()),
+            );
+        }
+    };
 
-    // Check text direction for RTL support
+    let buffer = match &session.text_buffer {
+        Some(b) => b,
+        None => {
+            return Either::B(
+                sized_box(label("")).width(0.px()).height(0.px()),
+            );
+        }
+    };
+
     let is_rtl = session.text_direction.is_rtl();
 
-    // For RTL: calculate total width first so we can start from the right
-    let total_width = if is_rtl {
+    let total_width: f64 = if is_rtl {
         buffer
             .iter()
             .filter_map(|sort| {
-                if let crate::sort::SortKind::Glyph { advance_width, .. } = &sort.kind {
+                if let crate::sort::SortKind::Glyph {
+                    advance_width, ..
+                } = &sort.kind
+                {
                     Some(*advance_width)
                 } else {
                     None
@@ -521,11 +557,8 @@ fn text_buffer_preview_pane_centered(
         0.0
     };
 
-    // Build separate BezPaths for each glyph (to avoid winding conflicts when overlapping)
     let mut glyph_paths: Vec<BezPath> = Vec::new();
     let mut x_offset = if is_rtl { total_width } else { 0.0 };
-
-    // Track previous glyph for kerning lookup
     let mut prev_glyph_name: Option<String> = None;
     let mut prev_glyph_group: Option<String> = None;
 
@@ -536,114 +569,88 @@ fn text_buffer_preview_pane_centered(
                 advance_width,
                 ..
             } => {
-                // For RTL: move x left BEFORE drawing this glyph
                 if is_rtl {
                     x_offset -= advance_width;
                 }
 
-                // Apply kerning if we have a previous glyph
                 if let Some(prev_name) = &prev_glyph_name {
-                    let workspace_guard = read_workspace(workspace);
-
-                    // Get current glyph's left kerning group
-                    let curr_group = workspace_guard
+                    let ws = read_workspace(workspace);
+                    let curr_group = ws
                         .get_glyph(name)
                         .and_then(|g| g.left_group.as_deref());
-
-                    // Look up kerning value
-                    let kern_value = crate::model::kerning::lookup_kerning(
-                        &workspace_guard.kerning,
-                        &workspace_guard.groups,
+                    let kern = crate::model::kerning::lookup_kerning(
+                        &ws.kerning,
+                        &ws.groups,
                         prev_name,
                         prev_glyph_group.as_deref(),
                         name,
                         curr_group,
                     );
-
                     if is_rtl {
-                        x_offset -= kern_value;
+                        x_offset -= kern;
                     } else {
-                        x_offset += kern_value;
+                        x_offset += kern;
                     }
                 }
 
                 let mut glyph_path = BezPath::new();
-
                 if sort.is_active {
-                    // For active sort: use session.paths (live editing state)
-                    // This updates in real-time as the user moves points
                     for path in session.paths.iter() {
                         glyph_path.extend(path.to_bezpath());
                     }
-                    // Also include components from the session glyph
-                    // We need to render components separately since session.paths only has editable contours
-                    let workspace_guard = read_workspace(workspace);
+                    let ws = read_workspace(workspace);
                     for component in &session.glyph.components {
                         append_component_path(
                             &mut glyph_path,
                             component,
-                            &workspace_guard,
+                            &ws,
                             kurbo::Affine::IDENTITY,
                         );
                     }
                 } else {
-                    // For inactive sorts: load from workspace (saved state)
-                    // Use glyph_to_bezpath_with_components to include components
-                    let workspace_guard = read_workspace(workspace);
-                    if let Some(glyph) = workspace_guard.glyphs.get(name) {
-                        glyph_path = crate::model::glyph_renderer::glyph_to_bezpath_with_components(
-                            glyph,
-                            &workspace_guard,
-                        );
+                    let ws = read_workspace(workspace);
+                    if let Some(glyph) = ws.glyphs.get(name) {
+                        glyph_path =
+                            crate::model::glyph_renderer::glyph_to_bezpath_with_components(
+                                glyph, &ws,
+                            );
                     }
                 }
 
-                // Translate the glyph to its position in the text buffer
-                let translated_path = kurbo::Affine::translate((x_offset, 0.0)) * glyph_path;
-                // Store each glyph path separately (don't combine with .extend())
-                glyph_paths.push(translated_path);
+                let translated =
+                    kurbo::Affine::translate((x_offset, 0.0)) * glyph_path;
+                glyph_paths.push(translated);
 
-                // For LTR: advance x forward AFTER drawing
                 if !is_rtl {
                     x_offset += advance_width;
                 }
 
-                // Update previous glyph info for next iteration
                 prev_glyph_name = Some(name.clone());
                 prev_glyph_group = read_workspace(workspace)
                     .get_glyph(name)
                     .and_then(|g| g.right_group.clone());
             }
             crate::sort::SortKind::LineBreak => {
-                // For now, ignore line breaks in preview (Phase 1 is single line)
-                // Reset kerning tracking (no kerning across lines)
                 prev_glyph_name = None;
                 prev_glyph_group = None;
             }
         }
     }
 
-    let preview_size = 100.0; // Match glyph preview size
     let upm = session.ascender - session.descender;
 
-    // Render each glyph path separately using multi_glyph_view
-    // This avoids winding direction conflicts when connector glyphs overlap
-    // baseline_offset controls vertical position (0.0 = bottom, 1.0 = top)
+    // Compute baseline offset that visually centers the glyph
+    // in the available space, accounting for the 0.8x scale factor
+    let center_offset =
+        0.5 - 0.5 * (session.ascender + session.descender) / upm;
+
     Either::A(
         sized_box(
-            flex_col((
-                multi_glyph_view(glyph_paths, preview_size, preview_size, upm)
-                    .color(theme::panel::GLYPH_PREVIEW)
-                    .baseline_offset(0.15), // Leave room for Arabic descenders
-            ))
-            .main_axis_alignment(xilem::view::MainAxisAlignment::End),
+            multi_glyph_view(glyph_paths, 10000.0, 10000.0, upm)
+                .color(theme::panel::GLYPH_PREVIEW)
+                .baseline_offset(center_offset),
         )
-        .width(PANEL_WIDTH.px())
-        .height(PANEL_HEIGHT.px()), // Background container temporarily disabled for wider text display
-                                    // .background_color(theme::panel::BACKGROUND)
-                                    // .border_color(theme::panel::OUTLINE)
-                                    // .border_width(1.5)
-                                    // .corner_radius(8.0),
+        .background_color(theme::panel::BACKGROUND),
     )
 }
 
