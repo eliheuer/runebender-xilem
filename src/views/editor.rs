@@ -18,8 +18,8 @@ use xilem::WidgetView;
 use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::{
-    ChildAlignment, ZStackExt, flex_col, flex_row, label, sized_box, split,
-    text_input, transformed, zstack,
+    ChildAlignment, ZStackExt, flex_col, flex_row, label, sized_box,
+    split, text_input, transformed, zstack,
 };
 
 use crate::components::workspace_toolbar::WorkspaceToolbarButton;
@@ -190,7 +190,7 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
             .min_bar_area(6.px())
             .draggable(has_text_buffer),
         )
-        .background_color(theme::panel::BACKGROUND),
+        .background_color(theme::canvas::BACKGROUND),
     )
 }
 
@@ -647,16 +647,13 @@ fn text_buffer_preview_bottom(
 
     let upm = session.ascender - session.descender;
 
-    // Compute baseline offset that visually centers the glyph
-    // in the available space, accounting for the 0.8x scale factor
-    let center_offset =
-        0.5 - 0.5 * (session.ascender + session.descender) / upm;
-
     Either::A(
         sized_box(
-            multi_glyph_view(glyph_paths, 10000.0, 10000.0, upm)
-                .color(theme::panel::GLYPH_PREVIEW)
-                .baseline_offset(center_offset),
+            multi_glyph_view(
+                glyph_paths, 10000.0, 10000.0, upm,
+            )
+            .color(theme::panel::GLYPH_PREVIEW)
+            .fit_to_bounds(),
         )
         .background_color(theme::panel::BACKGROUND),
     )

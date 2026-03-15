@@ -245,6 +245,7 @@ pub mod panel {
     pub const BACKGROUND: Color = super::PANEL_BACKGROUND;
     pub const OUTLINE: Color = super::PANEL_OUTLINE;
     pub const LINE: Color = super::PANEL_LINE;
+    pub const DIVIDER: Color = super::BASE_D;
     pub const GLYPH_PREVIEW: Color = super::GLYPH_PREVIEW_COLOR;
 }
 

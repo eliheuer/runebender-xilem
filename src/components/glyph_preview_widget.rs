@@ -408,6 +408,8 @@ pub struct MultiGlyphWidget {
     upm: f64,
     /// Baseline offset as a fraction of height (0.0 = bottom, 1.0 = top)
     baseline_offset: f64,
+    /// When true, fit to combined bounding box instead of using UPM
+    fit_to_bounds: bool,
 }
 
 impl MultiGlyphWidget {
@@ -419,6 +421,7 @@ impl MultiGlyphWidget {
             size,
             upm,
             baseline_offset: 0.16,
+            fit_to_bounds: false,
         }
     }
 
@@ -431,6 +434,12 @@ impl MultiGlyphWidget {
     /// Set the baseline offset (0.0 = bottom, 1.0 = top)
     pub fn with_baseline_offset(mut self, offset: f64) -> Self {
         self.baseline_offset = offset;
+        self
+    }
+
+    /// Enable fit-to-bounds mode (ignore UPM, fit to bounding box)
+    pub fn with_fit_to_bounds(mut self) -> Self {
+        self.fit_to_bounds = true;
         self
     }
 
@@ -457,6 +466,11 @@ impl MultiGlyphWidget {
     /// Update the widget size (for use in View::rebuild)
     pub fn set_size(&mut self, size: Size) {
         self.size = size;
+    }
+
+    /// Update the fit-to-bounds flag (for use in View::rebuild)
+    pub fn set_fit_to_bounds(&mut self, fit: bool) {
+        self.fit_to_bounds = fit;
     }
 }
 
@@ -513,26 +527,40 @@ impl Widget for MultiGlyphWidget {
 
         let widget_size = ctx.size();
 
-        // Calculate uniform scale based on UPM
-        let scale = widget_size.height / self.upm;
-        let scale = scale * 0.8; // 20% smaller
-
-        // Center horizontally based on combined bounding box
-        let scaled_width = bounds.width() * scale;
-        let l_pad = (widget_size.width - scaled_width) / 2.0;
-        let x_translation = l_pad - bounds.x0 * scale;
-
-        // Position baseline
-        let baseline = widget_size.height * self.baseline_offset;
-
-        let transform = Affine::new([
-            scale,
-            0.0,
-            0.0,
-            -scale,
-            x_translation,
-            widget_size.height - baseline,
-        ]);
+        let transform = if self.fit_to_bounds {
+            // Fit combined bounding box to widget with equal margins
+            let margin = 0.1;
+            let usable_w = widget_size.width * (1.0 - 2.0 * margin);
+            let usable_h = widget_size.height * (1.0 - 2.0 * margin);
+            let scale = if bounds.width() > 0.0 && bounds.height() > 0.0 {
+                (usable_w / bounds.width()).min(usable_h / bounds.height())
+            } else {
+                1.0
+            };
+            let scaled_w = bounds.width() * scale;
+            let scaled_h = bounds.height() * scale;
+            let x_off = (widget_size.width - scaled_w) / 2.0
+                - bounds.x0 * scale;
+            let y_off = (widget_size.height - scaled_h) / 2.0
+                + bounds.y1 * scale;
+            Affine::new([scale, 0.0, 0.0, -scale, x_off, y_off])
+        } else {
+            // UPM-based scaling with baseline offset
+            let scale = widget_size.height / self.upm;
+            let scale = scale * 0.8;
+            let scaled_width = bounds.width() * scale;
+            let l_pad = (widget_size.width - scaled_width) / 2.0;
+            let x_translation = l_pad - bounds.x0 * scale;
+            let baseline = widget_size.height * self.baseline_offset;
+            Affine::new([
+                scale,
+                0.0,
+                0.0,
+                -scale,
+                x_translation,
+                widget_size.height - baseline,
+            ])
+        };
 
         // Clip to widget bounds so glyphs don't overflow
         let clip_rect = kurbo::Rect::from_origin_size(
@@ -596,6 +624,7 @@ pub fn multi_glyph_view<State, Action>(
         color: None,
         upm,
         baseline_offset: None,
+        fit_to_bounds: false,
         phantom: PhantomData,
     }
 }
@@ -608,6 +637,7 @@ pub struct MultiGlyphView<State, Action = ()> {
     color: Option<Color>,
     upm: f64,
     baseline_offset: Option<f64>,
+    fit_to_bounds: bool,
     phantom: PhantomData<fn() -> (State, Action)>,
 }
 
@@ -621,6 +651,12 @@ impl<State, Action> MultiGlyphView<State, Action> {
     /// Set the baseline offset (0.0 = bottom, 1.0 = top)
     pub fn baseline_offset(mut self, offset: f64) -> Self {
         self.baseline_offset = Some(offset);
+        self
+    }
+
+    /// Enable fit-to-bounds mode
+    pub fn fit_to_bounds(mut self) -> Self {
+        self.fit_to_bounds = true;
         self
     }
 }
@@ -640,6 +676,9 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
         }
         if let Some(offset) = self.baseline_offset {
             widget = widget.with_baseline_offset(offset);
+        }
+        if self.fit_to_bounds {
+            widget = widget.with_fit_to_bounds();
         }
         (ctx.create_pod(widget), ())
     }
@@ -680,6 +719,11 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
 
         if self.size != prev.size {
             widget.widget.set_size(self.size);
+            widget.ctx.request_render();
+        }
+
+        if self.fit_to_bounds != prev.fit_to_bounds {
+            widget.widget.set_fit_to_bounds(self.fit_to_bounds);
             widget.ctx.request_render();
         }
     }

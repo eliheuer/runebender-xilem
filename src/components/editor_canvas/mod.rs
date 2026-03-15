@@ -364,6 +364,23 @@ impl Widget for EditorWidget {
         // Context menu is painted last so it appears on top
         self.paint_context_menu(scene);
 
+        // Bottom divider line (top edge of the split drag area)
+        if self.session.text_buffer.is_some() {
+            let line = kurbo::Line::new(
+                kurbo::Point::new(0.0, canvas_size.height - 0.5),
+                kurbo::Point::new(
+                    canvas_size.width,
+                    canvas_size.height - 0.5,
+                ),
+            );
+            masonry::util::stroke(
+                scene,
+                &line,
+                crate::theme::panel::DIVIDER,
+                1.0,
+            );
+        }
+
         scene.pop_layer();
     }
 
