@@ -206,8 +206,17 @@ impl EditorWidget {
                         data.advance_width,
                         transform,
                     );
+                } else {
+                    // Non-text mode: minimal metrics for inactive sorts
+                    self.render_sort_minimal_metrics(
+                        scene,
+                        data.x_offset,
+                        data.baseline_y,
+                        data.advance_width,
+                        transform,
+                        theme::metrics::GUIDE,
+                    );
                 }
-                // Inactive sorts in non-text mode: no metrics at all
             }
         }
 
