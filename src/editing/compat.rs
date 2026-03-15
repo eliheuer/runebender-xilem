@@ -112,6 +112,16 @@ impl CompatError {
             } => Some(*contour_index),
         }
     }
+
+    /// The point index this error relates to, if any.
+    pub fn point_index(&self) -> Option<usize> {
+        match self {
+            Self::PointTypeMismatch {
+                point_index, ..
+            } => Some(*point_index),
+            _ => None,
+        }
+    }
 }
 
 // ================================================================

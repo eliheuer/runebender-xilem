@@ -67,8 +67,7 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
 
     // Editor canvas with floating overlays on top,
     // text buffer preview in a separate bottom panel
-    let has_text_buffer =
-        session.text_buffer.is_some() && session.panels_visible;
+    let has_text_buffer = session.text_buffer.is_some();
 
     let canvas_with_overlays = zstack((
         // Background: the editor canvas (full screen)

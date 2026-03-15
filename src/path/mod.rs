@@ -81,6 +81,15 @@ impl Path {
         }
     }
 
+    /// Get a reference to the points in this path
+    pub fn points(&self) -> &PathPoints {
+        match self {
+            Path::Cubic(cubic) => cubic.points(),
+            Path::Quadratic(quadratic) => quadratic.points(),
+            Path::Hyper(hyper) => hyper.points(),
+        }
+    }
+
     /// Convert this path to a workspace contour (for saving)
     pub fn to_contour(&self) -> workspace::Contour {
         match self {
