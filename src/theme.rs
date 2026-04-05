@@ -402,15 +402,15 @@ pub mod mark {
     ];
 
     /// RGBA strings for UFO storage (matching COLORS array order)
-    /// Format: "R,G,B,A" with 0–1 floats
+    /// Format: "R,G,B,A" with 0–1 floats, one decimal place for clarity.
     pub const RGBA_STRINGS: [&str; 7] = [
-        "1,0.251,0.251,1",
-        "1,0.6,0.2,1",
-        "1,0.867,0.2,1",
-        "0.267,0.733,0.267,1",
-        "0.118,0.314,0.784,1",
-        "0.6,0.333,0.867,1",
-        "0.867,0.333,0.667,1",
+        "1,0.3,0.3,1",       // red
+        "1,0.6,0.2,1",       // orange
+        "1,0.9,0.2,1",       // yellow
+        "0.3,0.7,0.3,1",     // green
+        "0.1,0.3,0.8,1",     // blue
+        "0.6,0.3,0.9,1",     // purple
+        "0.9,0.3,0.7,1",     // pink
     ];
 
     /// Number of colors in the palette

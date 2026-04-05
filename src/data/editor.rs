@@ -5,6 +5,7 @@
 
 use super::{AppState, Tab};
 use crate::editing::EditSession;
+use crate::editing::background_image::BackgroundImage;
 use crate::model::{read_workspace, write_workspace};
 use std::sync::Arc;
 
@@ -33,6 +34,53 @@ impl AppState {
 
         // Set workspace reference for text mode character mapping (Phase 5)
         session.workspace = Some(Arc::clone(&workspace_arc));
+
+        // Auto-load background image from --glyph-images directory if set.
+        // If the UFO was built by img2ufo, each glyph's lib contains the
+        // exact image→font transform (com.img2ufo.imageScale/OffsetX/OffsetY).
+        if let Some(ref images_dir) = self.glyph_images_dir {
+            let png_path = images_dir.join(format!("{}.png", glyph_name));
+            if png_path.exists() {
+                // Try to read the exact transform from the glyph's .glif lib
+                // by loading the norad glyph directly from the UFO on disk.
+                let glif_transform = (|| -> Option<(f64, f64, f64)> {
+                    let font = norad::Font::load(&workspace.path).ok()?;
+                    let norad_glyph = font.default_layer().get_glyph(glyph_name)?;
+                    let scale = norad_glyph.lib.get("com.img2ufo.imageScale")?.as_real()?;
+                    let ox = norad_glyph.lib.get("com.img2ufo.imageOffsetX")?.as_real()?;
+                    let oy = norad_glyph.lib.get("com.img2ufo.imageOffsetY")?.as_real()?;
+                    Some((scale, ox, oy))
+                })();
+
+                let glyph_width = glyph.width;
+                let result = if let Some((scale, offset_x, offset_y)) = glif_transform {
+                    tracing::info!(
+                        "Using img2ufo transform for '{}': scale={:.3} offset=({:.1},{:.1})",
+                        glyph_name, scale, offset_x, offset_y
+                    );
+                    BackgroundImage::load_with_transform(
+                        &png_path, scale, offset_x, offset_y,
+                    )
+                } else {
+                    BackgroundImage::load(
+                        &png_path, metrics.ascender, metrics.descender, glyph_width,
+                    )
+                };
+
+                match result {
+                    Ok(mut bg) => {
+                        bg.locked = true;
+                        session.background_image = Some(bg);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to load background image for '{}': {}",
+                            glyph_name, e
+                        );
+                    }
+                }
+            }
+        }
 
         // Run interpolation compatibility check if in
         // designspace mode
