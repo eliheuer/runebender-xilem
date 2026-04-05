@@ -18,6 +18,7 @@ use crate::components::GlyphCategory;
 use crate::editing::EditSession;
 use crate::model::workspace::{self, Workspace};
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
 use xilem::WindowId;
@@ -99,6 +100,10 @@ pub struct AppState {
 
     /// Flag to suppress reload when we just saved (self-save detection)
     pub save_in_progress: Arc<AtomicBool>,
+
+    /// Optional directory of glyph PNGs (from img2glyph) to auto-load
+    /// as background images when opening a glyph for editing.
+    pub glyph_images_dir: Option<PathBuf>,
 }
 
 #[allow(dead_code)]
@@ -124,6 +129,7 @@ impl AppState {
             cached_filtered_count: 0,
             clipboard: None,
             save_in_progress: Arc::new(AtomicBool::new(false)),
+            glyph_images_dir: None,
         }
     }
 

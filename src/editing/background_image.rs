@@ -130,6 +130,115 @@ impl BackgroundImage {
         })
     }
 
+    /// Load a background image and position it to match traced outlines.
+    ///
+    /// Uses the glyph's actual outline bounding box to compute the correct
+    /// scale and position, so the background image aligns with the outlines
+    /// produced by img2ufo's uniform-scaling pipeline.
+    pub fn load_matched_to_outlines(
+        path: &Path,
+        glyph_bounds: Option<kurbo::Rect>,
+        ascender: f64,
+        descender: f64,
+        glyph_width: f64,
+    ) -> Result<Self, String> {
+        let img = image::open(path)
+            .map_err(|e| format!("Failed to load image: {e}"))?;
+        let rgba = img.to_rgba8();
+        let width = rgba.width();
+        let height = rgba.height();
+        let pixels: Vec<u8> = rgba.into_raw();
+
+        let blob = Blob::from(pixels);
+        let image_data = ImageData {
+            data: blob,
+            format: ImageFormat::Rgba8,
+            alpha_type: peniko::ImageAlphaType::Alpha,
+            width,
+            height,
+        };
+
+        // If the glyph has outlines, match the image to them.
+        // The outline bounding box tells us exactly where the traced
+        // glyph sits in design space — scale the image to cover that.
+        let (scale, x, y) = if let Some(bounds) = glyph_bounds {
+            let outline_h = bounds.y1 - bounds.y0;
+            let outline_w = bounds.x1 - bounds.x0;
+            if outline_h > 0.0 && height > 0 {
+                let s = outline_h / height as f64;
+                let img_w = width as f64 * s;
+                // Center image on the outline horizontally.
+                let cx = bounds.x0 + (outline_w - img_w) / 2.0;
+                (s, cx, bounds.y0)
+            } else {
+                let design_height = ascender - descender;
+                let s = design_height / height as f64;
+                let img_w = width as f64 * s;
+                (s, (glyph_width - img_w) / 2.0, descender)
+            }
+        } else {
+            // No outlines — fall back to ascender-to-descender fit.
+            let design_height = ascender - descender;
+            let s = design_height / height as f64;
+            let img_w = width as f64 * s;
+            (s, (glyph_width - img_w) / 2.0, descender)
+        };
+
+        Ok(Self {
+            image_data,
+            width,
+            height,
+            position: kurbo::Point::new(x, y),
+            scale_x: scale,
+            scale_y: scale,
+            opacity: theme::background_image::DEFAULT_OPACITY,
+            locked: false,
+            selected: false,
+            source_path: path.to_path_buf(),
+        })
+    }
+
+    /// Load a background image with an exact transform from img2ufo.
+    ///
+    /// The scale and offsets come from the glyph's lib keys:
+    /// `com.img2ufo.imageScale`, `com.img2ufo.imageOffsetX/Y`.
+    /// These record exactly how img2bez mapped pixels to font units.
+    pub fn load_with_transform(
+        path: &Path,
+        scale: f64,
+        offset_x: f64,
+        offset_y: f64,
+    ) -> Result<Self, String> {
+        let img = image::open(path)
+            .map_err(|e| format!("Failed to load image: {e}"))?;
+        let rgba = img.to_rgba8();
+        let width = rgba.width();
+        let height = rgba.height();
+        let pixels: Vec<u8> = rgba.into_raw();
+
+        let blob = Blob::from(pixels);
+        let image_data = ImageData {
+            data: blob,
+            format: ImageFormat::Rgba8,
+            alpha_type: peniko::ImageAlphaType::Alpha,
+            width,
+            height,
+        };
+
+        Ok(Self {
+            image_data,
+            width,
+            height,
+            position: kurbo::Point::new(offset_x, offset_y),
+            scale_x: scale,
+            scale_y: scale,
+            opacity: theme::background_image::DEFAULT_OPACITY,
+            locked: false,
+            selected: false,
+            source_path: path.to_path_buf(),
+        })
+    }
+
     /// Scaled width in design units.
     pub fn scaled_width(&self) -> f64 {
         self.width as f64 * self.scale_x

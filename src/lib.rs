@@ -62,15 +62,41 @@ fn handle_command_line_args(initial_state: &mut AppState) {
         return;
     }
 
-    let font_path = std::path::PathBuf::from(&args[1]);
+    let mut i = 1;
+    let mut font_path_str: Option<String> = None;
 
-    // Validate that the path exists
-    if font_path.exists() {
-        tracing::info!("Loading font from: {}", font_path.display());
-        initial_state.load_font(font_path);
-    } else {
-        tracing::error!("Path does not exist: {}", font_path.display());
-        tracing::error!("Usage: runebender [path/to/font.ufo|designspace]");
+    while i < args.len() {
+        match args[i].as_str() {
+            "--glyph-images" => {
+                i += 1;
+                if i < args.len() {
+                    let dir = std::path::PathBuf::from(&args[i]);
+                    if dir.is_dir() {
+                        tracing::info!("Glyph images directory: {}", dir.display());
+                        initial_state.glyph_images_dir = Some(dir);
+                    } else {
+                        tracing::error!("Glyph images path is not a directory: {}", dir.display());
+                    }
+                } else {
+                    tracing::error!("--glyph-images requires a directory path");
+                }
+            }
+            other => {
+                font_path_str = Some(other.to_string());
+            }
+        }
+        i += 1;
+    }
+
+    if let Some(path_str) = font_path_str {
+        let font_path = std::path::PathBuf::from(&path_str);
+        if font_path.exists() {
+            tracing::info!("Loading font from: {}", font_path.display());
+            initial_state.load_font(font_path);
+        } else {
+            tracing::error!("Path does not exist: {}", font_path.display());
+            tracing::error!("Usage: runebender [path/to/font.ufo] [--glyph-images dir/]");
+        }
     }
 }
 
