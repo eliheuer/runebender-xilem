@@ -36,36 +36,47 @@ impl AppState {
         session.workspace = Some(Arc::clone(&workspace_arc));
 
         // Auto-load background image from --glyph-images directory if set.
-        // If the UFO was built by img2ufo, each glyph's lib contains the
-        // exact image→font transform (com.img2ufo.imageScale/OffsetX/OffsetY).
+        // Always match the image to the glyph's outline bounding box — this is
+        // robust because the outline was traced from the image, so they have
+        // the same shape. No stored transforms needed.
         if let Some(ref images_dir) = self.glyph_images_dir {
-            let png_path = images_dir.join(format!("{}.png", glyph_name));
-            if png_path.exists() {
-                // Try to read the exact transform from the glyph's .glif lib
-                // by loading the norad glyph directly from the UFO on disk.
-                let glif_transform = (|| -> Option<(f64, f64, f64)> {
-                    let font = norad::Font::load(&workspace.path).ok()?;
-                    let norad_glyph = font.default_layer().get_glyph(glyph_name)?;
-                    let scale = norad_glyph.lib.get("com.img2ufo.imageScale")?.as_real()?;
-                    let ox = norad_glyph.lib.get("com.img2ufo.imageOffsetX")?.as_real()?;
-                    let oy = norad_glyph.lib.get("com.img2ufo.imageOffsetY")?.as_real()?;
-                    Some((scale, ox, oy))
-                })();
-
-                let glyph_width = glyph.width;
-                let result = if let Some((scale, offset_x, offset_y)) = glif_transform {
-                    tracing::info!(
-                        "Using img2ufo transform for '{}': scale={:.3} offset=({:.1},{:.1})",
-                        glyph_name, scale, offset_x, offset_y
-                    );
-                    BackgroundImage::load_with_transform(
-                        &png_path, scale, offset_x, offset_y,
-                    )
+            // Try case-safe UFO naming: uppercase glyphs use "A_.png" to
+            // avoid collisions with "a.png" on case-insensitive filesystems.
+            let png_path = {
+                let underscore = images_dir.join(format!("{}_.png", glyph_name));
+                let plain = images_dir.join(format!("{}.png", glyph_name));
+                if underscore.exists() {
+                    underscore
                 } else {
-                    BackgroundImage::load(
-                        &png_path, metrics.ascender, metrics.descender, glyph_width,
-                    )
+                    plain
+                }
+            };
+            if png_path.exists() {
+                let glyph_bounds = {
+                    let mut min_x = f64::MAX;
+                    let mut min_y = f64::MAX;
+                    let mut max_x = f64::MIN;
+                    let mut max_y = f64::MIN;
+                    let mut has_points = false;
+                    for contour in &glyph.contours {
+                        for pt in &contour.points {
+                            min_x = min_x.min(pt.x);
+                            min_y = min_y.min(pt.y);
+                            max_x = max_x.max(pt.x);
+                            max_y = max_y.max(pt.y);
+                            has_points = true;
+                        }
+                    }
+                    if has_points {
+                        Some(kurbo::Rect::new(min_x, min_y, max_x, max_y))
+                    } else {
+                        None
+                    }
                 };
+                let glyph_width = glyph.width;
+                let result = BackgroundImage::load_matched_to_outlines(
+                    &png_path, glyph_bounds, metrics.ascender, metrics.descender, glyph_width,
+                );
 
                 match result {
                     Ok(mut bg) => {
