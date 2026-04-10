@@ -8,7 +8,7 @@ A font editor built with [Xilem](https://github.com/linebender/xilem), a Rust UI
 
 <img width="1512" height="982" alt="Image" src="https://github.com/user-attachments/assets/6b27b22c-2124-4ca7-8330-6f2d0ccb7d50" />
 
-<img width="1142" height="940" alt="Image" src="https://github.com/user-attachments/assets/eb8493f3-26dd-40bf-9e13-f37fdc02ba32" />
+![Image](https://github.com/user-attachments/assets/da1e7084-19d2-4583-b2fd-c7af7beb4abc)
 
 ## Building from source
 
