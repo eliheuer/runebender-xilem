@@ -1,0 +1,18 @@
+[package]
+name = "runebender-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "Apache-2.0"
+description = "Platform-independent core types for the Runebender font editor"
+repository = "https://github.com/eliheuer/runebender-core"
+
+[lib]
+name = "runebender_core"
+path = "src/lib.rs"
+
+[dependencies]
+# Nothing here yet — only kurbo-free modules live in core for now.
+# When the masonry/xilem ecosystem moves to kurbo 0.13, the rest of
+# editing/, model/, and path/ can migrate here too; at that point
+# we'll add kurbo (and the spline+kurbo_09 pair) as deps.
