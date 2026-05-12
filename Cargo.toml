@@ -18,6 +18,9 @@ xilem = "0.4"
 masonry = "0.4"
 winit = "0.30"
 
+# Shared editing+model types — also consumed by runebender-comfy
+runebender-core = { path = "../runebender-core" }
+
 # Font/UFO handling
 norad = "0.13"
 
