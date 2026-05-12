@@ -3786,6 +3786,7 @@ dependencies = [
  "peniko",
  "reqwest",
  "rfd",
+ "runebender-core",
  "serde",
  "serde_json",
  "spline",
@@ -3797,6 +3798,10 @@ dependencies = [
  "winit",
  "xilem",
 ]
+
+[[package]]
+name = "runebender-core"
+version = "0.1.0"
 
 [[package]]
 name = "rustc-hash"
