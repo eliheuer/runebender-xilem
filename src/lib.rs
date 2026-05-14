@@ -9,5 +9,8 @@
 // version. See the project SECURITY.md and runebender-comfy README
 // for the broader plan.
 
+pub mod category;
 pub mod editing;
 pub mod model;
+
+pub use category::GlyphCategory;
