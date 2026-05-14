@@ -3802,6 +3802,9 @@ dependencies = [
 [[package]]
 name = "runebender-core"
 version = "0.1.0"
+dependencies = [
+ "unicode-general-category",
+]
 
 [[package]]
 name = "rustc-hash"

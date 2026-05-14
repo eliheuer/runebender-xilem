@@ -48,89 +48,10 @@ const HIGHLIGHT_RADIUS: f64 = 4.0;
 const HIGHLIGHT_INSET: f64 = 4.0;
 
 // ============================================================
-// GlyphCategory enum (unchanged)
+// GlyphCategory — shared with runebender-comfy via runebender-core
 // ============================================================
 
-/// Glyph categories for filtering
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum GlyphCategory {
-    #[default]
-    All,
-    Letter,
-    Number,
-    Punctuation,
-    Symbol,
-    Mark,
-    Separator,
-    Other,
-}
-
-impl GlyphCategory {
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            GlyphCategory::All => "All",
-            GlyphCategory::Letter => "Letter",
-            GlyphCategory::Number => "Number",
-            GlyphCategory::Punctuation => "Punctuation",
-            GlyphCategory::Symbol => "Symbol",
-            GlyphCategory::Mark => "Mark",
-            GlyphCategory::Separator => "Separator",
-            GlyphCategory::Other => "Other",
-        }
-    }
-
-    pub fn all_categories() -> &'static [GlyphCategory] {
-        &[
-            GlyphCategory::All,
-            GlyphCategory::Letter,
-            GlyphCategory::Number,
-            GlyphCategory::Punctuation,
-            GlyphCategory::Symbol,
-            GlyphCategory::Mark,
-            GlyphCategory::Separator,
-            GlyphCategory::Other,
-        ]
-    }
-
-    pub fn from_codepoint(c: char) -> GlyphCategory {
-        use unicode_general_category::{GeneralCategory, get_general_category};
-
-        match get_general_category(c) {
-            GeneralCategory::UppercaseLetter
-            | GeneralCategory::LowercaseLetter
-            | GeneralCategory::TitlecaseLetter
-            | GeneralCategory::ModifierLetter
-            | GeneralCategory::OtherLetter => GlyphCategory::Letter,
-
-            GeneralCategory::DecimalNumber
-            | GeneralCategory::LetterNumber
-            | GeneralCategory::OtherNumber => GlyphCategory::Number,
-
-            GeneralCategory::ConnectorPunctuation
-            | GeneralCategory::DashPunctuation
-            | GeneralCategory::OpenPunctuation
-            | GeneralCategory::ClosePunctuation
-            | GeneralCategory::InitialPunctuation
-            | GeneralCategory::FinalPunctuation
-            | GeneralCategory::OtherPunctuation => GlyphCategory::Punctuation,
-
-            GeneralCategory::MathSymbol
-            | GeneralCategory::CurrencySymbol
-            | GeneralCategory::ModifierSymbol
-            | GeneralCategory::OtherSymbol => GlyphCategory::Symbol,
-
-            GeneralCategory::NonspacingMark
-            | GeneralCategory::SpacingMark
-            | GeneralCategory::EnclosingMark => GlyphCategory::Mark,
-
-            GeneralCategory::SpaceSeparator
-            | GeneralCategory::LineSeparator
-            | GeneralCategory::ParagraphSeparator => GlyphCategory::Separator,
-
-            _ => GlyphCategory::Other,
-        }
-    }
-}
+pub use runebender_core::GlyphCategory;
 
 // ============================================================
 // Custom Masonry Widget
