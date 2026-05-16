@@ -1,0 +1,192 @@
+{
+  "schema": "https://runebender.dev/theme.schema.json",
+  "name": "Runebender",
+  "version": 1,
+  "source": "runebender-xilem/src/theme.rs",
+  "colors": {
+    "base": {
+      "a": "#101010",
+      "b": "#202020",
+      "c": "#303030",
+      "d": "#404040",
+      "e": "#505050",
+      "f": "#606060",
+      "g": "#707070",
+      "h": "#808080",
+      "i": "#909090",
+      "j": "#a0a0a0",
+      "k": "#b0b0b0",
+      "l": "#c0c0c0",
+      "m": "#d0d0d0",
+      "n": "#e0e0e0",
+      "o": "#f0f0f0"
+    },
+    "app": {
+      "background": "{colors.base.a}"
+    },
+    "text": {
+      "primary": "{colors.base.i}",
+      "secondary": "{colors.base.g}"
+    },
+    "panel": {
+      "background": "#1c1c1c",
+      "outline": "{colors.base.f}",
+      "line": "{colors.base.i}",
+      "divider": "{colors.base.d}",
+      "glyphPreview": "{colors.mark.yellow}"
+    },
+    "toolbar": {
+      "buttonUnselected": "{colors.panel.background}",
+      "buttonHovered": "{colors.panel.background}",
+      "buttonSelected": "{colors.panel.background}",
+      "buttonOutline": "{colors.base.f}",
+      "iconUnselected": "{colors.base.f}",
+      "iconHovered": "{colors.grid.cellSelectedOutline}",
+      "iconSelected": "{colors.grid.cellSelectedOutline}"
+    },
+    "grid": {
+      "cellBackground": "{colors.panel.background}",
+      "cellOutline": "{colors.base.f}",
+      "cellSelectedBackground": "#146414",
+      "cellSelectedOutline": "#66ee88",
+      "glyph": "{colors.base.j}",
+      "cellText": "{colors.base.h}"
+    },
+    "path": {
+      "stroke": "{colors.base.l}",
+      "fill": "{colors.base.f}",
+      "previewFill": "{colors.base.h}"
+    },
+    "component": {
+      "fill": "#6699cc",
+      "selectedFill": "#88bbff"
+    },
+    "metrics": {
+      "guide": "{colors.grid.cellSelectedOutline}"
+    },
+    "kerning": {
+      "activeGlyph": "#00ffcc",
+      "previousGlyph": "#ffaa33"
+    },
+    "designGrid": {
+      "fine": "#88888840",
+      "coarse": "#88888858"
+    },
+    "handle": {
+      "line": "{colors.base.i}"
+    },
+    "point": {
+      "smoothInner": "#579aff",
+      "smoothOuter": "#4428ec",
+      "cornerInner": "#6ae756",
+      "cornerOuter": "#208e56",
+      "offcurveInner": "#cc99ff",
+      "offcurveOuter": "#9900ff",
+      "hyperInner": "#66ccdd",
+      "hyperOuter": "#0099aa",
+      "startNodeInner": "#6ae756",
+      "startNodeOuter": "#208e56",
+      "selectedInner": "#ffee55",
+      "selectedOuter": "#ffaa33"
+    },
+    "segment": {
+      "hover": "#ffaa33"
+    },
+    "selection": {
+      "rectFill": "#ffaa3320",
+      "rectStroke": "#ffaa33"
+    },
+    "cursor": {
+      "text": "#007aff"
+    },
+    "measure": {
+      "text": "{colors.base.c}"
+    },
+    "mark": {
+      "red": "#ff4040",
+      "orange": "#ff9933",
+      "yellow": "#ffdd33",
+      "lightGreen": "#88dd44",
+      "green": "#22bb77",
+      "teal": "#44bbaa",
+      "blue": "#4488ff",
+      "purple": "#9955dd",
+      "pink": "#dd55aa",
+      "brown": "#aa7744",
+      "gray": "#888888",
+      "lightGray": "#bbbbbb",
+      "selectedRing": "#ffffff"
+    },
+    "backgroundImage": {
+      "selectionBorder": "#4488ff"
+    }
+  },
+  "markColors": [
+    {
+      "name": "red",
+      "color": "{colors.mark.red}",
+      "ufoRgba": "1,0.3,0.3,1"
+    },
+    {
+      "name": "orange",
+      "color": "{colors.mark.orange}",
+      "ufoRgba": "1,0.6,0.2,1"
+    },
+    {
+      "name": "yellow",
+      "color": "{colors.mark.yellow}",
+      "ufoRgba": "1,0.9,0.2,1"
+    },
+    {
+      "name": "green",
+      "color": "{colors.mark.green}",
+      "ufoRgba": "0.3,0.7,0.3,1"
+    },
+    {
+      "name": "blue",
+      "color": "{colors.mark.blue}",
+      "ufoRgba": "0.1,0.3,0.8,1"
+    },
+    {
+      "name": "purple",
+      "color": "{colors.mark.purple}",
+      "ufoRgba": "0.6,0.3,0.9,1"
+    },
+    {
+      "name": "pink",
+      "color": "{colors.mark.pink}",
+      "ufoRgba": "0.9,0.3,0.7,1"
+    }
+  ],
+  "sizes": {
+    "bentoGap": 6,
+    "toolbarItem": 48,
+    "toolbarItemSpacing": 6,
+    "toolbarPadding": 8,
+    "toolbarButtonRadius": 6,
+    "toolbarBorderWidth": 1.5,
+    "panelBorderWidth": 1.5,
+    "panelRadius": 8,
+    "uiPanelMargin": 12,
+    "activeGlyphPanel": {
+      "width": 488,
+      "height": 140,
+      "padding": 12,
+      "gap": 8,
+      "topTracks": [346, 110],
+      "sidebearingTracks": [110, 110, 110, 110],
+      "metricsTracks": [149, 150, 149]
+    },
+    "markPanel": {
+      "height": 66,
+      "swatch": 18,
+      "gap": 6
+    },
+    "coordinatePanel": {
+      "padding": 16,
+      "selectorSize": 72,
+      "dotRadius": 10,
+      "strokeWidth": 1
+    }
+  }
+}

@@ -12,6 +12,9 @@ name = "runebender_core"
 path = "src/lib.rs"
 
 [dependencies]
+# Structured metadata shared over serde_json between core and UI hosts.
+serde = { version = "1.0", features = ["derive"] }
+
 # Unicode general-category lookup, used by `category::GlyphCategory`.
 # Same crate as runebender-xilem, just hoisted here so both editors
 # share the categorization.

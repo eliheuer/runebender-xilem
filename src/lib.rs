@@ -11,6 +11,11 @@
 
 pub mod category;
 pub mod editing;
+pub mod mark_color;
 pub mod model;
+pub mod shaping;
+pub mod theme;
 
 pub use category::GlyphCategory;
+pub use mark_color::MarkColor;
+pub use model::GlyphMetadata;
