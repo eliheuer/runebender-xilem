@@ -413,12 +413,16 @@ where
         mut element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<Action> {
-        // Check for our own scroll/keyboard actions first.
-        if let Some(action) =
-            message.take_message::<GridScrollAction>()
-        {
-            (self.on_action)(app_state, *action);
-            return MessageResult::Action(Action::default());
+        // Only take our own actions when the message has reached
+        // this widget (remaining path exhausted). Child-bound
+        // messages still have path segments and must be delegated.
+        if message.remaining_path().is_empty() {
+            if let Some(action) =
+                message.take_message::<GridScrollAction>()
+            {
+                (self.on_action)(app_state, *action);
+                return MessageResult::Action(Action::default());
+            }
         }
 
         // Not ours — delegate to child (e.g. glyph cell clicks).
