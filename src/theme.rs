@@ -33,6 +33,7 @@ pub mod base {
     pub const H: ColorRgba = ColorRgba::rgb(0x80, 0x80, 0x80);
     pub const I: ColorRgba = ColorRgba::rgb(0x90, 0x90, 0x90);
     pub const J: ColorRgba = ColorRgba::rgb(0xa0, 0xa0, 0xa0);
+    pub const L: ColorRgba = ColorRgba::rgb(0xc0, 0xc0, 0xc0);
 }
 
 pub mod app {
@@ -47,6 +48,9 @@ pub mod grid {
 }
 
 pub mod path {
+    /// Outline stroke color used in edit mode (the glyph is stroked,
+    /// not filled, while editing — see runebender-xilem path::STROKE).
+    pub const STROKE: super::ColorRgba = super::base::L;
     pub const FILL: super::ColorRgba = super::base::F;
     pub const PREVIEW_FILL: super::ColorRgba = super::base::H;
 }
