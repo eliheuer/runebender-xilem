@@ -15,7 +15,8 @@ A font editor built with [Xilem](https://github.com/linebender/xilem), a Rust UI
 Make sure [Rust](https://rust-lang.org/) is installed on your system (MSRV: 1.88), clone the repository and build/run the application:
 
 ```bash
-# these dependencies not yet published to crates.io
+# these dependencies are not yet published to crates.io,
+# at the moment we install the sourcecode side by side
 git clone https://github.com/eliheuer/img2bez.git
 git clone https://github.com/eliheuer/runebender-core.git
 
