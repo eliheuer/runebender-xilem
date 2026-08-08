@@ -16,10 +16,13 @@ Runebender Xilem is a native Rust font editor built with Xilem, the
 Linebender reactive UI framework. It edits UFO (Unified Font Object)
 font sources and designspace (variable-font) files. Status: alpha.
 
-This is the canonical Runebender UI/UX reference. The
-`runebender-comfy` port (WASM/Vue, ComfyUI custom node) mirrors this
-repo's `src/components/*.rs` 1:1 in Vue. When you change a component
-here, expect a comfy follow-up.
+Status note (2026-08): this repo is currently dormant and behind.
+`runebender-web` is the actively developed and actively used editor;
+it started as a port of this repo and has since grown features this
+repo lacks (anchors, components, layers, feature shaping, Glyphs
+import). The plan is to upgrade this repo to current Xilem/Masonry
+(landing on kurbo 0.13), then move the kurbo-typed editing/model
+logic into `runebender-core` so both editors share it.
 
 ## Sister repos
 
@@ -27,9 +30,10 @@ All assumed to be siblings under `~/GH/repos/`:
 
 | Repo | License | Role |
 |---|---|---|
-| `runebender-xilem` | Apache-2.0 | **This repo.** Canonical native editor + UI/UX reference. |
-| `runebender-core` | Apache-2.0 | Shared editing/model crate. Local `path = "../runebender-core"` dep. |
-| `runebender-comfy` | GPL-3.0 | WASM/Vue port for ComfyUI. Mirrors this repo's UI/UX. |
+| `runebender-xilem` | Apache-2.0 | **This repo.** Native (Xilem) editor. Dormant, pending Masonry upgrade. |
+| `runebender-core` | Apache-2.0 | Shared kurbo-free editing/model crate. Local `path = "../runebender-core"` dep of both editors. |
+| `runebender-web` | GPL-3.0 | Vue 3 + Rust/WASM web editor. **Currently the primary, actively developed editor.** Its `core/` crate was ported from this repo and also depends on `runebender-core`. |
+| `runebender-comfy` | GPL-3.0 | WASM/Vue port for ComfyUI. Imports the web editor's package. |
 
 Fresh-clone needs `runebender-core` checked out as a sibling (or
 switch to a git dep before public publish).
@@ -37,12 +41,12 @@ switch to a git dep before public publish).
 ## ⚠ Load-bearing gotcha: the kurbo version split
 
 - `runebender-xilem` is pinned to **kurbo 0.12** (via masonry 0.4).
-- `runebender-comfy` is on **kurbo 0.13** (forced by peniko 0.5 /
-  vello 0.8).
+- `runebender-web` (and `runebender-comfy`) are on **kurbo 0.13**
+  (forced by peniko 0.5 / vello 0.8).
 - The `spline` crate uses kurbo 0.9 internally; conversion happens
   at the boundary.
 
-Sharing kurbo-using modules between xilem and comfy currently
+Sharing kurbo-using modules between xilem and web/comfy currently
 produces ~289 errors of `masonry::kurbo::X is not kurbo::X`.
 Switching xilem to masonry-2 is a multi-week project.
 
@@ -77,9 +81,9 @@ The entire UI is rebuilt from `AppState` on each update. State mutations happen 
 
 ### Key State Types
 
-- **`AppState`** (`src/data.rs`) — Central app state: loaded workspace, selected glyph, active edit session, current tab, window metadata
+- **`AppState`** (`src/data/mod.rs`) — Central app state: loaded workspace, selected glyph, active edit session, current tab, window metadata
 - **`Workspace`** (`src/model/workspace.rs`) — Font data model wrapping `norad` UFO types. Thread-safe via `Arc<RwLock<Workspace>>`. Glyphs sorted by Unicode codepoint
-- **`EditSession`** (`src/editing/session.rs`) — Per-glyph editing state: editable paths, selection, current tool, viewport, undo/redo history, text buffer for multi-glyph editing
+- **`EditSession`** (`src/editing/session/mod.rs`) — Per-glyph editing state: editable paths, selection, current tool, viewport, undo/redo history, text buffer for multi-glyph editing
 
 ### Module Layout
 
@@ -107,19 +111,19 @@ src/
 │   │   ├── text_buffer.rs # Sort creation, Arabic shaping, buffer management
 │   │   ├── hit_testing.rs # Point/segment/component hit tests
 │   │   └── path_editing.rs # Point movement, deletion, contour operations
-│   ├── selection.rs      # Entity selection set
-│   ├── edit_types.rs     # Undo grouping types
-│   ├── undo.rs           # Undo/redo system
 │   ├── hit_test.rs       # Cursor hit-testing
 │   ├── mouse.rs          # Mouse event state machine
-│   └── viewport.rs       # Design↔screen coordinate transform
+│   ├── viewport.rs       # Design↔screen coordinate transform
+│   ├── background_image.rs # Background reference image
+│   ├── tracing.rs        # img2bez autotrace integration
+│   ├── quiver.rs         # QuiverAI cloud vectorization
+│   └── compat.rs         # Compatibility/error checks
+│   # selection, undo, edit_types moved to runebender-core (re-exported here)
 │
 ├── model/                # Font data model
-│   ├── mod.rs            # Re-exports EntityId
+│   ├── mod.rs            # Re-exports (incl. EntityId/kerning from runebender-core)
 │   ├── workspace.rs      # UFO font data (Workspace, Glyph, etc.)
 │   ├── designspace.rs    # Variable font designspace support
-│   ├── kerning.rs        # Kerning lookup algorithm
-│   ├── entity_id.rs      # Unique entity identifiers
 │   └── glyph_renderer.rs # Glyph contour → BezPath conversion
 │
 ├── data/                 # AppState — central hub
@@ -154,7 +158,7 @@ src/
 ### UI Layer
 
 - **`src/lib.rs`** — Root `app_logic()` switches between welcome screen and tabbed editor
-- **`src/views/`** — Top-level views: `welcome.rs`, `glyph_grid.rs` (grid tab), `editor.rs` (glyph editing tab)
+- **`src/views/`** — Top-level views: `welcome.rs`, `glyph_grid/` (grid tab), `editor.rs` (glyph editing tab)
 - **`src/components/`** — UI components: `editor_canvas/` (main canvas widget), `glyph_preview_widget.rs`, toolbars, panels
 - **`src/tools/`** — Editing tools implementing a `Tool` trait: Select, Pen, HyperPen, Preview, Knife, Measure, Shapes, Text
 
@@ -204,7 +208,7 @@ Xilem views must be `Send + Sync` (required for `portal()` scrolling). Pre-compu
 - **Reduce nesting**: Extract helpers, use early returns with `?`, avoid deep closures
 - **Variable names**: Full words, not abbreviations
 - **Function order**: Public before private, constructors first
-- Reference examples: `src/theme.rs`, `src/settings.rs`, `src/editing/undo.rs`, `src/model/workspace.rs`
+- Reference examples: `src/theme.rs`, `src/settings.rs`, `src/model/workspace.rs`
 
 ## Key Dependencies
 
