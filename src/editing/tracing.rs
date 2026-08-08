@@ -37,7 +37,7 @@ pub fn trace_background_image(
     let config = img2bez::TracingConfig {
         target_height: bg.scaled_height(),
         y_offset: 0.0,
-        alphamax: settings::tracing::ALPHAMAX,
+        fit_accuracy: settings::tracing::FIT_ACCURACY,
         grid: settings::tracing::GRID,
         ..img2bez::TracingConfig::default()
     };

@@ -60,12 +60,12 @@ const NUDGE_CMD: f64 = 32.0;
 // ============================================================================
 // IMG2BEZ TRACING SETTINGS
 // ============================================================================
-/// Corner detection threshold for img2bez tracing.
+/// Curve-fitting accuracy for img2bez tracing.
 ///
-/// Range: 0.0 (everything is a corner) to ~1.34 (nothing is a corner).
-/// Lower = more corners detected = tighter curve fits.
-/// Higher = fewer corners = smoother curves.
-const TRACE_ALPHAMAX: f64 = 1.0;
+/// Fréchet-distance tolerance (in font units) for kurbo's
+/// `fit_to_bezpath_opt`. Smaller = more points, closer fit.
+/// Larger = fewer points, smoother curves. 2.0 is good for type design.
+const TRACE_FIT_ACCURACY: f64 = 2.0;
 
 /// Coordinate grid size for snapping traced contour points.
 /// All output points are rounded to multiples of this value.
@@ -143,8 +143,8 @@ pub mod nudge {
 
 /// img2bez tracing settings (bitmap → bezier conversion)
 pub mod tracing {
-    /// Corner detection threshold (0.0–1.34)
-    pub const ALPHAMAX: f64 = super::TRACE_ALPHAMAX;
+    /// Curve-fitting accuracy (Fréchet tolerance in font units)
+    pub const FIT_ACCURACY: f64 = super::TRACE_FIT_ACCURACY;
 
     /// Grid size for coordinate snapping (0 = off)
     pub const GRID: i32 = super::TRACE_GRID;
