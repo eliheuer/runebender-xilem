@@ -14,21 +14,21 @@ path = "src/main.rs"
 
 [dependencies]
 # UI
-xilem = "0.4"
-masonry = "0.4"
+xilem = { git = "https://github.com/linebender/xilem", rev = "7819435e592f3b3dda75432740264ef5fc1ddaa2" }
+masonry = { git = "https://github.com/linebender/xilem", rev = "7819435e592f3b3dda75432740264ef5fc1ddaa2" }
 winit = "0.30"
 
 # Shared editing+model types — also consumed by runebender-comfy
-runebender-core = { path = "../runebender-core" }
+runebender-core = { path = "/Users/eli/GH/repos/runebender-core" }
 
 # Font/UFO handling
 norad = "0.13"
 
 # Linebender ecosystem
-kurbo = "0.12"
+kurbo = "0.13"
 kurbo_09 = { package = "kurbo", version = "0.9.5" }
-parley = "0.6"
-peniko = "0.5"
+parley = "0.8"
+peniko = "0.6"
 spline = { git = "https://github.com/linebender/spline" }
 
 # Serialization
@@ -44,7 +44,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 
 # Image tracing (bitmap → bezier contours)
 # TODO: switch to crates.io version once img2bez is published.
-img2bez = { path = "../img2bez", default-features = false }
+img2bez = { path = "/Users/eli/GH/repos/img2bez", default-features = false }
 
 # QuiverAI vectorization (optional cloud-based alternative to img2bez)
 reqwest = { version = "0.12", features = ["blocking", "json", "multipart"] }
