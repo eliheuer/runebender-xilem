@@ -76,7 +76,7 @@ pub mod kerning {
 pub mod design_grid {
     use super::ColorRgba;
 
-    pub const FINE: ColorRgba = ColorRgba::rgba(0x88, 0x88, 0x88, 0x40);
+    pub const FINE: ColorRgba = ColorRgba::rgba(0x88, 0x88, 0x88, 0x48);
     pub const COARSE: ColorRgba = ColorRgba::rgba(0x88, 0x88, 0x88, 0x58);
 }
 
