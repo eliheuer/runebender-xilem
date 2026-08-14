@@ -8,8 +8,137 @@ use crate::model::workspace::Workspace;
 use crate::model::{read_workspace, write_workspace};
 use std::sync::{Arc, RwLock};
 
+/// Min/max x over every point of every path in the session, or
+/// None when the glyph has no outlines. Point-based (not curve
+/// bbox) to match the sidebearing values shown in the editor.
+fn outline_extent(
+    session: &crate::editing::EditSession,
+) -> Option<(f64, f64)> {
+    let mut min_x: Option<f64> = None;
+    let mut max_x: Option<f64> = None;
+    for path in session.paths.iter() {
+        for point in path.points().iter() {
+            let x = point.point.x;
+            min_x = Some(min_x.map_or(x, |m: f64| m.min(x)));
+            max_x = Some(max_x.map_or(x, |m: f64| m.max(x)));
+        }
+    }
+    Some((min_x?, max_x?))
+}
+
 #[allow(dead_code)]
 impl AppState {
+    /// Set the left sidebearing: shift the whole outline so its
+    /// left edge sits at the new value, growing/shrinking the
+    /// advance width so the right sidebearing is preserved.
+    pub fn update_glyph_lsb(&mut self, new_lsb: String) {
+        let Ok(new_lsb) = new_lsb.trim().parse::<f64>() else {
+            return;
+        };
+        let workspace_arc = self.active_workspace();
+        let Some(session) = &mut self.editor_session else {
+            return;
+        };
+        let Some((min_x, _)) = outline_extent(session) else {
+            return;
+        };
+        let delta = new_lsb - min_x;
+        if delta.abs() < 1e-9 {
+            return;
+        }
+        session.translate_all_paths(kurbo::Vec2::new(delta, 0.0));
+        let glyph = Arc::make_mut(&mut session.glyph);
+        glyph.width += delta;
+        let width = glyph.width;
+        Self::update_sort_advance(session, width);
+        Self::sync_session(workspace_arc, session);
+    }
+
+    /// Set the right sidebearing by adjusting the advance width.
+    pub fn update_glyph_rsb(&mut self, new_rsb: String) {
+        let Ok(new_rsb) = new_rsb.trim().parse::<f64>() else {
+            return;
+        };
+        let workspace_arc = self.active_workspace();
+        let Some(session) = &mut self.editor_session else {
+            return;
+        };
+        let Some((_, max_x)) = outline_extent(session) else {
+            return;
+        };
+        let current_rsb = session.glyph.width - max_x;
+        let delta = new_rsb - current_rsb;
+        if delta.abs() < 1e-9 {
+            return;
+        }
+        let glyph = Arc::make_mut(&mut session.glyph);
+        glyph.width += delta;
+        let width = glyph.width;
+        Self::update_sort_advance(session, width);
+        Self::sync_session(workspace_arc, session);
+    }
+
+    /// Set the glyph's unicode from a hex string ("0041"); an
+    /// empty string clears the codepoints.
+    pub fn update_glyph_unicode(&mut self, new_unicode: String) {
+        let trimmed = new_unicode.trim();
+        let codepoints = if trimmed.is_empty() {
+            Vec::new()
+        } else {
+            let Some(c) = u32::from_str_radix(trimmed, 16)
+                .ok()
+                .and_then(char::from_u32)
+            else {
+                return;
+            };
+            vec![c]
+        };
+        let workspace_arc = self.active_workspace();
+        let Some(session) = &mut self.editor_session else {
+            return;
+        };
+        let glyph = Arc::make_mut(&mut session.glyph);
+        if glyph.codepoints == codepoints {
+            return;
+        }
+        glyph.codepoints = codepoints;
+        Self::sync_session(workspace_arc, session);
+    }
+
+    /// Mirror an advance-width change into the active text-buffer
+    /// sort so the metrics box updates immediately.
+    fn update_sort_advance(
+        session: &mut crate::editing::EditSession,
+        width: f64,
+    ) {
+        if let Some(index) = session.active_sort_index {
+            if let Some(buffer) = &mut session.text_buffer {
+                if let Some(sort) = buffer.get_mut(index) {
+                    if let crate::sort::SortKind::Glyph {
+                        ref mut advance_width,
+                        ..
+                    } = sort.kind
+                    {
+                        *advance_width = width;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Write the session's glyph back to the workspace.
+    fn sync_session(
+        workspace_arc: Option<Arc<RwLock<Workspace>>>,
+        session: &crate::editing::EditSession,
+    ) {
+        if let Some(workspace_arc) = workspace_arc
+            && let Some(active_name) = &session.active_sort_name
+        {
+            let updated_glyph = session.to_glyph();
+            write_workspace(&workspace_arc).update_glyph(active_name, updated_glyph);
+        }
+    }
+
     /// Update the glyph's advance width
     pub fn update_glyph_width(&mut self, new_width: String) {
         // Parse the width value

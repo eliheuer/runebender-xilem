@@ -418,6 +418,26 @@ impl EditSession {
         self.last_transform = Some(affine);
     }
 
+    /// Translate every point of every path by `delta`.
+    ///
+    /// Used for sidebearing edits, which shift the whole outline.
+    /// Reuses `transform_selection` (via a temporary select-all) so
+    /// hyperbezier paths rebuild their solver correctly.
+    pub fn translate_all_paths(&mut self, delta: kurbo::Vec2) {
+        let mut all = crate::editing::Selection::new();
+        for path in self.paths.iter() {
+            for pt in path.points().iter() {
+                all.insert(pt.id);
+            }
+        }
+        if all.is_empty() {
+            return;
+        }
+        let saved = std::mem::replace(&mut self.selection, all);
+        self.transform_selection(kurbo::Affine::translate(delta));
+        self.selection = saved;
+    }
+
     /// Scale selected points by (sx, sy) around the selection center
     #[allow(dead_code)]
     pub fn scale_selection(&mut self, sx: f64, sy: f64) {

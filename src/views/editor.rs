@@ -337,14 +337,16 @@ fn active_glyph_panel_centered(state: &AppState) -> impl WidgetView<AppState> + 
     let top_row = flex_row((
         sized_box(
             text_input(glyph_name.clone(), |_state: &mut AppState, _new_value| {
-                // TODO: implement glyph name editing
+                // Glyph renaming needs workspace-level support
+                // (map key, component references, kerning
+                // groups) — tracked in .agents/UI-PARITY.md.
             })
             .text_alignment(parley::Alignment::Center),
         )
         .width(346.px()),
         sized_box(
-            text_input(unicode_display, |_state: &mut AppState, _new_value| {
-                // TODO: implement unicode editing
+            text_input(unicode_display, |state: &mut AppState, new_value| {
+                state.update_glyph_unicode(new_value);
             })
             .text_alignment(parley::Alignment::Center),
         )
@@ -373,8 +375,8 @@ fn active_glyph_panel_centered(state: &AppState) -> impl WidgetView<AppState> + 
         sized_box(
             text_input(
                 format!("{:.0}", lsb),
-                |_state: &mut AppState, _new_value| {
-                    // TODO: implement LSB editing
+                |state: &mut AppState, new_value| {
+                    state.update_glyph_lsb(new_value);
                 },
             )
             .text_alignment(parley::Alignment::Center),
@@ -383,8 +385,8 @@ fn active_glyph_panel_centered(state: &AppState) -> impl WidgetView<AppState> + 
         sized_box(
             text_input(
                 format!("{:.0}", rsb),
-                |_state: &mut AppState, _new_value| {
-                    // TODO: implement RSB editing
+                |state: &mut AppState, new_value| {
+                    state.update_glyph_rsb(new_value);
                 },
             )
             .text_alignment(parley::Alignment::Center),
