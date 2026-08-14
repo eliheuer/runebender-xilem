@@ -14,26 +14,30 @@ but do it deliberately per module.
 
 ## Phase 1 — interaction quick wins (no new panels)
 
-- [ ] Esc returns to grid from the editor (suppressed in text
-      mode). Web: Runebender.vue:10607. Xilem has NO Escape
-      handler at all.
-- [ ] Fix Tab conflict: web uses Tab/Shift+Tab to cycle selected
-      points (`cycle_selected_point`); xilem binds Tab to panel
-      visibility. Adopt web behavior; move panels toggle elsewhere
-      (e.g. backtick).
-- [ ] Pen Backspace walks back the in-progress contour one point
-      (web `pen_delete_last_point`) instead of deleting selection.
-- [ ] Shift-hold shift-lock for Shapes and Knife tools
-      (`set_shape_shift_locked` / `set_knife_shift_locked`).
-- [ ] Rotate 180 action + TransformPanel button (web
-      `rotate_selection_180`; xilem only has +/-90).
-- [ ] Coordinate panel W/H fields actually resize the selection
-      (currently no-op callbacks; web `resize_selection_reference`).
-- [ ] Wire the bottom-panel TODO stubs: LSB/RSB editing, glyph
-      name and unicode commit (views/editor.rs).
-- [ ] Shortcut guard: suppress single-key tool shortcuts while any
-      text_input has focus (web gates on `eventTargetAcceptsText`).
-- [ ] Cmd+V pastes text into the sort buffer in text mode.
+- [x] Esc returns to grid from the editor (suppressed in text
+      mode).
+- [x] Tab/Shift+Tab cycles selected points; panels toggle moved
+      to backtick.
+- [x] Pen Backspace walks back the in-progress contour one point
+      instead of deleting selection.
+- [x] Shift-hold shift-lock for Shapes and Knife tools.
+- [x] Rotate 180 action + TransformPanel button (2x6 grid).
+- [x] Coordinate panel W/H fields resize the selection about the
+      quadrant reference point (also fixed inverted anchor in
+      scale_selection).
+- [x] LSB/RSB editing and unicode commit wired in the bottom
+      panel. Glyph NAME editing still stubbed — needs
+      workspace-level rename (map key, component references,
+      kerning groups); tracked as its own item below.
+- [ ] Glyph rename: workspace-level rename_glyph (update glyphs
+      map key, component references, kerning group members), then
+      wire the name field.
+- [ ] Shortcut guard: verify interactively whether single-key
+      tool shortcuts fire while a panel text_input has focus.
+      Masonry routes keys to the focused widget, so the web-style
+      leak may not exist; confirm before adding a guard.
+- [x] Cmd+V pastes system-clipboard text into the sort buffer in
+      text mode (via arboard).
 
 ## Phase 2 — editor shell parity
 

@@ -608,6 +608,49 @@ impl EditorWidget {
             return false;
         }
 
+        // In text mode, Cmd+V pastes the system clipboard as text
+        // into the sort buffer (matches runebender-web).
+        if self.session.text_mode_active
+            && self.session.text_buffer.is_some()
+        {
+            let text = arboard::Clipboard::new()
+                .and_then(|mut clipboard| clipboard.get_text())
+                .unwrap_or_default();
+            let start = self
+                .session
+                .text_buffer
+                .as_ref()
+                .map(|b| b.cursor())
+                .unwrap_or(0);
+            let mut inserted = 0usize;
+            for c in text.chars().filter(|c| !c.is_control()) {
+                if let Some(sort) =
+                    self.session.create_shaped_sort_from_char(c)
+                {
+                    if let Some(buffer) =
+                        &mut self.session.text_buffer
+                    {
+                        buffer.insert(sort);
+                        inserted += 1;
+                    }
+                }
+            }
+            if inserted > 0 {
+                for pos in start..start + inserted {
+                    self.session.reshape_buffer_around(pos);
+                }
+                self.text_cursor.reset();
+                ctx.submit_action::<SessionUpdate>(SessionUpdate {
+                    session: self.session.clone(),
+                    save_requested: false,
+                    close_requested: false,
+                });
+                ctx.request_render();
+            }
+            ctx.set_handled();
+            return true;
+        }
+
         tracing::info!(
             "Paste: clipboard has {} paths",
             self.point_clipboard.as_ref().map_or(0, |c| c.len())
