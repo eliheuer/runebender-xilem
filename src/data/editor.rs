@@ -353,10 +353,47 @@ impl AppState {
         }
 
         let reference = session.coord_selection.reference_point();
+
+        // W/H resize the selection about the quadrant reference
+        // point (matches runebender-web's resize behavior).
+        if matches!(field, CoordField::Width | CoordField::Height) {
+            let Some(bbox) = session.selection_bounding_box() else {
+                return;
+            };
+            if new_val <= 0.0 {
+                return;
+            }
+            let (sx, sy) = match field {
+                CoordField::Width => {
+                    if bbox.width() < 1e-9 {
+                        return;
+                    }
+                    (new_val / bbox.width(), 1.0)
+                }
+                _ => {
+                    if bbox.height() < 1e-9 {
+                        return;
+                    }
+                    (1.0, new_val / bbox.height())
+                }
+            };
+            if (sx - 1.0).abs() < 1e-9 && (sy - 1.0).abs() < 1e-9 {
+                return;
+            }
+            let anchor = reference.to_vec2();
+            let affine = kurbo::Affine::translate(-anchor)
+                .then_scale_non_uniform(sx, sy)
+                .then_translate(anchor);
+            session.transform_selection(affine);
+            session.update_coord_selection();
+            session.sync_to_workspace();
+            return;
+        }
+
         let delta = match field {
             CoordField::X => kurbo::Vec2::new(new_val - reference.x, 0.0),
             CoordField::Y => kurbo::Vec2::new(0.0, new_val - reference.y),
-            CoordField::Width | CoordField::Height => return,
+            CoordField::Width | CoordField::Height => unreachable!(),
         };
 
         if delta.x.abs() < 1e-9 && delta.y.abs() < 1e-9 {

@@ -722,6 +722,22 @@ impl EditorWidget {
             return false;
         }
 
+        // While the pen is mid-contour, Backspace walks back the
+        // last placed point instead of deleting the selection
+        // (matches runebender-web).
+        if let crate::tools::ToolBox::Pen(pen) =
+            &mut self.session.current_tool
+        {
+            if pen.is_drawing() {
+                if pen.delete_last_point() {
+                    self.emit_session_update(ctx, false);
+                    ctx.request_render();
+                }
+                ctx.set_handled();
+                return true;
+            }
+        }
+
         // Delete selected background image if present
         if self
             .session

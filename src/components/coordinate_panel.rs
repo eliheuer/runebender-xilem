@@ -170,13 +170,16 @@ fn build_coordinate_inputs<State: 'static>(
     .cross_axis_alignment(CrossAxisAlignment::Center)
     .gap(layout::GAP_BETWEEN_INPUTS.px());
 
-    // Row 2: Width and Height inputs (display-only for now)
+    // Row 2: Width and Height inputs (resize the selection about
+    // the quadrant reference point)
+    let cb_w = Arc::clone(&on_coord_change);
+    let cb_h = Arc::clone(&on_coord_change);
     let row2 = flex_row((
-        build_coord_input(data.width, "W", |_state: &mut State, _val| {
-            // W/H editing not yet supported (scaling)
+        build_coord_input(data.width, "W", move |state: &mut State, val| {
+            cb_w(state, CoordField::Width, val);
         }),
-        build_coord_input(data.height, "H", |_state: &mut State, _val| {
-            // W/H editing not yet supported (scaling)
+        build_coord_input(data.height, "H", move |state: &mut State, val| {
+            cb_h(state, CoordField::Height, val);
         }),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)

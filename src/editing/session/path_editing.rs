@@ -426,9 +426,9 @@ impl EditSession {
             None => return,
         };
 
-        let affine = kurbo::Affine::translate(center.to_vec2())
+        let affine = kurbo::Affine::translate(-center.to_vec2())
             .then_scale_non_uniform(sx, sy)
-            .then_translate(-center.to_vec2());
+            .then_translate(center.to_vec2());
 
         self.transform_selection(affine);
         self.last_transform = Some(affine);

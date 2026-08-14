@@ -39,7 +39,7 @@ use crate::theme::size::{
 /// Number of columns in the grid
 const COLS: usize = 2;
 /// Number of rows in the grid
-const ROWS: usize = 5;
+const ROWS: usize = 6;
 
 // ================================================================
 // TRANSFORM ACTION
@@ -52,6 +52,7 @@ pub enum TransformAction {
     FlipV,
     RotateCW,
     RotateCCW,
+    Rotate180,
     Duplicate,
     DuplicateRepeat,
     Union,
@@ -68,6 +69,7 @@ impl TransformAction {
             Self::FlipV => "Flip Vertical",
             Self::RotateCW => "Rotate 90° CW",
             Self::RotateCCW => "Rotate 90° CCW",
+            Self::Rotate180 => "Rotate 180°",
             Self::Duplicate => "Duplicate",
             Self::DuplicateRepeat => "Dup + Repeat",
             Self::Union => "Union",
@@ -84,6 +86,7 @@ const BUTTONS: &[TransformAction] = &[
     TransformAction::FlipV,
     TransformAction::RotateCW,
     TransformAction::RotateCCW,
+    TransformAction::Rotate180,
     TransformAction::Duplicate,
     TransformAction::DuplicateRepeat,
     TransformAction::Union,
@@ -166,6 +169,7 @@ impl TransformPanelWidget {
             | TransformAction::FlipV
             | TransformAction::RotateCW
             | TransformAction::RotateCCW
+            | TransformAction::Rotate180
             | TransformAction::Duplicate
             | TransformAction::DuplicateRepeat => self.has_selection,
             TransformAction::Union
@@ -182,6 +186,7 @@ impl TransformPanelWidget {
             TransformAction::FlipV => icon_flip_v(),
             TransformAction::RotateCW => icon_rotate_cw(),
             TransformAction::RotateCCW => icon_rotate_ccw(),
+            TransformAction::Rotate180 => icon_rotate_180(),
             TransformAction::Duplicate => icon_duplicate(),
             TransformAction::DuplicateRepeat => {
                 icon_duplicate_repeat()
@@ -607,6 +612,46 @@ fn icon_rotate_cw() -> BezPath {
         (384.0, 188.0),
     );
     bez.line_to((384.0, 120.0));
+    bez.close_path();
+    bez
+}
+
+/// Rotate 180: U-turn arrow — up the left stem, over the top,
+/// down the right stem into an arrowhead
+fn icon_rotate_180() -> BezPath {
+    let mut bez = BezPath::new();
+    bez.move_to((168.0, 600.0));
+    bez.line_to((168.0, 380.0));
+    bez.curve_to(
+        (168.0, 216.0),
+        (264.0, 120.0),
+        (384.0, 120.0),
+    );
+    bez.curve_to(
+        (504.0, 120.0),
+        (600.0, 216.0),
+        (600.0, 380.0),
+    );
+    bez.line_to((600.0, 480.0));
+    // Arrowhead pointing down
+    bez.line_to((672.0, 420.0));
+    bez.line_to((600.0, 600.0));
+    bez.line_to((528.0, 420.0));
+    bez.line_to((600.0, 480.0));
+    // Back up along the inner edge
+    bez.line_to((532.0, 380.0));
+    bez.curve_to(
+        (532.0, 254.0),
+        (472.0, 188.0),
+        (384.0, 188.0),
+    );
+    bez.curve_to(
+        (296.0, 188.0),
+        (236.0, 254.0),
+        (236.0, 380.0),
+    );
+    bez.line_to((236.0, 600.0));
+    bez.line_to((168.0, 600.0));
     bez.close_path();
     bez
 }

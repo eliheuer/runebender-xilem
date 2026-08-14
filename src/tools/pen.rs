@@ -22,6 +22,40 @@ const CURVE_SNAP_DISTANCE: f64 = 10.0;
 
 // ===== PenTool Struct =====
 
+// ============================================================================
+// WALK-BACK
+// ============================================================================
+
+impl PenTool {
+    /// Whether a contour is currently being drawn.
+    pub fn is_drawing(&self) -> bool {
+        self.drawing && !self.current_path_points.is_empty()
+    }
+
+    /// Remove the most recently placed on-curve point (and its
+    /// trailing off-curve handles) from the in-progress contour.
+    /// Matches runebender-web's Backspace walk-back while drawing.
+    /// Returns true if a point was removed.
+    pub fn delete_last_point(&mut self) -> bool {
+        if !self.is_drawing() {
+            return false;
+        }
+        // Drop trailing off-curve handles, then one on-curve point.
+        while self
+            .current_path_points
+            .last()
+            .is_some_and(|pt| pt.is_off_curve())
+        {
+            self.current_path_points.pop();
+        }
+        let removed = self.current_path_points.pop().is_some();
+        if self.current_path_points.is_empty() {
+            self.drawing = false;
+        }
+        removed
+    }
+}
+
 /// The pen tool - used for drawing new paths
 #[derive(Debug, Clone, Default)]
 pub struct PenTool {

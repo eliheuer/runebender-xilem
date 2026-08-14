@@ -71,6 +71,11 @@ impl Default for KnifeTool {
 }
 
 impl KnifeTool {
+    /// Set shift-lock live from keyboard state (constrain to H/V).
+    pub fn set_shift_locked(&mut self, locked: bool) {
+        self.shift_locked = locked;
+    }
+
     /// Get the current line endpoints, applying shift-lock if active
     fn current_points(&self) -> Option<(Point, Point)> {
         if let GestureState::Begun { start, current } = self.gesture {
