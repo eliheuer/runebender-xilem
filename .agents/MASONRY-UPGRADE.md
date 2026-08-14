@@ -2,6 +2,21 @@
 
 Date: 2026-08-07. Produced by the `scope-masonry-upgrade` task.
 
+**Status 2026-08-14: UPGRADE DONE on branch
+`agent/scope-masonry-upgrade`.** cargo check and build are clean
+against xilem git rev `7819435`; the app launches and runs with a
+test UFO. Not yet merged to main; visual QA pending. Discovered
+during the port (beyond the scope below): masonry replaced direct
+vello `Scene` painting with the `imaging` crate's `Painter` builder
+API, `layout` split into CSS-like `measure`/`layout` (no more
+`BoxConstraints`), and `MessageCtx::take_message` panics unless the
+id path is exhausted (wrapper views must check `remaining_path()`).
+linesweeper 0.4 takes kurbo 0.13 natively, so the planned shim was
+unnecessary. Next phase: move `path/`, kurbo-typed `editing/`, and
+`model/` into `runebender-core`, then port runebender-web features
+back for UI/UX parity (anchors, components, layers, feature
+shaping, text tabs, waterfall, Glyphs import, OKLCH themes).
+
 ## Goal
 
 Upgrade this repo from xilem/masonry 0.4 (crates.io, kurbo 0.12) to
