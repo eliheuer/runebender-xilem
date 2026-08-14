@@ -41,9 +41,11 @@ but do it deliberately per module.
 
 ## Phase 2 — editor shell parity
 
-- [ ] Editor top row like web: SystemMenu button (left) + file
-      info tile + EditModeToolbar (right). Today xilem's editor
-      has no top bar at all.
+- [x] Editor top row: file info tile (left, flex) + master
+      switcher + grid-return button + tool palette (right); tool
+      sub-toolbars (Shapes/Text direction) float top-right.
+      SystemMenu button joins when SystemMenuPanel lands.
+      NEEDS VISUAL QA in the running app.
 - [ ] SystemMenuPanel: New UFO / New designspace, Open, Open
       Recent, Reopen last, Save, Save As, Close; theme picker
       later. Today xilem has only a Save button.
