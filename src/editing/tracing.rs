@@ -34,23 +34,26 @@ pub fn trace_background_image(
 ) -> Result<TraceOutput, String> {
     let image_bounds = bg.bounds();
 
-    let config = img2bez::TracingConfig {
-        target_height: bg.scaled_height(),
-        y_offset: 0.0,
-        fit_accuracy: settings::tracing::FIT_ACCURACY,
-        grid: settings::tracing::GRID,
-        ..img2bez::TracingConfig::default()
-    };
+    let mut opts = img2bez::TraceOptions::default();
+    opts.fit_accuracy = settings::tracing::FIT_ACCURACY;
+    opts.grid = settings::tracing::GRID;
+    opts.em_height = bg.scaled_height().max(1.0);
+    let metrics = img2bez::FontMetrics::from_target_height(
+        bg.scaled_height().max(1.0),
+        0.0,
+    );
 
-    let result = img2bez::trace(&bg.source_path, &config)
-        .map_err(|e| format!("img2bez trace failed: {e}"))?;
+    let glyph = img2bez::trace_glyph_path(
+        &bg.source_path,
+        "traced",
+        &[],
+        &opts,
+        &metrics,
+    )
+    .map_err(|e| format!("img2bez trace failed: {e}"))?;
 
-    // Convert img2bez BezPaths (kurbo 0.13) to local kurbo (0.12)
-    let mut local_paths: Vec<kurbo::BezPath> = result
-        .paths
-        .iter()
-        .map(convert_img2bez_bezpath)
-        .collect();
+    let mut local_paths: Vec<kurbo::BezPath> =
+        glyph.outline.to_bezpaths();
 
     // Align traced contours with the background image.
     // img2bez repositions paths to sit at y=0 with LSB padding,
@@ -81,7 +84,7 @@ pub fn trace_background_image(
 
     Ok(TraceOutput {
         paths,
-        advance_width: result.advance_width,
+        advance_width: glyph.advance.width,
     })
 }
 
@@ -667,45 +670,6 @@ fn detect_horizontal_stems(
 // ============================================================================
 // CONVERSION HELPERS
 // ============================================================================
-
-/// Convert an img2bez kurbo::BezPath (v0.13) to local kurbo::BezPath
-/// (v0.12).
-///
-/// img2bez uses a different version of kurbo than runebender
-/// (0.13 vs 0.12). This function bridges the gap by extracting
-/// raw coordinates from each path element.
-fn convert_img2bez_bezpath(
-    src: &img2bez::kurbo::BezPath,
-) -> kurbo::BezPath {
-    let mut dst = kurbo::BezPath::new();
-    for el in src.elements() {
-        match *el {
-            img2bez::kurbo::PathEl::MoveTo(p) => {
-                dst.move_to(kurbo::Point::new(p.x, p.y));
-            }
-            img2bez::kurbo::PathEl::LineTo(p) => {
-                dst.line_to(kurbo::Point::new(p.x, p.y));
-            }
-            img2bez::kurbo::PathEl::QuadTo(p1, p2) => {
-                dst.quad_to(
-                    kurbo::Point::new(p1.x, p1.y),
-                    kurbo::Point::new(p2.x, p2.y),
-                );
-            }
-            img2bez::kurbo::PathEl::CurveTo(p1, p2, p3) => {
-                dst.curve_to(
-                    kurbo::Point::new(p1.x, p1.y),
-                    kurbo::Point::new(p2.x, p2.y),
-                    kurbo::Point::new(p3.x, p3.y),
-                );
-            }
-            img2bez::kurbo::PathEl::ClosePath => {
-                dst.close_path();
-            }
-        }
-    }
-    dst
-}
 
 /// Convert a kurbo::BezPath (single contour) to a CubicPath for
 /// editing.

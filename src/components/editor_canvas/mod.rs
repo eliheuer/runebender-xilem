@@ -21,12 +21,14 @@ use crate::sort::TextCursor;
 use kurbo::Point;
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
+    AccessCtx, MeasureCtx, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
     PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate, PropertiesMut,
     PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
 };
 use masonry::kurbo::Size;
-use masonry::vello::Scene;
+use masonry::imaging::Painter;
+use kurbo::Axis;
+use masonry::layout::{LenReq, Length};
 use std::sync::Arc;
 
 /// The main glyph editor canvas widget
@@ -319,34 +321,38 @@ impl Widget for EditorWidget {
         // TODO: Handle updates to the session
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        _axis: Axis,
+        len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        crate::components::measure_fill(len_req, 0.0)
+    }
+
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
+        _props: &PropertiesRef<'_>,
+        size: Size,
+    ) {
         // Use all available space (expand to fill the window)
-        let size = bc.max();
         self.size = size;
-        size
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
-        let canvas_size = ctx.size();
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+        let canvas_size = ctx.content_box().size();
 
         // Clip to widget bounds so nothing bleeds into adjacent panels
         let clip_rect = kurbo::Rect::from_origin_size(
             kurbo::Point::ZERO,
             canvas_size,
         );
-        scene.push_layer(
-            masonry::vello::peniko::Mix::Clip,
-            1.0,
-            kurbo::Affine::IDENTITY,
-            &clip_rect,
-        );
+        painter.push_fill_clip(clip_rect);
 
-        self.paint_background(scene, canvas_size);
+        self.paint_background(painter, canvas_size);
 
         if !self.session.viewport_initialized {
             self.initialize_viewport(canvas_size);
@@ -356,13 +362,13 @@ impl Widget for EditorWidget {
         let is_preview_mode = self.is_preview_mode();
 
         if self.session.text_buffer.is_some() {
-            self.paint_text_buffer_mode(scene, &transform, is_preview_mode);
+            self.paint_text_buffer_mode(painter, &transform, is_preview_mode);
         } else {
-            self.paint_single_glyph_mode(scene, &transform, is_preview_mode);
+            self.paint_single_glyph_mode(painter, &transform, is_preview_mode);
         }
 
         // Context menu is painted last so it appears on top
-        self.paint_context_menu(scene);
+        self.paint_context_menu(painter);
 
         // Bottom divider line (top edge of the split drag area)
         if self.session.text_buffer.is_some() {
@@ -373,15 +379,10 @@ impl Widget for EditorWidget {
                     canvas_size.height - 0.5,
                 ),
             );
-            masonry::util::stroke(
-                scene,
-                &line,
-                crate::theme::panel::DIVIDER,
-                1.0,
-            );
+            painter.stroke(&line, &masonry::kurbo::Stroke::new(1.0), crate::theme::panel::DIVIDER).draw();
         }
 
-        scene.pop_layer();
+        painter.pop_clip();
     }
 
     fn on_pointer_event(

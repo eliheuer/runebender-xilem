@@ -7,7 +7,7 @@
 //!
 //! All colors use hexadecimal format: Color::from_rgb8(0xRR, 0xGG, 0xBB)
 
-use masonry::vello::peniko::Color;
+use masonry::peniko::Color;
 
 // ============================================================================
 // STROKE SCALE — change this to 2.0 for thicker contour/handle/metric lines

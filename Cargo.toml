@@ -51,7 +51,7 @@ reqwest = { version = "0.12", features = ["blocking", "json", "multipart"] }
 base64 = "0.22"
 
 # Boolean path operations (remove overlap, union, subtract, etc.)
-linesweeper = "0.2"
+linesweeper = "0.4"
 
 # Utilities
 anyhow = "1.0"

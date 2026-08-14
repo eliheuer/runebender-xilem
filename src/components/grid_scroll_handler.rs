@@ -49,18 +49,19 @@
 
 use std::marker::PhantomData;
 
-use kurbo::{Point, Size};
+use kurbo::{Axis, Point, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx,
+    AccessCtx, MeasureCtx, ChildrenIds, EventCtx, LayoutCtx,
     NewWidget, PaintCtx, PointerEvent, PropertiesMut,
     PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Update,
     UpdateCtx, Widget, WidgetMut, WidgetPod,
 };
-use masonry::vello::Scene;
+use masonry::imaging::Painter;
+use masonry::layout::{LenReq, Length};
 use xilem::core::{
-    MessageContext, MessageResult, Mut, View, ViewMarker,
+    MessageCtx, MessageResult, Mut, View, ViewMarker,
 };
 use xilem::{Pod, ViewCtx, WidgetView};
 
@@ -194,22 +195,32 @@ impl Widget for GridScrollWidget {
     ) {
     }
 
+    fn measure(
+        &mut self,
+        ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        _len_req: LenReq,
+        cross_length: Option<Length>,
+    ) -> Length {
+        ctx.redirect_measurement(&mut self.child, axis, cross_length)
+    }
+
     fn layout(
         &mut self,
         ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
-        let size = ctx.run_layout(&mut self.child, bc);
+        _props: &PropertiesRef<'_>,
+        size: Size,
+    ) {
+        ctx.run_layout(&mut self.child, size);
         ctx.place_child(&mut self.child, Point::ORIGIN);
-        size
     }
 
     fn paint(
         &mut self,
         _ctx: &mut PaintCtx<'_>,
         _props: &PropertiesRef<'_>,
-        _scene: &mut Scene,
+        _painter: &mut Painter<'_>,
     ) {
         // Transparent — child paints itself automatically.
     }
@@ -371,7 +382,7 @@ where
             self.inner.build(ctx, app_state);
         let widget = GridScrollWidget::new(child.new_widget);
         let pod = ctx.create_pod(widget);
-        ctx.record_action(pod.new_widget.id());
+        ctx.record_action_source(pod.new_widget.id());
         (pod, child_state)
     }
 
@@ -409,7 +420,7 @@ where
     fn message(
         &self,
         view_state: &mut Self::ViewState,
-        message: &mut MessageContext,
+        message: &mut MessageCtx,
         mut element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<Action> {

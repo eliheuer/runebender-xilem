@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use kurbo::{BezPath, Shape};
 use masonry::properties::Padding;
-use masonry::properties::types::{AsUnit, UnitPoint};
+use masonry::layout::{AsUnit, UnitPoint};
 use xilem::WidgetView;
 use xilem::core::one_of::Either;
 use xilem::style::Style;
@@ -182,10 +182,10 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
                     },
                 ),
             )
-            .split_axis(xilem::view::Axis::Vertical)
+            .split_axis(masonry::kurbo::Axis::Vertical)
             .split_point(if has_text_buffer { 0.85 } else { 1.0 })
-            .min_size(200.px(), 0.px())
-            .bar_size(0.px())
+            .min_lengths(200.px(), 0.px())
+            .bar_thickness(0.px())
             .min_bar_area(6.px())
             .draggable(has_text_buffer),
         )
@@ -288,8 +288,8 @@ fn glyph_preview_pane(
     .height(PANEL_HEIGHT.px())
     .background_color(theme::panel::BACKGROUND)
     .border_color(theme::panel::OUTLINE)
-    .border_width(1.5)
-    .corner_radius(8.0)
+    .border_width(1.5.px())
+    .corner_radius(8.0.px())
 }
 
 /// Active glyph panel showing editable metrics (Glyphs app style)
@@ -350,8 +350,8 @@ fn active_glyph_panel_centered(state: &AppState) -> impl WidgetView<AppState> + 
         )
         .width(110.px()),
     ))
-    .gap(8.px())
-    .main_axis_alignment(xilem::view::MainAxisAlignment::Start);
+    .main_axis_alignment(xilem::view::MainAxisAlignment::Start)
+    .gap(8.px());
 
     // Row 2 (Middle): Left kern, LSB, RSB, Right kern (all editable)
     // Widths: 4 × 110 + 3 × 8 gaps = 464px
@@ -402,8 +402,8 @@ fn active_glyph_panel_centered(state: &AppState) -> impl WidgetView<AppState> + 
         )
         .width(110.px()),
     ))
-    .gap(8.px())
-    .main_axis_alignment(xilem::view::MainAxisAlignment::Start);
+    .main_axis_alignment(xilem::view::MainAxisAlignment::Start)
+    .gap(8.px());
 
     // Row 3 (Bottom): Left kern group, Width, Right kern group (all editable)
     // Widths: 149 + 8 + 150 + 8 + 149 = 464px
@@ -439,14 +439,13 @@ fn active_glyph_panel_centered(state: &AppState) -> impl WidgetView<AppState> + 
         )
         .width(149.px()),
     ))
-    .gap(8.px())
-    .main_axis_alignment(xilem::view::MainAxisAlignment::Start);
+    .main_axis_alignment(xilem::view::MainAxisAlignment::Start)
+    .gap(8.px());
 
     // Combine all three rows with consistent 8px vertical gap
     let content = flex_col((top_row, middle_row, bottom_row))
-        .gap(8.px())
         .main_axis_alignment(xilem::view::MainAxisAlignment::Center)
-        .must_fill_major_axis(true);
+        .gap(8.px());
 
     Either::A(
         sized_box(content)
@@ -454,13 +453,13 @@ fn active_glyph_panel_centered(state: &AppState) -> impl WidgetView<AppState> + 
             .height(PANEL_HEIGHT.px())
             .background_color(theme::panel::BACKGROUND)
             .border_color(theme::panel::OUTLINE)
-            .border_width(1.5)
-            .corner_radius(8.0)
+            .border_width(1.5.px())
+            .corner_radius(8.0.px())
             .padding(Padding {
-                left: 12.0,
-                right: 12.0,
-                top: 0.0,
-                bottom: 0.0,
+                left: 12.0.px(),
+                right: 12.0.px(),
+                top: 0.0.px(),
+                bottom: 0.0.px(),
             }),
     )
 }

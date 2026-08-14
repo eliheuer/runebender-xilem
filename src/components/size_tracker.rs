@@ -6,12 +6,14 @@
 use kurbo::Size;
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerEvent,
+    AccessCtx, MeasureCtx, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerEvent,
     PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
 };
-use masonry::vello::Scene;
+use masonry::imaging::Painter;
+use kurbo::Axis;
+use masonry::layout::{LenReq, Length};
 use std::marker::PhantomData;
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 /// Action emitted when size changes
@@ -53,14 +55,25 @@ impl Widget for SizeTrackerWidget {
     ) {
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        _axis: Axis,
+        len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        crate::components::measure_fill(len_req, 0.0)
+    }
+
     fn layout(
         &mut self,
         ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
+        _props: &PropertiesRef<'_>,
+        size: Size,
+    ) {
         // Take full size
-        self.size = bc.max();
+        self.size = size;
 
         // Report size change if width or height changed significantly
         let width_changed = (self.size.width - self.last_reported_width).abs() > 1.0;
@@ -73,11 +86,9 @@ impl Widget for SizeTrackerWidget {
                 height: self.size.height,
             });
         }
-
-        self.size
     }
 
-    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, _scene: &mut Scene) {
+    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, _painter: &mut Painter<'_>) {
         // Invisible - no painting
     }
 
@@ -154,7 +165,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = SizeTrackerWidget::new();
         let pod = ctx.create_pod(widget);
-        ctx.record_action(pod.new_widget.id());
+        ctx.record_action_source(pod.new_widget.id());
         (pod, ())
     }
 
@@ -180,7 +191,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        message: &mut MessageContext,
+        message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<Action> {

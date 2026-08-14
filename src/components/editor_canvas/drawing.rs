@@ -8,9 +8,8 @@ use crate::path::PointType;
 use crate::theme;
 use kurbo::{Affine, Circle, Point, Rect as KurboRect, Stroke};
 use masonry::kurbo::Size;
-use masonry::util::fill_color;
-use masonry::vello::Scene;
-use masonry::vello::peniko::Brush;
+use masonry::imaging::Painter;
+use masonry::peniko::Brush;
 
 /// Compute a scale multiplier for point/handle sizes based on
 /// zoom level. At normal zoom (≤4) returns 1.0; at very high
@@ -32,7 +31,7 @@ fn point_scale(zoom: f64) -> f64 {
 /// - Close zoom: finer grid (fine=2, coarse=8)
 ///
 /// Lines outside the visible canvas are culled to keep drawing cheap.
-pub(crate) fn draw_design_grid(scene: &mut Scene, session: &EditSession, canvas_size: Size) {
+pub(crate) fn draw_design_grid(painter: &mut Painter<'_>, session: &EditSession, canvas_size: Size) {
     use crate::settings;
 
     let zoom = session.viewport.zoom;
@@ -69,7 +68,7 @@ pub(crate) fn draw_design_grid(scene: &mut Scene, session: &EditSession, canvas_
 
     // Draw mid-level grid (fine=8, coarse=32)
     draw_grid_level(
-        scene,
+        painter,
         &transform,
         settings::design_grid::mid::FINE,
         settings::design_grid::mid::COARSE_N,
@@ -87,7 +86,7 @@ pub(crate) fn draw_design_grid(scene: &mut Scene, session: &EditSession, canvas_
     // Draw close-level grid (fine=2, coarse=8)
     if draw_close {
         draw_grid_level(
-            scene,
+            painter,
             &transform,
             settings::design_grid::close::FINE,
             settings::design_grid::close::COARSE_N,
@@ -110,7 +109,7 @@ pub(crate) fn draw_design_grid(scene: &mut Scene, session: &EditSession, canvas_
 /// `coarse_n * spacing`) are skipped when drawing fine lines, since
 /// the coarse stroke covers them.
 fn draw_grid_level(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     transform: &Affine,
     spacing: f64,
     coarse_n: u32,
@@ -145,13 +144,7 @@ fn draw_grid_level(
         };
         let p0 = *transform * Point::new(x, min_y);
         let p1 = *transform * Point::new(x, max_y);
-        scene.stroke(
-            stroke,
-            Affine::IDENTITY,
-            brush,
-            None,
-            &kurbo::Line::new(p0, p1),
-        );
+        painter.stroke(&kurbo::Line::new(p0, p1), stroke, brush).draw();
     }
 
     // Horizontal lines (constant y)
@@ -166,19 +159,13 @@ fn draw_grid_level(
         };
         let p0 = *transform * Point::new(min_x, y);
         let p1 = *transform * Point::new(max_x, y);
-        scene.stroke(
-            stroke,
-            Affine::IDENTITY,
-            brush,
-            None,
-            &kurbo::Line::new(p0, p1),
-        );
+        painter.stroke(&kurbo::Line::new(p0, p1), stroke, brush).draw();
     }
 }
 
 /// Draw font metric guidelines
 pub(crate) fn draw_metrics_guides(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     transform: &Affine,
     session: &EditSession,
     _canvas_size: Size,
@@ -189,7 +176,7 @@ pub(crate) fn draw_metrics_guides(
     // Helper to draw a horizontal line at a given Y coordinate in
     // design space. Lines are contained within the metrics box
     // (from x=0 to x=advance_width)
-    let draw_hline = |scene: &mut Scene, y: f64| {
+    let draw_hline = |painter: &mut Painter<'_>, y: f64| {
         let start = Point::new(0.0, y);
         let end = Point::new(session.glyph.width, y);
 
@@ -197,13 +184,13 @@ pub(crate) fn draw_metrics_guides(
         let end_screen = *transform * end;
 
         let line = kurbo::Line::new(start_screen, end_screen);
-        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
+        painter.stroke(&line, &stroke, &brush).draw();
     };
 
     // Helper to draw a vertical line at a given X coordinate in
     // design space. Lines are contained within the metrics box
     // (from y=descender to y=ascender)
-    let draw_vline = |scene: &mut Scene, x: f64| {
+    let draw_vline = |painter: &mut Painter<'_>, x: f64| {
         let start = Point::new(x, session.descender);
         let end = Point::new(x, session.ascender);
 
@@ -211,36 +198,36 @@ pub(crate) fn draw_metrics_guides(
         let end_screen = *transform * end;
 
         let line = kurbo::Line::new(start_screen, end_screen);
-        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
+        painter.stroke(&line, &stroke, &brush).draw();
     };
 
     // Draw vertical lines (left and right edges of metrics box)
-    draw_vline(scene, 0.0);
-    draw_vline(scene, session.glyph.width);
+    draw_vline(painter, 0.0);
+    draw_vline(painter, session.glyph.width);
 
     // Draw horizontal lines
     // Descender (bottom of metrics box)
-    draw_hline(scene, session.descender);
+    draw_hline(painter, session.descender);
 
     // Baseline (y=0)
-    draw_hline(scene, 0.0);
+    draw_hline(painter, 0.0);
 
     // X-height (if available)
     if let Some(x_height) = session.x_height {
-        draw_hline(scene, x_height);
+        draw_hline(painter, x_height);
     }
 
     // Cap-height (if available)
     if let Some(cap_height) = session.cap_height {
-        draw_hline(scene, cap_height);
+        draw_hline(painter, cap_height);
     }
 
     // Ascender (top of metrics box)
-    draw_hline(scene, session.ascender);
+    draw_hline(painter, session.ascender);
 }
 
 /// Draw paths with control point lines and styled points
-pub(crate) fn draw_paths_with_points(scene: &mut Scene, session: &EditSession, transform: &Affine) {
+pub(crate) fn draw_paths_with_points(painter: &mut Painter<'_>, session: &EditSession, transform: &Affine) {
     use crate::path::Path;
 
     // First pass: draw control point lines (handles)
@@ -249,14 +236,14 @@ pub(crate) fn draw_paths_with_points(scene: &mut Scene, session: &EditSession, t
     for path in session.paths.iter() {
         match path {
             Path::Cubic(cubic) => {
-                draw_control_handles(scene, cubic, transform);
+                draw_control_handles(painter, cubic, transform);
             }
             Path::Quadratic(quadratic) => {
-                draw_control_handles_quadratic(scene, quadratic, transform);
+                draw_control_handles_quadratic(painter, quadratic, transform);
             }
             Path::Hyper(hyper) => {
                 // Hyper paths use similar handle drawing to cubic
-                draw_control_handles_hyper(scene, hyper, transform);
+                draw_control_handles_hyper(painter, hyper, transform);
             }
         }
     }
@@ -265,26 +252,26 @@ pub(crate) fn draw_paths_with_points(scene: &mut Scene, session: &EditSession, t
     for path in session.paths.iter() {
         match path {
             Path::Cubic(cubic) => {
-                draw_points(scene, cubic, session, transform);
+                draw_points(painter, cubic, session, transform);
             }
             Path::Quadratic(quadratic) => {
-                draw_points_quadratic(scene, quadratic, session, transform);
+                draw_points_quadratic(painter, quadratic, session, transform);
             }
             Path::Hyper(hyper) => {
                 // Hyper paths use similar point drawing to cubic
-                draw_points_hyper(scene, hyper, session, transform);
+                draw_points_hyper(painter, hyper, session, transform);
             }
         }
     }
 
     // Third pass: draw interpolation error indicators
     if !session.compat_errors.is_empty() {
-        draw_compat_errors(scene, session, transform);
+        draw_compat_errors(painter, session, transform);
     }
 }
 
 /// Draw control handles for a cubic path
-fn draw_control_handles(scene: &mut Scene, cubic: &crate::path::CubicPath, transform: &Affine) {
+fn draw_control_handles(painter: &mut Painter<'_>, cubic: &crate::path::CubicPath, transform: &Affine) {
     let points: Vec<_> = cubic.points.iter().collect();
     if points.is_empty() {
         return;
@@ -325,7 +312,7 @@ fn draw_control_handles(scene: &mut Scene, cubic: &crate::path::CubicPath, trans
             let line = kurbo::Line::new(start, end);
             let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
             let brush = Brush::Solid(theme::handle::LINE);
-            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
+            painter.stroke(&line, &stroke, &brush).draw();
         }
 
         // Draw handle to previous point if it's off-curve
@@ -335,14 +322,14 @@ fn draw_control_handles(scene: &mut Scene, cubic: &crate::path::CubicPath, trans
             let line = kurbo::Line::new(start, end);
             let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
             let brush = Brush::Solid(theme::handle::LINE);
-            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
+            painter.stroke(&line, &stroke, &brush).draw();
         }
     }
 }
 
 /// Draw points for a cubic path
 fn draw_points(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     cubic: &crate::path::CubicPath,
     session: &EditSession,
     transform: &Affine,
@@ -363,12 +350,12 @@ fn draw_points(
             PointType::OnCurve { smooth } => {
                 if smooth {
                     draw_smooth_point(
-                        scene, screen_pos, is_selected,
+                        painter, screen_pos, is_selected,
                         scale,
                     );
                 } else {
                     draw_corner_point(
-                        scene, screen_pos, is_selected,
+                        painter, screen_pos, is_selected,
                         scale,
                     );
                 }
@@ -379,7 +366,7 @@ fn draw_points(
                         next_point_pos(&points, i, cubic.closed);
                     let next_screen = *transform * next_pt;
                     draw_start_arrow(
-                        scene,
+                        painter,
                         screen_pos,
                         next_screen,
                         is_selected,
@@ -389,7 +376,7 @@ fn draw_points(
             }
             PointType::OffCurve { .. } => {
                 draw_offcurve_point(
-                    scene, screen_pos, is_selected,
+                    painter, screen_pos, is_selected,
                     scale,
                 );
             }
@@ -399,7 +386,7 @@ fn draw_points(
 
 /// Draw a smooth on-curve point as a circle
 fn draw_smooth_point(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     screen_pos: Point,
     is_selected: bool,
     scale: f64,
@@ -420,16 +407,16 @@ fn draw_smooth_point(
     // Outer circle (border)
     let outer_circle =
         Circle::new(screen_pos, radius + 1.0 * scale);
-    fill_color(scene, &outer_circle, outer_color);
+    painter.fill(&outer_circle, outer_color).draw();
 
     // Inner circle
     let inner_circle = Circle::new(screen_pos, radius);
-    fill_color(scene, &inner_circle, inner_color);
+    painter.fill(&inner_circle, inner_color).draw();
 }
 
 /// Draw a corner on-curve point as a square
 fn draw_corner_point(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     screen_pos: Point,
     is_selected: bool,
     scale: f64,
@@ -455,7 +442,7 @@ fn draw_corner_point(
         screen_pos.x + half_size + border,
         screen_pos.y + half_size + border,
     );
-    fill_color(scene, &outer_rect, outer_color);
+    painter.fill(&outer_rect, outer_color).draw();
 
     // Inner square
     let inner_rect = KurboRect::new(
@@ -464,7 +451,7 @@ fn draw_corner_point(
         screen_pos.x + half_size,
         screen_pos.y + half_size,
     );
-    fill_color(scene, &inner_rect, inner_color);
+    painter.fill(&inner_rect, inner_color).draw();
 }
 
 /// Get the design-space position of the next point in a
@@ -489,7 +476,7 @@ fn next_point_pos(
 /// to the contour direction so it sits next to the point
 /// shape rather than replacing it (like Glyphs.app).
 fn draw_start_arrow(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     screen_pos: Point,
     next_screen: Point,
     is_selected: bool,
@@ -551,12 +538,12 @@ fn draw_start_arrow(
     tri.line_to(base_left);
     tri.line_to(base_right);
     tri.close_path();
-    fill_color(scene, &tri, color);
+    painter.fill(&tri, color).draw();
 }
 
 /// Draw an off-curve point as a small circle
 fn draw_offcurve_point(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     screen_pos: Point,
     is_selected: bool,
     scale: f64,
@@ -577,16 +564,16 @@ fn draw_offcurve_point(
     // Outer circle (border)
     let outer_circle =
         Circle::new(screen_pos, radius + 1.0 * scale);
-    fill_color(scene, &outer_circle, outer_color);
+    painter.fill(&outer_circle, outer_color).draw();
 
     // Inner circle
     let inner_circle = Circle::new(screen_pos, radius);
-    fill_color(scene, &inner_circle, inner_color);
+    painter.fill(&inner_circle, inner_color).draw();
 }
 
 /// Draw a hyperbezier on-curve point as a circle (cyan/teal color)
 fn draw_hyper_point(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     screen_pos: Point,
     is_selected: bool,
     scale: f64,
@@ -607,16 +594,16 @@ fn draw_hyper_point(
     // Outer circle (border)
     let outer_circle =
         Circle::new(screen_pos, radius + 1.0 * scale);
-    fill_color(scene, &outer_circle, outer_color);
+    painter.fill(&outer_circle, outer_color).draw();
 
     // Inner circle
     let inner_circle = Circle::new(screen_pos, radius);
-    fill_color(scene, &inner_circle, inner_color);
+    painter.fill(&inner_circle, inner_color).draw();
 }
 
 /// Draw control handles for a quadratic path
 fn draw_control_handles_quadratic(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     quadratic: &crate::path::QuadraticPath,
     transform: &Affine,
 ) {
@@ -660,7 +647,7 @@ fn draw_control_handles_quadratic(
             let line = kurbo::Line::new(start, end);
             let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
             let brush = Brush::Solid(theme::handle::LINE);
-            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
+            painter.stroke(&line, &stroke, &brush).draw();
         }
 
         // Draw handle to previous point if it's off-curve
@@ -670,14 +657,14 @@ fn draw_control_handles_quadratic(
             let line = kurbo::Line::new(start, end);
             let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
             let brush = Brush::Solid(theme::handle::LINE);
-            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
+            painter.stroke(&line, &stroke, &brush).draw();
         }
     }
 }
 
 /// Draw points for a quadratic path
 fn draw_points_quadratic(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     quadratic: &crate::path::QuadraticPath,
     session: &EditSession,
     transform: &Affine,
@@ -698,12 +685,12 @@ fn draw_points_quadratic(
             PointType::OnCurve { smooth } => {
                 if smooth {
                     draw_smooth_point(
-                        scene, screen_pos, is_selected,
+                        painter, screen_pos, is_selected,
                         scale,
                     );
                 } else {
                     draw_corner_point(
-                        scene, screen_pos, is_selected,
+                        painter, screen_pos, is_selected,
                         scale,
                     );
                 }
@@ -715,7 +702,7 @@ fn draw_points_quadratic(
                         quadratic.closed,
                     );
                     draw_start_arrow(
-                        scene,
+                        painter,
                         screen_pos,
                         *transform * next_pt,
                         is_selected,
@@ -725,7 +712,7 @@ fn draw_points_quadratic(
             }
             PointType::OffCurve { .. } => {
                 draw_offcurve_point(
-                    scene, screen_pos, is_selected,
+                    painter, screen_pos, is_selected,
                     scale,
                 );
             }
@@ -735,7 +722,7 @@ fn draw_points_quadratic(
 
 /// Draw control handles for a hyper path
 fn draw_control_handles_hyper(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     hyper: &crate::path::HyperPath,
     transform: &Affine,
 ) {
@@ -778,7 +765,7 @@ fn draw_control_handles_hyper(
             let line = kurbo::Line::new(start, end);
             let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
             let brush = Brush::Solid(theme::handle::LINE);
-            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
+            painter.stroke(&line, &stroke, &brush).draw();
         }
 
         // Draw handle to previous point if it's off-curve
@@ -788,14 +775,14 @@ fn draw_control_handles_hyper(
             let line = kurbo::Line::new(start, end);
             let stroke = Stroke::new(theme::size::HANDLE_LINE_WIDTH);
             let brush = Brush::Solid(theme::handle::LINE);
-            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
+            painter.stroke(&line, &stroke, &brush).draw();
         }
     }
 }
 
 /// Draw points for a hyper path
 fn draw_points_hyper(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     hyper: &crate::path::HyperPath,
     session: &EditSession,
     transform: &Affine,
@@ -815,7 +802,7 @@ fn draw_points_hyper(
         match pt.typ {
             PointType::OnCurve { .. } => {
                 draw_hyper_point(
-                    scene, screen_pos, is_selected,
+                    painter, screen_pos, is_selected,
                     scale,
                 );
 
@@ -824,7 +811,7 @@ fn draw_points_hyper(
                         &points, i, hyper.closed,
                     );
                     draw_start_arrow(
-                        scene,
+                        painter,
                         screen_pos,
                         *transform * next_pt,
                         is_selected,
@@ -834,7 +821,7 @@ fn draw_points_hyper(
             }
             PointType::OffCurve { .. } => {
                 draw_offcurve_point(
-                    scene, screen_pos, is_selected,
+                    painter, screen_pos, is_selected,
                     scale,
                 );
             }
@@ -849,12 +836,12 @@ fn draw_points_hyper(
 /// Draw red rounded rects around contours that have
 /// interpolation compatibility errors, plus a summary badge.
 fn draw_compat_errors(
-    scene: &mut Scene,
+    painter: &mut Painter<'_>,
     session: &EditSession,
     transform: &Affine,
 ) {
     use kurbo::Shape;
-    use masonry::vello::peniko;
+    use masonry::peniko;
 
     let error_color =
         peniko::Color::from_rgb8(0xff, 0x33, 0x33);
@@ -896,13 +883,7 @@ fn draw_compat_errors(
                     let circle = kurbo::Circle::new(
                         screen_pt, radius,
                     );
-                    scene.stroke(
-                        &error_stroke,
-                        Affine::IDENTITY,
-                        &brush,
-                        None,
-                        &circle,
-                    );
+                    painter.stroke(&circle, &error_stroke, &brush).draw();
                 }
             }
         }
@@ -931,13 +912,7 @@ fn draw_compat_errors(
             let rounded =
                 screen_rect.to_rounded_rect(padding);
             let brush = Brush::Solid(error_color);
-            scene.stroke(
-                &error_stroke,
-                Affine::IDENTITY,
-                &brush,
-                None,
-                &rounded,
-            );
+            painter.stroke(&rounded, &error_stroke, &brush).draw();
         }
     }
 
@@ -975,13 +950,7 @@ fn draw_compat_errors(
         masonry::core::StyleProperty::FontSize(13.0),
     );
     builder.push_default(
-        masonry::core::StyleProperty::FontStack(
-            parley::FontStack::Single(
-                parley::FontFamily::Generic(
-                    parley::GenericFamily::SansSerif,
-                ),
-            ),
-        ),
+        masonry::core::StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Generic(parley::GenericFamily::SansSerif))),
     );
     builder.push_default(
         masonry::core::StyleProperty::Brush(
@@ -1009,20 +978,14 @@ fn draw_compat_errors(
     )
     .to_rounded_rect(4.0);
     let bg_brush = Brush::Solid(error_color);
-    scene.fill(
-        peniko::Fill::NonZero,
-        Affine::IDENTITY,
-        &bg_brush,
-        None,
-        &bg_rect,
-    );
+    painter.fill(&bg_rect, &bg_brush).draw();
 
     // White text
     let text_color =
         peniko::Color::from_rgb8(0xff, 0xff, 0xff);
     let brushes = vec![Brush::Solid(text_color)];
     masonry::core::render_text(
-        scene,
+        painter,
         Affine::translate((x + pad, y + pad)),
         &layout,
         &brushes,

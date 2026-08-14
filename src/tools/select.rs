@@ -11,8 +11,8 @@ use kurbo::Affine;
 use kurbo::Point;
 use kurbo::Rect;
 use kurbo::Vec2;
-use masonry::vello::Scene;
-use masonry::vello::peniko::Brush;
+use masonry::imaging::Painter;
+use masonry::peniko::Brush;
 use tracing;
 
 // ===== SelectTool Struct =====
@@ -61,7 +61,7 @@ impl Tool for SelectTool {
         ToolId::Select
     }
 
-    fn paint(&mut self, scene: &mut Scene, session: &EditSession, _transform: &Affine) {
+    fn paint(&mut self, painter: &mut Painter<'_>, session: &EditSession, _transform: &Affine) {
         // Draw hovered segment highlight (option-click feedback)
         if let Some(ref seg_info) = session.hovered_segment {
             let stroke = kurbo::Stroke::new(theme::segment::HOVER_WIDTH);
@@ -78,10 +78,7 @@ impl Tool for SelectTool {
                         Point::new(line.p1.x + offset_x, line.p1.y),
                     );
                     let screen_line = kurbo::Line::new(p0, p1);
-                    scene.stroke(
-                        &stroke, Affine::IDENTITY, &brush,
-                        None, &screen_line,
-                    );
+                    painter.stroke(&screen_line, &stroke, &brush).draw();
                 }
                 Segment::Cubic(cubic) => {
                     let p0 = session.viewport.to_screen(
@@ -99,10 +96,7 @@ impl Tool for SelectTool {
                     let mut path = kurbo::BezPath::new();
                     path.move_to(p0);
                     path.curve_to(p1, p2, p3);
-                    scene.stroke(
-                        &stroke, Affine::IDENTITY, &brush,
-                        None, &path,
-                    );
+                    painter.stroke(&path, &stroke, &brush).draw();
                 }
                 Segment::Quadratic(quad) => {
                     let p0 = session.viewport.to_screen(
@@ -117,10 +111,7 @@ impl Tool for SelectTool {
                     let mut path = kurbo::BezPath::new();
                     path.move_to(p0);
                     path.quad_to(p1, p2);
-                    scene.stroke(
-                        &stroke, Affine::IDENTITY, &brush,
-                        None, &path,
-                    );
+                    painter.stroke(&path, &stroke, &brush).draw();
                 }
             }
         }
@@ -130,15 +121,14 @@ impl Tool for SelectTool {
             return;
         };
 
-        use masonry::util::fill_color;
-
+        
         // Fill the selection rectangle with semi-transparent orange
-        fill_color(scene, rect, theme::selection::RECT_FILL);
+        painter.fill(rect, theme::selection::RECT_FILL).draw();
 
         // Stroke the selection rectangle with dashed bright orange
         let stroke = kurbo::Stroke::new(1.5).with_dashes(0.0, [4.0, 4.0]);
         let brush = Brush::Solid(theme::selection::RECT_STROKE);
-        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, rect);
+        painter.stroke(rect, &stroke, &brush).draw();
     }
 
     fn edit_type(&self) -> Option<EditType> {

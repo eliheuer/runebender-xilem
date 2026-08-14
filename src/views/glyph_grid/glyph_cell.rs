@@ -6,17 +6,18 @@
 
 use std::marker::PhantomData;
 
-use kurbo::{Affine, BezPath, Rect, RoundedRect, Shape, Size};
+use kurbo::{Axis, Affine, BezPath, Rect, RoundedRect, Shape, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx, LayoutCtx, PaintCtx,
+    AccessCtx, MeasureCtx, BrushIndex, ChildrenIds, EventCtx, LayoutCtx, PaintCtx,
     PointerButton, PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx,
     StyleProperty, TextEvent, Update, UpdateCtx, Widget, render_text,
 };
-use masonry::vello::Scene;
-use masonry::vello::peniko::{Brush, Color, Fill};
-use parley::{FontContext, FontStack, LayoutContext};
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use masonry::imaging::Painter;
+use masonry::layout::{LenReq, Length};
+use masonry::peniko::{Brush, Color, Fill};
+use parley::{FontContext, LayoutContext};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 use crate::theme;
@@ -105,7 +106,7 @@ impl GlyphCellWidget {
     }
 
     /// Paint the glyph bezpath into the preview area
-    fn paint_glyph(&self, scene: &mut Scene, preview_rect: Rect) {
+    fn paint_glyph(&self, painter: &mut Painter<'_>, preview_rect: Rect) {
         let path = match &self.path {
             Some(p) if !p.is_empty() => p,
             _ => return,
@@ -139,17 +140,11 @@ impl GlyphCellWidget {
         } else {
             self.mark().unwrap_or(theme::grid::CELL_OUTLINE)
         };
-        scene.fill(
-            Fill::NonZero,
-            Affine::IDENTITY,
-            &Brush::Solid(color),
-            None,
-            &transformed_path,
-        );
+        painter.fill(&transformed_path, &Brush::Solid(color)).draw();
     }
 
     /// Paint the name and unicode labels
-    fn paint_labels(&self, scene: &mut Scene, label_rect: Rect, is_hovered: bool) {
+    fn paint_labels(&self, painter: &mut Painter<'_>, label_rect: Rect, is_hovered: bool) {
         let text_color = if self.is_selected || is_hovered {
             theme::grid::CELL_SELECTED_OUTLINE
         } else {
@@ -167,9 +162,7 @@ impl GlyphCellWidget {
                 // Name label
                 let mut builder = layout_cx.ranged_builder(&mut font_cx, &display_name, 1.0, false);
                 builder.push_default(StyleProperty::FontSize(CELL_LABEL_SIZE as f32));
-                builder.push_default(StyleProperty::FontStack(FontStack::Single(
-                    parley::FontFamily::Generic(parley::GenericFamily::SansSerif),
-                )));
+                builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Generic(parley::GenericFamily::SansSerif))));
                 builder.push_default(StyleProperty::Brush(BrushIndex(0)));
                 let mut name_layout = builder.build(&display_name);
                 name_layout.break_all_lines(None);
@@ -181,7 +174,7 @@ impl GlyphCellWidget {
                 let two_lines = CELL_LABEL_SIZE * 2.0 + 4.0;
                 let name_y = label_rect.y1 - two_lines + 5.0;
                 render_text(
-                    scene,
+                    painter,
                     Affine::translate((label_rect.x0, name_y)),
                     &name_layout,
                     &brushes,
@@ -193,16 +186,14 @@ impl GlyphCellWidget {
                     let mut builder =
                         layout_cx.ranged_builder(&mut font_cx, &unicode_display, 1.0, false);
                     builder.push_default(StyleProperty::FontSize(CELL_LABEL_SIZE as f32));
-                    builder.push_default(StyleProperty::FontStack(FontStack::Single(
-                        parley::FontFamily::Generic(parley::GenericFamily::SansSerif),
-                    )));
+                    builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Generic(parley::GenericFamily::SansSerif))));
                     builder.push_default(StyleProperty::Brush(BrushIndex(0)));
                     let mut uni_layout = builder.build(&unicode_display);
                     uni_layout.break_all_lines(None);
 
                     let uni_y = name_y + CELL_LABEL_SIZE + 2.0;
                     render_text(
-                        scene,
+                        painter,
                         Affine::translate((label_rect.x0, uni_y)),
                         &uni_layout,
                         &brushes,
@@ -225,18 +216,27 @@ impl Widget for GlyphCellWidget {
         }
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        _axis: Axis,
+        len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        crate::components::measure_fill(len_req, 0.0)
+    }
+
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
-        // Fill available space from flex layout
-        bc.max()
+        _props: &PropertiesRef<'_>,
+        _size: Size,
+    ) {
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
-        let size = ctx.size();
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+        let size = ctx.content_box().size();
         let (bg_color, border_color) = self.cell_colors(ctx.is_hovered());
 
         // Panel background and border
@@ -244,25 +244,13 @@ impl Widget for GlyphCellWidget {
             Rect::from_origin_size(kurbo::Point::ZERO, size),
             theme::size::PANEL_RADIUS,
         );
-        scene.fill(
-            Fill::NonZero,
-            Affine::IDENTITY,
-            &Brush::Solid(bg_color),
-            None,
-            &panel_rect,
-        );
-        scene.stroke(
-            &kurbo::Stroke::new(theme::size::TOOLBAR_BORDER_WIDTH),
-            Affine::IDENTITY,
-            &Brush::Solid(border_color),
-            None,
-            &panel_rect,
-        );
+        painter.fill(&panel_rect, &Brush::Solid(bg_color)).draw();
+        painter.stroke(&panel_rect, &kurbo::Stroke::new(theme::size::TOOLBAR_BORDER_WIDTH), &Brush::Solid(border_color)).draw();
 
         // Glyph preview area (above labels, inset by padding)
         let preview_height = (size.height - CELL_LABEL_HEIGHT).max(0.0);
         let preview_rect = Rect::new(CELL_PAD, CELL_PAD, size.width - CELL_PAD, preview_height);
-        self.paint_glyph(scene, preview_rect);
+        self.paint_glyph(painter, preview_rect);
 
         // Label area (bottom of cell, inset by padding)
         let label_rect = Rect::new(
@@ -271,7 +259,7 @@ impl Widget for GlyphCellWidget {
             size.width - CELL_PAD,
             size.height - CELL_PAD,
         );
-        self.paint_labels(scene, label_rect, ctx.is_hovered());
+        self.paint_labels(painter, label_rect, ctx.is_hovered());
     }
 
     fn accessibility_role(&self) -> Role {
@@ -386,7 +374,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
             self.mark_color,
         );
         let pod = ctx.create_pod(widget);
-        ctx.record_action(pod.new_widget.id());
+        ctx.record_action_source(pod.new_widget.id());
         (pod, ())
     }
 
@@ -440,7 +428,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        message: &mut MessageContext,
+        message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<Action> {

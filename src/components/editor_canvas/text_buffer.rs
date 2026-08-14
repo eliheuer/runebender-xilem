@@ -7,8 +7,8 @@ use super::EditorWidget;
 use crate::model::read_workspace;
 use crate::theme;
 use kurbo::{Affine, Point, Stroke};
-use masonry::vello::Scene;
-use masonry::vello::peniko::Brush;
+use masonry::imaging::Painter;
+use masonry::peniko::Brush;
 
 impl EditorWidget {
     /// Render the text buffer with multiple sorts (Phase 3)
@@ -17,7 +17,7 @@ impl EditorWidget {
     /// with correct spacing based on advance widths.
     pub(super) fn render_text_buffer(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         transform: &Affine,
         is_preview_mode: bool,
     ) {
@@ -190,7 +190,7 @@ impl EditorWidget {
 
                     // Text mode: minimal metrics for all sorts
                     self.render_sort_minimal_metrics(
-                        scene,
+                        painter,
                         data.x_offset,
                         data.baseline_y,
                         data.advance_width,
@@ -200,7 +200,7 @@ impl EditorWidget {
                 } else if data.is_active {
                     // Non-text mode: full metrics only for active sort
                     self.render_sort_metrics(
-                        scene,
+                        painter,
                         data.x_offset,
                         data.baseline_y,
                         data.advance_width,
@@ -209,7 +209,7 @@ impl EditorWidget {
                 } else {
                     // Non-text mode: minimal metrics for inactive sorts
                     self.render_sort_minimal_metrics(
-                        scene,
+                        painter,
                         data.x_offset,
                         data.baseline_y,
                         data.advance_width,
@@ -226,10 +226,10 @@ impl EditorWidget {
 
             if data.is_active && !is_preview_mode && !self.session.text_mode_active {
                 // Non-text mode: render active sort with control points (editable)
-                self.render_active_sort(scene, &data.name, sort_position, transform);
+                self.render_active_sort(painter, &data.name, sort_position, transform);
             } else {
                 // All other cases: render as filled preview
-                self.render_inactive_sort(scene, &data.name, sort_position, transform);
+                self.render_inactive_sort(painter, &data.name, sort_position, transform);
             }
         }
 
@@ -244,7 +244,7 @@ impl EditorWidget {
 
         // Phase 6: Render cursor in text mode (not in preview mode)
         if !is_preview_mode {
-            self.render_text_cursor(scene, cursor_x, cursor_y, transform);
+            self.render_text_cursor(painter, cursor_x, cursor_y, transform);
         }
     }
 
@@ -269,7 +269,7 @@ impl EditorWidget {
     /// Render an active sort with control points and handles
     fn render_active_sort(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         _glyph_name: &str,
         position: Point,
         transform: &Affine,
@@ -292,11 +292,11 @@ impl EditorWidget {
             let transformed_path = sort_transform * &glyph_path;
             let stroke = Stroke::new(theme::size::PATH_STROKE_WIDTH);
             let brush = Brush::Solid(theme::path::STROKE);
-            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &transformed_path);
+            painter.stroke(&transformed_path, &stroke, &brush).draw();
 
             // Draw control points and handles
             // Note: This uses session paths which already have the correct structure
-            draw_paths_with_points(scene, &self.session, &sort_transform);
+            draw_paths_with_points(painter, &self.session, &sort_transform);
         }
 
         // Render components for the active glyph
@@ -305,7 +305,7 @@ impl EditorWidget {
             let workspace_guard = read_workspace(workspace);
             let use_component_color = !self.session.text_mode_active;
             self.render_glyph_components(
-                scene,
+                painter,
                 &self.session.glyph,
                 &sort_transform,
                 &workspace_guard,
@@ -318,7 +318,7 @@ impl EditorWidget {
     /// Render an inactive sort as a filled preview
     fn render_inactive_sort(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         glyph_name: &str,
         position: Point,
         transform: &Affine,
@@ -351,19 +351,13 @@ impl EditorWidget {
         if !glyph_path.is_empty() {
             let transformed_path = sort_transform * &glyph_path;
             let fill_brush = Brush::Solid(theme::path::PREVIEW_FILL);
-            scene.fill(
-                peniko::Fill::NonZero,
-                Affine::IDENTITY,
-                &fill_brush,
-                None,
-                &transformed_path,
-            );
+            painter.fill(&transformed_path, &fill_brush).draw();
         }
 
         // Render components (references to other glyphs)
         // Inactive sorts always use regular fill color (not distinct component color)
         self.render_glyph_components(
-            scene,
+            painter,
             glyph,
             &sort_transform,
             &workspace_guard,
@@ -383,7 +377,7 @@ impl EditorWidget {
     /// - `use_component_color`: true to use distinct component color (blue)
     fn render_glyph_components(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         glyph: &crate::model::workspace::Glyph,
         transform: &Affine,
         workspace: &crate::model::workspace::Workspace,
@@ -433,31 +427,19 @@ impl EditorWidget {
                 };
 
                 let fill_brush = Brush::Solid(fill_color);
-                scene.fill(
-                    peniko::Fill::NonZero,
-                    Affine::IDENTITY,
-                    &fill_brush,
-                    None,
-                    &transformed_path,
-                );
+                painter.fill(&transformed_path, &fill_brush).draw();
 
                 // Draw selection outline if selected
                 if is_selected {
                     let stroke = Stroke::new(2.0);
                     let stroke_brush = Brush::Solid(theme::selection::RECT_STROKE);
-                    scene.stroke(
-                        &stroke,
-                        Affine::IDENTITY,
-                        &stroke_brush,
-                        None,
-                        &transformed_path,
-                    );
+                    painter.stroke(&transformed_path, &stroke, &stroke_brush).draw();
                 }
             }
 
             // Recursively render nested components
             self.render_glyph_components(
-                scene,
+                painter,
                 base_glyph,
                 &component_transform,
                 workspace,
@@ -473,7 +455,7 @@ impl EditorWidget {
     /// Only visible in text edit mode. Includes triangular indicators at top and bottom.
     fn render_text_cursor(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         cursor_x: f64,
         baseline_y: f64,
         transform: &Affine,
@@ -498,7 +480,7 @@ impl EditorWidget {
         let stroke = Stroke::new(1.5);
         let brush = Brush::Solid(theme::selection::RECT_STROKE);
 
-        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &cursor_line);
+        painter.stroke(&cursor_line, &stroke, &brush).draw();
 
         // Draw triangular indicators at top and bottom (like Glyphs app)
         // Triangle size in screen space - slightly smaller than 4x
@@ -519,13 +501,7 @@ impl EditorWidget {
         top_triangle.line_to((cursor_top_screen.x, cursor_top_screen.y + triangle_height)); // Tip below, pointing down
         top_triangle.close_path();
 
-        scene.fill(
-            peniko::Fill::NonZero,
-            Affine::IDENTITY,
-            &brush,
-            None,
-            &top_triangle,
-        );
+        painter.fill(&top_triangle, &brush).draw();
 
         // Bottom triangle (pointing up/inward, aligned with descender)
         // Base at descender, tip extends upward into the metrics box
@@ -544,13 +520,7 @@ impl EditorWidget {
         )); // Tip above, pointing up
         bottom_triangle.close_path();
 
-        scene.fill(
-            peniko::Fill::NonZero,
-            Affine::IDENTITY,
-            &brush,
-            None,
-            &bottom_triangle,
-        );
+        painter.fill(&bottom_triangle, &brush).draw();
     }
 
     /// Render metrics box for a single sort (Phase 6)
@@ -559,7 +529,7 @@ impl EditorWidget {
     /// Shows the advance width, baseline, ascender, descender, and font metrics.
     fn render_sort_metrics(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         x_offset: f64,
         baseline_y: f64,
         advance_width: f64,
@@ -573,7 +543,7 @@ impl EditorWidget {
         let left_top = Point::new(x_offset, baseline_y + self.session.ascender);
         let left_bottom = Point::new(x_offset, baseline_y + self.session.descender);
         let left_line = kurbo::Line::new(*transform * left_top, *transform * left_bottom);
-        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &left_line);
+        painter.stroke(&left_line, &stroke, &brush).draw();
 
         let right_top = Point::new(x_offset + advance_width, baseline_y + self.session.ascender);
         let right_bottom = Point::new(
@@ -581,35 +551,35 @@ impl EditorWidget {
             baseline_y + self.session.descender,
         );
         let right_line = kurbo::Line::new(*transform * right_top, *transform * right_bottom);
-        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &right_line);
+        painter.stroke(&right_line, &stroke, &brush).draw();
 
         // Draw horizontal lines (baseline, ascender, descender, etc.)
         // Offset by baseline_y to support multi-line text
-        let draw_hline = |scene: &mut Scene, y: f64| {
+        let draw_hline = |painter: &mut Painter<'_>, y: f64| {
             let start = Point::new(x_offset, baseline_y + y);
             let end = Point::new(x_offset + advance_width, baseline_y + y);
             let line = kurbo::Line::new(*transform * start, *transform * end);
-            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
+            painter.stroke(&line, &stroke, &brush).draw();
         };
 
         // Descender (bottom of metrics box)
-        draw_hline(scene, self.session.descender);
+        draw_hline(painter, self.session.descender);
 
         // Baseline (y=0)
-        draw_hline(scene, 0.0);
+        draw_hline(painter, 0.0);
 
         // X-height (if available)
         if let Some(x_height) = self.session.x_height {
-            draw_hline(scene, x_height);
+            draw_hline(painter, x_height);
         }
 
         // Cap-height (if available)
         if let Some(cap_height) = self.session.cap_height {
-            draw_hline(scene, cap_height);
+            draw_hline(painter, cap_height);
         }
 
         // Ascender (top of metrics box)
-        draw_hline(scene, self.session.ascender);
+        draw_hline(painter, self.session.ascender);
     }
 
     /// Render minimal metrics markers for text mode (Glyphs.app style)
@@ -617,48 +587,48 @@ impl EditorWidget {
     /// Shows cross markers (+) at each edge point where metrics lines would be
     fn render_sort_minimal_metrics(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         x_offset: f64,
         baseline_y: f64,
         advance_width: f64,
         transform: &Affine,
-        color: masonry::vello::peniko::Color,
+        color: masonry::peniko::Color,
     ) {
         let stroke = Stroke::new(theme::size::METRIC_LINE_WIDTH);
         let brush = Brush::Solid(color);
         let cross_size = 24.0; // Length of each arm of the cross from center
 
         // Helper to draw a cross (+) at a given point
-        let draw_cross = |scene: &mut Scene, x: f64, y: f64| {
+        let draw_cross = |painter: &mut Painter<'_>, x: f64, y: f64| {
             // Horizontal line
             let h_line = kurbo::Line::new(
                 *transform * Point::new(x - cross_size, y),
                 *transform * Point::new(x + cross_size, y),
             );
-            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &h_line);
+            painter.stroke(&h_line, &stroke, &brush).draw();
 
             // Vertical line
             let v_line = kurbo::Line::new(
                 *transform * Point::new(x, y - cross_size),
                 *transform * Point::new(x, y + cross_size),
             );
-            scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &v_line);
+            painter.stroke(&v_line, &stroke, &brush).draw();
         };
 
         // Left edge crosses
-        draw_cross(scene, x_offset, baseline_y + self.session.descender); // Bottom
-        draw_cross(scene, x_offset, baseline_y); // Baseline
-        draw_cross(scene, x_offset, baseline_y + self.session.ascender); // Top
+        draw_cross(painter, x_offset, baseline_y + self.session.descender); // Bottom
+        draw_cross(painter, x_offset, baseline_y); // Baseline
+        draw_cross(painter, x_offset, baseline_y + self.session.ascender); // Top
 
         // Right edge crosses
         draw_cross(
-            scene,
+            painter,
             x_offset + advance_width,
             baseline_y + self.session.descender,
         ); // Bottom
-        draw_cross(scene, x_offset + advance_width, baseline_y); // Baseline
+        draw_cross(painter, x_offset + advance_width, baseline_y); // Baseline
         draw_cross(
-            scene,
+            painter,
             x_offset + advance_width,
             baseline_y + self.session.ascender,
         ); // Top

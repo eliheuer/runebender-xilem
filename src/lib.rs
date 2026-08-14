@@ -134,7 +134,7 @@ fn tabbed_view_with_watcher(
     fork(
         tabbed,
         xilem::view::task_raw(
-            move |proxy| {
+            move |proxy, _: &mut AppState| {
                 let paths = ufo_paths.clone();
                 let flag = save_flag.clone();
                 async move {

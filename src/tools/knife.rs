@@ -17,8 +17,8 @@ use crate::model::EntityId;
 use crate::path::{CubicPath, Path, PathPoint, PathPoints, PointType, Segment, SegmentInfo};
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, CubicBez, Line, ParamCurve, ParamCurveArclen, Point};
-use masonry::vello::Scene;
-use masonry::vello::kurbo::Stroke;
+use masonry::imaging::Painter;
+use masonry::kurbo::Stroke;
 use std::sync::Arc;
 
 /// Maximum recursion depth for slicing paths
@@ -129,7 +129,7 @@ impl Tool for KnifeTool {
         ToolId::Knife
     }
 
-    fn paint(&mut self, scene: &mut Scene, session: &EditSession, _transform: &Affine) {
+    fn paint(&mut self, painter: &mut Painter<'_>, session: &EditSession, _transform: &Affine) {
         use crate::theme::tool_preview;
 
         if let Some((start, current)) = self.current_points() {
@@ -141,13 +141,7 @@ impl Tool for KnifeTool {
             let line = Line::new(screen_start, screen_current);
             let stroke = Stroke::new(tool_preview::LINE_WIDTH)
                 .with_dashes(tool_preview::LINE_DASH_OFFSET, tool_preview::LINE_DASH);
-            scene.stroke(
-                &stroke,
-                Affine::IDENTITY,
-                tool_preview::LINE_COLOR,
-                None,
-                &line,
-            );
+            painter.stroke(&line, &stroke, tool_preview::LINE_COLOR).draw();
 
             // Draw intersection markers as green X marks (matching corner points)
             for &intersection in &self.intersections {
@@ -166,8 +160,8 @@ impl Tool for KnifeTool {
                     kurbo::Point::new(screen_pt.x + mark_size, screen_pt.y - mark_size),
                 );
 
-                scene.stroke(&mark_stroke, Affine::IDENTITY, green, None, &x1);
-                scene.stroke(&mark_stroke, Affine::IDENTITY, green, None, &x2);
+                painter.stroke(&x1, &mark_stroke, green).draw();
+                painter.stroke(&x2, &mark_stroke, green).draw();
             }
         }
     }
