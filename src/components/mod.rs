@@ -21,6 +21,25 @@ pub mod toolbars;
 pub mod transform_panel;
 pub mod workspace_toolbar;
 
+use kurbo::{Axis, Size};
+use masonry::layout::{AsUnit, LenReq, Length};
+
+/// Measure helper for leaf widgets with a fixed intrinsic size.
+pub(crate) fn measure_fixed(axis: Axis, size: Size) -> Length {
+    match axis {
+        Axis::Horizontal => size.width.px(),
+        Axis::Vertical => size.height.px(),
+    }
+}
+
+/// Measure helper for widgets that fill all available space.
+pub(crate) fn measure_fill(len_req: LenReq, min_px: f64) -> Length {
+    match len_req {
+        LenReq::FitContent(space) => space,
+        LenReq::MinContent | LenReq::MaxContent => min_px.px(),
+    }
+}
+
 // Re-export commonly used widget views and types
 pub use category_panel::{CATEGORY_PANEL_WIDTH, GlyphCategory, category_panel};
 pub use coordinate_panel::{CoordinateSelection, coordinate_panel};

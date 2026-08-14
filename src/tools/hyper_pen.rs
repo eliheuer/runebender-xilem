@@ -13,8 +13,8 @@ use crate::path::HyperPath;
 use crate::path::Path;
 use crate::tools::{Tool, ToolId};
 use kurbo::Affine;
-use masonry::vello::Scene;
-use masonry::vello::peniko;
+use masonry::imaging::Painter;
+use masonry::peniko;
 use std::sync::Arc;
 
 // ===== Constants =====
@@ -53,8 +53,8 @@ impl Tool for HyperPenTool {
         ToolId::HyperPen
     }
 
-    fn paint(&mut self, scene: &mut Scene, session: &EditSession, _transform: &Affine) {
-        use masonry::vello::peniko::Brush;
+    fn paint(&mut self, painter: &mut Painter<'_>, session: &EditSession, _transform: &Affine) {
+        use masonry::peniko::Brush;
 
         let orange_color = crate::theme::point::SELECTED_OUTER;
         let brush = Brush::Solid(orange_color);
@@ -63,11 +63,11 @@ impl Tool for HyperPenTool {
         let hovering_close = self.check_hovering_close(session);
 
         // Draw preview dot at current mouse position
-        self.draw_preview_dot(scene, session, &brush);
+        self.draw_preview_dot(painter, session, &brush);
 
         // Draw close zone indicator if hovering near first point
         if hovering_close {
-            self.draw_close_indicator(scene, session, &brush);
+            self.draw_close_indicator(painter, session, &brush);
         }
     }
 
@@ -216,9 +216,9 @@ impl HyperPenTool {
     /// Draw preview dot at current mouse position
     fn draw_preview_dot(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         session: &EditSession,
-        brush: &masonry::vello::peniko::Brush,
+        brush: &masonry::peniko::Brush,
     ) {
         let preview_pos = if let Some((segment_info, t)) = &self.snapped_segment {
             let snapped_design_pos = segment_info.segment.eval(*t);
@@ -233,28 +233,22 @@ impl HyperPenTool {
 
         // Draw the preview dot
         let preview_circle = kurbo::Circle::new(preview_screen_pos, 4.0);
-        scene.fill(
-            peniko::Fill::NonZero,
-            Affine::IDENTITY,
-            brush,
-            None,
-            &preview_circle,
-        );
+        painter.fill(&preview_circle, brush).draw();
 
         // If snapped, draw indicator ring
         if self.snapped_segment.is_some() {
             let indicator_circle = kurbo::Circle::new(preview_screen_pos, 8.0);
             let stroke = kurbo::Stroke::new(1.5);
-            scene.stroke(&stroke, Affine::IDENTITY, brush, None, &indicator_circle);
+            painter.stroke(&indicator_circle, &stroke, brush).draw();
         }
     }
 
     /// Draw close zone indicator
     fn draw_close_indicator(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         session: &EditSession,
-        brush: &masonry::vello::peniko::Brush,
+        brush: &masonry::peniko::Brush,
     ) {
         let Some(path_id) = self.active_path_id else {
             return;
@@ -270,7 +264,7 @@ impl HyperPenTool {
                 let close_zone =
                     kurbo::Circle::new(screen_pt, CLOSE_PATH_DISTANCE * session.viewport.zoom);
                 let stroke = kurbo::Stroke::new(1.0);
-                scene.stroke(&stroke, Affine::IDENTITY, brush, None, &close_zone);
+                painter.stroke(&close_zone, &stroke, brush).draw();
             }
         }
     }

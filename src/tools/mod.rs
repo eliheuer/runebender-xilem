@@ -11,7 +11,7 @@
 
 use crate::editing::{Drag, EditSession, EditType, MouseDelegate, MouseEvent};
 use kurbo::Affine;
-use masonry::vello::Scene;
+use masonry::imaging::Painter;
 
 // ===== Tool Identifier =====
 
@@ -44,7 +44,7 @@ pub trait Tool: MouseDelegate<Data = EditSession> {
     fn id(&self) -> ToolId;
 
     /// Paint tool-specific overlays
-    fn paint(&mut self, _scene: &mut Scene, _session: &EditSession, _transform: &Affine) {}
+    fn paint(&mut self, _painter: &mut Painter<'_>, _session: &EditSession, _transform: &Affine) {}
 
     /// Get the edit type for the current operation (for undo grouping)
     fn edit_type(&self) -> Option<EditType> {
@@ -99,31 +99,31 @@ impl ToolBox {
     }
 
     /// Paint tool overlays
-    pub fn paint(&mut self, scene: &mut Scene, session: &EditSession, transform: &Affine) {
+    pub fn paint(&mut self, painter: &mut Painter<'_>, session: &EditSession, transform: &Affine) {
         match self {
             ToolBox::Select(tool) => {
-                tool.paint(scene, session, transform);
+                tool.paint(painter, session, transform);
             }
             ToolBox::Pen(tool) => {
-                tool.paint(scene, session, transform);
+                tool.paint(painter, session, transform);
             }
             ToolBox::HyperPen(tool) => {
-                tool.paint(scene, session, transform);
+                tool.paint(painter, session, transform);
             }
             ToolBox::Preview(_) => {
                 // Preview tool has no overlays
             }
             ToolBox::Knife(tool) => {
-                tool.paint(scene, session, transform);
+                tool.paint(painter, session, transform);
             }
             ToolBox::Measure(tool) => {
-                tool.paint(scene, session, transform);
+                tool.paint(painter, session, transform);
             }
             ToolBox::Shapes(tool) => {
-                tool.paint(scene, session, transform);
+                tool.paint(painter, session, transform);
             }
             ToolBox::Text(tool) => {
-                tool.paint(scene, session, transform);
+                tool.paint(painter, session, transform);
             }
         }
     }

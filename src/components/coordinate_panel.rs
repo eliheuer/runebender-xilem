@@ -8,16 +8,17 @@
 //! reference point for multi-point selections.
 
 use crate::path::Quadrant;
-use kurbo::{Circle, Point, Rect};
+use kurbo::{Axis, Circle, Point, Rect};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
+    AccessCtx, MeasureCtx, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
     PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, Update, UpdateCtx,
     Widget,
 };
 use masonry::kurbo::Size;
-use masonry::properties::types::{AsUnit, MainAxisAlignment};
-use masonry::vello::Scene;
+use masonry::layout::{AsUnit, LenReq, Length};
+use masonry::properties::types::{MainAxisAlignment};
+use masonry::imaging::Painter;
 use tracing;
 use xilem::WidgetView;
 use xilem::style::Style;
@@ -166,8 +167,8 @@ fn build_coordinate_inputs<State: 'static>(
             cb_y(state, CoordField::Y, val);
         }),
     ))
-    .gap(layout::GAP_BETWEEN_INPUTS.px())
-    .cross_axis_alignment(CrossAxisAlignment::Center);
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(layout::GAP_BETWEEN_INPUTS.px());
 
     // Row 2: Width and Height inputs (display-only for now)
     let row2 = flex_row((
@@ -178,14 +179,14 @@ fn build_coordinate_inputs<State: 'static>(
             // W/H editing not yet supported (scaling)
         }),
     ))
-    .gap(layout::GAP_BETWEEN_INPUTS.px())
-    .cross_axis_alignment(CrossAxisAlignment::Center);
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(layout::GAP_BETWEEN_INPUTS.px());
 
     // Stack the two rows vertically
     flex_col((row1, row2))
-        .gap(layout::GAP_BETWEEN_ROWS.px())
         .main_axis_alignment(MainAxisAlignment::Center)
         .cross_axis_alignment(CrossAxisAlignment::End)
+        .gap(layout::GAP_BETWEEN_ROWS.px())
 }
 
 /// Build the final panel container with background, border, and layout
@@ -211,11 +212,11 @@ fn build_panel_container<State: 'static>(
     sized_box(centered_content)
         .width(layout::PANEL_WIDTH.px())
         .height(layout::PANEL_HEIGHT.px())
-        .padding(layout::CONTENT_PADDING)
+        .padding(layout::CONTENT_PADDING.px())
         .background_color(crate::theme::panel::BACKGROUND)
         .border_color(crate::theme::panel::OUTLINE)
-        .border_width(layout::BORDER_WIDTH)
-        .corner_radius(layout::CORNER_RADIUS)
+        .border_width(layout::BORDER_WIDTH.px())
+        .corner_radius(layout::CORNER_RADIUS.px())
 }
 
 /// Complete coordinate info panel with quadrant picker and editable inputs
@@ -427,15 +428,26 @@ impl Widget for CoordinatePanelWidget {
         // State updates handled externally
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        _len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        let size = Size::new(layout::PANEL_WIDTH, layout::PANEL_HEIGHT);
+        crate::components::measure_fixed(axis, size)
+    }
+
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
+        _props: &PropertiesRef<'_>,
+        size: Size,
+    ) {
         // Store the widget size so we can use it in paint
-        self.widget_size = bc.constrain(Size::new(layout::PANEL_WIDTH, layout::PANEL_HEIGHT));
-        self.widget_size
+        self.widget_size = size;
     }
 
     fn on_pointer_event(
@@ -476,14 +488,14 @@ impl Widget for CoordinatePanelWidget {
         }
     }
 
-    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
+    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
         // Background and border are now handled by the sized_box wrapper in
         // lib.rs. This widget only paints the quadrant picker. Coordinate text
         // values are handled by Xilem views in lib.rs.
 
         // Always show quadrant picker (user can select quadrant even without
         // points selected)
-        self.paint_quadrant_picker(scene);
+        self.paint_quadrant_picker(painter);
     }
 
     fn accessibility_role(&self) -> Role {
@@ -506,12 +518,12 @@ impl Widget for CoordinatePanelWidget {
 
 impl CoordinatePanelWidget {
     /// Paint the quadrant picker (3x3 grid of dots)
-    fn paint_quadrant_picker(&self, scene: &mut Scene) {
+    fn paint_quadrant_picker(&self, painter: &mut Painter<'_>) {
         let bounds = self.quadrant_picker_bounds();
         let dot_radius = self.dot_radius(bounds);
 
         // Draw frame around picker using theme stroke width
-        masonry::util::stroke(scene, &bounds, GRID_LINE, STROKE_WIDTH);
+        painter.stroke(&bounds, &masonry::kurbo::Stroke::new(STROKE_WIDTH), GRID_LINE).draw();
 
         // Draw grid lines (horizontal and vertical lines forming 3x3 grid)
         let center_x = bounds.center().x;
@@ -555,7 +567,7 @@ impl CoordinatePanelWidget {
             &v_line_right,
         ];
         for line in grid_lines {
-            masonry::util::stroke(scene, line, GRID_LINE, STROKE_WIDTH);
+            painter.stroke(line, &masonry::kurbo::Stroke::new(STROKE_WIDTH), GRID_LINE).draw();
         }
 
         // Draw all 9 quadrant dots with two-tone style like editor points
@@ -582,13 +594,13 @@ impl CoordinatePanelWidget {
             // Draw two-tone filled circles to simulate outlined circles
             // Outer circle - use calculated dot radius
             let outer_circle = Circle::new(center, dot_radius);
-            masonry::util::fill_color(scene, &outer_circle, outer_color);
+            painter.fill(&outer_circle, outer_color).draw();
 
             // Inner circle - make the "outline" match the container border
             // width (1.5px) by subtracting 1.5 from the radius
             let inner_radius = (dot_radius - 1.5).max(0.0);
             let inner_circle = Circle::new(center, inner_radius);
-            masonry::util::fill_color(scene, &inner_circle, inner_color);
+            painter.fill(&inner_circle, inner_color).draw();
         }
     }
 }
@@ -597,7 +609,7 @@ impl CoordinatePanelWidget {
 
 use std::marker::PhantomData;
 use std::sync::Arc;
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 /// Create a coordinate panel view from an EditSession
@@ -635,7 +647,7 @@ impl<State: 'static, F: Fn(&mut State, crate::editing::EditSession) + Send + Syn
     fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = CoordinatePanelWidget::new((*self.session).clone());
         let pod = ctx.create_pod(widget);
-        ctx.record_action(pod.new_widget.id());
+        ctx.record_action_source(pod.new_widget.id());
         (pod, ())
     }
 
@@ -676,7 +688,7 @@ impl<State: 'static, F: Fn(&mut State, crate::editing::EditSession) + Send + Syn
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        message: &mut MessageContext,
+        message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<()> {

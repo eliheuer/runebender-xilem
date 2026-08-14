@@ -8,8 +8,8 @@ use crate::model::EntityId;
 use crate::path::{CubicPath, Path, PathPoint, PathPoints, PointType};
 use crate::tools::{Tool, ToolId};
 use kurbo::Affine;
-use masonry::vello::Scene;
-use masonry::vello::peniko;
+use masonry::imaging::Painter;
+use masonry::peniko;
 use std::sync::Arc;
 use tracing;
 
@@ -55,8 +55,8 @@ impl Tool for PenTool {
         ToolId::Pen
     }
 
-    fn paint(&mut self, scene: &mut Scene, session: &EditSession, _transform: &Affine) {
-        use masonry::vello::peniko::Brush;
+    fn paint(&mut self, painter: &mut Painter<'_>, session: &EditSession, _transform: &Affine) {
+        use masonry::peniko::Brush;
 
         let preview_color = crate::theme::tool_preview::LINE_COLOR;
         let brush = Brush::Solid(preview_color);
@@ -69,25 +69,25 @@ impl Tool for PenTool {
         // anymore because we want to show the preview dot even when not
         // drawing
         if self.drawing && !self.current_path_points.is_empty() {
-            self.draw_preview_path(scene, session, &brush, hovering_close);
+            self.draw_preview_path(painter, session, &brush, hovering_close);
         }
 
         // Draw circles at each point (only when drawing)
         if self.drawing {
-            self.draw_path_points(scene, session, &brush, hovering_close);
+            self.draw_path_points(painter, session, &brush, hovering_close);
         }
 
         // Draw handle lines when dragging out a smooth point
         if self.dragging_handles && self.current_path_points.len() >= 3
         {
-            self.draw_drag_handles(scene, session, &brush);
+            self.draw_drag_handles(painter, session, &brush);
         }
 
         // Draw preview circle at current mouse position (showing where
         // next point will be). If snapped to a curve, show the preview
         // dot on the curve instead of at mouse position
         if !self.dragging_handles {
-            self.draw_preview_dot(scene, session, &brush);
+            self.draw_preview_dot(painter, session, &brush);
         }
     }
 
@@ -332,9 +332,9 @@ impl PenTool {
     /// Draw the preview path (orange lines between points)
     fn draw_preview_path(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         session: &EditSession,
-        brush: &masonry::vello::peniko::Brush,
+        brush: &masonry::peniko::Brush,
         hovering_close: bool,
     ) {
         use kurbo::{BezPath, Point};
@@ -372,15 +372,15 @@ impl PenTool {
             crate::theme::tool_preview::LINE_DASH_OFFSET,
             crate::theme::tool_preview::LINE_DASH,
         );
-        scene.stroke(&stroke, Affine::IDENTITY, brush, None, &bez_path);
+        painter.stroke(&bez_path, &stroke, brush).draw();
     }
 
     /// Draw circles at each point in the current path
     fn draw_path_points(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         session: &EditSession,
-        brush: &masonry::vello::peniko::Brush,
+        brush: &masonry::peniko::Brush,
         hovering_close: bool,
     ) {
         use kurbo::Point;
@@ -397,27 +397,21 @@ impl PenTool {
                     crate::theme::tool_preview::CLOSE_ZONE_RADIUS * session.viewport.zoom,
                 );
                 let zone_stroke = kurbo::Stroke::new(1.0);
-                scene.stroke(&zone_stroke, Affine::IDENTITY, brush, None, &close_zone);
+                painter.stroke(&close_zone, &zone_stroke, brush).draw();
             }
 
             // Draw point circle
             let circle = kurbo::Circle::new(screen_pt, crate::theme::tool_preview::DOT_RADIUS);
-            scene.fill(
-                peniko::Fill::NonZero,
-                Affine::IDENTITY,
-                brush,
-                None,
-                &circle,
-            );
+            painter.fill(&circle, brush).draw();
         }
     }
 
     /// Draw preview dot at current mouse position or snapped position
     fn draw_preview_dot(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         session: &EditSession,
-        brush: &masonry::vello::peniko::Brush,
+        brush: &masonry::peniko::Brush,
     ) {
         // Calculate preview position (snapped or raw mouse position)
         let preview_pos = if let Some((segment_info, t)) = &self.snapped_segment {
@@ -447,13 +441,7 @@ impl PenTool {
         // Draw the preview dot
         let preview_circle =
             kurbo::Circle::new(preview_screen_pos, crate::theme::tool_preview::DOT_RADIUS);
-        scene.fill(
-            peniko::Fill::NonZero,
-            Affine::IDENTITY,
-            brush,
-            None,
-            &preview_circle,
-        );
+        painter.fill(&preview_circle, brush).draw();
 
         // If snapped to a curve, draw a larger circle indicator around
         // it
@@ -463,16 +451,16 @@ impl PenTool {
                 crate::theme::tool_preview::SNAP_INDICATOR_RADIUS,
             );
             let stroke = kurbo::Stroke::new(1.5);
-            scene.stroke(&stroke, Affine::IDENTITY, brush, None, &indicator_circle);
+            painter.stroke(&indicator_circle, &stroke, brush).draw();
         }
     }
 
     /// Draw handle lines and dots when dragging out a smooth point
     fn draw_drag_handles(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         session: &EditSession,
-        brush: &masonry::vello::peniko::Brush,
+        brush: &masonry::peniko::Brush,
     ) {
         let len = self.current_path_points.len();
         let handle_in = &self.current_path_points[len - 3];
@@ -489,36 +477,18 @@ impl PenTool {
         line.move_to(p_in);
         line.line_to(p_on);
         line.line_to(p_out);
-        scene.stroke(
-            &stroke,
-            Affine::IDENTITY,
-            brush,
-            None,
-            &line,
-        );
+        painter.stroke(&line, &stroke, brush).draw();
 
         // Draw handle dots
         let dot_r = crate::theme::tool_preview::DOT_RADIUS;
         for p in [p_in, p_out] {
             let circle = kurbo::Circle::new(p, dot_r);
-            scene.fill(
-                peniko::Fill::NonZero,
-                Affine::IDENTITY,
-                brush,
-                None,
-                &circle,
-            );
+            painter.fill(&circle, brush).draw();
         }
 
         // Draw on-curve dot (slightly larger)
         let on_circle = kurbo::Circle::new(p_on, dot_r * 1.5);
-        scene.fill(
-            peniko::Fill::NonZero,
-            Affine::IDENTITY,
-            brush,
-            None,
-            &on_circle,
-        );
+        painter.fill(&on_circle, brush).draw();
     }
 
     /// Check if we should close the path (clicking near first point)

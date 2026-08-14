@@ -9,7 +9,7 @@
 use crate::editing::{Drag, EditSession, EditType, MouseDelegate, MouseEvent};
 use crate::tools::{Tool, ToolId};
 use kurbo::Affine;
-use masonry::vello::Scene;
+use masonry::imaging::Painter;
 
 /// Text editing tool
 ///
@@ -40,7 +40,7 @@ impl Tool for TextTool {
         ToolId::Text
     }
 
-    fn paint(&mut self, _scene: &mut Scene, _session: &EditSession, _transform: &Affine) {
+    fn paint(&mut self, _painter: &mut Painter<'_>, _session: &EditSession, _transform: &Affine) {
         // Text tool doesn't paint overlays
         // (cursor will be rendered by editor_canvas in Phase 6)
     }

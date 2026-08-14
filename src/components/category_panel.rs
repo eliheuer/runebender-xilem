@@ -7,18 +7,19 @@
 //! sidebar: plain left-aligned text labels, selected item shown
 //! with a tinted highlight row. No button chrome.
 
-use kurbo::{Affine, Rect, RoundedRect, Size};
+use kurbo::{Axis, Affine, Rect, RoundedRect, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx, LayoutCtx, PaintCtx,
+    AccessCtx, MeasureCtx, BrushIndex, ChildrenIds, EventCtx, LayoutCtx, PaintCtx,
     PointerButton, PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx,
     StyleProperty, TextEvent, Update, UpdateCtx, Widget, render_text,
 };
-use masonry::vello::Scene;
-use masonry::vello::peniko::{Brush, Color, Fill};
-use parley::{FontContext, FontStack, LayoutContext};
+use masonry::imaging::Painter;
+use masonry::layout::{AsUnit, LenReq, Length};
+use masonry::peniko::{Brush, Color, Fill};
+use parley::{FontContext, LayoutContext};
 use std::marker::PhantomData;
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 use crate::theme;
@@ -111,19 +112,32 @@ impl Widget for CategoryListWidget {
     ) {
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        match axis {
+            Axis::Horizontal => CATEGORY_PANEL_WIDTH.px(),
+            Axis::Vertical => {
+                crate::components::measure_fill(len_req, 0.0)
+            }
+        }
+    }
+
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
-        let width = CATEGORY_PANEL_WIDTH;
-        let height = bc.max().height;
-        bc.constrain(Size::new(width, height))
+        _props: &PropertiesRef<'_>,
+        _size: Size,
+    ) {
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
-        let size = ctx.size();
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+        let size = ctx.content_box().size();
         let width = size.width;
         let cats = GlyphCategory::all_categories();
 
@@ -132,20 +146,8 @@ impl Widget for CategoryListWidget {
             Rect::from_origin_size(kurbo::Point::ZERO, size),
             theme::size::PANEL_RADIUS,
         );
-        scene.fill(
-            Fill::NonZero,
-            Affine::IDENTITY,
-            &Brush::Solid(theme::panel::BACKGROUND),
-            None,
-            &panel_rect,
-        );
-        scene.stroke(
-            &kurbo::Stroke::new(theme::size::TOOLBAR_BORDER_WIDTH),
-            Affine::IDENTITY,
-            &Brush::Solid(theme::panel::OUTLINE),
-            None,
-            &panel_rect,
-        );
+        painter.fill(&panel_rect, &Brush::Solid(theme::panel::BACKGROUND)).draw();
+        painter.stroke(&panel_rect, &kurbo::Stroke::new(theme::size::TOOLBAR_BORDER_WIDTH), &Brush::Solid(theme::panel::OUTLINE)).draw();
 
         // --- Header ---
         let mut font_cx = FontContext::default();
@@ -154,9 +156,7 @@ impl Widget for CategoryListWidget {
         let header_text = "Categories";
         let mut builder = layout_cx.ranged_builder(&mut font_cx, header_text, 1.0, false);
         builder.push_default(StyleProperty::FontSize(HEADER_FONT_SIZE as f32));
-        builder.push_default(StyleProperty::FontStack(FontStack::Single(
-            parley::FontFamily::Generic(parley::GenericFamily::SansSerif),
-        )));
+        builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Generic(parley::GenericFamily::SansSerif))));
         builder.push_default(StyleProperty::Brush(BrushIndex(0)));
         let mut layout = builder.build(header_text);
         layout.break_all_lines(None);
@@ -164,7 +164,7 @@ impl Widget for CategoryListWidget {
         let header_color: Color = theme::grid::CELL_TEXT;
         let header_brushes = vec![Brush::Solid(header_color)];
         render_text(
-            scene,
+            painter,
             Affine::translate((TEXT_INSET, HEADER_TOP)),
             &layout,
             &header_brushes,
@@ -189,13 +189,7 @@ impl Widget for CategoryListWidget {
                     ),
                     HIGHLIGHT_RADIUS,
                 );
-                scene.stroke(
-                    &kurbo::Stroke::new(1.5),
-                    Affine::IDENTITY,
-                    &Brush::Solid(theme::grid::CELL_SELECTED_OUTLINE),
-                    None,
-                    &highlight,
-                );
+                painter.stroke(&highlight, &kurbo::Stroke::new(1.5), &Brush::Solid(theme::grid::CELL_SELECTED_OUTLINE)).draw();
             }
 
             // Text color
@@ -209,9 +203,7 @@ impl Widget for CategoryListWidget {
             let name = cat.display_name();
             let mut builder = layout_cx.ranged_builder(&mut font_cx, name, 1.0, false);
             builder.push_default(StyleProperty::FontSize(ITEM_FONT_SIZE as f32));
-            builder.push_default(StyleProperty::FontStack(FontStack::Single(
-                parley::FontFamily::Generic(parley::GenericFamily::SansSerif),
-            )));
+            builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Generic(parley::GenericFamily::SansSerif))));
             builder.push_default(StyleProperty::Brush(BrushIndex(0)));
             let mut item_layout = builder.build(name);
             item_layout.break_all_lines(None);
@@ -219,7 +211,7 @@ impl Widget for CategoryListWidget {
             let text_y = row_y + (ROW_HEIGHT - item_layout.height() as f64) / 2.0;
             let brushes = vec![Brush::Solid(text_color)];
             render_text(
-                scene,
+                painter,
                 Affine::translate((TEXT_INSET, text_y)),
                 &item_layout,
                 &brushes,
@@ -329,7 +321,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = CategoryListWidget::new(self.selected);
         let pod = ctx.create_pod(widget);
-        ctx.record_action(pod.new_widget.id());
+        ctx.record_action_source(pod.new_widget.id());
         (pod, ())
     }
 
@@ -357,7 +349,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        message: &mut MessageContext,
+        message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<Action> {
