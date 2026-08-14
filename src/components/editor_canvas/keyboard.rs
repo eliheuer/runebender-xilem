@@ -114,6 +114,10 @@ impl EditorWidget {
             return true;
         }
 
+        if self.handle_cycle_selected_point(ctx, key, shift) {
+            return true;
+        }
+
         if self.handle_ctrl_space_toggle(ctx, ctrl, key) {
             return true;
         }
@@ -214,18 +218,70 @@ impl EditorWidget {
         ctx: &mut EventCtx<'_>,
         key: &masonry::core::keyboard::Key,
     ) -> bool {
+        use masonry::core::keyboard::Key;
+
+        if !matches!(key, Key::Character(c) if c == "`") {
+            return false;
+        }
+
+        // Don't toggle panels in text edit mode (` inserts a character)
+        if self.session.text_mode_active {
+            return false;
+        }
+
+        self.session.panels_visible = !self.session.panels_visible;
+        self.emit_session_update(ctx, false);
+        ctx.request_render();
+        ctx.set_handled();
+        true
+    }
+
+    /// Tab / Shift+Tab cycles the selection through the glyph's
+    /// points in contour order (matches runebender-web).
+    fn handle_cycle_selected_point(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        key: &masonry::core::keyboard::Key,
+        shift: bool,
+    ) -> bool {
         use masonry::core::keyboard::{Key, NamedKey};
 
         if !matches!(key, Key::Named(NamedKey::Tab)) {
             return false;
         }
 
-        // Don't toggle panels in text edit mode (Tab may be used for other purposes)
         if self.session.text_mode_active {
             return false;
         }
 
-        self.session.panels_visible = !self.session.panels_visible;
+        let ids: Vec<crate::model::EntityId> = self
+            .session
+            .paths
+            .iter()
+            .flat_map(|path| {
+                path.points().iter().map(|pt| pt.id)
+            })
+            .collect();
+        if ids.is_empty() {
+            return false;
+        }
+
+        let current = if self.session.selection.len() == 1 {
+            self.session.selection.iter().next().copied()
+        } else {
+            None
+        };
+        let next_index = match current
+            .and_then(|id| ids.iter().position(|x| *x == id))
+        {
+            Some(i) if shift => (i + ids.len() - 1) % ids.len(),
+            Some(i) => (i + 1) % ids.len(),
+            None => 0,
+        };
+
+        let mut new_selection = crate::editing::Selection::new();
+        new_selection.insert(ids[next_index]);
+        self.session.selection = new_selection;
         self.emit_session_update(ctx, false);
         ctx.request_render();
         ctx.set_handled();
@@ -1217,7 +1273,10 @@ impl EditorWidget {
     ) -> bool {
         use masonry::core::keyboard::{Key, NamedKey};
 
-        if !matches!(key, Key::Named(NamedKey::Enter)) {
+        if !matches!(
+            key,
+            Key::Named(NamedKey::Enter) | Key::Named(NamedKey::Escape)
+        ) {
             return false;
         }
 
