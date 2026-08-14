@@ -14,7 +14,6 @@ use crate::path::Path;
 use crate::tools::{Tool, ToolId};
 use kurbo::Affine;
 use masonry::imaging::Painter;
-use masonry::peniko;
 use std::sync::Arc;
 
 // ===== Constants =====

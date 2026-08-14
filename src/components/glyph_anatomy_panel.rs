@@ -16,7 +16,7 @@ use masonry::core::{
 };
 use masonry::imaging::Painter;
 use masonry::layout::{LenReq, Length};
-use masonry::peniko::{Brush, Fill};
+use masonry::peniko::Brush;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx, WidgetView};
 

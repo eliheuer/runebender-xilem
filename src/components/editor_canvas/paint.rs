@@ -10,7 +10,7 @@ use kurbo::{Affine, RoundedRect, Stroke};
 use masonry::core::{BrushIndex, StyleProperty, render_text};
 use masonry::kurbo::Size;
 use masonry::imaging::Painter;
-use masonry::peniko::{Brush, Fill, ImageBrush};
+use masonry::peniko::{Brush, ImageBrush};
 use parley::{FontContext, LayoutContext};
 
 thread_local! {

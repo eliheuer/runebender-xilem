@@ -16,7 +16,7 @@ use masonry::core::{
 };
 use masonry::imaging::Painter;
 use masonry::layout::{AsUnit, LenReq, Length};
-use masonry::peniko::{Brush, Color, Fill};
+use masonry::peniko::{Brush, Color};
 use parley::{FontContext, LayoutContext};
 use std::marker::PhantomData;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
