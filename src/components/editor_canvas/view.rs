@@ -7,7 +7,7 @@ use super::{EditorWidget, SessionUpdate};
 use crate::editing::EditSession;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 /// Create an editor view from an edit session with a callback for
@@ -48,7 +48,7 @@ impl<State: 'static, F: Fn(&mut State, EditSession, bool, bool) + 'static> View<
     fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = EditorWidget::new(self.session.clone());
         let pod = ctx.create_pod(widget);
-        ctx.record_action(pod.new_widget.id());
+        ctx.record_action_source(pod.new_widget.id());
         (pod, ())
     }
 
@@ -116,7 +116,7 @@ impl<State: 'static, F: Fn(&mut State, EditSession, bool, bool) + 'static> View<
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        message: &mut MessageContext,
+        message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<()> {

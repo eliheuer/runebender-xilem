@@ -9,10 +9,9 @@ use crate::theme;
 use kurbo::{Affine, RoundedRect, Stroke};
 use masonry::core::{BrushIndex, StyleProperty, render_text};
 use masonry::kurbo::Size;
-use masonry::util::fill_color;
-use masonry::vello::Scene;
-use masonry::vello::peniko::{Brush, Fill, ImageBrush};
-use parley::{FontContext, FontStack, LayoutContext};
+use masonry::imaging::Painter;
+use masonry::peniko::{Brush, Fill, ImageBrush};
+use parley::{FontContext, LayoutContext};
 
 thread_local! {
     static MENU_FONT_CX: std::cell::RefCell<FontContext> =
@@ -27,9 +26,9 @@ impl EditorWidget {
     // PAINT HELPER METHODS
     // ============================================================================
 
-    pub(super) fn paint_background(&self, scene: &mut Scene, canvas_size: Size) {
+    pub(super) fn paint_background(&self, painter: &mut Painter<'_>, canvas_size: Size) {
         let bg_rect = canvas_size.to_rect();
-        fill_color(scene, &bg_rect, crate::theme::canvas::BACKGROUND);
+        painter.fill(&bg_rect, crate::theme::canvas::BACKGROUND).draw();
     }
 
     pub(super) fn is_preview_mode(&self) -> bool {
@@ -38,34 +37,34 @@ impl EditorWidget {
 
     pub(super) fn paint_text_buffer_mode(
         &mut self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         transform: &Affine,
         is_preview_mode: bool,
     ) {
         if !is_preview_mode {
-            draw_design_grid(scene, &self.session, self.size);
+            draw_design_grid(painter, &self.session, self.size);
         }
 
-        self.paint_background_image(scene, transform);
-        self.render_text_buffer(scene, transform, is_preview_mode);
+        self.paint_background_image(painter, transform);
+        self.render_text_buffer(painter, transform, is_preview_mode);
 
         if !is_preview_mode {
-            self.paint_tool_overlay(scene, transform);
+            self.paint_tool_overlay(painter, transform);
         }
     }
 
     pub(super) fn paint_single_glyph_mode(
         &mut self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         transform: &Affine,
         is_preview_mode: bool,
     ) {
         if !is_preview_mode {
-            draw_design_grid(scene, &self.session, self.size);
-            draw_metrics_guides(scene, transform, &self.session, self.size);
+            draw_design_grid(painter, &self.session, self.size);
+            draw_metrics_guides(painter, transform, &self.session, self.size);
         }
 
-        self.paint_background_image(scene, transform);
+        self.paint_background_image(painter, transform);
 
         let glyph_path = self.build_glyph_path();
         if glyph_path.is_empty() {
@@ -75,9 +74,9 @@ impl EditorWidget {
         let transformed_path = *transform * &glyph_path;
 
         if is_preview_mode {
-            self.paint_glyph_preview(scene, &transformed_path);
+            self.paint_glyph_preview(painter, &transformed_path);
         } else {
-            self.paint_glyph_edit_mode(scene, &transformed_path, transform);
+            self.paint_glyph_edit_mode(painter, &transformed_path, transform);
         }
     }
 
@@ -89,36 +88,30 @@ impl EditorWidget {
         glyph_path
     }
 
-    fn paint_glyph_preview(&self, scene: &mut Scene, path: &kurbo::BezPath) {
+    fn paint_glyph_preview(&self, painter: &mut Painter<'_>, path: &kurbo::BezPath) {
         let fill_brush = Brush::Solid(theme::path::PREVIEW_FILL);
-        scene.fill(
-            peniko::Fill::NonZero,
-            Affine::IDENTITY,
-            &fill_brush,
-            None,
-            path,
-        );
+        painter.fill(path, &fill_brush).draw();
     }
 
     fn paint_glyph_edit_mode(
         &mut self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         path: &kurbo::BezPath,
         transform: &Affine,
     ) {
         let stroke = Stroke::new(theme::size::PATH_STROKE_WIDTH);
         let brush = Brush::Solid(theme::path::STROKE);
-        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, path);
+        painter.stroke(path, &stroke, &brush).draw();
 
-        draw_paths_with_points(scene, &self.session, transform);
+        draw_paths_with_points(painter, &self.session, transform);
 
-        self.paint_tool_overlay(scene, transform);
+        self.paint_tool_overlay(painter, transform);
     }
 
-    fn paint_tool_overlay(&mut self, scene: &mut Scene, transform: &Affine) {
+    fn paint_tool_overlay(&mut self, painter: &mut Painter<'_>, transform: &Affine) {
         let select_tool = crate::tools::ToolBox::for_id(crate::tools::ToolId::Select);
         let mut tool = std::mem::replace(&mut self.session.current_tool, select_tool);
-        tool.paint(scene, &self.session, transform);
+        tool.paint(painter, &self.session, transform);
         self.session.current_tool = tool;
     }
 
@@ -128,7 +121,7 @@ impl EditorWidget {
     /// optionally a selection border and resize handles are drawn.
     fn paint_background_image(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         transform: &Affine,
     ) {
         let bg = match &self.session.background_image {
@@ -145,11 +138,11 @@ impl EditorWidget {
 
         let brush = ImageBrush::new(bg.image_data.clone())
             .with_alpha(bg.opacity as f32);
-        scene.draw_image(&brush, image_transform);
+        painter.draw_image(&brush, image_transform);
 
         // Draw selection UI when selected and not locked
         if bg.selected && !bg.locked {
-            self.paint_image_selection(scene, transform, bg);
+            self.paint_image_selection(painter, transform, bg);
         }
     }
 
@@ -157,7 +150,7 @@ impl EditorWidget {
     /// background image.
     fn paint_image_selection(
         &self,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
         transform: &Affine,
         bg: &crate::editing::background_image::BackgroundImage,
     ) {
@@ -182,13 +175,7 @@ impl EditorWidget {
         let dashed = stroke.with_dashes(0.0, dash_pattern);
         let border_brush =
             Brush::Solid(theme::background_image::SELECTION_BORDER);
-        scene.stroke(
-            &dashed,
-            Affine::IDENTITY,
-            &border_brush,
-            None,
-            &border_path,
-        );
+        painter.stroke(&border_path, &dashed, &border_brush).draw();
 
         let handle_r = theme::background_image::HANDLE_RADIUS;
         let handle_stroke = Stroke::new(
@@ -203,20 +190,8 @@ impl EditorWidget {
         for corner in &bg.corner_positions() {
             let sp = *transform * *corner;
             let circle = kurbo::Circle::new(sp, handle_r);
-            scene.fill(
-                peniko::Fill::NonZero,
-                Affine::IDENTITY,
-                &fill_brush,
-                None,
-                &circle,
-            );
-            scene.stroke(
-                &handle_stroke,
-                Affine::IDENTITY,
-                &stroke_brush,
-                None,
-                &circle,
-            );
+            painter.fill(&circle, &fill_brush).draw();
+            painter.stroke(&circle, &handle_stroke, &stroke_brush).draw();
         }
 
         // --- Side handles (squares) — free single-axis scaling ---
@@ -229,20 +204,8 @@ impl EditorWidget {
                 sp.x + half,
                 sp.y + half,
             );
-            scene.fill(
-                peniko::Fill::NonZero,
-                Affine::IDENTITY,
-                &fill_brush,
-                None,
-                &rect,
-            );
-            scene.stroke(
-                &handle_stroke,
-                Affine::IDENTITY,
-                &stroke_brush,
-                None,
-                &rect,
-            );
+            painter.fill(&rect, &fill_brush).draw();
+            painter.stroke(&rect, &handle_stroke, &stroke_brush).draw();
         }
     }
 
@@ -251,7 +214,7 @@ impl EditorWidget {
     // ====================================================================
 
     /// Paint the right-click context menu overlay.
-    pub(super) fn paint_context_menu(&self, scene: &mut Scene) {
+    pub(super) fn paint_context_menu(&self, painter: &mut Painter<'_>) {
         let menu = match &self.context_menu {
             Some(m) => m,
             None => return,
@@ -274,25 +237,13 @@ impl EditorWidget {
         let rounded = RoundedRect::from_rect(menu_rect, radius);
         let bg_brush =
             Brush::Solid(theme::context_menu::BACKGROUND);
-        scene.fill(
-            Fill::NonZero,
-            Affine::IDENTITY,
-            &bg_brush,
-            None,
-            &rounded,
-        );
+        painter.fill(&rounded, &bg_brush).draw();
 
         // Border
         let border_brush =
             Brush::Solid(theme::context_menu::BORDER);
         let border_stroke = Stroke::new(1.0);
-        scene.stroke(
-            &border_stroke,
-            Affine::IDENTITY,
-            &border_brush,
-            None,
-            &rounded,
-        );
+        painter.stroke(&rounded, &border_stroke, &border_brush).draw();
 
         // Draw each item
         MENU_FONT_CX.with(|font_cell| {
@@ -316,13 +267,7 @@ impl EditorWidget {
                             RoundedRect::from_rect(hover_rect, 3.0);
                         let hover_brush =
                             Brush::Solid(theme::context_menu::HOVER);
-                        scene.fill(
-                            Fill::NonZero,
-                            Affine::IDENTITY,
-                            &hover_brush,
-                            None,
-                            &hover_rounded,
-                        );
+                        painter.fill(&hover_rounded, &hover_brush).draw();
                     }
 
                     // Text label
@@ -336,11 +281,7 @@ impl EditorWidget {
                         theme::context_menu::FONT_SIZE,
                     ));
                     builder.push_default(
-                        StyleProperty::FontStack(FontStack::Single(
-                            parley::FontFamily::Generic(
-                                parley::GenericFamily::SansSerif,
-                            ),
-                        )),
+                        StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Generic(parley::GenericFamily::SansSerif))),
                     );
                     builder.push_default(
                         StyleProperty::Brush(BrushIndex(0)),
@@ -361,7 +302,7 @@ impl EditorWidget {
                         theme::context_menu::TEXT,
                     )];
                     render_text(
-                        scene,
+                        painter,
                         Affine::translate((text_x, text_y)),
                         &text_layout,
                         &brushes,

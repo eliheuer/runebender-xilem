@@ -24,15 +24,16 @@
 //! - **`GlyphView`**: Xilem View wrapper that integrates with the
 //!   reactive UI
 
-use kurbo::{Affine, BezPath, Shape};
+use kurbo::{Axis, Affine, BezPath, Shape};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, LayoutCtx, NoAction, PaintCtx, PropertiesMut,
+    AccessCtx, MeasureCtx, ChildrenIds, LayoutCtx, NoAction, PaintCtx, PropertiesMut,
     PropertiesRef, RegisterCtx, Update, UpdateCtx, Widget,
 };
 use masonry::kurbo::Size;
-use masonry::vello::Scene;
-use masonry::vello::peniko::{Brush, Color, Fill};
+use masonry::imaging::Painter;
+use masonry::layout::{LenReq, Length};
+use masonry::peniko::{Brush, Color, Fill};
 
 /// A widget that renders a glyph from a BezPath
 pub struct GlyphWidget {
@@ -139,23 +140,32 @@ impl Widget for GlyphWidget {
         // No state to update
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        _len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        crate::components::measure_fixed(axis, self.size)
+    }
+
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
-        // Use the requested size, constrained by the BoxConstraints
-        bc.constrain(self.size)
+        _props: &PropertiesRef<'_>,
+        _size: Size,
+    ) {
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
         if self.path.is_empty() {
             return;
         }
 
         let bounds = self.path.bounding_box();
-        let widget_size = ctx.size();
+        let widget_size = ctx.content_box().size();
 
         let transformed_path = if self.fit_to_bounds {
             // Fit glyph to widget with equal margins on all sides
@@ -205,13 +215,7 @@ impl Widget for GlyphWidget {
         // Render the glyph using NonZero fill rule
         // This ensures overlapping shapes (like Arabic connectors) fill correctly
         // without gaps, unlike EvenOdd which alternates fill at each crossing
-        scene.fill(
-            Fill::NonZero,
-            kurbo::Affine::IDENTITY,
-            &Brush::Solid(self.color),
-            None,
-            &transformed_path,
-        );
+        painter.fill(&transformed_path, &Brush::Solid(self.color)).transform(kurbo::Affine::IDENTITY).draw();
     }
 
     fn accessibility_role(&self) -> Role {
@@ -235,7 +239,7 @@ impl Widget for GlyphWidget {
 // ===== Xilem View Wrapper =====
 
 use std::marker::PhantomData;
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 /// Create a glyph view from a BezPath
@@ -378,7 +382,7 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx> for GlyphView
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        _message: &mut MessageContext,
+        _message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         _app_state: &mut State,
     ) -> MessageResult<Action> {
@@ -391,7 +395,7 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx> for GlyphView
 //
 // This widget renders multiple glyph paths separately to avoid winding conflicts
 // that occur when combining paths with `.extend()`. Each glyph is rendered with
-// its own `scene.fill()` call using NonZero fill rule.
+// its own `painter.fill()` call using NonZero fill rule.
 
 /// A widget that renders multiple glyph paths (for text buffer preview)
 ///
@@ -494,16 +498,26 @@ impl Widget for MultiGlyphWidget {
         // No state to update
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        _len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        crate::components::measure_fixed(axis, self.size)
+    }
+
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
-        bc.constrain(self.size)
+        _props: &PropertiesRef<'_>,
+        _size: Size,
+    ) {
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
         if self.paths.is_empty() {
             return;
         }
@@ -525,7 +539,7 @@ impl Widget for MultiGlyphWidget {
             None => return,
         };
 
-        let widget_size = ctx.size();
+        let widget_size = ctx.content_box().size();
 
         let transform = if self.fit_to_bounds {
             // Fit combined bounding box to widget with equal margins
@@ -567,29 +581,18 @@ impl Widget for MultiGlyphWidget {
             kurbo::Point::ZERO,
             widget_size,
         );
-        scene.push_layer(
-            masonry::vello::peniko::Mix::Clip,
-            1.0,
-            kurbo::Affine::IDENTITY,
-            &clip_rect,
-        );
+        painter.push_fill_clip(clip_rect);
 
         // Render each glyph path SEPARATELY to avoid winding conflicts
         let brush = Brush::Solid(self.color);
         for path in &self.paths {
             if !path.is_empty() {
                 let transformed_path = transform * path;
-                scene.fill(
-                    Fill::NonZero,
-                    kurbo::Affine::IDENTITY,
-                    &brush,
-                    None,
-                    &transformed_path,
-                );
+                painter.fill(&transformed_path, &brush).transform(kurbo::Affine::IDENTITY).draw();
             }
         }
 
-        scene.pop_layer();
+        painter.pop_clip();
     }
 
     fn accessibility_role(&self) -> Role {
@@ -739,7 +742,7 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        _message: &mut MessageContext,
+        _message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         _app_state: &mut State,
     ) -> MessageResult<Action> {

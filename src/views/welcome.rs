@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use masonry::properties::types::{AsUnit, UnitPoint};
+use masonry::layout::{AsUnit, UnitPoint};
 use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::{

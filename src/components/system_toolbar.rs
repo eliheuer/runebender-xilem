@@ -6,13 +6,14 @@
 //! This toolbar provides buttons for common file operations like save.
 //! It appears in both the glyph grid view and editor view.
 
-use kurbo::{Affine, BezPath, Point, Shape, Size};
+use kurbo::{Axis, Affine, BezPath, Point, Shape, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, EventCtx, LayoutCtx, PaintCtx, PointerButton, PointerButtonEvent,
+    AccessCtx, MeasureCtx, EventCtx, LayoutCtx, PaintCtx, PointerButton, PointerButtonEvent,
     PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
 };
-use masonry::vello::Scene;
+use masonry::imaging::Painter;
+use masonry::layout::{LenReq, Length};
 use std::time::Instant;
 
 // Import shared toolbar functionality
@@ -84,20 +85,30 @@ impl Widget for SystemToolbarWidget {
     ) {
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        _len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        let size = calculate_toolbar_size(1);
+        crate::components::measure_fixed(axis, size)
+    }
+
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
-        let size = calculate_toolbar_size(1);
-        bc.constrain(size)
+        _props: &PropertiesRef<'_>,
+        _size: Size,
+    ) {
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
-        let size = ctx.size();
-        paint_panel(scene, size);
-        self.paint_button(scene);
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+        let size = ctx.content_box().size();
+        paint_panel(painter, size);
+        self.paint_button(painter);
     }
 
     fn accessibility_role(&self) -> Role {
@@ -166,14 +177,14 @@ impl Widget for SystemToolbarWidget {
 }
 
 impl SystemToolbarWidget {
-    fn paint_button(&self, scene: &mut Scene) {
+    fn paint_button(&self, painter: &mut Painter<'_>) {
         let rect = button_rect(0);
         let is_hovered = self.hover_button == Some(SystemToolbarButton::Save);
         // Use flash_on state for selected appearance during flash animation
         let is_selected = self.flash_on;
         let state = ButtonState::new(is_hovered, is_selected);
 
-        paint_button(scene, rect, state);
+        paint_button(painter, rect, state);
         let icon = Self::icon_for_button(SystemToolbarButton::Save);
         // Paint icon with less padding than default for
         // a larger icon in this single-button toolbar
@@ -194,7 +205,7 @@ impl SystemToolbarWidget {
         } else {
             crate::theme::toolbar::ICON_UNSELECTED
         };
-        masonry::util::fill_color(scene, &(transform * icon), icon_color);
+        painter.fill(&(transform * icon), icon_color).draw();
     }
 }
 
@@ -311,7 +322,7 @@ fn save_icon() -> BezPath {
 // ===== XILEM VIEW WRAPPER =====
 
 use std::marker::PhantomData;
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 type SystemToolbarCallback<State> = Box<dyn Fn(&mut State, SystemToolbarButton) + Send + Sync>;
@@ -347,7 +358,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = SystemToolbarWidget::new();
         let pod = ctx.create_pod(widget);
-        ctx.record_action(pod.new_widget.id());
+        ctx.record_action_source(pod.new_widget.id());
         (pod, ())
     }
 
@@ -381,7 +392,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        message: &mut MessageContext,
+        message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<Action> {
