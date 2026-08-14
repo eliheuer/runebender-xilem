@@ -12,8 +12,8 @@ use crate::theme;
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, Circle, Line, Point, Rect, Size};
 use masonry::core::{BrushIndex, StyleProperty, render_text};
-use masonry::vello::Scene;
-use masonry::vello::peniko::{Brush, Color, Fill};
+use masonry::imaging::Painter;
+use masonry::peniko::{Brush, Color, Fill};
 use parley::GenericFamily;
 use parley::{FontContext, LayoutContext};
 use tracing;
@@ -43,10 +43,10 @@ impl Tool for MeasureTool {
         ToolId::Measure
     }
 
-    fn paint(&mut self, scene: &mut Scene, session: &EditSession, _transform: &Affine) {
+    fn paint(&mut self, painter: &mut Painter<'_>, session: &EditSession, _transform: &Affine) {
         // Paint the measurement line and info if present
         if let Some(line) = self.line {
-            self.paint_measurement(scene, session, line);
+            self.paint_measurement(painter, session, line);
         }
     }
 
@@ -108,14 +108,14 @@ impl MouseDelegate for MeasureTool {
 
 impl MeasureTool {
     /// Paint the measurement line and all associated info
-    fn paint_measurement(&self, scene: &mut Scene, session: &EditSession, line: Line) {
+    fn paint_measurement(&self, painter: &mut Painter<'_>, session: &EditSession, line: Line) {
         // Draw the measurement line using theme colors (same as pen/knife preview)
         let stroke = kurbo::Stroke::new(crate::theme::tool_preview::LINE_WIDTH).with_dashes(
             crate::theme::tool_preview::LINE_DASH_OFFSET,
             crate::theme::tool_preview::LINE_DASH,
         );
         let brush = Brush::Solid(crate::theme::tool_preview::LINE_COLOR);
-        scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &line);
+        painter.stroke(&line, &stroke, &brush).draw();
 
         // TODO: Angle display - commented out for now but may be useful later
         // // Calculate and display angle
@@ -128,7 +128,7 @@ impl MeasureTool {
         //     Vec2::new(-14.0, 8.0)
         // };
         // let angle_label = format!("{:.1}°", angle);
-        // draw_info_bubble(scene, line.p1 + angle_offset, angle_label);
+        // draw_info_bubble(painter, line.p1 + angle_offset, angle_label);
 
         // Convert line to design space
         let p0 = session.viewport.screen_to_design(line.p0);
@@ -143,7 +143,7 @@ impl MeasureTool {
         for t in &intersections {
             let pt = line.p0.lerp(line.p1, *t);
             let circle = Circle::new(pt, crate::theme::tool_preview::DOT_RADIUS);
-            scene.fill(Fill::NonZero, Affine::IDENTITY, &brush, None, &circle);
+            painter.fill(&circle, &brush).draw();
         }
 
         // Draw length labels between intersections
@@ -155,7 +155,7 @@ impl MeasureTool {
             let center = design_line.p0.lerp(design_line.p1, tmid);
             let center_screen = session.viewport.to_screen(center);
             let len_label = format!("{:.1}", seg_len);
-            draw_info_bubble(scene, center_screen, len_label);
+            draw_info_bubble(painter, center_screen, len_label);
         }
     }
 
@@ -437,14 +437,14 @@ fn format_point(pt: Point) -> String {
 /// Draw a text label at a position with a given color
 /// Note: Vello doesn't have text rendering yet, so this is a placeholder
 /// that draws a small colored circle instead
-fn draw_label(_scene: &mut Scene, _label: String, _pos: Point, _color: Color) {
+fn draw_label(_painter: &mut Painter<'_>, _label: String, _pos: Point, _color: Color) {
     // TODO: Implement text rendering when Vello supports it
     // For now, we skip drawing text labels
     // This would need vello-text or a similar text rendering solution
 }
 
 /// Draw an info bubble with text (rounded rectangle background + text)
-fn draw_info_bubble(scene: &mut Scene, pos: Point, label: impl Into<String>) {
+fn draw_info_bubble(painter: &mut Painter<'_>, pos: Point, label: impl Into<String>) {
     let label_str = label.into();
 
     // Format the number - if it's a whole number, show no decimal
@@ -464,9 +464,7 @@ fn draw_info_bubble(scene: &mut Scene, pos: Point, label: impl Into<String>) {
 
     let mut builder = layout_cx.ranged_builder(&mut font_cx, &formatted_label, 1.0, false);
     builder.push_default(StyleProperty::FontSize(14.0));
-    builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(
-        parley::FontFamily::Generic(GenericFamily::SansSerif),
-    )));
+    builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Generic(parley::GenericFamily::SansSerif))));
     builder.push_default(StyleProperty::Brush(BrushIndex(0))); // Index into brushes array
     let mut layout = builder.build(&formatted_label);
     layout.break_all_lines(None);
@@ -487,13 +485,7 @@ fn draw_info_bubble(scene: &mut Scene, pos: Point, label: impl Into<String>) {
     .to_rounded_rect(4.0);
 
     let bubble_brush = Brush::Solid(crate::theme::point::CORNER_INNER);
-    scene.fill(
-        Fill::NonZero,
-        Affine::IDENTITY,
-        &bubble_brush,
-        None,
-        &bubble,
-    );
+    painter.fill(&bubble, &bubble_brush).draw();
 
     // Draw dark gray text on top
     let text_pos = Point::new(pos.x - text_width / 2.0, pos.y - text_height / 2.0);
@@ -502,7 +494,7 @@ fn draw_info_bubble(scene: &mut Scene, pos: Point, label: impl Into<String>) {
     let brushes = vec![Brush::Solid(text_color)];
 
     render_text(
-        scene,
+        painter,
         Affine::translate((text_pos.x, text_pos.y)),
         &layout,
         &brushes,

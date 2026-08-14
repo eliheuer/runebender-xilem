@@ -6,18 +6,19 @@
 //! Displays a grid of 12 color swatches plus a "clear" swatch.
 //! Clicking a swatch sets the selected glyph's mark color.
 
-use kurbo::{Affine, Circle, Rect, RoundedRect, Size};
+use kurbo::{Axis, Affine, Circle, Rect, RoundedRect, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx, LayoutCtx, PaintCtx,
+    AccessCtx, MeasureCtx, BrushIndex, ChildrenIds, EventCtx, LayoutCtx, PaintCtx,
     PointerButton, PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx,
     StyleProperty, TextEvent, Update, UpdateCtx, Widget, render_text,
 };
-use masonry::vello::Scene;
-use masonry::vello::peniko::{Brush, Color, Fill};
-use parley::{FontContext, FontStack, LayoutContext};
+use masonry::imaging::Painter;
+use masonry::layout::{LenReq, Length};
+use masonry::peniko::{Brush, Color, Fill};
+use parley::{FontContext, LayoutContext};
 use std::marker::PhantomData;
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 use crate::components::CATEGORY_PANEL_WIDTH;
@@ -126,39 +127,36 @@ impl Widget for MarkColorPanelWidget {
     ) {
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        _len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        let size = Size::new(CATEGORY_PANEL_WIDTH, PANEL_HEIGHT);
+        crate::components::measure_fixed(axis, size)
+    }
+
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
-        let width = CATEGORY_PANEL_WIDTH;
-        let height = PANEL_HEIGHT;
-        bc.constrain(Size::new(width, height))
+        _props: &PropertiesRef<'_>,
+        _size: Size,
+    ) {
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
-        let size = ctx.size();
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+        let size = ctx.content_box().size();
 
         // --- Panel background and border ---
         let panel_rect = RoundedRect::from_rect(
             Rect::from_origin_size(kurbo::Point::ZERO, size),
             theme::size::PANEL_RADIUS,
         );
-        scene.fill(
-            Fill::NonZero,
-            Affine::IDENTITY,
-            &Brush::Solid(theme::panel::BACKGROUND),
-            None,
-            &panel_rect,
-        );
-        scene.stroke(
-            &kurbo::Stroke::new(theme::size::TOOLBAR_BORDER_WIDTH),
-            Affine::IDENTITY,
-            &Brush::Solid(theme::panel::OUTLINE),
-            None,
-            &panel_rect,
-        );
+        painter.fill(&panel_rect, &Brush::Solid(theme::panel::BACKGROUND)).draw();
+        painter.stroke(&panel_rect, &kurbo::Stroke::new(theme::size::TOOLBAR_BORDER_WIDTH), &Brush::Solid(theme::panel::OUTLINE)).draw();
 
         // --- Header ---
         let mut font_cx = FontContext::default();
@@ -167,9 +165,7 @@ impl Widget for MarkColorPanelWidget {
         let header_text = "Colors";
         let mut builder = layout_cx.ranged_builder(&mut font_cx, header_text, 1.0, false);
         builder.push_default(StyleProperty::FontSize(HEADER_FONT_SIZE as f32));
-        builder.push_default(StyleProperty::FontStack(FontStack::Single(
-            parley::FontFamily::Generic(parley::GenericFamily::SansSerif),
-        )));
+        builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Generic(parley::GenericFamily::SansSerif))));
         builder.push_default(StyleProperty::Brush(BrushIndex(0)));
         let mut layout = builder.build(header_text);
         layout.break_all_lines(None);
@@ -177,7 +173,7 @@ impl Widget for MarkColorPanelWidget {
         let header_color: Color = theme::grid::CELL_TEXT;
         let header_brushes = vec![Brush::Solid(header_color)];
         render_text(
-            scene,
+            painter,
             Affine::translate((TEXT_INSET, HEADER_TOP)),
             &layout,
             &header_brushes,
@@ -194,35 +190,17 @@ impl Widget for MarkColorPanelWidget {
             let circle = Circle::new((cx, cy), radius);
 
             // Fill with mark color
-            scene.fill(
-                Fill::NonZero,
-                Affine::IDENTITY,
-                &Brush::Solid(color),
-                None,
-                &circle,
-            );
+            painter.fill(&circle, &Brush::Solid(color)).draw();
 
             // Hover ring
             if self.hover_index == Some(i) {
-                scene.stroke(
-                    &kurbo::Stroke::new(1.5),
-                    Affine::IDENTITY,
-                    &Brush::Solid(theme::base::L),
-                    None,
-                    &circle,
-                );
+                painter.stroke(&circle, &kurbo::Stroke::new(1.5), &Brush::Solid(theme::base::L)).draw();
             }
 
             // Selected ring (white outline for current glyph color)
             if self.selected_color == Some(i) {
                 let outer = Circle::new((cx, cy), radius + 1.5);
-                scene.stroke(
-                    &kurbo::Stroke::new(2.0),
-                    Affine::IDENTITY,
-                    &Brush::Solid(theme::mark::SELECTED_RING),
-                    None,
-                    &outer,
-                );
+                painter.stroke(&outer, &kurbo::Stroke::new(2.0), &Brush::Solid(theme::mark::SELECTED_RING)).draw();
             }
         }
 
@@ -232,42 +210,18 @@ impl Widget for MarkColorPanelWidget {
         let circle = Circle::new((cx, cy), radius);
 
         // Hollow circle (outline only)
-        scene.stroke(
-            &kurbo::Stroke::new(1.5),
-            Affine::IDENTITY,
-            &Brush::Solid(theme::base::F),
-            None,
-            &circle,
-        );
+        painter.stroke(&circle, &kurbo::Stroke::new(1.5), &Brush::Solid(theme::base::F)).draw();
 
         // X mark inside
         let x_size = radius * 0.45;
         let stroke = kurbo::Stroke::new(1.5);
         let x_color = Brush::Solid(theme::base::F);
-        scene.stroke(
-            &stroke,
-            Affine::IDENTITY,
-            &x_color,
-            None,
-            &kurbo::Line::new((cx - x_size, cy - x_size), (cx + x_size, cy + x_size)),
-        );
-        scene.stroke(
-            &stroke,
-            Affine::IDENTITY,
-            &x_color,
-            None,
-            &kurbo::Line::new((cx + x_size, cy - x_size), (cx - x_size, cy + x_size)),
-        );
+        painter.stroke(&kurbo::Line::new((cx - x_size, cy - x_size), (cx + x_size, cy + x_size)), &stroke, &x_color).draw();
+        painter.stroke(&kurbo::Line::new((cx + x_size, cy - x_size), (cx - x_size, cy + x_size)), &stroke, &x_color).draw();
 
         // Hover ring for clear swatch
         if self.hover_index == Some(7) {
-            scene.stroke(
-                &kurbo::Stroke::new(1.5),
-                Affine::IDENTITY,
-                &Brush::Solid(theme::base::L),
-                None,
-                &circle,
-            );
+            painter.stroke(&circle, &kurbo::Stroke::new(1.5), &Brush::Solid(theme::base::L)).draw();
         }
 
         // Selected ring for clear (when glyph has no mark color)
@@ -381,7 +335,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = MarkColorPanelWidget::new(self.current_color);
         let pod = ctx.create_pod(widget);
-        ctx.record_action(pod.new_widget.id());
+        ctx.record_action_source(pod.new_widget.id());
         (pod, ())
     }
 
@@ -409,7 +363,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        message: &mut MessageContext,
+        message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<Action> {

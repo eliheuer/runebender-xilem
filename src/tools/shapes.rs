@@ -15,8 +15,8 @@ use crate::model::EntityId;
 use crate::path::{CubicPath, Path, PathPoint, PathPoints, PointType};
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, Point, Rect, Shape};
-use masonry::vello::Scene;
-use masonry::vello::peniko::{Brush, Fill};
+use masonry::imaging::Painter;
+use masonry::peniko::{Brush, Fill};
 use std::sync::Arc;
 use tracing;
 
@@ -77,10 +77,10 @@ impl Tool for ShapesTool {
         ToolId::Shapes
     }
 
-    fn paint(&mut self, scene: &mut Scene, session: &EditSession, _transform: &Affine) {
+    fn paint(&mut self, painter: &mut Painter<'_>, session: &EditSession, _transform: &Affine) {
         // Paint preview of the shape being drawn
         if let Some(rect) = self.current_drag_rect(session) {
-            self.paint_shape_preview(scene, rect);
+            self.paint_shape_preview(painter, rect);
         }
     }
 
@@ -241,7 +241,7 @@ impl ShapesTool {
     }
 
     /// Paint shape preview during drag
-    fn paint_shape_preview(&self, scene: &mut Scene, rect: Rect) {
+    fn paint_shape_preview(&self, painter: &mut Painter<'_>, rect: Rect) {
         let brush = Brush::Solid(crate::theme::tool_preview::LINE_COLOR);
 
         match self.shape_type {
@@ -252,7 +252,7 @@ impl ShapesTool {
                         crate::theme::tool_preview::LINE_DASH_OFFSET,
                         crate::theme::tool_preview::LINE_DASH,
                     );
-                scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &rect);
+                painter.stroke(&rect, &stroke, &brush).draw();
             }
             ShapeType::Ellipse => {
                 // Draw dashed ellipse outline
@@ -262,7 +262,7 @@ impl ShapesTool {
                         crate::theme::tool_preview::LINE_DASH_OFFSET,
                         crate::theme::tool_preview::LINE_DASH,
                     );
-                scene.stroke(&stroke, Affine::IDENTITY, &brush, None, &ellipse);
+                painter.stroke(&ellipse, &stroke, &brush).draw();
             }
         }
 
@@ -270,7 +270,7 @@ impl ShapesTool {
         let dot_radius = crate::theme::tool_preview::DOT_RADIUS;
         for &pt in &[rect.origin(), rect.origin() + rect.size().to_vec2()] {
             let circle = kurbo::Circle::new(pt, dot_radius);
-            scene.fill(Fill::NonZero, Affine::IDENTITY, &brush, None, &circle);
+            painter.fill(&circle, &brush).draw();
         }
     }
 

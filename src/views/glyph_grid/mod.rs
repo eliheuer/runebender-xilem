@@ -14,7 +14,7 @@ mod glyph_cell;
 use std::collections::HashSet;
 
 use kurbo::BezPath;
-use masonry::properties::types::AsUnit;
+use masonry::layout::AsUnit;
 use xilem::WidgetView;
 use xilem::core::one_of::Either;
 use xilem::style::Style;
@@ -124,18 +124,18 @@ pub fn glyph_grid_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<>
                         glyph_info_panel(state),
                         glyph_anatomy_panel(state).flex(1.0),
                     ))
-                    .gap(BENTO_GAP.px())
-                    .cross_axis_alignment(CrossAxisAlignment::Fill),
+                    .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                    .gap(BENTO_GAP.px()),
                 )
                 .width(GLYPH_INFO_PANEL_WIDTH.px())
-                .expand_height(),
+                ,
             ))
+            .cross_axis_alignment(CrossAxisAlignment::Stretch)
             .gap(BENTO_GAP.px())
-            .cross_axis_alignment(CrossAxisAlignment::Fill)
             .flex(1.0),
         ))
         .gap(BENTO_GAP.px())
-        .padding(BENTO_GAP * 2.0)
+        .padding((BENTO_GAP * 2.0).px())
         .background_color(theme::app::BACKGROUND),
     ))
 }
@@ -166,15 +166,14 @@ fn file_info_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
                 .color(theme::grid::CELL_TEXT),
             label(save_display).text_size(16.0).color(save_color),
         ))
-        .gap(2.px())
-        .cross_axis_alignment(CrossAxisAlignment::Start),
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(2.px()),
     )
-    .expand_width()
-    .padding(12.0)
+    .padding(12.0.px())
     .background_color(theme::panel::BACKGROUND)
     .border_color(theme::panel::OUTLINE)
-    .border_width(1.5)
-    .corner_radius(theme::size::PANEL_RADIUS)
+    .border_width(1.5.px())
+    .corner_radius(theme::size::PANEL_RADIUS.px())
 }
 
 /// Master toolbar panel — only shown when designspace has multiple masters
@@ -245,8 +244,8 @@ fn glyph_grid_view(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
     let flexy_rows: Vec<_> = rows_of_cells.into_iter().map(|row| row.flex(1.0)).collect();
 
     flex_col(flexy_rows)
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(BENTO_GAP.px())
-        .cross_axis_alignment(CrossAxisAlignment::Fill)
 }
 
 // ============================================================
@@ -481,7 +480,7 @@ fn build_glyph_rows(
                     *mark_color,
                 ))
                 .width(w.px())
-                .expand_height(),
+                ,
             ));
             used += span;
         }
@@ -490,14 +489,14 @@ fn build_glyph_rows(
         if used < columns {
             let w = cell_pixel_width(columns - used, cell_unit);
             items.push(Either::B(
-                sized_box(label("")).width(w.px()).expand_height(),
+                sized_box(label("")).width(w.px()),
             ));
         }
 
         rows.push(
             flex_row(items)
-                .gap(BENTO_GAP.px())
-                .cross_axis_alignment(CrossAxisAlignment::Fill),
+                .cross_axis_alignment(CrossAxisAlignment::Stretch)
+                .gap(BENTO_GAP.px()),
         );
     }
 

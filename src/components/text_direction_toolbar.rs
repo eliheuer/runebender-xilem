@@ -8,17 +8,18 @@
 //! and right-to-left text direction.
 
 use crate::shaping::TextDirection;
-use kurbo::{BezPath, Point, Size};
+use kurbo::{Axis, BezPath, Point, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
+    AccessCtx, MeasureCtx, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
     PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
     UpdateCtx, Widget,
 };
-use masonry::vello::Scene;
+use masonry::imaging::Painter;
+use masonry::layout::{LenReq, Length};
 use std::marker::PhantomData;
 use tracing;
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 // Import shared toolbar functionality
@@ -85,19 +86,29 @@ impl Widget for TextDirectionToolbarWidget {
         // No update logic needed
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        _len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        let size = calculate_toolbar_size(TOOLBAR_DIRECTIONS.len());
+        crate::components::measure_fixed(axis, size)
+    }
+
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
-        let size = calculate_toolbar_size(TOOLBAR_DIRECTIONS.len());
-        bc.constrain(size)
+        _props: &PropertiesRef<'_>,
+        _size: Size,
+    ) {
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
-        let size = ctx.size();
-        paint_panel(scene, size);
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+        let size = ctx.content_box().size();
+        paint_panel(painter, size);
 
         // Paint each direction button
         for (i, &direction) in TOOLBAR_DIRECTIONS.iter().enumerate() {
@@ -107,8 +118,8 @@ impl Widget for TextDirectionToolbarWidget {
                 self.selected_direction == direction,
             );
 
-            paint_button(scene, rect, state);
-            paint_icon(scene, Self::icon_for_direction(direction), rect, state);
+            paint_button(painter, rect, state);
+            paint_icon(painter, Self::icon_for_direction(direction), rect, state);
         }
     }
 
@@ -310,7 +321,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = TextDirectionToolbarWidget::new(self.selected_direction);
         let pod = ctx.create_pod(widget);
-        ctx.record_action(pod.new_widget.id());
+        ctx.record_action_source(pod.new_widget.id());
         (pod, ())
     }
 
@@ -342,7 +353,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        message: &mut MessageContext,
+        message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<Action> {

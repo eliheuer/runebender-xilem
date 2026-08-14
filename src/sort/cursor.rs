@@ -6,8 +6,8 @@
 //! Text cursor rendering and position calculation
 
 use kurbo::{Affine, Line, Point, Stroke};
-use masonry::vello::Scene;
-use masonry::vello::peniko::Brush;
+use masonry::imaging::Painter;
+use masonry::peniko::Brush;
 
 use super::buffer::SortBuffer;
 use super::data::SortKind;
@@ -83,7 +83,7 @@ impl TextCursor {
     }
 
     /// Render the cursor as a vertical line
-    pub fn render(&self, scene: &mut Scene, position: Point, height: f64, transform: &Affine) {
+    pub fn render(&self, painter: &mut Painter<'_>, position: Point, height: f64, transform: &Affine) {
         if !self.visible {
             return;
         }
@@ -96,13 +96,7 @@ impl TextCursor {
 
         let cursor_color = theme::cursor::COLOR;
 
-        scene.stroke(
-            &Stroke::new(2.0),
-            *transform,
-            &Brush::Solid(cursor_color),
-            None,
-            &cursor_line,
-        );
+        painter.stroke(&cursor_line, &Stroke::new(2.0), &Brush::Solid(cursor_color)).transform(*transform).draw();
     }
 
     /// Check if cursor is visible (for animation)

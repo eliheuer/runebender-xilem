@@ -8,14 +8,15 @@
 //! editing glyphs.
 
 use crate::tools::ToolId;
-use kurbo::{BezPath, Point, Size};
+use kurbo::{Axis, BezPath, Point, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
+    AccessCtx, MeasureCtx, ChildrenIds, EventCtx, LayoutCtx, PaintCtx, PointerButton,
     PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update,
     UpdateCtx, Widget,
 };
-use masonry::vello::Scene;
+use masonry::imaging::Painter;
+use masonry::layout::{LenReq, Length};
 use tracing;
 
 // Import shared toolbar functionality
@@ -96,21 +97,31 @@ impl Widget for EditModeToolbarWidget {
         // No update logic needed
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        _len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        let size = calculate_toolbar_size(TOOLBAR_TOOLS.len());
+        crate::components::measure_fixed(axis, size)
+    }
+
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
-        let size = calculate_toolbar_size(TOOLBAR_TOOLS.len());
-        bc.constrain(size)
+        _props: &PropertiesRef<'_>,
+        _size: Size,
+    ) {
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
-        let size = ctx.size();
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+        let size = ctx.content_box().size();
 
         // Draw background panel
-        paint_panel(scene, size);
+        paint_panel(painter, size);
 
         // Draw each toolbar button
         for (i, &tool) in TOOLBAR_TOOLS.iter().enumerate() {
@@ -121,11 +132,11 @@ impl Widget for EditModeToolbarWidget {
             let state = ButtonState::new(is_hovered, is_selected);
 
             // Draw button background and border
-            paint_button(scene, rect, state);
+            paint_button(painter, rect, state);
 
             // Draw icon
             let icon = Self::icon_for_tool(tool);
-            paint_icon(scene, icon, rect, state);
+            paint_icon(painter, icon, rect, state);
         }
     }
 
@@ -429,7 +440,7 @@ fn knife_icon() -> BezPath {
 // ===== XILEM VIEW WRAPPER =====
 
 use std::marker::PhantomData;
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 /// Create an edit mode toolbar view
@@ -469,7 +480,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn build(&self, ctx: &mut ViewCtx, _app_state: &mut State) -> (Self::Element, Self::ViewState) {
         let widget = EditModeToolbarWidget::new(self.selected_tool);
         let pod = ctx.create_pod(widget);
-        ctx.record_action(pod.new_widget.id());
+        ctx.record_action_source(pod.new_widget.id());
         (pod, ())
     }
 
@@ -501,7 +512,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        message: &mut MessageContext,
+        message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<Action> {

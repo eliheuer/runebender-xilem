@@ -5,7 +5,7 @@
 //!
 //! Shows glyph name, metrics (LSB, width, RSB), kerning groups, unicode, etc.
 
-use masonry::properties::types::AsUnit;
+use masonry::layout::AsUnit;
 use xilem::WidgetView;
 use xilem::core::one_of::Either;
 use xilem::style::Style;
@@ -63,8 +63,8 @@ pub fn glyph_info_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
         .width(GLYPH_INFO_PANEL_WIDTH.px())
         .background_color(theme::panel::BACKGROUND)
         .border_color(theme::panel::OUTLINE)
-        .border_width(1.5)
-        .corner_radius(theme::size::PANEL_RADIUS)
+        .border_width(1.5.px())
+        .corner_radius(theme::size::PANEL_RADIUS.px())
 }
 
 /// Content when a glyph is selected
@@ -110,8 +110,8 @@ fn glyph_info_content(
             info_row_header("Glyph Name"),
             info_row_value(&name),
         ))
-        .gap(2.px())
-        .cross_axis_alignment(CrossAxisAlignment::Start),
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(2.px()),
         // Width + Kerning Groups
         flex_col((
             sized_box(label("")).height(8.px()),
@@ -122,8 +122,8 @@ fn glyph_info_content(
             info_row_label_value("Left", &left_group_display),
             info_row_label_value("Right", &right_group_display),
         ))
-        .gap(2.px())
-        .cross_axis_alignment(CrossAxisAlignment::Start),
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(2.px()),
         // Unicode + Contours
         flex_col((
             sized_box(label("")).height(8.px()),
@@ -133,11 +133,11 @@ fn glyph_info_content(
             info_row_header("Contours"),
             info_row_value(&format!("{}", contour_count)),
         ))
-        .gap(2.px())
-        .cross_axis_alignment(CrossAxisAlignment::Start),
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(2.px()),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .padding(12.0)
+    .padding(12.0.px())
 }
 
 /// Content when no glyph is selected
@@ -157,9 +157,9 @@ fn no_selection_content(
         info_row_header("Unicode"),
         info_row_value("No Selection"),
     ))
-    .gap(2.px())
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .padding(12.0)
+    .gap(2.px())
+    .padding(12.0.px())
 }
 
 /// Header row for a section

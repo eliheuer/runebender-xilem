@@ -9,19 +9,20 @@
 
 use std::marker::PhantomData;
 
-use kurbo::{Affine, BezPath, Point, Rect, RoundedRect, Size};
+use kurbo::{Axis, Affine, BezPath, Point, Rect, RoundedRect, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, BrushIndex, ChildrenIds, EventCtx,
+    AccessCtx, MeasureCtx, BrushIndex, ChildrenIds, EventCtx,
     LayoutCtx, PaintCtx, PointerButton, PointerButtonEvent,
     PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx,
     StyleProperty, TextEvent, Update, UpdateCtx, Widget,
     render_text,
 };
-use masonry::vello::Scene;
+use masonry::imaging::Painter;
+use masonry::layout::{LenReq, Length};
 use parley::{FontContext, GenericFamily, LayoutContext};
 use peniko::Brush;
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 use crate::components::toolbars::{
@@ -206,23 +207,33 @@ impl Widget for TransformPanelWidget {
     ) {
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        _len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        crate::components::measure_fixed(axis, Self::size())
+    }
+
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
-        bc.constrain(Self::size())
+        _props: &PropertiesRef<'_>,
+        _size: Size,
+    ) {
     }
 
     fn paint(
         &mut self,
         ctx: &mut PaintCtx<'_>,
         _props: &PropertiesRef<'_>,
-        scene: &mut Scene,
+        painter: &mut Painter<'_>,
     ) {
-        let size = ctx.size();
-        paint_panel(scene, size);
+        let size = ctx.content_box().size();
+        paint_panel(painter, size);
 
         for (i, &action) in BUTTONS.iter().enumerate() {
             let rect = Self::button_rect(i);
@@ -231,16 +242,16 @@ impl Widget for TransformPanelWidget {
                 self.hover_index == Some(i) && enabled;
 
             let state = ButtonState::new(is_hovered, false);
-            paint_button(scene, rect, state);
+            paint_button(painter, rect, state);
 
             // Draw icon (dimmed if disabled)
             let icon = Self::icon_for(action);
             if enabled {
-                paint_icon(scene, icon, rect, state);
+                paint_icon(painter, icon, rect, state);
             } else {
                 // Draw dimmed icon
                 paint_icon(
-                    scene,
+                    painter,
                     icon,
                     rect,
                     ButtonState::default(),
@@ -266,13 +277,7 @@ impl Widget for TransformPanelWidget {
                     StyleProperty::FontSize(12.0),
                 );
                 builder.push_default(
-                    StyleProperty::FontStack(
-                        parley::FontStack::Single(
-                            parley::FontFamily::Generic(
-                                GenericFamily::SansSerif,
-                            ),
-                        ),
-                    ),
+                    StyleProperty::FontFamily(parley::FontFamily::Single(parley::FontFamilyName::Generic(parley::GenericFamily::SansSerif))),
                 );
                 builder.push_default(
                     StyleProperty::Brush(BrushIndex(0)),
@@ -305,13 +310,7 @@ impl Widget for TransformPanelWidget {
                     Brush::Solid(peniko::Color::from_rgba8(
                         40, 40, 40, 230,
                     ));
-                scene.fill(
-                    peniko::Fill::NonZero,
-                    Affine::IDENTITY,
-                    &bg_brush,
-                    None,
-                    &bubble,
-                );
+                painter.fill(&bubble, &bg_brush).draw();
 
                 // Draw text
                 let text_color = peniko::Color::from_rgba8(
@@ -319,7 +318,7 @@ impl Widget for TransformPanelWidget {
                 );
                 let brushes = vec![Brush::Solid(text_color)];
                 render_text(
-                    scene,
+                    painter,
                     Affine::translate((
                         tip_x + padding,
                         tip_y + padding,
@@ -455,7 +454,7 @@ impl<Action: 'static + Default>
             self.contour_count,
         );
         let pod = ctx.create_pod(widget);
-        ctx.record_action(pod.new_widget.id());
+        ctx.record_action_source(pod.new_widget.id());
         (pod, ())
     }
 
@@ -491,7 +490,7 @@ impl<Action: 'static + Default>
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        message: &mut MessageContext,
+        message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         app_state: &mut crate::data::AppState,
     ) -> MessageResult<Action> {

@@ -7,13 +7,14 @@
 //! Similar to tabs in Glyphs app, this toolbar allows users to switch
 //! between multiple editor workspaces and return to the glyph grid view.
 
-use kurbo::{BezPath, Point, Rect, RoundedRect, Shape, Size};
+use kurbo::{Axis, BezPath, Point, Rect, RoundedRect, Shape, Size};
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
-    AccessCtx, BoxConstraints, EventCtx, LayoutCtx, PaintCtx, PointerButton, PointerButtonEvent,
+    AccessCtx, MeasureCtx, EventCtx, LayoutCtx, PaintCtx, PointerButton, PointerButtonEvent,
     PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget,
 };
-use masonry::vello::Scene;
+use masonry::imaging::Painter;
+use masonry::layout::{LenReq, Length};
 
 // Import shared toolbar functionality
 use crate::components::toolbars::{
@@ -75,24 +76,34 @@ impl Widget for WorkspaceToolbarWidget {
         // No updates needed
     }
 
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        _len_req: LenReq,
+        _cross_length: Option<Length>,
+    ) -> Length {
+        let size = calculate_toolbar_size(1);
+        crate::components::measure_fixed(axis, size)
+    }
+
     fn layout(
         &mut self,
         _ctx: &mut LayoutCtx<'_>,
-        _props: &mut PropertiesMut<'_>,
-        bc: &BoxConstraints,
-    ) -> Size {
-        let size = calculate_toolbar_size(1); // Currently only one button
-        bc.constrain(size)
+        _props: &PropertiesRef<'_>,
+        _size: Size,
+    ) {
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, scene: &mut Scene) {
-        let size = ctx.size();
+    fn paint(&mut self, ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+        let size = ctx.content_box().size();
 
         // Draw background panel
-        paint_panel(scene, size);
+        paint_panel(painter, size);
 
         // Draw button
-        self.paint_button(scene);
+        self.paint_button(painter);
     }
 
     fn accessibility_role(&self) -> Role {
@@ -148,7 +159,7 @@ impl Widget for WorkspaceToolbarWidget {
 
 impl WorkspaceToolbarWidget {
     /// Paint the glyph grid button
-    fn paint_button(&self, scene: &mut Scene) {
+    fn paint_button(&self, painter: &mut Painter<'_>) {
         let rect = button_rect(0);
         let is_hovered = self.hover_button == Some(WorkspaceToolbarButton::GlyphGrid);
 
@@ -156,11 +167,11 @@ impl WorkspaceToolbarWidget {
         let state = ButtonState::new(is_hovered, false);
 
         // Draw button background and border
-        paint_button(scene, rect, state);
+        paint_button(painter, rect, state);
 
         // Draw icon
         let icon = Self::icon_for_button(WorkspaceToolbarButton::GlyphGrid);
-        paint_icon(scene, icon, rect, state);
+        paint_icon(painter, icon, rect, state);
     }
 
     /// Handle pointer down event
@@ -226,7 +237,7 @@ fn glyph_grid_icon() -> BezPath {
 // ===== XILEM VIEW WRAPPER =====
 
 use std::marker::PhantomData;
-use xilem::core::{MessageContext, MessageResult, Mut, View, ViewMarker};
+use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 /// Callback type for workspace toolbar button clicks
@@ -275,7 +286,7 @@ impl<State: 'static, Action: 'static + Default> View<State, Action, ViewCtx>
     fn message(
         &self,
         _view_state: &mut Self::ViewState,
-        message: &mut MessageContext,
+        message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
         app_state: &mut State,
     ) -> MessageResult<Action> {

@@ -8,8 +8,7 @@
 //! etc.). This is a generic module covering all toolbars of this style.
 
 use kurbo::{Affine, BezPath, Rect, RoundedRect, Shape, Size};
-use masonry::util::{fill_color, stroke};
-use masonry::vello::Scene;
+use masonry::imaging::Painter;
 
 use crate::theme::panel::{BACKGROUND as COLOR_PANEL, OUTLINE as COLOR_PANEL_BORDER};
 use crate::theme::size::{
@@ -71,29 +70,24 @@ pub fn button_rect(index: usize) -> Rect {
 }
 
 /// Paint the background panel for a toolbar
-pub fn paint_panel(scene: &mut Scene, size: Size) {
+pub fn paint_panel(painter: &mut Painter<'_>, size: Size) {
     let panel_rect = size.to_rect();
     let panel_rrect = RoundedRect::from_rect(panel_rect, PANEL_RADIUS);
 
     // Solid opaque background - darker than buttons but brighter
     // than canvas
-    fill_color(scene, &panel_rrect, COLOR_PANEL);
+    painter.fill(&panel_rrect, COLOR_PANEL).draw();
 
     // Draw panel border - inset slightly to prevent corner
     // artifacts
     let border_inset = TOOLBAR_BORDER_WIDTH / 2.0;
     let inset_rect = panel_rect.inset(-border_inset);
     let inset_rrect = RoundedRect::from_rect(inset_rect, PANEL_RADIUS);
-    stroke(
-        scene,
-        &inset_rrect,
-        COLOR_PANEL_BORDER,
-        TOOLBAR_BORDER_WIDTH,
-    );
+    painter.stroke(&inset_rrect, &masonry::kurbo::Stroke::new(TOOLBAR_BORDER_WIDTH), COLOR_PANEL_BORDER).draw();
 }
 
 /// Paint a toolbar button with the given state
-pub fn paint_button(scene: &mut Scene, button_rect: Rect, state: ButtonState) {
+pub fn paint_button(painter: &mut Painter<'_>, button_rect: Rect, state: ButtonState) {
     let button_rrect = RoundedRect::from_rect(button_rect, TOOLBAR_BUTTON_RADIUS);
 
     // Determine button background color based on state
@@ -104,7 +98,7 @@ pub fn paint_button(scene: &mut Scene, button_rect: Rect, state: ButtonState) {
     } else {
         BUTTON_UNSELECTED
     };
-    fill_color(scene, &button_rrect, bg_color);
+    painter.fill(&button_rrect, bg_color).draw();
 
     // Draw outline — green when selected or hovered
     let outline_color = if state.is_selected || state.is_hovered {
@@ -112,11 +106,11 @@ pub fn paint_button(scene: &mut Scene, button_rect: Rect, state: ButtonState) {
     } else {
         BUTTON_OUTLINE
     };
-    stroke(scene, &button_rrect, outline_color, TOOLBAR_BORDER_WIDTH);
+    painter.stroke(&button_rrect, &masonry::kurbo::Stroke::new(TOOLBAR_BORDER_WIDTH), outline_color).draw();
 }
 
 /// Paint an icon in a toolbar button with state-based coloring
-pub fn paint_icon(scene: &mut Scene, icon: BezPath, button_rect: Rect, state: ButtonState) {
+pub fn paint_icon(painter: &mut Painter<'_>, icon: BezPath, button_rect: Rect, state: ButtonState) {
     let icon_bounds = icon.bounding_box();
     let icon_center = icon_bounds.center();
     let button_center = button_rect.center();
@@ -140,5 +134,5 @@ pub fn paint_icon(scene: &mut Scene, icon: BezPath, button_rect: Rect, state: Bu
         ICON_UNSELECTED
     };
 
-    fill_color(scene, &(transform * icon), icon_color);
+    painter.fill(&(transform * icon), icon_color).draw();
 }
