@@ -18,8 +18,8 @@ use xilem::WidgetView;
 use xilem::core::one_of::Either;
 use xilem::style::Style;
 use xilem::view::{
-    ChildAlignment, ZStackExt, flex_col, flex_row, label, sized_box,
-    split, text_input, transformed, zstack,
+    ChildAlignment, FlexExt, ZStackExt, flex_col, flex_row, label,
+    sized_box, split, text_input, transformed, zstack,
 };
 
 use crate::components::workspace_toolbar::WorkspaceToolbarButton;
@@ -86,34 +86,27 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
                 }
             },
         ),
-        // Foreground: floating toolbars
-        transformed(
-            flex_col((
-                edit_mode_toolbar_view(current_tool, |state: &mut AppState, tool_id| {
-                    state.set_editor_tool(tool_id);
-                }),
-                if show_shapes_toolbar {
-                    Either::A(shapes_toolbar_view(
-                        current_shape,
-                        |state: &mut AppState, shape_type| {
-                            state.set_shape_type(shape_type);
-                        },
-                    ))
-                } else if show_text_direction_toolbar {
-                    Either::B(Either::A(text_direction_toolbar_view(
-                        current_text_direction,
-                        |state: &mut AppState, direction| {
-                            state.set_text_direction(direction);
-                        },
-                    )))
-                } else {
-                    Either::B(Either::B(label("")))
+        // Foreground: tool sub-toolbar (Shapes / Text direction);
+        // the tool palette itself lives in the top row
+        transformed(if show_shapes_toolbar {
+            Either::A(shapes_toolbar_view(
+                current_shape,
+                |state: &mut AppState, shape_type| {
+                    state.set_shape_type(shape_type);
                 },
             ))
-            .cross_axis_alignment(xilem::view::CrossAxisAlignment::Start),
-        )
-        .translate((UI_PANEL_MARGIN, UI_PANEL_MARGIN))
-        .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_LEFT)),
+        } else if show_text_direction_toolbar {
+            Either::B(Either::A(text_direction_toolbar_view(
+                current_text_direction,
+                |state: &mut AppState, direction| {
+                    state.set_text_direction(direction);
+                },
+            )))
+        } else {
+            Either::B(Either::B(label("")))
+        })
+        .translate((-UI_PANEL_MARGIN, UI_PANEL_MARGIN))
+        .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_RIGHT)),
         // Bottom-left: glyph preview panel
         transformed(if session.panels_visible {
             Either::A(glyph_preview_pane(session_arc.clone(), glyph_name.clone()))
@@ -152,44 +145,57 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
         })
         .translate((-UI_PANEL_MARGIN, 0.0))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::new(1.0, 0.5))),
-        // Top-right: Master toolbar + Workspace toolbar
-        transformed(
-            flex_row((
-                master_toolbar_panel(state),
-                workspace_toolbar_view(|state: &mut AppState, button| match button {
-                    WorkspaceToolbarButton::GlyphGrid => {
-                        state.close_editor();
-                    }
-                }),
-            ))
-            .gap(UI_PANEL_GAP.px()),
-        )
-        .translate((-UI_PANEL_MARGIN, UI_PANEL_MARGIN))
-        .alignment(ChildAlignment::SelfAligned(UnitPoint::TOP_RIGHT)),
     ));
+
+    // Top row (bento-style, like runebender-web's editor mode):
+    // file info tile on the left, master switcher, grid-return
+    // button, and the tool palette on the right.
+    let top_row = sized_box(
+        flex_row((
+            crate::views::glyph_grid::file_info_panel(state).flex(1.0),
+            master_toolbar_panel(state),
+            workspace_toolbar_view(|state: &mut AppState, button| match button {
+                WorkspaceToolbarButton::GlyphGrid => {
+                    state.close_editor();
+                }
+            }),
+            edit_mode_toolbar_view(current_tool, |state: &mut AppState, tool_id| {
+                state.set_editor_tool(tool_id);
+            }),
+        ))
+        .cross_axis_alignment(xilem::view::CrossAxisAlignment::Start)
+        .gap(UI_PANEL_GAP.px()),
+    )
+    .padding(UI_PANEL_MARGIN.px());
 
     // Vertical split: canvas on top, text preview on bottom.
     // When no text buffer, use a minimal 0px bottom panel.
-    Either::A(
-        sized_box(
-            split(
-                canvas_with_overlays,
-                text_buffer_preview_bottom(
-                    if has_text_buffer {
-                        Some(session_arc.clone())
-                    } else {
-                        None
-                    },
-                ),
-            )
-            .split_axis(masonry::kurbo::Axis::Vertical)
-            .split_point(if has_text_buffer { 0.85 } else { 1.0 })
-            .min_lengths(200.px(), 0.px())
-            .bar_thickness(0.px())
-            .min_bar_area(6.px())
-            .draggable(has_text_buffer),
+    let canvas_split = sized_box(
+        split(
+            canvas_with_overlays,
+            text_buffer_preview_bottom(
+                if has_text_buffer {
+                    Some(session_arc.clone())
+                } else {
+                    None
+                },
+            ),
         )
-        .background_color(theme::canvas::BACKGROUND),
+        .split_axis(masonry::kurbo::Axis::Vertical)
+        .split_point(if has_text_buffer { 0.85 } else { 1.0 })
+        .min_lengths(200.px(), 0.px())
+        .bar_thickness(0.px())
+        .min_bar_area(6.px())
+        .draggable(has_text_buffer),
+    )
+    .background_color(theme::canvas::BACKGROUND);
+
+    Either::A(
+        flex_col((top_row, canvas_split.flex(1.0)))
+            .cross_axis_alignment(
+                xilem::view::CrossAxisAlignment::Stretch,
+            )
+            .gap(0.px()),
     )
 }
 

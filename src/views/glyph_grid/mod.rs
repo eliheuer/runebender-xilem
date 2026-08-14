@@ -145,7 +145,7 @@ pub fn glyph_grid_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<>
 // ============================================================
 
 /// File info panel showing the loaded file path and last save time
-fn file_info_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
+pub(crate) fn file_info_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
     let path_display = state
         .loaded_file_path()
         .map(|p| p.display().to_string())
