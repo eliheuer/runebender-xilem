@@ -16,7 +16,7 @@ use crate::path::{CubicPath, Path, PathPoint, PathPoints, PointType};
 use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, Point, Rect, Shape};
 use masonry::imaging::Painter;
-use masonry::peniko::{Brush, Fill};
+use masonry::peniko::Brush;
 use std::sync::Arc;
 use tracing;
 

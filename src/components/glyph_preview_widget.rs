@@ -33,7 +33,7 @@ use masonry::core::{
 use masonry::kurbo::Size;
 use masonry::imaging::Painter;
 use masonry::layout::{LenReq, Length};
-use masonry::peniko::{Brush, Color, Fill};
+use masonry::peniko::{Brush, Color};
 
 /// A widget that renders a glyph from a BezPath
 pub struct GlyphWidget {

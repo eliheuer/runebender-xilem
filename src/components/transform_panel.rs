@@ -20,7 +20,7 @@ use masonry::core::{
 };
 use masonry::imaging::Painter;
 use masonry::layout::{LenReq, Length};
-use parley::{FontContext, GenericFamily, LayoutContext};
+use parley::{FontContext, LayoutContext};
 use peniko::Brush;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};

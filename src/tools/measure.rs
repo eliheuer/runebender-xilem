@@ -13,8 +13,7 @@ use crate::tools::{Tool, ToolId};
 use kurbo::{Affine, Circle, Line, Point, Rect, Size};
 use masonry::core::{BrushIndex, StyleProperty, render_text};
 use masonry::imaging::Painter;
-use masonry::peniko::{Brush, Color, Fill};
-use parley::GenericFamily;
+use masonry::peniko::{Brush, Color};
 use parley::{FontContext, LayoutContext};
 use tracing;
 
