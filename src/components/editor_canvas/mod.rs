@@ -481,9 +481,16 @@ impl Widget for EditorWidget {
             // Handle shift key for shape constraining
             if let Key::Named(masonry::core::keyboard::NamedKey::Shift) = key_event.key {
                 let shift_pressed = key_event.state == KeyState::Down;
-                if let crate::tools::ToolBox::Shapes(shapes_tool) = &mut self.session.current_tool {
-                    shapes_tool.set_shift_locked(shift_pressed);
-                    ctx.request_render(); // Repaint to update preview
+                match &mut self.session.current_tool {
+                    crate::tools::ToolBox::Shapes(shapes_tool) => {
+                        shapes_tool.set_shift_locked(shift_pressed);
+                        ctx.request_render(); // Repaint to update preview
+                    }
+                    crate::tools::ToolBox::Knife(knife_tool) => {
+                        knife_tool.set_shift_locked(shift_pressed);
+                        ctx.request_render();
+                    }
+                    _ => {}
                 }
             }
 

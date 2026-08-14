@@ -712,6 +712,9 @@ fn apply_transform(
         TransformAction::RotateCCW => {
             session.rotate_selection(90.0);
         }
+        TransformAction::Rotate180 => {
+            session.rotate_selection(180.0);
+        }
         TransformAction::Duplicate => {
             session.duplicate_selection();
         }
