@@ -62,11 +62,41 @@ the agent can screencapture the live window and iterate solo.
 Update 2026-08-17 (later): checked upstream — xilem main is only
 2 commits past our pin (spinner tweak #1825, TextInput a11y
 #1832); neither touches masonry_winit or compositing, so a rev
-bump cannot change live rendering. Step (1) still stands: calc at
-the ref checkout's HEAD (7fe469d ≈ main) is a valid comparison
-binary. Screen Recording permission is still not granted
-(screencapture returns wallpaper only), so live QA needs a human
-look or that permission.
+bump cannot change live rendering.
+
+RESOLVED HYPOTHESIS 2026-08-17 (evening, with Screen Recording
+granted — live screenshots now work): it is NOT an upstream
+compositing bug. Evidence:
+
+- masonry's `gallery` example renders perfectly live at this rev
+  (compared against in-repo screenshots). xilem's `calc` renders
+  its keypad fine (its display row is legitimately empty at
+  startup).
+- runebender's GRID tab mostly renders live: cells, glyphs,
+  category sidebar, colors all paint. Broken bits: content
+  overflows the right edge (clipped column, stray text from
+  right-side panels pushed offscreen).
+- The EDITOR tab reproduces the reported break exactly (file
+  tile + canvas background grid only). Use the new
+  `RB_OPEN_GLYPH=<name>` env hook to reach it without clicks.
+- A paint-time probe showed the editor canvas laying out at
+  **10000.0 × 8784.0** in the live window. The 10000 sentinel is
+  OURS: `views/editor.rs` preview panel calls
+  `multi_glyph_view(glyph_paths, 10000.0, 10000.0, upm)` and
+  relies on `.fit_to_bounds()`. Headless, TestHarness passes
+  bounded FitContent everywhere and it clamps; live, the
+  measure path (MinContent/MaxContent requests, see also
+  `measure_fill` returning the full offered space) takes these
+  huge preferred sizes at face value, flex children get absurd
+  lengths, and siblings get pushed offscreen — which also
+  explains the grid tab's right-edge overflow.
+
+Fix direction: audit the 17 custom widgets' `measure` responses.
+Widgets meant to fill must not report huge/offered space as
+content size (report content-based or minimum lengths; expansion
+belongs to the container via flex). Start with the
+`multi_glyph_view` 10000 preview and `measure_fill`'s
+`FitContent(space) => space` arm.
 
 ## Phase 2 — editor shell parity
 

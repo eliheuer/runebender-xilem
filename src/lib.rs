@@ -98,6 +98,15 @@ fn handle_command_line_args(initial_state: &mut AppState) {
             tracing::error!("Usage: runebender [path/to/font.ufo] [--glyph-images dir/]");
         }
     }
+
+    // QA hook: RB_OPEN_GLYPH=<name> starts in the editor on that
+    // glyph, so agent screenshots can reach the editor tab without
+    // input injection.
+    if let Ok(glyph_name) = std::env::var("RB_OPEN_GLYPH") {
+        if initial_state.has_font_loaded() {
+            initial_state.open_editor(glyph_name);
+        }
+    }
 }
 
 /// Build the single-window UI (glyph grid tab + editor tab).
