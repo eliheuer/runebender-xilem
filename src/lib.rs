@@ -7,7 +7,7 @@ use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::core::fork;
 use xilem::core::one_of::Either;
-use xilem::view::indexed_stack;
+use xilem::view::{indexed_stack, sized_box};
 use xilem::{EventLoopBuilder, WidgetView, WindowView, Xilem, window};
 
 pub mod config;
@@ -162,6 +162,25 @@ fn tabbed_view_with_watcher(
 
 /// Tabbed interface with glyph grid view and editor view tabs
 fn tabbed_view(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
-    let tabs = indexed_stack((glyph_grid_tab(state), editor_tab(state)));
+    use masonry::layout::Dim;
+    use masonry::properties::Dimensions;
+    use xilem::style::Style as _;
+
+    // Pin each tab to 100% of the allocated context (the window).
+    // Without this, IndexedStack sizes the active tab from its
+    // fit-content measurement, so a tab whose natural width exceeds
+    // the window is laid out oversized and its right-hand panels
+    // land outside the window. The size_tracker then reports that
+    // oversized width back into AppState and the grid rebuilds even
+    // wider, so the overflow never converges. (The headless harness
+    // clamps instead of honoring measurement, which is why render
+    // tests never caught this.)
+    // NOTE: .width()/.height() each RESET the other axis to Auto, so
+    // the combined .dims() setter is required here.
+    let full = Dimensions::new(Dim::Ratio(1.0), Dim::Ratio(1.0));
+    let tabs = indexed_stack((
+        sized_box(glyph_grid_tab(state)).dims(full),
+        sized_box(editor_tab(state)).dims(full),
+    ));
     tabs.active(state.active_tab as usize)
 }

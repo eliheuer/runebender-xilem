@@ -39,7 +39,35 @@ but do it deliberately per module.
 - [x] Cmd+V pastes system-clipboard text into the sort buffer in
       text mode (via arboard).
 
-## CURRENT BLOCKER (2026-08-17): live-window rendering
+## RESOLVED (2026-08-17, same evening): live-window rendering
+
+FIXED. Two app-side changes, verified by live window screenshots
+of both tabs (grid: all three columns incl. glyph-info panel;
+editor: full tool palette, sensible zoom, right panel visible):
+
+1. `views/editor.rs` preview: `MultiGlyphWidget::measure` now
+   fills offered space when `fit_to_bounds` is set instead of
+   reporting its declared size (was 10000x10000) as fixed.
+2. `lib.rs tabbed_view`: each tab is wrapped in
+   `sized_box(...).dims(Dimensions::new(Dim::Ratio(1.0),
+   Dim::Ratio(1.0)))`, pinning it to 100% of the window.
+   IndexedStack otherwise sizes the active tab from fit-content
+   measurement, and the size_tracker fed that oversized width
+   back into AppState (reported 1494 in a 1280 window), so the
+   grid rebuilt wider every pass and never converged.
+   GOTCHA: xilem `Style::width()`/`.height()` each RESET the
+   other axis to Auto — chaining them keeps only the last one.
+   Use `.dims()` for both axes.
+
+All 72 tests incl. 14 render tests still pass. The headless
+harness clamps sizes instead of honoring measurement, which is
+why it could never reproduce this; a live-window screenshot QA
+pass (Screen Recording + `RB_OPEN_GLYPH` + window-id capture via
+`~/Temp/winid`) is the tool for this class of bug.
+
+Original blocker notes kept below for history.
+
+## Historical blocker notes (2026-08-17): live-window rendering
 
 The app renders BROKEN in the real window (user screenshot: only
 the file tile + a canvas-like grid; toolbars/panels/cells missing)

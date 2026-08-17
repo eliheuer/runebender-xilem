@@ -503,10 +503,20 @@ impl Widget for MultiGlyphWidget {
         _ctx: &mut MeasureCtx<'_>,
         _props: &PropertiesRef<'_>,
         axis: Axis,
-        _len_req: LenReq,
+        len_req: LenReq,
         _cross_length: Option<Length>,
     ) -> Length {
-        crate::components::measure_fixed(axis, self.size)
+        if self.fit_to_bounds {
+            // Fit-to-bounds mode scales the drawing into whatever
+            // space the container gives, so the declared size is only
+            // a preference. Reporting it as a fixed measurement (the
+            // old behavior) let a large preference blow up flex/split
+            // layout in live windows, where measure results are
+            // honored rather than clamped like the test harness does.
+            crate::components::measure_fill(len_req, 0.0)
+        } else {
+            crate::components::measure_fixed(axis, self.size)
+        }
     }
 
     fn layout(
