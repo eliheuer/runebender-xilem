@@ -655,8 +655,10 @@ fn text_buffer_preview_bottom(
 
     Either::A(
         sized_box(
+            // Size is a preference only: fit_to_bounds makes the
+            // widget fill the preview pane and scale into it.
             multi_glyph_view(
-                glyph_paths, 10000.0, 10000.0, upm,
+                glyph_paths, 400.0, 200.0, upm,
             )
             .color(theme::panel::GLYPH_PREVIEW)
             .fit_to_bounds(),
