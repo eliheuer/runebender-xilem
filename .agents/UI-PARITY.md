@@ -59,6 +59,15 @@ also misrenders -> upstream bug, pin older rev or file issue with
 repro; (2) grant Screen Recording permission to the terminal so
 the agent can screencapture the live window and iterate solo.
 
+Update 2026-08-17 (later): checked upstream — xilem main is only
+2 commits past our pin (spinner tweak #1825, TextInput a11y
+#1832); neither touches masonry_winit or compositing, so a rev
+bump cannot change live rendering. Step (1) still stands: calc at
+the ref checkout's HEAD (7fe469d ≈ main) is a valid comparison
+binary. Screen Recording permission is still not granted
+(screencapture returns wallpaper only), so live QA needs a human
+look or that permission.
+
 ## Phase 2 — editor shell parity
 
 - [x] Editor top row: file info tile (left, flex) + master
