@@ -39,6 +39,26 @@ but do it deliberately per module.
 - [x] Cmd+V pastes system-clipboard text into the sort buffer in
       text mode (via arboard).
 
+## CURRENT BLOCKER (2026-08-17): live-window rendering
+
+The app renders BROKEN in the real window (user screenshot: only
+the file tile + a canvas-like grid; toolbars/panels/cells missing)
+but renders PIXEL-PERFECT headless. The headless harness is in
+src/components/mod.rs (render_tests): builds any xilem view via a
+bare ViewCtx and renders through masonry_testing's TestHarness to
+/tmp/rb-shots/*.png (`cargo test render_ -- --nocapture`). Verified
+correct headless: every custom widget, full grid tab, full editor
+tab, full app root incl. indexed_stack + watcher fork, the
+VirtuaGrotesk designspace (799 glyphs, masters), simulated rebuild
+and window resizes. Conclusion: fault is in the LIVE pipeline —
+masonry_winit window/layer compositing with wgpu on macOS at rev
+7819435 (upstream is refactoring masonry_winit, issue #1836).
+Next steps: (1) run xilem's own calc example live (built at
+~scratchpad/xilem-ref/target/debug/examples/calc) and check if it
+also misrenders -> upstream bug, pin older rev or file issue with
+repro; (2) grant Screen Recording permission to the terminal so
+the agent can screencapture the live window and iterate solo.
+
 ## Phase 2 — editor shell parity
 
 - [x] Editor top row: file info tile (left, flex) + master
