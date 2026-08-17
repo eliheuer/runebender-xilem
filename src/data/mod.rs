@@ -87,6 +87,12 @@ pub struct AppState {
     /// First visible row index in the virtual glyph grid
     pub grid_scroll_row: usize,
 
+    /// Search filter for the editor sidebar's mini glyph grid
+    pub sidebar_search: String,
+
+    /// First visible row index in the editor sidebar's mini grid
+    pub sidebar_scroll_row: usize,
+
     /// Current window height (tracked by size_tracker)
     pub window_height: f64,
 
@@ -125,6 +131,8 @@ impl AppState {
             window_width: 1030.0, // Default window width
             glyph_category_filter: GlyphCategory::All,
             grid_scroll_row: 0,
+            sidebar_search: String::new(),
+            sidebar_scroll_row: 0,
             window_height: 800.0,
             cached_filtered_count: 0,
             clipboard: None,

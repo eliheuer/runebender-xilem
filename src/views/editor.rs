@@ -190,8 +190,15 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
     )
     .background_color(theme::canvas::BACKGROUND);
 
+    // Left sidebar (mini glyph overview + search) beside the canvas,
+    // like runebender-web's editor mode.
+    let sidebar = crate::views::editor_sidebar(state);
+    let main_row = flex_row((sidebar, canvas_split.flex(1.0)))
+        .cross_axis_alignment(xilem::view::CrossAxisAlignment::Stretch)
+        .gap(UI_PANEL_GAP.px());
+
     Either::A(
-        flex_col((top_row, canvas_split.flex(1.0)))
+        flex_col((top_row, main_row.flex(1.0)))
             .cross_axis_alignment(
                 xilem::view::CrossAxisAlignment::Stretch,
             )

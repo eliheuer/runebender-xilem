@@ -156,6 +156,21 @@ impl AppState {
         }
     }
 
+    /// Switch the open editor to another glyph, syncing the current
+    /// session's edits to the workspace first (used by the editor
+    /// sidebar's mini grid).
+    pub fn jump_to_glyph(&mut self, glyph_name: String) {
+        if self
+            .editor_session
+            .as_ref()
+            .is_some_and(|s| s.glyph.name == glyph_name)
+        {
+            return;
+        }
+        self.sync_editor_to_workspace();
+        self.open_editor(glyph_name);
+    }
+
     /// Close the editor and return to glyph grid
     ///
     /// This syncs any final changes to the workspace before closing.

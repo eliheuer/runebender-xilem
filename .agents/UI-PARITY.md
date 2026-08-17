@@ -31,7 +31,9 @@ but do it deliberately per module.
       kerning groups); tracked as its own item below.
 - [ ] Glyph rename: workspace-level rename_glyph (update glyphs
       map key, component references, kerning group members), then
-      wire the name field.
+      wire the name field. NOTE 2026-08-17: runebender-web has NO
+      glyph rename either — this is Glyphs-4 parity, not web
+      parity; deprioritized for the web-parity goal.
 - [ ] Shortcut guard: verify interactively whether single-key
       tool shortcuts fire while a panel text_input has focus.
       Masonry routes keys to the focused widget, so the web-style
@@ -136,10 +138,11 @@ belongs to the container via flex). Start with the
 - [ ] SystemMenuPanel: New UFO / New designspace, Open, Open
       Recent, Reopen last, Save, Save As, Close; theme picker
       later. Today xilem has only a Save button.
-- [ ] Editor left sidebar (web EditorSidebar): start with the
-      Overview tab (mini glyph grid + search) so glyph switching
-      does not require leaving the editor; Shapes and Axes tabs
-      after.
+- [x] Editor left sidebar (web EditorSidebar): Overview tab
+      landed 2026-08-17 (views/editor_sidebar.rs — search +
+      windowed 4-column mini grid, click jumps via
+      jump_to_glyph which syncs the session first). Shapes and
+      Axes tabs still to do.
 - [ ] Compat-error badge in the top row + on-canvas markers
       (xilem src/editing/compat.rs exists, has no UI).
 - [ ] Contour context menu (right-click): set start point,
