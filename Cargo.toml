@@ -70,3 +70,4 @@ rfd = "0.15"
 arboard = "3"
 
 [dev-dependencies]
+masonry_testing = { git = "https://github.com/linebender/xilem", rev = "7819435e592f3b3dda75432740264ef5fc1ddaa2" }
