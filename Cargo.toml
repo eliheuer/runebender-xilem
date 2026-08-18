@@ -19,3 +19,9 @@ serde = { version = "1.0", features = ["derive"] }
 # Same crate as runebender-xilem, just hoisted here so both editors
 # share the categorization.
 unicode-general-category = "0.6"
+
+# 2D geometry for the shared curve/measure modules. All consumers
+# (web, xilem, gpui) are on kurbo 0.13 now, so the old "kurbo-free
+# core" rule (from the masonry-0.4/kurbo-0.12 era) no longer applies.
+[dependencies.kurbo]
+version = "0.13"

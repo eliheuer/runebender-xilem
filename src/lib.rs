@@ -10,6 +10,7 @@
 // for the broader plan.
 
 pub mod category;
+pub mod curve;
 pub mod editing;
 pub mod mark_color;
 pub mod model;
