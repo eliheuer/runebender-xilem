@@ -19,12 +19,28 @@ pub fn designspace_from_str(xml: &str) -> Result<DesignSpaceDocument, String> {
     quick_xml::de::from_str(xml).map_err(|e| format!("designspace: {e}"))
 }
 
+/// A font assembled from memory plus the bookkeeping a host needs
+/// to write changes back: which file each glyph came from.
+pub struct UfoFiles {
+    pub font: Font,
+    /// glyph name → path relative to the UFO root ("glyphs/A_.glif").
+    pub glif_paths: HashMap<String, String>,
+}
+
 /// Assemble a font from UFO files given as (path, bytes) pairs. Paths
 /// are relative to the UFO root ("fontinfo.plist",
 /// "glyphs/contents.plist", "glyphs/A_.glif", ...).
 pub fn font_from_files<'a>(
     files: impl IntoIterator<Item = (&'a str, &'a [u8])>,
 ) -> Result<Font, String> {
+    ufo_from_files(files).map(|u| u.font)
+}
+
+/// Like [`font_from_files`], keeping the glyph→file mapping for
+/// hosts that save individual glifs back.
+pub fn ufo_from_files<'a>(
+    files: impl IntoIterator<Item = (&'a str, &'a [u8])>,
+) -> Result<UfoFiles, String> {
     let files: HashMap<&str, &[u8]> = files.into_iter().collect();
     let mut font = Font::new();
 
@@ -51,16 +67,31 @@ pub fn font_from_files<'a>(
         }
         None => HashMap::new(),
     };
+    let mut glif_paths = HashMap::new();
     let layer = font.default_layer_mut();
-    for file in contents.values() {
+    for (name, file) in &contents {
         let path = format!("glyphs/{file}");
         let Some(bytes) = files.get(path.as_str()) else {
             return Err(format!("missing glif: {path}"));
         };
         let glyph = Glyph::parse_raw(bytes).map_err(|e| format!("{path}: {e}"))?;
         layer.insert_glyph(glyph);
+        glif_paths.insert(name.clone(), path);
     }
-    Ok(font)
+    Ok(UfoFiles { font, glif_paths })
+}
+
+/// Serialize one glyph to glif XML bytes (for hosts saving over
+/// HTTP instead of a filesystem).
+pub fn glif_bytes(glyph: &Glyph) -> Result<Vec<u8>, String> {
+    glyph.encode_xml().map_err(|e| format!("encode glif: {e}"))
+}
+
+/// Serialize a font's kerning to kerning.plist XML bytes.
+pub fn kerning_plist_bytes(font: &Font) -> Result<Vec<u8>, String> {
+    let mut out = Vec::new();
+    plist::to_writer_xml(&mut out, &font.kerning).map_err(|e| format!("kerning: {e}"))?;
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -104,6 +135,27 @@ mod tests {
         let a = font.get_glyph("A").expect("glyph A");
         assert_eq!(a.width, 600.0);
         assert_eq!(a.contours.len(), 1);
+    }
+
+    #[test]
+    fn glif_bytes_roundtrip() {
+        let glif = br#"<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="B" format="2">
+<advance width="500"/>
+<outline>
+<contour>
+<point x="0" y="0" type="line"/>
+<point x="10" y="0" type="line"/>
+<point x="10" y="10" type="line"/>
+</contour>
+</outline>
+</glyph>"#;
+        let mut glyph = Glyph::parse_raw(glif).unwrap();
+        crate::glyph_ops::set_points(&mut glyph, &[((0, 0), (5.0, 5.0))]);
+        let bytes = glif_bytes(&glyph).unwrap();
+        let back = Glyph::parse_raw(&bytes).unwrap();
+        assert_eq!(back.contours[0].points[0].x, 5.0);
+        assert_eq!(back.width, 500.0);
     }
 
     #[test]
