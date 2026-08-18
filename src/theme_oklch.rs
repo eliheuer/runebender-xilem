@@ -148,6 +148,25 @@ impl Theme {
     }
 }
 
+/// The `public.markColor` value written for a label: the base-step
+/// colour as "r,g,b,a" 0–1 floats. Fixed (not the active theme's), so
+/// switching themes and saving never rewrites every mark in the font —
+/// matches the web's `ufoRgba` byte for byte.
+pub fn ufo_rgba_for_label(label: &str) -> Option<String> {
+    let file: TokenFile =
+        serde_json::from_str(include_str!("../themes/runebender.theme.json")).ok()?;
+    if !file.mark_colors.iter().any(|m| m.name == label) {
+        return None;
+    }
+    let color = resolve_token(&file, &format!("{label}.base"))?;
+    let fmt = |byte: u8| {
+        let v = (byte as f64 / 255.0 * 100.0).round() / 100.0;
+        let s = format!("{v}");
+        if s == "0" { "0".to_string() } else { s }
+    };
+    Some(format!("{},{},{},1", fmt(color.r), fmt(color.g), fmt(color.b)))
+}
+
 const FALLBACK: ColorRgba = ColorRgba::rgb(0xff, 0x00, 0xff);
 
 fn resolve_token(file: &TokenFile, token: &str) -> Option<ColorRgba> {
@@ -316,6 +335,17 @@ mod tests {
         assert_eq!(label_for_rgba("0.09,0.72,0.44,1", &dark).as_deref(), Some("green"));
         assert_eq!(label_for_rgba("0.5,0.5,0.5,1", &dark), None);
         assert_eq!(label_for_rgba("garbage", &dark), None);
+    }
+
+    /// UFO colours written for labels match the web's fixed ufoRgba
+    /// strings exactly (files must not churn between editors).
+    #[test]
+    fn ufo_rgba_matches_web() {
+        assert_eq!(ufo_rgba_for_label("red").as_deref(), Some("0.88,0.3,0.27,1"));
+        assert_eq!(ufo_rgba_for_label("orange").as_deref(), Some("0.93,0.45,0.2,1"));
+        assert_eq!(ufo_rgba_for_label("yellow").as_deref(), Some("0.91,0.79,0.27,1"));
+        assert_eq!(ufo_rgba_for_label("green").as_deref(), Some("0.31,0.72,0.45,1"));
+        assert_eq!(ufo_rgba_for_label("mauve"), None);
     }
 
     #[test]
