@@ -17,6 +17,7 @@ mod hit_testing;
 mod path_editing;
 mod text_buffer;
 
+pub use curve_ops::paths_to_cubics;
 pub use path_editing::snap_point_to_grid;
 
 use super::background_image::BackgroundImage;
@@ -134,6 +135,12 @@ pub struct EditSession {
     /// Toggle with Tab key.
     pub panels_visible: bool,
 
+    /// Show the curvature comb overlay (CurvePanel toggle)
+    pub show_comb: bool,
+
+    /// Show G0–G3 continuity rings on smooth nodes
+    pub show_continuity: bool,
+
     /// Background reference image for tracing (session-only, not
     /// persisted to UFO)
     pub background_image: Option<BackgroundImage>,
@@ -194,6 +201,8 @@ impl EditSession {
             active_sort_x_offset: 0.0,
             text_direction: TextDirection::default(),
             panels_visible: true,
+            show_comb: false,
+            show_continuity: false,
             background_image: None,
             last_transform: None,
             compat_errors: Vec::new(),
@@ -255,6 +264,8 @@ impl EditSession {
             active_sort_x_offset: 0.0, // First sort is at position 0
             text_direction: TextDirection::default(),
             panels_visible: true,
+            show_comb: false,
+            show_continuity: false,
             background_image: None,
             last_transform: None,
             compat_errors: Vec::new(),

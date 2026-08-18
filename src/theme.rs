@@ -227,6 +227,23 @@ pub mod app {
 }
 
 /// Colors for editor canvas
+/// Curvature comb + continuity overlay colors (CurvePanel).
+pub mod curve_overlay {
+    use super::Color;
+    /// Comb rib fill at low curvature.
+    pub const COMB_LOW: Color = Color::from_rgba8(0x6f, 0x9f, 0xc7, 0x50);
+    /// Comb rib fill at peak curvature.
+    pub const COMB_HIGH: Color = Color::from_rgba8(0xd8, 0x91, 0x3c, 0x90);
+    /// G2/G3 ring: good.
+    pub const G2: Color = Color::from_rgb8(0x4c, 0xaf, 0x6e);
+    /// G1 curve↔curve: harmonize candidate.
+    pub const G1: Color = Color::from_rgb8(0xd8, 0x91, 0x3c);
+    /// Line↔curve smooth join: intended G1.
+    pub const G1_LINE: Color = Color::from_rgb8(0x6f, 0x9f, 0xc7);
+    /// Kink: marked smooth but tangents disagree.
+    pub const KINK: Color = Color::from_rgb8(0xc7, 0x5f, 0x5f);
+}
+
 pub mod canvas {
     use super::Color;
     pub const BACKGROUND: Color = super::APP_BACKGROUND;

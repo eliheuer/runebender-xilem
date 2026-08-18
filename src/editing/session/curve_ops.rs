@@ -272,3 +272,75 @@ mod tests {
         }
     }
 }
+
+/// Extract the ordered cubic segments of every contour, for the
+/// shared curvature/continuity analysis. Same conversion as
+/// runebender-web's `contour_cubics`, on this editor's path types.
+pub fn paths_to_cubics(paths: &[Path]) -> Vec<Vec<runebender_core::curve::Cubic>> {
+    use runebender_core::curve::Cubic;
+    paths
+        .iter()
+        .map(|path| {
+            let pts = path.points().to_vec();
+            let n = pts.len();
+            if n < 2 {
+                return Vec::new();
+            }
+            let on: Vec<usize> = (0..n).filter(|&i| pts[i].is_on_curve()).collect();
+            if on.len() < 2 {
+                return Vec::new();
+            }
+            let smooth =
+                |i: usize| matches!(pts[i].typ, PointType::OnCurve { smooth: true });
+            let mut segs = Vec::with_capacity(on.len());
+            for k in 0..on.len() {
+                let a = on[k];
+                let b = on[(k + 1) % on.len()];
+                let mut offs = Vec::new();
+                let mut i = (a + 1) % n;
+                while i != b {
+                    offs.push(i);
+                    i = (i + 1) % n;
+                }
+                let (p0, p3) = (pts[a].point, pts[b].point);
+                let start_smooth = smooth(a);
+                match offs.as_slice() {
+                    [c1, c2] => segs.push(Cubic {
+                        p0,
+                        p1: pts[*c1].point,
+                        p2: pts[*c2].point,
+                        p3,
+                        straight: false,
+                        start_smooth,
+                    }),
+                    [c] => {
+                        let q = pts[*c].point.to_vec2();
+                        let p1 =
+                            (p0.to_vec2() + (q - p0.to_vec2()) * (2.0 / 3.0)).to_point();
+                        let p2 =
+                            (p3.to_vec2() + (q - p3.to_vec2()) * (2.0 / 3.0)).to_point();
+                        segs.push(Cubic {
+                            p0,
+                            p1,
+                            p2,
+                            p3,
+                            straight: false,
+                            start_smooth,
+                        });
+                    }
+                    [] => segs.push(Cubic {
+                        p0,
+                        p1: (p0.to_vec2() + (p3.to_vec2() - p0.to_vec2()) / 3.0).to_point(),
+                        p2: (p0.to_vec2() + (p3.to_vec2() - p0.to_vec2()) * (2.0 / 3.0))
+                            .to_point(),
+                        p3,
+                        straight: true,
+                        start_smooth,
+                    }),
+                    _ => {}
+                }
+            }
+            segs
+        })
+        .collect()
+}
