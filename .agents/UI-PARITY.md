@@ -194,7 +194,9 @@ belongs to the container via flex). Start with the
 - [ ] Sketch tool + SketchPanel (brush/erase overlay, autotrace,
       Virtua model draft, training-pair banking).
 - [ ] Axes sliders (port web core var_model.rs interpolation UI).
-- [ ] .glyphs import (web core glyphs_import.rs).
+- [x] .glyphs import landed 2026-08-18 via the shared converter
+      (moved to runebender_core::glyphs_import): load_font
+      converts to a <name>-ufo sibling dir and opens it.
 - [ ] MarkColorPanel "all masters" toggle.
 - [ ] Window-blur flush of deferred glyph sync.
 
