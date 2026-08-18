@@ -5,7 +5,9 @@
 pub mod edit_types;
 pub mod selection;
 pub mod undo;
+pub mod viewport;
 
 pub use edit_types::EditType;
 pub use selection::Selection;
 pub use undo::UndoState;
+pub use viewport::ViewPort;
