@@ -354,7 +354,15 @@ impl Widget for EditorWidget {
 
         self.paint_background(painter, canvas_size);
 
-        if !self.session.viewport_initialized {
+        // Only fit the viewport once the canvas has a settled,
+        // plausible size: the first paint frames during window
+        // creation can arrive with transitional sizes, and a fit
+        // computed from one of those sticks (microscopic or huge
+        // glyph until manual re-zoom).
+        if !self.session.viewport_initialized
+            && (100.0..8000.0).contains(&canvas_size.width)
+            && (100.0..8000.0).contains(&canvas_size.height)
+        {
             self.initialize_viewport(canvas_size);
         }
 

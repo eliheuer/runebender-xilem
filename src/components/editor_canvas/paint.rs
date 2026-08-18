@@ -46,7 +46,17 @@ impl EditorWidget {
         }
 
         self.paint_background_image(painter, transform);
+        // The active sort's editing paths are glyph-local; the sort
+        // sits at its x offset within the buffer.
+        let sort_transform = *transform
+            * Affine::translate((self.session.active_sort_x_offset, 0.0));
+        if !is_preview_mode && self.session.show_comb {
+            self.paint_curvature_comb(painter, &sort_transform);
+        }
         self.render_text_buffer(painter, transform, is_preview_mode);
+        if !is_preview_mode && self.session.show_continuity {
+            self.paint_continuity_rings(painter, &sort_transform);
+        }
 
         if !is_preview_mode {
             self.paint_tool_overlay(painter, transform);

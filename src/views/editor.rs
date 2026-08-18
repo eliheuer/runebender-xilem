@@ -758,6 +758,9 @@ fn curve_panel() -> impl WidgetView<AppState> + use<> {
         .cross_axis_alignment(xilem::view::CrossAxisAlignment::Stretch)
         .gap(4.px()),
     )
+    // Explicit width: stock buttons measure very wide under the
+    // zstack overlay's MaxContent sizing and blow up the layout.
+    .width(112.px())
     .padding(6.0.px())
     .background_color(theme::panel::BACKGROUND)
     .corner_radius(8.0.px())
