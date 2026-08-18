@@ -39,6 +39,9 @@ pub struct Glyph {
     /// Mark color (UFO public.markColor), stored as "R,G,B,A"
     /// with 0–1 floats
     pub mark_color: Option<String>,
+    /// Mark label (com.runebender.markLabel), the palette name the
+    /// color means — written beside the color, read first.
+    pub mark_label: Option<String>,
 }
 
 /// A contour is a closed path
@@ -315,6 +318,11 @@ impl Workspace {
             .get("public.markColor")
             .and_then(|v| v.as_string())
             .map(|s| s.to_string());
+        let mark_label = norad_glyph
+            .lib
+            .get(runebender_core::theme_oklch::MARK_LABEL_KEY)
+            .and_then(|v| v.as_string())
+            .map(|s| s.to_string());
 
         Glyph {
             name,
@@ -326,6 +334,7 @@ impl Workspace {
             left_group,
             right_group,
             mark_color,
+            mark_label,
         }
     }
 
@@ -528,11 +537,19 @@ impl Workspace {
                 .insert("public.kern2".to_string(), right_group.clone().into());
         }
 
-        // Save mark color to lib data
+        // Save mark color to lib data, with the label beside it (the
+        // color is what other editors need, the label is what the
+        // mark means — see runebender-core theme_oklch).
         if let Some(mark_color) = &glyph.mark_color {
             norad_glyph
                 .lib
                 .insert("public.markColor".to_string(), mark_color.clone().into());
+        }
+        if let Some(mark_label) = &glyph.mark_label {
+            norad_glyph.lib.insert(
+                runebender_core::theme_oklch::MARK_LABEL_KEY.to_string(),
+                mark_label.clone().into(),
+            );
         }
 
         norad_glyph

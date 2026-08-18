@@ -184,7 +184,7 @@ impl Widget for MarkColorPanelWidget {
         let radius = SWATCH_SIZE / 2.0;
 
         for i in 0..theme::mark::COUNT {
-            let color = theme::mark::COLORS[i];
+            let color = theme::mark::color(i);
             let (col, row) = self.swatch_grid_pos(i);
             let (cx, cy) = self.swatch_center(col, row);
             let circle = Circle::new((cx, cy), radius);

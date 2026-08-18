@@ -88,7 +88,7 @@ impl GlyphCellWidget {
 
     /// Resolve the mark color to a Color value
     fn mark(&self) -> Option<Color> {
-        self.mark_color.map(|i| theme::mark::COLORS[i])
+        self.mark_color.map(theme::mark::color)
     }
 
     /// Get (background, border) colors for this cell

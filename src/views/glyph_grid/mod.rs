@@ -224,7 +224,7 @@ pub(crate) fn file_info_panel(state: &AppState) -> impl WidgetView<AppState> + u
         Some(s) => (format!("Saved {}", s), theme::grid::CELL_SELECTED_OUTLINE),
         None => (
             "Not saved".to_string(),
-            theme::mark::COLORS[2], // Yellow
+            theme::mark::color(2), // Yellow
         ),
     };
 
@@ -277,10 +277,7 @@ fn current_mark_color_index(state: &AppState) -> Option<usize> {
     let workspace_arc = state.active_workspace()?;
     let workspace = read_workspace(&workspace_arc);
     let glyph = workspace.get_glyph(glyph_name)?;
-    glyph
-        .mark_color
-        .as_ref()
-        .and_then(|s| rgba_string_to_palette_index(s))
+    glyph_mark_index(glyph)
 }
 
 // ============================================================
@@ -410,10 +407,7 @@ fn build_single_glyph_data(workspace: &workspace::Workspace, name: &str, upm: f6
         let count = glyph.contours.len();
         let codepoints = glyph.codepoints.clone();
         let path = glyph_renderer::glyph_to_bezpath_with_components(glyph, workspace);
-        let mark_index = glyph
-            .mark_color
-            .as_ref()
-            .and_then(|s| rgba_string_to_palette_index(s));
+        let mark_index = glyph_mark_index(glyph);
         let span = compute_col_span(name, glyph.width, upm);
         (
             name.to_string(),
@@ -459,10 +453,10 @@ fn compute_col_span(name: &str, advance_width: f64, upm: f64) -> usize {
     name_span.max(width_span).min(4)
 }
 
-/// Convert an RGBA string to a palette index by matching
-/// against the known palette strings
-fn rgba_string_to_palette_index(rgba: &str) -> Option<usize> {
-    theme::mark::RGBA_STRINGS.iter().position(|&s| s == rgba)
+/// Palette index for a glyph's stored mark (label first, else the
+/// color snapped to the nearest palette hue).
+fn glyph_mark_index(glyph: &workspace::Glyph) -> Option<usize> {
+    theme::mark::index_for(glyph.mark_label.as_deref(), glyph.mark_color.as_deref())
 }
 
 /// Compute the pixel width for a cell spanning `span` columns.
