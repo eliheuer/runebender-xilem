@@ -18,7 +18,7 @@ use masonry::layout::AsUnit;
 use xilem::WidgetView;
 use xilem::core::one_of::Either;
 use xilem::style::Style;
-use xilem::view::{CrossAxisAlignment, FlexExt, flex_col, flex_row, label, sized_box, zstack};
+use xilem::view::{CrossAxisAlignment, FlexExt, ZStackExt, flex_col, flex_row, label, sized_box, zstack};
 
 use glyph_cell::{GlyphCellAction, glyph_cell_view};
 
@@ -58,6 +58,7 @@ pub fn glyph_grid_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<>
         flex_col((
             // Row 1: File info stretches, toolbars fixed on right
             flex_row((
+                system_menu_button(),
                 file_info_panel(state).flex(1.0),
                 master_toolbar_panel(state),
                 system_toolbar_view(|state: &mut AppState, button| match button {
@@ -137,7 +138,75 @@ pub fn glyph_grid_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<>
         .gap(BENTO_GAP.px())
         .padding((BENTO_GAP * 2.0).px())
         .background_color(theme::app::BACKGROUND),
+        // System menu dropdown (top-left overlay)
+        xilem::view::transformed(if state.system_menu_open {
+            Either::A(system_menu_panel(state))
+        } else {
+            Either::B(sized_box(label("")).width(0.px()).height(0.px()))
+        })
+        .translate((BENTO_GAP * 2.0, 70.0))
+        .alignment(xilem::view::ChildAlignment::SelfAligned(
+            masonry::layout::UnitPoint::TOP_LEFT,
+        )),
     ))
+}
+
+/// Hamburger button toggling the system menu.
+fn system_menu_button() -> impl WidgetView<AppState> + use<> {
+    use xilem::view::button;
+    sized_box(button(label("☰").text_size(16.0), |state: &mut AppState| {
+        state.system_menu_open = !state.system_menu_open;
+    }))
+    .width(44.px())
+}
+
+/// The system menu: file operations and recent fonts. Explicit
+/// width - stock widgets measure very wide under overlay sizing.
+fn system_menu_panel(state: &AppState) -> impl WidgetView<AppState> + use<> {
+    use xilem::view::button;
+    let entry = |name: String, action: fn(&mut AppState)| {
+        button(label(name).text_size(12.0), move |state: &mut AppState| {
+            state.system_menu_open = false;
+            action(state);
+        })
+    };
+    let recents: Vec<_> = crate::config::recent_fonts()
+        .into_iter()
+        .take(5)
+        .map(|path| {
+            let short = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.display().to_string());
+            button(
+                label(format!("· {short}")).text_size(11.0),
+                move |state: &mut AppState| {
+                    state.system_menu_open = false;
+                    state.load_font(path.clone());
+                },
+            )
+        })
+        .collect();
+    let _ = state;
+    sized_box(
+        flex_col((
+            entry("New UFO".into(), |s| {
+                s.load_ufo(std::path::PathBuf::from("assets/untitled.ufo"));
+            }),
+            entry("Open…".into(), |s| s.open_font_dialog()),
+            entry("Save".into(), |s| s.save_workspace()),
+            entry("Save As…".into(), |s| s.save_workspace_as()),
+            entry("Close Font".into(), |s| s.close_font()),
+            label("Recent").text_size(10.0),
+            flex_col(recents).gap(2.px()),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .gap(4.px()),
+    )
+    .width(240.px())
+    .padding(8.0.px())
+    .background_color(theme::panel::BACKGROUND)
+    .corner_radius(8.0.px())
 }
 
 // ============================================================

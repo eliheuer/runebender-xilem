@@ -115,6 +115,37 @@ pub fn quiver_api_key() -> Option<String> {
 
 /// Ensure the config directory exists and write a template
 /// config file if none exists.
+/// Recently opened fonts, newest first (config_dir/recents.txt).
+pub fn recent_fonts() -> Vec<PathBuf> {
+    let Some(path) = config_dir().map(|d| d.join("recents.txt")) else {
+        return Vec::new();
+    };
+    std::fs::read_to_string(path)
+        .map(|s| {
+            s.lines()
+                .map(PathBuf::from)
+                .filter(|p| p.exists())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Record a font in the recents list (dedup, cap 8).
+pub fn push_recent(font_path: &std::path::Path) {
+    let Some(path) = config_dir().map(|d| d.join("recents.txt")) else {
+        return;
+    };
+    let mut recents = recent_fonts();
+    recents.retain(|p| p != font_path);
+    recents.insert(0, font_path.to_path_buf());
+    recents.truncate(8);
+    let body: String = recents
+        .iter()
+        .map(|p| format!("{}\n", p.display()))
+        .collect();
+    let _ = std::fs::write(path, body);
+}
+
 pub fn ensure_config_dir() {
     let dir = match config_dir() {
         Some(d) => d,

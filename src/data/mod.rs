@@ -87,6 +87,9 @@ pub struct AppState {
     /// First visible row index in the virtual glyph grid
     pub grid_scroll_row: usize,
 
+    /// System menu (New/Open/Recents/Save As/Close) visibility
+    pub system_menu_open: bool,
+
     /// Search filter for the editor sidebar's mini glyph grid
     pub sidebar_search: String,
 
@@ -131,6 +134,7 @@ impl AppState {
             window_width: 1030.0, // Default window width
             glyph_category_filter: GlyphCategory::All,
             grid_scroll_row: 0,
+            system_menu_open: false,
             sidebar_search: String::new(),
             sidebar_scroll_row: 0,
             window_height: 800.0,
