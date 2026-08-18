@@ -135,9 +135,10 @@ belongs to the container via flex). Start with the
       sub-toolbars (Shapes/Text direction) float top-right.
       SystemMenu button joins when SystemMenuPanel lands.
       NEEDS VISUAL QA in the running app.
-- [ ] SystemMenuPanel: New UFO / New designspace, Open, Open
-      Recent, Reopen last, Save, Save As, Close; theme picker
-      later. Today xilem has only a Save button.
+- [x] SystemMenuPanel landed 2026-08-18: hamburger menu with New
+      UFO (template), Open, 5 recents (config recents.txt), Save,
+      Save As (UFO dir copy + repoint), Close Font. New
+      designspace and theme picker still to do.
 - [x] Editor left sidebar (web EditorSidebar): Overview tab
       landed 2026-08-17 (views/editor_sidebar.rs — search +
       windowed 4-column mini grid, click jumps via
