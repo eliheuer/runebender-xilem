@@ -33,6 +33,14 @@ fn oklch_to_linear(l: f64, c: f64, h_deg: f64) -> [f64; 3] {
     ]
 }
 
+fn srgb_to_linear(v: f64) -> f64 {
+    if v <= 0.04045 {
+        v / 12.92
+    } else {
+        ((v + 0.055) / 1.055).powf(2.4)
+    }
+}
+
 fn linear_to_srgb(v: f64) -> f64 {
     if v <= 0.0031308 {
         12.92 * v
@@ -85,7 +93,6 @@ struct StepDef {
 struct NeutralDef {
     hue: f64,
     chroma: f64,
-    steps: Vec<u32>,
 }
 
 #[derive(Deserialize)]
@@ -93,6 +100,13 @@ struct ThemeDef {
     surfaces: HashMap<String, String>,
     text: HashMap<String, String>,
     roles: HashMap<String, String>,
+    #[serde(rename = "markStep")]
+    mark_step: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MarkColorDef {
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -101,6 +115,8 @@ struct TokenFile {
     steps: HashMap<String, StepDef>,
     neutral: NeutralDef,
     themes: HashMap<String, ThemeDef>,
+    #[serde(rename = "markColors", default)]
+    mark_colors: Vec<MarkColorDef>,
 }
 
 /// One resolved theme: every surface, text, and role token as sRGB.
@@ -108,6 +124,9 @@ pub struct Theme {
     pub surfaces: HashMap<String, ColorRgba>,
     pub text: HashMap<String, ColorRgba>,
     pub roles: HashMap<String, ColorRgba>,
+    /// Glyph mark colours in palette order, drawn at this theme's
+    /// `markStep` (matches the web's `--rb-mark-{name}` variables).
+    pub marks: Vec<(String, ColorRgba)>,
 }
 
 impl Theme {
@@ -119,6 +138,13 @@ impl Theme {
     }
     pub fn role(&self, name: &str) -> ColorRgba {
         self.roles.get(name).copied().unwrap_or(FALLBACK)
+    }
+    /// The display colour for a mark label, if the palette names it.
+    pub fn mark(&self, label: &str) -> Option<ColorRgba> {
+        self.marks
+            .iter()
+            .find(|(name, _)| name == label)
+            .map(|(_, color)| *color)
     }
 }
 
@@ -155,11 +181,87 @@ pub fn load_theme(theme_id: &str) -> Option<Theme> {
             .filter_map(|(k, v)| resolve_token(&file, v).map(|c| (k.clone(), c)))
             .collect()
     };
+    let mark_step = def.mark_step.as_deref().unwrap_or("base");
+    let marks = file
+        .mark_colors
+        .iter()
+        .filter_map(|m| {
+            resolve_token(&file, &format!("{}.{mark_step}", m.name))
+                .map(|c| (m.name.clone(), c))
+        })
+        .collect();
     Some(Theme {
         surfaces: resolve_map(&def.surfaces),
         text: resolve_map(&def.text),
         roles: resolve_map(&def.roles),
+        marks,
     })
+}
+
+// ---- glyph mark labels ----
+
+/// The mark-label lib key written beside `public.markColor` (see
+/// runebender-web's markColors.ts for the rationale: the colour is
+/// what other editors need, the label is what the mark means).
+pub const MARK_LABEL_KEY: &str = "com.runebender.markLabel";
+
+/// OKLCH hue angle of an sRGB colour, or `None` for near-grey.
+fn hue_of(r: f64, g: f64, b: f64) -> Option<f64> {
+    let (r, g, b) = (srgb_to_linear(r), srgb_to_linear(g), srgb_to_linear(b));
+    let l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b).cbrt();
+    let m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b).cbrt();
+    let s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b).cbrt();
+    let a = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+    let bb = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+    if a.hypot(bb) < 0.03 {
+        return None;
+    }
+    let hue = bb.atan2(a).to_degrees();
+    Some(if hue < 0.0 { hue + 360.0 } else { hue })
+}
+
+/// The mark label a glyph carries: `com.runebender.markLabel` when
+/// present, otherwise its `public.markColor` snapped to the nearest
+/// palette hue (display only — never written back).
+pub fn mark_label_for_glyph(glyph: &norad::Glyph, theme: &Theme) -> Option<String> {
+    if let Some(plist::Value::String(label)) = glyph.lib.get(MARK_LABEL_KEY) {
+        if theme.mark(label).is_some() {
+            return Some(label.clone());
+        }
+    }
+    let plist::Value::String(rgba) = glyph.lib.get("public.markColor")? else {
+        return None;
+    };
+    label_for_rgba(rgba, theme)
+}
+
+/// Snap a UFO "r,g,b,a" colour (0–1 floats) to the nearest palette
+/// label by hue. `None` for greys and colours far from every hue.
+pub fn label_for_rgba(rgba: &str, theme: &Theme) -> Option<String> {
+    let parts: Vec<f64> = rgba.split(',').filter_map(|p| p.trim().parse().ok()).collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    let hue = hue_of(parts[0], parts[1], parts[2])?;
+    let mut best: Option<&str> = None;
+    let mut best_distance = f64::INFINITY;
+    for (name, color) in &theme.marks {
+        let palette_hue = hue_of(
+            color.r as f64 / 255.0,
+            color.g as f64 / 255.0,
+            color.b as f64 / 255.0,
+        )
+        .unwrap_or(0.0);
+        let raw = (hue - palette_hue).abs();
+        let distance = raw.min(360.0 - raw);
+        if distance < best_distance {
+            best_distance = distance;
+            best = Some(name);
+        }
+    }
+    // Neighbouring palette hues are ~40° apart; anything further than
+    // half that from every one has no name in this palette.
+    (best_distance <= 30.0).then(|| best.unwrap().to_string())
 }
 
 #[cfg(test)]
@@ -188,5 +290,48 @@ mod tests {
         assert_eq!(hex(dark.role("pathStroke")), "#b1b1b1");
         assert_eq!(hex(dark.role("gridSelected")), "#c1c1c1");
         assert_eq!(hex(dark.role("continuityG2")), "#41b7ab");
+    }
+
+    /// Mark colours must match THEME_MARK_COLORS in the web's
+    /// generated tokens.
+    #[test]
+    fn matches_web_mark_colors() {
+        let dark = load_theme("dark").expect("dark theme");
+        assert_eq!(hex(dark.mark("red").unwrap()), "#e04c44");
+        assert_eq!(hex(dark.mark("orange").unwrap()), "#ec7433");
+        assert_eq!(hex(dark.mark("yellow").unwrap()), "#e8c944");
+        assert_eq!(hex(dark.mark("green").unwrap()), "#4fb772");
+        assert_eq!(dark.marks.len(), 7);
+        assert!(dark.mark("chartreuse").is_none());
+    }
+
+    /// Unlabelled `public.markColor` values snap to the nearest
+    /// palette hue; greys and far-off hues get no label.
+    #[test]
+    fn snaps_rgba_to_palette_label() {
+        let dark = load_theme("dark").expect("dark theme");
+        // The exact UFO colours the web writes round-trip to their labels.
+        assert_eq!(label_for_rgba("0.88,0.3,0.27,1", &dark).as_deref(), Some("red"));
+        assert_eq!(label_for_rgba("0.27,0.44,1,1", &dark).as_deref(), Some("blue"));
+        assert_eq!(label_for_rgba("0.09,0.72,0.44,1", &dark).as_deref(), Some("green"));
+        assert_eq!(label_for_rgba("0.5,0.5,0.5,1", &dark), None);
+        assert_eq!(label_for_rgba("garbage", &dark), None);
+    }
+
+    #[test]
+    fn reads_glyph_mark_label_then_color() {
+        let dark = load_theme("dark").expect("dark theme");
+        let mut glyph = norad::Glyph::new("A");
+        assert_eq!(mark_label_for_glyph(&glyph, &dark), None);
+        glyph.lib.insert(
+            "public.markColor".into(),
+            plist::Value::String("0.93,0.45,0.2,1".into()),
+        );
+        assert_eq!(mark_label_for_glyph(&glyph, &dark).as_deref(), Some("orange"));
+        glyph.lib.insert(
+            MARK_LABEL_KEY.into(),
+            plist::Value::String("blue".into()),
+        );
+        assert_eq!(mark_label_for_glyph(&glyph, &dark).as_deref(), Some("blue"));
     }
 }
