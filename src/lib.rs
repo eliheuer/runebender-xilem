@@ -21,6 +21,7 @@ pub mod mark_color;
 pub mod model;
 pub mod shaping;
 pub mod theme;
+pub mod theme_oklch;
 
 pub use category::GlyphCategory;
 pub use mark_color::MarkColor;
