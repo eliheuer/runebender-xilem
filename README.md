@@ -44,3 +44,26 @@ include it.
 [rb]: https://github.com/eliheuer/runebender-xilem
 [xilem]: https://github.com/eliheuer/runebender-xilem
 [comfy]: https://github.com/eliheuer/runebender-comfy
+
+## Architecture
+
+This crate is the editor engine shared by every Runebender UI
+(runebender-web, runebender-xilem, runebender-gpui). The goal is
+that the UIs are thin, swappable shells:
+
+- `glyph_ops` — UI-free editing operations on norad glyphs: point
+  moves, deletion with segment surgery, smooth constraints, pen
+  primitives, shapes, decompose, remove overlap, metrics, kerning
+  with group fallback, undo snapshots, compatibility signatures.
+- `glyph_paths` — norad → kurbo outline building (contours,
+  recursively resolved components).
+- `curve` — curvature analysis and quality operations: G0–G3
+  continuity, curvature comb, harmonize, Tunni balance, contour
+  optimizer.
+- `var_model` — designspace interpolation (fontTools
+  VariationModel port).
+- `editing`, `model`, `category`, `shaping`, `mark_color`,
+  `theme` — shared editing/state types and metadata.
+
+New features should land here first when they have no UI in them;
+the shells own input handling, caching, and rendering only.
