@@ -13,6 +13,7 @@ pub mod category;
 pub mod curve;
 pub mod glyph_ops;
 pub mod glyph_paths;
+pub mod glyphs_import;
 pub mod var_model;
 pub mod editing;
 pub mod mark_color;

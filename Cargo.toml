@@ -12,6 +12,7 @@ name = "runebender_core"
 path = "src/lib.rs"
 
 [dependencies]
+glyphslib = "0.2.7"
 linesweeper = "0.4"
 norad = "0.18"
 # Structured metadata shared over serde_json between core and UI hosts.
