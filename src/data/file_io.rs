@@ -55,6 +55,7 @@ impl AppState {
                 self.designspace = None; // Clear any loaded designspace
                 self.error_message = None;
                 self.select_first_glyph();
+                crate::config::push_recent(&path);
             }
             Err(e) => {
                 let error = format!("Failed to load UFO: {}", e);
@@ -78,6 +79,7 @@ impl AppState {
                 self.workspace = None; // Clear any loaded single UFO
                 self.error_message = None;
                 self.select_first_glyph();
+                crate::config::push_recent(&path);
             }
             Err(e) => {
                 let error = format!("Failed to load designspace: {}", e);
@@ -85,6 +87,60 @@ impl AppState {
                 self.error_message = Some(error);
             }
         }
+    }
+
+    /// Save the current single-UFO workspace under a new path (Save
+    /// As). The UFO directory is copied first because Workspace::save
+    /// merges into the on-disk font at its own path.
+    pub fn save_workspace_as(&mut self) {
+        let Some(workspace_arc) = &self.workspace else {
+            self.error_message =
+                Some("Save As currently supports single UFOs only".into());
+            return;
+        };
+        let Some(target) = rfd::FileDialog::new()
+            .set_title("Save UFO As")
+            .add_filter("UFO Font", &["ufo"])
+            .set_file_name("Untitled.ufo")
+            .save_file()
+        else {
+            return;
+        };
+        let source = read_workspace(workspace_arc).path.clone();
+        if target.exists() {
+            let _ = std::fs::remove_dir_all(&target);
+        }
+        fn copy_dir(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+            std::fs::create_dir_all(dst)?;
+            for entry in std::fs::read_dir(src)? {
+                let entry = entry?;
+                let to = dst.join(entry.file_name());
+                if entry.file_type()?.is_dir() {
+                    copy_dir(&entry.path(), &to)?;
+                } else {
+                    std::fs::copy(entry.path(), &to)?;
+                }
+            }
+            Ok(())
+        }
+        if let Err(e) = copy_dir(&source, &target) {
+            self.error_message = Some(format!("Save As failed: {e}"));
+            return;
+        }
+        if let Some(workspace_arc) = &self.workspace {
+            workspace_arc.write().unwrap().path = target.clone();
+        }
+        self.save_workspace();
+        crate::config::push_recent(&target);
+    }
+
+    /// Close the open font and return to the welcome screen.
+    pub fn close_font(&mut self) {
+        self.editor_session = None;
+        self.workspace = None;
+        self.designspace = None;
+        self.active_tab = crate::data::Tab::GlyphGrid;
+        self.error_message = None;
     }
 
     /// Get the path of the loaded file (designspace or UFO)
