@@ -1,17 +1,9 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! UFO `public.markColor` helpers.
-
-pub const PRESET_UFO_RGBA: [&str; 7] = [
-    "1,0.3,0.3,1",
-    "1,0.6,0.2,1",
-    "1,0.9,0.2,1",
-    "0.3,0.7,0.3,1",
-    "0.1,0.3,0.8,1",
-    "0.6,0.3,0.9,1",
-    "0.9,0.3,0.7,1",
-];
+//! UFO `public.markColor` parsing and validation. The palette itself
+//! lives in the shared theme (`theme_oklch`), which also owns label
+//! reading, hue-snapping, and writing.
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MarkColor {
@@ -56,11 +48,6 @@ pub fn canonical_ufo_mark_color(value: &str) -> Option<String> {
     Some(trimmed.split(',').map(str::trim).collect::<Vec<_>>().join(","))
 }
 
-pub fn palette_index(value: &str) -> Option<usize> {
-    let canonical = canonical_ufo_mark_color(value)?;
-    PRESET_UFO_RGBA.iter().position(|preset| *preset == canonical)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,10 +81,4 @@ mod tests {
         assert_eq!(canonical_ufo_mark_color(""), Some(String::new()));
     }
 
-    #[test]
-    fn matches_xilem_palette_by_exact_canonical_string() {
-        assert_eq!(palette_index("1,0.3,0.3,1"), Some(0));
-        assert_eq!(palette_index(" 1, 0.3, 0.3, 1 "), Some(0));
-        assert_eq!(palette_index("1,0.30,0.3,1"), None);
-    }
 }
