@@ -157,10 +157,12 @@ belongs to the container via flex). Start with the
 - [ ] SelectPanel: measure/analysis overlay toggles (colorize by
       popcount, handle lengths, segment lengths, stem/counter
       spans, sidebearing columns). Port web core measure.rs.
-- [ ] CurvePanel: curvature comb, continuity dots, Harmonize,
-      Balance (Tunni), Optimize + tolerance slider. Port
-      `harmonize_selection` / `balance_selection` /
-      `optimize_selection` from web core.
+- [~] CurvePanel: Harmonize / Balance / Optimize landed
+      2026-08-18 (session/curve_ops.rs + left-center overlay
+      panel), running on geometry shared via
+      runebender_core::curve (moved from web core the same day).
+      Still to do: curvature comb, continuity dots, tolerance
+      slider.
 - [ ] LayersPanel + background layer / reference glyph model
       (`set_background_outline`, `set_reference_outline`).
 - [ ] AnchorPanel + full anchor model: add / select / drag /
