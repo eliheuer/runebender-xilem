@@ -61,6 +61,72 @@ pub fn set_points(glyph: &mut Glyph, updates: &PointUpdates) {
     }
 }
 
+/// Transform the selected points (all points when the selection is
+/// empty) about the center of their bounding box. `transform` is
+/// applied in a coordinate frame centered on that box, so flips and
+/// rotations stay in place. Returns false if the glyph has no points.
+pub fn transform_selection(
+    glyph: &mut Glyph,
+    selected: &HashSet<PointId>,
+    transform: kurbo::Affine,
+) -> bool {
+    let targeted = |c: usize, p: usize| selected.is_empty() || selected.contains(&(c, p));
+    let mut min = (f64::INFINITY, f64::INFINITY);
+    let mut max = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for (c, contour) in glyph.contours.iter().enumerate() {
+        for (p, point) in contour.points.iter().enumerate() {
+            if targeted(c, p) {
+                min = (min.0.min(point.x), min.1.min(point.y));
+                max = (max.0.max(point.x), max.1.max(point.y));
+            }
+        }
+    }
+    if !min.0.is_finite() {
+        return false;
+    }
+    let center = ((min.0 + max.0) / 2.0, (min.1 + max.1) / 2.0);
+    let about_center = kurbo::Affine::translate(center)
+        * transform
+        * kurbo::Affine::translate((-center.0, -center.1));
+    for (c, contour) in glyph.contours.iter_mut().enumerate() {
+        for (p, point) in contour.points.iter_mut().enumerate() {
+            if targeted(c, p) {
+                let moved = about_center * kurbo::Point::new(point.x, point.y);
+                point.x = moved.x;
+                point.y = moved.y;
+            }
+        }
+    }
+    true
+}
+
+/// Reverse the direction of every contour that has a selected point
+/// (all contours when the selection is empty). Round-trips through
+/// kurbo's `reverse_subpaths`, the same conversion remove-overlap
+/// uses, so coordinates round to integers.
+pub fn reverse_contours(glyph: &mut Glyph, selected: &HashSet<PointId>) -> bool {
+    let mut changed = false;
+    for c in 0..glyph.contours.len() {
+        let targeted = selected.is_empty()
+            || (0..glyph.contours[c].points.len()).any(|p| selected.contains(&(c, p)));
+        if !targeted || glyph.contours[c].points.is_empty() {
+            continue;
+        }
+        let smooth_at: HashMap<(i64, i64), bool> = glyph.contours[c]
+            .points
+            .iter()
+            .filter(|p| p.typ != PointType::OffCurve)
+            .map(|p| ((p.x.round() as i64, p.y.round() as i64), p.smooth))
+            .collect();
+        let path = glyph_paths::contour_to_bezpath(&glyph.contours[c]).reverse_subpaths();
+        if let Some(reversed) = bezpath_to_contour(&path, &smooth_at) {
+            glyph.contours[c] = reversed;
+            changed = true;
+        }
+    }
+    changed
+}
+
 /// After moving one off-curve handle, keep its sibling handle
 /// collinear through the shared smooth on-curve point (length
 /// preserved). No-op when the shared point is a corner.
@@ -700,6 +766,112 @@ mod tests {
 
     fn bare_glyph() -> Glyph {
         Glyph::new("test")
+    }
+
+    #[test]
+    fn flip_and_rotate_preserve_bbox_center() {
+        let mut g = bare_glyph();
+        let c = start_contour(&mut g, 0.0, 0.0);
+        append_segment(&mut g, c, None, 100.0, 0.0, false);
+        append_segment(&mut g, c, None, 100.0, 60.0, false);
+        append_segment(&mut g, c, None, 0.0, 60.0, false);
+        close_contour(&mut g, c, None);
+
+        // Flip horizontal about the bbox center: x -> 100 - x.
+        assert!(transform_selection(
+            &mut g,
+            &HashSet::new(),
+            kurbo::Affine::scale_non_uniform(-1.0, 1.0),
+        ));
+        let xs: Vec<f64> = g.contours[c].points.iter().map(|p| p.x).collect();
+        assert!(xs.iter().all(|x| (0.0..=100.0).contains(x)));
+        assert_eq!(g.contours[c].points[0].y, 0.0);
+
+        // Rotate 90° twice = 180°: the rectangle maps onto itself.
+        let before: Vec<(f64, f64)> =
+            g.contours[c].points.iter().map(|p| (p.x, p.y)).collect();
+        for _ in 0..2 {
+            assert!(transform_selection(
+                &mut g,
+                &HashSet::new(),
+                kurbo::Affine::rotate(std::f64::consts::FRAC_PI_2),
+            ));
+        }
+        // 180° maps each corner to the opposite one; compare as sets.
+        let round = |v: Vec<(f64, f64)>| {
+            let mut v: Vec<(i64, i64)> =
+                v.into_iter().map(|(x, y)| (x.round() as i64, y.round() as i64)).collect();
+            v.sort();
+            v
+        };
+        let after: Vec<(f64, f64)> =
+            g.contours[c].points.iter().map(|p| (p.x, p.y)).collect();
+        assert_eq!(round(before), round(after));
+
+        // Empty glyph: nothing to transform.
+        let mut empty = bare_glyph();
+        assert!(!transform_selection(
+            &mut empty,
+            &HashSet::new(),
+            kurbo::Affine::IDENTITY
+        ));
+    }
+
+    #[test]
+    fn transform_only_selected_points() {
+        let mut g = bare_glyph();
+        let c = start_contour(&mut g, 0.0, 0.0);
+        append_segment(&mut g, c, None, 100.0, 0.0, false);
+        append_segment(&mut g, c, None, 50.0, 80.0, false);
+        close_contour(&mut g, c, None);
+        let fixed: Vec<(f64, f64)> = g.contours[c]
+            .points
+            .iter()
+            .take(2)
+            .map(|p| (p.x, p.y))
+            .collect();
+        // Translate only point 2.
+        let selected: HashSet<PointId> = [(c, 2)].into();
+        assert!(transform_selection(
+            &mut g,
+            &selected,
+            kurbo::Affine::translate((10.0, 5.0)),
+        ));
+        // A single point's bbox center is itself; translate still moves it.
+        assert_eq!((g.contours[c].points[2].x, g.contours[c].points[2].y), (60.0, 85.0));
+        for (point, (x, y)) in g.contours[c].points.iter().zip(fixed) {
+            assert_eq!((point.x, point.y), (x, y));
+        }
+    }
+
+    #[test]
+    fn reverse_flips_winding_and_keeps_shape() {
+        let mut g = bare_glyph();
+        let c = start_contour(&mut g, 0.0, 0.0);
+        append_segment(&mut g, c, None, 100.0, 0.0, false);
+        append_segment(
+            &mut g,
+            c,
+            Some(((130.0, 40.0), (130.0, 80.0))),
+            100.0,
+            120.0,
+            true,
+        );
+        append_segment(&mut g, c, None, 0.0, 120.0, false);
+        close_contour(&mut g, c, None);
+        let area_before = signed_area(&glyph_paths::contour_to_bezpath(&g.contours[c]));
+        let count_before = g.contours[c].points.len();
+        assert!(reverse_contours(&mut g, &HashSet::new()));
+        let area_after = signed_area(&glyph_paths::contour_to_bezpath(&g.contours[c]));
+        assert_eq!(g.contours[c].points.len(), count_before);
+        assert!((area_before + area_after).abs() < 1.0, "winding must flip");
+        // The smooth flag survives the round-trip.
+        assert!(g.contours[c].points.iter().any(|p| p.smooth));
+    }
+
+    fn signed_area(path: &BezPath) -> f64 {
+        use kurbo::Shape;
+        path.area()
     }
 
     #[test]

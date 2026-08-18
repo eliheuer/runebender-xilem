@@ -25,6 +25,13 @@ pub fn contours_to_bezpath(glyph: &Glyph) -> BezPath {
     path
 }
 
+/// One contour as a BezPath.
+pub fn contour_to_bezpath(contour: &norad::Contour) -> BezPath {
+    let mut path = BezPath::new();
+    append_contour(&mut path, contour);
+    path
+}
+
 /// Only the glyph's components, recursively resolved.
 pub fn components_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
     let mut path = BezPath::new();
