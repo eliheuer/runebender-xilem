@@ -76,7 +76,65 @@ impl EditorWidget {
         if is_preview_mode {
             self.paint_glyph_preview(painter, &transformed_path);
         } else {
+            if self.session.show_comb {
+                self.paint_curvature_comb(painter, transform);
+            }
             self.paint_glyph_edit_mode(painter, &transformed_path, transform);
+            if self.session.show_continuity {
+                self.paint_continuity_rings(painter, transform);
+            }
+        }
+    }
+
+    /// Speedpunk-style curvature comb (shared analysis from
+    /// runebender-core; painting ported from the web renderer).
+    fn paint_curvature_comb(&self, painter: &mut Painter<'_>, transform: &Affine) {
+        use runebender_core::curve::{curvature_comb, max_curvature};
+        let contours = crate::editing::paths_to_cubics(&self.session.paths);
+        let maxk = max_curvature(&contours);
+        if maxk <= 1e-12 {
+            return;
+        }
+        // Shorter than Speedpunk's default so ribs don't collide
+        // across tight counters; scales with the em.
+        let scale = 74.0 / maxk;
+        let strips = curvature_comb(&contours, 1.0, scale, false, 16);
+        let low = crate::theme::curve_overlay::COMB_LOW;
+        let high = crate::theme::curve_overlay::COMB_HIGH;
+        for strip in &strips {
+            for w in strip.windows(2) {
+                let (s0, s1) = (w[0], w[1]);
+                let mut quad = kurbo::BezPath::new();
+                quad.move_to(*transform * s0.on);
+                quad.line_to(*transform * s1.on);
+                quad.line_to(*transform * s1.outer);
+                quad.line_to(*transform * s0.outer);
+                quad.close_path();
+                let k = ((s0.kappa.abs() + s1.kappa.abs()) * 0.5 / maxk).clamp(0.0, 1.0);
+                let color = low.lerp(high, k as f32, peniko::color::HueDirection::default());
+                painter.fill(&quad, color).draw();
+            }
+        }
+    }
+
+    /// Continuity rings around on-curve nodes (G-level colors).
+    fn paint_continuity_rings(&self, painter: &mut Painter<'_>, transform: &Affine) {
+        use runebender_core::curve::{GLevel, node_continuity};
+        let contours = crate::editing::paths_to_cubics(&self.session.paths);
+        let zoom = self.session.viewport.zoom;
+        let r = 9.0 * zoom.clamp(0.3, 2.0);
+        let ring = Stroke::new(1.5);
+        for nc in node_continuity(&contours) {
+            let color = match nc.level {
+                GLevel::Corner => continue,
+                GLevel::G2 | GLevel::G3 => crate::theme::curve_overlay::G2,
+                GLevel::G1 => crate::theme::curve_overlay::G1,
+                GLevel::G1Line => crate::theme::curve_overlay::G1_LINE,
+                GLevel::Kink => crate::theme::curve_overlay::KINK,
+            };
+            let c = *transform * nc.at;
+            let circle = kurbo::Circle::new(c, r);
+            painter.stroke(&circle, &ring, color).draw();
         }
     }
 

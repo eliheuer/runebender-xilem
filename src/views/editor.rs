@@ -737,12 +737,23 @@ fn curve_panel() -> impl WidgetView<AppState> + use<> {
         })
     };
 
+    let toggle_button = |name: &'static str,
+                         toggle: fn(&mut crate::editing::EditSession)| {
+        button(label(name).text_size(12.0), move |state: &mut AppState| {
+            if let Some(session) = &mut state.editor_session {
+                toggle(session);
+            }
+        })
+    };
+
     sized_box(
         flex_col((
             label("Curve").text_size(10.0).color(theme::panel::GLYPH_PREVIEW),
             op_button("Harmonize", |s| s.harmonize_selection()),
             op_button("Balance", |s| s.balance_selection()),
             op_button("Optimize", |s| s.optimize_selection(0.12)),
+            toggle_button("Comb", |s| s.show_comb = !s.show_comb),
+            toggle_button("Dots", |s| s.show_continuity = !s.show_continuity),
         ))
         .cross_axis_alignment(xilem::view::CrossAxisAlignment::Stretch)
         .gap(4.px()),

@@ -28,4 +28,4 @@ pub use runebender_core::editing::{EditType, Selection, UndoState};
 
 pub use background_image::BackgroundImage;
 pub use mouse::{Drag, Modifiers, Mouse, MouseButton, MouseDelegate, MouseEvent};
-pub use session::{EditSession, FontMetrics};
+pub use session::{paths_to_cubics, EditSession, FontMetrics};
