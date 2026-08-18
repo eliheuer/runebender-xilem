@@ -23,9 +23,10 @@ impl AppState {
         // so pick_folder() won't allow selecting them
         let path = rfd::FileDialog::new()
             .set_title("Open Font")
-            .add_filter("Font Sources", &["ufo", "designspace"])
+            .add_filter("Font Sources", &["ufo", "designspace", "glyphs"])
             .add_filter("UFO Font", &["ufo"])
             .add_filter("Designspace", &["designspace"])
+            .add_filter("Glyphs", &["glyphs"])
             .pick_file();
 
         if let Some(path) = path {
@@ -33,12 +34,61 @@ impl AppState {
         }
     }
 
-    /// Load a font from a path (detects UFO vs designspace)
+    /// Load a font from a path (detects UFO, designspace, or .glyphs)
     pub fn load_font(&mut self, path: PathBuf) {
-        if is_designspace_file(&path) {
+        if path.extension().is_some_and(|e| e == "glyphs") {
+            self.load_glyphs(path);
+        } else if is_designspace_file(&path) {
             self.load_designspace(path);
         } else {
             self.load_ufo(path);
+        }
+    }
+
+    /// Convert a .glyphs source (shared converter in runebender-core)
+    /// into a <name>-ufo sibling directory, then open the result.
+    pub fn load_glyphs(&mut self, path: PathBuf) {
+        let converted = std::fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|text| runebender_core::glyphs_import::glyphs_to_ufo_files(&text));
+        let result = match converted {
+            Ok(r) => r,
+            Err(e) => {
+                self.error_message = Some(format!("Failed to import .glyphs: {e}"));
+                return;
+            }
+        };
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "glyphs-import".into());
+        let out_dir = path
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join(format!("{stem}-ufo"));
+        let mut designspace: Option<PathBuf> = None;
+        let mut first_ufo: Option<PathBuf> = None;
+        for file in &result.files {
+            let target = out_dir.join(&file.path);
+            if let Some(parent) = target.parent() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    self.error_message = Some(format!("Import write failed: {e}"));
+                    return;
+                }
+            }
+            if let Err(e) = std::fs::write(&target, &file.text) {
+                self.error_message = Some(format!("Import write failed: {e}"));
+                return;
+            }
+            if file.path.ends_with(".designspace") {
+                designspace = Some(target);
+            } else if first_ufo.is_none() && file.path.ends_with("fontinfo.plist") {
+                first_ufo = target.parent().map(|p| p.to_path_buf());
+            }
+        }
+        match designspace.or(first_ufo) {
+            Some(open) => self.load_font(open),
+            None => self.error_message = Some("Import produced no font".into()),
         }
     }
 
