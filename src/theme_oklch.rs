@@ -219,6 +219,27 @@ pub fn load_theme(theme_id: &str) -> Option<Theme> {
 
 // ---- glyph mark labels ----
 
+/// Set or clear a glyph's mark: writes `public.markColor` (the fixed
+/// palette colour other editors need) and `com.runebender.markLabel`
+/// (what the mark means) together, or removes both.
+pub fn set_glyph_mark(glyph: &mut norad::Glyph, label: Option<&str>) {
+    match label.and_then(ufo_rgba_for_label) {
+        Some(rgba) => {
+            glyph
+                .lib
+                .insert("public.markColor".into(), plist::Value::String(rgba));
+            glyph.lib.insert(
+                MARK_LABEL_KEY.into(),
+                plist::Value::String(label.unwrap().into()),
+            );
+        }
+        None => {
+            glyph.lib.remove("public.markColor");
+            glyph.lib.remove(MARK_LABEL_KEY);
+        }
+    }
+}
+
 /// The mark-label lib key written beside `public.markColor` (see
 /// runebender-web's markColors.ts for the rationale: the colour is
 /// what other editors need, the label is what the mark means).
@@ -346,6 +367,24 @@ mod tests {
         assert_eq!(ufo_rgba_for_label("yellow").as_deref(), Some("0.91,0.79,0.27,1"));
         assert_eq!(ufo_rgba_for_label("green").as_deref(), Some("0.31,0.72,0.45,1"));
         assert_eq!(ufo_rgba_for_label("mauve"), None);
+    }
+
+    #[test]
+    fn set_mark_writes_both_keys_and_clears_both() {
+        let dark = load_theme("dark").expect("dark theme");
+        let mut glyph = norad::Glyph::new("A");
+        set_glyph_mark(&mut glyph, Some("green"));
+        assert_eq!(
+            glyph.lib.get("public.markColor"),
+            Some(&plist::Value::String("0.31,0.72,0.45,1".into()))
+        );
+        assert_eq!(mark_label_for_glyph(&glyph, &dark).as_deref(), Some("green"));
+        set_glyph_mark(&mut glyph, None);
+        assert!(glyph.lib.get("public.markColor").is_none());
+        assert!(glyph.lib.get(MARK_LABEL_KEY).is_none());
+        // An unknown label clears rather than writing garbage.
+        set_glyph_mark(&mut glyph, Some("chartreuse"));
+        assert!(glyph.lib.get(MARK_LABEL_KEY).is_none());
     }
 
     #[test]
