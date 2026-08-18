@@ -12,6 +12,7 @@
 //! creation and shaping, `hit_testing` handles point/segment hit tests, and
 //! `path_editing` handles point movement, deletion, and contour operations.
 
+mod curve_ops;
 mod hit_testing;
 mod path_editing;
 mod text_buffer;

@@ -145,6 +145,15 @@ pub fn editor_tab(state: &mut AppState) -> impl WidgetView<AppState> + use<> {
         })
         .translate((-UI_PANEL_MARGIN, 0.0))
         .alignment(ChildAlignment::SelfAligned(UnitPoint::new(1.0, 0.5))),
+        // Left side: curve-quality panel (harmonize / balance /
+        // optimize, shared geometry in runebender-core)
+        transformed(if session.panels_visible {
+            Either::A(curve_panel())
+        } else {
+            Either::B(sized_box(label("")).width(0.px()).height(0.px()))
+        })
+        .translate((UI_PANEL_MARGIN, 0.0))
+        .alignment(ChildAlignment::SelfAligned(UnitPoint::new(0.0, 0.5))),
     ));
 
     // Top row (bento-style, like runebender-web's editor mode):
@@ -708,6 +717,41 @@ fn append_component_path(
 // ===== Transform Panel Dispatch =====
 
 /// Apply a transform action from the transform panel
+/// Curve-quality panel: harmonize (G2 joins), Tunni balance, and the
+/// contour optimizer, applied to the selection or (empty selection)
+/// the whole glyph. Mirrors runebender-web's CurvePanel actions; the
+/// curvature comb and continuity dots come later.
+fn curve_panel() -> impl WidgetView<AppState> + use<> {
+    use xilem::style::Style as _;
+    use xilem::view::button;
+
+    let op_button = |name: &'static str,
+                     apply: fn(&mut crate::editing::EditSession) -> bool| {
+        button(label(name).text_size(12.0), move |state: &mut AppState| {
+            let Some(session) = &mut state.editor_session else {
+                return;
+            };
+            if apply(session) {
+                session.sync_to_workspace();
+            }
+        })
+    };
+
+    sized_box(
+        flex_col((
+            label("Curve").text_size(10.0).color(theme::panel::GLYPH_PREVIEW),
+            op_button("Harmonize", |s| s.harmonize_selection()),
+            op_button("Balance", |s| s.balance_selection()),
+            op_button("Optimize", |s| s.optimize_selection(0.12)),
+        ))
+        .cross_axis_alignment(xilem::view::CrossAxisAlignment::Stretch)
+        .gap(4.px()),
+    )
+    .padding(6.0.px())
+    .background_color(theme::panel::BACKGROUND)
+    .corner_radius(8.0.px())
+}
+
 fn apply_transform(
     state: &mut AppState,
     action: TransformAction,
