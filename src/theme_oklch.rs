@@ -404,3 +404,71 @@ mod tests {
         assert_eq!(mark_label_for_glyph(&glyph, &dark).as_deref(), Some("blue"));
     }
 }
+
+// ---- toolbar icons ----
+
+/// One toolbar icon: outline geometry from the shared icon UFO
+/// (assets/runebender-icons.ufo, via the web generator's JSON).
+pub struct ToolbarIcon {
+    /// Tight bounds of the outline in Y-down SVG space.
+    pub view_box: kurbo::Rect,
+    pub path: kurbo::BezPath,
+    /// Stroke instead of fill (open path icons).
+    pub stroke: bool,
+}
+
+/// The shared toolbar icon set, keyed by UFO glyph name ("select",
+/// "pen", "knife", "flip-h", …). Parsed once.
+pub fn toolbar_icons() -> &'static HashMap<String, ToolbarIcon> {
+    use std::sync::OnceLock;
+    static ICONS: OnceLock<HashMap<String, ToolbarIcon>> = OnceLock::new();
+    ICONS.get_or_init(|| {
+        #[derive(Deserialize)]
+        struct Raw {
+            #[serde(rename = "viewBox")]
+            view_box: String,
+            d: String,
+            mode: Option<String>,
+        }
+        let raw: HashMap<String, Raw> =
+            serde_json::from_str(include_str!("../themes/toolbar-icons.json"))
+                .unwrap_or_default();
+        raw.into_iter()
+            .filter_map(|(name, icon)| {
+                let numbers: Vec<f64> = icon
+                    .view_box
+                    .split_whitespace()
+                    .filter_map(|v| v.parse().ok())
+                    .collect();
+                let [x, y, w, h] = numbers.as_slice() else {
+                    return None;
+                };
+                let path = kurbo::BezPath::from_svg(&icon.d).ok()?;
+                Some((
+                    name,
+                    ToolbarIcon {
+                        view_box: kurbo::Rect::new(*x, *y, x + w, y + h),
+                        path,
+                        stroke: icon.mode.as_deref() == Some("stroke"),
+                    },
+                ))
+            })
+            .collect()
+    })
+}
+
+#[cfg(test)]
+mod icon_tests {
+    use super::*;
+
+    #[test]
+    fn parses_all_toolbar_icons() {
+        let icons = toolbar_icons();
+        assert_eq!(icons.len(), 26);
+        for name in ["select", "pen", "knife", "measure", "shapes", "flip-h", "rot-cw", "union", "save"] {
+            let icon = icons.get(name).unwrap_or_else(|| panic!("missing {name}"));
+            assert!(!icon.path.elements().is_empty());
+            assert!(icon.view_box.width() > 0.0 && icon.view_box.height() > 0.0);
+        }
+    }
+}
