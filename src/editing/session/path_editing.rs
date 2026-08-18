@@ -799,6 +799,7 @@ impl EditSession {
             left_group: self.glyph.left_group.clone(),
             right_group: self.glyph.right_group.clone(),
             mark_color: self.glyph.mark_color.clone(),
+            mark_label: self.glyph.mark_label.clone(),
         }
     }
 

@@ -390,6 +390,7 @@ mod tests {
             left_group: None,
             right_group: None,
             mark_color: None,
+            mark_label: None,
         }
     }
 

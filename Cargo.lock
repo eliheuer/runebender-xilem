@@ -4070,7 +4070,10 @@ dependencies = [
  "kurbo 0.13.1",
  "linesweeper",
  "norad 0.18.4",
+ "plist",
+ "quick-xml 0.38.4",
  "serde",
+ "serde_json",
  "unicode-general-category",
 ]
 

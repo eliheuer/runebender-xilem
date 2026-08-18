@@ -339,7 +339,9 @@ impl AppState {
         let mut workspace = write_workspace(&workspace_arc);
         for name in &names {
             if let Some(glyph) = workspace.get_glyph_mut(name) {
-                glyph.mark_color = color_index.map(|i| theme::mark::RGBA_STRINGS[i].to_string());
+                glyph.mark_color = color_index.map(theme::mark::rgba_string);
+                glyph.mark_label =
+                    color_index.map(|i| theme::mark::label(i).to_string());
             }
         }
     }

@@ -403,35 +403,49 @@ pub mod selection {
     pub const RECT_STROKE: Color = super::SELECTION_RECT_STROKE;
 }
 
-/// Mark color palette for glyph workflow organization
+/// Mark color palette for glyph workflow organization.
+///
+/// Colors and UFO strings come from runebender-core's shared OKLCH
+/// theme, so the palette matches runebender-web and runebender-gpui.
 pub mod mark {
+    use std::sync::LazyLock;
+
+    use runebender_core::theme_oklch;
+
     use super::Color;
 
-    /// 7 preset mark colors
-    pub const COLORS: [Color; 7] = [
-        super::MARK_RED,
-        super::MARK_ORANGE,
-        super::MARK_YELLOW,
-        super::MARK_GREEN,
-        super::MARK_BLUE,
-        super::MARK_PURPLE,
-        super::MARK_PINK,
-    ];
-
-    /// RGBA strings for UFO storage (matching COLORS array order)
-    /// Format: "R,G,B,A" with 0–1 floats, one decimal place for clarity.
-    pub const RGBA_STRINGS: [&str; 7] = [
-        "1,0.3,0.3,1",       // red
-        "1,0.6,0.2,1",       // orange
-        "1,0.9,0.2,1",       // yellow
-        "0.3,0.7,0.3,1",     // green
-        "0.1,0.3,0.8,1",     // blue
-        "0.6,0.3,0.9,1",     // purple
-        "0.9,0.3,0.7,1",     // pink
-    ];
+    static THEME: LazyLock<theme_oklch::Theme> = LazyLock::new(|| {
+        theme_oklch::load_theme("dark").expect("dark theme in shared token file")
+    });
 
     /// Number of colors in the palette
     pub const COUNT: usize = 7;
+
+    /// Palette label for an index.
+    pub fn label(index: usize) -> &'static str {
+        ["red", "orange", "yellow", "green", "blue", "purple", "pink"][index]
+    }
+
+    /// Display color for a palette index.
+    pub fn color(index: usize) -> Color {
+        let c = THEME.mark(label(index)).expect("palette label in theme");
+        Color::from_rgb8(c.r, c.g, c.b)
+    }
+
+    /// The fixed `public.markColor` string written for a palette index.
+    pub fn rgba_string(index: usize) -> String {
+        theme_oklch::ufo_rgba_for_label(label(index)).expect("palette label")
+    }
+
+    /// Palette index for a stored mark: the label when the glyph has
+    /// one, else its `public.markColor` snapped to the nearest hue.
+    pub fn index_for(mark_label: Option<&str>, rgba: Option<&str>) -> Option<usize> {
+        let name = match mark_label {
+            Some(l) if THEME.mark(l).is_some() => l.to_string(),
+            _ => theme_oklch::label_for_rgba(rgba?, &THEME)?,
+        };
+        (0..COUNT).find(|&i| label(i) == name)
+    }
 
     /// Color for selected mark ring indicator
     pub const SELECTED_RING: Color = super::MARK_SELECTED_RING;
