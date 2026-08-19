@@ -21,6 +21,7 @@ pub mod mark_color;
 pub mod model;
 pub mod knife;
 pub mod path;
+pub mod segment_ops;
 pub mod shape;
 pub mod shaping;
 pub mod text;

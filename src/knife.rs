@@ -17,7 +17,7 @@ use crate::path::{
 
 const MAX_KNIFE_RECURSE: usize = 16;
 const KNIFE_HIT_CLUSTER_TOLERANCE: f64 = 1e-4;
-const EPSILON: f64 = 1e-9;
+
 
 #[derive(Clone, Copy)]
 struct Hit {
