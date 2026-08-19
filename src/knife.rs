@@ -1022,6 +1022,7 @@ fn rounded_icon_counter_path() -> Path {
     ];
     Path::Cubic(CubicPath::new(PathPoints::from_vec(points), true))
 }
+    #[test]
     fn knife_splits_closed_rectangle_into_two_paths() {
         let paths = vec![rect_path(Rect::new(0.0, 0.0, 100.0, 100.0))];
         let sliced = slice_paths(
@@ -1303,6 +1304,30 @@ fn workspace_to_norad_contour(contour: &crate::model::workspace::Contour) -> nor
 #[cfg(test)]
 mod norad_tests {
     use super::*;
+
+#[test]
+fn knife_cuts_fixture_zero_into_four_contours() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo"
+    );
+    let font = norad::Font::load(path).expect("fixture UFO loads");
+    let mut glyph = font.get_glyph("zero").expect("zero exists").clone();
+    assert_eq!(glyph.contours.len(), 2);
+    let hits = knife_hit_points(
+        &glyph,
+        Point::new(340.0, -200.0),
+        Point::new(340.0, 900.0),
+    );
+    assert_eq!(hits.len(), 4, "vertical line should cross zero 4 times");
+    assert!(knife_cut_glyph(
+        &mut glyph,
+        Point::new(340.0, -200.0),
+        Point::new(340.0, 900.0)
+    ));
+    assert_eq!(glyph.contours.len(), 4);
+}
+
 
     #[test]
     fn knife_cuts_a_norad_rectangle_in_two() {
