@@ -87,6 +87,13 @@ fn append_contour(path: &mut BezPath, contour: &Contour) {
     if points.is_empty() {
         return;
     }
+    // Hyperbezier contours carry only on-curve points; their curves
+    // come from the spline solver, not the point list.
+    if crate::model::workspace::norad_contour_is_hyper(contour) {
+        let ws = crate::model::workspace::Contour::from_norad(contour);
+        crate::path::Path::from_contour(&ws).append_to_bezpath(path);
+        return;
+    }
     let Some(start_idx) = points.iter().position(is_on_curve) else {
         // All-off-curve (TrueType implied on-curve) contour: skip for now.
         return;

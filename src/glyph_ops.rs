@@ -321,6 +321,58 @@ pub fn start_contour(glyph: &mut Glyph, x: f64, y: f64) -> usize {
     glyph.contours.len() - 1
 }
 
+// ---- hyperbezier pen ----
+
+/// Start a hyperbezier contour (identifier convention: the contour's
+/// identifier contains "hyperbezier"; points are all on-curve, with
+/// curve = smooth and line = corner; the spline solver draws it).
+pub fn start_hyper_contour(glyph: &mut Glyph, x: f64, y: f64) -> usize {
+    let point = ContourPoint::new(x, y, PointType::Move, false, None, None);
+    glyph.contours.push(Contour::new(
+        vec![point],
+        Some(norad::Identifier::new("hyperbezier").expect("static id")),
+    ));
+    glyph.contours.len() - 1
+}
+
+/// Append an on-curve point to an open hyperbezier contour.
+pub fn append_hyper_point(glyph: &mut Glyph, contour: usize, x: f64, y: f64, corner: bool) {
+    let Some(c) = glyph.contours.get_mut(contour) else {
+        return;
+    };
+    let typ = if corner {
+        PointType::Line
+    } else {
+        PointType::Curve
+    };
+    c.points
+        .push(ContourPoint::new(x, y, typ, !corner, None, None));
+}
+
+/// Close an open hyperbezier contour: the Move start becomes a
+/// smooth hyper point.
+pub fn close_hyper_contour(glyph: &mut Glyph, contour: usize) {
+    let Some(c) = glyph.contours.get_mut(contour) else {
+        return;
+    };
+    let Some(first) = c.points.first_mut() else {
+        return;
+    };
+    if first.typ == PointType::Move {
+        first.typ = PointType::Curve;
+        first.smooth = true;
+    }
+}
+
+/// Whether a glyph contour is a hyperbezier.
+pub fn contour_is_hyper(glyph: &Glyph, contour: usize) -> bool {
+    glyph
+        .contours
+        .get(contour)
+        .map(crate::model::workspace::norad_contour_is_hyper)
+        .unwrap_or(false)
+}
+
 /// Append a segment to an open contour (pen tool). Pass the two
 /// off-curve controls for a curve segment, or none for a line.
 pub fn append_segment(
@@ -872,6 +924,38 @@ mod tests {
     fn signed_area(path: &BezPath) -> f64 {
         use kurbo::Shape;
         path.area()
+    }
+
+    #[test]
+    fn hyper_pen_builds_closed_solver_contour() {
+        let mut g = bare_glyph();
+        let c = start_hyper_contour(&mut g, 0.0, 0.0);
+        append_hyper_point(&mut g, c, 200.0, 0.0, false);
+        append_hyper_point(&mut g, c, 200.0, 200.0, true);
+        append_hyper_point(&mut g, c, 0.0, 200.0, false);
+        close_hyper_contour(&mut g, c);
+
+        assert!(contour_is_hyper(&g, c));
+        assert!(g.contours[c].is_closed());
+        assert_eq!(g.contours[c].points.len(), 4);
+        // Corner point stored as line, smooth points as curve.
+        assert_eq!(g.contours[c].points[2].typ, PointType::Line);
+        assert_eq!(g.contours[c].points[1].typ, PointType::Curve);
+
+        // The solver renders real curves: the bezpath must contain
+        // curve elements even though the contour has no off-curves.
+        let path = crate::glyph_paths::contours_to_bezpath(&g);
+        let curves = path
+            .elements()
+            .iter()
+            .filter(|e| matches!(e, kurbo::PathEl::CurveTo(..)))
+            .count();
+        assert!(curves >= 2, "solver should emit curves, got {curves}");
+
+        // Round-trips through the workspace model keep the identifier.
+        let ws = crate::model::workspace::Contour::from_norad(&g.contours[c]);
+        let back = ws.to_norad();
+        assert!(crate::model::workspace::norad_contour_is_hyper(&back));
     }
 
     #[test]

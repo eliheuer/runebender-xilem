@@ -1231,7 +1231,7 @@ pub fn knife_cut_glyph(glyph: &mut norad::Glyph, p0: Point, p1: Point) -> bool {
     let paths: Vec<Path> = glyph
         .contours
         .iter()
-        .map(|c| Path::from_contour(&norad_to_workspace_contour(c)))
+        .map(|c| Path::from_contour(&crate::model::workspace::Contour::from_norad(c)))
         .collect();
     if paths.is_empty() {
         return false;
@@ -1243,62 +1243,9 @@ pub fn knife_cut_glyph(glyph: &mut norad::Glyph, p0: Point, p1: Point) -> bool {
     }
     glyph.contours = sliced
         .iter()
-        .map(|p| workspace_to_norad_contour(&p.to_contour()))
+        .map(|p| p.to_contour().to_norad())
         .collect();
     true
-}
-
-fn norad_to_workspace_contour(contour: &norad::Contour) -> crate::model::workspace::Contour {
-    use crate::model::workspace::{Contour, ContourPoint, PointType as WsPointType};
-    Contour {
-        points: contour
-            .points
-            .iter()
-            .map(|p| ContourPoint {
-                x: p.x,
-                y: p.y,
-                point_type: match p.typ {
-                    norad::PointType::Move => WsPointType::Move,
-                    norad::PointType::Line => WsPointType::Line,
-                    norad::PointType::OffCurve => WsPointType::OffCurve,
-                    norad::PointType::Curve => WsPointType::Curve,
-                    norad::PointType::QCurve => WsPointType::QCurve,
-                },
-                smooth: p.smooth,
-            })
-            .collect(),
-    }
-}
-
-fn workspace_to_norad_contour(contour: &crate::model::workspace::Contour) -> norad::Contour {
-    use crate::model::workspace::PointType as WsPointType;
-    let points = contour
-        .points
-        .iter()
-        .map(|p| {
-            norad::ContourPoint::new(
-                p.x,
-                p.y,
-                match p.point_type {
-                    WsPointType::Move => norad::PointType::Move,
-                    WsPointType::Line => norad::PointType::Line,
-                    WsPointType::OffCurve => norad::PointType::OffCurve,
-                    WsPointType::Curve => norad::PointType::Curve,
-                    WsPointType::QCurve => norad::PointType::QCurve,
-                    // Hyperbezier points only reach norad after a cut,
-                    // which converts them to explicit cubics; map any
-                    // stragglers to plain curve points.
-                    WsPointType::Hyper | WsPointType::HyperCorner => {
-                        norad::PointType::Curve
-                    }
-                },
-                p.smooth,
-                None,
-                None,
-            )
-        })
-        .collect();
-    norad::Contour::new(points, None)
 }
 
 #[cfg(test)]
@@ -1372,7 +1319,7 @@ pub fn knife_hit_points(glyph: &norad::Glyph, p0: Point, p1: Point) -> Vec<Point
     let line = Line::new(p0, p1);
     let mut ts: Vec<f64> = Vec::new();
     for contour in &glyph.contours {
-        let path = Path::from_contour(&norad_to_workspace_contour(contour));
+        let path = Path::from_contour(&crate::model::workspace::Contour::from_norad(contour));
         let cubic = match &path {
             Path::Cubic(c) => c.clone(),
             Path::Hyper(h) => h.to_cubic(),

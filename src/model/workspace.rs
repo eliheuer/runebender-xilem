@@ -197,3 +197,81 @@ impl Default for Workspace {
         Self::new(String::new(), String::new())
     }
 }
+
+// ============================================================================
+// NORAD CONVERSION
+// ============================================================================
+
+/// Whether a norad contour is a hyperbezier (identifier convention
+/// shared by all Runebender editors).
+pub fn norad_contour_is_hyper(contour: &norad::Contour) -> bool {
+    contour
+        .identifier()
+        .map(|id| id.as_ref().contains("hyper"))
+        .unwrap_or(false)
+}
+
+impl Contour {
+    /// Convert from a norad contour. Hyperbezier contours (identifier
+    /// contains "hyper") map curve/move points to smooth hyper points
+    /// and line points to hyper corners.
+    pub fn from_norad(contour: &norad::Contour) -> Self {
+        let hyper = norad_contour_is_hyper(contour);
+        Contour {
+            points: contour
+                .points
+                .iter()
+                .map(|p| ContourPoint {
+                    x: p.x,
+                    y: p.y,
+                    smooth: p.smooth,
+                    point_type: match (hyper, p.typ) {
+                        (true, norad::PointType::Curve | norad::PointType::Move) => {
+                            PointType::Hyper
+                        }
+                        (true, norad::PointType::Line) => PointType::HyperCorner,
+                        (_, norad::PointType::Move) => PointType::Move,
+                        (_, norad::PointType::Line) => PointType::Line,
+                        (_, norad::PointType::OffCurve) => PointType::OffCurve,
+                        (_, norad::PointType::Curve) => PointType::Curve,
+                        (_, norad::PointType::QCurve) => PointType::QCurve,
+                    },
+                })
+                .collect(),
+        }
+    }
+
+    /// Convert back to a norad contour, setting the hyperbezier
+    /// identifier when the contour carries hyper points.
+    pub fn to_norad(&self) -> norad::Contour {
+        let hyper = self
+            .points
+            .iter()
+            .any(|p| matches!(p.point_type, PointType::Hyper | PointType::HyperCorner));
+        let points = self
+            .points
+            .iter()
+            .map(|p| {
+                norad::ContourPoint::new(
+                    p.x,
+                    p.y,
+                    match p.point_type {
+                        PointType::Move => norad::PointType::Move,
+                        PointType::Line => norad::PointType::Line,
+                        PointType::OffCurve => norad::PointType::OffCurve,
+                        PointType::Curve => norad::PointType::Curve,
+                        PointType::QCurve => norad::PointType::QCurve,
+                        PointType::Hyper => norad::PointType::Curve,
+                        PointType::HyperCorner => norad::PointType::Line,
+                    },
+                    p.smooth,
+                    None,
+                    None,
+                )
+            })
+            .collect();
+        let identifier =
+            hyper.then(|| norad::Identifier::new("hyperbezier").expect("static id"));
+        norad::Contour::new(points, identifier)
+    }
+}
