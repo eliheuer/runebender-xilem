@@ -204,6 +204,12 @@ impl TextGlyphInventory {
 }
 
 impl TextKerningModel {
+    /// Every stored pair (first key, second key, value) — group names
+    /// included — for hosts syncing buffer kerning back into a font.
+    pub fn pairs(&self) -> &HashMap<String, HashMap<String, f64>> {
+        &self.kerning
+    }
+
     /// Build the kerning model from a norad font's groups and
     /// kerning.plist (native hosts; the web host sends JSON).
     pub fn from_font(font: &norad::Font) -> Self {
@@ -1866,6 +1872,45 @@ impl TextBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Typing after a seeded active sort must lay out to the right
+    /// of it, active index stable (regression for a GPUI overlap).
+    #[test]
+    fn typing_after_active_sort_lays_out_beside_it() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo"
+        );
+        let font = norad::Font::load(path).expect("fixture UFO loads");
+        let mut buffer = TextBuffer::new();
+        buffer.set_glyph_inventory(TextGlyphInventory::from_font(&font));
+        buffer.set_kerning_model(TextKerningModel::from_font(&font));
+
+        let one = font.get_glyph("one").unwrap();
+        buffer.insert_glyph("one", Some('1'), one.width);
+        buffer.activate_sort(0);
+        assert_eq!(buffer.cursor(), 1);
+
+        assert!(buffer.insert_character('a'));
+        assert!(buffer.insert_character('s'));
+
+        assert_eq!(buffer.active_sort(), Some(0), "active sort must stay");
+        let layout = buffer.layout(1200.0);
+        assert_eq!(layout.items.len(), 3);
+        let one_item = layout.items.iter().find(|i| i.index == 0).unwrap();
+        let a_item = layout.items.iter().find(|i| i.index == 1).unwrap();
+        let s_item = layout.items.iter().find(|i| i.index == 2).unwrap();
+        assert_eq!(one_item.x, 0.0);
+        let kern_one_a = crate::glyph_ops::kern_value(&font, "one", "a");
+        assert!(
+            (a_item.x - (one.width + kern_one_a)).abs() < 1e-6,
+            "a at {} expected {}",
+            a_item.x,
+            one.width + kern_one_a
+        );
+        assert!(a_item.x >= one.width - 100.0, "a must not overlap one");
+        assert!(s_item.x > a_item.x);
+    }
 
     /// The native constructors must agree with the norad-level
     /// kerning resolution the editors already use (glyph_ops).
