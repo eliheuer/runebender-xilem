@@ -25,6 +25,12 @@ serde_json = "1.0.151"
 # Same crate as runebender-xilem, just hoisted here so both editors
 # share the categorization.
 unicode-general-category = "0.6"
+# The text engine (text.rs): bidi runs, and real OpenType shaping of a
+# minimal font compiled on the fly from the UFO's own features.fea.
+unicode-bidi = { version = "0.3.18", default-features = false, features = ["hardcoded-data"] }
+fea-rs = "0.22"
+harfrust = "0.5"
+write-fonts = "0.44"
 
 # 2D geometry for the shared curve/measure modules. All consumers
 # (web, xilem, gpui) are on kurbo 0.13 now, so the old "kurbo-free

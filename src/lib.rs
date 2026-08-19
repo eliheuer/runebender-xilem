@@ -19,7 +19,9 @@ pub mod var_model;
 pub mod editing;
 pub mod mark_color;
 pub mod model;
+pub mod shape;
 pub mod shaping;
+pub mod text;
 pub mod theme;
 pub mod theme_oklch;
 
