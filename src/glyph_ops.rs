@@ -548,6 +548,108 @@ pub fn remove_overlap(glyph: &Glyph) -> Option<Vec<Contour>> {
     (!new_contours.is_empty()).then_some(new_contours)
 }
 
+/// Apply a boolean operation across the glyph's contours, like the
+/// web editor: union merges everything; subtract/intersect/exclude
+/// use the first contour as the left operand and the rest combined
+/// as the right. Original smooth flags survive on points that keep
+/// their positions.
+pub fn boolean_contours(glyph: &Glyph, op: linesweeper::BinaryOp) -> Option<Vec<Contour>> {
+    if glyph.contours.len() < 2 {
+        return None;
+    }
+    let paths: Vec<BezPath> = glyph
+        .contours
+        .iter()
+        .map(glyph_paths::contour_to_bezpath)
+        .collect();
+    let (set_a, set_b) = match op {
+        linesweeper::BinaryOp::Union => {
+            let mut combined = BezPath::new();
+            for path in &paths {
+                combined.extend(path.elements().iter().copied());
+            }
+            (combined, BezPath::new())
+        }
+        _ => {
+            let mut iter = paths.into_iter();
+            let set_a = iter.next()?;
+            let mut rest = BezPath::new();
+            for path in iter {
+                rest.extend(path.elements().iter().copied());
+            }
+            (set_a, rest)
+        }
+    };
+    let result =
+        linesweeper::binary_op(&set_a, &set_b, linesweeper::FillRule::NonZero, op).ok()?;
+    let smooth_at: HashMap<(i64, i64), bool> = glyph
+        .contours
+        .iter()
+        .flat_map(|c| c.points.iter())
+        .filter(|p| p.typ != PointType::OffCurve)
+        .map(|p| ((p.x.round() as i64, p.y.round() as i64), p.smooth))
+        .collect();
+    let mut contours: Vec<Contour> = Vec::new();
+    for contour in result.contours() {
+        if let Some(c) = bezpath_to_contour(&contour.path, &smooth_at) {
+            contours.push(c);
+        }
+    }
+    (!contours.is_empty()).then_some(contours)
+}
+
+/// Make the given on-curve point a closed contour's start point (the
+/// contour context menu's "set start point").
+pub fn set_contour_start(glyph: &mut Glyph, contour: usize, point: usize) -> bool {
+    let Some(c) = glyph.contours.get_mut(contour) else {
+        return false;
+    };
+    let closed = c.points.first().is_none_or(|p| p.typ != PointType::Move);
+    if !closed || point == 0 || point >= c.points.len() {
+        return false;
+    }
+    if c.points[point].typ == PointType::OffCurve {
+        return false;
+    }
+    c.points.rotate_left(point);
+    true
+}
+
+/// The topmost component whose resolved outline contains the point.
+pub fn component_at(font: &Font, glyph: &Glyph, pt: kurbo::Point) -> Option<usize> {
+    use kurbo::Shape as _;
+    for (i, component) in glyph.components.iter().enumerate().rev() {
+        let Some(base) = font.get_glyph(&component.base) else {
+            continue;
+        };
+        let transform = glyph_paths::component_affine(&component.transform);
+        let path = transform * &glyph_paths::glyph_to_bezpath(base, font);
+        if path.contains(pt) {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// Move a component by adjusting its transform offset.
+pub fn translate_component(glyph: &mut Glyph, index: usize, dx: f64, dy: f64) -> bool {
+    let Some(component) = glyph.components.get_mut(index) else {
+        return false;
+    };
+    component.transform.x_offset += dx;
+    component.transform.y_offset += dy;
+    true
+}
+
+/// Remove a component.
+pub fn delete_component(glyph: &mut Glyph, index: usize) -> bool {
+    if index >= glyph.components.len() {
+        return false;
+    }
+    glyph.components.remove(index);
+    true
+}
+
 /// Convert one closed BezPath contour into a norad contour. Points
 /// found in `smooth_at` keep their smooth flag.
 pub fn bezpath_to_contour(
@@ -924,6 +1026,88 @@ mod tests {
     fn signed_area(path: &BezPath) -> f64 {
         use kurbo::Shape;
         path.area()
+    }
+
+    #[test]
+    fn boolean_subtract_cuts_a_hole_disjoint_union_merges() {
+        let mut g = bare_glyph();
+        // Outer square and a smaller inner square.
+        for rect in [
+            kurbo::Rect::new(0.0, 0.0, 100.0, 100.0),
+            kurbo::Rect::new(25.0, 25.0, 75.0, 75.0),
+        ] {
+            add_shape_contour(&mut g, rect, false);
+        }
+        let result =
+            boolean_contours(&g, linesweeper::BinaryOp::Difference).expect("subtract");
+        // Outer minus inner: two contours (ring).
+        assert_eq!(result.len(), 2);
+
+        let mut g2 = bare_glyph();
+        for rect in [
+            kurbo::Rect::new(0.0, 0.0, 100.0, 100.0),
+            kurbo::Rect::new(50.0, 0.0, 150.0, 100.0),
+        ] {
+            add_shape_contour(&mut g2, rect, false);
+        }
+        let merged =
+            boolean_contours(&g2, linesweeper::BinaryOp::Union).expect("union");
+        assert_eq!(merged.len(), 1);
+    }
+
+    #[test]
+    fn set_contour_start_rotates_closed_contours() {
+        let mut g = bare_glyph();
+        add_shape_contour(&mut g, kurbo::Rect::new(0.0, 0.0, 100.0, 100.0), false);
+        let first_before = (g.contours[0].points[0].x, g.contours[0].points[0].y);
+        let target = (g.contours[0].points[2].x, g.contours[0].points[2].y);
+        assert!(set_contour_start(&mut g, 0, 2));
+        assert_eq!(
+            (g.contours[0].points[0].x, g.contours[0].points[0].y),
+            target
+        );
+        // Same point count, old start still present.
+        assert_eq!(g.contours[0].points.len(), 4);
+        assert!(g.contours[0]
+            .points
+            .iter()
+            .any(|p| (p.x, p.y) == first_before));
+        // Index 0 refuses (already the start), off-curves refuse.
+        assert!(!set_contour_start(&mut g, 0, 0));
+    }
+
+    #[test]
+    fn components_hit_translate_delete() {
+        let mut font = Font::new();
+        let mut base = Glyph::new("base");
+        add_shape_contour(&mut base, kurbo::Rect::new(0.0, 0.0, 100.0, 100.0), false);
+        font.default_layer_mut().insert_glyph(base);
+
+        let mut composite = Glyph::new("comp");
+        composite.components.push(norad::Component::new(
+            norad::Name::new("base").unwrap(),
+            norad::AffineTransform {
+                x_scale: 1.0,
+                xy_scale: 0.0,
+                yx_scale: 0.0,
+                y_scale: 1.0,
+                x_offset: 200.0,
+                y_offset: 0.0,
+            },
+            None,
+        ));
+        assert_eq!(
+            component_at(&font, &composite, kurbo::Point::new(250.0, 50.0)),
+            Some(0)
+        );
+        assert_eq!(
+            component_at(&font, &composite, kurbo::Point::new(50.0, 50.0)),
+            None
+        );
+        assert!(translate_component(&mut composite, 0, 10.0, 5.0));
+        assert_eq!(composite.components[0].transform.x_offset, 210.0);
+        assert!(delete_component(&mut composite, 0));
+        assert!(composite.components.is_empty());
     }
 
     #[test]
