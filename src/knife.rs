@@ -1340,3 +1340,33 @@ mod norad_tests {
         }
     }
 }
+
+/// Where the knife line crosses a glyph's contours, for the drag
+/// preview. Points come back in design space, ordered along the line.
+pub fn knife_hit_points(glyph: &norad::Glyph, p0: Point, p1: Point) -> Vec<Point> {
+    let line = Line::new(p0, p1);
+    let mut ts: Vec<f64> = Vec::new();
+    for contour in &glyph.contours {
+        let path = Path::from_contour(&norad_to_workspace_contour(contour));
+        let cubic = match &path {
+            Path::Cubic(c) => c.clone(),
+            Path::Hyper(h) => h.to_cubic(),
+            Path::Quadratic(q) => {
+                for segment in q.iter_segments() {
+                    for (_, line_t) in intersect_line_segment(line, &segment.segment) {
+                        ts.push(line_t);
+                    }
+                }
+                continue;
+            }
+        };
+        for segment in cubic.iter_segments() {
+            for (_, line_t) in intersect_line_segment(line, &segment.segment) {
+                ts.push(line_t);
+            }
+        }
+    }
+    ts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    ts.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+    ts.into_iter().map(|t| line.eval(t)).collect()
+}
