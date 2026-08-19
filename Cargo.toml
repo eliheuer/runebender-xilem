@@ -31,6 +31,10 @@ unicode-bidi = { version = "0.3.18", default-features = false, features = ["hard
 fea-rs = "0.22"
 harfrust = "0.5"
 write-fonts = "0.44"
+# The hyperbezier path type. spline solves on kurbo 0.9; both kurbo
+# versions live side by side and hyper.rs converts between them.
+kurbo_09 = { package = "kurbo", version = "0.9.5" }
+spline = { git = "https://github.com/linebender/spline" }
 
 # 2D geometry for the shared curve/measure modules. All consumers
 # (web, xilem, gpui) are on kurbo 0.13 now, so the old "kurbo-free

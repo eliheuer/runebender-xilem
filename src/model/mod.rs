@@ -5,6 +5,7 @@
 pub mod entity_id;
 pub mod glyph_metadata;
 pub mod kerning;
+pub mod workspace;
 
 pub use entity_id::EntityId;
 pub use glyph_metadata::GlyphMetadata;
