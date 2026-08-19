@@ -174,6 +174,78 @@ impl TextGlyphInventory {
     fn has_glyph(&self, name: &str) -> bool {
         self.widths.contains_key(name) || self.outlines.contains_key(name)
     }
+
+    /// Build the inventory straight from a norad font (native hosts;
+    /// the web host builds the same thing as JSON). Outlines stay
+    /// empty: native hosts draw from their live paths, and shaping
+    /// never looks at outlines.
+    pub fn from_font(font: &norad::Font) -> Self {
+        let mut unicode = HashMap::new();
+        let mut widths = HashMap::new();
+        for glyph in font.default_layer().iter() {
+            let name = glyph.name().to_string();
+            if let Some(c) = glyph.codepoints.iter().next() {
+                unicode.entry(c as u32).or_insert_with(|| name.clone());
+            }
+            widths.insert(name, glyph.width);
+        }
+        Self {
+            unicode,
+            widths,
+            outlines: HashMap::new(),
+            features: font.features.clone(),
+            units_per_em: font
+                .font_info
+                .units_per_em
+                .map(|v| v.as_f64())
+                .unwrap_or_else(default_units_per_em),
+        }
+    }
+}
+
+impl TextKerningModel {
+    /// Build the kerning model from a norad font's groups and
+    /// kerning.plist (native hosts; the web host sends JSON).
+    pub fn from_font(font: &norad::Font) -> Self {
+        let mut groups = HashMap::new();
+        let mut left_groups = HashMap::new();
+        let mut right_groups = HashMap::new();
+        for (name, members) in font.groups.iter() {
+            let members: Vec<String> =
+                members.iter().map(|m| m.to_string()).collect();
+            // UFO names groups by pair position: kern1 is the first
+            // glyph's right edge, kern2 the second glyph's left edge.
+            if name.starts_with("public.kern1.") {
+                for member in &members {
+                    right_groups.insert(member.clone(), name.to_string());
+                }
+            } else if name.starts_with("public.kern2.") {
+                for member in &members {
+                    left_groups.insert(member.clone(), name.to_string());
+                }
+            }
+            groups.insert(name.to_string(), members);
+        }
+        let kerning = font
+            .kerning
+            .iter()
+            .map(|(first, pairs)| {
+                (
+                    first.to_string(),
+                    pairs
+                        .iter()
+                        .map(|(second, value)| (second.to_string(), *value))
+                        .collect(),
+                )
+            })
+            .collect();
+        Self {
+            groups,
+            left_groups,
+            right_groups,
+            kerning,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1794,6 +1866,69 @@ impl TextBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The native constructors must agree with the norad-level
+    /// kerning resolution the editors already use (glyph_ops).
+    #[test]
+    fn from_font_builds_working_models() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo"
+        );
+        let font = norad::Font::load(path).expect("fixture UFO loads");
+        let inventory = TextGlyphInventory::from_font(&font);
+        let kerning = TextKerningModel::from_font(&font);
+
+        let mut buffer = TextBuffer::new();
+        buffer.set_glyph_inventory(inventory);
+        buffer.set_kerning_model(kerning);
+
+        // Characters resolve to glyphs with real advances.
+        assert!(buffer.insert_character('A'));
+        assert!(buffer.insert_character('B'));
+        let a_width = font.get_glyph("A").unwrap().width;
+        let layout = buffer.layout(1200.0);
+        assert_eq!(layout.items.len(), 2);
+        assert_eq!(layout.items[0].advance_width, a_width);
+
+        // Find an encoded pair with a nonzero kern and check the
+        // buffer applies exactly what glyph_ops resolves.
+        let mut checked = false;
+        'outer: for glyph in font.default_layer().iter() {
+            let Some(lc) = glyph.codepoints.iter().next() else {
+                continue;
+            };
+            for other in font.default_layer().iter() {
+                let Some(rc) = other.codepoints.iter().next() else {
+                    continue;
+                };
+                let expected = crate::glyph_ops::kern_value(
+                    &font,
+                    glyph.name().as_str(),
+                    other.name().as_str(),
+                );
+                if expected == 0.0 {
+                    continue;
+                }
+                let mut b = TextBuffer::new();
+                b.set_glyph_inventory(TextGlyphInventory::from_font(&font));
+                b.set_kerning_model(TextKerningModel::from_font(&font));
+                assert!(b.insert_character(lc));
+                assert!(b.insert_character(rc));
+                let l = b.layout(1200.0);
+                let gap = l.items[1].x - l.items[0].x - l.items[0].advance_width;
+                assert!(
+                    (gap - expected).abs() < 1e-6,
+                    "{}/{}: gap {gap} expected {expected}",
+                    glyph.name(),
+                    other.name()
+                );
+                checked = true;
+                break 'outer;
+            }
+        }
+        assert!(checked, "fixture font has no kerned encoded pair");
+    }
 
     #[test]
     fn insert_glyph_moves_cursor_and_sets_active_sort() {
