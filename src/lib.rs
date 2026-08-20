@@ -22,6 +22,7 @@ pub mod model;
 pub mod knife;
 pub mod path;
 pub mod segment_ops;
+pub mod sidebar;
 pub mod shape;
 pub mod shaping;
 pub mod text;
