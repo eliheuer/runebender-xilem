@@ -22,6 +22,7 @@ pub mod mark_color;
 pub mod measure;
 pub mod model;
 pub mod new_font;
+pub mod image_trace;
 pub mod knife;
 pub mod path;
 pub mod segment_ops;

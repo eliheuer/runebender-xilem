@@ -15,6 +15,8 @@ path = "src/lib.rs"
 glyphslib = "0.2.7"
 linesweeper = "0.4"
 norad = "0.18"
+# The web editor's autotracer, pinned to git like runebender-web.
+img2bez = { git = "https://github.com/eliheuer/img2bez", default-features = false }
 plist = { version = "1.4", features = ["serde"] }
 quick-xml = { version = "0.38", features = ["serialize"] }
 # Structured metadata shared over serde_json between core and UI hosts.
