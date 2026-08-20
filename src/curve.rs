@@ -30,6 +30,95 @@ pub struct Cubic {
     pub start_smooth: bool,
 }
 
+/// Build the per-contour cubic segment lists from a norad glyph, for
+/// the comb/continuity analyses: lines become degenerate "straight"
+/// cubics, quads elevate, hyper contours run through the solver.
+pub fn cubics_from_norad(glyph: &norad::Glyph) -> Vec<Vec<Cubic>> {
+    let mut out = Vec::new();
+    for contour in &glyph.contours {
+        let path = if crate::model::workspace::norad_contour_is_hyper(contour) {
+            let ws = crate::model::workspace::Contour::from_norad(contour);
+            let mut bez = kurbo::BezPath::new();
+            crate::path::Path::from_contour(&ws).append_to_bezpath(&mut bez);
+            bez
+        } else {
+            crate::glyph_paths::contour_to_bezpath(contour)
+        };
+        let mut segs: Vec<Cubic> = Vec::new();
+        let mut current = Point::ZERO;
+        let mut start = Point::ZERO;
+        for el in path.elements() {
+            match *el {
+                kurbo::PathEl::MoveTo(p) => {
+                    current = p;
+                    start = p;
+                }
+                kurbo::PathEl::LineTo(p) => {
+                    segs.push(Cubic {
+                        p0: current,
+                        p1: current.lerp(p, 1.0 / 3.0),
+                        p2: current.lerp(p, 2.0 / 3.0),
+                        p3: p,
+                        straight: true,
+                        start_smooth: false,
+                    });
+                    current = p;
+                }
+                kurbo::PathEl::QuadTo(c, p) => {
+                    let c1 = current + (c - current) * (2.0 / 3.0);
+                    let c2 = p + (c - p) * (2.0 / 3.0);
+                    segs.push(Cubic {
+                        p0: current,
+                        p1: c1,
+                        p2: c2,
+                        p3: p,
+                        straight: false,
+                        start_smooth: false,
+                    });
+                    current = p;
+                }
+                kurbo::PathEl::CurveTo(c1, c2, p) => {
+                    segs.push(Cubic {
+                        p0: current,
+                        p1: c1,
+                        p2: c2,
+                        p3: p,
+                        straight: false,
+                        start_smooth: false,
+                    });
+                    current = p;
+                }
+                kurbo::PathEl::ClosePath => {
+                    if current.distance(start) > 1e-9 {
+                        segs.push(Cubic {
+                            p0: current,
+                            p1: current.lerp(start, 1.0 / 3.0),
+                            p2: current.lerp(start, 2.0 / 3.0),
+                            p3: start,
+                            straight: true,
+                            start_smooth: false,
+                        });
+                    }
+                    current = start;
+                }
+            }
+        }
+        // Smooth flags from the source points, matched by position.
+        for seg in segs.iter_mut() {
+            let p0 = seg.p0;
+            seg.start_smooth = contour.points.iter().any(|p| {
+                p.smooth
+                    && (p.x - p0.x).abs() < 0.01
+                    && (p.y - p0.y).abs() < 0.01
+            });
+        }
+        if !segs.is_empty() {
+            out.push(segs);
+        }
+    }
+    out
+}
+
 /// 2D cross product `u × v = u.x·v.y − u.y·v.x`.
 fn cross(u: Vec2, v: Vec2) -> f64 {
     u.x * v.y - u.y * v.x
