@@ -633,6 +633,36 @@ pub fn glyph_matches_language_group(
         .any(|filter| glyph_matches_character_filter(name, codepoints, filter))
 }
 
+/// The category rows' subfilters (web CATEGORY_GROUPS), keyed by the
+/// category name used in `crate::category`.
+pub fn category_subfilters(category: &str) -> &'static [(&'static str, &'static str)] {
+    match category {
+        "Letter" => &[
+            ("uppercase", "Uppercase"),
+            ("lowercase", "Lowercase"),
+            ("ligature", "Ligature"),
+        ],
+        "Number" => &[
+            ("decimal", "Decimal"),
+            ("fraction", "Fraction"),
+            ("superior-inferior", "Superior/Inferior"),
+        ],
+        "Separator" => &[("space", "Space"), ("line", "Line")],
+        "Punctuation" => &[
+            ("quote", "Quote"),
+            ("dash", "Dash"),
+            ("paren", "Parenthesis"),
+        ],
+        "Symbol" => &[
+            ("currency", "Currency"),
+            ("math", "Math"),
+            ("arrow", "Arrow"),
+        ],
+        "Mark" => &[("nonspacing", "Nonspacing"), ("spacing", "Spacing")],
+        _ => &[],
+    }
+}
+
 /// Category subfilters (web glyphMatchesCategorySubfilter). `category`
 /// must already match; this refines within it.
 pub fn glyph_matches_subfilter(
