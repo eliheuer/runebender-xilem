@@ -25,6 +25,7 @@ pub mod new_font;
 pub mod image_trace;
 pub mod knife;
 pub mod path;
+pub mod point_ops;
 pub mod segment_ops;
 pub mod sidebar;
 pub mod shape;

@@ -134,7 +134,15 @@ pub fn nearest_segment_with_t(
 }
 
 fn off_point(p: Point) -> ContourPoint {
-    ContourPoint::new(p.x.round(), p.y.round(), PointType::OffCurve, false, None, None)
+    let (x, y) = snapped(p);
+    ContourPoint::new(x, y, PointType::OffCurve, false, None, None)
+}
+
+/// Generated points land on the design grid, like every other point
+/// the editors create or move (see `point_ops`).
+fn snapped(p: Point) -> (f64, f64) {
+    use crate::point_ops::snap_coord;
+    (snap_coord(p.x), snap_coord(p.y))
 }
 
 /// Convert a line segment to a cubic with controls at 1/3 and 2/3
@@ -187,12 +195,12 @@ pub fn insert_point_on_segment(
     };
     match hit.seg {
         PathSeg::Line(line) => {
-            let p = line.eval(t);
+            let p = snapped(line.eval(t));
             contour.points.insert(
                 insert_index,
                 ContourPoint::new(
-                    p.x.round(),
-                    p.y.round(),
+                    p.0,
+                    p.1,
                     PointType::Line,
                     false,
                     None,
@@ -215,9 +223,10 @@ pub fn insert_point_on_segment(
             } else {
                 hit.start + 1 - removed.iter().filter(|&&i| i < hit.start).count()
             };
+            let (sx, sy) = snapped(left.p3);
             let split = ContourPoint::new(
-                left.p3.x.round(),
-                left.p3.y.round(),
+                sx,
+                sy,
                 PointType::Curve,
                 false,
                 None,
@@ -249,9 +258,10 @@ pub fn insert_point_on_segment(
             } else {
                 hit.start + 1 - removed.iter().filter(|&&i| i < hit.start).count()
             };
+            let (sx, sy) = snapped(left.p2);
             let split = ContourPoint::new(
-                left.p2.x.round(),
-                left.p2.y.round(),
+                sx,
+                sy,
                 PointType::QCurve,
                 false,
                 None,
@@ -322,8 +332,10 @@ mod tests {
         let c = &glyph.contours[0];
         assert_eq!(c.points.len(), 6);
         assert_eq!(c.points[ids[0].1].typ, PointType::OffCurve);
-        assert_eq!((c.points[ids[0].1].x, c.points[ids[0].1].y), (33.0, 0.0));
-        assert_eq!((c.points[ids[1].1].x, c.points[ids[1].1].y), (67.0, 0.0));
+        // Thirds of a 100-unit line, snapped to the 2-unit design
+        // grid the editors place every point on.
+        assert_eq!((c.points[ids[0].1].x, c.points[ids[0].1].y), (34.0, 0.0));
+        assert_eq!((c.points[ids[1].1].x, c.points[ids[1].1].y), (66.0, 0.0));
         // The segment's end point is a curve target now.
         assert_eq!(c.points[3].typ, PointType::Curve);
     }
@@ -374,8 +386,9 @@ mod tests {
         assert_eq!(c.points.len(), 8);
         let inserted = &c.points[id.1];
         assert_eq!(inserted.typ, PointType::Curve);
-        assert!((inserted.x - before.x).abs() <= 0.5);
-        assert!((inserted.y - before.y).abs() <= 0.5);
+        // Within one grid step of the exact split point.
+        assert!((inserted.x - before.x).abs() <= 1.0);
+        assert!((inserted.y - before.y).abs() <= 1.0);
         // The shape is unchanged within rounding: the split point lies
         // on the original curve.
         let seg_after = segments(&glyph);
