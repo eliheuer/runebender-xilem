@@ -888,6 +888,85 @@ pub fn kern_group(font: &Font, glyph: &str, first_side: bool) -> Option<norad::N
         .map(|(name, _)| name.clone())
 }
 
+/// Duplicate every contour containing a selected point, offset by
+/// (20, 20) like the web editor, returning the new selection (every
+/// point of the clones).
+pub fn duplicate_selection(
+    glyph: &mut Glyph,
+    selected: &HashSet<(usize, usize)>,
+) -> Option<HashSet<(usize, usize)>> {
+    let sources: Vec<usize> = glyph
+        .contours
+        .iter()
+        .enumerate()
+        .filter(|(ci, contour)| {
+            contour
+                .points
+                .iter()
+                .enumerate()
+                .any(|(pi, _)| selected.contains(&(*ci, pi)))
+        })
+        .map(|(ci, _)| ci)
+        .collect();
+    if sources.is_empty() {
+        return None;
+    }
+    let mut new_selection = HashSet::new();
+    for source in sources {
+        // Fresh points and no identifiers: identifiers must stay
+        // unique within a glif, so clones cannot carry them.
+        let points: Vec<norad::ContourPoint> = glyph.contours[source]
+            .points
+            .iter()
+            .map(|p| {
+                norad::ContourPoint::new(
+                    p.x + 20.0,
+                    p.y + 20.0,
+                    p.typ.clone(),
+                    p.smooth,
+                    p.name.clone(),
+                    None,
+                )
+            })
+            .collect();
+        let new_index = glyph.contours.len();
+        for pi in 0..points.len() {
+            new_selection.insert((new_index, pi));
+        }
+        glyph.contours.push(norad::Contour::new(points, None));
+    }
+    Some(new_selection)
+}
+
+/// Duplicate a component, offset by (20, 20). Returns the new index.
+pub fn duplicate_component(glyph: &mut Glyph, index: usize) -> Option<usize> {
+    let source = glyph.components.get(index)?;
+    let mut transform = source.transform;
+    transform.x_offset += 20.0;
+    transform.y_offset += 20.0;
+    let clone = norad::Component::new(source.base.clone(), transform, None);
+    glyph.components.push(clone);
+    Some(glyph.components.len() - 1)
+}
+
+/// Duplicate an anchor, offset by (20, 20). Returns the new index.
+pub fn duplicate_anchor(glyph: &mut Glyph, index: usize) -> Option<usize> {
+    let source = glyph.anchors.get(index)?;
+    let name = source
+        .name
+        .as_ref()
+        .and_then(|n| norad::Name::new(&format!("{n}.copy")).ok());
+    let anchor = norad::Anchor::new(
+        source.x + 20.0,
+        source.y + 20.0,
+        name,
+        None,
+        None,
+    );
+    glyph.anchors.push(anchor);
+    Some(glyph.anchors.len() - 1)
+}
+
 /// Put a glyph into a kerning group (groups.plist), replacing any
 /// membership on that side. `group` is the bare name ("A" becomes
 /// public.kern1.A); empty removes the membership. Returns true when
@@ -1210,6 +1289,27 @@ mod tests {
             .any(|p| (p.x, p.y) == first_before));
         // Index 0 refuses (already the start), off-curves refuse.
         assert!(!set_contour_start(&mut g, 0, 0));
+    }
+
+    #[test]
+    fn duplicate_clones_selected_contours_offset() {
+        let mut g = bare_glyph();
+        add_shape_contour(&mut g, kurbo::Rect::new(0.0, 0.0, 100.0, 100.0), false);
+        add_shape_contour(
+            &mut g,
+            kurbo::Rect::new(200.0, 0.0, 300.0, 100.0),
+            false,
+        );
+        let selected: HashSet<(usize, usize)> = [(0, 0)].into();
+        let new_sel = duplicate_selection(&mut g, &selected).expect("dup");
+        assert_eq!(g.contours.len(), 3);
+        // The clone is contour 2, offset by (20, 20), fully selected.
+        assert_eq!(g.contours[2].points[0].x, g.contours[0].points[0].x + 20.0);
+        assert!(new_sel.contains(&(2, 0)));
+        assert_eq!(new_sel.len(), g.contours[2].points.len());
+        assert!(g.contours[2].identifier().is_none());
+        // Empty selection duplicates nothing.
+        assert!(duplicate_selection(&mut g, &HashSet::new()).is_none());
     }
 
     #[test]
