@@ -888,6 +888,66 @@ pub fn kern_group(font: &Font, glyph: &str, first_side: bool) -> Option<norad::N
         .map(|(name, _)| name.clone())
 }
 
+/// Swap a contour with its neighbor in draw order.
+pub fn move_contour(glyph: &mut Glyph, index: usize, up: bool) -> bool {
+    let n = glyph.contours.len();
+    if up {
+        if index == 0 || index >= n {
+            return false;
+        }
+        glyph.contours.swap(index, index - 1);
+    } else {
+        if index + 1 >= n {
+            return false;
+        }
+        glyph.contours.swap(index, index + 1);
+    }
+    true
+}
+
+/// Replace one component with its resolved outline (point-exact,
+/// like decompose-all's resolved_component_contours).
+pub fn decompose_single_component(
+    font: &Font,
+    glyph: &mut Glyph,
+    index: usize,
+) -> bool {
+    let Some(component) = glyph.components.get(index) else {
+        return false;
+    };
+    // A single-component wrapper glyph resolves through the shared
+    // collector by pretending the glyph only has this component.
+    let mut probe = Glyph::new("probe");
+    probe.components.push(component.clone());
+    let resolved = resolved_component_contours(font, &probe);
+    if resolved.is_empty() {
+        return false;
+    }
+    glyph.contours.extend(resolved);
+    glyph.components.remove(index);
+    true
+}
+
+/// Add a component placing `base`, anchor-locked so a mark lands on
+/// its anchor rather than at the origin (web addComponent).
+pub fn add_component(font: &Font, glyph: &mut Glyph, base: &str) -> bool {
+    if base.is_empty() || base == glyph.name().as_str() {
+        return false;
+    }
+    if font.get_glyph(base).is_none() {
+        return false;
+    }
+    let Ok(base_name) = norad::Name::new(base) else {
+        return false;
+    };
+    glyph.components.push(norad::Component::new(
+        base_name,
+        norad::AffineTransform::default(),
+        None,
+    ));
+    true
+}
+
 const ROUND_GRID: f64 = 2.0;
 const DEFAULT_ROUND_OFFSET: f64 = 32.0;
 const DEFAULT_ROUND_HANDLE_RATIO: f64 = 0.552_284_749_830_793_6;
