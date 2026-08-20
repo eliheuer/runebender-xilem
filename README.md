@@ -20,6 +20,18 @@ cd runebender-xilem
 cargo run
 ```
 
+Every dependency comes from crates.io or a public git repository, so
+this builds without any other checkout. The shared editing crate,
+[runebender-core](https://github.com/eliheuer/runebender-core), is a
+git dependency. To work on both at once, clone it and add a cargo
+`paths` override in the directory that holds both checkouts, not
+inside either repository:
+
+```toml
+# .cargo/config.toml
+paths = ["runebender-core"]
+```
+
 ## Usage
 
 ```bash
