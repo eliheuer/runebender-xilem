@@ -888,6 +888,250 @@ pub fn kern_group(font: &Font, glyph: &str, first_side: bool) -> Option<norad::N
         .map(|(name, _)| name.clone())
 }
 
+const ROUND_GRID: f64 = 2.0;
+const DEFAULT_ROUND_OFFSET: f64 = 32.0;
+const DEFAULT_ROUND_HANDLE_RATIO: f64 = 0.552_284_749_830_793_6;
+const MAX_ROUND_SIDE_FRACTION: f64 = 0.45;
+
+fn round_snap(p: kurbo::Point) -> kurbo::Point {
+    kurbo::Point::new(
+        (p.x / ROUND_GRID).round() * ROUND_GRID,
+        (p.y / ROUND_GRID).round() * ROUND_GRID,
+    )
+}
+
+fn round_line_intersection(
+    a: kurbo::Point,
+    b: kurbo::Point,
+    c: kurbo::Point,
+    d: kurbo::Point,
+) -> Option<kurbo::Point> {
+    let r = b - a;
+    let s = d - c;
+    let cross = r.x * s.y - r.y * s.x;
+    if cross.abs() < 1e-6 {
+        return None;
+    }
+    let delta = c - a;
+    let t = (delta.x * s.y - delta.y * s.x) / cross;
+    Some(a + r * t)
+}
+
+fn median_or_default(mut values: Vec<f64>, default: f64) -> f64 {
+    values.retain(|v| v.is_finite() && *v > 0.0);
+    if values.is_empty() {
+        return default;
+    }
+    values.sort_by(f64::total_cmp);
+    values[values.len() / 2]
+}
+
+fn contour_is_on(contour: &Contour, i: usize) -> bool {
+    contour.points[i].typ != PointType::OffCurve
+}
+
+fn wrap(i: isize, len: usize) -> usize {
+    i.rem_euclid(len as isize) as usize
+}
+
+/// The size and handle ratio existing rounded corners in this glyph
+/// use (web infer_round_corner_profile): sampled from every
+/// on-off-off-on run whose straight neighbors intersect, median with
+/// the classic defaults as fallback.
+fn infer_round_profile(glyph: &Glyph) -> (f64, f64) {
+    let mut offsets = Vec::new();
+    let mut ratios = Vec::new();
+    for contour in &glyph.contours {
+        if crate::model::workspace::norad_contour_is_hyper(contour) {
+            continue;
+        }
+        let n = contour.points.len();
+        if n < 6 {
+            continue;
+        }
+        for start in 0..n {
+            let idx = [
+                wrap(start as isize - 1, n),
+                start,
+                wrap(start as isize + 1, n),
+                wrap(start as isize + 2, n),
+                wrap(start as isize + 3, n),
+                wrap(start as isize + 4, n),
+            ];
+            let mut seen = idx;
+            seen.sort_unstable();
+            if seen.windows(2).any(|w| w[0] == w[1]) {
+                continue;
+            }
+            let [prev, s, cp1, cp2, end, next] = idx;
+            if !contour_is_on(contour, s)
+                || contour_is_on(contour, cp1)
+                || contour_is_on(contour, cp2)
+                || !contour_is_on(contour, end)
+                || !contour_is_on(contour, prev)
+                || !contour_is_on(contour, next)
+            {
+                continue;
+            }
+            let pt = |i: usize| {
+                kurbo::Point::new(contour.points[i].x, contour.points[i].y)
+            };
+            let Some(corner) =
+                round_line_intersection(pt(prev), pt(s), pt(end), pt(next))
+            else {
+                continue;
+            };
+            let start_offset = corner.distance(pt(s));
+            let end_offset = corner.distance(pt(end));
+            if start_offset < ROUND_GRID || end_offset < ROUND_GRID {
+                continue;
+            }
+            let handle_one = pt(cp1).distance(pt(s));
+            let handle_two = pt(end).distance(pt(cp2));
+            offsets.push((start_offset + end_offset) * 0.5);
+            if handle_one > 0.0 {
+                ratios.push(handle_one / start_offset);
+            }
+            if handle_two > 0.0 {
+                ratios.push(handle_two / end_offset);
+            }
+        }
+    }
+    (
+        median_or_default(offsets, DEFAULT_ROUND_OFFSET),
+        median_or_default(ratios, DEFAULT_ROUND_HANDLE_RATIO).clamp(0.1, 1.0),
+    )
+}
+
+/// Round the selected line-line corners into cubic fillets sized to
+/// match the glyph's existing rounding (web round_selected_corners).
+/// Returns the new selection: the fillets' on-curve points.
+pub fn round_selected_corners(
+    glyph: &mut Glyph,
+    selected: &HashSet<(usize, usize)>,
+) -> Option<HashSet<(usize, usize)>> {
+    if selected.is_empty() {
+        return None;
+    }
+    let (offset_profile, handle_ratio) = infer_round_profile(glyph);
+    let mut next_selection = HashSet::new();
+    let mut changed = false;
+
+    for (ci, contour) in glyph.contours.iter_mut().enumerate() {
+        if crate::model::workspace::norad_contour_is_hyper(contour) {
+            continue;
+        }
+        let n = contour.points.len();
+        let closed = contour
+            .points
+            .first()
+            .map(|p| p.typ != PointType::Move)
+            .unwrap_or(false);
+        let mut replaced = false;
+        let mut next_points: Vec<ContourPoint> = Vec::with_capacity(n + 8);
+        for (pi, point) in contour.points.iter().enumerate() {
+            let is_corner = selected.contains(&(ci, pi))
+                && point.typ != PointType::OffCurve
+                && n >= 3
+                && (closed || (pi > 0 && pi + 1 < n));
+            let rounded = is_corner
+                .then(|| {
+                    let prev = wrap(pi as isize - 1, n);
+                    let next = wrap(pi as isize + 1, n);
+                    if !contour_is_on(contour, prev)
+                        || !contour_is_on(contour, next)
+                    {
+                        return None;
+                    }
+                    let corner = kurbo::Point::new(point.x, point.y);
+                    let p_prev = kurbo::Point::new(
+                        contour.points[prev].x,
+                        contour.points[prev].y,
+                    );
+                    let p_next = kurbo::Point::new(
+                        contour.points[next].x,
+                        contour.points[next].y,
+                    );
+                    let prev_vec = p_prev - corner;
+                    let next_vec = p_next - corner;
+                    let prev_len = prev_vec.hypot();
+                    let next_len = next_vec.hypot();
+                    if prev_len < ROUND_GRID * 2.0 || next_len < ROUND_GRID * 2.0
+                    {
+                        return None;
+                    }
+                    let offset = offset_profile
+                        .min(prev_len * MAX_ROUND_SIDE_FRACTION)
+                        .min(next_len * MAX_ROUND_SIDE_FRACTION);
+                    if offset < ROUND_GRID {
+                        return None;
+                    }
+                    let prev_unit = prev_vec / prev_len;
+                    let next_unit = next_vec / next_len;
+                    let handle_len = offset * handle_ratio;
+                    let first_on = round_snap(corner + prev_unit * offset);
+                    let second_on = round_snap(corner + next_unit * offset);
+                    let first_handle =
+                        round_snap(first_on - prev_unit * handle_len);
+                    let second_handle =
+                        round_snap(second_on - next_unit * handle_len);
+                    if first_on == corner
+                        || second_on == corner
+                        || first_on == second_on
+                    {
+                        return None;
+                    }
+                    Some((first_on, first_handle, second_handle, second_on))
+                })
+                .flatten();
+            match rounded {
+                Some((first_on, h1, h2, second_on)) => {
+                    // Keep the incoming segment type for the first
+                    // on-curve; the fillet ends in a Curve point.
+                    let mut lead = point.clone();
+                    lead.x = first_on.x;
+                    lead.y = first_on.y;
+                    lead.smooth = true;
+                    next_selection.insert((ci, next_points.len()));
+                    next_points.push(lead);
+                    next_points.push(ContourPoint::new(
+                        h1.x,
+                        h1.y,
+                        PointType::OffCurve,
+                        false,
+                        None,
+                        None,
+                    ));
+                    next_points.push(ContourPoint::new(
+                        h2.x,
+                        h2.y,
+                        PointType::OffCurve,
+                        false,
+                        None,
+                        None,
+                    ));
+                    next_selection.insert((ci, next_points.len()));
+                    next_points.push(ContourPoint::new(
+                        second_on.x,
+                        second_on.y,
+                        PointType::Curve,
+                        true,
+                        None,
+                        None,
+                    ));
+                    replaced = true;
+                }
+                None => next_points.push(point.clone()),
+            }
+        }
+        if replaced {
+            contour.points = next_points;
+            changed = true;
+        }
+    }
+    changed.then_some(next_selection)
+}
+
 /// Duplicate every contour containing a selected point, offset by
 /// (20, 20) like the web editor, returning the new selection (every
 /// point of the clones).
@@ -1289,6 +1533,39 @@ mod tests {
             .any(|p| (p.x, p.y) == first_before));
         // Index 0 refuses (already the start), off-curves refuse.
         assert!(!set_contour_start(&mut g, 0, 0));
+    }
+
+    #[test]
+    fn round_corner_replaces_with_fillet() {
+        let mut g = bare_glyph();
+        add_shape_contour(&mut g, kurbo::Rect::new(0.0, 0.0, 200.0, 200.0), false);
+        // Round the (0,0) corner (index of that point in the rect).
+        let corner = g.contours[0]
+            .points
+            .iter()
+            .position(|p| p.x == 0.0 && p.y == 0.0)
+            .unwrap();
+        let selected: HashSet<(usize, usize)> = [(0, corner)].into();
+        let new_sel = round_selected_corners(&mut g, &selected).expect("round");
+        // One corner became 4 points: net +3.
+        assert_eq!(g.contours[0].points.len(), 7);
+        assert_eq!(new_sel.len(), 2);
+        // The fillet's on-curves sit 32 units along each edge and are
+        // smooth; the two handles between them are off-curve.
+        let pts = &g.contours[0].points;
+        let ons: Vec<&norad::ContourPoint> = pts
+            .iter()
+            .filter(|p| p.typ != PointType::OffCurve && p.smooth)
+            .collect();
+        assert_eq!(ons.len(), 2);
+        for p in ons {
+            let along = (p.x - 0.0).abs().max((p.y - 0.0).abs());
+            assert!((along - 32.0).abs() < 1e-6, "offset {along}");
+        }
+        // Nothing rounds twice: the fillet points are smooth curves
+        // with off-curve neighbors now.
+        let again = round_selected_corners(&mut g, &new_sel);
+        assert!(again.is_none());
     }
 
     #[test]
