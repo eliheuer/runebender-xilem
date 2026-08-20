@@ -18,8 +18,10 @@ xilem = { git = "https://github.com/linebender/xilem", rev = "7819435e592f3b3dda
 masonry = { git = "https://github.com/linebender/xilem", rev = "7819435e592f3b3dda75432740264ef5fc1ddaa2" }
 winit = "0.30"
 
-# Shared editing+model types — also consumed by runebender-comfy
-runebender-core = { path = "../runebender-core" }
+# Shared editing+model types, also consumed by runebender-comfy.
+# From git so a plain clone builds without a sibling checkout; use a
+# cargo `paths` override above the checkouts to develop both at once.
+runebender-core = { git = "https://github.com/eliheuer/runebender-core" }
 
 # Font/UFO handling
 norad = "0.13"
