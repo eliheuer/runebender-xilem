@@ -10,6 +10,7 @@
 // for the broader plan.
 
 pub mod category;
+pub mod composites;
 pub mod curve;
 pub mod glyph_ops;
 pub mod glyph_paths;
