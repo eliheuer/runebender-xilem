@@ -888,6 +888,36 @@ pub fn kern_group(font: &Font, glyph: &str, first_side: bool) -> Option<norad::N
         .map(|(name, _)| name.clone())
 }
 
+/// Convert hyperbezier contours to plain cubics through the solver
+/// (web convertHyperToCubic): the selected ones, or every hyper
+/// contour when the selection is empty.
+pub fn convert_hyper_to_cubic(
+    glyph: &mut Glyph,
+    selected: &HashSet<(usize, usize)>,
+) -> bool {
+    let mut changed = false;
+    for (ci, contour) in glyph.contours.iter_mut().enumerate() {
+        if !crate::model::workspace::norad_contour_is_hyper(contour) {
+            continue;
+        }
+        if !selected.is_empty()
+            && !(0..contour.points.len())
+                .any(|pi| selected.contains(&(ci, pi)))
+        {
+            continue;
+        }
+        let ws = crate::model::workspace::Contour::from_norad(contour);
+        let path = crate::path::Path::from_contour(&ws);
+        let crate::path::Path::Hyper(hyper) = path else {
+            continue;
+        };
+        let cubic = crate::path::Path::Cubic(hyper.to_cubic());
+        *contour = cubic.to_contour().to_norad();
+        changed = true;
+    }
+    changed
+}
+
 /// Swap a contour with its neighbor in draw order.
 pub fn move_contour(glyph: &mut Glyph, index: usize, up: bool) -> bool {
     let n = glyph.contours.len();
