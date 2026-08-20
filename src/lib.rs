@@ -20,6 +20,7 @@ pub mod var_model;
 pub mod editing;
 pub mod mark_color;
 pub mod model;
+pub mod new_font;
 pub mod knife;
 pub mod path;
 pub mod segment_ops;
