@@ -888,6 +888,142 @@ pub fn kern_group(font: &Font, glyph: &str, first_side: bool) -> Option<norad::N
         .map(|(name, _)| name.clone())
 }
 
+/// Put a glyph into a kerning group (groups.plist), replacing any
+/// membership on that side. `group` is the bare name ("A" becomes
+/// public.kern1.A); empty removes the membership. Returns true when
+/// anything changed.
+pub fn set_kern_group(
+    font: &mut Font,
+    glyph: &str,
+    first_side: bool,
+    group: &str,
+) -> bool {
+    let prefix = if first_side {
+        "public.kern1."
+    } else {
+        "public.kern2."
+    };
+    let target = group.trim();
+    let target_name = (!target.is_empty())
+        .then(|| norad::Name::new(&format!("{prefix}{target}")).ok())
+        .flatten();
+    let mut changed = false;
+    // Drop the glyph from every group on this side except the target.
+    let mut empty: Vec<norad::Name> = Vec::new();
+    for (name, members) in font.groups.iter_mut() {
+        if !name.starts_with(prefix) {
+            continue;
+        }
+        if Some(name) == target_name.as_ref() {
+            continue;
+        }
+        let before = members.len();
+        members.retain(|m| m.as_str() != glyph);
+        if members.len() != before {
+            changed = true;
+        }
+        if members.is_empty() {
+            empty.push(name.clone());
+        }
+    }
+    for name in empty {
+        font.groups.remove(&name);
+        changed = true;
+    }
+    if let Some(target_name) = target_name {
+        let glyph_name = match norad::Name::new(glyph) {
+            Ok(name) => name,
+            Err(_) => return changed,
+        };
+        let members = font.groups.entry(target_name).or_default();
+        if !members.iter().any(|m| m.as_str() == glyph) {
+            members.push(glyph_name);
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Set a glyph's (first) codepoint from text: "0041", "U+0041", or
+/// "0x41"; empty clears. Returns false when the text does not parse.
+pub fn set_glyph_unicode(glyph: &mut Glyph, unicode: &str) -> bool {
+    let trimmed = unicode.trim();
+    if trimmed.is_empty() {
+        glyph.codepoints = norad::Codepoints::new([]);
+        return true;
+    }
+    let hex = trimmed
+        .strip_prefix("U+")
+        .or_else(|| trimmed.strip_prefix("u+"))
+        .or_else(|| trimmed.strip_prefix("0x"))
+        .or_else(|| trimmed.strip_prefix("0X"))
+        .unwrap_or(trimmed);
+    let Some(c) = u32::from_str_radix(hex, 16)
+        .ok()
+        .and_then(char::from_u32)
+    else {
+        return false;
+    };
+    glyph.codepoints = norad::Codepoints::new([c]);
+    true
+}
+
+/// Rename a glyph and every reference to it: components in other
+/// glyphs, kerning group memberships, and direct kerning pair keys.
+/// Refuses when the new name is taken or invalid.
+pub fn rename_glyph(font: &mut Font, old: &str, new: &str) -> bool {
+    let new = new.trim();
+    if new.is_empty() || new == old {
+        return false;
+    }
+    let Ok(new_name) = norad::Name::new(new) else {
+        return false;
+    };
+    if font.get_glyph(new).is_some() {
+        return false;
+    }
+    let layer = font.default_layer_mut();
+    if layer.rename_glyph(old, new, false).is_err() {
+        return false;
+    }
+    // Components in every glyph that places it.
+    let renames: Vec<norad::Name> = layer
+        .iter()
+        .filter(|g| g.components.iter().any(|c| c.base.as_str() == old))
+        .map(|g| g.name().clone())
+        .collect();
+    for user in renames {
+        if let Some(user_glyph) = layer.get_glyph_mut(user.as_str()) {
+            for component in user_glyph.components.iter_mut() {
+                if component.base.as_str() == old {
+                    component.base = new_name.clone();
+                }
+            }
+        }
+    }
+    // Group memberships.
+    for (_, members) in font.groups.iter_mut() {
+        for member in members.iter_mut() {
+            if member.as_str() == old {
+                *member = new_name.clone();
+            }
+        }
+    }
+    // Direct kerning keys on either side.
+    let old_key = norad::Name::new(old).ok();
+    if let Some(old_key) = old_key {
+        if let Some(seconds) = font.kerning.remove(&old_key) {
+            font.kerning.insert(new_name.clone(), seconds);
+        }
+        for (_, seconds) in font.kerning.iter_mut() {
+            if let Some(value) = seconds.remove(&old_key) {
+                seconds.insert(new_name.clone(), value);
+            }
+        }
+    }
+    true
+}
+
 /// Kerning between two glyphs, resolving group fallbacks in UFO
 /// precedence order: glyph-glyph, glyph-group, group-glyph,
 /// group-group.
@@ -1074,6 +1210,78 @@ mod tests {
             .any(|p| (p.x, p.y) == first_before));
         // Index 0 refuses (already the start), off-curves refuse.
         assert!(!set_contour_start(&mut g, 0, 0));
+    }
+
+    #[test]
+    fn kern_group_membership_moves_and_prunes() {
+        let mut font = Font::new();
+        font.default_layer_mut().insert_glyph(Glyph::new("A"));
+        assert!(set_kern_group(&mut font, "A", true, "ROUND"));
+        assert_eq!(
+            kern_group(&font, "A", true).unwrap().as_str(),
+            "public.kern1.ROUND"
+        );
+        // Moving to another group prunes the emptied one.
+        assert!(set_kern_group(&mut font, "A", true, "FLAT"));
+        assert_eq!(
+            kern_group(&font, "A", true).unwrap().as_str(),
+            "public.kern1.FLAT"
+        );
+        assert!(!font.groups.contains_key("public.kern1.ROUND"));
+        // Clearing removes membership; second sides are independent.
+        assert!(set_kern_group(&mut font, "A", false, "LEFTY"));
+        assert!(set_kern_group(&mut font, "A", true, ""));
+        assert!(kern_group(&font, "A", true).is_none());
+        assert_eq!(
+            kern_group(&font, "A", false).unwrap().as_str(),
+            "public.kern2.LEFTY"
+        );
+    }
+
+    #[test]
+    fn unicode_parses_the_web_forms() {
+        let mut glyph = Glyph::new("A");
+        assert!(set_glyph_unicode(&mut glyph, "0041"));
+        assert_eq!(glyph.codepoints.iter().next(), Some('A'));
+        assert!(set_glyph_unicode(&mut glyph, "U+0042"));
+        assert_eq!(glyph.codepoints.iter().next(), Some('B'));
+        assert!(set_glyph_unicode(&mut glyph, "0x43"));
+        assert_eq!(glyph.codepoints.iter().next(), Some('C'));
+        assert!(set_glyph_unicode(&mut glyph, ""));
+        assert_eq!(glyph.codepoints.iter().next(), None);
+        assert!(!set_glyph_unicode(&mut glyph, "zzz"));
+    }
+
+    #[test]
+    fn rename_updates_components_groups_and_kerning() {
+        let mut font = Font::new();
+        font.default_layer_mut().insert_glyph(Glyph::new("A"));
+        font.default_layer_mut().insert_glyph(Glyph::new("B"));
+        let mut agrave = Glyph::new("Agrave");
+        agrave.components.push(norad::Component::new(
+            norad::Name::new("A").unwrap(),
+            Default::default(),
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(agrave);
+        set_kern_group(&mut font, "A", true, "ROUND");
+        set_kern_pair(&mut font, "A", "B", -30.0);
+
+        assert!(rename_glyph(&mut font, "A", "A.new"));
+        assert!(font.get_glyph("A").is_none());
+        assert!(font.get_glyph("A.new").is_some());
+        assert_eq!(
+            font.get_glyph("Agrave").unwrap().components[0].base.as_str(),
+            "A.new"
+        );
+        assert_eq!(
+            kern_group(&font, "A.new", true).unwrap().as_str(),
+            "public.kern1.ROUND"
+        );
+        assert_eq!(kern_value(&font, "A.new", "B"), -30.0);
+        // Taken and invalid names are refused.
+        assert!(!rename_glyph(&mut font, "A.new", "B"));
+        assert!(!rename_glyph(&mut font, "A.new", ""));
     }
 
     #[test]
