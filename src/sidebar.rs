@@ -574,6 +574,32 @@ pub fn builtin_filters() -> &'static [BuiltinFilter] {
     })
 }
 
+/// The targets a filter still misses in a font: no glyph carries the
+/// target's name or codepoint (web missingTargetsForCharacterFilter).
+/// Only target-bearing filters can report missing glyphs.
+pub fn missing_targets<'f>(
+    glyphs: &[(String, Vec<u32>)],
+    filter: &'f CharacterFilter,
+) -> Vec<&'f GlyphTarget> {
+    if filter.targets.is_empty() {
+        return Vec::new();
+    }
+    let names: HashSet<&str> =
+        glyphs.iter().map(|(name, _)| name.as_str()).collect();
+    let codepoints: HashSet<u32> = glyphs
+        .iter()
+        .flat_map(|(_, cps)| cps.iter().copied())
+        .collect();
+    filter
+        .targets
+        .iter()
+        .filter(|target| {
+            !names.contains(target.name.as_str())
+                && !codepoints.contains(&target.unicode)
+        })
+        .collect()
+}
+
 /// Does a glyph (name plus codepoints) belong to a character filter?
 /// The web's glyphMatchesCharacterFilter.
 pub fn glyph_matches_character_filter(
