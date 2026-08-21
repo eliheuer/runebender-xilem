@@ -289,9 +289,33 @@ pub fn normalize_value(value: f64, min: f64, default: f64, max: f64) -> f64 {
     }
 }
 
+/// The inverse of [`normalize_value`]: a normalized -1..1 coordinate
+/// back to design space. Sliders live in design space (`wght 400`),
+/// the model in normalized space, so a UI needs both directions.
+pub fn denormalize_value(value: f64, min: f64, default: f64, max: f64) -> f64 {
+    let value = value.clamp(-1.0, 1.0);
+    if value == 0.0 {
+        default
+    } else if value < 0.0 {
+        default + value * (default - min)
+    } else {
+        default + value * (max - default)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_round_trips_through_denormalize() {
+        let (min, default, max) = (100.0, 400.0, 900.0);
+        for value in [100.0, 250.0, 400.0, 650.0, 900.0] {
+            let n = normalize_value(value, min, default, max);
+            let back = denormalize_value(n, min, default, max);
+            assert!((back - value).abs() < 1e-9, "{value} -> {n} -> {back}");
+        }
+    }
 
     fn loc(pairs: &[(&str, f64)]) -> Location {
         pairs
