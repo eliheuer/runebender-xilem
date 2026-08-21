@@ -26,18 +26,25 @@
     "",
     "The one place we leave the references: cool hues are lifted for a",
     "dark background. A blue at L 0.55 is a poster colour on white and a",
-    "smudge on near-black."
+    "smudge on near-black.",
+    "",
+    "Against the dark editor the poster values read as lit from inside,",
+    "so every hue is pulled down together: chroma to 0.9 of the",
+    "reference, lightness by 0.01 (0.02 for yellow, the brightest). One",
+    "factor for all eight keeps the family intact, which is the reason",
+    "for authoring in OKLCH in the first place. 0.8 was a step too far:",
+    "the palette went chalky."
   ],
 
   "hues": {
-    "red": { "hue": 27, "lightness": 0.62, "chroma": 0.185 },
-    "orange": { "hue": 46, "lightness": 0.69, "chroma": 0.167 },
-    "yellow": { "hue": 96, "lightness": 0.84, "chroma": 0.15 },
-    "green": { "hue": 152, "lightness": 0.7, "chroma": 0.14 },
-    "teal": { "hue": 186, "lightness": 0.71, "chroma": 0.105 },
-    "blue": { "hue": 248, "lightness": 0.65, "chroma": 0.132 },
-    "purple": { "hue": 292, "lightness": 0.62, "chroma": 0.167 },
-    "pink": { "hue": 350, "lightness": 0.69, "chroma": 0.167 }
+    "red": { "hue": 27, "lightness": 0.61, "chroma": 0.167 },
+    "orange": { "hue": 46, "lightness": 0.68, "chroma": 0.15 },
+    "yellow": { "hue": 96, "lightness": 0.82, "chroma": 0.135 },
+    "green": { "hue": 152, "lightness": 0.69, "chroma": 0.126 },
+    "teal": { "hue": 186, "lightness": 0.7, "chroma": 0.095 },
+    "blue": { "hue": 248, "lightness": 0.64, "chroma": 0.119 },
+    "purple": { "hue": 292, "lightness": 0.61, "chroma": 0.15 },
+    "pink": { "hue": 350, "lightness": 0.68, "chroma": 0.15 }
   },
 
   "$comment_steps": [
@@ -312,6 +319,25 @@
     "are written into the UFO, so their names are fixed by convention.",
     "They use the bright step: a mark has to read at thumbnail size."
   ],
+  "$comment_ufoMarkColors": [
+    "What `public.markColor` gets in the UFO, frozen. These came from",
+    "the original hue values and must not follow later tuning of the",
+    "palette: they are file contents, shared with runebender-web, and a",
+    "font full of marked glyphs must not churn because a colour was",
+    "made quieter on screen. `mark_label_for_glyph` snaps a stored",
+    "colour to the nearest label by hue, so a mark written years ago",
+    "still resolves after the display palette moves."
+  ],
+  "ufoMarkColors": {
+    "red": "0.88,0.3,0.27,1",
+    "orange": "0.93,0.45,0.2,1",
+    "yellow": "0.91,0.79,0.27,1",
+    "green": "0.31,0.72,0.45,1",
+    "blue": "0.27,0.58,0.86,1",
+    "purple": "0.54,0.44,0.88,1",
+    "pink": "0.9,0.42,0.67,1"
+  },
+
   "markColors": [
     { "name": "red", "step": "red.base" },
     { "name": "orange", "step": "orange.base" },

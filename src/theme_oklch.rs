@@ -117,6 +117,10 @@ struct TokenFile {
     themes: HashMap<String, ThemeDef>,
     #[serde(rename = "markColors", default)]
     mark_colors: Vec<MarkColorDef>,
+    /// Frozen `public.markColor` strings, keyed by label. File
+    /// contents, so they do not follow display tuning.
+    #[serde(rename = "ufoMarkColors", default)]
+    ufo_mark_colors: HashMap<String, String>,
 }
 
 /// One resolved theme: every surface, text, and role token as sRGB.
@@ -148,15 +152,18 @@ impl Theme {
     }
 }
 
-/// The `public.markColor` value written for a label: the base-step
-/// colour as "r,g,b,a" 0–1 floats. Fixed (not the active theme's), so
-/// switching themes and saving never rewrites every mark in the font —
-/// matches the web's `ufoRgba` byte for byte.
+/// The `public.markColor` value written for a label, as "r,g,b,a" 0–1
+/// floats. Frozen in the token file rather than derived, so neither a
+/// theme switch nor a change to the palette rewrites every mark in a
+/// font — matches the web's `ufoRgba` byte for byte.
 pub fn ufo_rgba_for_label(label: &str) -> Option<String> {
     let file: TokenFile =
         serde_json::from_str(include_str!("../themes/runebender.theme.json")).ok()?;
     if !file.mark_colors.iter().any(|m| m.name == label) {
         return None;
+    }
+    if let Some(frozen) = file.ufo_mark_colors.get(label) {
+        return Some(frozen.clone());
     }
     let color = resolve_token(&file, &format!("{label}.base"))?;
     let fmt = |byte: u8| {
@@ -312,35 +319,37 @@ mod tests {
         format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
     }
 
-    /// Values must match runebender-web's generated tokens exactly
-    /// (src/themeTokens.generated.ts).
+    /// The resolved dark palette. These are display values: the UFO
+    /// mark strings are frozen separately (see `ufo_rgba_matches_web`),
+    /// so tuning the palette here never touches a font's contents.
+    /// runebender-web generates its own tokens from its copy of the
+    /// token file; copy this one over when the two should match.
     #[test]
-    fn matches_web_generated_tokens() {
+    fn resolves_the_dark_palette() {
         let dark = load_theme("dark").expect("dark theme");
         assert_eq!(hex(dark.surface("app")), "#0b0b0b");
         assert_eq!(hex(dark.surface("panel")), "#121212");
         assert_eq!(hex(dark.surface("outline")), "#404040");
         assert_eq!(hex(dark.text("primary")), "#8f8f8f");
-        assert_eq!(hex(dark.role("accent")), "#4fb772");
-        assert_eq!(hex(dark.role("warning")), "#e8c944");
-        assert_eq!(hex(dark.role("selection")), "#ec7433");
-        assert_eq!(hex(dark.role("pointSmooth")), "#4494db");
-        assert_eq!(hex(dark.role("pointOffcurve")), "#8a6fe1");
-        assert_eq!(hex(dark.role("pointSelected")), "#ffe88a");
+        assert_eq!(hex(dark.role("accent")), "#57b174");
+        assert_eq!(hex(dark.role("warning")), "#dec352");
+        assert_eq!(hex(dark.role("selection")), "#e2763f");
+        assert_eq!(hex(dark.role("pointSmooth")), "#4b91d1");
+        assert_eq!(hex(dark.role("pointOffcurve")), "#876fd4");
+        assert_eq!(hex(dark.role("pointSelected")), "#fde895");
         assert_eq!(hex(dark.role("pathStroke")), "#b1b1b1");
         assert_eq!(hex(dark.role("gridSelected")), "#c1c1c1");
-        assert_eq!(hex(dark.role("continuityG2")), "#41b7ab");
+        assert_eq!(hex(dark.role("continuityG2")), "#4db2a7");
     }
 
-    /// Mark colours must match THEME_MARK_COLORS in the web's
-    /// generated tokens.
+    /// The swatches drawn in the Colors panel.
     #[test]
-    fn matches_web_mark_colors() {
+    fn resolves_mark_swatches() {
         let dark = load_theme("dark").expect("dark theme");
-        assert_eq!(hex(dark.mark("red").unwrap()), "#e04c44");
-        assert_eq!(hex(dark.mark("orange").unwrap()), "#ec7433");
-        assert_eq!(hex(dark.mark("yellow").unwrap()), "#e8c944");
-        assert_eq!(hex(dark.mark("green").unwrap()), "#4fb772");
+        assert_eq!(hex(dark.mark("red").unwrap()), "#d55249");
+        assert_eq!(hex(dark.mark("orange").unwrap()), "#e2763f");
+        assert_eq!(hex(dark.mark("yellow").unwrap()), "#dec352");
+        assert_eq!(hex(dark.mark("green").unwrap()), "#57b174");
         assert_eq!(dark.marks.len(), 7);
         assert!(dark.mark("chartreuse").is_none());
     }
