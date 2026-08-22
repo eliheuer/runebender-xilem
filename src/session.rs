@@ -472,6 +472,22 @@ impl Session {
         }
     }
 
+    /// Points where a knife line from p0 to p1 crosses the outline.
+    pub fn knife_hits(&self, p0: Point, p1: Point) -> Vec<Point> {
+        runebender_core::knife::knife_hit_points(&self.glyph, p0, p1)
+    }
+
+    /// Cut the outline along the line p0..p1.
+    pub fn knife_cut(&mut self, p0: Point, p1: Point) -> bool {
+        self.record(EditType::Normal);
+        let changed = runebender_core::knife::knife_cut_glyph(&mut self.glyph, p0, p1);
+        if !changed {
+            // Nothing cut; drop the empty undo group we just pushed.
+            let _ = self.undo.undo(glyph_ops::snapshot(&self.glyph));
+        }
+        changed
+    }
+
     pub fn select_all(&mut self) {
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }

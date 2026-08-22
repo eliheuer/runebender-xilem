@@ -230,3 +230,10 @@ masters + interpolation, curvature/measure overlays, native menus +
 window shortcuts, and the browser build (feasible via the xix web
 driver). runebender-xilem remains the direct source for the tools.
 
+- 2026-08-22, slice 14: **Knife tool.** Drag a line; a live red
+  preview shows the line and the points where it crosses the outline
+  (`knife_hit_points`); on release `knife_cut_glyph` splits the
+  contours at those crossings. Both are core functions on
+  `norad::Glyph`. Verified: a horizontal cut through "A" adds 8 points
+  (20 → 28) at the crossings.
+

@@ -241,6 +241,14 @@ impl Widget for EditorWidget {
             let p1 = affine * *current;
             let accent = pal.role("accent");
             match self.tool {
+                Tool::Knife => {
+                    let danger = pal.role("danger");
+                    painter.stroke(Line::new(p0, p1), &Stroke::new(1.0), danger).draw();
+                    for hit in self.session.knife_hits(*start, *current) {
+                        let sp = affine * hit;
+                        painter.fill(Circle::new(sp, 3.5), danger).draw();
+                    }
+                }
                 Tool::Ellipse => {
                     let c = ((p0.x + p1.x) / 2.0, (p0.y + p1.y) / 2.0);
                     let rr = ((p1.x - p0.x).abs() / 2.0, (p1.y - p0.y).abs() / 2.0);
@@ -268,7 +276,7 @@ impl Widget for EditorWidget {
                 ctx.capture_pointer();
                 let at = ctx.local_position(state.position);
                 match button {
-                    Some(PointerButton::Primary) if matches!(self.tool, Tool::Rect | Tool::Ellipse) => {
+                    Some(PointerButton::Primary) if matches!(self.tool, Tool::Rect | Tool::Ellipse | Tool::Knife) => {
                         ctx.request_focus();
                         ctx.capture_pointer();
                         let d = self.session.viewport.screen_to_design(at);
@@ -403,6 +411,9 @@ impl Widget for EditorWidget {
                     match self.tool {
                         Tool::Rect => self.session.add_rect(s0.x, s0.y, c0.x, c0.y),
                         Tool::Ellipse => self.session.add_ellipse(s0.x, s0.y, c0.x, c0.y),
+                        Tool::Knife => {
+                            self.session.knife_cut(s0, c0);
+                        }
                         _ => {}
                     }
                     self.drag = Drag::None;

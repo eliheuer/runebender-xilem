@@ -38,6 +38,7 @@ pub enum Tool {
     Pen,
     Rect,
     Ellipse,
+    Knife,
 }
 
 /// Which surface is showing.
@@ -231,6 +232,7 @@ fn toolbar(app: &App) -> impl WidgetView<App> + use<> {
         editing.then(|| tool_btn("Pen", Tool::Pen, app.tool == Tool::Pen)),
         editing.then(|| tool_btn("Rect", Tool::Rect, app.tool == Tool::Rect)),
         editing.then(|| tool_btn("Ellipse", Tool::Ellipse, app.tool == Tool::Ellipse)),
+        editing.then(|| tool_btn("Knife", Tool::Knife, app.tool == Tool::Knife)),
         Some(
             text_button(if app.modified { "Save •" } else { "Save" }, |app: &mut App| {
                 app.save()
@@ -385,6 +387,18 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
             let had = sess.glyph.components.len();
             let ok = sess.decompose();
             eprintln!("DECOMP: components={had} decomposed={ok} contours={}", sess.glyph.contours.len());
+            app.session = Arc::new(sess);
+            let g = app.session.glyph.clone();
+            app.font.replace_glyph(i, g);
+        }
+    }
+    if std::env::var("RUNEBENDER_DEMO_KNIFE").is_ok() {
+        if let Mode::Editor(i) = app.mode {
+            use masonry::kurbo::Point;
+            let mut sess = (*app.session).clone();
+            let before = sess.point_count();
+            let ok = sess.knife_cut(Point::new(-100.0, 350.0), Point::new(1600.0, 350.0));
+            eprintln!("KNIFE: cut={ok} points {before} -> {}", sess.point_count());
             app.session = Arc::new(sess);
             let g = app.session.glyph.clone();
             app.font.replace_glyph(i, g);
