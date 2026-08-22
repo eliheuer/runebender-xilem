@@ -174,3 +174,11 @@ interpolation, native menus + window shortcuts, and the browser build.
     framework. Porting is "adapt its `Path`/`MouseDelegate` logic to
     norad + the island's pointer handlers", not a rewrite.
 
+- 2026-08-22, slice 9: **marquee selection.** In the select tool, a
+  primary drag on empty space draws a rubber-band rectangle
+  (`selection` role, translucent) and selects the points inside on
+  release; shift adds to the selection. Middle/secondary drag still
+  pans. Build-verified; the drag interaction is not screenshot-checked
+  (headless can't drag), but the rect-contains logic is trivial and the
+  selection rendering is already proven.
+

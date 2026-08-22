@@ -46,6 +46,8 @@ enum Drag {
     Pan { last: Point },
     /// Pen mouse-down at `origin` (design space); becomes handle-drag past a threshold.
     Pen { origin: Point, dragging: bool },
+    /// Rubber-band selection in screen space.
+    Marquee { start: Point, current: Point, additive: bool },
 }
 
 pub struct EditorWidget {
@@ -205,6 +207,15 @@ impl Widget for EditorWidget {
                 painter.fill(Circle::new(sp, r), fill).draw();
             }
         }
+
+        // Marquee rectangle.
+        if let Drag::Marquee { start, current, .. } = &self.drag {
+            let rect = Rect::from_points(*start, *current);
+            painter.fill(rect, pal.role("selection").with_alpha(0.15)).draw();
+            painter
+                .stroke(rect, &Stroke::new(1.0), pal.role("selection").with_alpha(0.8))
+                .draw();
+        }
     }
 
     fn on_pointer_event(
@@ -258,7 +269,7 @@ impl Widget for EditorWidget {
                                     self.session.selection.clear();
                                     self.emit(ctx, false);
                                 }
-                                self.drag = Drag::Pan { last: at };
+                                self.drag = Drag::Marquee { start: at, current: at, additive: shift };
                             }
                         }
                     }
@@ -303,6 +314,10 @@ impl Widget for EditorWidget {
                         self.session.viewport.pan(d.x, d.y);
                         ctx.request_render();
                     }
+                    Drag::Marquee { current, .. } => {
+                        *current = at;
+                        ctx.request_render();
+                    }
                     Drag::None => {}
                 }
             }
@@ -318,6 +333,20 @@ impl Widget for EditorWidget {
                     }
                     self.drag = Drag::None;
                     self.emit(ctx, true);
+                }
+                Drag::Marquee { start, current, additive } => {
+                    let rect = Rect::from_points(*start, *current);
+                    let additive = *additive;
+                    if !additive {
+                        self.session.selection.clear();
+                    }
+                    for (id, sp, _, _, _) in self.screen_points() {
+                        if rect.contains(sp) {
+                            self.session.selection.insert(id);
+                        }
+                    }
+                    self.drag = Drag::None;
+                    self.emit(ctx, false);
                 }
                 Drag::Pan { .. } => self.drag = Drag::None,
                 Drag::None => {}
