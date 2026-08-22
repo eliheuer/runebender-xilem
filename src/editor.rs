@@ -32,6 +32,8 @@ const HIT_RADIUS_PX: f64 = 8.0;
 pub enum EditorEvent {
     /// The glyph changed; the app should refresh its cached preview.
     Edited,
+    /// The user pressed the save shortcut while the editor had focus.
+    Save,
     /// Selection changed; carries how many points are selected.
     Selection(usize),
     /// The user asked to leave the editor (Escape).
@@ -341,6 +343,11 @@ impl Widget for EditorWidget {
             Key::Character(c) if cmd && c.eq_ignore_ascii_case("a") => {
                 self.session.select_all();
                 (false, true)
+            }
+            Key::Character(c) if cmd && c.eq_ignore_ascii_case("s") => {
+                ctx.submit_action::<EditorEvent>(EditorEvent::Save);
+                ctx.set_handled();
+                return;
             }
             Key::Character(c) if cmd && !shift && c.eq_ignore_ascii_case("z") => {
                 (self.session.undo(), true)

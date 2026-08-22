@@ -56,6 +56,8 @@ pub struct App {
     session: Arc<Session>,
     selected_points: usize,
     tool: Tool,
+    modified: bool,
+    note: String,
 }
 
 impl App {
@@ -103,6 +105,8 @@ impl App {
             session,
             selected_points: 0,
             tool: Tool::Select,
+            modified: false,
+            note: String::new(),
         })
     }
 
@@ -132,6 +136,19 @@ impl App {
             let glyph = self.session.glyph.clone();
             self.font.replace_glyph(index, glyph);
             self.cells = Arc::new(cells_of(&self.font, &self.palette));
+            self.modified = true;
+            self.note.clear();
+        }
+    }
+
+    fn save(&mut self) {
+        self.refresh_open_glyph();
+        match self.font.save() {
+            Ok(()) => {
+                self.modified = false;
+                self.note = format!("Saved {}", self.font.source.display());
+            }
+            Err(e) => self.note = format!("Save failed: {e}"),
         }
     }
 
@@ -165,6 +182,12 @@ fn toolbar(app: &App) -> impl WidgetView<App> + use<> {
         label(title).color(pal.text),
         editing.then(|| tool_btn("Select", Tool::Select, app.tool == Tool::Select)),
         editing.then(|| tool_btn("Pen", Tool::Pen, app.tool == Tool::Pen)),
+        Some(
+            text_button(if app.modified { "Save •" } else { "Save" }, |app: &mut App| {
+                app.save()
+            })
+            .background_color(pal.button),
+        ),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
     .gap(Length::px(12.0))
@@ -187,6 +210,11 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
             app.session.point_count(),
             app.selected_points,
         ),
+    };
+    let text = if app.note.is_empty() {
+        text
+    } else {
+        format!("{}   {}", text, app.note)
     };
     flex_row((label(text).color(pal.text_muted),))
         .padding(Length::px(8.0))
@@ -211,6 +239,7 @@ fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
     editor(app.session.clone(), app.palette.clone(), app.tool, |app: &mut App, ev| match ev {
         editor::EditorEvent::Selection(n) => app.selected_points = n,
         editor::EditorEvent::Edited => app.refresh_open_glyph(),
+        editor::EditorEvent::Save => app.save(),
         editor::EditorEvent::Exit => app.back_to_overview(),
     })
 }
@@ -231,10 +260,15 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
     let path = std::env::args()
         .nth(1)
         .expect("usage: runebender-xix <Font.ufo|Font.designspace>");
-    let app = App::open(FsPath::new(&path)).unwrap_or_else(|e| {
+    let mut app = App::open(FsPath::new(&path)).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1)
     });
+    if std::env::var("RUNEBENDER_SAVE").is_ok() {
+        app.save();
+        println!("SAVE_RESULT: {}", app.note);
+        return Ok(());
+    }
     let background = app.palette.app;
     let window_options =
         WindowOptions::new("Runebender").with_initial_inner_size(LogicalSize::new(1100., 720.));

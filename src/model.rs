@@ -112,6 +112,12 @@ impl FontModel {
         self.glyphs.iter().position(|g| g.name == name)
     }
 
+    pub fn save(&self) -> Result<(), String> {
+        self.font
+            .save(&self.source)
+            .map_err(|e| format!("{}: {e}", self.source.display()))
+    }
+
     /// Replace the glyph at `index` (in the font and the cache) after an edit.
     pub fn replace_glyph(&mut self, index: usize, glyph: norad::Glyph) {
         let Some(entry) = self.glyphs.get_mut(index) else {

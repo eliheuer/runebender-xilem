@@ -120,4 +120,19 @@ file) and its `PARITY.md`.
     and cancels any open pen path. Clean, but it is the pattern the
     canvas kit should formalize (a tool is a state machine with a
     cursor, an overlay, and a keymap scope, DESIGN.md 6).
-    
+
+- 2026-08-22, slice 6: **save.** `FontModel::save` writes the norad
+  font back to its UFO; the app flushes the open glyph first
+  (`refresh_open_glyph`) so in-progress edits are included. A Save
+  button in the toolbar works in any mode; Cmd+S works in the editor.
+  A modified dot (`Save •`) and a "Saved <path>" status line give
+  feedback. Verified on disk: a scripted pen triangle round-trips
+  (space.glif 0 → 1 contour, 3 points, reloads). Forced, and this is
+  the recurring finding:
+  - **Save is the clearest case of the window-shortcut gap.** Cmd+S
+    only fires when a focusable island has focus, so it is wired in the
+    editor and would need wiring in the grid too. The toolbar button is
+    the reliable cross-mode path. A window-level action + keymap + menu
+    layer (DESIGN.md 9) is the missing framework piece; every app works
+    around it the same way.
+
