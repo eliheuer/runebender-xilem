@@ -136,3 +136,24 @@ file) and its `PARITY.md`.
     layer (DESIGN.md 9) is the missing framework piece; every app works
     around it the same way.
 
+- 2026-08-22, slice 7: **sidebar with search and category filter.**
+  A left panel in overview mode: a search box (name or unicode) and
+  category rows (All, Letter, Number, Punctuation, Symbol, Mark, Other)
+  with live counts, driven by core's `GlyphCategory`. The grid selects
+  by font index now, so filtering the visible set does not break
+  selection or open. Verified: Number narrows 657 glyphs to the 18
+  numerals. Forced:
+  - **Filtering is app state, recomputed each view.** `filtered_cells`
+    runs every rebuild; fine at 657 glyphs, but the pattern (derive a
+    filtered projection, feed the island) is what a `virtual_grid`
+    part plus a selection model should own.
+  - Language groups, GF coverage, sort modes, and search scopes/regex
+    from gpui's sidebar are still to do; this is the base.
+
+Parity estimate after slice 7: the overview, select + pen tools,
+viewport, point editing, undo, save, and a filtering sidebar are in.
+Roughly a quarter of runebender-gpui's surface. Remaining large blocks:
+bezier pen (curve handles), components/anchors, boolean/transform ops,
+measure/curvature tools, kerning + text tool, designspace masters +
+interpolation, native menus + window shortcuts, and the browser build.
+

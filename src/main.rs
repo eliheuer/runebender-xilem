@@ -20,13 +20,14 @@ use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
 use xilem::view::{
-    FlexExt as _, flex_col, flex_row, label, text_button,
+    FlexExt as _, flex_col, flex_row, label, portal, sized_box, text_button, text_input,
 };
 use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
 use editor::editor;
 use grid::{Cell, CellMetrics, GridEvent, cells_of, grid};
 use model::FontModel;
+use runebender_core::category::GlyphCategory;
 use session::Session;
 use theme::Palette;
 
@@ -52,6 +53,7 @@ pub struct App {
     mode: Mode,
     selected: Option<usize>,
     filter: String,
+    category: GlyphCategory,
     // Editor session, when a glyph is open.
     session: Arc<Session>,
     selected_points: usize,
@@ -74,6 +76,7 @@ impl App {
             Session::new(&font.font, &font.glyphs[first].name).ok_or("glyph missing")?,
         );
         // For headless screenshots: open a named glyph at startup.
+        let start_cat = std::env::var("RUNEBENDER_CAT").ok();
         let (mode, open) = match std::env::var("RUNEBENDER_OPEN").ok().and_then(|n| font.index_of(&n)) {
             Some(i) => (Mode::Editor(i), Some(i)),
             None => (Mode::Overview, None),
@@ -102,12 +105,51 @@ impl App {
             mode,
             selected: Some(open.unwrap_or(first)),
             filter: String::new(),
+            category: match start_cat.as_deref() {
+                Some("Number") => GlyphCategory::Number,
+                Some("Symbol") => GlyphCategory::Symbol,
+                Some("Mark") => GlyphCategory::Mark,
+                _ => GlyphCategory::All,
+            },
             session,
             selected_points: 0,
             tool: Tool::Select,
             modified: false,
             note: String::new(),
         })
+    }
+
+    /// The cells that pass the current search + category filter.
+    fn filtered_cells(&self) -> Arc<Vec<Cell>> {
+        let q = self.filter.to_lowercase();
+        let cat = self.category;
+        let out: Vec<Cell> = self
+            .cells
+            .iter()
+            .filter(|c| {
+                let cat_ok = cat == GlyphCategory::All || {
+                    let entry = &self.font.glyphs[c.index];
+                    entry.category == cat
+                };
+                let q_ok = q.is_empty()
+                    || c.name.to_lowercase().contains(&q)
+                    || c
+                        .codepoint
+                        .map(|cp| format!("{:04x}", cp as u32).contains(q.trim_start_matches("u+").trim_start_matches("0x")))
+                        .unwrap_or(false);
+                cat_ok && q_ok
+            })
+            .cloned()
+            .collect();
+        Arc::new(out)
+    }
+
+    fn category_count(&self, cat: GlyphCategory) -> usize {
+        if cat == GlyphCategory::All {
+            self.font.glyphs.len()
+        } else {
+            self.font.glyphs.iter().filter(|g| g.category == cat).count()
+        }
     }
 
     fn cell_metrics(&self) -> CellMetrics {
@@ -221,10 +263,45 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
         .background_color(pal.panel)
 }
 
+fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
+    let pal = &app.palette;
+    let cats = [
+        GlyphCategory::All,
+        GlyphCategory::Letter,
+        GlyphCategory::Number,
+        GlyphCategory::Punctuation,
+        GlyphCategory::Symbol,
+        GlyphCategory::Mark,
+        GlyphCategory::Other,
+    ];
+    let rows: Vec<_> = cats
+        .into_iter()
+        .filter(|c| app.category_count(*c) > 0)
+        .map(|c| {
+            let count = app.category_count(c);
+            let active = app.category == c;
+            text_button(
+                format!("{}  {}", c.display_name(), count),
+                move |app: &mut App| app.category = c,
+            )
+            .background_color(if active { pal.role("accent") } else { pal.panel })
+        })
+        .collect();
+    flex_col((
+        text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
+            .placeholder("Search"),
+        portal(flex_col(rows).gap(Length::px(2.0))).flex(1.0),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(Length::px(8.0))
+    .padding(Length::px(8.0))
+    .background_color(pal.panel)
+}
+
 fn overview(app: &App) -> impl WidgetView<App> + use<> {
     let metrics = app.cell_metrics();
-    grid(
-        app.cells.clone(),
+    let grid_view = grid(
+        app.filtered_cells(),
         metrics,
         app.palette.clone(),
         app.selected,
@@ -232,7 +309,12 @@ fn overview(app: &App) -> impl WidgetView<App> + use<> {
             GridEvent::Selected(i) => app.selected = Some(i),
             GridEvent::Open(i) => app.open_glyph(i),
         },
-    )
+    );
+    flex_row((
+        sized_box(sidebar(app)).fixed_width(Length::px(180.0)),
+        grid_view.flex(1.0),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
 }
 
 fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {

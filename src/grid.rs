@@ -115,9 +115,9 @@ impl GridWidget {
             return None;
         }
         let row = ((p.y + self.scroll - PAD) / (CELL + GAP)).floor() as usize;
-        let index = row * cols + col;
-        if index < self.cells.len() && self.cell_rect(index).contains(p) {
-            Some(index)
+        let pos = row * cols + col;
+        if pos < self.cells.len() && self.cell_rect(pos).contains(p) {
+            Some(pos)
         } else {
             None
         }
@@ -170,7 +170,7 @@ impl Widget for GridWidget {
                     continue;
                 };
                 let rect = self.cell_rect(index);
-                let selected = self.selected == Some(index);
+                let selected = self.selected == Some(cell.index);
 
                 // Cell background and border.
                 painter.fill(rounded(rect, 6.0), pal.panel).draw();
@@ -219,7 +219,8 @@ impl Widget for GridWidget {
             }) => {
                 ctx.request_focus();
                 let at = ctx.local_position(state.position);
-                if let Some(index) = self.cell_at(at) {
+                if let Some(pos) = self.cell_at(at) {
+                    let index = self.cells[pos].index;
                     let reopen = self.selected == Some(index);
                     self.selected = Some(index);
                     ctx.submit_action::<GridEvent>(GridEvent::Selected(index));
