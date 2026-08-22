@@ -66,3 +66,26 @@ file) and its `PARITY.md`.
   - **Cell labels still missing** (name, codepoint): needs text in the
     scene, i.e. `Painter::glyphs` with a shaped line. Next slice.
 
+- 2026-08-22, slice 3: **keyboard editing and undo on the island.**
+  Arrow keys nudge the selection (shift = x10), Delete/Backspace remove
+  selected points, Cmd+A selects all, Cmd+Z / Cmd+Shift+Z undo/redo
+  (core `UndoState<Vec<Path>>`), Escape returns to the overview. Forced,
+  and this is the important finding:
+  - **Widget-focused keys work; window shortcuts do not.** Masonry
+    routes key events to the focused widget, so editing keys land once
+    the canvas has focus (it grabs focus on pointer down). That covers
+    tool keys and nudges. It does NOT cover global shortcuts like Cmd+S
+    or menu accelerators that must fire regardless of focus, which is
+    the documented Xilem gap (PLAN.md 4.1, the zstack workaround). So
+    the shortcut story splits cleanly: island-local keys are fine today;
+    a window-level action/keymap/menu layer is still the framework's to
+    build (DESIGN.md 9).
+  - **Undo lives in the island**, as in runebender-xilem, because the
+    view layer would rebuild over it. A framework undo tied to a typed
+    command stack would let this move out of the widget.
+  - Noticed an orphaned `session.rs` (a norad-glyph-based session using
+    `glyph_ops`/`point_ops`) committed but not wired in; removed here.
+    The editor's `Path`-based session stays for now; moving to the
+    norad-glyph session (which unlocks real ops: boolean, decompose,
+    transforms, save) is a planned refactor.
+

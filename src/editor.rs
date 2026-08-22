@@ -8,10 +8,11 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use masonry::accesskit::{Node, Role};
+use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
     AccessCtx, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx, PointerButton,
     PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate, PropertiesMut,
-    PropertiesRef, RegisterCtx, ScrollDelta, Widget,
+    PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Widget,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{BezPath, Circle, Line, Point, Rect, Size, Stroke, Axis};
@@ -105,9 +106,13 @@ impl Session {
 
 const HIT_RADIUS_PX: f64 = 8.0;
 
+/// What the editor reports upward.
 #[derive(Debug)]
-pub struct EditorEvent {
-    pub selected: usize,
+pub enum EditorEvent {
+    /// Selection changed; carries how many points are selected.
+    Selection(usize),
+    /// The user asked to leave the editor (Escape).
+    Exit,
 }
 
 enum Drag {
@@ -121,6 +126,7 @@ pub struct EditorWidget {
     palette: Arc<Palette>,
     size: Size,
     drag: Drag,
+    undo: runebender_core::editing::undo::UndoState<Vec<Path>>,
 }
 
 impl EditorWidget {
@@ -160,6 +166,37 @@ impl EditorWidget {
                 }
             }
         }
+    }
+
+    fn all_ids(&self) -> Vec<EntityId> {
+        self.session
+            .paths
+            .iter()
+            .flat_map(|p| p.points().iter().map(|pt| pt.id))
+            .collect()
+    }
+
+    fn push_undo(&mut self) {
+        self.undo.add_undo_group(self.session.paths.clone());
+    }
+
+    fn delete_selected(&mut self) -> bool {
+        if self.session.selection.is_empty() {
+            return false;
+        }
+        let sel = self.session.selection.clone();
+        for path in &mut self.session.paths {
+            let pts = match path {
+                Path::Cubic(p) => &mut p.points,
+                Path::Quadratic(p) => &mut p.points,
+                Path::Hyper(p) => &mut p.points,
+            };
+            let kept: Vec<_> = pts.iter().filter(|p| !sel.contains(&p.id)).cloned().collect();
+            *pts.make_mut() = kept;
+        }
+        self.session.paths.retain(|p| !p.points().is_empty());
+        self.session.selection.clear();
+        true
     }
 
     fn fit(&mut self) {
@@ -319,6 +356,7 @@ impl Widget for EditorWidget {
                                     self.session.selection.clear();
                                     self.session.selection.insert(id);
                                 }
+                                self.push_undo();
                                 self.drag = Drag::Points { last: at };
                             }
                             None => {
@@ -357,9 +395,9 @@ impl Widget for EditorWidget {
             PointerEvent::Up(_) | PointerEvent::Cancel(_) => {
                 if !matches!(self.drag, Drag::None) {
                     self.drag = Drag::None;
-                    ctx.submit_action::<EditorEvent>(EditorEvent {
-                        selected: self.session.selection.len(),
-                    });
+                    ctx.submit_action::<EditorEvent>(EditorEvent::Selection(
+                        self.session.selection.len(),
+                    ));
                     ctx.request_render();
                 }
             }
@@ -376,6 +414,65 @@ impl Widget for EditorWidget {
                 ctx.set_handled();
             }
             _ => {}
+        }
+    }
+
+    fn accepts_text_input(&self) -> bool {
+        true
+    }
+
+    fn on_text_event(&mut self, ctx: &mut EventCtx<'_>, _props: &mut PropertiesMut<'_>, event: &TextEvent) {
+        let TextEvent::Keyboard(key) = event else { return };
+        if key.state != KeyState::Down {
+            return;
+        }
+        let cmd = key.modifiers.meta() || key.modifiers.ctrl();
+        let shift = key.modifiers.shift();
+        let step = if shift { 10.0 } else { 1.0 };
+        let mut changed = false;
+        let mut selection_changed = false;
+        match &key.key {
+            Key::Named(NamedKey::Escape) => {
+                ctx.submit_action::<EditorEvent>(EditorEvent::Exit);
+                ctx.set_handled();
+                return;
+            }
+            Key::Named(NamedKey::ArrowLeft) => { self.push_undo(); self.translate_selection(kurbo::Vec2::new(-step, 0.0)); changed = true; }
+            Key::Named(NamedKey::ArrowRight) => { self.push_undo(); self.translate_selection(kurbo::Vec2::new(step, 0.0)); changed = true; }
+            Key::Named(NamedKey::ArrowUp) => { self.push_undo(); self.translate_selection(kurbo::Vec2::new(0.0, step)); changed = true; }
+            Key::Named(NamedKey::ArrowDown) => { self.push_undo(); self.translate_selection(kurbo::Vec2::new(0.0, -step)); changed = true; }
+            Key::Named(NamedKey::Delete) | Key::Named(NamedKey::Backspace) => {
+                self.push_undo();
+                changed = self.delete_selected();
+                selection_changed = true;
+            }
+            Key::Character(c) if cmd && c.eq_ignore_ascii_case("a") => {
+                self.session.selection = self.all_ids().into_iter().collect();
+                selection_changed = true;
+                changed = true;
+            }
+            Key::Character(c) if cmd && !shift && c.eq_ignore_ascii_case("z") => {
+                if let Some(prev) = self.undo.undo(self.session.paths.clone()) {
+                    self.session.paths = prev;
+                    self.session.selection.clear();
+                    changed = true; selection_changed = true;
+                }
+            }
+            Key::Character(c) if cmd && (c == "y" || (shift && c.eq_ignore_ascii_case("z"))) => {
+                if let Some(next) = self.undo.redo(self.session.paths.clone()) {
+                    self.session.paths = next;
+                    self.session.selection.clear();
+                    changed = true; selection_changed = true;
+                }
+            }
+            _ => return,
+        }
+        if changed {
+            ctx.request_render();
+            if selection_changed {
+                ctx.submit_action::<EditorEvent>(EditorEvent::Selection(self.session.selection.len()));
+            }
+            ctx.set_handled();
         }
     }
 
@@ -424,6 +521,7 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             palette: self.palette.clone(),
             size: Size::ZERO,
             drag: Drag::None,
+            undo: runebender_core::editing::undo::UndoState::new(),
         };
         (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())
     }

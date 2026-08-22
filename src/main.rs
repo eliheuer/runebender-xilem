@@ -158,8 +158,9 @@ fn overview(app: &App) -> impl WidgetView<App> + use<> {
 }
 
 fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
-    editor(app.session.clone(), app.palette.clone(), |app: &mut App, ev| {
-        app.selected_points = ev.selected;
+    editor(app.session.clone(), app.palette.clone(), |app: &mut App, ev| match ev {
+        editor::EditorEvent::Selection(n) => app.selected_points = n,
+        editor::EditorEvent::Exit => app.back_to_overview(),
     })
 }
 
