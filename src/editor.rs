@@ -48,6 +48,8 @@ enum Drag {
     Pen { origin: Point, dragging: bool },
     /// Rubber-band selection in screen space.
     Marquee { start: Point, current: Point, additive: bool },
+    /// Drawing a shape; endpoints in design space.
+    Shape { start: Point, current: Point },
 }
 
 pub struct EditorWidget {
@@ -232,6 +234,26 @@ impl Widget for EditorWidget {
                 .stroke(rect, &Stroke::new(1.0), pal.role("selection").with_alpha(0.8))
                 .draw();
         }
+
+        // Shape preview.
+        if let Drag::Shape { start, current } = &self.drag {
+            let p0 = affine * *start;
+            let p1 = affine * *current;
+            let accent = pal.role("accent");
+            match self.tool {
+                Tool::Ellipse => {
+                    let c = ((p0.x + p1.x) / 2.0, (p0.y + p1.y) / 2.0);
+                    let rr = ((p1.x - p0.x).abs() / 2.0, (p1.y - p0.y).abs() / 2.0);
+                    let e = masonry::kurbo::Ellipse::new(c, rr, 0.0);
+                    painter.stroke(&e, &Stroke::new(1.0), accent).draw();
+                }
+                _ => {
+                    painter
+                        .stroke(Rect::from_points(p0, p1), &Stroke::new(1.0), accent)
+                        .draw();
+                }
+            }
+        }
     }
 
     fn on_pointer_event(
@@ -246,6 +268,14 @@ impl Widget for EditorWidget {
                 ctx.capture_pointer();
                 let at = ctx.local_position(state.position);
                 match button {
+                    Some(PointerButton::Primary) if matches!(self.tool, Tool::Rect | Tool::Ellipse) => {
+                        ctx.request_focus();
+                        ctx.capture_pointer();
+                        let d = self.session.viewport.screen_to_design(at);
+                        self.drag = Drag::Shape { start: d, current: d };
+                        ctx.set_handled();
+                        return;
+                    }
                     Some(PointerButton::Primary) if self.tool == Tool::Pen => {
                         let affine = self.session.viewport.affine();
                         let near_first = self
@@ -334,6 +364,10 @@ impl Widget for EditorWidget {
                         *current = at;
                         ctx.request_render();
                     }
+                    Drag::Shape { current, .. } => {
+                        *current = self.session.viewport.screen_to_design(at);
+                        ctx.request_render();
+                    }
                     Drag::None => {}
                 }
             }
@@ -363,6 +397,16 @@ impl Widget for EditorWidget {
                     }
                     self.drag = Drag::None;
                     self.emit(ctx, false);
+                }
+                Drag::Shape { start, current } => {
+                    let (s0, c0) = (*start, *current);
+                    match self.tool {
+                        Tool::Rect => self.session.add_rect(s0.x, s0.y, c0.x, c0.y),
+                        Tool::Ellipse => self.session.add_ellipse(s0.x, s0.y, c0.x, c0.y),
+                        _ => {}
+                    }
+                    self.drag = Drag::None;
+                    self.emit(ctx, true);
                 }
                 Drag::Pan { .. } => self.drag = Drag::None,
                 Drag::None => {}

@@ -354,6 +354,48 @@ impl Session {
         self.pen.clear();
     }
 
+    /// Add a closed rectangle contour.
+    pub fn add_rect(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
+        let (lx, rx) = (x0.min(x1), x0.max(x1));
+        let (by, ty) = (y0.min(y1), y0.max(y1));
+        if (rx - lx).abs() < 1.0 || (ty - by).abs() < 1.0 {
+            return;
+        }
+        self.record(EditType::Normal);
+        let corner = |x, y| norad::ContourPoint::new(x, y, norad::PointType::Line, false, None, None);
+        let points = vec![corner(lx, by), corner(rx, by), corner(rx, ty), corner(lx, ty)];
+        self.glyph.contours.push(norad::Contour::new(points, None));
+    }
+
+    /// Add a closed ellipse contour (four cubic segments).
+    pub fn add_ellipse(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
+        let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        let (rx, ry) = ((x1 - x0).abs() / 2.0, (y1 - y0).abs() / 2.0);
+        if rx < 1.0 || ry < 1.0 {
+            return;
+        }
+        self.record(EditType::Normal);
+        const K: f64 = 0.552_284_749_831;
+        let on = |x, y| norad::ContourPoint::new(x, y, norad::PointType::Curve, true, None, None);
+        let off = |x, y| norad::ContourPoint::new(x, y, norad::PointType::OffCurve, false, None, None);
+        // Start at East, go counter-clockwise through N, W, S.
+        let points = vec![
+            on(cx + rx, cy),
+            off(cx + rx, cy + ry * K),
+            off(cx + rx * K, cy + ry),
+            on(cx, cy + ry),
+            off(cx - rx * K, cy + ry),
+            off(cx - rx, cy + ry * K),
+            on(cx - rx, cy),
+            off(cx - rx, cy - ry * K),
+            off(cx - rx * K, cy - ry),
+            on(cx, cy - ry),
+            off(cx + rx * K, cy - ry),
+            off(cx + rx, cy - ry * K),
+        ];
+        self.glyph.contours.push(norad::Contour::new(points, None));
+    }
+
     pub fn select_all(&mut self) {
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }

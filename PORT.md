@@ -187,3 +187,12 @@ interpolation, native menus + window shortcuts, and the browser build.
   (top/bottom/ogonek anchors on the baseline). Editing anchors (add,
   move, name, delete) is a later slice; this is display only.
 
+- 2026-08-22, slice 11: **Shapes tool (rectangle, ellipse), ported
+  from runebender-xilem.** Rect and Ellipse tools with a drag gesture
+  and live preview; on release the session adds a closed contour
+  (`add_rect` = 4 corner Line points; `add_ellipse` = 4 smooth Curve
+  on-curves with 8 off-curve controls at the 0.5523 kappa). Logic from
+  `runebender-xilem/src/tools/shapes.rs`. Verified: a rect and a proper
+  cubic ellipse (16 points). Shift-lock (square/circle) is a later
+  refinement.
+

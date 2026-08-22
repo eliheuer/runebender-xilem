@@ -36,6 +36,8 @@ use theme::Palette;
 pub enum Tool {
     Select,
     Pen,
+    Rect,
+    Ellipse,
 }
 
 /// Which surface is showing.
@@ -227,6 +229,8 @@ fn toolbar(app: &App) -> impl WidgetView<App> + use<> {
         label(title).color(pal.text),
         editing.then(|| tool_btn("Select", Tool::Select, app.tool == Tool::Select)),
         editing.then(|| tool_btn("Pen", Tool::Pen, app.tool == Tool::Pen)),
+        editing.then(|| tool_btn("Rect", Tool::Rect, app.tool == Tool::Rect)),
+        editing.then(|| tool_btn("Ellipse", Tool::Ellipse, app.tool == Tool::Ellipse)),
         Some(
             text_button(if app.modified { "Save •" } else { "Save" }, |app: &mut App| {
                 app.save()
@@ -353,6 +357,16 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         app.save();
         println!("SAVE_RESULT: {}", app.note);
         return Ok(());
+    }
+    if std::env::var("RUNEBENDER_DEMO_SHAPE").is_ok() {
+        if let Mode::Editor(i) = app.mode {
+            let mut sess = (*app.session).clone();
+            sess.add_rect(100.0, 0.0, 400.0, 300.0);
+            sess.add_ellipse(450.0, 0.0, 750.0, 300.0);
+            app.session = Arc::new(sess);
+            let g = app.session.glyph.clone();
+            app.font.replace_glyph(i, g);
+        }
     }
     let background = app.palette.app;
     let window_options =
