@@ -23,6 +23,7 @@ use xilem::{Pod, ViewCtx};
 use crate::App;
 use crate::session::Session;
 use crate::theme::Palette;
+use crate::Tool;
 
 const HIT_RADIUS_PX: f64 = 8.0;
 
@@ -46,8 +47,11 @@ enum Drag {
 pub struct EditorWidget {
     session: Session,
     palette: Arc<Palette>,
+    tool: Tool,
     size: Size,
     drag: Drag,
+    /// Last cursor position in design space, for the pen preview segment.
+    hover: Option<Point>,
 }
 
 impl EditorWidget {
@@ -211,6 +215,24 @@ impl Widget for EditorWidget {
                 ctx.capture_pointer();
                 let at = ctx.local_position(state.position);
                 match button {
+                    Some(PointerButton::Primary) if self.tool == Tool::Pen => {
+                        let close_r = HIT_RADIUS_PX;
+                        let affine = self.session.viewport.affine();
+                        let near_first = self
+                            .session
+                            .pen_first_point()
+                            .map(|p| (affine * p).distance(at) <= close_r)
+                            .unwrap_or(false);
+                        if near_first && self.session.active_contour.is_some() {
+                            self.session.pen_close();
+                        } else {
+                            let d = self.session.viewport.screen_to_design(at);
+                            self.session.pen_line_to(d.x, d.y);
+                        }
+                        self.emit(ctx, true);
+                        ctx.set_handled();
+                        return;
+                    }
                     Some(PointerButton::Primary) => {
                         let shift = state.modifiers.shift();
                         match self.hit_point(at) {
@@ -242,6 +264,12 @@ impl Widget for EditorWidget {
             }
             PointerEvent::Move(PointerUpdate { current, .. }) => {
                 let at = ctx.local_position(current.position);
+                if self.tool == Tool::Pen {
+                    self.hover = Some(self.session.viewport.screen_to_design(at));
+                    if self.session.active_contour.is_some() {
+                        ctx.request_render();
+                    }
+                }
                 match &mut self.drag {
                     Drag::Points { start } => {
                         let zoom = self.session.viewport.zoom;
@@ -294,7 +322,12 @@ impl Widget for EditorWidget {
         let step = if shift { 10.0 } else { 1.0 };
         let (edited, handled) = match &key.key {
             Key::Named(NamedKey::Escape) => {
-                ctx.submit_action::<EditorEvent>(EditorEvent::Exit);
+                if self.session.active_contour.is_some() {
+                    self.session.pen_cancel();
+                    self.emit(ctx, false);
+                } else {
+                    ctx.submit_action::<EditorEvent>(EditorEvent::Exit);
+                }
                 ctx.set_handled();
                 return;
             }
@@ -342,17 +375,20 @@ impl Widget for EditorWidget {
 pub struct EditorView<F> {
     session: Arc<Session>,
     palette: Arc<Palette>,
+    tool: Tool,
     on_event: F,
 }
 
 pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
     session: Arc<Session>,
     palette: Arc<Palette>,
+    tool: Tool,
     on_event: F,
 ) -> EditorView<F> {
     EditorView {
         session,
         palette,
+        tool,
         on_event,
     }
 }
@@ -366,8 +402,10 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
         let widget = EditorWidget {
             session: (*self.session).clone(),
             palette: self.palette.clone(),
+            tool: self.tool,
             size: Size::ZERO,
             drag: Drag::None,
+            hover: None,
         };
         (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())
     }
@@ -380,12 +418,23 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
         mut element: Mut<'_, Self::Element>,
         _: &mut App,
     ) {
+        let mut dirty = false;
         if !Arc::ptr_eq(&self.session, &prev.session) {
             let viewport = element.widget.session.viewport.clone();
             let fitted = element.widget.session.fitted;
             element.widget.session = (*self.session).clone();
             element.widget.session.viewport = viewport;
             element.widget.session.fitted = fitted;
+            dirty = true;
+        }
+        if self.tool != prev.tool {
+            element.widget.tool = self.tool;
+            if self.tool != Tool::Pen {
+                element.widget.session.pen_cancel();
+            }
+            dirty = true;
+        }
+        if dirty {
             element.ctx.request_render();
         }
     }

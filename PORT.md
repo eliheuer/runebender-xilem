@@ -107,3 +107,17 @@ file) and its `PARITY.md`.
     Multiple live sessions (tabs) will need the font behind a shared
     cell or an explicit commit step.
 
+- 2026-08-22, slice 5: **Pen tool.** A `Tool { Select, Pen }` enum on
+  the app, Select/Pen buttons in the editor toolbar, and pen handling
+  in the island: click places corner points (`glyph_ops::start_contour`
+  / `append_segment`), clicking near the first point closes
+  (`close_contour`), a faint accent segment previews from the last
+  point to the cursor, Escape cancels the open path. Verified headless
+  by scripting a triangle. Line-only for now; click-drag for bezier
+  handles is a later slice. Forced:
+  - **Tool state is a rebuild input.** The tool lives on the app and is
+    threaded into the island through the view; switching tools rebuilds
+    and cancels any open pen path. Clean, but it is the pattern the
+    canvas kit should formalize (a tool is a state machine with a
+    cursor, an overlay, and a keymap scope, DESIGN.md 6).
+    

@@ -63,6 +63,8 @@ pub struct Session {
     undo: UndoState<GlyphSnapshot>,
     drag_originals: HashMap<PointId, (f64, f64)>,
     in_drag: bool,
+    /// The contour the pen is currently extending, if any.
+    pub active_contour: Option<usize>,
 }
 
 impl Session {
@@ -80,6 +82,7 @@ impl Session {
             undo: UndoState::new(),
             drag_originals: HashMap::new(),
             in_drag: false,
+            active_contour: None,
         })
     }
 
@@ -229,6 +232,45 @@ impl Session {
         let changed = glyph_ops::delete_points(&mut self.glyph, &self.selection);
         self.selection.clear();
         changed
+    }
+
+    /// The first point of the active pen contour, in design space.
+    pub fn pen_first_point(&self) -> Option<Point> {
+        let c = self.active_contour?;
+        let p = self.glyph.contours.get(c)?.points.first()?;
+        Some(Point::new(p.x, p.y))
+    }
+
+    /// The last point of the active pen contour, in design space.
+    pub fn pen_last_point(&self) -> Option<Point> {
+        let c = self.active_contour?;
+        let p = self.glyph.contours.get(c)?.points.last()?;
+        Some(Point::new(p.x, p.y))
+    }
+
+    /// Add a corner point at (x, y), starting a contour if the pen is idle.
+    pub fn pen_line_to(&mut self, x: f64, y: f64) {
+        self.record(EditType::Normal);
+        match self.active_contour {
+            Some(c) => glyph_ops::append_segment(&mut self.glyph, c, None, x, y, false),
+            None => {
+                let c = glyph_ops::start_contour(&mut self.glyph, x, y);
+                self.active_contour = Some(c);
+            }
+        }
+    }
+
+    /// Close the active contour.
+    pub fn pen_close(&mut self) {
+        if let Some(c) = self.active_contour.take() {
+            self.record(EditType::Normal);
+            glyph_ops::close_contour(&mut self.glyph, c, None);
+        }
+    }
+
+    /// End the current pen path without closing (Escape / tool switch).
+    pub fn pen_cancel(&mut self) {
+        self.active_contour = None;
     }
 
     pub fn select_all(&mut self) {

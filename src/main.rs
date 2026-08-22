@@ -30,6 +30,13 @@ use model::FontModel;
 use session::Session;
 use theme::Palette;
 
+/// The active editor tool.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Tool {
+    Select,
+    Pen,
+}
+
 /// Which surface is showing.
 enum Mode {
     /// The glyph grid.
@@ -48,6 +55,7 @@ pub struct App {
     // Editor session, when a glyph is open.
     session: Arc<Session>,
     selected_points: usize,
+    tool: Tool,
 }
 
 impl App {
@@ -74,6 +82,17 @@ impl App {
             ),
             None => session,
         };
+        // Headless pen check: draw a triangle into the open glyph's session.
+        let session = if std::env::var("RUNEBENDER_DEMO_PEN").is_ok() {
+            let mut s = (*session).clone();
+            s.pen_line_to(200.0, 0.0);
+            s.pen_line_to(500.0, 0.0);
+            s.pen_line_to(350.0, 400.0);
+            s.pen_close();
+            Arc::new(s)
+        } else {
+            session
+        };
         Ok(Self {
             font,
             palette,
@@ -83,6 +102,7 @@ impl App {
             filter: String::new(),
             session,
             selected_points: 0,
+            tool: Tool::Select,
         })
     }
 
@@ -132,13 +152,19 @@ fn toolbar(app: &App) -> impl WidgetView<App> + use<> {
             .map(|g| g.name.clone())
             .unwrap_or_default(),
     };
-    let back = matches!(app.mode, Mode::Editor(_));
+    let editing = matches!(app.mode, Mode::Editor(_));
+    let tool_btn = |name: &'static str, tool: Tool, active: bool| {
+        text_button(name, move |app: &mut App| app.tool = tool)
+            .background_color(if active { pal.role("accent") } else { pal.button })
+    };
     flex_row((
-        back.then(|| {
+        editing.then(|| {
             text_button("‹ Overview", |app: &mut App| app.back_to_overview())
                 .background_color(pal.button)
         }),
         label(title).color(pal.text),
+        editing.then(|| tool_btn("Select", Tool::Select, app.tool == Tool::Select)),
+        editing.then(|| tool_btn("Pen", Tool::Pen, app.tool == Tool::Pen)),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
     .gap(Length::px(12.0))
@@ -182,7 +208,7 @@ fn overview(app: &App) -> impl WidgetView<App> + use<> {
 }
 
 fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
-    editor(app.session.clone(), app.palette.clone(), |app: &mut App, ev| match ev {
+    editor(app.session.clone(), app.palette.clone(), app.tool, |app: &mut App, ev| match ev {
         editor::EditorEvent::Selection(n) => app.selected_points = n,
         editor::EditorEvent::Edited => app.refresh_open_glyph(),
         editor::EditorEvent::Exit => app.back_to_overview(),
