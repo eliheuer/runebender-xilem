@@ -208,6 +208,22 @@ impl Widget for EditorWidget {
             }
         }
 
+        // Anchors: a small diamond at each, in the accent color.
+        let anchor_color = pal.role("accent");
+        for anchor in &self.session.glyph.anchors {
+            let p = affine * Point::new(anchor.x, anchor.y);
+            let r = 5.0;
+            let diamond = masonry::kurbo::BezPath::from_vec(vec![
+                masonry::kurbo::PathEl::MoveTo(Point::new(p.x, p.y - r)),
+                masonry::kurbo::PathEl::LineTo(Point::new(p.x + r, p.y)),
+                masonry::kurbo::PathEl::LineTo(Point::new(p.x, p.y + r)),
+                masonry::kurbo::PathEl::LineTo(Point::new(p.x - r, p.y)),
+                masonry::kurbo::PathEl::ClosePath,
+            ]);
+            painter.stroke(&diamond, &Stroke::new(1.5), anchor_color).draw();
+            painter.fill(Circle::new(p, 1.5), anchor_color).draw();
+        }
+
         // Marquee rectangle.
         if let Drag::Marquee { start, current, .. } = &self.drag {
             let rect = Rect::from_points(*start, *current);

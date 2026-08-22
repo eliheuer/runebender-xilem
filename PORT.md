@@ -182,3 +182,8 @@ interpolation, native menus + window shortcuts, and the browser build.
   (headless can't drag), but the rect-contains logic is trivial and the
   selection rendering is already proven.
 
+- 2026-08-22, slice 10: **anchors display.** Glyph anchors
+  (`glyph.anchors`) draw as small accent diamonds. Verified on "A"
+  (top/bottom/ogonek anchors on the baseline). Editing anchors (add,
+  move, name, delete) is a later slice; this is display only.
+
