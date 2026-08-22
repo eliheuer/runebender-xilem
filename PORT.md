@@ -157,3 +157,20 @@ bezier pen (curve handles), components/anchors, boolean/transform ops,
 measure/curvature tools, kerning + text tool, designspace masters +
 interpolation, native menus + window shortcuts, and the browser build.
 
+- 2026-08-22, slice 8: **bezier pen (curve handles), ported from
+  runebender-xilem.** The pen now distinguishes click from click-drag:
+  a click places a corner on-curve point; a click-drag places a smooth
+  on-curve point with symmetric off-curve handles, the outgoing handle
+  following the cursor and the incoming handle mirrored. Logic lifted
+  from `runebender-xilem/src/tools/pen.rs` (which is the same
+  Xilem/Masonry family) and rewritten onto norad points via a pen
+  buffer in the session (`pen_corner`, `pen_smooth_begin/drag`,
+  `pen_close`). Verified headless: a smooth point produces a real cubic
+  arch (blue on-curve, orange/purple handles, 5 points, closes to a
+  filled contour). Note:
+  - runebender-xilem is the best source for the remaining tools
+    (HyperPen, Knife, Measure, Shapes, Select marquee) and its
+    `mouse.rs` gesture recognizer, because it targets the same
+    framework. Porting is "adapt its `Path`/`MouseDelegate` logic to
+    norad + the island's pointer handlers", not a rewrite.
+

@@ -65,6 +65,17 @@ pub struct Session {
     in_drag: bool,
     /// The contour the pen is currently extending, if any.
     pub active_contour: Option<usize>,
+    /// In-progress pen points (on- and off-curve), materialized into
+    /// `active_contour` on each change.
+    pen: Vec<PenPt>,
+}
+
+/// One point in the pen's in-progress buffer.
+#[derive(Clone, Copy)]
+struct PenPt {
+    point: Point,
+    off: bool,
+    smooth: bool,
 }
 
 impl Session {
@@ -83,6 +94,7 @@ impl Session {
             drag_originals: HashMap::new(),
             in_drag: false,
             active_contour: None,
+            pen: Vec::new(),
         })
     }
 
@@ -234,43 +246,112 @@ impl Session {
         changed
     }
 
-    /// The first point of the active pen contour, in design space.
-    pub fn pen_first_point(&self) -> Option<Point> {
-        let c = self.active_contour?;
-        let p = self.glyph.contours.get(c)?.points.first()?;
-        Some(Point::new(p.x, p.y))
-    }
-
-    /// The last point of the active pen contour, in design space.
+    /// The last committed on-curve point in the pen buffer, in design space.
     pub fn pen_last_point(&self) -> Option<Point> {
-        let c = self.active_contour?;
-        let p = self.glyph.contours.get(c)?.points.last()?;
-        Some(Point::new(p.x, p.y))
+        self.pen.iter().rev().find(|p| !p.off).map(|p| p.point)
     }
 
-    /// Add a corner point at (x, y), starting a contour if the pen is idle.
-    pub fn pen_line_to(&mut self, x: f64, y: f64) {
-        self.record(EditType::Normal);
-        match self.active_contour {
-            Some(c) => glyph_ops::append_segment(&mut self.glyph, c, None, x, y, false),
-            None => {
-                let c = glyph_ops::start_contour(&mut self.glyph, x, y);
+    /// The first point of the pen buffer, in design space.
+    pub fn pen_first_point(&self) -> Option<Point> {
+        self.pen.first().map(|p| p.point)
+    }
+
+    pub fn pen_is_active(&self) -> bool {
+        !self.pen.is_empty()
+    }
+
+    /// Write the pen buffer into `active_contour`, creating it if needed.
+    fn pen_sync(&mut self) {
+        let ci = match self.active_contour {
+            Some(c) if c < self.glyph.contours.len() => c,
+            _ => {
+                self.glyph.contours.push(norad::Contour::new(Vec::new(), None));
+                let c = self.glyph.contours.len() - 1;
                 self.active_contour = Some(c);
+                c
             }
+        };
+        let mut points = Vec::with_capacity(self.pen.len());
+        let mut prev_off = false;
+        for (i, pt) in self.pen.iter().enumerate() {
+            let typ = if i == 0 {
+                norad::PointType::Move
+            } else if pt.off {
+                norad::PointType::OffCurve
+            } else if prev_off {
+                norad::PointType::Curve
+            } else {
+                norad::PointType::Line
+            };
+            points.push(norad::ContourPoint::new(pt.point.x, pt.point.y, typ, pt.smooth, None, None));
+            prev_off = pt.off;
         }
+        self.glyph.contours[ci].points = points;
+    }
+
+    /// Place a corner on-curve point (a plain click).
+    pub fn pen_corner(&mut self, x: f64, y: f64) {
+        if self.pen.is_empty() {
+            self.record(EditType::Normal);
+        }
+        self.pen.push(PenPt { point: Point::new(x, y), off: false, smooth: false });
+        self.pen_sync();
+    }
+
+    /// Begin a smooth point with symmetric handles at `origin`; the outgoing
+    /// handle starts at `to`.
+    pub fn pen_smooth_begin(&mut self, origin: Point, to: Point) {
+        if self.pen.is_empty() {
+            self.record(EditType::Normal);
+        }
+        self.pen.push(PenPt { point: origin, off: true, smooth: false });
+        self.pen.push(PenPt { point: origin, off: false, smooth: true });
+        self.pen.push(PenPt { point: to, off: true, smooth: false });
+        self.pen_sync();
+    }
+
+    /// Update the handles of the smooth point currently being dragged.
+    pub fn pen_smooth_drag(&mut self, origin: Point, to: Point) {
+        let n = self.pen.len();
+        if n < 3 {
+            return;
+        }
+        self.pen[n - 1].point = to;
+        self.pen[n - 3].point = Point::new(2.0 * origin.x - to.x, 2.0 * origin.y - to.y);
+        self.pen_sync();
     }
 
     /// Close the active contour.
     pub fn pen_close(&mut self) {
         if let Some(c) = self.active_contour.take() {
-            self.record(EditType::Normal);
-            glyph_ops::close_contour(&mut self.glyph, c, None);
+            if let Some(contour) = self.glyph.contours.get_mut(c) {
+                if contour.points.first().map(|p| p.typ) == Some(norad::PointType::Move)
+                    && contour.points.len() > 1
+                {
+                    let first = contour.points.remove(0);
+                    let typ = if contour
+                        .points
+                        .last()
+                        .map(|p| p.typ == norad::PointType::OffCurve)
+                        .unwrap_or(false)
+                    {
+                        norad::PointType::Curve
+                    } else {
+                        norad::PointType::Line
+                    };
+                    contour.points.push(norad::ContourPoint::new(
+                        first.x, first.y, typ, first.smooth, None, None,
+                    ));
+                }
+            }
         }
+        self.pen.clear();
     }
 
     /// End the current pen path without closing (Escape / tool switch).
     pub fn pen_cancel(&mut self) {
         self.active_contour = None;
+        self.pen.clear();
     }
 
     pub fn select_all(&mut self) {

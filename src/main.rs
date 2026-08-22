@@ -89,10 +89,13 @@ impl App {
         };
         // Headless pen check: draw a triangle into the open glyph's session.
         let session = if std::env::var("RUNEBENDER_DEMO_PEN").is_ok() {
+            use masonry::kurbo::Point;
             let mut s = (*session).clone();
-            s.pen_line_to(200.0, 0.0);
-            s.pen_line_to(500.0, 0.0);
-            s.pen_line_to(350.0, 400.0);
+            s.pen_corner(150.0, 0.0);
+            // A smooth point with handles: down at (350,500), drag out to (500,500).
+            s.pen_smooth_begin(Point::new(350.0, 500.0), Point::new(500.0, 500.0));
+            s.pen_smooth_drag(Point::new(350.0, 500.0), Point::new(500.0, 500.0));
+            s.pen_corner(550.0, 0.0);
             s.pen_close();
             Arc::new(s)
         } else {

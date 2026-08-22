@@ -44,6 +44,8 @@ enum Drag {
     None,
     Points { start: Point },
     Pan { last: Point },
+    /// Pen mouse-down at `origin` (design space); becomes handle-drag past a threshold.
+    Pen { origin: Point, dragging: bool },
 }
 
 pub struct EditorWidget {
@@ -218,20 +220,20 @@ impl Widget for EditorWidget {
                 let at = ctx.local_position(state.position);
                 match button {
                     Some(PointerButton::Primary) if self.tool == Tool::Pen => {
-                        let close_r = HIT_RADIUS_PX;
                         let affine = self.session.viewport.affine();
                         let near_first = self
                             .session
                             .pen_first_point()
-                            .map(|p| (affine * p).distance(at) <= close_r)
+                            .map(|p| (affine * p).distance(at) <= HIT_RADIUS_PX)
                             .unwrap_or(false);
-                        if near_first && self.session.active_contour.is_some() {
+                        if near_first && self.session.pen_is_active() {
                             self.session.pen_close();
+                            self.drag = Drag::None;
+                            self.emit(ctx, true);
                         } else {
-                            let d = self.session.viewport.screen_to_design(at);
-                            self.session.pen_line_to(d.x, d.y);
+                            let origin = self.session.viewport.screen_to_design(at);
+                            self.drag = Drag::Pen { origin, dragging: false };
                         }
-                        self.emit(ctx, true);
                         ctx.set_handled();
                         return;
                     }
@@ -273,6 +275,21 @@ impl Widget for EditorWidget {
                     }
                 }
                 match &mut self.drag {
+                    Drag::Pen { origin, dragging } => {
+                        let origin = *origin;
+                        let to = self.session.viewport.screen_to_design(at);
+                        let moved_px = (self.session.viewport.affine() * origin).distance(at);
+                        if *dragging {
+                            self.session.pen_smooth_drag(origin, to);
+                            ctx.request_render();
+                        } else if moved_px > 4.0 {
+                            if let Drag::Pen { dragging, .. } = &mut self.drag {
+                                *dragging = true;
+                            }
+                            self.session.pen_smooth_begin(origin, to);
+                            ctx.request_render();
+                        }
+                    }
                     Drag::Points { start } => {
                         let zoom = self.session.viewport.zoom;
                         let total = ((at.x - start.x) / zoom, -(at.y - start.y) / zoom);
@@ -292,6 +309,13 @@ impl Widget for EditorWidget {
             PointerEvent::Up(_) | PointerEvent::Cancel(_) => match &self.drag {
                 Drag::Points { .. } => {
                     self.session.end_point_drag();
+                    self.drag = Drag::None;
+                    self.emit(ctx, true);
+                }
+                Drag::Pen { origin, dragging } => {
+                    if !dragging {
+                        self.session.pen_corner(origin.x, origin.y);
+                    }
                     self.drag = Drag::None;
                     self.emit(ctx, true);
                 }
@@ -324,7 +348,7 @@ impl Widget for EditorWidget {
         let step = if shift { 10.0 } else { 1.0 };
         let (edited, handled) = match &key.key {
             Key::Named(NamedKey::Escape) => {
-                if self.session.active_contour.is_some() {
+                if self.session.pen_is_active() {
                     self.session.pen_cancel();
                     self.emit(ctx, false);
                 } else {
