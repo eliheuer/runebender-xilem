@@ -247,3 +247,8 @@ driver). runebender-xilem remains the direct source for the tools.
   widths, and LSB/RSB (-19/-59). The text helper also unblocks grid
   cell labels (next).
 
+- 2026-08-22, slice 16: **grid cell labels.** Each cell now shows the
+  glyph name (left) and unicode codepoint (right) in a label row, via
+  the text helper, matching the gpui grid. This was the last visibly
+  missing overview feature.
+

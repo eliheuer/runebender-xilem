@@ -22,6 +22,7 @@ use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
 use crate::model::FontModel;
+use crate::text_label::{self, Anchor};
 use crate::theme::Palette;
 
 const CELL: f64 = 84.0;
@@ -184,10 +185,33 @@ impl Widget for GridWidget {
                     .draw();
 
                 // Glyph preview: fit the em box into the upper part of the cell.
+                let preview_rect = Rect::new(rect.x0, rect.y0, rect.x1, rect.y1 - 18.0);
                 if !cell.outline.elements().is_empty() {
-                    let preview = fit_transform(rect, cell.advance, &self.metrics);
+                    let preview = fit_transform(preview_rect, cell.advance, &self.metrics);
                     let outline = preview * (*cell.outline).clone();
                     painter.fill(&outline, glyph_fill.with_alpha(0.9)).draw();
+                }
+
+                // Label row: glyph name (left) and codepoint (right).
+                let label_y = rect.y1 - 9.0;
+                let muted = self.palette.text_muted;
+                text_label::draw(
+                    painter,
+                    Point::new(rect.x0 + 8.0, label_y),
+                    &cell.name,
+                    10.0,
+                    if selected { self.palette.text } else { muted },
+                    Anchor::Start,
+                );
+                if let Some(cp) = cell.codepoint {
+                    text_label::draw(
+                        painter,
+                        Point::new(rect.x1 - 8.0, label_y),
+                        &format!("{:04X}", cp as u32),
+                        10.0,
+                        muted,
+                        Anchor::End,
+                    );
                 }
             }
         }
