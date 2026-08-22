@@ -22,6 +22,7 @@ use xilem::{Pod, ViewCtx};
 
 use crate::App;
 use crate::session::Session;
+use crate::text_label::{self, Anchor};
 use crate::theme::Palette;
 use crate::Tool;
 
@@ -224,6 +225,35 @@ impl Widget for EditorWidget {
             ]);
             painter.stroke(&diamond, &Stroke::new(1.5), anchor_color).draw();
             painter.fill(Circle::new(p, 1.5), anchor_color).draw();
+        }
+
+        // Measure overlay: segment/handle/stem lengths and side bearings.
+        if self.tool == Tool::Measure {
+            let zoom = self.session.viewport.zoom;
+            for m in self.session.measurements() {
+                let a = affine * m.a;
+                let b = affine * m.b;
+                let color = match m.kind {
+                    runebender_core::measure::MeasureKind::Handle => pal.role("pointOffcurve"),
+                    runebender_core::measure::MeasureKind::Segment => pal.role("accent"),
+                    _ => pal.role("selection"),
+                };
+                painter.stroke(Line::new(a, b), &Stroke::new(1.0), color).draw();
+                let mid = Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
+                text_label::draw(painter, mid, &m.length.to_string(), 11.0, color, Anchor::Middle);
+            }
+            if let Some(sb) = self.session.side_bearings() {
+                let quiet = pal.role("metricQuiet");
+                let y = (affine * Point::new(0.0, sb.y_left.min(sb.y_right) - 40.0 / zoom.max(0.001))).y;
+                let l = affine * Point::new(0.0, 0.0);
+                let ink_l = affine * Point::new(sb.min_x, 0.0);
+                let ink_r = affine * Point::new(sb.max_x, 0.0);
+                let adv = affine * Point::new(sb.advance, 0.0);
+                painter.stroke(Line::new((l.x, y), (ink_l.x, y)), &Stroke::new(1.0), quiet).draw();
+                painter.stroke(Line::new((ink_r.x, y), (adv.x, y)), &Stroke::new(1.0), quiet).draw();
+                text_label::draw(painter, Point::new((l.x + ink_l.x) / 2.0, y - 8.0), &sb.lsb.to_string(), 11.0, quiet, Anchor::Middle);
+                text_label::draw(painter, Point::new((ink_r.x + adv.x) / 2.0, y - 8.0), &sb.rsb.to_string(), 11.0, quiet, Anchor::Middle);
+            }
         }
 
         // Marquee rectangle.

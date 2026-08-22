@@ -8,6 +8,7 @@ mod editor;
 mod grid;
 mod model;
 mod session;
+mod text_label;
 mod theme;
 
 use std::path::Path as FsPath;
@@ -39,6 +40,7 @@ pub enum Tool {
     Rect,
     Ellipse,
     Knife,
+    Measure,
 }
 
 /// Which surface is showing.
@@ -119,7 +121,10 @@ impl App {
             },
             session,
             selected_points: 0,
-            tool: Tool::Select,
+            tool: match std::env::var("RUNEBENDER_TOOL").as_deref() {
+                Ok("measure") => Tool::Measure,
+                _ => Tool::Select,
+            },
             modified: false,
             note: String::new(),
         })
@@ -233,6 +238,7 @@ fn toolbar(app: &App) -> impl WidgetView<App> + use<> {
         editing.then(|| tool_btn("Rect", Tool::Rect, app.tool == Tool::Rect)),
         editing.then(|| tool_btn("Ellipse", Tool::Ellipse, app.tool == Tool::Ellipse)),
         editing.then(|| tool_btn("Knife", Tool::Knife, app.tool == Tool::Knife)),
+        editing.then(|| tool_btn("Measure", Tool::Measure, app.tool == Tool::Measure)),
         Some(
             text_button(if app.modified { "Save •" } else { "Save" }, |app: &mut App| {
                 app.save()

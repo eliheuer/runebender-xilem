@@ -488,6 +488,27 @@ impl Session {
         changed
     }
 
+    /// The glyph's contours as core `Path`s (for measurement/analysis).
+    pub fn paths(&self) -> Vec<runebender_core::path::Path> {
+        self.glyph
+            .contours
+            .iter()
+            .map(|c| {
+                runebender_core::path::Path::from_contour(
+                    &runebender_core::model::workspace::Contour::from_norad(c),
+                )
+            })
+            .collect()
+    }
+
+    pub fn measurements(&self) -> Vec<runebender_core::measure::Measurement> {
+        runebender_core::measure::glyph_measurements(&self.paths())
+    }
+
+    pub fn side_bearings(&self) -> Option<runebender_core::measure::SideBearings> {
+        runebender_core::measure::side_bearings(&self.paths(), self.advance())
+    }
+
     pub fn select_all(&mut self) {
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }

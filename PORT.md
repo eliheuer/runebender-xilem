@@ -237,3 +237,13 @@ driver). runebender-xilem remains the direct source for the tools.
   `norad::Glyph`. Verified: a horizontal cut through "A" adds 8 points
   (20 → 28) at the crossings.
 
+- 2026-08-22, slice 15: **text-in-scene helper + Measure tool.** Built
+  `text_label::draw` (thread-local Parley contexts + Masonry's
+  `render_text`) to draw shaped text into a canvas scene, the thing the
+  framework should provide and doesn't. Then the Measure tool: segment
+  lengths, handle lengths, stem/counter widths (`glyph_measurements`)
+  and side bearings (`side_bearings`), all from core, drawn as colored
+  lines with numeric labels. Verified on "A": edge lengths, three stem
+  widths, and LSB/RSB (-19/-59). The text helper also unblocks grid
+  cell labels (next).
+
