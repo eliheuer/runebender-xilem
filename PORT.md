@@ -45,3 +45,24 @@ file) and its `PARITY.md`.
   shapes, `EventCtx::local_position`, `capture_pointer`,
   `submit_action`, and the headless screenshot path.
 
+- 2026-08-22, slice 2: **glyph grid + mode switch.** Refactored into
+  modules (`theme`, `model`, `grid`, `editor`, `main`). Added a cached
+  `FontModel` (per-glyph outline, ink box, mark, category) and a
+  `GridWidget` island that paints every visible cell into one scene,
+  scrolls, selects, and reports open/select events. Click selects,
+  click again opens the editor; `‹ Overview` returns. Verified on a
+  657-glyph font (Newsreader). Forced:
+  - **A third canvas island already repeats itself.** Grid and editor
+    both hand-roll: measure/layout/paint, scroll math, pointer routing,
+    the View wrapper, an event enum, `submit_action`. The canvas kit in
+    DESIGN.md 6 (viewport, gesture delegate, scene, hit testing) would
+    remove most of both files. This is now the highest-value framework
+    piece.
+  - **No virtual grid widget.** The grid is hand-virtualized (only
+    visible rows painted). Fine as an island, but a general
+    `virtual_grid` part would serve the media bin, asset browser, etc.
+  - **Mode switch is `one_of::Either`.** Works, but the two arms must
+    have the same `State`; fine here since both are `App`.
+  - **Cell labels still missing** (name, codepoint): needs text in the
+    scene, i.e. `Painter::glyphs` with a shaped line. Next slice.
+
