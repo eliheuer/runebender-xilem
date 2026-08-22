@@ -1,0 +1,26 @@
+[package]
+name = "runebender-xix"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "Apache-2.0 OR MIT"
+description = "A font editor built on xix, a fork of Xilem."
+repository = "https://github.com/eliheuer/runebender-xix"
+publish = false
+
+[[bin]]
+name = "runebender-xix"
+path = "src/main.rs"
+
+[dependencies]
+# xix is a fork of Xilem; its crates keep upstream names for now.
+xilem = { git = "https://github.com/eliheuer/xix", branch = "main", features = ["screenshot"] }
+masonry = { git = "https://github.com/eliheuer/xix", branch = "main" }
+runebender-core = { git = "https://github.com/eliheuer/runebender-core" }
+norad = "0.18"
+kurbo = "0.13"
+winit = "0.30"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

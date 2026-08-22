@@ -1,0 +1,3 @@
+/target
+/screenshots/*.png
+!/screenshots/.keep
