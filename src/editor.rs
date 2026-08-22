@@ -468,6 +468,11 @@ impl Widget for EditorWidget {
             Key::Character(c) if cmd && (c == "y" || (shift && c.eq_ignore_ascii_case("z"))) => {
                 (self.session.redo(), true)
             }
+            Key::Character(c) if !cmd && c.eq_ignore_ascii_case("h") => (self.session.flip_horizontal(), true),
+            Key::Character(c) if !cmd && c.eq_ignore_ascii_case("v") => (self.session.flip_vertical(), true),
+            Key::Character(c) if !cmd && c.eq_ignore_ascii_case("r") => (self.session.rotate_90(), true),
+            Key::Character(c) if !cmd && c == "]" => (self.session.reverse(), true),
+            Key::Character(c) if !cmd && c.eq_ignore_ascii_case("o") => (self.session.remove_overlap(), true),
             _ => return,
         };
         if handled {

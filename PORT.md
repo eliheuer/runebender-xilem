@@ -196,3 +196,15 @@ interpolation, native menus + window shortcuts, and the browser build.
   cubic ellipse (16 points). Shift-lock (square/circle) is a later
   refinement.
 
+- 2026-08-22, slice 12: **transform and boolean ops (from the gpui
+  port's command set).** Session methods over core: `flip_horizontal`
+  / `flip_vertical` / `rotate_90` (via `transform_selection` with a raw
+  affine, which core centers on the selection bbox), `reverse`
+  (`reverse_contours`), and `remove_overlap` (core's linesweeper
+  union). Bound to unmodified keys in the editor (h/v/r/]/o) for now;
+  these belong on a menu once the window-level action layer exists.
+  Verified: an overlapping rect + ellipse union into one 19-point
+  contour. Boolean subtract/intersect/exclude are the same call with a
+  different `linesweeper::BinaryOp`; a later slice adds them plus
+  decompose.
+

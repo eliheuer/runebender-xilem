@@ -396,6 +396,41 @@ impl Session {
         self.glyph.contours.push(norad::Contour::new(points, None));
     }
 
+    /// Apply an affine to the selection (or the whole glyph if none),
+    /// centered on the target bounding box.
+    pub fn transform(&mut self, affine: kurbo::Affine) -> bool {
+        self.record(EditType::Normal);
+        glyph_ops::transform_selection(&mut self.glyph, &self.selection, affine)
+    }
+
+    pub fn flip_horizontal(&mut self) -> bool {
+        self.transform(kurbo::Affine::new([-1.0, 0.0, 0.0, 1.0, 0.0, 0.0]))
+    }
+
+    pub fn flip_vertical(&mut self) -> bool {
+        self.transform(kurbo::Affine::new([1.0, 0.0, 0.0, -1.0, 0.0, 0.0]))
+    }
+
+    pub fn rotate_90(&mut self) -> bool {
+        self.transform(kurbo::Affine::new([0.0, 1.0, -1.0, 0.0, 0.0, 0.0]))
+    }
+
+    pub fn reverse(&mut self) -> bool {
+        self.record(EditType::Normal);
+        glyph_ops::reverse_contours(&mut self.glyph, &self.selection)
+    }
+
+    pub fn remove_overlap(&mut self) -> bool {
+        if let Some(contours) = glyph_ops::remove_overlap(&self.glyph) {
+            self.record(EditType::Normal);
+            self.glyph.contours = contours;
+            self.selection.clear();
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn select_all(&mut self) {
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }
