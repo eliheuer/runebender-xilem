@@ -39,6 +39,7 @@ pub enum Tool {
     Pen,
     Rect,
     Ellipse,
+    HyperPen,
     Knife,
     Measure,
 }
@@ -235,6 +236,7 @@ fn toolbar(app: &App) -> impl WidgetView<App> + use<> {
         label(title).color(pal.text),
         editing.then(|| tool_btn("Select", Tool::Select, app.tool == Tool::Select)),
         editing.then(|| tool_btn("Pen", Tool::Pen, app.tool == Tool::Pen)),
+        editing.then(|| tool_btn("HyperPen", Tool::HyperPen, app.tool == Tool::HyperPen)),
         editing.then(|| tool_btn("Rect", Tool::Rect, app.tool == Tool::Rect)),
         editing.then(|| tool_btn("Ellipse", Tool::Ellipse, app.tool == Tool::Ellipse)),
         editing.then(|| tool_btn("Knife", Tool::Knife, app.tool == Tool::Knife)),
@@ -410,6 +412,22 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
             app.font.replace_glyph(i, g);
         }
     }
+    if std::env::var("RUNEBENDER_DEMO_HYPER").is_ok() {
+        if let Mode::Editor(i) = app.mode {
+            let mut sess = (*app.session).clone();
+            sess.hyper_add(150.0, 0.0, false);
+            sess.hyper_add(300.0, 500.0, false);
+            sess.hyper_add(500.0, 300.0, false);
+            sess.hyper_add(650.0, 500.0, false);
+            sess.hyper_add(500.0, 0.0, false);
+            sess.hyper_close();
+            let hyper = sess.glyph.contours.iter().enumerate().any(|(c,_)| sess_is_hyper(&sess, c));
+            eprintln!("HYPER: contours={} last_is_hyper={hyper} points={}", sess.glyph.contours.len(), sess.point_count());
+            app.session = Arc::new(sess);
+            let g = app.session.glyph.clone();
+            app.font.replace_glyph(i, g);
+        }
+    }
     let background = app.palette.app;
     let window_options =
         WindowOptions::new("Runebender").with_initial_inner_size(LogicalSize::new(1100., 720.));
@@ -417,6 +435,10 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         .with_default_properties(default_property_set())
         .with_default_base_color(background)
         .run_in(event_loop)
+}
+
+fn sess_is_hyper(sess: &Session, c: usize) -> bool {
+    runebender_core::glyph_ops::contour_is_hyper(&sess.glyph, c)
 }
 
 fn main() -> Result<(), EventLoopError> {

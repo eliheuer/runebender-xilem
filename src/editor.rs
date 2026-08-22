@@ -306,6 +306,24 @@ impl Widget for EditorWidget {
                 ctx.capture_pointer();
                 let at = ctx.local_position(state.position);
                 match button {
+                    Some(PointerButton::Primary) if self.tool == Tool::HyperPen => {
+                        let affine = self.session.viewport.affine();
+                        let near_first = self
+                            .session
+                            .first_contour_point()
+                            .map(|p| (affine * p).distance(at) <= HIT_RADIUS_PX)
+                            .unwrap_or(false);
+                        let corner = state.modifiers.alt();
+                        if near_first && self.session.hyper_is_active() {
+                            self.session.hyper_close();
+                        } else {
+                            let d = self.session.viewport.screen_to_design(at);
+                            self.session.hyper_add(d.x, d.y, corner);
+                        }
+                        self.emit(ctx, true);
+                        ctx.set_handled();
+                        return;
+                    }
                     Some(PointerButton::Primary) if matches!(self.tool, Tool::Rect | Tool::Ellipse | Tool::Knife) => {
                         ctx.request_focus();
                         ctx.capture_pointer();
@@ -363,7 +381,7 @@ impl Widget for EditorWidget {
             }
             PointerEvent::Move(PointerUpdate { current, .. }) => {
                 let at = ctx.local_position(current.position);
-                if self.tool == Tool::Pen {
+                if matches!(self.tool, Tool::Pen | Tool::HyperPen) {
                     self.hover = Some(self.session.viewport.screen_to_design(at));
                     if self.session.active_contour.is_some() {
                         ctx.request_render();
@@ -478,7 +496,7 @@ impl Widget for EditorWidget {
         let step = if shift { 10.0 } else { 1.0 };
         let (edited, handled) = match &key.key {
             Key::Named(NamedKey::Escape) => {
-                if self.session.pen_is_active() {
+                if self.session.pen_is_active() || self.session.active_contour.is_some() {
                     self.session.pen_cancel();
                     self.emit(ctx, false);
                 } else {

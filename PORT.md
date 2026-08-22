@@ -252,3 +252,17 @@ driver). runebender-xilem remains the direct source for the tools.
   the text helper, matching the gpui grid. This was the last visibly
   missing overview feature.
 
+- 2026-08-22, slice 17: **HyperPen tool.** After reading Raph Levien's
+  hyperbezier post (linebender.org/blog/hyperbezier, 2026-08-08) and
+  Colin Rofls's pen-tool post: hyperbezier contours carry only on-curve
+  points and the curve is solved by the spline (G2-continuous by
+  construction), so the pen is click-only, no handles. Wired to core's
+  `start_hyper_contour` / `append_hyper_point` / `close_hyper_contour`
+  (the contour is tagged with a "hyperbezier" identifier; points are
+  Curve+smooth, corners are Line). Alt-click places a corner; click near
+  the first point closes; a faint preview line follows the cursor.
+  Verified: 5 on-curve points with no handles produce a smooth closed
+  hyperbezier (core `contour_is_hyper` confirms), rendered via
+  `Path::Hyper` through the spline solver. runebender-xilem's
+  `tools/hyper_pen.rs` was the structural reference.
+

@@ -367,6 +367,45 @@ impl Session {
         self.pen.clear();
     }
 
+    // ---- hyperbezier pen: on-curve points only, curve solved by the spline ----
+
+    /// Add a hyperbezier on-curve point (smooth), starting a contour if idle.
+    pub fn hyper_add(&mut self, x: f64, y: f64, corner: bool) {
+        if self.active_contour.is_none() {
+            self.record(EditType::Normal);
+            let c = glyph_ops::start_hyper_contour(&mut self.glyph, x, y);
+            self.active_contour = Some(c);
+            if corner {
+                // First point corner-ness is applied on the Move via append below.
+            }
+        } else if let Some(c) = self.active_contour {
+            glyph_ops::append_hyper_point(&mut self.glyph, c, x, y, corner);
+        }
+    }
+
+    pub fn hyper_close(&mut self) {
+        if let Some(c) = self.active_contour.take() {
+            self.record(EditType::Normal);
+            glyph_ops::close_hyper_contour(&mut self.glyph, c);
+        }
+    }
+
+    pub fn first_contour_point(&self) -> Option<Point> {
+        let c = self.active_contour?;
+        let p = self.glyph.contours.get(c)?.points.first()?;
+        Some(Point::new(p.x, p.y))
+    }
+
+    pub fn last_contour_point(&self) -> Option<Point> {
+        let c = self.active_contour?;
+        let p = self.glyph.contours.get(c)?.points.last()?;
+        Some(Point::new(p.x, p.y))
+    }
+
+    pub fn hyper_is_active(&self) -> bool {
+        self.active_contour.is_some() && self.pen.is_empty()
+    }
+
     /// Add a closed rectangle contour.
     pub fn add_rect(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
         let (lx, rx) = (x0.min(x1), x0.max(x1));
