@@ -89,3 +89,21 @@ file) and its `PARITY.md`.
     norad-glyph session (which unlocks real ops: boolean, decompose,
     transforms, save) is a planned refactor.
 
+- 2026-08-22, slice 4: **adopt the norad-glyph session.** The editor
+  island now owns a `session::Session` that works on `norad::Glyph`
+  directly, so `runebender_core::glyph_ops` and `point_ops` apply with
+  no conversion. Undo is snapshot-based (`glyph_ops::snapshot/restore`),
+  drags measure from the gesture origin via `translate_points` with
+  drag-originals (no snap drift), and edits flow back to the grid cache
+  (`FontModel::replace_glyph`) so the overview preview updates. Start
+  nodes and resolved components now draw. This is the base every real
+  op (boolean, decompose, transform, save) builds on. Forced:
+  - **The edit/refresh round-trip is manual.** On `Edited`, the app
+    clones the glyph out of the session, writes it back into the font
+    and the cell cache. A framework document/session abstraction would
+    own this; here it is app code, but small.
+  - `Arc::get_mut` on the font works only because nothing else holds the
+    font Arc; the norad-glyph session clones the glyph, not the font.
+    Multiple live sessions (tabs) will need the font behind a shared
+    cell or an explicit commit step.
+

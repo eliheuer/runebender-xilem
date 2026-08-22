@@ -111,4 +111,23 @@ impl FontModel {
     pub fn index_of(&self, name: &str) -> Option<usize> {
         self.glyphs.iter().position(|g| g.name == name)
     }
+
+    /// Replace the glyph at `index` (in the font and the cache) after an edit.
+    pub fn replace_glyph(&mut self, index: usize, glyph: norad::Glyph) {
+        let Some(entry) = self.glyphs.get_mut(index) else {
+            return;
+        };
+        // Update the font's copy so component references and saving stay correct.
+        if let Some(slot) = Arc::get_mut(&mut self.font).and_then(|f| f.get_glyph_mut(&entry.name)) {
+            *slot = glyph.clone();
+        }
+        let outline = glyph_paths::glyph_to_bezpath(&glyph, &self.font);
+        entry.ink = if outline.elements().is_empty() {
+            Rect::ZERO
+        } else {
+            outline.control_box()
+        };
+        entry.advance = glyph.width;
+        entry.outline = Arc::new(outline);
+    }
 }

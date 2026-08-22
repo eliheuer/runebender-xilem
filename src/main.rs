@@ -7,6 +7,7 @@
 mod editor;
 mod grid;
 mod model;
+mod session;
 mod theme;
 
 use std::path::Path as FsPath;
@@ -23,9 +24,10 @@ use xilem::view::{
 };
 use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
-use editor::{Session, editor};
+use editor::editor;
 use grid::{Cell, CellMetrics, GridEvent, cells_of, grid};
 use model::FontModel;
+use session::Session;
 use theme::Palette;
 
 /// Which surface is showing.
@@ -61,12 +63,23 @@ impl App {
         let session = Arc::new(
             Session::new(&font.font, &font.glyphs[first].name).ok_or("glyph missing")?,
         );
+        // For headless screenshots: open a named glyph at startup.
+        let (mode, open) = match std::env::var("RUNEBENDER_OPEN").ok().and_then(|n| font.index_of(&n)) {
+            Some(i) => (Mode::Editor(i), Some(i)),
+            None => (Mode::Overview, None),
+        };
+        let session = match open {
+            Some(i) => Arc::new(
+                Session::new(&font.font, &font.glyphs[i].name).unwrap_or_else(|| (*session).clone()),
+            ),
+            None => session,
+        };
         Ok(Self {
             font,
             palette,
             cells,
-            mode: Mode::Overview,
-            selected: Some(first),
+            mode,
+            selected: Some(open.unwrap_or(first)),
             filter: String::new(),
             session,
             selected_points: 0,
@@ -92,7 +105,18 @@ impl App {
         }
     }
 
+    /// After an edit, pull the glyph back out of the session and refresh
+    /// the model + grid cache so the overview preview matches.
+    fn refresh_open_glyph(&mut self) {
+        if let Mode::Editor(index) = self.mode {
+            let glyph = self.session.glyph.clone();
+            self.font.replace_glyph(index, glyph);
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        }
+    }
+
     fn back_to_overview(&mut self) {
+        self.refresh_open_glyph();
         self.mode = Mode::Overview;
     }
 }
@@ -132,7 +156,7 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
         ),
         Mode::Editor(_) => format!(
             "{}   advance {}   {} points   {} selected",
-            app.session.glyph_name(),
+            app.session.glyph_name.as_str(),
             app.session.advance(),
             app.session.point_count(),
             app.selected_points,
@@ -160,6 +184,7 @@ fn overview(app: &App) -> impl WidgetView<App> + use<> {
 fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
     editor(app.session.clone(), app.palette.clone(), |app: &mut App, ev| match ev {
         editor::EditorEvent::Selection(n) => app.selected_points = n,
+        editor::EditorEvent::Edited => app.refresh_open_glyph(),
         editor::EditorEvent::Exit => app.back_to_overview(),
     })
 }
