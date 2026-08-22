@@ -473,6 +473,7 @@ impl Widget for EditorWidget {
             Key::Character(c) if !cmd && c.eq_ignore_ascii_case("r") => (self.session.rotate_90(), true),
             Key::Character(c) if !cmd && c == "]" => (self.session.reverse(), true),
             Key::Character(c) if !cmd && c.eq_ignore_ascii_case("o") => (self.session.remove_overlap(), true),
+            Key::Character(c) if !cmd && c.eq_ignore_ascii_case("d") => (self.session.decompose(), true),
             _ => return,
         };
         if handled {

@@ -9,13 +9,22 @@
 
 use std::collections::{HashMap, HashSet};
 
-use masonry::kurbo::{BezPath, Point, Rect, Shape};
+use masonry::kurbo::{self as kurbo, BezPath, Point, Rect, Shape};
 use runebender_core::editing::edit_types::EditType;
 use runebender_core::editing::undo::UndoState;
 use runebender_core::editing::viewport::ViewPort;
 use runebender_core::glyph_ops::{self, GlyphSnapshot, PointId};
 use runebender_core::glyph_paths;
 use runebender_core::point_ops;
+
+/// Boolean operation kinds, mapped to `linesweeper::BinaryOp` internally.
+#[derive(Clone, Copy)]
+pub enum BoolOp {
+    Union,
+    Subtract,
+    Intersect,
+    Exclude,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct Metrics {
@@ -56,6 +65,8 @@ pub struct Session {
     pub glyph: norad::Glyph,
     /// Components, resolved against the font at session creation.
     pub components: BezPath,
+    /// Contours the components resolve to, precomputed for decompose.
+    component_contours: Vec<norad::Contour>,
     pub metrics: Metrics,
     pub selection: HashSet<PointId>,
     pub viewport: ViewPort,
@@ -82,10 +93,12 @@ impl Session {
     pub fn new(font: &norad::Font, name: &str) -> Option<Self> {
         let glyph = font.get_glyph(name)?.clone();
         let components = glyph_paths::components_to_bezpath(&glyph, font);
+        let component_contours = resolve_components(font, &glyph);
         Some(Self {
             glyph_name: name.to_string(),
             glyph,
             components,
+            component_contours,
             metrics: Metrics::of(font),
             selection: HashSet::new(),
             viewport: ViewPort::new(),
@@ -420,6 +433,34 @@ impl Session {
         glyph_ops::reverse_contours(&mut self.glyph, &self.selection)
     }
 
+    pub fn decompose(&mut self) -> bool {
+        if self.glyph.components.is_empty() || self.component_contours.is_empty() {
+            return false;
+        }
+        self.record(EditType::Normal);
+        self.glyph.contours.extend(self.component_contours.drain(..));
+        self.glyph.components.clear();
+        self.components = kurbo::BezPath::new();
+        true
+    }
+
+    pub fn boolean(&mut self, op: BoolOp) -> bool {
+        let op = match op {
+            BoolOp::Union => linesweeper::BinaryOp::Union,
+            BoolOp::Subtract => linesweeper::BinaryOp::Difference,
+            BoolOp::Intersect => linesweeper::BinaryOp::Intersection,
+            BoolOp::Exclude => linesweeper::BinaryOp::Xor,
+        };
+        if let Some(contours) = glyph_ops::boolean_contours(&self.glyph, op) {
+            self.record(EditType::Normal);
+            self.glyph.contours = contours;
+            self.selection.clear();
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn remove_overlap(&mut self) -> bool {
         if let Some(contours) = glyph_ops::remove_overlap(&self.glyph) {
             self.record(EditType::Normal);
@@ -434,4 +475,17 @@ impl Session {
     pub fn select_all(&mut self) {
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }
+}
+
+/// Resolve a glyph's components into concrete contours (for decompose),
+/// computed once at session creation while the font is available.
+fn resolve_components(font: &norad::Font, glyph: &norad::Glyph) -> Vec<norad::Contour> {
+    let mut work = glyph.clone();
+    let before = work.contours.len();
+    while !work.components.is_empty() {
+        if !glyph_ops::decompose_single_component(font, &mut work, 0) {
+            break;
+        }
+    }
+    work.contours.split_off(before)
 }

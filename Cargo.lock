@@ -3566,6 +3566,7 @@ name = "runebender-xix"
 version = "0.1.0"
 dependencies = [
  "kurbo 0.13.1",
+ "linesweeper",
  "masonry",
  "norad",
  "runebender-core",

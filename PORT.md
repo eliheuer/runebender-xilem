@@ -208,3 +208,25 @@ interpolation, native menus + window shortcuts, and the browser build.
   different `linesweeper::BinaryOp`; a later slice adds them plus
   decompose.
 
+- 2026-08-22, slice 13: **boolean subtract/intersect/exclude and
+  decompose.** `session.boolean(BoolOp)` maps a local enum to
+  `linesweeper::BinaryOp` and runs `glyph_ops::boolean_contours`;
+  `session.decompose()` turns components into editable contours.
+  Component contours are precomputed at session creation
+  (`resolve_components`) because the whole `norad::Font` is not
+  Send/Sync (its datastore holds a `RefCell`), so the session cannot
+  hold the font; it holds the resolved contours instead. Verified: Á
+  (A + acute, 2 components) decomposes into 3 contours, 25 editable
+  points. Note the Send/Sync constraint is a real one for this
+  architecture: island widgets must be Send, so anything they own
+  must be too.
+
+Parity after slice 13 (~a third of runebender-gpui): overview grid +
+sidebar, select/pen/rect/ellipse tools, marquee, point editing, undo,
+save, flips/rotate/reverse, boolean ops, remove-overlap, decompose,
+anchor + component display. Remaining: HyperPen/Knife/Measure tools,
+anchor + component editing, kerning + text/shaping tool, designspace
+masters + interpolation, curvature/measure overlays, native menus +
+window shortcuts, and the browser build (feasible via the xix web
+driver). runebender-xilem remains the direct source for the tools.
+

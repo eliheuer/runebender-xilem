@@ -19,6 +19,7 @@ masonry = { git = "https://github.com/eliheuer/xix", branch = "main" }
 runebender-core = { git = "https://github.com/eliheuer/runebender-core" }
 norad = "0.18"
 kurbo = "0.13"
+linesweeper = "0.4"
 winit = "0.30"
 
 [profile.release]

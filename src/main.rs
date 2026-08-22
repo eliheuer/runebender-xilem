@@ -379,6 +379,17 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
             app.font.replace_glyph(i, g);
         }
     }
+    if std::env::var("RUNEBENDER_DEMO_DECOMP").is_ok() {
+        if let Mode::Editor(i) = app.mode {
+            let mut sess = (*app.session).clone();
+            let had = sess.glyph.components.len();
+            let ok = sess.decompose();
+            eprintln!("DECOMP: components={had} decomposed={ok} contours={}", sess.glyph.contours.len());
+            app.session = Arc::new(sess);
+            let g = app.session.glyph.clone();
+            app.font.replace_glyph(i, g);
+        }
+    }
     let background = app.palette.app;
     let window_options =
         WindowOptions::new("Runebender").with_initial_inner_size(LogicalSize::new(1100., 720.));
