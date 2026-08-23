@@ -197,6 +197,11 @@ impl App {
     /// editor event so save/preview see interactive edits).
     pub fn sync_session_from(&mut self, session: &Session) {
         self.session = Arc::new(session.clone());
+        // Keep the panel's advance field in step after canvas edits
+        // (sidebearing/advance drags). This path is never hit by typing in
+        // the field, so it does not clobber input.
+        self.advance_buf = format!("{}", self.session.advance() as i64);
+        self.selected_points = self.session.selection.len();
     }
 
     fn refresh_open_glyph(&mut self) {
