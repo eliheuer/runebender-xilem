@@ -36,6 +36,12 @@ use runebender_core::category::GlyphCategory;
 use session::Session;
 use theme::Palette;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Sort {
+    Name,
+    Unicode,
+}
+
 /// The active editor tool.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
@@ -64,6 +70,7 @@ pub struct App {
     selected: Option<usize>,
     filter: String,
     category: GlyphCategory,
+    sort: Sort,
     // Editor session, when a glyph is open.
     session: Arc<Session>,
     selected_points: usize,
@@ -121,6 +128,7 @@ impl App {
                 Some("Mark") => GlyphCategory::Mark,
                 _ => GlyphCategory::All,
             },
+            sort: Sort::Name,
             advance_buf: format!("{}", session.advance() as i64),
             name_buf: first_name,
             unicode_buf: first_uni,
@@ -158,6 +166,11 @@ impl App {
             })
             .cloned()
             .collect();
+        let mut out = out;
+        match self.sort {
+            Sort::Name => {}
+            Sort::Unicode => out.sort_by_key(|c| c.codepoint.map(|cp| cp as u32).unwrap_or(u32::MAX)),
+        }
         Arc::new(out)
     }
 
@@ -397,9 +410,13 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
             .background_color(if active { pal.role("accent") } else { pal.panel })
         })
         .collect();
+    let sort_label = match app.sort { Sort::Name => "Sort: name", Sort::Unicode => "Sort: unicode" };
     flex_col((
         text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
             .placeholder("Search"),
+        text_button(sort_label, |app: &mut App| {
+            app.sort = match app.sort { Sort::Name => Sort::Unicode, Sort::Unicode => Sort::Name };
+        }).background_color(pal.button),
         portal(flex_col(rows).gap(Length::px(2.0))).flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)

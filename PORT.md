@@ -409,3 +409,6 @@ driver). runebender-xilem remains the direct source for the tools.
   not re-derive after a drag, so it shows the old number until reopen,
   the focus/field-binding gap noted in DESIGN.md D6.
 
+- 2026-08-23, slice 33: **sidebar sort toggle** (by name / by unicode),
+  applied to the filtered cells. Matches gpui's sort control.
+
