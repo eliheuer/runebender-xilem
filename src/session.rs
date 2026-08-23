@@ -553,6 +553,25 @@ impl Session {
         runebender_core::measure::side_bearings(&self.paths(), self.advance())
     }
 
+    /// Bounding box of the selected points in design space, if any.
+    pub fn selection_bounds(&self) -> Option<Rect> {
+        let mut min = (f64::INFINITY, f64::INFINITY);
+        let mut max = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for (ci, contour) in self.glyph.contours.iter().enumerate() {
+            for (pi, p) in contour.points.iter().enumerate() {
+                if self.selection.contains(&(ci, pi)) {
+                    min = (min.0.min(p.x), min.1.min(p.y));
+                    max = (max.0.max(p.x), max.1.max(p.y));
+                }
+            }
+        }
+        if min.0.is_finite() {
+            Some(Rect::new(min.0, min.1, max.0, max.1))
+        } else {
+            None
+        }
+    }
+
     pub fn select_all(&mut self) {
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }

@@ -323,3 +323,9 @@ driver). runebender-xilem remains the direct source for the tools.
   provide (a number field bound to a value with drag-to-scrub, as in
   DESIGN.md 5's input list).
 
+- 2026-08-22, slice 22: **Selection section (X/Y/W/H).** The right panel
+  shows the selected points' bounding box (`session.selection_bounds`),
+  matching gpui's Selection panel. Read-only for now; making X/Y move
+  and W/H scale the selection is the next step and needs the
+  document-in-app-state model from DESIGN.md 17 to be clean.
+

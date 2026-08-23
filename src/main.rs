@@ -85,7 +85,9 @@ impl App {
         let session = Arc::new(
             Session::new(&font.font, &font.glyphs[first].name).ok_or("glyph missing")?,
         );
-        // For headless screenshots: open a named glyph at startup.
+        // For headless screenshots: optionally select all points.
+        // (set later, after session is final)
+        
         let start_cat = std::env::var("RUNEBENDER_CAT").ok();
         let (mode, open) = match std::env::var("RUNEBENDER_OPEN").ok().and_then(|n| font.index_of(&n)) {
             Some(i) => (Mode::Editor(i), Some(i)),
@@ -352,6 +354,25 @@ fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
     })
 }
 
+fn selection_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
+    let pal = &app.palette;
+    let b = app.session.selection_bounds()?;
+    let row = |k: &'static str, v: String| {
+        flex_row((label(k).color(pal.text_muted), label(v).color(pal.text))).gap(Length::px(8.0))
+    };
+    Some(
+        flex_col((
+            label("Selection").text_size(15.0).color(pal.text),
+            row("X", format!("{}", b.x0 as i64)),
+            row("Y", format!("{}", b.y0 as i64)),
+            row("W", format!("{}", b.width() as i64)),
+            row("H", format!("{}", b.height() as i64)),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(Length::px(4.0)),
+    )
+}
+
 fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let row = |k: String, v: String| {
@@ -396,6 +417,7 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
         advance_field,
         (!pts.is_empty()).then(|| row("Points".into(), pts)),
         editing.then(|| row("Selected".into(), format!("{}", app.selected_points))),
+        editing.then(|| selection_section(app)).flatten(),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Length::px(6.0))
@@ -448,10 +470,18 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
     let path = std::env::args()
         .nth(1)
         .expect("usage: runebender-xix <Font.ufo|Font.designspace>");
-    let app = App::open(FsPath::new(&path)).unwrap_or_else(|e| {
+    let mut app = App::open(FsPath::new(&path)).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1)
     });
+    if std::env::var("RUNEBENDER_SELECTALL").is_ok() {
+        let mut sess = (*app.session).clone();
+        sess.select_all();
+        app.selected_points = sess.selection_bounds().map(|_| 999).unwrap_or(0);
+        let n = { let mut c = 0; for co in &sess.glyph.contours { c += co.points.len(); } c };
+        app.selected_points = n;
+        app.session = std::sync::Arc::new(sess);
+    }
     let background = app.palette.app;
     let window_options =
         WindowOptions::new("Runebender").with_initial_inner_size(LogicalSize::new(1100., 720.));
