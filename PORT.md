@@ -570,3 +570,11 @@ driver). runebender-xilem remains the direct source for the tools.
   editing. Single-clicking a cell opens that glyph (`open_glyph`); the
   open glyph is highlighted. Reverses the earlier full collapse of the
   editor's left column (tools stayed in the header).
+
+- 2026-08-23, slice 50: **richer right panel + em-box.** The Path
+  section gained gpui's labeled Transformations buttons (Harmonize,
+  Balance, Optimize, Round, Reverse) below the icon rows, wired to the
+  existing session ops. The editor canvas now frames the glyph with a
+  bounded em-box (advance width by ascender..descender) instead of
+  infinite sidebearing lines, matching gpui/Glyphs. The info panel
+  widened 220->250px so the master name and buttons fit.

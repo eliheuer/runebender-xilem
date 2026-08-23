@@ -796,9 +796,26 @@ fn path_section(app: &App) -> impl WidgetView<App> + use<> {
         flex_row((
             op("close", |s| s.decompose()),
         )).gap(Length::px(4.0)),
+        // Labeled transform buttons, matching gpui's Transformations block.
+        flex_row((
+            tbtn(pal, "Harmonize", |s| s.harmonize()),
+            tbtn(pal, "Balance", |s| s.balance()),
+        )).gap(Length::px(4.0)),
+        flex_row((
+            tbtn(pal, "Optimize", |s| s.optimize()),
+            tbtn(pal, "Round", |s| s.round_corners()),
+        )).gap(Length::px(4.0)),
+        flex_row((
+            tbtn(pal, "Reverse", |s| s.reverse()),
+        )).gap(Length::px(4.0)),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Length::px(6.0))
+}
+
+/// A labeled path-operation button.
+fn tbtn(pal: &Palette, text: &'static str, f: fn(&mut Session) -> bool) -> impl WidgetView<App> + use<> {
+    text_button(text, move |app: &mut App| app.apply_op(f)).background_color(pal.button)
 }
 
 fn selection_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
@@ -974,7 +991,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
             .background_color(pal.app)
             .flex(1.0),
         sized_box(info_panel(app))
-            .dims(Dimensions::new(Dim::Fixed(Length::px(220.0)), Dim::Stretch))
+            .dims(Dimensions::new(Dim::Fixed(Length::px(250.0)), Dim::Stretch))
             .background_color(pal.panel),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)

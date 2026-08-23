@@ -192,12 +192,13 @@ impl Widget for EditorWidget {
             let sy = (affine * Point::new(0.0, y)).y;
             painter.stroke(Line::new((x0, sy), (x1, sy)), &thin, quiet).draw();
         }
-        for x in [0.0, self.session.advance()] {
-            let sx = (affine * Point::new(x, 0.0)).x;
-            painter
-                .stroke(Line::new((sx, -10_000.0), (sx, 10_000.0)), &thin, quiet)
-                .draw();
-        }
+        // Em box: the advance width by the ascender..descender height, framing
+        // the glyph like gpui/Glyphs rather than infinite sidebearing lines.
+        let em_box = Rect::from_points(
+            affine * Point::new(0.0, m.descender),
+            affine * Point::new(self.session.advance(), m.ascender),
+        );
+        painter.stroke(em_box, &Stroke::new(1.0), quiet).draw();
 
         // Editing affordances only render on a master. Off a master the view
         // shows the read-only interpolated instance instead (web/Glyphs
