@@ -23,7 +23,7 @@ use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
 use xilem::view::{
-    FlexExt as _, flex_col, flex_row, label, portal, sized_box, text_button, text_input,
+    FlexExt as _, canvas, flex_col, flex_row, label, portal, sized_box, text_button, text_input,
 };
 use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
@@ -395,6 +395,32 @@ fn overview(app: &App) -> impl WidgetView<App> + use<> {
     )
 }
 
+fn preview_strip(app: &App) -> impl WidgetView<App> + use<> {
+    use masonry::imaging::Painter;
+    use masonry::kurbo::{Affine, Point, Size};
+    let outline = app.session.outline_arc();
+    let components = app.session.components_arc();
+    let m = app.session.metrics;
+    let advance = app.session.advance();
+    let fill = app.palette.text;
+    canvas(move |_app: &mut App, _ctx, scene, size: Size| {
+        let mut p = Painter::new(scene);
+        // Fit the em box (advance wide, ascender..descender tall) into the strip.
+        let margin = 16.0;
+        let em_w = advance.max(m.upm * 0.5);
+        let em_h = m.ascender - m.descender;
+        let scale = ((size.width - margin * 2.0) / em_w).min((size.height - margin * 2.0) / em_h);
+        let baseline_y = margin + (m.ascender / em_h) * (size.height - margin * 2.0);
+        let x0 = (size.width - em_w * scale) / 2.0;
+        let t = Affine::new([scale, 0.0, 0.0, -scale, x0, baseline_y]);
+        let _ = Point::ORIGIN;
+        p.fill(&(t * (*outline).clone()), fill).draw();
+        if !components.elements().is_empty() {
+            p.fill(&(t * (*components).clone()), fill).draw();
+        }
+    })
+}
+
 fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
     editor(app.session.clone(), app.palette.clone(), app.tool, |app: &mut App, ev| match ev {
         editor::EditorEvent::Selection(n) => app.selected_points = n,
@@ -541,7 +567,9 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         Mode::Overview => Either::A(overview(app)),
         Mode::Editor(_) => Either::B(editor_pane(app)),
     };
-    let center = flex_col((titlebar(app), body.flex(1.0), status(app)))
+    let preview = matches!(app.mode, Mode::Editor(_))
+        .then(|| sized_box(preview_strip(app)).dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(120.0)))).background_color(pal.panel));
+    let center = flex_col((titlebar(app), body.flex(1.0), preview, status(app)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Length::px(0.0))
         .background_color(pal.app);

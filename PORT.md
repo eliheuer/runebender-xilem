@@ -344,3 +344,15 @@ driver). runebender-xilem remains the direct source for the tools.
   cache and re-points the open session. This rounds out per-glyph
   metadata editing to match gpui's glyph info panel.
 
+- 2026-08-22, slice 25: **preview strip + a headless-tool fix.** The
+  editor now has a bottom preview strip showing the current glyph
+  rendered filled, via xilem's built-in `canvas` view (no custom
+  widget). This surfaced a real tool bug: the `canvas` view populates
+  its scene in `rebuild`, but the headless screenshot did `build` only,
+  so canvas-view content was invisible in screenshots (it worked at
+  runtime). Fixed in xix: `TestHarness::render_root_mut` + the
+  screenshot path now runs one `rebuild`. Findings: (1) display-only
+  islands can use the built-in `canvas` view with no boilerplate,
+  unlike interactive ones; (2) headless render must run a rebuild to
+  match what the user sees.
+

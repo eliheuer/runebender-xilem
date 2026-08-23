@@ -125,6 +125,14 @@ impl Session {
         self.glyph.width = w.max(0.0);
     }
 
+    pub fn outline_arc(&self) -> std::sync::Arc<BezPath> {
+        std::sync::Arc::new(self.outline())
+    }
+
+    pub fn components_arc(&self) -> std::sync::Arc<BezPath> {
+        std::sync::Arc::new(self.components.clone())
+    }
+
     pub fn outline(&self) -> BezPath {
         glyph_paths::contours_to_bezpath(&self.glyph)
     }
