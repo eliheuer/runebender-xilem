@@ -79,6 +79,8 @@ pub struct Session {
     /// In-progress pen points (on- and off-curve), materialized into
     /// `active_contour` on each change.
     pen: Vec<PenPt>,
+    /// The currently selected anchor, if any.
+    pub selected_anchor: Option<usize>,
 }
 
 /// One point in the pen's in-progress buffer.
@@ -108,6 +110,7 @@ impl Session {
             in_drag: false,
             active_contour: None,
             pen: Vec::new(),
+            selected_anchor: None,
         })
     }
 
@@ -623,6 +626,64 @@ impl Session {
     pub fn optimize(&mut self) -> bool {
         self.record(EditType::Normal);
         glyph_ops::curve_op(&mut self.glyph, &self.selection, glyph_ops::CurveOp::Optimize(0.12))
+    }
+
+    pub fn duplicate(&mut self) -> bool {
+        self.record(EditType::Normal);
+        match glyph_ops::duplicate_selection(&mut self.glyph, &self.selection) {
+            Some(next) => {
+                self.selection = next;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Index of the anchor near `p` (design space), if within `tol`.
+    pub fn anchor_at(&self, p: Point, tol: f64) -> Option<usize> {
+        self.glyph
+            .anchors
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| Point::new(a.x, a.y).distance(p) <= tol)
+            .min_by(|a, b| {
+                Point::new(a.1.x, a.1.y)
+                    .distance(p)
+                    .total_cmp(&Point::new(b.1.x, b.1.y).distance(p))
+            })
+            .map(|(i, _)| i)
+    }
+
+    pub fn add_anchor(&mut self, x: f64, y: f64) {
+        self.record(EditType::Normal);
+        let n = self.glyph.anchors.len();
+        let name = norad::Name::new(&format!("anchor.{n}")).ok();
+        self.glyph.anchors.push(norad::Anchor::new(x, y, name, None, None));
+        self.selected_anchor = Some(n);
+    }
+
+    pub fn move_anchor(&mut self, idx: usize, x: f64, y: f64) {
+        if let Some(a) = self.glyph.anchors.get_mut(idx) {
+            a.x = x;
+            a.y = y;
+        }
+    }
+
+    pub fn delete_selected_anchor(&mut self) -> bool {
+        let Some(idx) = self.selected_anchor.take() else {
+            return false;
+        };
+        if idx < self.glyph.anchors.len() {
+            self.record(EditType::Normal);
+            self.glyph.anchors.remove(idx);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn anchor_point(&self, idx: usize) -> Option<Point> {
+        self.glyph.anchors.get(idx).map(|a| Point::new(a.x, a.y))
     }
 
     pub fn select_all(&mut self) {

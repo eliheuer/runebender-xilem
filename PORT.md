@@ -386,3 +386,11 @@ driver). runebender-xilem remains the direct source for the tools.
   edits stay in the island because it owns the live session; a full
   window-level Cmd+Z needs the document-in-app-state refactor (D2).
 
+- 2026-08-23, slice 30: **Duplicate + anchor editing.** Duplicate
+  selection (Cmd+D and context menu, `duplicate_selection`). Anchors
+  are now editable, not just displayed: Add Anchor from the context
+  menu at the right-click position, click an anchor to select it
+  (highlighted), drag to move, Delete to remove. Anchor hit-testing
+  takes priority over points. Matches gpui's anchor add/select/drag/
+  delete.
+

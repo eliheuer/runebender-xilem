@@ -30,6 +30,7 @@ const HIT_RADIUS_PX: f64 = 8.0;
 
 /// Context-menu items: (label, op). Op returns whether the glyph changed.
 const MENU_ITEMS: &[(&str, fn(&mut Session) -> bool)] = &[
+    ("Add Anchor", |_| false),
     ("Set Start Point", |s| s.set_start()),
     ("Round Corners", |s| s.round_corners()),
     ("Reverse Contours", |s| s.reverse()),
@@ -37,6 +38,7 @@ const MENU_ITEMS: &[(&str, fn(&mut Session) -> bool)] = &[
     ("Flip Horizontal", |s| s.flip_horizontal()),
     ("Flip Vertical", |s| s.flip_vertical()),
     ("Rotate 90", |s| s.rotate_90()),
+    ("Duplicate", |s| s.duplicate()),
     ("Harmonize", |s| s.harmonize()),
     ("Balance", |s| s.balance()),
     ("Optimize", |s| s.optimize()),
@@ -68,6 +70,8 @@ enum Drag {
     Marquee { start: Point, current: Point, additive: bool },
     /// Drawing a shape; endpoints in design space.
     Shape { start: Point, current: Point },
+    /// Dragging an anchor by index.
+    Anchor { idx: usize },
 }
 
 pub struct EditorWidget {
@@ -232,9 +236,11 @@ impl Widget for EditorWidget {
 
         // Anchors: a small diamond at each, in the accent color.
         let anchor_color = pal.role("accent");
-        for anchor in &self.session.glyph.anchors {
+        for (ai, anchor) in self.session.glyph.anchors.iter().enumerate() {
             let p = affine * Point::new(anchor.x, anchor.y);
-            let r = 5.0;
+            let selected = self.session.selected_anchor == Some(ai);
+            let anchor_color = if selected { pal.role("pointSelected") } else { anchor_color };
+            let r = if selected { 6.5 } else { 5.0 };
             let diamond = masonry::kurbo::BezPath::from_vec(vec![
                 masonry::kurbo::PathEl::MoveTo(Point::new(p.x, p.y - r)),
                 masonry::kurbo::PathEl::LineTo(Point::new(p.x + r, p.y)),
@@ -343,7 +349,13 @@ impl Widget for EditorWidget {
                 // If a menu is open, a click either invokes a row or dismisses it.
                 if let Some((anchor, _)) = self.menu {
                     if let Some(i) = menu_row_at(anchor, at, self.size) {
-                        let changed = (MENU_ITEMS[i].1)(&mut self.session);
+                        let changed = if MENU_ITEMS[i].0 == "Add Anchor" {
+                            let d = self.session.viewport.screen_to_design(anchor);
+                            self.session.add_anchor(d.x.round(), d.y.round());
+                            true
+                        } else {
+                            (MENU_ITEMS[i].1)(&mut self.session)
+                        };
                         self.menu = None;
                         self.emit(ctx, changed);
                     } else {
@@ -407,6 +419,16 @@ impl Widget for EditorWidget {
                     }
                     Some(PointerButton::Primary) => {
                         let shift = state.modifiers.shift();
+                        // Anchor hit takes priority over points.
+                        if let Some(ai) = self.session.anchor_at(self.session.viewport.screen_to_design(at), HIT_RADIUS_PX / self.session.viewport.zoom) {
+                            self.session.selected_anchor = Some(ai);
+                            self.session.selection.clear();
+                            self.drag = Drag::Anchor { idx: ai };
+                            self.emit(ctx, false);
+                            ctx.set_handled();
+                            return;
+                        }
+                        self.session.selected_anchor = None;
                         match self.hit_point(at) {
                             Some(id) => {
                                 if shift {
@@ -451,6 +473,12 @@ impl Widget for EditorWidget {
                     }
                 }
                 match &mut self.drag {
+                    Drag::Anchor { idx } => {
+                        let idx = *idx;
+                        let d = self.session.viewport.screen_to_design(at);
+                        self.session.move_anchor(idx, d.x.round(), d.y.round());
+                        ctx.request_render();
+                    }
                     Drag::Pen { origin, dragging } => {
                         let origin = *origin;
                         let to = self.session.viewport.screen_to_design(at);
@@ -517,6 +545,10 @@ impl Widget for EditorWidget {
                     self.drag = Drag::None;
                     self.emit(ctx, false);
                 }
+                Drag::Anchor { .. } => {
+                    self.drag = Drag::None;
+                    self.emit(ctx, true);
+                }
                 Drag::Shape { start, current } => {
                     let (s0, c0) = (*start, *current);
                     match self.tool {
@@ -573,7 +605,11 @@ impl Widget for EditorWidget {
             Key::Named(NamedKey::ArrowUp) => (self.session.nudge(0.0, step), true),
             Key::Named(NamedKey::ArrowDown) => (self.session.nudge(0.0, -step), true),
             Key::Named(NamedKey::Delete) | Key::Named(NamedKey::Backspace) => {
-                (self.session.delete_selected(), true)
+                if self.session.selected_anchor.is_some() {
+                    (self.session.delete_selected_anchor(), true)
+                } else {
+                    (self.session.delete_selected(), true)
+                }
             }
             Key::Character(c) if cmd && c.eq_ignore_ascii_case("a") => {
                 self.session.select_all();

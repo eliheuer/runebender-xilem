@@ -37,12 +37,14 @@ pub enum AppAction {
     Rotate90,
     RemoveOverlap,
     Decompose,
+    Duplicate,
 }
 
 /// Resolve a key press the focused widget did not consume to an app action.
 fn keymap(key: &Key, cmd: bool) -> Option<AppAction> {
     match key {
         Key::Character(c) if cmd && c.eq_ignore_ascii_case("s") => Some(AppAction::Save),
+        Key::Character(c) if cmd && c.eq_ignore_ascii_case("d") => Some(AppAction::Duplicate),
         Key::Named(NamedKey::Escape) => Some(AppAction::Overview),
         Key::Character(c) if !cmd => match c.as_str() {
             "v" => Some(AppAction::Tool(Tool::Select)),

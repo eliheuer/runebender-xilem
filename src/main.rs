@@ -233,6 +233,7 @@ impl App {
             A::Rotate90 => self.apply_op(|s| s.rotate_90()),
             A::RemoveOverlap => self.apply_op(|s| s.remove_overlap()),
             A::Decompose => self.apply_op(|s| s.decompose()),
+            A::Duplicate => self.apply_op(|s| s.duplicate()),
         }
     }
 
