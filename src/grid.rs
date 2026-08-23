@@ -29,6 +29,50 @@ const CELL: f64 = 84.0;
 const GAP: f64 = 8.0;
 const PAD: f64 = 12.0;
 
+/// Column span for a glyph, from name length and advance/upm (matches gpui).
+fn column_span(name: &str, advance: f64, upm: f64) -> usize {
+    let name_span = match name.chars().count() {
+        0..=14 => 1,
+        15..=26 => 2,
+        _ => 3,
+    };
+    let ratio = if upm > 0.0 { advance / upm } else { 0.0 };
+    let width_span = if ratio <= 1.5 { 1 } else if ratio <= 2.8 { 2 } else if ratio <= 4.0 { 3 } else { 4 };
+    name_span.max(width_span)
+}
+
+/// Pack (cell-index, span) items into rows of `cols` columns; the last cell
+/// of each row grows to fill the remainder (matches gpui `pack_spans`).
+fn pack_spans(spans: &[(usize, usize)], cols: usize) -> Vec<Vec<(usize, usize)>> {
+    let cols = cols.max(1);
+    let mut rows: Vec<Vec<(usize, usize)>> = Vec::new();
+    let mut row: Vec<(usize, usize)> = Vec::new();
+    let mut used = 0usize;
+    for &(item, span) in spans {
+        let span = span.clamp(1, cols);
+        if used + span > cols && !row.is_empty() {
+            if let Some(last) = row.last_mut() {
+                last.1 += cols - used;
+            }
+            rows.push(std::mem::take(&mut row));
+            used = 0;
+        }
+        row.push((item, span));
+        used += span;
+        if used == cols {
+            rows.push(std::mem::take(&mut row));
+            used = 0;
+        }
+    }
+    if !row.is_empty() {
+        if let Some(last) = row.last_mut() {
+            last.1 += cols - used;
+        }
+        rows.push(row);
+    }
+    rows
+}
+
 /// One drawable cell: what the grid needs without touching the font model.
 #[derive(Clone)]
 pub struct Cell {
@@ -86,42 +130,59 @@ impl GridWidget {
         (((self.size.width - 2.0 * PAD + GAP) / (CELL + GAP)).floor() as usize).max(1)
     }
 
-    fn rows(&self) -> usize {
-        self.cells.len().div_ceil(self.columns())
+    fn cell_width(&self, span: usize) -> f64 {
+        CELL * span as f64 + GAP * (span.saturating_sub(1)) as f64
     }
 
-    fn content_height(&self) -> f64 {
-        2.0 * PAD + self.rows() as f64 * (CELL + GAP) - GAP
+    /// Packed rows of (cell-index-in-self.cells, span).
+    fn packed(&self) -> Vec<Vec<(usize, usize)>> {
+        let spans: Vec<(usize, usize)> = self
+            .cells
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (i, column_span(&c.name, c.advance, self.metrics.upm)))
+            .collect();
+        pack_spans(&spans, self.columns())
     }
 
-    fn max_scroll(&self) -> f64 {
-        (self.content_height() - self.size.height).max(0.0)
+    fn row_pitch(&self) -> f64 {
+        CELL + GAP
     }
 
-    fn cell_rect(&self, index: usize) -> Rect {
-        let cols = self.columns();
-        let (col, row) = (index % cols, index / cols);
-        let x = PAD + col as f64 * (CELL + GAP);
-        let y = PAD + row as f64 * (CELL + GAP) - self.scroll;
-        Rect::new(x, y, x + CELL, y + CELL)
+    fn content_height(&self, rows: usize) -> f64 {
+        2.0 * PAD + rows as f64 * self.row_pitch() - GAP
     }
 
-    fn cell_at(&self, p: Point) -> Option<usize> {
-        let cols = self.columns();
-        if p.x < PAD || p.x > self.size.width - PAD {
+    fn max_scroll(&self, rows: usize) -> f64 {
+        (self.content_height(rows) - self.size.height).max(0.0)
+    }
+}
+
+impl GridWidget {
+    fn cell_index_at(&self, p: Point) -> Option<usize> {
+        if p.x < PAD || p.y < 0.0 {
             return None;
         }
-        let col = ((p.x - PAD) / (CELL + GAP)).floor() as usize;
-        if col >= cols {
+        let pitch = self.row_pitch();
+        let r = ((p.y + self.scroll - PAD) / pitch).floor();
+        if r < 0.0 {
             return None;
         }
-        let row = ((p.y + self.scroll - PAD) / (CELL + GAP)).floor() as usize;
-        let pos = row * cols + col;
-        if pos < self.cells.len() && self.cell_rect(pos).contains(p) {
-            Some(pos)
-        } else {
-            None
+        let rows = self.packed();
+        let row = rows.get(r as usize)?;
+        let row_y = PAD + r as usize as f64 * pitch - self.scroll;
+        if p.y > row_y + CELL {
+            return None;
         }
+        let mut x = PAD;
+        for &(ci, span) in row {
+            let w = self.cell_width(span);
+            if p.x >= x && p.x <= x + w {
+                return self.cells.get(ci).map(|c| c.index);
+            }
+            x += w + GAP;
+        }
+        None
     }
 }
 
@@ -150,7 +211,6 @@ impl Widget for GridWidget {
 
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
         self.size = size;
-        self.scroll = self.scroll.clamp(0.0, self.max_scroll());
         ctx.set_clip_path(size.to_rect());
     }
 
@@ -158,74 +218,52 @@ impl Widget for GridWidget {
         let pal = &self.palette;
         painter.fill_rect(self.size.to_rect(), pal.app);
 
-        let cols = self.columns();
-        let first_row = ((self.scroll - PAD) / (CELL + GAP)).floor().max(0.0) as usize;
-        let last_row = ((self.scroll + self.size.height - PAD) / (CELL + GAP)).ceil() as usize;
+        let rows = self.packed();
+        let total = rows.len();
+        self.scroll = self.scroll.clamp(0.0, self.max_scroll(total));
+        let pitch = self.row_pitch();
         let cell_border = pal.role("readonlyPoint");
         let glyph_fill = pal.text;
 
-        for row in first_row..=last_row {
-            for col in 0..cols {
-                let index = row * cols + col;
-                let Some(cell) = self.cells.get(index) else {
-                    continue;
-                };
-                let rect = self.cell_rect(index);
+        for (r, row) in rows.iter().enumerate() {
+            let y = PAD + r as f64 * pitch - self.scroll;
+            if y + CELL < 0.0 || y > self.size.height {
+                continue;
+            }
+            let mut x = PAD;
+            for &(ci, span) in row {
+                let w = self.cell_width(span);
+                let rect = Rect::new(x, y, x + w, y + CELL);
+                x += w + GAP;
+                let Some(cell) = self.cells.get(ci) else { continue };
                 let selected = self.selected == Some(cell.index);
 
-                // Cell background and border.
-                painter.fill(rounded(rect, 6.0), pal.panel).draw();
-                let border = if selected {
-                    pal.role("gridSelected")
-                } else {
-                    cell.mark.unwrap_or(cell_border)
-                };
-                painter
-                    .stroke(rounded(rect, 6.0), &Stroke::new(if selected { 2.0 } else { 1.0 }), border)
-                    .draw();
+                painter.fill(rect.to_rounded_rect(6.0), pal.panel).draw();
+                let border = if selected { pal.role("gridSelected") } else { cell.mark.unwrap_or(cell_border) };
+                painter.stroke(rect.to_rounded_rect(6.0), &Stroke::new(if selected { 2.0 } else { 1.0 }), border).draw();
 
-                // Glyph preview: fit the em box into the upper part of the cell.
                 let preview_rect = Rect::new(rect.x0, rect.y0, rect.x1, rect.y1 - 18.0);
                 if !cell.outline.elements().is_empty() {
                     let preview = fit_transform(preview_rect, cell.advance, &self.metrics);
                     let outline = preview * (*cell.outline).clone();
                     painter.fill(&outline, glyph_fill.with_alpha(0.9)).draw();
                 }
-
-                // Label row: glyph name (left) and codepoint (right).
                 let label_y = rect.y1 - 9.0;
                 let muted = self.palette.text_muted;
-                text_label::draw(
-                    painter,
-                    Point::new(rect.x0 + 8.0, label_y),
-                    &cell.name,
-                    10.0,
-                    if selected { self.palette.text } else { muted },
-                    Anchor::Start,
-                );
+                text_label::draw(painter, Point::new(rect.x0 + 8.0, label_y), &cell.name, 10.0, if selected { self.palette.text } else { muted }, Anchor::Start);
                 if let Some(cp) = cell.codepoint {
-                    text_label::draw(
-                        painter,
-                        Point::new(rect.x1 - 8.0, label_y),
-                        &format!("{:04X}", cp as u32),
-                        10.0,
-                        muted,
-                        Anchor::End,
-                    );
+                    text_label::draw(painter, Point::new(rect.x1 - 8.0, label_y), &format!("{:04X}", cp as u32), 10.0, muted, Anchor::End);
                 }
             }
         }
 
-        // Scrollbar.
-        let max = self.max_scroll();
+        let max = self.max_scroll(total);
         if max > 0.0 {
             let track_h = self.size.height;
-            let thumb_h = (track_h * track_h / self.content_height()).max(24.0);
+            let thumb_h = (track_h * track_h / self.content_height(total)).max(24.0);
             let thumb_y = (self.scroll / max) * (track_h - thumb_h);
-            let x = self.size.width - 6.0;
-            painter
-                .fill(rounded(Rect::new(x, thumb_y, x + 4.0, thumb_y + thumb_h), 2.0), pal.text_muted.with_alpha(0.5))
-                .draw();
+            let sx = self.size.width - 6.0;
+            painter.fill(Rect::new(sx, thumb_y, sx + 4.0, thumb_y + thumb_h).to_rounded_rect(2.0), pal.text_muted.with_alpha(0.5)).draw();
         }
     }
 
@@ -243,8 +281,7 @@ impl Widget for GridWidget {
             }) => {
                 ctx.request_focus();
                 let at = ctx.local_position(state.position);
-                if let Some(pos) = self.cell_at(at) {
-                    let index = self.cells[pos].index;
+                if let Some(index) = self.cell_index_at(at) {
                     let reopen = self.selected == Some(index);
                     self.selected = Some(index);
                     ctx.submit_action::<GridEvent>(GridEvent::Selected(index));
@@ -261,7 +298,8 @@ impl Widget for GridWidget {
                     ScrollDelta::LineDelta(_, y) => f64::from(*y) * (CELL + GAP),
                     _ => 0.0,
                 };
-                let next = (self.scroll - dy).clamp(0.0, self.max_scroll());
+                let total = self.packed().len();
+                let next = (self.scroll - dy).clamp(0.0, self.max_scroll(total));
                 if next != self.scroll {
                     self.scroll = next;
                     ctx.request_render();
@@ -285,9 +323,6 @@ impl Widget for GridWidget {
     }
 }
 
-fn rounded(rect: Rect, r: f64) -> masonry::kurbo::RoundedRect {
-    rect.to_rounded_rect(r)
-}
 
 /// Map design space into a cell: fit the em box (advance wide, ascender..descender tall)
 /// with a margin, Y-flipped, biased toward the top so descenders have room.

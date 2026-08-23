@@ -418,7 +418,7 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
     let path = std::env::args()
         .nth(1)
         .expect("usage: runebender-xix <Font.ufo|Font.designspace>");
-    let mut app = App::open(FsPath::new(&path)).unwrap_or_else(|e| {
+    let app = App::open(FsPath::new(&path)).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1)
     });
