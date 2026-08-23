@@ -329,3 +329,11 @@ driver). runebender-xilem remains the direct source for the tools.
   and W/H scale the selection is the next step and needs the
   document-in-app-state model from DESIGN.md 17 to be clean.
 
+- 2026-08-22, slice 23: **Path section in the right panel.** Icon
+  buttons (from core toolbar icons) for flip-h/flip-v/rotate, the four
+  boolean ops, and decompose, wired through a new `App::apply_op` helper
+  (clone session, run op, refresh). These ops were keyboard-only before;
+  now they match gpui's panel. Confirms the panel->document path: a
+  panel button mutates the app's session and the canvas reflects it on
+  rebuild (the DESIGN.md 17 direction, working for whole-glyph ops).
+

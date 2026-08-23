@@ -206,6 +206,17 @@ impl App {
         }
     }
 
+    fn apply_op(&mut self, f: impl FnOnce(&mut Session) -> bool) {
+        if !matches!(self.mode, Mode::Editor(_)) {
+            return;
+        }
+        let mut sess = (*self.session).clone();
+        if f(&mut sess) {
+            self.session = Arc::new(sess);
+            self.refresh_open_glyph();
+        }
+    }
+
     fn set_advance_from_buf(&mut self, v: String) {
         self.advance_buf = v;
         if let Ok(w) = self.advance_buf.trim().parse::<f64>() {
@@ -354,6 +365,38 @@ fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
     })
 }
 
+fn path_section(app: &App) -> impl WidgetView<App> + use<> {
+    use icon_button::icon_button;
+    use session::BoolOp;
+    let pal = &app.palette;
+    let fg = pal.text_muted;
+    let fga = pal.role("accent");
+    let abg = pal.role("gridSelected").with_alpha(0.25);
+    let hbg = pal.control;
+    let op = move |icon: &'static str, f: fn(&mut Session) -> bool| {
+        icon_button(icon, false, fg, fga, abg, hbg, move |app: &mut App| app.apply_op(f))
+    };
+    flex_col((
+        label("Path").text_size(15.0).color(pal.text),
+        flex_row((
+            op("flip-h", |s| s.flip_horizontal()),
+            op("flip-v", |s| s.flip_vertical()),
+            op("rot-cw", |s| s.rotate_90()),
+        )).gap(Length::px(4.0)),
+        flex_row((
+            op("union", |s| s.remove_overlap()),
+            op("subtract", |s| s.boolean(BoolOp::Subtract)),
+            op("intersect", |s| s.boolean(BoolOp::Intersect)),
+            op("exclude", |s| s.boolean(BoolOp::Exclude)),
+        )).gap(Length::px(4.0)),
+        flex_row((
+            op("close", |s| s.decompose()),
+        )).gap(Length::px(4.0)),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(Length::px(6.0))
+}
+
 fn selection_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
     let pal = &app.palette;
     let b = app.session.selection_bounds()?;
@@ -418,6 +461,7 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
         (!pts.is_empty()).then(|| row("Points".into(), pts)),
         editing.then(|| row("Selected".into(), format!("{}", app.selected_points))),
         editing.then(|| selection_section(app)).flatten(),
+        editing.then(|| path_section(app)),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Length::px(6.0))
