@@ -3568,6 +3568,7 @@ dependencies = [
  "kurbo 0.13.1",
  "linesweeper",
  "masonry",
+ "masonry_testing",
  "norad",
  "runebender-core",
  "winit",

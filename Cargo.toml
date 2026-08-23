@@ -22,6 +22,9 @@ kurbo = "0.13"
 linesweeper = "0.4"
 winit = "0.30"
 
+[dev-dependencies]
+masonry_testing = { git = "https://github.com/eliheuer/xix", branch = "main" }
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

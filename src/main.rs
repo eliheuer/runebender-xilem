@@ -9,6 +9,7 @@ mod grid;
 mod icon_button;
 mod model;
 mod session;
+mod shortcuts;
 mod text_label;
 mod theme;
 
@@ -36,7 +37,7 @@ use session::Session;
 use theme::Palette;
 
 /// The active editor tool.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
     Select,
     Pen,
@@ -214,6 +215,24 @@ impl App {
                 self.note = format!("Saved {}", self.font.source.display());
             }
             Err(e) => self.note = format!("Save failed: {e}"),
+        }
+    }
+
+    pub fn dispatch(&mut self, action: shortcuts::AppAction) {
+        use shortcuts::AppAction as A;
+        match action {
+            A::Save => self.save(),
+            A::Overview => {
+                if matches!(self.mode, Mode::Editor(_)) {
+                    self.back_to_overview();
+                }
+            }
+            A::Tool(t) => self.tool = t,
+            A::FlipHorizontal => self.apply_op(|s| s.flip_horizontal()),
+            A::FlipVertical => self.apply_op(|s| s.flip_vertical()),
+            A::Rotate90 => self.apply_op(|s| s.rotate_90()),
+            A::RemoveOverlap => self.apply_op(|s| s.remove_overlap()),
+            A::Decompose => self.apply_op(|s| s.decompose()),
         }
     }
 
@@ -574,7 +593,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         .gap(Length::px(0.0))
         .background_color(pal.app);
 
-    flex_row((
+    shortcuts::shortcut_host(flex_row((
         sized_box(left)
             .dims(Dimensions::new(Dim::Fixed(Length::px(left_width)), Dim::Stretch))
             .background_color(pal.panel),
@@ -588,7 +607,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Length::px(0.0))
-    .background_color(pal.app)
+    .background_color(pal.app))
 }
 
 fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {

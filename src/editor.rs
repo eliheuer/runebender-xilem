@@ -562,10 +562,10 @@ impl Widget for EditorWidget {
                 if self.session.pen_is_active() || self.session.active_contour.is_some() {
                     self.session.pen_cancel();
                     self.emit(ctx, false);
-                } else {
-                    ctx.submit_action::<EditorEvent>(EditorEvent::Exit);
+                    ctx.set_handled();
                 }
-                ctx.set_handled();
+                // Otherwise do not handle: the shortcut host turns Escape into
+                // "back to overview".
                 return;
             }
             Key::Named(NamedKey::ArrowLeft) => (self.session.nudge(-step, 0.0), true),
@@ -579,23 +579,12 @@ impl Widget for EditorWidget {
                 self.session.select_all();
                 (false, true)
             }
-            Key::Character(c) if cmd && c.eq_ignore_ascii_case("s") => {
-                ctx.submit_action::<EditorEvent>(EditorEvent::Save);
-                ctx.set_handled();
-                return;
-            }
             Key::Character(c) if cmd && !shift && c.eq_ignore_ascii_case("z") => {
                 (self.session.undo(), true)
             }
             Key::Character(c) if cmd && (c == "y" || (shift && c.eq_ignore_ascii_case("z"))) => {
                 (self.session.redo(), true)
             }
-            Key::Character(c) if !cmd && c.eq_ignore_ascii_case("h") => (self.session.flip_horizontal(), true),
-            Key::Character(c) if !cmd && c.eq_ignore_ascii_case("v") => (self.session.flip_vertical(), true),
-            Key::Character(c) if !cmd && c.eq_ignore_ascii_case("r") => (self.session.rotate_90(), true),
-            Key::Character(c) if !cmd && c == "]" => (self.session.reverse(), true),
-            Key::Character(c) if !cmd && c.eq_ignore_ascii_case("o") => (self.session.remove_overlap(), true),
-            Key::Character(c) if !cmd && c.eq_ignore_ascii_case("d") => (self.session.decompose(), true),
             _ => return,
         };
         if handled {

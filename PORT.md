@@ -369,3 +369,20 @@ driver). runebender-xilem remains the direct source for the tools.
   context menu (core `set_contour_start`, `round_selected_corners`),
   matching more of gpui's contour context menu.
 
+- 2026-08-23, slice 29: **window-level keymap (the behavioral half of
+  menus).** Added a `ShortcutHost` widget that wraps the whole app.
+  Masonry bubbles key events up the ancestor chain, so the host
+  receives any key the focused widget did not consume, matches it
+  against a keymap, and dispatches a typed `AppAction` (Save on Cmd+S,
+  tool letters v/p/b/u/o/e/m, Escape to overview). Cmd+S now works
+  regardless of focus, and the editor island's ad-hoc op keys were
+  removed (ops live in the context menu and Path panel). Three harness
+  tests prove dispatch works while a button is focused. The View
+  wrapper follows `sized_box`'s single-child pattern (build/rebuild/
+  teardown/message delegate to the child, but the host intercepts
+  `AppAction` messages). This is the renderer-agnostic foundation the
+  native menu bar (muda) will sit on: one `AppAction` list, driven by
+  the keymap now and by menu items later. Note: undo and document
+  edits stay in the island because it owns the live session; a full
+  window-level Cmd+Z needs the document-in-app-state refactor (D2).
+
