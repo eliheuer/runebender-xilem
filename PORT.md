@@ -520,3 +520,10 @@ driver). runebender-xilem remains the direct source for the tools.
   and the acute accent interpolate heavier and stay correctly placed.
   Also fixed a headless-open init bug: the Name/Unicode fields now seed
   from the opened glyph, not the first glyph in the font.
+
+- 2026-08-23, verification: **multi-axis interpolation** confirmed on
+  GoogleSansCode (wght + MONO). The axes bar shows both sliders and the
+  overlay is a true 2D interpolation (wght=600, MONO=1); the standard
+  `VariationModel` handles N dimensions, and per-axis design-coord
+  normalization composes correctly. No code change needed. Layer-based
+  designspace sources load as additional masters.
