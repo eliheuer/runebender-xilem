@@ -626,3 +626,9 @@ driver). runebender-xilem remains the direct source for the tools.
   then the status text. Grid cell corners rounded from 6px to 10px to
   match gpui's softer cells. With the colored glyphs and flat sidebar,
   the overview now reads very close to the gpui version.
+
+- 2026-08-23, slice 57: **panel section carets + header declutter.** The
+  editor right-panel section headers now carry a disclosure caret and
+  muted styling (Glyph, Transformations, Curves, Mark, Selection),
+  matching gpui's organized panel. Dropped the redundant filename from
+  the editor header so the theme/save cluster stops clipping.

@@ -670,7 +670,6 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
                 .background_color(pal.button)
         }),
         label(title).text_size(14.0).color(pal.text),
-        editing.then(|| label(filename).color(pal.text_muted)),
         FlexSpacer::Flex(1.0),
         editing.then(|| header_tools(app)),
         editing.then(|| FlexSpacer::Fixed(Length::px(12.0))),
@@ -988,7 +987,7 @@ fn path_section(app: &App) -> impl WidgetView<App> + use<> {
         icon_button(icon, false, fg, fga, abg, hbg, move |app: &mut App| app.apply_op(f))
     };
     flex_col((
-        label("Path").text_size(15.0).color(pal.text),
+        section_header(pal, "Transformations"),
         flex_row((
             op("flip-h", |s| s.flip_horizontal()),
             op("flip-v", |s| s.flip_vertical()),
@@ -1028,6 +1027,11 @@ fn metric_bufs(session: &Session) -> (String, String) {
     }
 }
 
+/// A right-panel section header with a disclosure caret (gpui style).
+fn section_header(pal: &Palette, text: &'static str) -> impl WidgetView<App> + use<> {
+    label(format!("\u{25be}  {text}")).text_size(12.0).color(pal.text_muted)
+}
+
 /// A labeled path-operation button.
 fn tbtn(pal: &Palette, text: &'static str, f: fn(&mut Session) -> bool) -> impl WidgetView<App> + use<> {
     text_button(text, move |app: &mut App| app.apply_op(f)).background_color(pal.button)
@@ -1041,7 +1045,7 @@ fn selection_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
     };
     Some(
         flex_col((
-            label("Selection").text_size(15.0).color(pal.text),
+            section_header(pal, "Selection"),
             row("X", format!("{}", b.x0 as i64)),
             row("Y", format!("{}", b.y0 as i64)),
             row("W", format!("{}", b.width() as i64)),
@@ -1063,7 +1067,7 @@ fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
     };
     let marks: Vec<_> = app.palette.mark_list().into_iter().map(|(name, color)| swatch(Some(name), color)).collect();
     flex_col((
-        label("Mark").text_size(15.0).color(pal.text),
+        section_header(pal, "Mark"),
         flex_row((
             swatch(None, pal.control),
         )).gap(Length::px(4.0)),
@@ -1146,7 +1150,7 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
     let master_row = (app.font.master_names.len() > 1)
         .then(|| row("Master".into(), app.font.master_names[app.font.active].clone()));
     flex_col((
-        label("Glyph").text_size(15.0).color(pal.text),
+        section_header(pal, "Glyph"),
         master_row,
         show_multi_mark.then(|| row("Selected".into(), format!("{}", app.multi_selected.len()))),
         show_multi_mark.then(|| mark_section(app)),
@@ -1161,7 +1165,7 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
         editing.then(|| path_section(app)),
         editing.then(|| {
             flex_col((
-                label("Curves").text_size(15.0).color(pal.text),
+                section_header(pal, "Curves"),
                 text_button(if app.show_comb { "Comb: on" } else { "Comb: off" }, |app: &mut App| app.show_comb = !app.show_comb)
                     .background_color(pal.button),
             ))
