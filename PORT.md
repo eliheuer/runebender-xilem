@@ -549,3 +549,9 @@ driver). runebender-xilem remains the direct source for the tools.
   vertical column) is removed. The overview still shows its category
   sidebar on the left. Verified headless: the seven tools sit in the
   header with the active one highlighted, and the canvas is wider.
+
+- 2026-08-23, slice 47: **compact info-panel rows.** The read-only rows
+  (Master, Points, Selected, Name/Unicode/Advance in overview) now put
+  the label left and the value right-aligned on a full-width 18px row
+  (`sized_box` stretch + `FlexSpacer::Flex`), matching gpui's panel
+  layout instead of a left-hugging label/value pair.

@@ -786,12 +786,18 @@ fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
 
 fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
-    let row = |k: String, v: String| {
-        flex_row((
-            label(k).color(pal.text_muted),
-            label(v).color(pal.text),
-        ))
-        .gap(Length::px(8.0))
+    let (muted, text) = (pal.text_muted, pal.text);
+    // Compact read-only row: label left, value right (gpui's panel rows).
+    let row = move |k: String, v: String| {
+        sized_box(
+            flex_row((
+                label(k).color(muted),
+                FlexSpacer::Flex(1.0),
+                label(v).color(text),
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Center),
+        )
+        .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(18.0))))
     };
     let (name, adv, pts, cp) = match app.mode {
         Mode::Editor(_) => (
