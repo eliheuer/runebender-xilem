@@ -400,3 +400,12 @@ driver). runebender-xilem remains the direct source for the tools.
   point, with the outer envelope, scaled by curvature. Matches gpui's
   Curves section. Verified on "O".
 
+- 2026-08-23, slice 32: **sidebearing editing.** In the select tool,
+  dragging the advance (right) metric line changes the advance
+  (`set_advance`); dragging the left line shifts the whole glyph and
+  advance (`shift_glyph`), i.e. the left sidebearing. Hit-tested away
+  from points. Build-verified (a live drag is not screenshottable).
+  Known limitation: the panel Advance field is buffer-owned and does
+  not re-derive after a drag, so it shows the old number until reopen,
+  the focus/field-binding gap noted in DESIGN.md D6.
+

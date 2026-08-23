@@ -123,6 +123,20 @@ impl Session {
         glyph_ops::set_glyph_unicode(&mut self.glyph, u)
     }
 
+    /// Shift all points and anchors horizontally (left-sidebearing drag).
+    pub fn shift_glyph(&mut self, dx: f64) {
+        self.record(EditType::Drag);
+        for contour in &mut self.glyph.contours {
+            for p in &mut contour.points {
+                p.x += dx;
+            }
+        }
+        for a in &mut self.glyph.anchors {
+            a.x += dx;
+        }
+        self.glyph.width = (self.glyph.width + dx).max(0.0);
+    }
+
     pub fn set_advance(&mut self, w: f64) {
         self.record(EditType::Normal);
         self.glyph.width = w.max(0.0);

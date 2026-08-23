@@ -72,6 +72,10 @@ enum Drag {
     Shape { start: Point, current: Point },
     /// Dragging an anchor by index.
     Anchor { idx: usize },
+    /// Dragging the advance (right sidebearing) line.
+    AdvanceLine,
+    /// Dragging the left sidebearing line; carries the last cursor x (screen).
+    LeftLine { last_x: f64 },
 }
 
 pub struct EditorWidget {
@@ -420,6 +424,22 @@ impl Widget for EditorWidget {
                     }
                     Some(PointerButton::Primary) => {
                         let shift = state.modifiers.shift();
+                        // Sidebearing lines (only when not near a point).
+                        let affine = self.session.viewport.affine();
+                        let adv_x = (affine * Point::new(self.session.advance(), 0.0)).x;
+                        let lsb_x = (affine * Point::new(0.0, 0.0)).x;
+                        if self.hit_point(at).is_none() {
+                            if (at.x - adv_x).abs() <= 4.0 {
+                                self.drag = Drag::AdvanceLine;
+                                ctx.set_handled();
+                                return;
+                            }
+                            if (at.x - lsb_x).abs() <= 4.0 {
+                                self.drag = Drag::LeftLine { last_x: at.x };
+                                ctx.set_handled();
+                                return;
+                            }
+                        }
                         // Anchor hit takes priority over points.
                         if let Some(ai) = self.session.anchor_at(self.session.viewport.screen_to_design(at), HIT_RADIUS_PX / self.session.viewport.zoom) {
                             self.session.selected_anchor = Some(ai);
@@ -474,6 +494,20 @@ impl Widget for EditorWidget {
                     }
                 }
                 match &mut self.drag {
+                    Drag::AdvanceLine => {
+                        let d = self.session.viewport.screen_to_design(at);
+                        self.session.set_advance(d.x.round());
+                        ctx.request_render();
+                    }
+                    Drag::LeftLine { last_x } => {
+                        let dx_screen = at.x - *last_x;
+                        *last_x = at.x;
+                        let dx = (dx_screen / self.session.viewport.zoom).round();
+                        if dx != 0.0 {
+                            self.session.shift_glyph(dx);
+                            ctx.request_render();
+                        }
+                    }
                     Drag::Anchor { idx } => {
                         let idx = *idx;
                         let d = self.session.viewport.screen_to_design(at);
@@ -546,7 +580,7 @@ impl Widget for EditorWidget {
                     self.drag = Drag::None;
                     self.emit(ctx, false);
                 }
-                Drag::Anchor { .. } => {
+                Drag::Anchor { .. } | Drag::AdvanceLine | Drag::LeftLine { .. } => {
                     self.drag = Drag::None;
                     self.emit(ctx, true);
                 }
