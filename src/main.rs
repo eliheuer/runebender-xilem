@@ -24,8 +24,8 @@ use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
 use xilem::view::{
-    FlexExt as _, canvas, flex_col, flex_row, label, portal, sized_box, slider, text_button,
-    text_input,
+    FlexExt as _, FlexSpacer, canvas, flex_col, flex_row, label, portal, sized_box, slider,
+    text_button, text_input,
 };
 use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
@@ -514,19 +514,33 @@ fn axes_bar(app: &App) -> impl WidgetView<App> + use<> {
 
 fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
+    let editing = matches!(app.mode, Mode::Editor(_));
+    let filename = app
+        .font
+        .source
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let title = match app.mode {
-        Mode::Overview => "Overview".to_string(),
+        Mode::Overview => filename.clone(),
         Mode::Editor(i) => app.font.glyphs.get(i).map(|g| g.name.clone()).unwrap_or_default(),
     };
-    let editing = matches!(app.mode, Mode::Editor(_));
+    // Save status, gpui-style: yellow when unsaved, muted otherwise.
+    let (save_text, save_color) = if app.modified {
+        ("Not saved", pal.role("warning"))
+    } else {
+        ("Saved", pal.text_muted)
+    };
     flex_row((
         editing.then(|| {
             text_button("‹ Overview", |app: &mut App| app.back_to_overview())
                 .background_color(pal.button)
         }),
-        label(title).color(pal.text),
-        text_button(if app.modified { "Save •" } else { "Save" }, |app: &mut App| app.save())
-            .background_color(pal.button),
+        label(title).text_size(14.0).color(pal.text),
+        editing.then(|| label(filename).color(pal.text_muted)),
+        FlexSpacer::Flex(1.0),
+        label(save_text.to_string()).color(save_color),
+        text_button("Save", |app: &mut App| app.save()).background_color(pal.button),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
     .gap(Length::px(12.0))

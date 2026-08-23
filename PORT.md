@@ -499,3 +499,12 @@ driver). runebender-xilem remains the direct source for the tools.
   axis location coherently; on a master it shows the plain glyph. This
   is the aesthetic half of the interpolation feature: the preview reads
   as "what you get at this location", like Glyphs' preview.
+
+- 2026-08-23, slice 43: **gpui-style editor titlebar.** The titlebar
+  now shows the back button, the glyph name (prominent), the source
+  file name (muted) beside it, a flex spacer, and a save-status label
+  ("Saved" muted / "Not saved" in warning yellow) before the Save
+  button, matching runebender-gpui's header (filename title + yellow
+  save status). What the framework offered: `FlexSpacer::Flex(1.0)`
+  pushes the save cluster to the right edge. Before, the title read
+  just "Overview"/glyph name with the Save button crowded beside it.
