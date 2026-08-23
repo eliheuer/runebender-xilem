@@ -419,3 +419,8 @@ driver). runebender-xilem remains the direct source for the tools.
   Matches gpui's mark-color feature (gpui sets it via a grid context
   menu; here it is a panel section for the open glyph).
 
+- 2026-08-23, slice 35: **grid multi-select.** Cmd-click toggles a cell
+  in a multi-selection, shift-click selects a range in cell order,
+  plain click resets to one. Multi-selected cells draw with the accent
+  border and a tinted background. Matches gpui's grid multi-select.
+

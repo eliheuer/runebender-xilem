@@ -68,6 +68,7 @@ pub struct App {
     cells: Arc<Vec<Cell>>,
     mode: Mode,
     selected: Option<usize>,
+    multi_selected: std::sync::Arc<std::collections::HashSet<usize>>,
     filter: String,
     category: GlyphCategory,
     sort: Sort,
@@ -121,6 +122,7 @@ impl App {
             cells,
             mode,
             selected: Some(open.unwrap_or(first)),
+            multi_selected: std::sync::Arc::new(std::collections::HashSet::new()),
             filter: String::new(),
             category: match start_cat.as_deref() {
                 Some("Number") => GlyphCategory::Number,
@@ -188,6 +190,31 @@ impl App {
             descender: self.font.descender,
             upm: self.font.units_per_em,
         }
+    }
+
+    fn grid_select(&mut self, index: usize, cmd: bool, shift: bool) {
+        use std::collections::HashSet;
+        if cmd {
+            let mut m: HashSet<usize> = (*self.multi_selected).clone();
+            if !m.remove(&index) {
+                m.insert(index);
+            }
+            self.multi_selected = std::sync::Arc::new(m);
+        } else if shift {
+            // Range from the current single selection to this index, in cell order.
+            let cells = self.filtered_cells();
+            let order: Vec<usize> = cells.iter().map(|c| c.index).collect();
+            let a = self.selected.and_then(|s| order.iter().position(|&i| i == s));
+            let b = order.iter().position(|&i| i == index);
+            if let (Some(a), Some(b)) = (a, b) {
+                let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+                let m: HashSet<usize> = order[lo..=hi].iter().copied().collect();
+                self.multi_selected = std::sync::Arc::new(m);
+            }
+        } else {
+            self.multi_selected = std::sync::Arc::new(HashSet::new());
+        }
+        self.selected = Some(index);
     }
 
     fn open_glyph(&mut self, index: usize) {
@@ -439,8 +466,9 @@ fn overview(app: &App) -> impl WidgetView<App> + use<> {
         metrics,
         app.palette.clone(),
         app.selected,
+        app.multi_selected.clone(),
         |app: &mut App, ev| match ev {
-            GridEvent::Selected(i) => app.selected = Some(i),
+            GridEvent::Selected { index, cmd, shift } => app.grid_select(index, cmd, shift),
             GridEvent::Open(i) => app.open_glyph(i),
         },
     )

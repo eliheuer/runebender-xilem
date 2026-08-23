@@ -112,7 +112,7 @@ pub fn cells_of(font: &FontModel, palette: &Palette) -> Vec<Cell> {
 /// What the grid reports upward.
 #[derive(Debug)]
 pub enum GridEvent {
-    Selected(usize),
+    Selected { index: usize, cmd: bool, shift: bool },
     Open(usize),
 }
 
@@ -121,6 +121,7 @@ pub struct GridWidget {
     metrics: CellMetrics,
     palette: Arc<Palette>,
     selected: Option<usize>,
+    multi: std::sync::Arc<std::collections::HashSet<usize>>,
     scroll: f64,
     size: Size,
 }
@@ -237,10 +238,12 @@ impl Widget for GridWidget {
                 x += w + GAP;
                 let Some(cell) = self.cells.get(ci) else { continue };
                 let selected = self.selected == Some(cell.index);
+                let multi = self.multi.contains(&cell.index);
 
-                painter.fill(rect.to_rounded_rect(6.0), pal.panel).draw();
-                let border = if selected { pal.role("gridSelected") } else { cell.mark.unwrap_or(cell_border) };
-                painter.stroke(rect.to_rounded_rect(6.0), &Stroke::new(if selected { 2.0 } else { 1.0 }), border).draw();
+                let bg = if multi { pal.role("gridSelected").with_alpha(0.18) } else { pal.panel };
+                painter.fill(rect.to_rounded_rect(6.0), bg).draw();
+                let border = if selected || multi { pal.role("gridSelected") } else { cell.mark.unwrap_or(cell_border) };
+                painter.stroke(rect.to_rounded_rect(6.0), &Stroke::new(if selected || multi { 2.0 } else { 1.0 }), border).draw();
 
                 let preview_rect = Rect::new(rect.x0, rect.y0, rect.x1, rect.y1 - 18.0);
                 if !cell.outline.elements().is_empty() {
@@ -282,9 +285,11 @@ impl Widget for GridWidget {
                 ctx.request_focus();
                 let at = ctx.local_position(state.position);
                 if let Some(index) = self.cell_index_at(at) {
-                    let reopen = self.selected == Some(index);
+                    let cmd = state.modifiers.meta() || state.modifiers.ctrl();
+                    let shift = state.modifiers.shift();
+                    let reopen = self.selected == Some(index) && !cmd && !shift;
                     self.selected = Some(index);
-                    ctx.submit_action::<GridEvent>(GridEvent::Selected(index));
+                    ctx.submit_action::<GridEvent>(GridEvent::Selected { index, cmd, shift });
                     if reopen {
                         ctx.submit_action::<GridEvent>(GridEvent::Open(index));
                     }
@@ -350,6 +355,7 @@ pub struct GridView<F> {
     metrics: CellMetrics,
     palette: Arc<Palette>,
     selected: Option<usize>,
+    multi: std::sync::Arc<std::collections::HashSet<usize>>,
     on_event: F,
 }
 
@@ -358,6 +364,7 @@ pub fn grid<F, App: 'static>(
     metrics: CellMetrics,
     palette: Arc<Palette>,
     selected: Option<usize>,
+    multi: std::sync::Arc<std::collections::HashSet<usize>>,
     on_event: F,
 ) -> GridView<F>
 where
@@ -368,6 +375,7 @@ where
         metrics,
         palette,
         selected,
+        multi,
         on_event,
     }
 }
@@ -386,6 +394,7 @@ where
             metrics: self.metrics,
             palette: self.palette.clone(),
             selected: self.selected,
+            multi: self.multi.clone(),
             scroll: 0.0,
             size: Size::ZERO,
         };
@@ -408,6 +417,10 @@ where
         }
         if self.selected != prev.selected {
             element.widget.selected = self.selected;
+            changed = true;
+        }
+        if !Arc::ptr_eq(&self.multi, &prev.multi) {
+            element.widget.multi = self.multi.clone();
             changed = true;
         }
         if changed {
