@@ -37,6 +37,9 @@ const MENU_ITEMS: &[(&str, fn(&mut Session) -> bool)] = &[
     ("Flip Horizontal", |s| s.flip_horizontal()),
     ("Flip Vertical", |s| s.flip_vertical()),
     ("Rotate 90", |s| s.rotate_90()),
+    ("Harmonize", |s| s.harmonize()),
+    ("Balance", |s| s.balance()),
+    ("Optimize", |s| s.optimize()),
     ("Decompose", |s| s.decompose()),
 ];
 const MENU_W: f64 = 180.0;

@@ -610,6 +610,21 @@ impl Session {
         }
     }
 
+    pub fn harmonize(&mut self) -> bool {
+        self.record(EditType::Normal);
+        glyph_ops::curve_op(&mut self.glyph, &self.selection, glyph_ops::CurveOp::Harmonize)
+    }
+
+    pub fn balance(&mut self) -> bool {
+        self.record(EditType::Normal);
+        glyph_ops::curve_op(&mut self.glyph, &self.selection, glyph_ops::CurveOp::Balance)
+    }
+
+    pub fn optimize(&mut self) -> bool {
+        self.record(EditType::Normal);
+        glyph_ops::curve_op(&mut self.glyph, &self.selection, glyph_ops::CurveOp::Optimize(0.12))
+    }
+
     pub fn select_all(&mut self) {
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }
