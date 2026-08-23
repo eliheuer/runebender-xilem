@@ -555,3 +555,11 @@ driver). runebender-xilem remains the direct source for the tools.
   the label left and the value right-aligned on a full-width 18px row
   (`sized_box` stretch + `FlexSpacer::Flex`), matching gpui's panel
   layout instead of a left-hugging label/value pair.
+
+- 2026-08-23, slice 48: **theme switching.** A header button cycles the
+  four shared OKLCH themes (dark/midnight/gray/light, matching gpui);
+  `cycle_theme` reloads the palette and rebuilds the baked cell colors,
+  so one id swaps every role across the app (the design-token kernel in
+  action). RUNEBENDER_THEME sets the initial theme for headless shots.
+  Inactive sidebar category chips moved to the `control` surface so they
+  stay legible in the light theme.

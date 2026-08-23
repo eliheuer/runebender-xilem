@@ -85,12 +85,20 @@ pub struct App {
     unicode_buf: String,
     /// Current axis location in user units, one per designspace axis.
     axis_values: Vec<f64>,
+    /// Active OKLCH theme id (dark | midnight | gray | light).
+    theme_id: &'static str,
 }
 
 impl App {
     fn open(path: &FsPath) -> Result<Self, String> {
         let font = FontModel::open(path)?;
-        let palette = Arc::new(Palette::load("dark"));
+        let theme_id: &'static str = match std::env::var("RUNEBENDER_THEME").ok().as_deref() {
+            Some("midnight") => "midnight",
+            Some("gray") => "gray",
+            Some("light") => "light",
+            _ => "dark",
+        };
+        let palette = Arc::new(Palette::load(theme_id));
         let cells = Arc::new(cells_of(&font, &palette));
         let first = font
             .index_of("A")
@@ -169,6 +177,7 @@ impl App {
             note: String::new(),
             show_comb: false,
             axis_values,
+            theme_id,
         })
     }
 
@@ -281,6 +290,18 @@ impl App {
         // the field, so it does not clobber input.
         self.advance_buf = format!("{}", self.session.advance() as i64);
         self.selected_points = self.session.selection.len();
+    }
+
+    /// The OKLCH themes in menu order (matches runebender-gpui).
+    const THEMES: [&'static str; 4] = ["dark", "midnight", "gray", "light"];
+
+    /// Advance to the next theme, reloading the palette and the baked cell
+    /// colors. Exercises the design-token kernel: one id swaps every role.
+    fn cycle_theme(&mut self) {
+        let i = Self::THEMES.iter().position(|t| *t == self.theme_id).unwrap_or(0);
+        self.theme_id = Self::THEMES[(i + 1) % Self::THEMES.len()];
+        self.palette = Arc::new(Palette::load(self.theme_id));
+        self.cells = Arc::new(cells_of(&self.font, &self.palette));
     }
 
     fn set_master(&mut self, index: usize) {
@@ -515,6 +536,15 @@ fn axes_bar(app: &App) -> impl WidgetView<App> + use<> {
     .background_color(pal.panel)
 }
 
+/// Display name for a theme id, e.g. "dark" -> "Dark".
+fn theme_label(id: &str) -> String {
+    let mut c = id.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
+
 fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let editing = matches!(app.mode, Mode::Editor(_));
@@ -544,6 +574,8 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
         FlexSpacer::Flex(1.0),
         editing.then(|| header_tools(app)),
         editing.then(|| FlexSpacer::Fixed(Length::px(12.0))),
+        text_button(theme_label(app.theme_id), |app: &mut App| app.cycle_theme())
+            .background_color(pal.button),
         label(save_text.to_string()).color(save_color),
         text_button("Save", |app: &mut App| app.save()).background_color(pal.button),
     ))
@@ -626,7 +658,7 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
                 format!("{}  {}", c.display_name(), count),
                 move |app: &mut App| app.category = c,
             )
-            .background_color(if active { pal.role("accent") } else { pal.panel })
+            .background_color(if active { pal.role("accent") } else { pal.control })
         })
         .collect();
     let sort_label = match app.sort { Sort::Name => "Sort: name", Sort::Unicode => "Sort: unicode" };
