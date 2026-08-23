@@ -610,3 +610,12 @@ driver). runebender-xilem remains the direct source for the tools.
   comes from the font's per-glyph marks. Before, every glyph was flat
   gray while only the border carried the mark. This is the single
   biggest visual-quality gap closed.
+
+- 2026-08-23, slice 55: **flat sidebar tree (visual pass).** The
+  Categories / Languages / Filters rows are no longer pill buttons but
+  flat, full-width list rows: label left, count right-aligned, a subtle
+  highlight (+ accent text) when selected, and section headers with a
+  disclosure caret, matching gpui's sidebar. Built on `button(child,..)`
+  wrapping a `flex_row` in a `sized_box(Dim::Stretch)`. Pain point
+  logged: xix needs a first-class styled list-row primitive; this is
+  hand-assembled from a button + spacer + fixed-height box.

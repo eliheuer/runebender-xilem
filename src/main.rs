@@ -24,8 +24,8 @@ use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
 use xilem::view::{
-    FlexExt as _, FlexSpacer, canvas, flex_col, flex_row, label, portal, sized_box, slider,
-    text_button, text_input,
+    FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, label, portal, sized_box,
+    slider, text_button, text_input,
 };
 use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
@@ -739,6 +739,7 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
 
 fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
+
     let cats = [
         GlyphCategory::All,
         GlyphCategory::Letter,
@@ -748,82 +749,121 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         GlyphCategory::Mark,
         GlyphCategory::Other,
     ];
-    let rows: Vec<_> = cats
+    let cat_rows: Vec<_> = cats
         .into_iter()
         .filter(|c| app.category_count(*c) > 0)
         .map(|c| {
-            let count = app.category_count(c);
-            let active = app.sel == Sel::Category(c);
-            text_button(
-                format!("{}  {}", c.display_name(), count),
+            sidebar_row(
+                pal,
+                c.display_name().to_string(),
+                format!("{}", app.category_count(c)),
+                app.sel == Sel::Category(c),
                 move |app: &mut App| app.sel = Sel::Category(c),
             )
-            .background_color(if active { pal.role("accent") } else { pal.control })
         })
         .collect();
-    // Languages: one row per script group carrying at least one glyph.
-    let accent = pal.role("accent");
-    let ctrl = pal.control;
+
     let lang_rows: Vec<_> = runebender_core::sidebar::language_groups()
         .iter()
         .enumerate()
         .filter(|(i, _)| app.language_count(*i) > 0)
         .map(|(i, g)| {
-            let active = app.sel == Sel::Language(i);
-            text_button(
-                format!("{}  {}", g.label, app.language_count(i)),
+            sidebar_row(
+                pal,
+                g.label.clone(),
+                format!("{}", app.language_count(i)),
+                app.sel == Sel::Language(i),
                 move |app: &mut App| app.sel = Sel::Language(i),
             )
-            .background_color(if active { accent } else { ctrl })
         })
         .collect();
 
-    // Filters: GF coverage sets, showing present / expected.
     let filter_rows: Vec<_> = runebender_core::sidebar::builtin_filters()
         .iter()
         .enumerate()
         .filter_map(|(i, b)| {
             let gs = b.glyphset.as_ref()?;
             let expected = gs.expected_count.unwrap_or(gs.glyph_names.len().max(gs.targets.len()));
-            let active = app.sel == Sel::Filter(i);
-            let label = b.label.clone();
-            Some(
-                text_button(
-                    format!("{}  {}/{}", label, app.filter_present(i), expected),
-                    move |app: &mut App| app.sel = Sel::Filter(i),
-                )
-                .background_color(if active { accent } else { ctrl }),
-            )
+            Some(sidebar_row(
+                pal,
+                b.label.clone(),
+                format!("{}/{}", app.filter_present(i), expected),
+                app.sel == Sel::Filter(i),
+                move |app: &mut App| app.sel = Sel::Filter(i),
+            ))
         })
         .collect();
 
-    let header = |t: &'static str| label(t).text_size(11.0).color(pal.text_muted);
-    let sort_label = match app.sort { Sort::Name => "Sort: name", Sort::Unicode => "Sort: unicode" };
     flex_col((
         text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
             .placeholder("Search"),
-        text_button(sort_label, |app: &mut App| {
-            app.sort = match app.sort { Sort::Name => Sort::Unicode, Sort::Unicode => Sort::Name };
-        }).background_color(pal.button),
+        text_button(
+            match app.sort { Sort::Name => "Sort: name", Sort::Unicode => "Sort: unicode" },
+            |app: &mut App| {
+                app.sort = match app.sort { Sort::Name => Sort::Unicode, Sort::Unicode => Sort::Name };
+            },
+        )
+        .background_color(pal.button),
         {
             let fresh = !app.filter.trim().is_empty() && app.font.index_of(app.filter.trim()).is_none();
-            fresh.then(|| text_button(format!("+ New {}", app.filter.trim()), |app: &mut App| app.new_glyph())
-                .background_color(pal.role("accent")))
+            fresh.then(|| {
+                text_button(format!("+ New {}", app.filter.trim()), |app: &mut App| app.new_glyph())
+                    .background_color(pal.role("accent"))
+            })
         },
-        portal(flex_col((
-            header("Categories"),
-            flex_col(rows).gap(Length::px(2.0)),
-            (!lang_rows.is_empty()).then(|| header("Languages")),
-            flex_col(lang_rows).gap(Length::px(2.0)),
-            (!filter_rows.is_empty()).then(|| header("Filters")),
-            flex_col(filter_rows).gap(Length::px(2.0)),
-        )).cross_axis_alignment(CrossAxisAlignment::Start).gap(Length::px(8.0)))
+        portal(
+            flex_col((
+                sidebar_header(pal, "Categories"),
+                flex_col(cat_rows).gap(Length::px(1.0)),
+                (!lang_rows.is_empty()).then(|| sidebar_header(pal, "Languages")),
+                flex_col(lang_rows).gap(Length::px(1.0)),
+                (!filter_rows.is_empty()).then(|| sidebar_header(pal, "Filters")),
+                flex_col(filter_rows).gap(Length::px(1.0)),
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Start)
+            .gap(Length::px(6.0)),
+        )
         .flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Length::px(8.0))
     .padding(Length::px(8.0))
     .background_color(pal.panel)
+}
+
+/// A collapsible-style section header (with a disclosure caret) for the sidebar.
+fn sidebar_header(pal: &Palette, text: &'static str) -> impl WidgetView<App> + use<> {
+    label(format!("\u{25be}  {text}")).text_size(11.0).color(pal.text_muted)
+}
+
+/// A flat, full-width sidebar row: label left, count right, subtle highlight
+/// when selected (gpui's list rows, not pill buttons).
+fn sidebar_row<F: Fn(&mut App) + Send + Sync + 'static>(
+    pal: &Palette,
+    text: String,
+    count: String,
+    active: bool,
+    on_click: F,
+) -> impl WidgetView<App> + use<F> {
+    let (bg, fg) = if active {
+        (pal.role("gridSelected").with_alpha(0.22), pal.role("accent"))
+    } else {
+        (pal.panel, pal.text)
+    };
+    let muted = pal.text_muted;
+    sized_box(
+        button(
+            flex_row((
+                label(text).color(fg),
+                FlexSpacer::Flex(1.0),
+                label(count).color(muted),
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Center),
+            move |app: &mut App| on_click(app),
+        )
+        .background_color(bg),
+    )
+    .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(28.0))))
 }
 
 fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
@@ -1148,7 +1188,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         Mode::Overview => Either::A(sidebar(app)),
         Mode::Editor(_) => Either::B(editor_nav(app)),
     };
-    let left_width = if editing_mode { 232.0 } else { 200.0 };
+    let left_width = if editing_mode { 232.0 } else { 224.0 };
     shortcuts::shortcut_host(flex_row((
         sized_box(left)
             .dims(Dimensions::new(Dim::Fixed(Length::px(left_width)), Dim::Stretch))
