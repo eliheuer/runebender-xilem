@@ -592,3 +592,13 @@ driver). runebender-xilem remains the direct source for the tools.
   The overview now uses spacious 104px cells (closer to gpui's roomy
   grid) while the editor navigator keeps compact 84px cells. One grid
   widget, two densities.
+
+- 2026-08-23, slice 53: **overview Languages + Filters sidebar.** The
+  category chips are now one section of a three-part sidebar matching
+  runebender-gpui: Categories, Languages (script groups from
+  `core::sidebar::language_groups`, each with its live glyph count), and
+  Filters (GF coverage sets from `builtin_filters`, shown present/
+  expected). Selection is a new `Sel` enum (Category | Language |
+  Filter); `cell_matches_sel` drives `filtered_cells` via
+  `glyph_matches_language_group` / `glyph_matches_character_filter`.
+  Verified on Merriweather Sans: Latin 545, GF Latin Core 324/324.

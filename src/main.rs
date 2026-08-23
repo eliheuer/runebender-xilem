@@ -43,6 +43,15 @@ pub enum Sort {
     Unicode,
 }
 
+/// The active sidebar selection: a category chip, a language group, or a
+/// builtin/GF-coverage filter (mirrors runebender-gpui's SidebarFilter).
+#[derive(Clone, Copy, PartialEq)]
+enum Sel {
+    Category(GlyphCategory),
+    Language(usize),
+    Filter(usize),
+}
+
 /// The active editor tool.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
@@ -71,7 +80,7 @@ pub struct App {
     selected: Option<usize>,
     multi_selected: std::sync::Arc<std::collections::HashSet<usize>>,
     filter: String,
-    category: GlyphCategory,
+    sel: Sel,
     sort: Sort,
     // Editor session, when a glyph is open.
     session: Arc<Session>,
@@ -159,12 +168,12 @@ impl App {
             selected: Some(open.unwrap_or(first)),
             multi_selected: std::sync::Arc::new(std::collections::HashSet::new()),
             filter: String::new(),
-            category: match start_cat.as_deref() {
+            sel: Sel::Category(match start_cat.as_deref() {
                 Some("Number") => GlyphCategory::Number,
                 Some("Symbol") => GlyphCategory::Symbol,
                 Some("Mark") => GlyphCategory::Mark,
                 _ => GlyphCategory::All,
-            },
+            }),
             sort: Sort::Name,
             advance_buf: format!("{}", session.advance() as i64),
             lsb_buf: metric_bufs(&session).0,
@@ -188,15 +197,11 @@ impl App {
     /// The cells that pass the current search + category filter.
     fn filtered_cells(&self) -> Arc<Vec<Cell>> {
         let q = self.filter.to_lowercase();
-        let cat = self.category;
         let out: Vec<Cell> = self
             .cells
             .iter()
             .filter(|c| {
-                let cat_ok = cat == GlyphCategory::All || {
-                    let entry = &self.font.glyphs[c.index];
-                    entry.category == cat
-                };
+                let cat_ok = self.cell_matches_sel(c.index);
                 let q_ok = q.is_empty()
                     || c.name.to_lowercase().contains(&q)
                     || c
@@ -213,6 +218,52 @@ impl App {
             Sort::Unicode => out.sort_by_key(|c| c.codepoint.map(|cp| cp as u32).unwrap_or(u32::MAX)),
         }
         Arc::new(out)
+    }
+
+    /// Codepoints of a glyph entry (the cache keeps only the first).
+    fn entry_codepoints(entry: &model::GlyphEntry) -> Vec<u32> {
+        entry.codepoint.map(|c| vec![c as u32]).unwrap_or_default()
+    }
+
+    /// Does the glyph at `index` pass the active sidebar selection?
+    fn cell_matches_sel(&self, index: usize) -> bool {
+        use runebender_core::sidebar as sb;
+        let entry = &self.font.glyphs[index];
+        match self.sel {
+            Sel::Category(GlyphCategory::All) => true,
+            Sel::Category(cat) => entry.category == cat,
+            Sel::Language(i) => sb::language_groups()
+                .get(i)
+                .map(|g| sb::glyph_matches_language_group(&entry.name, &Self::entry_codepoints(entry), g))
+                .unwrap_or(false),
+            Sel::Filter(i) => sb::builtin_filters()
+                .get(i)
+                .and_then(|b| b.glyphset.as_ref())
+                .map(|f| sb::glyph_matches_character_filter(&entry.name, &Self::entry_codepoints(entry), f))
+                .unwrap_or(false),
+        }
+    }
+
+    /// How many glyphs in the font match language group `i`.
+    fn language_count(&self, i: usize) -> usize {
+        use runebender_core::sidebar as sb;
+        let Some(g) = sb::language_groups().get(i) else { return 0 };
+        self.font
+            .glyphs
+            .iter()
+            .filter(|e| sb::glyph_matches_language_group(&e.name, &Self::entry_codepoints(e), g))
+            .count()
+    }
+
+    /// Present-count for GF-coverage filter `i` (glyphs the font has).
+    fn filter_present(&self, i: usize) -> usize {
+        use runebender_core::sidebar as sb;
+        let Some(f) = sb::builtin_filters().get(i).and_then(|b| b.glyphset.as_ref()) else { return 0 };
+        self.font
+            .glyphs
+            .iter()
+            .filter(|e| sb::glyph_matches_character_filter(&e.name, &Self::entry_codepoints(e), f))
+            .count()
     }
 
     fn category_count(&self, cat: GlyphCategory) -> usize {
@@ -702,14 +753,51 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         .filter(|c| app.category_count(*c) > 0)
         .map(|c| {
             let count = app.category_count(c);
-            let active = app.category == c;
+            let active = app.sel == Sel::Category(c);
             text_button(
                 format!("{}  {}", c.display_name(), count),
-                move |app: &mut App| app.category = c,
+                move |app: &mut App| app.sel = Sel::Category(c),
             )
             .background_color(if active { pal.role("accent") } else { pal.control })
         })
         .collect();
+    // Languages: one row per script group carrying at least one glyph.
+    let accent = pal.role("accent");
+    let ctrl = pal.control;
+    let lang_rows: Vec<_> = runebender_core::sidebar::language_groups()
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| app.language_count(*i) > 0)
+        .map(|(i, g)| {
+            let active = app.sel == Sel::Language(i);
+            text_button(
+                format!("{}  {}", g.label, app.language_count(i)),
+                move |app: &mut App| app.sel = Sel::Language(i),
+            )
+            .background_color(if active { accent } else { ctrl })
+        })
+        .collect();
+
+    // Filters: GF coverage sets, showing present / expected.
+    let filter_rows: Vec<_> = runebender_core::sidebar::builtin_filters()
+        .iter()
+        .enumerate()
+        .filter_map(|(i, b)| {
+            let gs = b.glyphset.as_ref()?;
+            let expected = gs.expected_count.unwrap_or(gs.glyph_names.len().max(gs.targets.len()));
+            let active = app.sel == Sel::Filter(i);
+            let label = b.label.clone();
+            Some(
+                text_button(
+                    format!("{}  {}/{}", label, app.filter_present(i), expected),
+                    move |app: &mut App| app.sel = Sel::Filter(i),
+                )
+                .background_color(if active { accent } else { ctrl }),
+            )
+        })
+        .collect();
+
+    let header = |t: &'static str| label(t).text_size(11.0).color(pal.text_muted);
     let sort_label = match app.sort { Sort::Name => "Sort: name", Sort::Unicode => "Sort: unicode" };
     flex_col((
         text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
@@ -722,7 +810,15 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
             fresh.then(|| text_button(format!("+ New {}", app.filter.trim()), |app: &mut App| app.new_glyph())
                 .background_color(pal.role("accent")))
         },
-        portal(flex_col(rows).gap(Length::px(2.0))).flex(1.0),
+        portal(flex_col((
+            header("Categories"),
+            flex_col(rows).gap(Length::px(2.0)),
+            (!lang_rows.is_empty()).then(|| header("Languages")),
+            flex_col(lang_rows).gap(Length::px(2.0)),
+            (!filter_rows.is_empty()).then(|| header("Filters")),
+            flex_col(filter_rows).gap(Length::px(2.0)),
+        )).cross_axis_alignment(CrossAxisAlignment::Start).gap(Length::px(8.0)))
+        .flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Length::px(8.0))
