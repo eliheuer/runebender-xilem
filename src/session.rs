@@ -115,6 +115,11 @@ impl Session {
         self.glyph.width
     }
 
+    pub fn set_advance(&mut self, w: f64) {
+        self.record(EditType::Normal);
+        self.glyph.width = w.max(0.0);
+    }
+
     pub fn outline(&self) -> BezPath {
         glyph_paths::contours_to_bezpath(&self.glyph)
     }

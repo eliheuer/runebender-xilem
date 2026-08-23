@@ -23,6 +23,7 @@ pub struct Palette {
     pub control: Color,
     pub button: Color,
     pub canvas: Color,
+    pub field: Color,
     pub divider: Color,
     pub text: Color,
     pub text_muted: Color,
@@ -43,12 +44,17 @@ impl Palette {
             control: color(t.surface("control")),
             button: color(t.surface("button")),
             canvas: color(t.surface("canvas")),
+            field: color(t.surface("field")),
             divider: color(t.surface("divider")),
             text: color(t.text("primary")),
             text_muted: color(t.text("muted")),
             roles: t.roles.iter().map(|(k, v)| (k.clone(), color(*v))).collect(),
             marks: t.marks.iter().map(|(k, v)| (k.clone(), color(*v))).collect(),
         }
+    }
+
+    pub fn field(&self) -> Color {
+        self.field
     }
 
     pub fn role(&self, name: &str) -> Color {

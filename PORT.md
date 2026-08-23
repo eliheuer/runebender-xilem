@@ -310,3 +310,16 @@ driver). runebender-xilem remains the direct source for the tools.
   widget on every edit. See DESIGN.md section 17 for what this means for
   the fork.
 
+- 2026-08-22, slice 21: **editable advance field (panel -> document
+  editing).** The info panel's Advance is now a text input; typing a
+  value calls `session.set_advance` and refreshes, moving the right
+  sidebearing and marking modified. This validates the DESIGN.md 17
+  resolution direction: with the session synced into app state, a panel
+  field can edit the document and the canvas reflects it on rebuild.
+  Focus note: the field owns its buffer (initialized on glyph open, not
+  re-derived each rebuild) to avoid clobbering the user's typing, since
+  the app has no per-field focus awareness yet. That missing
+  focus/field-binding story is the next thing the framework should
+  provide (a number field bound to a value with drag-to-scrub, as in
+  DESIGN.md 5's input list).
+

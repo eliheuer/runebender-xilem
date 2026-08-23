@@ -69,6 +69,7 @@ pub struct App {
     tool: Tool,
     modified: bool,
     note: String,
+    advance_buf: String,
 }
 
 impl App {
@@ -109,6 +110,7 @@ impl App {
                 Some("Mark") => GlyphCategory::Mark,
                 _ => GlyphCategory::All,
             },
+            advance_buf: format!("{}", session.advance() as i64),
             session,
             selected_points: 0,
             tool: match std::env::var("RUNEBENDER_TOOL").as_deref() {
@@ -164,6 +166,7 @@ impl App {
     fn open_glyph(&mut self, index: usize) {
         if let Some(entry) = self.font.glyphs.get(index) {
             if let Some(session) = Session::new(&self.font.font, &entry.name) {
+                self.advance_buf = format!("{}", session.advance() as i64);
                 self.session = Arc::new(session);
                 self.selected = Some(index);
                 self.selected_points = 0;
@@ -198,6 +201,16 @@ impl App {
                 self.note = format!("Saved {}", self.font.source.display());
             }
             Err(e) => self.note = format!("Save failed: {e}"),
+        }
+    }
+
+    fn set_advance_from_buf(&mut self, v: String) {
+        self.advance_buf = v;
+        if let Ok(w) = self.advance_buf.trim().parse::<f64>() {
+            let mut sess = (*self.session).clone();
+            sess.set_advance(w);
+            self.session = Arc::new(sess);
+            self.refresh_open_glyph();
         }
     }
 
@@ -365,13 +378,24 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             )
         }
     };
+    let editing = matches!(app.mode, Mode::Editor(_));
+    let advance_field = editing.then(|| {
+        flex_col((
+            label("Advance").color(pal.text_muted),
+            text_input(app.advance_buf.clone(), |app: &mut App, v| app.set_advance_from_buf(v))
+                .background_color(pal.field()),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(Length::px(4.0))
+    });
     flex_col((
         label("Glyph").text_size(15.0).color(pal.text),
         row("Name".into(), name),
         (!cp.is_empty()).then(|| row("Unicode".into(), cp)),
-        row("Advance".into(), adv),
+        (!editing).then(|| row("Advance".into(), adv)),
+        advance_field,
         (!pts.is_empty()).then(|| row("Points".into(), pts)),
-        matches!(app.mode, Mode::Editor(_)).then(|| row("Selected".into(), format!("{}", app.selected_points))),
+        editing.then(|| row("Selected".into(), format!("{}", app.selected_points))),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Length::px(6.0))
