@@ -274,3 +274,26 @@ driver). runebender-xilem remains the direct source for the tools.
   Ready for a human to run: `cargo run --release -- Font.ufo` (work on
   a copy; save writes back).
 
+- 2026-08-22, slice 18: **UI/UX rework toward runebender-gpui.** Studied
+  the gpui render tree and matched its shape: a three-column layout
+  (left panel, center = title bar + canvas + status bar, right info
+  panel), full-height panel columns via `sized_box` with
+  `Dim::Stretch`. The editor's left column is now a vertical **tool
+  icon palette** using runebender-core's `toolbar_icons()` (select,
+  pen, hyperpen, shape-rectangle, shape-ellipse, knife, measure),
+  drawn by a new `IconWidget` (paints the core icon path, hover/active
+  states, click to switch tool), replacing the text-button toolbar.
+  Added a right **info panel** (glyph name, unicode, advance, points,
+  selected) and a `titlebar`. Removed the duplicated sidebar. Forced:
+  - **No cross-axis stretch on flex.** `CrossAxisAlignment` has only
+    Start/Center/End, so full-height columns need `sized_box` +
+    `Dim::Stretch` and the background must live on the stretched box,
+    not the inner content (whose height is natural). A flex `Fill`
+    cross-alignment is the obvious missing thing.
+  - **No icon/vector-path button.** Masonry's `svg` view takes an SVG
+    string, not a kurbo path, so painting a core `ToolbarIcon` needed a
+    custom widget. The design kernel should ship an icon button.
+  Still to match: resizable panels, the bottom preview strip, richer
+  right-panel sections (selection/transform/curves), exact panel
+  colors, and the glyph-grid variable cell widths.
+

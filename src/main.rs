@@ -6,6 +6,7 @@
 
 mod editor;
 mod grid;
+mod icon_button;
 mod model;
 mod session;
 mod text_label;
@@ -14,7 +15,8 @@ mod theme;
 use std::path::Path as FsPath;
 use std::sync::Arc;
 
-use masonry::layout::Length;
+use masonry::layout::{Dim, Length};
+use masonry::properties::Dimensions;
 use masonry::properties::types::CrossAxisAlignment;
 use masonry::theme::default_property_set;
 use winit::dpi::LogicalSize;
@@ -27,6 +29,7 @@ use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
 use editor::editor;
 use grid::{Cell, CellMetrics, GridEvent, cells_of, grid};
+use icon_button::icon_button;
 use model::FontModel;
 use runebender_core::category::GlyphCategory;
 use session::Session;
@@ -198,45 +201,51 @@ impl App {
     }
 }
 
-fn toolbar(app: &App) -> impl WidgetView<App> + use<> {
+fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let title = match app.mode {
         Mode::Overview => "Overview".to_string(),
-        Mode::Editor(i) => app
-            .font
-            .glyphs
-            .get(i)
-            .map(|g| g.name.clone())
-            .unwrap_or_default(),
+        Mode::Editor(i) => app.font.glyphs.get(i).map(|g| g.name.clone()).unwrap_or_default(),
     };
     let editing = matches!(app.mode, Mode::Editor(_));
-    let tool_btn = |name: &'static str, tool: Tool, active: bool| {
-        text_button(name, move |app: &mut App| app.tool = tool)
-            .background_color(if active { pal.role("accent") } else { pal.button })
-    };
     flex_row((
         editing.then(|| {
             text_button("‹ Overview", |app: &mut App| app.back_to_overview())
                 .background_color(pal.button)
         }),
         label(title).color(pal.text),
-        editing.then(|| tool_btn("Select", Tool::Select, app.tool == Tool::Select)),
-        editing.then(|| tool_btn("Pen", Tool::Pen, app.tool == Tool::Pen)),
-        editing.then(|| tool_btn("HyperPen", Tool::HyperPen, app.tool == Tool::HyperPen)),
-        editing.then(|| tool_btn("Rect", Tool::Rect, app.tool == Tool::Rect)),
-        editing.then(|| tool_btn("Ellipse", Tool::Ellipse, app.tool == Tool::Ellipse)),
-        editing.then(|| tool_btn("Knife", Tool::Knife, app.tool == Tool::Knife)),
-        editing.then(|| tool_btn("Measure", Tool::Measure, app.tool == Tool::Measure)),
-        Some(
-            text_button(if app.modified { "Save •" } else { "Save" }, |app: &mut App| {
-                app.save()
-            })
+        text_button(if app.modified { "Save •" } else { "Save" }, |app: &mut App| app.save())
             .background_color(pal.button),
-        ),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
     .gap(Length::px(12.0))
     .padding(Length::px(8.0))
+    .background_color(pal.panel)
+}
+
+fn tool_palette(app: &App) -> impl WidgetView<App> + use<> {
+    let pal = &app.palette;
+    let fg = pal.text_muted;
+    let fg_active = pal.role("accent");
+    let active_bg = pal.role("gridSelected").with_alpha(0.25);
+    let hover_bg = pal.control;
+    let tile = move |icon: &'static str, tool: Tool| {
+        icon_button(icon, app.tool == tool, fg, fg_active, active_bg, hover_bg, move |app: &mut App| {
+            app.tool = tool;
+        })
+    };
+    flex_col((
+        tile("select", Tool::Select),
+        tile("pen", Tool::Pen),
+        tile("hyperpen", Tool::HyperPen),
+        tile("shape-rectangle", Tool::Rect),
+        tile("shape-ellipse", Tool::Ellipse),
+        tile("knife", Tool::Knife),
+        tile("measure", Tool::Measure),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(Length::px(4.0))
+    .padding(Length::px(6.0))
     .background_color(pal.panel)
 }
 
@@ -303,7 +312,7 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
 
 fn overview(app: &App) -> impl WidgetView<App> + use<> {
     let metrics = app.cell_metrics();
-    let grid_view = grid(
+    grid(
         app.filtered_cells(),
         metrics,
         app.palette.clone(),
@@ -312,12 +321,7 @@ fn overview(app: &App) -> impl WidgetView<App> + use<> {
             GridEvent::Selected(i) => app.selected = Some(i),
             GridEvent::Open(i) => app.open_glyph(i),
         },
-    );
-    flex_row((
-        sized_box(sidebar(app)).fixed_width(Length::px(180.0)),
-        grid_view.flex(1.0),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
+    )
 }
 
 fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
@@ -329,16 +333,85 @@ fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
     })
 }
 
+fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
+    let pal = &app.palette;
+    let row = |k: String, v: String| {
+        flex_row((
+            label(k).color(pal.text_muted),
+            label(v).color(pal.text),
+        ))
+        .gap(Length::px(8.0))
+    };
+    let (name, adv, pts, cp) = match app.mode {
+        Mode::Editor(_) => (
+            app.session.glyph_name.clone(),
+            format!("{}", app.session.advance() as i64),
+            format!("{}", app.session.point_count()),
+            String::new(),
+        ),
+        Mode::Overview => {
+            let g = app.selected.and_then(|i| app.font.glyphs.get(i));
+            (
+                g.map(|g| g.name.clone()).unwrap_or_default(),
+                g.map(|g| format!("{}", g.advance as i64)).unwrap_or_default(),
+                String::new(),
+                g.and_then(|g| g.codepoint).map(|c| format!("U+{:04X}", c as u32)).unwrap_or_default(),
+            )
+        }
+    };
+    flex_col((
+        label("Glyph").text_size(15.0).color(pal.text),
+        row("Name".into(), name),
+        (!cp.is_empty()).then(|| row("Unicode".into(), cp)),
+        row("Advance".into(), adv),
+        (!pts.is_empty()).then(|| row("Points".into(), pts)),
+        matches!(app.mode, Mode::Editor(_)).then(|| row("Selected".into(), format!("{}", app.selected_points))),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(Length::px(6.0))
+    .padding(Length::px(12.0))
+    .background_color(pal.panel)
+}
+
 fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
     use xilem::core::one_of::Either;
-    let _ = &app.filter;
+    let pal = &app.palette;
+
+    // Left column: category sidebar in overview, tool palette in editor.
+    let left = match app.mode {
+        Mode::Overview => Either::A(sidebar(app)),
+        Mode::Editor(_) => Either::B(tool_palette(app)),
+    };
+    let left_width = match app.mode {
+        Mode::Overview => 200.0,
+        Mode::Editor(_) => 44.0,
+    };
+
+    // Center: title bar + body + status bar.
     let body = match app.mode {
         Mode::Overview => Either::A(overview(app)),
         Mode::Editor(_) => Either::B(editor_pane(app)),
     };
-    flex_col((toolbar(app), body.flex(1.0), status(app)))
+    let center = flex_col((titlebar(app), body.flex(1.0), status(app)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Length::px(0.0))
+        .background_color(pal.app);
+
+    flex_row((
+        sized_box(left)
+            .dims(Dimensions::new(Dim::Fixed(Length::px(left_width)), Dim::Stretch))
+            .background_color(pal.panel),
+        sized_box(center)
+            .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
+            .background_color(pal.app)
+            .flex(1.0),
+        sized_box(info_panel(app))
+            .dims(Dimensions::new(Dim::Fixed(Length::px(220.0)), Dim::Stretch))
+            .background_color(pal.panel),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(Length::px(0.0))
+    .background_color(pal.app)
 }
 
 fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
