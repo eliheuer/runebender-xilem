@@ -648,11 +648,22 @@ fn overview(app: &App) -> impl WidgetView<App> + use<> {
 fn preview_strip(app: &App) -> impl WidgetView<App> + use<> {
     use masonry::imaging::Painter;
     use masonry::kurbo::{Affine, Point, Size};
-    let outline = app.session.outline_arc();
+    // When the axis sliders are off a master, preview the interpolated
+    // instance (in warm amber) so the strip reflects the current location.
+    let interp = app.interp_preview();
+    let outline = match &interp {
+        Some(o) => o.clone(),
+        None => app.session.outline_arc(),
+    };
     let components = app.session.components_arc();
+    let has_components = !interp.is_some() && !components.elements().is_empty();
     let m = app.session.metrics;
     let advance = app.session.advance();
-    let fill = app.palette.text;
+    let fill = if interp.is_some() {
+        app.palette.role("warning")
+    } else {
+        app.palette.text
+    };
     canvas(move |_app: &mut App, _ctx, scene, size: Size| {
         let mut p = Painter::new(scene);
         // Fit the em box (advance wide, ascender..descender tall) into the strip.
@@ -665,7 +676,7 @@ fn preview_strip(app: &App) -> impl WidgetView<App> + use<> {
         let t = Affine::new([scale, 0.0, 0.0, -scale, x0, baseline_y]);
         let _ = Point::ORIGIN;
         p.fill(&(t * (*outline).clone()), fill).draw();
-        if !components.elements().is_empty() {
+        if has_components {
             p.fill(&(t * (*components).clone()), fill).draw();
         }
     })

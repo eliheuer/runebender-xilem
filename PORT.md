@@ -490,3 +490,12 @@ driver). runebender-xilem remains the direct source for the tools.
   a master shows the plain editable outline with no interpolation
   overlay until a slider actually moves (Glyphs 4 behavior). Both
   verified headless on Merriweather Sans.
+
+- 2026-08-23, slice 42: **interpolation in the preview strip + master
+  row.** The info panel gained a "Master" row (active master name) in
+  the editor. The bottom preview strip now renders the interpolated
+  instance in warm amber whenever the axis sliders are off a master, so
+  the whole editor (canvas overlay, hint, preview) reflects the current
+  axis location coherently; on a master it shows the plain glyph. This
+  is the aesthetic half of the interpolation feature: the preview reads
+  as "what you get at this location", like Glyphs' preview.
