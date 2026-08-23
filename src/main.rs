@@ -804,8 +804,11 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
         .gap(Length::px(4.0))
     });
     let show_multi_mark = !editing && !app.multi_selected.is_empty();
+    let master_row = (app.font.master_names.len() > 1)
+        .then(|| row("Master".into(), app.font.master_names[app.font.active].clone()));
     flex_col((
         label("Glyph").text_size(15.0).color(pal.text),
+        master_row,
         show_multi_mark.then(|| row("Selected".into(), format!("{}", app.multi_selected.len()))),
         show_multi_mark.then(|| mark_section(app)),
         (!editing).then(|| row("Name".into(), name)),
