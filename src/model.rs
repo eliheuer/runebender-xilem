@@ -112,6 +112,20 @@ impl FontModel {
         self.glyphs.iter().position(|g| g.name == name)
     }
 
+    /// Rename a glyph in the font (updates references) and refresh the cache.
+    pub fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
+        let ok = Arc::get_mut(&mut self.font)
+            .map(|f| runebender_core::glyph_ops::rename_glyph(f, old, new))
+            .unwrap_or(false);
+        if ok {
+            let font = Arc::try_unwrap(std::mem::replace(&mut self.font, Arc::new(norad::Font::default())))
+                .unwrap_or_else(|arc| (*arc).clone());
+            let source = self.source.clone();
+            *self = Self::from_font(font, source);
+        }
+        ok
+    }
+
     pub fn save(&self) -> Result<(), String> {
         self.font
             .save(&self.source)

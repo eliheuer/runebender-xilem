@@ -70,6 +70,8 @@ pub struct App {
     modified: bool,
     note: String,
     advance_buf: String,
+    name_buf: String,
+    unicode_buf: String,
 }
 
 impl App {
@@ -99,6 +101,11 @@ impl App {
             ),
             None => session,
         };
+        let first_name = font.glyphs[first].name.clone();
+        let first_uni = font.glyphs[first]
+            .codepoint
+            .map(|c| format!("{:04X}", c as u32))
+            .unwrap_or_default();
         Ok(Self {
             font,
             palette,
@@ -113,6 +120,8 @@ impl App {
                 _ => GlyphCategory::All,
             },
             advance_buf: format!("{}", session.advance() as i64),
+            name_buf: first_name,
+            unicode_buf: first_uni,
             session,
             selected_points: 0,
             tool: match std::env::var("RUNEBENDER_TOOL").as_deref() {
@@ -169,6 +178,8 @@ impl App {
         if let Some(entry) = self.font.glyphs.get(index) {
             if let Some(session) = Session::new(&self.font.font, &entry.name) {
                 self.advance_buf = format!("{}", session.advance() as i64);
+                self.name_buf = entry.name.clone();
+                self.unicode_buf = entry.codepoint.map(|c| format!("{:04X}", c as u32)).unwrap_or_default();
                 self.session = Arc::new(session);
                 self.selected = Some(index);
                 self.selected_points = 0;
@@ -214,6 +225,34 @@ impl App {
         if f(&mut sess) {
             self.session = Arc::new(sess);
             self.refresh_open_glyph();
+        }
+    }
+
+    fn set_unicode_from_buf(&mut self, v: String) {
+        self.unicode_buf = v;
+        let mut sess = (*self.session).clone();
+        if sess.set_unicode(self.unicode_buf.trim()) {
+            self.session = Arc::new(sess);
+            self.refresh_open_glyph();
+        }
+    }
+
+    fn commit_rename(&mut self) {
+        let new = self.name_buf.trim().to_string();
+        if new.is_empty() || new == self.session.glyph_name {
+            return;
+        }
+        let old = self.session.glyph_name.clone();
+        if self.font.rename_glyph(&old, &new) {
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+            if let Some(i) = self.font.index_of(&new) {
+                self.mode = Mode::Editor(i);
+                self.selected = Some(i);
+                if let Some(sess) = Session::new(&self.font.font, &new) {
+                    self.session = Arc::new(sess);
+                }
+            }
+            self.modified = true;
         }
     }
 
@@ -452,10 +491,24 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Length::px(4.0))
     });
+    let name_field = editing.then(|| {
+        flex_col((
+            label("Name").color(pal.text_muted),
+            text_input(app.name_buf.clone(), |app: &mut App, v| app.name_buf = v)
+                .on_enter(|app: &mut App, _| app.commit_rename())
+                .background_color(pal.field()),
+            label("Unicode").color(pal.text_muted),
+            text_input(app.unicode_buf.clone(), |app: &mut App, v| app.set_unicode_from_buf(v))
+                .background_color(pal.field()),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(Length::px(4.0))
+    });
     flex_col((
         label("Glyph").text_size(15.0).color(pal.text),
-        row("Name".into(), name),
-        (!cp.is_empty()).then(|| row("Unicode".into(), cp)),
+        (!editing).then(|| row("Name".into(), name)),
+        (!editing).then(|| row("Unicode".into(), cp.clone())),
+        name_field,
         (!editing).then(|| row("Advance".into(), adv)),
         advance_field,
         (!pts.is_empty()).then(|| row("Points".into(), pts)),

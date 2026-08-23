@@ -115,6 +115,11 @@ impl Session {
         self.glyph.width
     }
 
+    pub fn set_unicode(&mut self, u: &str) -> bool {
+        self.record(EditType::Normal);
+        glyph_ops::set_glyph_unicode(&mut self.glyph, u)
+    }
+
     pub fn set_advance(&mut self, w: f64) {
         self.record(EditType::Normal);
         self.glyph.width = w.max(0.0);

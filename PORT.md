@@ -337,3 +337,10 @@ driver). runebender-xilem remains the direct source for the tools.
   panel button mutates the app's session and the canvas reflects it on
   rebuild (the DESIGN.md 17 direction, working for whole-glyph ops).
 
+- 2026-08-22, slice 24: **editable glyph fields (name, unicode).** The
+  Glyph panel now has Name (rename on Enter via `rename_glyph`, which
+  updates component references and reorders the list), Unicode
+  (`set_glyph_unicode`), and Advance text inputs. Rename rebuilds the
+  cache and re-points the open session. This rounds out per-glyph
+  metadata editing to match gpui's glyph info panel.
+
