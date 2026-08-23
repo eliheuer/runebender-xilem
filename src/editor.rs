@@ -84,6 +84,7 @@ pub struct EditorWidget {
     hover: Option<Point>,
     /// Open context menu: (screen anchor, hovered row).
     menu: Option<(Point, usize)>,
+    show_comb: bool,
 }
 
 impl EditorWidget {
@@ -665,6 +666,7 @@ pub struct EditorView<F> {
     session: Arc<Session>,
     palette: Arc<Palette>,
     tool: Tool,
+    show_comb: bool,
     on_event: F,
 }
 
@@ -672,12 +674,14 @@ pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
     session: Arc<Session>,
     palette: Arc<Palette>,
     tool: Tool,
+    show_comb: bool,
     on_event: F,
 ) -> EditorView<F> {
     EditorView {
         session,
         palette,
         tool,
+        show_comb,
         on_event,
     }
 }
@@ -696,6 +700,7 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             drag: Drag::None,
             hover: None,
             menu: None,
+            show_comb: self.show_comb,
         };
         (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())
     }
@@ -722,6 +727,10 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             if self.tool != Tool::Pen {
                 element.widget.session.pen_cancel();
             }
+            dirty = true;
+        }
+        if self.show_comb != prev.show_comb {
+            element.widget.show_comb = self.show_comb;
             dirty = true;
         }
         if dirty {

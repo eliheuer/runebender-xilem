@@ -70,6 +70,7 @@ pub struct App {
     tool: Tool,
     modified: bool,
     note: String,
+    show_comb: bool,
     advance_buf: String,
     name_buf: String,
     unicode_buf: String,
@@ -131,6 +132,7 @@ impl App {
             },
             modified: false,
             note: String::new(),
+            show_comb: false,
         })
     }
 
@@ -442,7 +444,7 @@ fn preview_strip(app: &App) -> impl WidgetView<App> + use<> {
 }
 
 fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
-    editor(app.session.clone(), app.palette.clone(), app.tool, |app: &mut App, ev| match ev {
+    editor(app.session.clone(), app.palette.clone(), app.tool, app.show_comb, |app: &mut App, ev| match ev {
         editor::EditorEvent::Selection(n) => app.selected_points = n,
         editor::EditorEvent::Edited => app.refresh_open_glyph(),
         editor::EditorEvent::Save => app.save(),
@@ -561,6 +563,15 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
         editing.then(|| row("Selected".into(), format!("{}", app.selected_points))),
         editing.then(|| selection_section(app)).flatten(),
         editing.then(|| path_section(app)),
+        editing.then(|| {
+            flex_col((
+                label("Curves").text_size(15.0).color(pal.text),
+                text_button(if app.show_comb { "Comb: on" } else { "Comb: off" }, |app: &mut App| app.show_comb = !app.show_comb)
+                    .background_color(pal.button),
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Start)
+            .gap(Length::px(4.0))
+        }),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Length::px(6.0))

@@ -686,6 +686,14 @@ impl Session {
         self.glyph.anchors.get(idx).map(|a| Point::new(a.x, a.y))
     }
 
+    pub fn curvature_comb(&self) -> Vec<Vec<(Point, Point)>> {
+        let cubics = runebender_core::curve::cubics_from_norad(&self.glyph);
+        runebender_core::curve::curvature_comb(&cubics, 1.0, 4000.0, false, 12)
+            .into_iter()
+            .map(|strip| strip.into_iter().map(|s| (s.on, s.outer)).collect())
+            .collect()
+    }
+
     pub fn select_all(&mut self) {
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }

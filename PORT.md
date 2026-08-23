@@ -394,3 +394,9 @@ driver). runebender-xilem remains the direct source for the tools.
   takes priority over points. Matches gpui's anchor add/select/drag/
   delete.
 
+- 2026-08-23, slice 31: **curvature comb overlay.** A Curves panel
+  toggle draws the curvature comb (core `cubics_from_norad` +
+  `curvature_comb`): thin strips from each on-curve sample to its outer
+  point, with the outer envelope, scaled by curvature. Matches gpui's
+  Curves section. Verified on "O".
+
