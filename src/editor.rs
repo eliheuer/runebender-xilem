@@ -28,6 +28,18 @@ use crate::Tool;
 
 const HIT_RADIUS_PX: f64 = 8.0;
 
+/// Context-menu items: (label, op). Op returns whether the glyph changed.
+const MENU_ITEMS: &[(&str, fn(&mut Session) -> bool)] = &[
+    ("Reverse Contours", |s| s.reverse()),
+    ("Remove Overlap", |s| s.remove_overlap()),
+    ("Flip Horizontal", |s| s.flip_horizontal()),
+    ("Flip Vertical", |s| s.flip_vertical()),
+    ("Rotate 90", |s| s.rotate_90()),
+    ("Decompose", |s| s.decompose()),
+];
+const MENU_W: f64 = 180.0;
+const MENU_ROW: f64 = 26.0;
+
 /// What the editor reports upward.
 #[derive(Debug)]
 pub enum EditorEvent {
@@ -61,6 +73,8 @@ pub struct EditorWidget {
     drag: Drag,
     /// Last cursor position in design space, for the pen preview segment.
     hover: Option<Point>,
+    /// Open context menu: (screen anchor, hovered row).
+    menu: Option<(Point, usize)>,
 }
 
 impl EditorWidget {
@@ -256,6 +270,23 @@ impl Widget for EditorWidget {
             }
         }
 
+        // Context menu (painted on top of everything else).
+        if let Some((anchor, row)) = self.menu {
+            let h = MENU_ITEMS.len() as f64 * MENU_ROW + 8.0;
+            let x = anchor.x.min(self.size.width - MENU_W - 4.0).max(4.0);
+            let y = anchor.y.min(self.size.height - h - 4.0).max(4.0);
+            let panel = Rect::new(x, y, x + MENU_W, y + h);
+            painter.fill(panel.to_rounded_rect(8.0), pal.panel).draw();
+            painter.stroke(panel.to_rounded_rect(8.0), &Stroke::new(1.0), pal.role("readonlyPoint")).draw();
+            for (i, (labeltext, _)) in MENU_ITEMS.iter().enumerate() {
+                let ry = y + 4.0 + i as f64 * MENU_ROW;
+                if row == i {
+                    painter.fill(Rect::new(x + 4.0, ry, x + MENU_W - 4.0, ry + MENU_ROW).to_rounded_rect(4.0), pal.role("gridSelected").with_alpha(0.3)).draw();
+                }
+                text_label::draw(painter, Point::new(x + 12.0, ry + MENU_ROW / 2.0), labeltext, 12.0, pal.text, Anchor::Start);
+            }
+        }
+
         // Marquee rectangle.
         if let Drag::Marquee { start, current, .. } = &self.drag {
             let rect = Rect::from_points(*start, *current);
@@ -303,8 +334,27 @@ impl Widget for EditorWidget {
         match event {
             PointerEvent::Down(PointerButtonEvent { button, state, .. }) => {
                 ctx.request_focus();
-                ctx.capture_pointer();
                 let at = ctx.local_position(state.position);
+                // If a menu is open, a click either invokes a row or dismisses it.
+                if let Some((anchor, _)) = self.menu {
+                    if let Some(i) = menu_row_at(anchor, at, self.size) {
+                        let changed = (MENU_ITEMS[i].1)(&mut self.session);
+                        self.menu = None;
+                        self.emit(ctx, changed);
+                    } else {
+                        self.menu = None;
+                        ctx.request_render();
+                    }
+                    ctx.set_handled();
+                    return;
+                }
+                if *button == Some(PointerButton::Secondary) {
+                    self.menu = Some((at, usize::MAX));
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return;
+                }
+                ctx.capture_pointer();
                 match button {
                     Some(PointerButton::Primary) if self.tool == Tool::HyperPen => {
                         let affine = self.session.viewport.affine();
@@ -381,6 +431,14 @@ impl Widget for EditorWidget {
             }
             PointerEvent::Move(PointerUpdate { current, .. }) => {
                 let at = ctx.local_position(current.position);
+                if let Some((anchor, ref mut row)) = self.menu {
+                    let new = menu_row_at(anchor, at, self.size).unwrap_or(usize::MAX);
+                    if *row != new {
+                        *row = new;
+                        ctx.request_render();
+                    }
+                    return;
+                }
                 if matches!(self.tool, Tool::Pen | Tool::HyperPen) {
                     self.hover = Some(self.session.viewport.screen_to_design(at));
                     if self.session.active_contour.is_some() {
@@ -554,6 +612,22 @@ impl Widget for EditorWidget {
     }
 }
 
+/// Which menu row (if any) the point `at` is over, for a menu anchored at `anchor`.
+fn menu_row_at(anchor: Point, at: Point, size: Size) -> Option<usize> {
+    let h = MENU_ITEMS.len() as f64 * MENU_ROW + 8.0;
+    let x = anchor.x.min(size.width - MENU_W - 4.0).max(4.0);
+    let y = anchor.y.min(size.height - h - 4.0).max(4.0);
+    if at.x < x + 4.0 || at.x > x + MENU_W - 4.0 {
+        return None;
+    }
+    let rel = at.y - (y + 4.0);
+    if rel < 0.0 {
+        return None;
+    }
+    let i = (rel / MENU_ROW).floor() as usize;
+    if i < MENU_ITEMS.len() { Some(i) } else { None }
+}
+
 // ---------------------------------------------------------------------------
 // View wrapper.
 
@@ -591,6 +665,7 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             size: Size::ZERO,
             drag: Drag::None,
             hover: None,
+            menu: None,
         };
         (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())
     }

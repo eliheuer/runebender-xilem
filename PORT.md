@@ -356,3 +356,12 @@ driver). runebender-xilem remains the direct source for the tools.
   unlike interactive ones; (2) headless render must run a rebuild to
   match what the user sees.
 
+- 2026-08-22, slice 26: **right-click context menu in the editor**
+  (Reverse, Remove Overlap, Flip H/V, Rotate 90, Decompose), painted
+  inside the island's scene with hover highlight, matching how both
+  other Runebender ports do it (hand-rolled, because there is no
+  framework menu/overlay). This is the third place the app has had to
+  build its own menu, reinforcing DESIGN.md D5: the window-level
+  action + menu layer (native bar via muda, in-window via layers +
+  understory_overlay) is required framework, not app code.
+
