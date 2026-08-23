@@ -245,17 +245,25 @@ impl Widget for GridWidget {
                 let border = if selected || multi { pal.role("gridSelected") } else { cell.mark.unwrap_or(cell_border) };
                 painter.stroke(rect.to_rounded_rect(6.0), &Stroke::new(if selected || multi { 2.0 } else { 1.0 }), border).draw();
 
-                let preview_rect = Rect::new(rect.x0, rect.y0, rect.x1, rect.y1 - 18.0);
+                let preview_rect = Rect::new(rect.x0, rect.y0, rect.x1, rect.y1 - 30.0);
                 if !cell.outline.elements().is_empty() {
                     let preview = fit_transform(preview_rect, cell.advance, &self.metrics);
                     let outline = preview * (*cell.outline).clone();
                     painter.fill(&outline, glyph_fill.with_alpha(0.9)).draw();
                 }
-                let label_y = rect.y1 - 9.0;
+                // Two stacked, left-aligned lines (gpui's cell-labels box):
+                // the glyph name on top, its U+XXXX below in muted text.
                 let muted = self.palette.text_muted;
-                text_label::draw(painter, Point::new(rect.x0 + 8.0, label_y), &cell.name, 10.0, if selected { self.palette.text } else { muted }, Anchor::Start);
+                let name_color = if selected || multi {
+                    pal.role("gridSelected")
+                } else {
+                    cell.mark.unwrap_or(self.palette.text)
+                };
+                let has_uni = cell.codepoint.is_some();
+                let name_y = if has_uni { rect.y1 - 20.0 } else { rect.y1 - 9.0 };
+                text_label::draw(painter, Point::new(rect.x0 + 8.0, name_y), &cell.name, 10.0, name_color, Anchor::Start);
                 if let Some(cp) = cell.codepoint {
-                    text_label::draw(painter, Point::new(rect.x1 - 8.0, label_y), &format!("{:04X}", cp as u32), 10.0, muted, Anchor::End);
+                    text_label::draw(painter, Point::new(rect.x0 + 8.0, rect.y1 - 8.0), &format!("U+{:04X}", cp as u32), 10.0, muted, Anchor::Start);
                 }
             }
         }

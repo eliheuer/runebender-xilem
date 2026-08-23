@@ -114,7 +114,13 @@ impl App {
             ),
             None => session,
         };
-        let mut axis_values: Vec<f64> = font.axes.iter().map(|a| a.default).collect();
+        // Snap sliders to the active master's location (Glyphs behavior), so
+        // opening a master shows no interpolation overlay until you move one.
+        let mut axis_values: Vec<f64> = if font.axes.is_empty() {
+            Vec::new()
+        } else {
+            font.master_axis_values(font.active)
+        };
         // Headless override: RUNEBENDER_AXIS="wght=500,wdth=80".
         if let Ok(spec) = std::env::var("RUNEBENDER_AXIS") {
             for pair in spec.split(',') {
@@ -279,6 +285,7 @@ impl App {
             return;
         }
         self.font.set_active(index);
+        self.axis_values = self.font.master_axis_values(index);
         self.cells = Arc::new(cells_of(&self.font, &self.palette));
         // Reopen the current glyph in the new master, keeping the viewport.
         if let Mode::Editor(i) = self.mode {

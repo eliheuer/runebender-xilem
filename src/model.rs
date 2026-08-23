@@ -47,6 +47,31 @@ impl Axis {
         }
         v
     }
+
+    /// Inverse of `user_to_design`: map a design-coordinate value back to
+    /// user coordinates via the piecewise map. Identity when unmapped.
+    pub fn design_to_user(&self, v: f64) -> f64 {
+        if self.map.len() < 2 {
+            return v;
+        }
+        let m = &self.map;
+        if v <= m[0].1 {
+            return m[0].0;
+        }
+        if v >= m[m.len() - 1].1 {
+            return m[m.len() - 1].0;
+        }
+        for w in m.windows(2) {
+            let (x0, y0) = w[0];
+            let (x1, y1) = w[1];
+            let (lo, hi) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
+            if v >= lo && v <= hi {
+                let t = if (y1 - y0).abs() < 1e-9 { 0.0 } else { (v - y0) / (y1 - y0) };
+                return x0 + t * (x1 - x0);
+            }
+        }
+        v
+    }
 }
 
 pub struct GlyphEntry {
@@ -278,6 +303,19 @@ impl FontModel {
                 .map_err(|e| format!("{}: {e}", path.display()))?;
         }
         Ok(())
+    }
+
+    /// The given master's axis location in USER coordinates, one per axis,
+    /// mapping its stored design-coord location back through the axis map.
+    pub fn master_axis_values(&self, index: usize) -> Vec<f64> {
+        let loc = self.master_locations.get(index);
+        self.axes
+            .iter()
+            .map(|ax| match loc.and_then(|l| l.get(&ax.name)) {
+                Some(d) => ax.design_to_user(*d),
+                None => ax.default,
+            })
+            .collect()
     }
 
     /// Interpolate `glyph_name` at the given user-unit axis location. Returns

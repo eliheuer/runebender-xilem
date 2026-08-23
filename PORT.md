@@ -478,3 +478,15 @@ driver). runebender-xilem remains the direct source for the tools.
   reactive `slider` view existed (built in), but the whole
   document-drives-a-computed-overlay loop is hand-wired here — the kind
   of derived-view-state the Island/document split (D1/D2) should own.
+
+- 2026-08-23, slice 41: **UI/UX pass toward gpui parity (labels +
+  slider snap).** Two changes from comparing against runebender-gpui.
+  (1) Overview cells now stack the glyph name and its `U+XXXX` on two
+  left-aligned lines (name in text/mark color, unicode muted below),
+  matching gpui's cell-labels box; before, a long name and the
+  right-aligned codepoint overlapped on one baseline. (2) Axis sliders
+  snap to the active master's location on open and on master switch
+  (`master_axis_values`, design->user through the axis map), so opening
+  a master shows the plain editable outline with no interpolation
+  overlay until a slider actually moves (Glyphs 4 behavior). Both
+  verified headless on Merriweather Sans.
