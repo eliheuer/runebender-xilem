@@ -542,6 +542,8 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
         label(title).text_size(14.0).color(pal.text),
         editing.then(|| label(filename).color(pal.text_muted)),
         FlexSpacer::Flex(1.0),
+        editing.then(|| header_tools(app)),
+        editing.then(|| FlexSpacer::Fixed(Length::px(12.0))),
         label(save_text.to_string()).color(save_color),
         text_button("Save", |app: &mut App| app.save()).background_color(pal.button),
     ))
@@ -551,7 +553,9 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
     .background_color(pal.panel)
 }
 
-fn tool_palette(app: &App) -> impl WidgetView<App> + use<> {
+/// The tools as a horizontal row for the header (gpui puts them there,
+/// not in a left column).
+fn header_tools(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let fg = pal.text_muted;
     let fg_active = pal.role("accent");
@@ -562,7 +566,7 @@ fn tool_palette(app: &App) -> impl WidgetView<App> + use<> {
             app.tool = tool;
         })
     };
-    flex_col((
+    flex_row((
         tile("select", Tool::Select),
         tile("pen", Tool::Pen),
         tile("hyperpen", Tool::HyperPen),
@@ -572,9 +576,7 @@ fn tool_palette(app: &App) -> impl WidgetView<App> + use<> {
         tile("measure", Tool::Measure),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(Length::px(4.0))
-    .padding(Length::px(6.0))
-    .background_color(pal.panel)
+    .gap(Length::px(2.0))
 }
 
 fn status(app: &App) -> impl WidgetView<App> + use<> {
@@ -869,16 +871,10 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
     use xilem::core::one_of::Either;
     let pal = &app.palette;
 
-    // Left column: category sidebar in overview, tool palette in editor.
-    let left = match app.mode {
-        Mode::Overview => Either::A(sidebar(app)),
-        Mode::Editor(_) => Either::B(tool_palette(app)),
-    };
+    // Left column: category sidebar in overview only. In the editor the
+    // tools live in the header (gpui-style), so the left column collapses.
+    let editing_mode = matches!(app.mode, Mode::Editor(_));
     let _ = &app.multi_selected;
-    let left_width = match app.mode {
-        Mode::Overview => 200.0,
-        Mode::Editor(_) => 44.0,
-    };
 
     // Center: title bar + body + status bar.
     let body = match app.mode {
@@ -902,9 +898,11 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         .background_color(pal.app);
 
     shortcuts::shortcut_host(flex_row((
-        sized_box(left)
-            .dims(Dimensions::new(Dim::Fixed(Length::px(left_width)), Dim::Stretch))
-            .background_color(pal.panel),
+        (!editing_mode).then(|| {
+            sized_box(sidebar(app))
+                .dims(Dimensions::new(Dim::Fixed(Length::px(200.0)), Dim::Stretch))
+                .background_color(pal.panel)
+        }),
         sized_box(center)
             .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
             .background_color(pal.app)

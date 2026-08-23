@@ -540,3 +540,12 @@ driver). runebender-xilem remains the direct source for the tools.
   bubbles to leave the editor). On a master the full editable outline
   returns. Verified headless on Merriweather Sans at wght=620 (instance)
   and wght=300 (editable).
+
+- 2026-08-23, slice 46: **tools in the header (gpui layout).** The tool
+  icons moved from a left vertical palette into the editor header, laid
+  out horizontally after the title (matching runebender-gpui's
+  `header_tools`). The editor's left column collapses, so the canvas,
+  master bar, and axes bar span the full width. `tool_palette` (the old
+  vertical column) is removed. The overview still shows its category
+  sidebar on the left. Verified headless: the seven tools sit in the
+  header with the active one highlighted, and the canvas is wider.
