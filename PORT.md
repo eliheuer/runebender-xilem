@@ -430,3 +430,8 @@ driver). runebender-xilem remains the direct source for the tools.
   (`set_glyph_mark` per glyph, cache rebuilt). Completes the
   multi-select workflow (gpui: marks apply to the whole selection).
 
+- 2026-08-23, slice 37: **new glyph.** When the sidebar search holds a
+  name not in the font, a "+ New <name>" button appears; clicking it
+  creates an empty glyph (encoded if the name is a single character),
+  rebuilds the cache, and opens it. Matches gpui's add-glyph.
+

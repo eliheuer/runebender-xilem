@@ -192,6 +192,19 @@ impl App {
         }
     }
 
+    fn new_glyph(&mut self) {
+        let name = self.filter.trim().to_string();
+        let upm = self.font.units_per_em;
+        if self.font.add_glyph(&name, (upm * 0.5).round()) {
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+            self.filter.clear();
+            if let Some(i) = self.font.index_of(&name) {
+                self.open_glyph(i);
+            }
+            self.modified = true;
+        }
+    }
+
     fn grid_select(&mut self, index: usize, cmd: bool, shift: bool) {
         use std::collections::HashSet;
         if cmd {
@@ -468,6 +481,11 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         text_button(sort_label, |app: &mut App| {
             app.sort = match app.sort { Sort::Name => Sort::Unicode, Sort::Unicode => Sort::Name };
         }).background_color(pal.button),
+        {
+            let fresh = !app.filter.trim().is_empty() && app.font.index_of(app.filter.trim()).is_none();
+            fresh.then(|| text_button(format!("+ New {}", app.filter.trim()), |app: &mut App| app.new_glyph())
+                .background_color(pal.role("accent")))
+        },
         portal(flex_col(rows).gap(Length::px(2.0))).flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)

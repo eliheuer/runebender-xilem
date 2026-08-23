@@ -112,6 +112,32 @@ impl FontModel {
         self.glyphs.iter().position(|g| g.name == name)
     }
 
+    /// Create an empty glyph and refresh the cache. Returns false if the name
+    /// is empty or already exists.
+    pub fn add_glyph(&mut self, name: &str, default_advance: f64) -> bool {
+        let name = name.trim();
+        if name.is_empty() || self.font.get_glyph(name).is_some() {
+            return false;
+        }
+        let Some(font) = Arc::get_mut(&mut self.font) else {
+            return false;
+        };
+        let mut glyph = norad::Glyph::new(name);
+        glyph.width = default_advance;
+        // If the name is a single character, encode it.
+        if name.chars().count() == 1 {
+            if let Some(c) = name.chars().next() {
+                glyph.codepoints = norad::Codepoints::new([c]);
+            }
+        }
+        font.default_layer_mut().insert_glyph(glyph);
+        let font = Arc::try_unwrap(std::mem::replace(&mut self.font, Arc::new(norad::Font::default())))
+            .unwrap_or_else(|arc| (*arc).clone());
+        let source = self.source.clone();
+        *self = Self::from_font(font, source);
+        true
+    }
+
     /// Rename a glyph in the font (updates references) and refresh the cache.
     pub fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
         let ok = Arc::get_mut(&mut self.font)
