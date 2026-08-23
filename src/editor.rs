@@ -183,17 +183,6 @@ impl Widget for EditorWidget {
                 .draw();
         }
 
-        // Read-only interpolated instance at the current axis location, in a
-        // warm amber distinct from the green editable outline and the faint
-        // reference ghosts.
-        if let Some(interp) = &self.interp {
-            let path = affine * (**interp).clone();
-            painter.fill(&path, pal.role("warning").with_alpha(0.12)).draw();
-            painter
-                .stroke(&path, &Stroke::new(1.75), pal.role("warning").with_alpha(0.9))
-                .draw();
-        }
-
         let m = &self.session.metrics;
         let thin = Stroke::new(1.0);
         let quiet = pal.role("metricQuiet");
@@ -210,6 +199,10 @@ impl Widget for EditorWidget {
                 .draw();
         }
 
+        // Editing affordances only render on a master. Off a master the view
+        // shows the read-only interpolated instance instead (web/Glyphs
+        // behavior): swap the outline, don't ghost it behind an editable one.
+        if self.interp.is_none() {
         if !self.session.components.elements().is_empty() {
             painter
                 .fill(&(affine * self.session.components.clone()), pal.role("component").with_alpha(0.5))
@@ -277,9 +270,18 @@ impl Widget for EditorWidget {
             painter.stroke(&diamond, &Stroke::new(1.5), anchor_color).draw();
             painter.fill(Circle::new(p, 1.5), anchor_color).draw();
         }
+        } else if let Some(interp) = &self.interp {
+            // Read-only interpolated instance in warm amber, filled and
+            // stroked, standing in for the editable outline.
+            let path = affine * (**interp).clone();
+            painter.fill(&path, pal.role("warning").with_alpha(0.14)).draw();
+            painter
+                .stroke(&path, &Stroke::new(1.75), pal.role("warning").with_alpha(0.95))
+                .draw();
+        }
 
         // Measure overlay: segment/handle/stem lengths and side bearings.
-        if self.tool == Tool::Measure {
+        if self.tool == Tool::Measure && self.interp.is_none() {
             let zoom = self.session.viewport.zoom;
             for m in self.session.measurements() {
                 let a = affine * m.a;
@@ -368,6 +370,13 @@ impl Widget for EditorWidget {
         _props: &mut PropertiesMut<'_>,
         event: &PointerEvent,
     ) {
+        // Off a master the view is a read-only instance: swallow edit clicks.
+        if self.interp.is_some() {
+            if let PointerEvent::Down(PointerButtonEvent { button: Some(PointerButton::Primary | PointerButton::Secondary), .. }) = event {
+                ctx.set_handled();
+                return;
+            }
+        }
         match event {
             PointerEvent::Down(PointerButtonEvent { button, state, .. }) => {
                 ctx.request_focus();
@@ -640,6 +649,11 @@ impl Widget for EditorWidget {
     fn on_text_event(&mut self, ctx: &mut EventCtx<'_>, _props: &mut PropertiesMut<'_>, event: &TextEvent) {
         let TextEvent::Keyboard(key) = event else { return };
         if key.state != KeyState::Down {
+            return;
+        }
+        // Read-only instance: don't handle edit keys, but let Escape bubble to
+        // the shortcut host (so it still leaves the editor).
+        if self.interp.is_some() {
             return;
         }
         let cmd = key.modifiers.meta() || key.modifiers.ctrl();

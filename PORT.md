@@ -527,3 +527,16 @@ driver). runebender-xilem remains the direct source for the tools.
   `VariationModel` handles N dimensions, and per-axis design-coord
   normalization composes correctly. No code change needed. Layer-based
   designspace sources load as additional masters.
+
+- 2026-08-23, slice 45: **read-only instance swap (web/Glyphs
+  behavior).** Off a master, the editor now *swaps* the outline for the
+  interpolated instance and drops every editing affordance (points,
+  handles, component fill, anchors, measure overlay), instead of ghosting
+  an amber instance on top of the still-editable master. runebender-gpui's
+  own note says the overlay approach "leaves you editing something you
+  cannot see"; the web editor swaps and marks the view read-only, so this
+  matches the reference. The instance draws filled + stroked in warm amber.
+  Pointer edits and edit keys are swallowed while off-master (Escape still
+  bubbles to leave the editor). On a master the full editable outline
+  returns. Verified headless on Merriweather Sans at wght=620 (instance)
+  and wght=300 (editable).
