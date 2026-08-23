@@ -24,7 +24,8 @@ use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
 use xilem::view::{
-    FlexExt as _, canvas, flex_col, flex_row, label, portal, sized_box, text_button, text_input,
+    FlexExt as _, canvas, flex_col, flex_row, label, portal, sized_box, slider, text_button,
+    text_input,
 };
 use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
@@ -82,6 +83,8 @@ pub struct App {
     advance_buf: String,
     name_buf: String,
     unicode_buf: String,
+    /// Current axis location in user units, one per designspace axis.
+    axis_values: Vec<f64>,
 }
 
 impl App {
@@ -111,6 +114,19 @@ impl App {
             ),
             None => session,
         };
+        let mut axis_values: Vec<f64> = font.axes.iter().map(|a| a.default).collect();
+        // Headless override: RUNEBENDER_AXIS="wght=500,wdth=80".
+        if let Ok(spec) = std::env::var("RUNEBENDER_AXIS") {
+            for pair in spec.split(',') {
+                if let Some((tag, val)) = pair.split_once('=') {
+                    if let Ok(v) = val.trim().parse::<f64>() {
+                        if let Some(i) = font.axes.iter().position(|a| a.tag == tag.trim() || a.name == tag.trim()) {
+                            axis_values[i] = v.clamp(font.axes[i].min, font.axes[i].max);
+                        }
+                    }
+                }
+            }
+        }
         let first_name = font.glyphs[first].name.clone();
         let first_uni = font.glyphs[first]
             .codepoint
@@ -143,6 +159,7 @@ impl App {
             modified: false,
             note: String::new(),
             show_comb: false,
+            axis_values,
         })
     }
 
@@ -281,6 +298,47 @@ impl App {
         }
     }
 
+    /// The current axis location as a name->value map (user units).
+    fn axis_location(&self) -> std::collections::HashMap<String, f64> {
+        self.font
+            .axes
+            .iter()
+            .zip(&self.axis_values)
+            .map(|(a, v)| (a.name.clone(), *v))
+            .collect()
+    }
+
+    /// True when the sliders sit exactly on the active master's location.
+    fn on_active_master(&self) -> bool {
+        match self.font.master_locations.get(self.font.active) {
+            Some(m) => self.font.axes.iter().enumerate().all(|(i, a)| {
+                // axis_values are user coords; master locations are design coords.
+                let cur = a.user_to_design(self.axis_values.get(i).copied().unwrap_or(a.default));
+                let mst = m.get(&a.name).copied().unwrap_or_else(|| a.user_to_design(a.default));
+                (cur - mst).abs() < 1e-6
+            }),
+            None => true,
+        }
+    }
+
+    /// The interpolated instance outline at the current axis location, shown as
+    /// a read-only overlay. `None` on a master (the editable outline is enough)
+    /// or when the glyph is not interpolatable.
+    fn interp_preview(&self) -> Option<Arc<masonry::kurbo::BezPath>> {
+        if self.on_active_master() {
+            return None;
+        }
+        self.font
+            .interpolate_outline(&self.session.glyph_name, &self.axis_location())
+            .map(Arc::new)
+    }
+
+    fn set_axis(&mut self, index: usize, value: f64) {
+        if let Some(v) = self.axis_values.get_mut(index) {
+            *v = value;
+        }
+    }
+
     fn refresh_open_glyph(&mut self) {
         if let Mode::Editor(index) = self.mode {
             let glyph = self.session.glyph.clone();
@@ -415,6 +473,36 @@ fn master_bar(app: &App) -> impl WidgetView<App> + use<> {
         .collect();
     portal(flex_row(buttons).gap(Length::px(4.0)))
         .background_color(pal.panel)
+}
+
+fn axes_bar(app: &App) -> impl WidgetView<App> + use<> {
+    let pal = &app.palette;
+    let on_master = app.on_active_master();
+    let rows: Vec<_> = app
+        .font
+        .axes
+        .iter()
+        .enumerate()
+        .map(|(i, ax)| {
+            let value = app.axis_values.get(i).copied().unwrap_or(ax.default);
+            flex_row((
+                label(ax.tag.clone()).color(pal.text_muted),
+                slider(ax.min, ax.max, value, move |app: &mut App, v| app.set_axis(i, v)).width(Length::px(160.0)),
+                label(format!("{value:.0}")).color(pal.text),
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Center)
+            .gap(Length::px(8.0))
+        })
+        .collect();
+    // A short hint when the location is interpolated (off any master).
+    let hint = (!on_master).then(|| label("interpolated").color(pal.role("warning")));
+    portal(
+        flex_row((flex_row(rows).gap(Length::px(18.0)), hint))
+            .cross_axis_alignment(CrossAxisAlignment::Center)
+            .gap(Length::px(18.0))
+            .padding(Length::px(6.0)),
+    )
+    .background_color(pal.panel)
 }
 
 fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
@@ -578,7 +666,8 @@ fn preview_strip(app: &App) -> impl WidgetView<App> + use<> {
 
 fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
     let ghosts = Arc::new(app.font.ghost_outlines(&app.session.glyph_name));
-    editor(app.session.clone(), app.palette.clone(), app.tool, app.show_comb, ghosts, |app: &mut App, ev| match ev {
+    let interp = app.interp_preview();
+    editor(app.session.clone(), app.palette.clone(), app.tool, app.show_comb, ghosts, interp, |app: &mut App, ev| match ev {
         editor::EditorEvent::Selection(n) => app.selected_points = n,
         editor::EditorEvent::Edited => app.refresh_open_glyph(),
         editor::EditorEvent::Save => app.save(),
@@ -764,6 +853,8 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
     let center = flex_col((
         titlebar(app),
         has_masters.then(|| sized_box(master_bar(app)).dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(30.0))))),
+        (has_masters && !app.font.axes.is_empty() && matches!(app.mode, Mode::Editor(_)))
+            .then(|| sized_box(axes_bar(app)).dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(34.0))))),
         body.flex(1.0),
         preview,
         status(app),

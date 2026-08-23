@@ -455,3 +455,26 @@ driver). runebender-xilem remains the direct source for the tools.
   overlay of the real masters, not computed interpolation at an
   arbitrary axis location (that needs `var_model`, a later step).
 
+
+- 2026-08-23, slice 40: **real interpolation.** Moving an axis slider
+  now computes a genuine interpolated instance at an arbitrary axis
+  location and draws it read-only over the editable master, in warm
+  amber (distinct from the green editable outline and the faint
+  reference ghosts). Mechanism follows runebender-web's `interpolateGlif`
+  and fontTools' model: `FontModel` stores the designspace axes (with
+  their avar `<map>`) and each master's design-coord location;
+  `interpolate_outline(glyph, location)` builds a per-master value vector
+  (width + point coords), normalizes master locations and the target in
+  **design** coordinates (user coords mapped through the axis `<map>`
+  first, so avar-mapped axes interpolate correctly), runs
+  `var_model::VariationModel::interpolate`, and rebuilds the outline on
+  the active master's contour structure as a template. Masters stay
+  editable (Glyphs 4 behavior); the slider only previews. An axes bar of
+  `slider(min, max, value)` controls per axis sits under the master bar;
+  when the location is off any master an "interpolated" label shows.
+  Verified headless on Merriweather Sans (wght 300..800, avar-mapped to
+  design 82..180): "A" at wght=650 renders an instance visibly between
+  the Regular and ExtraBold masters. What the framework lacked: a
+  reactive `slider` view existed (built in), but the whole
+  document-drives-a-computed-overlay loop is hand-wired here — the kind
+  of derived-view-state the Island/document split (D1/D2) should own.

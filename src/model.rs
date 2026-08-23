@@ -13,6 +13,42 @@ use runebender_core::glyph_paths;
 use runebender_core::theme_oklch::{load_theme, mark_label_for_glyph};
 
 /// Everything the grid and previews need for one glyph, without touching norad.
+#[derive(Clone)]
+pub struct Axis {
+    pub name: String,
+    pub tag: String,
+    pub min: f64,
+    pub default: f64,
+    pub max: f64,
+    /// avar-style piecewise map, (user_input, design_output) pairs. Empty = identity.
+    pub map: Vec<(f64, f64)>,
+}
+
+impl Axis {
+    /// Map a user-coordinate value to design coordinates via the piecewise map.
+    pub fn user_to_design(&self, v: f64) -> f64 {
+        if self.map.len() < 2 {
+            return v;
+        }
+        let m = &self.map;
+        if v <= m[0].0 {
+            return m[0].1;
+        }
+        if v >= m[m.len() - 1].0 {
+            return m[m.len() - 1].1;
+        }
+        for w in m.windows(2) {
+            let (x0, y0) = w[0];
+            let (x1, y1) = w[1];
+            if v >= x0 && v <= x1 {
+                let t = if (x1 - x0).abs() < 1e-9 { 0.0 } else { (v - x0) / (x1 - x0) };
+                return y0 + t * (y1 - y0);
+            }
+        }
+        v
+    }
+}
+
 pub struct GlyphEntry {
     pub name: String,
     pub codepoint: Option<char>,
@@ -39,6 +75,8 @@ pub struct FontModel {
     pub master_names: Vec<String>,
     pub master_paths: Vec<PathBuf>,
     pub active: usize,
+    pub axes: Vec<Axis>,
+    pub master_locations: Vec<std::collections::HashMap<String, f64>>,
 }
 
 impl FontModel {
@@ -65,7 +103,25 @@ impl FontModel {
             if masters.is_empty() {
                 return Err("designspace has no sources".into());
             }
-            Ok(Self::from_masters(masters, names, paths, 0))
+            let axes: Vec<Axis> = doc.axes.iter().map(|a| Axis {
+                name: a.name.clone(),
+                tag: a.tag.clone(),
+                min: a.minimum.unwrap_or(a.default) as f64,
+                default: a.default as f64,
+                max: a.maximum.unwrap_or(a.default) as f64,
+                map: a.map.as_ref().map(|ms| {
+                    let mut v: Vec<(f64, f64)> = ms.iter().map(|m| (m.input as f64, m.output as f64)).collect();
+                    v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                    v
+                }).unwrap_or_default(),
+            }).collect();
+            let master_locations: Vec<std::collections::HashMap<String, f64>> = doc.sources.iter().map(|src| {
+                src.location.iter().filter_map(|d| d.xvalue.map(|v| (d.name.clone(), v as f64))).collect()
+            }).collect();
+            let mut model = Self::from_masters(masters, names, paths, 0);
+            model.axes = axes;
+            model.master_locations = master_locations;
+            Ok(model)
         } else {
             let font = norad::Font::load(path).map_err(|e| format!("{}: {e}", path.display()))?;
             let name = font.font_info.style_name.clone().unwrap_or_else(|| "Regular".into());
@@ -162,6 +218,8 @@ impl FontModel {
             master_names: Vec::new(),
             master_paths: Vec::new(),
             active: 0,
+            axes: Vec::new(),
+            master_locations: Vec::new(),
         }
     }
 
@@ -220,6 +278,73 @@ impl FontModel {
                 .map_err(|e| format!("{}: {e}", path.display()))?;
         }
         Ok(())
+    }
+
+    /// Interpolate `glyph_name` at the given user-unit axis location. Returns
+    /// the interpolated outline (design space) or None if incompatible.
+    pub fn interpolate_outline(
+        &self,
+        glyph_name: &str,
+        location: &std::collections::HashMap<String, f64>,
+    ) -> Option<BezPath> {
+        use runebender_core::var_model::{VariationModel, normalize_value};
+        if self.masters.len() < 2 || self.axes.is_empty() {
+            return None;
+        }
+        // Per-master value vectors (width + point x/y), must be point-compatible.
+        let glyphs: Vec<&norad::Glyph> = self
+            .masters
+            .iter()
+            .map(|f| f.get_glyph(glyph_name))
+            .collect::<Option<Vec<_>>>()?;
+        let vector = |g: &norad::Glyph| -> Vec<f64> {
+            let mut v = vec![g.width];
+            for c in &g.contours {
+                for p in &c.points {
+                    v.push(p.x);
+                    v.push(p.y);
+                }
+            }
+            v
+        };
+        let vectors: Vec<Vec<f64>> = glyphs.iter().map(|g| vector(g)).collect();
+        let width = vectors[0].len();
+        if vectors.iter().any(|v| v.len() != width) {
+            return None;
+        }
+        // Normalize each master location and the target.
+        // Master locations are stored in design coords; the requested target
+        // arrives in user coords. Normalize both against the design-space
+        // extents so avar-mapped axes interpolate correctly.
+        let norm_design = |loc: &std::collections::HashMap<String, f64>| -> std::collections::HashMap<String, f64> {
+            self.axes.iter().map(|ax| {
+                let dmin = ax.user_to_design(ax.min);
+                let ddef = ax.user_to_design(ax.default);
+                let dmax = ax.user_to_design(ax.max);
+                let v = loc.get(&ax.name).copied().unwrap_or(ddef);
+                (ax.name.clone(), normalize_value(v, dmin, ddef, dmax))
+            }).collect()
+        };
+        let target_design: std::collections::HashMap<String, f64> = self.axes.iter().map(|ax| {
+            let v = location.get(&ax.name).copied().unwrap_or(ax.default);
+            (ax.name.clone(), ax.user_to_design(v))
+        }).collect();
+        let locations: Vec<_> = self.master_locations.iter().map(&norm_design).collect();
+        let target = norm_design(&target_design);
+        let model = VariationModel::new(&locations);
+        let out = model.interpolate(&vectors, &target);
+        // Rebuild an outline from the interpolated point coords, using the
+        // active master's glyph as the structural template.
+        let mut g = glyphs.get(self.active).copied()?.clone();
+        let mut i = 1usize; // skip width
+        for c in &mut g.contours {
+            for p in &mut c.points {
+                p.x = out[i];
+                p.y = out[i + 1];
+                i += 2;
+            }
+        }
+        Some(glyph_paths::contours_to_bezpath(&g))
     }
 
     /// Outlines of `glyph_name` in every master except the active one,

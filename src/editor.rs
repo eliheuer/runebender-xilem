@@ -83,6 +83,8 @@ pub struct EditorWidget {
     palette: Arc<Palette>,
     tool: Tool,
     ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
+    /// Read-only interpolated instance overlay at the current axis location.
+    interp: Option<Arc<masonry::kurbo::BezPath>>,
     size: Size,
     drag: Drag,
     /// Last cursor position in design space, for the pen preview segment.
@@ -178,6 +180,17 @@ impl Widget for EditorWidget {
         for ghost in self.ghosts.iter() {
             painter
                 .stroke(&(affine * ghost.clone()), &Stroke::new(1.0), pal.role("reference").with_alpha(0.55))
+                .draw();
+        }
+
+        // Read-only interpolated instance at the current axis location, in a
+        // warm amber distinct from the green editable outline and the faint
+        // reference ghosts.
+        if let Some(interp) = &self.interp {
+            let path = affine * (**interp).clone();
+            painter.fill(&path, pal.role("warning").with_alpha(0.12)).draw();
+            painter
+                .stroke(&path, &Stroke::new(1.75), pal.role("warning").with_alpha(0.9))
                 .draw();
         }
 
@@ -702,6 +715,15 @@ fn menu_row_at(anchor: Point, at: Point, size: Size) -> Option<usize> {
 }
 
 // ---------------------------------------------------------------------------
+/// Cheap equality for the interpolation overlay: same Arc, or both absent.
+fn interp_eq(a: &Option<Arc<masonry::kurbo::BezPath>>, b: &Option<Arc<masonry::kurbo::BezPath>>) -> bool {
+    match (a, b) {
+        (Some(x), Some(y)) => Arc::ptr_eq(x, y),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
 // View wrapper.
 
 pub struct EditorView<F> {
@@ -710,6 +732,7 @@ pub struct EditorView<F> {
     tool: Tool,
     show_comb: bool,
     ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
+    interp: Option<Arc<masonry::kurbo::BezPath>>,
     on_event: F,
 }
 
@@ -719,6 +742,7 @@ pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
     tool: Tool,
     show_comb: bool,
     ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
+    interp: Option<Arc<masonry::kurbo::BezPath>>,
     on_event: F,
 ) -> EditorView<F> {
     EditorView {
@@ -727,6 +751,7 @@ pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
         tool,
         show_comb,
         ghosts,
+        interp,
         on_event,
     }
 }
@@ -742,6 +767,7 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             palette: self.palette.clone(),
             tool: self.tool,
             ghosts: self.ghosts.clone(),
+            interp: self.interp.clone(),
             size: Size::ZERO,
             drag: Drag::None,
             hover: None,
@@ -781,6 +807,10 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
         }
         if !Arc::ptr_eq(&self.ghosts, &prev.ghosts) {
             element.widget.ghosts = self.ghosts.clone();
+            dirty = true;
+        }
+        if !interp_eq(&self.interp, &prev.interp) {
+            element.widget.interp = self.interp.clone();
             dirty = true;
         }
         if dirty {
