@@ -424,3 +424,9 @@ driver). runebender-xilem remains the direct source for the tools.
   plain click resets to one. Multi-selected cells draw with the accent
   border and a tinted background. Matches gpui's grid multi-select.
 
+- 2026-08-23, slice 36: **apply mark to grid selection.** When cells
+  are multi-selected in the overview, the right panel shows a Mark
+  section that applies the chosen color to every selected glyph
+  (`set_glyph_mark` per glyph, cache rebuilt). Completes the
+  multi-select workflow (gpui: marks apply to the whole selection).
+

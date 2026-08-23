@@ -324,10 +324,27 @@ impl App {
     }
 
     fn set_mark(&mut self, label: Option<String>) {
+        if !self.multi_selected.is_empty() {
+            self.apply_mark_to_selection(label);
+            return;
+        }
         let mut sess = (*self.session).clone();
         sess.set_mark(label.as_deref());
         self.session = Arc::new(sess);
         self.refresh_open_glyph();
+    }
+
+    fn apply_mark_to_selection(&mut self, label: Option<String>) {
+        let indices: Vec<usize> = self.multi_selected.iter().copied().collect();
+        for i in indices {
+            if let Some(entry) = self.font.glyphs.get(i) {
+                if let Some(mut g) = self.font.font.get_glyph(&entry.name).cloned() {
+                    runebender_core::theme_oklch::set_glyph_mark(&mut g, label.as_deref());
+                    self.font.replace_glyph(i, g);
+                }
+            }
+        }
+        self.modified = true;
     }
 
     fn set_advance_from_buf(&mut self, v: String) {
@@ -630,8 +647,11 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Length::px(4.0))
     });
+    let show_multi_mark = !editing && !app.multi_selected.is_empty();
     flex_col((
         label("Glyph").text_size(15.0).color(pal.text),
+        show_multi_mark.then(|| row("Selected".into(), format!("{}", app.multi_selected.len()))),
+        show_multi_mark.then(|| mark_section(app)),
         (!editing).then(|| row("Name".into(), name)),
         (!editing).then(|| row("Unicode".into(), cp.clone())),
         name_field,
@@ -667,6 +687,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         Mode::Overview => Either::A(sidebar(app)),
         Mode::Editor(_) => Either::B(tool_palette(app)),
     };
+    let _ = &app.multi_selected;
     let left_width = match app.mode {
         Mode::Overview => 200.0,
         Mode::Editor(_) => 44.0,
