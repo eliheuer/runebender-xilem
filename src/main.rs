@@ -93,20 +93,6 @@ impl App {
             ),
             None => session,
         };
-        // Headless pen check: draw a triangle into the open glyph's session.
-        let session = if std::env::var("RUNEBENDER_DEMO_PEN").is_ok() {
-            use masonry::kurbo::Point;
-            let mut s = (*session).clone();
-            s.pen_corner(150.0, 0.0);
-            // A smooth point with handles: down at (350,500), drag out to (500,500).
-            s.pen_smooth_begin(Point::new(350.0, 500.0), Point::new(500.0, 500.0));
-            s.pen_smooth_drag(Point::new(350.0, 500.0), Point::new(500.0, 500.0));
-            s.pen_corner(550.0, 0.0);
-            s.pen_close();
-            Arc::new(s)
-        } else {
-            session
-        };
         Ok(Self {
             font,
             palette,
@@ -363,71 +349,6 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         eprintln!("{e}");
         std::process::exit(1)
     });
-    if std::env::var("RUNEBENDER_SAVE").is_ok() {
-        app.save();
-        println!("SAVE_RESULT: {}", app.note);
-        return Ok(());
-    }
-    if std::env::var("RUNEBENDER_DEMO_SHAPE").is_ok() {
-        if let Mode::Editor(i) = app.mode {
-            let mut sess = (*app.session).clone();
-            sess.add_rect(100.0, 0.0, 400.0, 300.0);
-            sess.add_ellipse(450.0, 0.0, 750.0, 300.0);
-            app.session = Arc::new(sess);
-            let g = app.session.glyph.clone();
-            app.font.replace_glyph(i, g);
-        }
-    }
-    if std::env::var("RUNEBENDER_DEMO_BOOL").is_ok() {
-        if let Mode::Editor(i) = app.mode {
-            let mut sess = (*app.session).clone();
-            sess.add_rect(100.0, 0.0, 400.0, 300.0);
-            sess.add_ellipse(250.0, 150.0, 600.0, 500.0);
-            sess.remove_overlap();
-            app.session = Arc::new(sess);
-            let g = app.session.glyph.clone();
-            app.font.replace_glyph(i, g);
-        }
-    }
-    if std::env::var("RUNEBENDER_DEMO_DECOMP").is_ok() {
-        if let Mode::Editor(i) = app.mode {
-            let mut sess = (*app.session).clone();
-            let had = sess.glyph.components.len();
-            let ok = sess.decompose();
-            eprintln!("DECOMP: components={had} decomposed={ok} contours={}", sess.glyph.contours.len());
-            app.session = Arc::new(sess);
-            let g = app.session.glyph.clone();
-            app.font.replace_glyph(i, g);
-        }
-    }
-    if std::env::var("RUNEBENDER_DEMO_KNIFE").is_ok() {
-        if let Mode::Editor(i) = app.mode {
-            use masonry::kurbo::Point;
-            let mut sess = (*app.session).clone();
-            let before = sess.point_count();
-            let ok = sess.knife_cut(Point::new(-100.0, 350.0), Point::new(1600.0, 350.0));
-            eprintln!("KNIFE: cut={ok} points {before} -> {}", sess.point_count());
-            app.session = Arc::new(sess);
-            let g = app.session.glyph.clone();
-            app.font.replace_glyph(i, g);
-        }
-    }
-    if std::env::var("RUNEBENDER_DEMO_HYPER").is_ok() {
-        if let Mode::Editor(i) = app.mode {
-            let mut sess = (*app.session).clone();
-            sess.hyper_add(150.0, 0.0, false);
-            sess.hyper_add(300.0, 500.0, false);
-            sess.hyper_add(500.0, 300.0, false);
-            sess.hyper_add(650.0, 500.0, false);
-            sess.hyper_add(500.0, 0.0, false);
-            sess.hyper_close();
-            let hyper = sess.glyph.contours.iter().enumerate().any(|(c,_)| sess_is_hyper(&sess, c));
-            eprintln!("HYPER: contours={} last_is_hyper={hyper} points={}", sess.glyph.contours.len(), sess.point_count());
-            app.session = Arc::new(sess);
-            let g = app.session.glyph.clone();
-            app.font.replace_glyph(i, g);
-        }
-    }
     let background = app.palette.app;
     let window_options =
         WindowOptions::new("Runebender").with_initial_inner_size(LogicalSize::new(1100., 720.));
@@ -437,9 +358,6 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         .run_in(event_loop)
 }
 
-fn sess_is_hyper(sess: &Session, c: usize) -> bool {
-    runebender_core::glyph_ops::contour_is_hyper(&sess.glyph, c)
-}
 
 fn main() -> Result<(), EventLoopError> {
     run(EventLoop::with_user_event())

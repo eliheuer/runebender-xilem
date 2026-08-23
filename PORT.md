@@ -266,3 +266,11 @@ driver). runebender-xilem remains the direct source for the tools.
   `Path::Hyper` through the spline solver. runebender-xilem's
   `tools/hyper_pen.rs` was the structural reference.
 
+- 2026-08-22, cleanup for testing: removed the headless demo/save env
+  hooks that mutated the glyph or saved on startup. Left three harmless
+  read-only conveniences (`RUNEBENDER_OPEN=<glyph>`,
+  `RUNEBENDER_TOOL=measure`, `RUNEBENDER_CAT=<category>`). Release build
+  verified. README now has a testing guide and a keyboard reference.
+  Ready for a human to run: `cargo run --release -- Font.ufo` (work on
+  a copy; save writes back).
+
