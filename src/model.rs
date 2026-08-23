@@ -320,40 +320,21 @@ impl FontModel {
 
     /// Interpolate `glyph_name` at the given user-unit axis location. Returns
     /// the interpolated outline (design space) or None if incompatible.
+    /// Composite glyphs interpolate both their component offsets and, through
+    /// recursion, each component's base outline.
     pub fn interpolate_outline(
         &self,
         glyph_name: &str,
         location: &std::collections::HashMap<String, f64>,
     ) -> Option<BezPath> {
-        use runebender_core::var_model::{VariationModel, normalize_value};
         if self.masters.len() < 2 || self.axes.is_empty() {
             return None;
         }
-        // Per-master value vectors (width + point x/y), must be point-compatible.
-        let glyphs: Vec<&norad::Glyph> = self
-            .masters
-            .iter()
-            .map(|f| f.get_glyph(glyph_name))
-            .collect::<Option<Vec<_>>>()?;
-        let vector = |g: &norad::Glyph| -> Vec<f64> {
-            let mut v = vec![g.width];
-            for c in &g.contours {
-                for p in &c.points {
-                    v.push(p.x);
-                    v.push(p.y);
-                }
-            }
-            v
-        };
-        let vectors: Vec<Vec<f64>> = glyphs.iter().map(|g| vector(g)).collect();
-        let width = vectors[0].len();
-        if vectors.iter().any(|v| v.len() != width) {
-            return None;
-        }
-        // Normalize each master location and the target.
-        // Master locations are stored in design coords; the requested target
-        // arrives in user coords. Normalize both against the design-space
-        // extents so avar-mapped axes interpolate correctly.
+        // Normalized master locations and target, shared by every recursion.
+        // Master locations are stored in design coords; the target arrives in
+        // user coords. Both normalize against the design-space extents so
+        // avar-mapped axes interpolate correctly.
+        use runebender_core::var_model::normalize_value;
         let norm_design = |loc: &std::collections::HashMap<String, f64>| -> std::collections::HashMap<String, f64> {
             self.axes.iter().map(|ax| {
                 let dmin = ax.user_to_design(ax.min);
@@ -369,10 +350,49 @@ impl FontModel {
         }).collect();
         let locations: Vec<_> = self.master_locations.iter().map(&norm_design).collect();
         let target = norm_design(&target_design);
-        let model = VariationModel::new(&locations);
-        let out = model.interpolate(&vectors, &target);
-        // Rebuild an outline from the interpolated point coords, using the
-        // active master's glyph as the structural template.
+        self.interpolate_outline_depth(glyph_name, &locations, &target, 0)
+    }
+
+    fn interpolate_outline_depth(
+        &self,
+        glyph_name: &str,
+        locations: &[std::collections::HashMap<String, f64>],
+        target: &std::collections::HashMap<String, f64>,
+        depth: u8,
+    ) -> Option<BezPath> {
+        use runebender_core::var_model::VariationModel;
+        if depth > 8 {
+            return None;
+        }
+        let glyphs: Vec<&norad::Glyph> = self
+            .masters
+            .iter()
+            .map(|f| f.get_glyph(glyph_name))
+            .collect::<Option<Vec<_>>>()?;
+        // Value vector: width, then each contour point x/y, then each
+        // component's x/y offset (matching runebender-web's interpolateGlif).
+        let vector = |g: &norad::Glyph| -> Vec<f64> {
+            let mut v = vec![g.width];
+            for c in &g.contours {
+                for p in &c.points {
+                    v.push(p.x);
+                    v.push(p.y);
+                }
+            }
+            for comp in &g.components {
+                v.push(comp.transform.x_offset);
+                v.push(comp.transform.y_offset);
+            }
+            v
+        };
+        let vectors: Vec<Vec<f64>> = glyphs.iter().map(|g| vector(g)).collect();
+        let width = vectors[0].len();
+        if vectors.iter().any(|v| v.len() != width) {
+            return None; // incompatible masters: fall back to no preview
+        }
+        let model = VariationModel::new(locations);
+        let out = model.interpolate(&vectors, target);
+        // Rebuild on the active master's structure as a template.
         let mut g = glyphs.get(self.active).copied()?.clone();
         let mut i = 1usize; // skip width
         for c in &mut g.contours {
@@ -382,7 +402,22 @@ impl FontModel {
                 i += 2;
             }
         }
-        Some(glyph_paths::contours_to_bezpath(&g))
+        let mut path = glyph_paths::contours_to_bezpath(&g);
+        // Resolve components: interpolate each base recursively and apply the
+        // interpolated offset (keeping the template's scale/skew).
+        for comp in &g.components {
+            let (dx, dy) = (out[i], out[i + 1]);
+            i += 2;
+            let mut xform = comp.transform.clone();
+            xform.x_offset = dx;
+            xform.y_offset = dy;
+            if let Some(base) =
+                self.interpolate_outline_depth(&comp.base, locations, target, depth + 1)
+            {
+                path.extend((glyph_paths::component_affine(&xform) * base).elements().iter().copied());
+            }
+        }
+        Some(path)
     }
 
     /// Outlines of `glyph_name` in every master except the active one,

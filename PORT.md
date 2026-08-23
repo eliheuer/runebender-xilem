@@ -508,3 +508,15 @@ driver). runebender-xilem remains the direct source for the tools.
   save status). What the framework offered: `FlexSpacer::Flex(1.0)`
   pushes the save cluster to the right edge. Before, the title read
   just "Overview"/glyph name with the Save button crowded beside it.
+
+- 2026-08-23, slice 44: **composite-aware interpolation.** Interpolation
+  now handles composite glyphs, which are most of a font. The value
+  vector gained each component's x/y offset (after the contour points,
+  matching runebender-web), and the rebuild resolves components: it
+  writes the interpolated offsets back and recursively interpolates each
+  component's base outline at the same location, transformed by the
+  component affine (depth-guarded at 8 for cycle safety). Verified
+  headless on Merriweather Sans "Aacute" at wght=620: both the base "A"
+  and the acute accent interpolate heavier and stay correctly placed.
+  Also fixed a headless-open init bug: the Name/Unicode fields now seed
+  from the opened glyph, not the first glyph in the font.

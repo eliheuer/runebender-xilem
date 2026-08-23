@@ -133,8 +133,11 @@ impl App {
                 }
             }
         }
-        let first_name = font.glyphs[first].name.clone();
-        let first_uni = font.glyphs[first]
+        // Seed the Name/Unicode fields from the glyph actually shown
+        // (the opened one in editor mode, else the first).
+        let shown = open.unwrap_or(first);
+        let first_name = font.glyphs[shown].name.clone();
+        let first_uni = font.glyphs[shown]
             .codepoint
             .map(|c| format!("{:04X}", c as u32))
             .unwrap_or_default();
