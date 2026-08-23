@@ -602,3 +602,11 @@ driver). runebender-xilem remains the direct source for the tools.
   Filter); `cell_matches_sel` drives `filtered_cells` via
   `glyph_matches_language_group` / `glyph_matches_character_filter`.
   Verified on Merriweather Sans: Latin 545, GF Latin Core 324/324.
+
+- 2026-08-23, slice 54: **color the grid glyphs by mark (visual pass).**
+  The overview and navigator now fill each cell's glyph with its mark
+  colour (selected cells use the ring colour, unmarked glyphs the
+  default fill), matching runebender-gpui, where the grid's vibrancy
+  comes from the font's per-glyph marks. Before, every glyph was flat
+  gray while only the border carried the mark. This is the single
+  biggest visual-quality gap closed.

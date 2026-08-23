@@ -250,7 +250,15 @@ impl Widget for GridWidget {
                 if !cell.outline.elements().is_empty() {
                     let preview = fit_transform(preview_rect, cell.advance, &self.metrics);
                     let outline = preview * (*cell.outline).clone();
-                    painter.fill(&outline, glyph_fill.with_alpha(0.9)).draw();
+                    // Fill the glyph with its mark colour (gpui), so the grid
+                    // reads by category; selected cells use the ring colour,
+                    // unmarked glyphs the default glyph fill.
+                    let glyph_color = if selected || multi {
+                        pal.role("gridSelected")
+                    } else {
+                        cell.mark.unwrap_or(glyph_fill)
+                    };
+                    painter.fill(&outline, glyph_color).draw();
                 }
                 // Two stacked, left-aligned lines (gpui's cell-labels box):
                 // the glyph name on top, its U+XXXX below in muted text.
