@@ -577,7 +577,8 @@ fn preview_strip(app: &App) -> impl WidgetView<App> + use<> {
 }
 
 fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
-    editor(app.session.clone(), app.palette.clone(), app.tool, app.show_comb, |app: &mut App, ev| match ev {
+    let ghosts = Arc::new(app.font.ghost_outlines(&app.session.glyph_name));
+    editor(app.session.clone(), app.palette.clone(), app.tool, app.show_comb, ghosts, |app: &mut App, ev| match ev {
         editor::EditorEvent::Selection(n) => app.selected_points = n,
         editor::EditorEvent::Edited => app.refresh_open_glyph(),
         editor::EditorEvent::Save => app.save(),

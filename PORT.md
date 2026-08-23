@@ -447,3 +447,11 @@ driver). runebender-xilem remains the direct source for the tools.
   (`master_paths`), which `save` still needs to iterate (currently
   saves the active master's source).
 
+- 2026-08-23, slice 39: **interpolation ghosts.** In the editor, the
+  current glyph's outline in every other master draws faintly behind
+  the active one (`ghost_outlines`), the cross-master reference gpui
+  calls the interpolation ghost. Verified on Newsreader VF: the 8 other
+  masters' "A" fan out behind the ExtraLight one. This is a static
+  overlay of the real masters, not computed interpolation at an
+  arbitrary axis location (that needs `var_model`, a later step).
+

@@ -222,6 +222,20 @@ impl FontModel {
         Ok(())
     }
 
+    /// Outlines of `glyph_name` in every master except the active one,
+    /// for the ghost overlay.
+    pub fn ghost_outlines(&self, glyph_name: &str) -> Vec<BezPath> {
+        self.masters
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != self.active)
+            .filter_map(|(_, font)| {
+                font.get_glyph(glyph_name)
+                    .map(|g| glyph_paths::glyph_to_bezpath(g, font))
+            })
+            .collect()
+    }
+
     /// Replace the glyph at `index` (in the font and the cache) after an edit.
     pub fn replace_glyph(&mut self, index: usize, glyph: norad::Glyph) {
         let Some(entry) = self.glyphs.get_mut(index) else {

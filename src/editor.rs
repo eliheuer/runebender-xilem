@@ -82,6 +82,7 @@ pub struct EditorWidget {
     session: Session,
     palette: Arc<Palette>,
     tool: Tool,
+    ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
     size: Size,
     drag: Drag,
     /// Last cursor position in design space, for the pen preview segment.
@@ -172,6 +173,13 @@ impl Widget for EditorWidget {
         let pal = self.palette.clone();
         let affine = self.session.viewport.affine();
         painter.fill_rect(self.size.to_rect(), pal.canvas);
+
+        // Interpolation ghosts: the other masters' outlines, faint.
+        for ghost in self.ghosts.iter() {
+            painter
+                .stroke(&(affine * ghost.clone()), &Stroke::new(1.0), pal.role("reference").with_alpha(0.55))
+                .draw();
+        }
 
         let m = &self.session.metrics;
         let thin = Stroke::new(1.0);
@@ -701,6 +709,7 @@ pub struct EditorView<F> {
     palette: Arc<Palette>,
     tool: Tool,
     show_comb: bool,
+    ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
     on_event: F,
 }
 
@@ -709,6 +718,7 @@ pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
     palette: Arc<Palette>,
     tool: Tool,
     show_comb: bool,
+    ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
     on_event: F,
 ) -> EditorView<F> {
     EditorView {
@@ -716,6 +726,7 @@ pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
         palette,
         tool,
         show_comb,
+        ghosts,
         on_event,
     }
 }
@@ -730,6 +741,7 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             session: (*self.session).clone(),
             palette: self.palette.clone(),
             tool: self.tool,
+            ghosts: self.ghosts.clone(),
             size: Size::ZERO,
             drag: Drag::None,
             hover: None,
@@ -765,6 +777,10 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
         }
         if self.show_comb != prev.show_comb {
             element.widget.show_comb = self.show_comb;
+            dirty = true;
+        }
+        if !Arc::ptr_eq(&self.ghosts, &prev.ghosts) {
+            element.widget.ghosts = self.ghosts.clone();
             dirty = true;
         }
         if dirty {
