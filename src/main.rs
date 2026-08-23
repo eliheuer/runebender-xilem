@@ -174,6 +174,12 @@ impl App {
 
     /// After an edit, pull the glyph back out of the session and refresh
     /// the model + grid cache so the overview preview matches.
+    /// Replace the app's session with the island's live one (called on every
+    /// editor event so save/preview see interactive edits).
+    pub fn sync_session_from(&mut self, session: &Session) {
+        self.session = Arc::new(session.clone());
+    }
+
     fn refresh_open_glyph(&mut self) {
         if let Mode::Editor(index) = self.mode {
             let glyph = self.session.glyph.clone();

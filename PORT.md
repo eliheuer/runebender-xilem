@@ -297,3 +297,16 @@ driver). runebender-xilem remains the direct source for the tools.
   right-panel sections (selection/transform/curves), exact panel
   colors, and the glyph-grid variable cell widths.
 
+- 2026-08-22, slice 20: **variable-width grid cells** (ported gpui
+  `glyph_column_span` + `pack_spans`: wide glyphs and long names span
+  more columns, rows packed, last cell grows to fill). Plus a
+  **correctness fix that is the session's biggest design signal**: the
+  editor island edits its *own clone* of the session and only emits
+  events, so `App` never received interactive edits, and save/preview
+  read a stale glyph (headless tests missed this because they scripted
+  `app.session` directly). Fixed by pulling the island's live session
+  back through the element (`element.widget.session`) in `View::message`
+  before the callback. This round-trips the session widget -> app ->
+  widget on every edit. See DESIGN.md section 17 for what this means for
+  the fork.
+

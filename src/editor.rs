@@ -630,11 +630,15 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
         &self,
         (): &mut Self::ViewState,
         message: &mut MessageCtx,
-        _element: Mut<'_, Self::Element>,
+        element: Mut<'_, Self::Element>,
         app: &mut App,
     ) -> MessageResult<()> {
         match message.take_message::<EditorEvent>() {
             Some(event) => {
+                // The island is the live source of truth while editing. Pull its
+                // session back into the app before the callback runs, so save and
+                // the grid preview see the edits (the widget edits its own clone).
+                app.sync_session_from(&element.widget.session);
                 (self.on_event)(app, *event);
                 MessageResult::Action(())
             }
