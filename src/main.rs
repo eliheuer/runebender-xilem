@@ -681,6 +681,31 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
     .background_color(pal.panel)
 }
 
+fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
+    let pal = &app.palette;
+    let current = match app.mode { Mode::Editor(i) => Some(i), _ => None };
+    flex_col((
+        text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
+            .placeholder("Search"),
+        portal(grid(
+            app.filtered_cells(),
+            app.cell_metrics(),
+            app.palette.clone(),
+            current,
+            app.multi_selected.clone(),
+            |app: &mut App, ev| match ev {
+                GridEvent::Selected { index, .. } => app.open_glyph(index),
+                GridEvent::Open(i) => app.open_glyph(i),
+            },
+        ))
+        .flex(1.0),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(Length::px(8.0))
+    .padding(Length::px(8.0))
+    .background_color(pal.panel)
+}
+
 fn overview(app: &App) -> impl WidgetView<App> + use<> {
     let metrics = app.cell_metrics();
     grid(
@@ -935,12 +960,15 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         .gap(Length::px(0.0))
         .background_color(pal.app);
 
+    let left = match app.mode {
+        Mode::Overview => Either::A(sidebar(app)),
+        Mode::Editor(_) => Either::B(editor_nav(app)),
+    };
+    let left_width = if editing_mode { 232.0 } else { 200.0 };
     shortcuts::shortcut_host(flex_row((
-        (!editing_mode).then(|| {
-            sized_box(sidebar(app))
-                .dims(Dimensions::new(Dim::Fixed(Length::px(200.0)), Dim::Stretch))
-                .background_color(pal.panel)
-        }),
+        sized_box(left)
+            .dims(Dimensions::new(Dim::Fixed(Length::px(left_width)), Dim::Stretch))
+            .background_color(pal.panel),
         sized_box(center)
             .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
             .background_color(pal.app)

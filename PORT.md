@@ -563,3 +563,10 @@ driver). runebender-xilem remains the direct source for the tools.
   action). RUNEBENDER_THEME sets the initial theme for headless shots.
   Inactive sidebar category chips moved to the `control` surface so they
   stay legible in the light theme.
+
+- 2026-08-23, slice 49: **editor glyph navigator.** The editor's left
+  column now shows the glyph grid as a navigator (search + a 2-column
+  grid), matching runebender-gpui, which keeps the grid visible while
+  editing. Single-clicking a cell opens that glyph (`open_glyph`); the
+  open glyph is highlighted. Reverses the earlier full collapse of the
+  editor's left column (tools stayed in the header).
