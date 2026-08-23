@@ -578,3 +578,11 @@ driver). runebender-xilem remains the direct source for the tools.
   bounded em-box (advance width by ascender..descender) instead of
   infinite sidebearing lines, matching gpui/Glyphs. The info panel
   widened 220->250px so the master name and buttons fit.
+
+- 2026-08-23, slice 51: **Width / LSB / RSB metrics row.** The editor
+  info panel replaces the single Advance field with gpui's three-field
+  metrics row: Width (set_advance), LSB (shifts the glyph so the ink
+  left edge sits at the value, advance unchanged), RSB (changes the
+  advance so the gap past the ink right edge equals the value). Each
+  commits live; the sibling buffers refresh from `side_bearings` after a
+  commit and on glyph open/switch. Values verified on "A" (1360/32/30).

@@ -81,6 +81,8 @@ pub struct App {
     note: String,
     show_comb: bool,
     advance_buf: String,
+    lsb_buf: String,
+    rsb_buf: String,
     name_buf: String,
     unicode_buf: String,
     /// Current axis location in user units, one per designspace axis.
@@ -165,6 +167,8 @@ impl App {
             },
             sort: Sort::Name,
             advance_buf: format!("{}", session.advance() as i64),
+            lsb_buf: metric_bufs(&session).0,
+            rsb_buf: metric_bufs(&session).1,
             name_buf: first_name,
             unicode_buf: first_uni,
             session,
@@ -269,6 +273,9 @@ impl App {
         if let Some(entry) = self.font.glyphs.get(index) {
             if let Some(session) = Session::new(&self.font.font, &entry.name) {
                 self.advance_buf = format!("{}", session.advance() as i64);
+                let (l, r) = metric_bufs(&session);
+                self.lsb_buf = l;
+                self.rsb_buf = r;
                 self.name_buf = entry.name.clone();
                 self.unicode_buf = entry.codepoint.map(|c| format!("{:04X}", c as u32)).unwrap_or_default();
                 self.session = Arc::new(session);
@@ -288,7 +295,7 @@ impl App {
         // Keep the panel's advance field in step after canvas edits
         // (sidebearing/advance drags). This path is never hit by typing in
         // the field, so it does not clobber input.
-        self.advance_buf = format!("{}", self.session.advance() as i64);
+        self.refresh_metric_bufs();
         self.selected_points = self.session.selection.len();
     }
 
@@ -407,6 +414,47 @@ impl App {
             A::RemoveOverlap => self.apply_op(|s| s.remove_overlap()),
             A::Decompose => self.apply_op(|s| s.decompose()),
             A::Duplicate => self.apply_op(|s| s.duplicate()),
+        }
+    }
+
+    /// Recompute the LSB/RSB/advance text buffers from the current session.
+    fn refresh_metric_bufs(&mut self) {
+        self.advance_buf = format!("{}", self.session.advance() as i64);
+        let (l, r) = metric_bufs(&self.session);
+        self.lsb_buf = l;
+        self.rsb_buf = r;
+    }
+
+    /// Set the left sidebearing: shift the glyph so its ink left edge sits at
+    /// `v` (advance unchanged, so the right sidebearing moves).
+    fn set_lsb_from_buf(&mut self, v: String) {
+        self.lsb_buf = v;
+        if let Ok(t) = self.lsb_buf.trim().parse::<f64>() {
+            let mut sess = (*self.session).clone();
+            if let Some(sb) = sess.side_bearings() {
+                sess.shift_glyph(t - sb.min_x);
+                self.session = Arc::new(sess);
+                self.refresh_open_glyph();
+                self.advance_buf = format!("{}", self.session.advance() as i64);
+                if let Some(sb2) = self.session.side_bearings() {
+                    self.rsb_buf = format!("{}", sb2.rsb);
+                }
+            }
+        }
+    }
+
+    /// Set the right sidebearing: change the advance so the gap past the ink
+    /// right edge equals `v` (left sidebearing unchanged).
+    fn set_rsb_from_buf(&mut self, v: String) {
+        self.rsb_buf = v;
+        if let Ok(t) = self.rsb_buf.trim().parse::<f64>() {
+            let mut sess = (*self.session).clone();
+            if let Some(sb) = sess.side_bearings() {
+                sess.set_advance(sb.max_x + t);
+                self.session = Arc::new(sess);
+                self.refresh_open_glyph();
+                self.advance_buf = format!("{}", self.session.advance() as i64);
+            }
         }
     }
 
@@ -813,6 +861,14 @@ fn path_section(app: &App) -> impl WidgetView<App> + use<> {
     .gap(Length::px(6.0))
 }
 
+/// The LSB/RSB text-buffer strings for a session.
+fn metric_bufs(session: &Session) -> (String, String) {
+    match session.side_bearings() {
+        Some(sb) => (format!("{}", sb.lsb), format!("{}", sb.rsb)),
+        None => (String::new(), String::new()),
+    }
+}
+
 /// A labeled path-operation button.
 fn tbtn(pal: &Palette, text: &'static str, f: fn(&mut Session) -> bool) -> impl WidgetView<App> + use<> {
     text_button(text, move |app: &mut App| app.apply_op(f)).background_color(pal.button)
@@ -891,14 +947,28 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
         }
     };
     let editing = matches!(app.mode, Mode::Editor(_));
+    // Width / LSB / RSB in one row (gpui's metrics row). Each field commits
+    // live; LSB shifts the glyph, RSB changes the advance.
+    let field_bg = pal.field();
     let advance_field = editing.then(|| {
-        flex_col((
-            label("Advance").color(pal.text_muted),
-            text_input(app.advance_buf.clone(), |app: &mut App, v| app.set_advance_from_buf(v))
-                .background_color(pal.field()),
+        flex_row((
+            flex_col((
+                label("Width").color(pal.text_muted),
+                text_input(app.advance_buf.clone(), |app: &mut App, v| app.set_advance_from_buf(v))
+                    .background_color(field_bg),
+            )).cross_axis_alignment(CrossAxisAlignment::Start).gap(Length::px(4.0)).flex(1.0),
+            flex_col((
+                label("LSB").color(pal.text_muted),
+                text_input(app.lsb_buf.clone(), |app: &mut App, v| app.set_lsb_from_buf(v))
+                    .background_color(field_bg),
+            )).cross_axis_alignment(CrossAxisAlignment::Start).gap(Length::px(4.0)).flex(1.0),
+            flex_col((
+                label("RSB").color(pal.text_muted),
+                text_input(app.rsb_buf.clone(), |app: &mut App, v| app.set_rsb_from_buf(v))
+                    .background_color(field_bg),
+            )).cross_axis_alignment(CrossAxisAlignment::Start).gap(Length::px(4.0)).flex(1.0),
         ))
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Length::px(4.0))
+        .gap(Length::px(6.0))
     });
     let name_field = editing.then(|| {
         flex_col((
