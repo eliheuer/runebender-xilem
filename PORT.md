@@ -412,3 +412,10 @@ driver). runebender-xilem remains the direct source for the tools.
 - 2026-08-23, slice 33: **sidebar sort toggle** (by name / by unicode),
   applied to the filtered cells. Matches gpui's sort control.
 
+- 2026-08-23, slice 34: **mark colors.** A Mark section in the info
+  panel with a none swatch plus the theme's mark colors
+  (`theme.mark_list`); clicking sets the glyph mark
+  (`set_glyph_mark`), which shows as the cell border in the overview.
+  Matches gpui's mark-color feature (gpui sets it via a grid context
+  menu; here it is a panel section for the open glyph).
+

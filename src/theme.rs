@@ -29,6 +29,7 @@ pub struct Palette {
     pub text_muted: Color,
     roles: HashMap<String, Color>,
     marks: HashMap<String, Color>,
+    mark_order: Vec<String>,
 }
 
 impl Palette {
@@ -50,6 +51,7 @@ impl Palette {
             text_muted: color(t.text("muted")),
             roles: t.roles.iter().map(|(k, v)| (k.clone(), color(*v))).collect(),
             marks: t.marks.iter().map(|(k, v)| (k.clone(), color(*v))).collect(),
+            mark_order: t.marks.iter().map(|(k, _)| k.clone()).collect(),
         }
     }
 
@@ -59,6 +61,14 @@ impl Palette {
 
     pub fn role(&self, name: &str) -> Color {
         self.roles.get(name).copied().unwrap_or(Color::WHITE)
+    }
+
+    /// Theme mark labels with their colors, in theme order.
+    pub fn mark_list(&self) -> Vec<(String, Color)> {
+        self.mark_order
+            .iter()
+            .filter_map(|k| self.marks.get(k).map(|c| (k.clone(), *c)))
+            .collect()
     }
 
     pub fn mark(&self, label: &str) -> Option<Color> {

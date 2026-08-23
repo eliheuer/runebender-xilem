@@ -708,6 +708,11 @@ impl Session {
             .collect()
     }
 
+    pub fn set_mark(&mut self, label: Option<&str>) {
+        self.record(EditType::Normal);
+        runebender_core::theme_oklch::set_glyph_mark(&mut self.glyph, label);
+    }
+
     pub fn select_all(&mut self) {
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }

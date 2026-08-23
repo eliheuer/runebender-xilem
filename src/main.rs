@@ -296,6 +296,13 @@ impl App {
         }
     }
 
+    fn set_mark(&mut self, label: Option<String>) {
+        let mut sess = (*self.session).clone();
+        sess.set_mark(label.as_deref());
+        self.session = Arc::new(sess);
+        self.refresh_open_glyph();
+    }
+
     fn set_advance_from_buf(&mut self, v: String) {
         self.advance_buf = v;
         if let Ok(w) = self.advance_buf.trim().parse::<f64>() {
@@ -525,6 +532,27 @@ fn selection_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
     )
 }
 
+fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
+    let pal = &app.palette;
+    let swatch = |label: Option<String>, color: xilem::Color| {
+        sized_box(
+            text_button("", move |app: &mut App| app.set_mark(label.clone()))
+                .background_color(color),
+        )
+        .dims(Dimensions::fixed(Length::px(22.0), Length::px(22.0)))
+    };
+    let marks: Vec<_> = app.palette.mark_list().into_iter().map(|(name, color)| swatch(Some(name), color)).collect();
+    flex_col((
+        label("Mark").text_size(15.0).color(pal.text),
+        flex_row((
+            swatch(None, pal.control),
+        )).gap(Length::px(4.0)),
+        flex_row(marks).gap(Length::px(4.0)),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(Length::px(4.0))
+}
+
 fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let row = |k: String, v: String| {
@@ -594,6 +622,7 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             .cross_axis_alignment(CrossAxisAlignment::Start)
             .gap(Length::px(4.0))
         }),
+        editing.then(|| mark_section(app)),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Length::px(6.0))
