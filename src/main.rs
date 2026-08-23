@@ -223,8 +223,9 @@ impl App {
         }
     }
 
-    fn cell_metrics(&self) -> CellMetrics {
+    fn cell_metrics(&self, cell: f64) -> CellMetrics {
         CellMetrics {
+            cell,
             ascender: self.font.ascender,
             descender: self.font.descender,
             upm: self.font.units_per_em,
@@ -737,7 +738,7 @@ fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
             .placeholder("Search"),
         portal(grid(
             app.filtered_cells(),
-            app.cell_metrics(),
+            app.cell_metrics(84.0),
             app.palette.clone(),
             current,
             app.multi_selected.clone(),
@@ -755,7 +756,7 @@ fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
 }
 
 fn overview(app: &App) -> impl WidgetView<App> + use<> {
-    let metrics = app.cell_metrics();
+    let metrics = app.cell_metrics(104.0);
     grid(
         app.filtered_cells(),
         metrics,

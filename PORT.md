@@ -586,3 +586,9 @@ driver). runebender-xilem remains the direct source for the tools.
   advance so the gap past the ink right edge equals the value). Each
   commits live; the sibling buffers refresh from `side_bearings` after a
   commit and on glyph open/switch. Values verified on "A" (1360/32/30).
+
+- 2026-08-23, slice 52: **per-context cell size.** `CellMetrics` gained
+  a `cell` field so the grid's cell edge is a parameter, not a const.
+  The overview now uses spacious 104px cells (closer to gpui's roomy
+  grid) while the editor navigator keeps compact 84px cells. One grid
+  widget, two densities.

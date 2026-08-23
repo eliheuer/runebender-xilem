@@ -25,7 +25,6 @@ use crate::model::FontModel;
 use crate::text_label::{self, Anchor};
 use crate::theme::Palette;
 
-const CELL: f64 = 84.0;
 const GAP: f64 = 8.0;
 const PAD: f64 = 12.0;
 
@@ -88,6 +87,8 @@ pub struct Cell {
 /// The vertical metrics the cell preview is scaled against.
 #[derive(Clone, Copy)]
 pub struct CellMetrics {
+    /// Target cell edge length in px.
+    pub cell: f64,
     pub ascender: f64,
     pub descender: f64,
     pub upm: f64,
@@ -128,11 +129,11 @@ pub struct GridWidget {
 
 impl GridWidget {
     fn columns(&self) -> usize {
-        (((self.size.width - 2.0 * PAD + GAP) / (CELL + GAP)).floor() as usize).max(1)
+        (((self.size.width - 2.0 * PAD + GAP) / (self.metrics.cell + GAP)).floor() as usize).max(1)
     }
 
     fn cell_width(&self, span: usize) -> f64 {
-        CELL * span as f64 + GAP * (span.saturating_sub(1)) as f64
+        self.metrics.cell * span as f64 + GAP * (span.saturating_sub(1)) as f64
     }
 
     /// Packed rows of (cell-index-in-self.cells, span).
@@ -147,7 +148,7 @@ impl GridWidget {
     }
 
     fn row_pitch(&self) -> f64 {
-        CELL + GAP
+        self.metrics.cell + GAP
     }
 
     fn content_height(&self, rows: usize) -> f64 {
@@ -172,7 +173,7 @@ impl GridWidget {
         let rows = self.packed();
         let row = rows.get(r as usize)?;
         let row_y = PAD + r as usize as f64 * pitch - self.scroll;
-        if p.y > row_y + CELL {
+        if p.y > row_y + self.metrics.cell {
             return None;
         }
         let mut x = PAD;
@@ -228,13 +229,13 @@ impl Widget for GridWidget {
 
         for (r, row) in rows.iter().enumerate() {
             let y = PAD + r as f64 * pitch - self.scroll;
-            if y + CELL < 0.0 || y > self.size.height {
+            if y + self.metrics.cell < 0.0 || y > self.size.height {
                 continue;
             }
             let mut x = PAD;
             for &(ci, span) in row {
                 let w = self.cell_width(span);
-                let rect = Rect::new(x, y, x + w, y + CELL);
+                let rect = Rect::new(x, y, x + w, y + self.metrics.cell);
                 x += w + GAP;
                 let Some(cell) = self.cells.get(ci) else { continue };
                 let selected = self.selected == Some(cell.index);
@@ -308,7 +309,7 @@ impl Widget for GridWidget {
             PointerEvent::Scroll(PointerScrollEvent { delta, .. }) => {
                 let dy = match delta {
                     ScrollDelta::PixelDelta(p) => p.y,
-                    ScrollDelta::LineDelta(_, y) => f64::from(*y) * (CELL + GAP),
+                    ScrollDelta::LineDelta(_, y) => f64::from(*y) * (self.metrics.cell + GAP),
                     _ => 0.0,
                 };
                 let total = self.packed().len();
