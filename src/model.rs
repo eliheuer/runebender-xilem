@@ -209,10 +209,17 @@ impl FontModel {
         ok
     }
 
-    pub fn save(&self) -> Result<(), String> {
-        self.font
-            .save(&self.source)
-            .map_err(|e| format!("{}: {e}", self.source.display()))
+    pub fn save(&mut self) -> Result<(), String> {
+        // Flush the active master's edits back into the masters list, then
+        // save every master to its UFO.
+        if self.active < self.masters.len() {
+            self.masters[self.active] = (*self.font).clone();
+        }
+        for (font, path) in self.masters.iter().zip(self.master_paths.iter()) {
+            font.save(path)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+        }
+        Ok(())
     }
 
     /// Replace the glyph at `index` (in the font and the cache) after an edit.
