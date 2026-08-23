@@ -34,24 +34,77 @@ pub struct FontModel {
     pub descender: f64,
     pub x_height: f64,
     pub cap_height: f64,
+    /// All masters (from a designspace); a single UFO has one.
+    masters: Vec<norad::Font>,
+    pub master_names: Vec<String>,
+    pub master_paths: Vec<PathBuf>,
+    pub active: usize,
 }
 
 impl FontModel {
     pub fn open(path: &FsPath) -> Result<Self, String> {
-        let ufo_path = if path.extension().is_some_and(|e| e == "designspace") {
+        if path.extension().is_some_and(|e| e == "designspace") {
             let doc = norad::designspace::DesignSpaceDocument::load(path)
                 .map_err(|e| format!("{}: {e}", path.display()))?;
-            let first = doc
-                .sources
-                .first()
-                .ok_or_else(|| "designspace has no sources".to_string())?;
-            path.parent().unwrap_or(FsPath::new(".")).join(&first.filename)
+            let dir = path.parent().unwrap_or(FsPath::new(".")).to_path_buf();
+            let mut masters = Vec::new();
+            let mut names = Vec::new();
+            let mut paths = Vec::new();
+            for src in &doc.sources {
+                let ufo_path = dir.join(&src.filename);
+                let font = norad::Font::load(&ufo_path)
+                    .map_err(|e| format!("{}: {e}", ufo_path.display()))?;
+                names.push(
+                    src.name.clone().unwrap_or_else(|| {
+                        font.font_info.style_name.clone().unwrap_or_else(|| "master".into())
+                    }),
+                );
+                paths.push(ufo_path);
+                masters.push(font);
+            }
+            if masters.is_empty() {
+                return Err("designspace has no sources".into());
+            }
+            Ok(Self::from_masters(masters, names, paths, 0))
         } else {
-            path.to_path_buf()
-        };
-        let font =
-            norad::Font::load(&ufo_path).map_err(|e| format!("{}: {e}", ufo_path.display()))?;
-        Ok(Self::from_font(font, ufo_path))
+            let font = norad::Font::load(path).map_err(|e| format!("{}: {e}", path.display()))?;
+            let name = font.font_info.style_name.clone().unwrap_or_else(|| "Regular".into());
+            Ok(Self::from_masters(vec![font], vec![name], vec![path.to_path_buf()], 0))
+        }
+    }
+
+    fn from_masters(
+        masters: Vec<norad::Font>,
+        master_names: Vec<String>,
+        master_paths: Vec<PathBuf>,
+        active: usize,
+    ) -> Self {
+        let source = master_paths[active].clone();
+        let mut model = Self::from_font(masters[active].clone(), source);
+        model.masters = masters;
+        model.master_names = master_names;
+        model.master_paths = master_paths;
+        model.active = active;
+        model
+    }
+
+    /// Switch the active master, saving the current in-memory edits back to it.
+    pub fn set_active(&mut self, index: usize) {
+        if index >= self.masters.len() || index == self.active {
+            return;
+        }
+        // Preserve edits to the current master.
+        self.masters[self.active] = (*self.font).clone();
+        let rebuilt = Self::from_font(self.masters[index].clone(), self.master_paths[index].clone());
+        self.font = rebuilt.font;
+        self.glyphs = rebuilt.glyphs;
+        self.units_per_em = rebuilt.units_per_em;
+        self.ascender = rebuilt.ascender;
+        self.descender = rebuilt.descender;
+        self.x_height = rebuilt.x_height;
+        self.cap_height = rebuilt.cap_height;
+        self.source = self.master_paths[index].clone();
+        self.active = index;
     }
 
     pub fn from_font(font: norad::Font, source: PathBuf) -> Self {
@@ -105,6 +158,10 @@ impl FontModel {
             descender,
             x_height,
             cap_height,
+            masters: Vec::new(),
+            master_names: Vec::new(),
+            master_paths: Vec::new(),
+            active: 0,
         }
     }
 

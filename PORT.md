@@ -435,3 +435,15 @@ driver). runebender-xilem remains the direct source for the tools.
   creates an empty glyph (encoded if the name is a single character),
   rebuilds the cache, and opens it. Matches gpui's add-glyph.
 
+- 2026-08-23, slice 38: **designspace masters (loading + switching).**
+  Opening a `.designspace` now loads all sources as masters (not just
+  the first). A master bar in the editor lists them; clicking switches
+  the active master, which reloads the glyph in that master keeping the
+  viewport, and saves the previous master's in-memory edits back first.
+  Verified on Newsreader VF (10 masters): the 6pt ExtraLight "A" (thin,
+  advance 1588) versus the 72pt Regular. This is master editing, not
+  interpolation yet; the interpolation ghost and axis sliders are the
+  next step. Note per-master save writes each master's UFO
+  (`master_paths`), which `save` still needs to iterate (currently
+  saves the active master's source).
+

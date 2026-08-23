@@ -257,6 +257,30 @@ impl App {
         self.selected_points = self.session.selection.len();
     }
 
+    fn set_master(&mut self, index: usize) {
+        if index == self.font.active {
+            return;
+        }
+        self.font.set_active(index);
+        self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        // Reopen the current glyph in the new master, keeping the viewport.
+        if let Mode::Editor(i) = self.mode {
+            if let Some(entry) = self.font.glyphs.get(i) {
+                if let Some(sess) = Session::new(&self.font.font, &entry.name) {
+                    self.session = Arc::new(sess);
+                }
+            } else if let Some(idx) = self
+                .selected
+                .and_then(|_| self.font.index_of(&self.session.glyph_name))
+            {
+                self.mode = Mode::Editor(idx);
+                if let Some(sess) = Session::new(&self.font.font, &self.session.glyph_name.clone()) {
+                    self.session = Arc::new(sess);
+                }
+            }
+        }
+    }
+
     fn refresh_open_glyph(&mut self) {
         if let Mode::Editor(index) = self.mode {
             let glyph = self.session.glyph.clone();
@@ -374,6 +398,23 @@ impl App {
         self.refresh_open_glyph();
         self.mode = Mode::Overview;
     }
+}
+
+fn master_bar(app: &App) -> impl WidgetView<App> + use<> {
+    let pal = &app.palette;
+    let buttons: Vec<_> = app
+        .font
+        .master_names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let active = i == app.font.active;
+            text_button(name.clone(), move |app: &mut App| app.set_master(i))
+                .background_color(if active { pal.role("accent") } else { pal.button })
+        })
+        .collect();
+    portal(flex_row(buttons).gap(Length::px(4.0)))
+        .background_color(pal.panel)
 }
 
 fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
@@ -718,7 +759,14 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
     };
     let preview = matches!(app.mode, Mode::Editor(_))
         .then(|| sized_box(preview_strip(app)).dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(120.0)))).background_color(pal.panel));
-    let center = flex_col((titlebar(app), body.flex(1.0), preview, status(app)))
+    let has_masters = app.font.master_names.len() > 1;
+    let center = flex_col((
+        titlebar(app),
+        has_masters.then(|| sized_box(master_bar(app)).dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(30.0))))),
+        body.flex(1.0),
+        preview,
+        status(app),
+    ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Length::px(0.0))
         .background_color(pal.app);
