@@ -585,6 +585,31 @@ impl Session {
         }
     }
 
+    /// Make the first selected on-curve point the start of its contour.
+    pub fn set_start(&mut self) -> bool {
+        let Some(&(ci, pi)) = self.selection.iter().min() else {
+            return false;
+        };
+        self.record(EditType::Normal);
+        let ok = glyph_ops::set_contour_start(&mut self.glyph, ci, pi);
+        if ok {
+            self.selection.clear();
+        }
+        ok
+    }
+
+    /// Round the selected corner points (fillet).
+    pub fn round_corners(&mut self) -> bool {
+        self.record(EditType::Normal);
+        match glyph_ops::round_selected_corners(&mut self.glyph, &self.selection) {
+            Some(next) => {
+                self.selection = next;
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn select_all(&mut self) {
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }

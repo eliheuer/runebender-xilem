@@ -30,6 +30,8 @@ const HIT_RADIUS_PX: f64 = 8.0;
 
 /// Context-menu items: (label, op). Op returns whether the glyph changed.
 const MENU_ITEMS: &[(&str, fn(&mut Session) -> bool)] = &[
+    ("Set Start Point", |s| s.set_start()),
+    ("Round Corners", |s| s.round_corners()),
     ("Reverse Contours", |s| s.reverse()),
     ("Remove Overlap", |s| s.remove_overlap()),
     ("Flip Horizontal", |s| s.flip_horizontal()),

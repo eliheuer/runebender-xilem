@@ -365,3 +365,7 @@ driver). runebender-xilem remains the direct source for the tools.
   action + menu layer (native bar via muda, in-window via layers +
   understory_overlay) is required framework, not app code.
 
+- 2026-08-22, slice 27: **Set Start Point + Round Corners** added to the
+  context menu (core `set_contour_start`, `round_selected_corners`),
+  matching more of gpui's contour context menu.
+
