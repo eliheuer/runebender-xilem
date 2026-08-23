@@ -242,9 +242,9 @@ impl Widget for GridWidget {
                 let multi = self.multi.contains(&cell.index);
 
                 let bg = if multi { pal.role("gridSelected").with_alpha(0.18) } else { pal.panel };
-                painter.fill(rect.to_rounded_rect(6.0), bg).draw();
+                painter.fill(rect.to_rounded_rect(10.0), bg).draw();
                 let border = if selected || multi { pal.role("gridSelected") } else { cell.mark.unwrap_or(cell_border) };
-                painter.stroke(rect.to_rounded_rect(6.0), &Stroke::new(if selected || multi { 2.0 } else { 1.0 }), border).draw();
+                painter.stroke(rect.to_rounded_rect(10.0), &Stroke::new(if selected || multi { 2.0 } else { 1.0 }), border).draw();
 
                 let preview_rect = Rect::new(rect.x0, rect.y0, rect.x1, rect.y1 - 30.0);
                 if !cell.outline.elements().is_empty() {

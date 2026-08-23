@@ -732,9 +732,31 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
     } else {
         format!("{}   {}", text, app.note)
     };
-    flex_row((label(text).color(pal.text_muted),))
-        .padding(Length::px(8.0))
-        .background_color(pal.panel)
+    // Bottom bar: mark swatches on the left (set the current/selected glyphs'
+    // mark), then the status text (gpui's bottom bar).
+    let swatch = |mark: Option<String>, color: xilem::Color| {
+        sized_box(
+            text_button("", move |app: &mut App| app.set_mark(mark.clone()))
+                .background_color(color),
+        )
+        .dims(Dimensions::fixed(Length::px(15.0), Length::px(15.0)))
+    };
+    let marks: Vec<_> = app
+        .palette
+        .mark_list()
+        .into_iter()
+        .map(|(name, color)| swatch(Some(name), color))
+        .collect();
+    flex_row((
+        swatch(None, pal.control),
+        flex_row(marks).gap(Length::px(3.0)),
+        FlexSpacer::Fixed(Length::px(14.0)),
+        label(text).color(pal.text_muted),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Center)
+    .gap(Length::px(6.0))
+    .padding(Length::px(8.0))
+    .background_color(pal.panel)
 }
 
 fn sidebar(app: &App) -> impl WidgetView<App> + use<> {

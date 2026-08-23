@@ -619,3 +619,10 @@ driver). runebender-xilem remains the direct source for the tools.
   wrapping a `flex_row` in a `sized_box(Dim::Stretch)`. Pain point
   logged: xix needs a first-class styled list-row primitive; this is
   hand-assembled from a button + spacer + fixed-height box.
+
+- 2026-08-23, slice 56: **bottom bar + rounder cells (visual pass).**
+  The status line became a gpui-style bottom bar with the theme's mark
+  swatches on the left (click to set the current/selected glyphs' mark),
+  then the status text. Grid cell corners rounded from 6px to 10px to
+  match gpui's softer cells. With the colored glyphs and flat sidebar,
+  the overview now reads very close to the gpui version.
