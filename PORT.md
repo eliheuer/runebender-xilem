@@ -662,3 +662,15 @@ driver). runebender-xilem remains the direct source for the tools.
   typing a value moves the selection there. Replaces the read-only
   Selection rows. Pain point: a 10px dot is a button with its padding
   zeroed inside a fixed-size box, or it stretches into a pill.
+
+- 2026-08-23, slice 62: **a token layer, and why gpui wins.** Counted
+  the port's spacing values: twenty distinct numbers, four text sizes.
+  The gpui port uses `px_1`..`px_4` and `text_xs`/`text_sm` for nearly
+  everything, because that is the whole vocabulary its API offers. So
+  the drift is not carelessness, it is the API: every xilem sizing call
+  takes a free f64. Added `src/ui.rs` with `Space`, `Type`, `Radius`
+  and eight composed parts (row, col, section, kv, field, list_row,
+  toggle, action), and rebuilt the panels on it. Writing the `row`
+  helper needed three where-clauses, one naming an associated type's
+  property bound, which is its own finding. Full analysis in xix
+  DESIGN.md D11.
