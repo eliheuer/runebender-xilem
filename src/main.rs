@@ -98,6 +98,10 @@ pub struct App {
     axis_values: Vec<f64>,
     /// Active OKLCH theme id (dark | midnight | gray | light).
     theme_id: &'static str,
+    /// Reference corner for the Coordinates fields (the 9-point picker).
+    coord_quadrant: runebender_core::path::Quadrant,
+    coord_x_buf: String,
+    coord_y_buf: String,
     /// Search scope: 0 name and unicode, 1 name only, 2 unicode only.
     search_mode: u8,
     /// Case-sensitive search.
@@ -198,6 +202,9 @@ impl App {
             show_comb: false,
             axis_values,
             theme_id,
+            coord_quadrant: runebender_core::path::Quadrant::Center,
+            coord_x_buf: String::new(),
+            coord_y_buf: String::new(),
             search_mode: 0,
             search_case: false,
             reference_layers: std::collections::HashSet::new(),
@@ -494,6 +501,48 @@ impl App {
     }
 
     /// Recompute the LSB/RSB/advance text buffers from the current session.
+    /// The selection's reference point, at the picked corner.
+    fn coord_point(&self) -> Option<masonry::kurbo::Point> {
+        let bounds = self.session.selection_bounds()?;
+        Some(self.coord_quadrant.point_in_dspace_rect(bounds))
+    }
+
+    /// Refill the Coordinates fields from the selection.
+    fn refresh_coord_bufs(&mut self) {
+        match self.coord_point() {
+            Some(p) => {
+                self.coord_x_buf = format!("{}", p.x as i64);
+                self.coord_y_buf = format!("{}", p.y as i64);
+            }
+            None => {
+                self.coord_x_buf.clear();
+                self.coord_y_buf.clear();
+            }
+        }
+    }
+
+    /// Move the selection so its reference point lands on the typed value.
+    fn set_coord(&mut self, axis: usize, v: String) {
+        if axis == 0 {
+            self.coord_x_buf = v.clone();
+        } else {
+            self.coord_y_buf = v.clone();
+        }
+        let (Ok(target), Some(now)) = (v.trim().parse::<f64>(), self.coord_point()) else {
+            return;
+        };
+        let (dx, dy) = if axis == 0 {
+            (target - now.x, 0.0)
+        } else {
+            (0.0, target - now.y)
+        };
+        if dx == 0.0 && dy == 0.0 {
+            return;
+        }
+        self.apply_op(|s| s.nudge(dx, dy));
+        self.refresh_coord_bufs();
+    }
+
     fn refresh_metric_bufs(&mut self) {
         self.advance_buf = format!("{}", self.session.advance() as i64);
         let (l, r) = metric_bufs(&self.session);
@@ -1163,7 +1212,10 @@ fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
     );
     let interp = app.interp_preview();
     editor(app.session.clone(), app.palette.clone(), app.tool, app.show_comb, ghosts, interp, |app: &mut App, ev| match ev {
-        editor::EditorEvent::Selection(n) => app.selected_points = n,
+        editor::EditorEvent::Selection(n) => {
+            app.selected_points = n;
+            app.refresh_coord_bufs();
+        }
         editor::EditorEvent::Edited => app.refresh_open_glyph(),
         editor::EditorEvent::Save => app.save(),
         editor::EditorEvent::Exit => app.back_to_overview(),
@@ -1232,23 +1284,95 @@ fn tbtn(pal: &Palette, text: &'static str, f: fn(&mut Session) -> bool) -> impl 
     text_button(text, move |app: &mut App| app.apply_op(f)).background_color(pal.button)
 }
 
-fn selection_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
+/// Coordinates: the 9-point reference picker beside the X/Y fields, with
+/// the selection's size on the right. gpui keeps this panel up whether or
+/// not anything is selected, so the inspector does not jump.
+fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
+    use runebender_core::path::Quadrant;
+    const QUADRANTS: [Quadrant; 9] = [
+        Quadrant::TopLeft,
+        Quadrant::Top,
+        Quadrant::TopRight,
+        Quadrant::Left,
+        Quadrant::Center,
+        Quadrant::Right,
+        Quadrant::BottomLeft,
+        Quadrant::Bottom,
+        Quadrant::BottomRight,
+    ];
     let pal = &app.palette;
-    let b = app.session.selection_bounds()?;
-    let row = |k: &'static str, v: String| {
-        flex_row((label(k).color(pal.text_muted), label(v).color(pal.text))).gap(Length::px(8.0))
+    let bounds = app.session.selection_bounds();
+    // The picker: three rows of three dots, the active one filled accent.
+    let dot = |q: Quadrant| {
+        let active = app.coord_quadrant == q;
+        let (bg, border) = if active {
+            (pal.role("accent"), pal.role("accent"))
+        } else {
+            (pal.panel, pal.role("gridBorder").with_alpha(0.7))
+        };
+        sized_box(
+            button(label(""), move |app: &mut App| {
+                app.coord_quadrant = q;
+                app.refresh_coord_bufs();
+            })
+            // Without this the button's own padding sets a minimum width
+            // and the dot stretches into a pill.
+            .padding(Length::px(0.0))
+            .background_color(bg)
+            .border_color(border)
+            .border_width(Length::px(1.0))
+            .corner_radius(Length::px(5.0)),
+        )
+        .dims(Dimensions::fixed(Length::px(10.0), Length::px(10.0)))
     };
-    Some(
-        flex_col((
-            section_header(pal, "Selection"),
-            row("X", format!("{}", b.x0 as i64)),
-            row("Y", format!("{}", b.y0 as i64)),
-            row("W", format!("{}", b.width() as i64)),
-            row("H", format!("{}", b.height() as i64)),
-        ))
+    let row = |a: usize| {
+        flex_row((dot(QUADRANTS[a]), dot(QUADRANTS[a + 1]), dot(QUADRANTS[a + 2])))
+            .cross_axis_alignment(CrossAxisAlignment::Center)
+            .gap(Length::px(8.0))
+    };
+    let picker = flex_col((row(0), row(3), row(6)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Length::px(4.0)),
-    )
+        .gap(Length::px(8.0))
+        .padding(Length::px(5.0));
+    let field = |name: &'static str, value: String, axis: usize| {
+        flex_row((
+            sized_box(label(name).text_size(12.0).color(pal.text_muted))
+                .dims(Dimensions::fixed(Length::px(14.0), Length::px(18.0))),
+            text_input(value, move |app: &mut App, v| app.set_coord(axis, v))
+                .background_color(pal.field())
+                .flex(1.0),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+        .gap(Length::px(6.0))
+    };
+    let size_row = bounds.map(|b| {
+        flex_row((
+            label("Size").text_size(12.0).color(pal.text_muted),
+            FlexSpacer::Flex(1.0),
+            label(format!("{:.0} x {:.0}", b.width(), b.height()))
+                .text_size(12.0)
+                .color(pal.text),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+    });
+    flex_col((
+        section_header(pal, "Coordinates"),
+        flex_row((
+            picker,
+            flex_col((
+                field("X", app.coord_x_buf.clone(), 0),
+                field("Y", app.coord_y_buf.clone(), 1),
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Start)
+            .gap(Length::px(4.0))
+            .flex(1.0),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+        .gap(Length::px(10.0)),
+        size_row,
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(Length::px(6.0))
 }
 
 fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
@@ -1353,7 +1477,7 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
         advance_field,
         (!pts.is_empty()).then(|| row("Points".into(), pts)),
         editing.then(|| row("Selected".into(), format!("{}", app.selected_points))),
-        editing.then(|| selection_section(app)).flatten(),
+        editing.then(|| coordinates_section(app)),
         editing.then(|| path_section(app)),
         editing.then(|| {
             flex_col((
@@ -1443,6 +1567,7 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         let n = { let mut c = 0; for co in &sess.glyph.contours { c += co.points.len(); } c };
         app.selected_points = n;
         app.session = std::sync::Arc::new(sess);
+        app.refresh_coord_bufs();
     }
     let background = app.palette.app;
     let window_options =
