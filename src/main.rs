@@ -12,6 +12,7 @@ mod session;
 mod shortcuts;
 mod text_label;
 mod theme;
+mod ui;
 
 use std::path::Path as FsPath;
 use std::sync::Arc;
@@ -36,6 +37,7 @@ use model::FontModel;
 use runebender_core::category::GlyphCategory;
 use session::Session;
 use theme::Palette;
+use ui::{CONTROL_H, ROW_H, Space, Type, section_header};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Sort {
@@ -739,7 +741,7 @@ fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
                 thumb,
                 sized_box(
                     button(
-                        label(name).text_size(12.0).color(fg),
+                        label(name).text_size(Type::Body.px()).color(fg),
                         move |app: &mut App| app.set_master(i),
                     )
                     .background_color(bg),
@@ -748,7 +750,7 @@ fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
                 .flex(1.0),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Center)
-            .gap(Length::px(4.0))
+            .gap(Space::Sm.len())
         })
         .collect();
     Some(
@@ -756,10 +758,10 @@ fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
             section_header(pal, "Layers"),
             flex_col(rows)
                 .cross_axis_alignment(CrossAxisAlignment::Start)
-                .gap(Length::px(2.0)),
+                .gap(Space::Xs.len()),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Length::px(4.0)),
+        .gap(Space::Sm.len()),
     )
 }
 
@@ -779,9 +781,9 @@ fn axes_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
             let value = app.axis_values.get(i).copied().unwrap_or(ax.default);
             flex_col((
                 flex_row((
-                    label(ax.tag.clone()).text_size(12.0).color(muted),
+                    label(ax.tag.clone()).text_size(Type::Body.px()).color(muted),
                     FlexSpacer::Flex(1.0),
-                    label(format!("{value:.0}")).text_size(12.0).color(text),
+                    label(format!("{value:.0}")).text_size(Type::Body.px()).color(text),
                 ))
                 .cross_axis_alignment(CrossAxisAlignment::Center),
                 slider(ax.min, ax.max, value, move |app: &mut App, v| {
@@ -790,22 +792,22 @@ fn axes_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
                 .width(Length::px(214.0)),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Length::px(2.0))
+            .gap(Space::Xs.len())
         })
         .collect();
     // A short hint when the location sits off any master.
     let hint = (!app.on_active_master())
-        .then(|| label("interpolated").text_size(11.0).color(pal.role("warning")));
+        .then(|| label("interpolated").text_size(Type::Caption.px()).color(pal.role("warning")));
     Some(
         flex_col((
             section_header(pal, "Axes"),
             flex_col(rows)
                 .cross_axis_alignment(CrossAxisAlignment::Start)
-                .gap(Length::px(8.0)),
+                .gap(Space::Md.len()),
             hint,
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Length::px(4.0)),
+        .gap(Space::Sm.len()),
     )
 }
 
@@ -842,7 +844,7 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
             text_button("‹ Overview", |app: &mut App| app.back_to_overview())
                 .background_color(pal.button)
         }),
-        label(title).text_size(14.0).color(pal.text),
+        (!editing).then(|| label(title).text_size(Type::Title.px()).color(pal.text)),
         FlexSpacer::Flex(1.0),
         editing.then(|| header_tools(app)),
         editing.then(|| FlexSpacer::Fixed(Length::px(12.0))),
@@ -852,8 +854,8 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
         text_button("Save", |app: &mut App| app.save()).background_color(pal.button),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(Length::px(12.0))
-    .padding(Length::px(8.0))
+    .gap(Space::Lg.len())
+    .padding(Space::Md.len())
     .background_color(pal.panel)
 }
 
@@ -880,7 +882,7 @@ fn header_tools(app: &App) -> impl WidgetView<App> + use<> {
         tile("measure", Tool::Measure),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(Length::px(2.0))
+    .gap(Space::Xs.len())
 }
 
 fn status(app: &App) -> impl WidgetView<App> + use<> {
@@ -921,13 +923,13 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
         .collect();
     flex_row((
         swatch(None, pal.control),
-        flex_row(marks).gap(Length::px(3.0)),
+        flex_row(marks).gap(Space::Sm.len()),
         FlexSpacer::Fixed(Length::px(14.0)),
         label(text).color(pal.text_muted),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(Length::px(6.0))
-    .padding(Length::px(8.0))
+    .gap(Space::Md.len())
+    .padding(Space::Md.len())
     .background_color(pal.panel)
 }
 
@@ -947,7 +949,7 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         .into_iter()
         .filter(|c| app.category_count(*c) > 0)
         .map(|c| {
-            sidebar_row(
+            ui::list_row(
                 pal,
                 c.display_name().to_string(),
                 format!("{}", app.category_count(c)),
@@ -962,7 +964,7 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         .enumerate()
         .filter(|(i, _)| app.language_count(*i) > 0)
         .map(|(i, g)| {
-            sidebar_row(
+            ui::list_row(
                 pal,
                 g.label.clone(),
                 format!("{}", app.language_count(i)),
@@ -978,7 +980,7 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         .filter_map(|(i, b)| {
             let gs = b.glyphset.as_ref()?;
             let expected = gs.expected_count.unwrap_or(gs.glyph_names.len().max(gs.targets.len()));
-            Some(sidebar_row(
+            Some(ui::list_row(
                 pal,
                 b.label.clone(),
                 format!("{}/{}", app.filter_present(i), expected),
@@ -990,19 +992,7 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
 
     // Search row: the field, then gpui's small scope and case toggles.
     let toggle = |text: String, active: bool, f: fn(&mut App)| {
-        let (fg, border) = if active {
-            (pal.role("accent"), pal.role("accent"))
-        } else {
-            (pal.text_muted, pal.role("gridBorder").with_alpha(0.6))
-        };
-        sized_box(
-            button(label(text).text_size(11.0).color(fg), move |app: &mut App| f(app))
-                .background_color(pal.panel)
-                .border_color(border)
-                .border_width(Length::px(1.0))
-                .corner_radius(Length::px(4.0)),
-        )
-        .dims(Dimensions::fixed(Length::px(26.0), Length::px(26.0)))
+        ui::toggle(pal, text, active, move |app: &mut App| f(app))
     };
     flex_col((
         flex_row((
@@ -1019,7 +1009,7 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
             }),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Center)
-        .gap(Length::px(4.0)),
+        .gap(Space::Sm.len()),
         text_button(
             match app.sort { Sort::Name => "Sort: name", Sort::Unicode => "Sort: unicode" },
             |app: &mut App| {
@@ -1036,63 +1026,26 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         },
         portal(
             flex_col((
-                sidebar_header(pal, "Categories"),
-                flex_col(cat_rows).gap(Length::px(1.0)),
-                (!lang_rows.is_empty()).then(|| sidebar_header(pal, "Languages")),
-                flex_col(lang_rows).gap(Length::px(1.0)),
-                (!filter_rows.is_empty()).then(|| sidebar_header(pal, "Filters")),
-                flex_col(filter_rows).gap(Length::px(1.0)),
+                section_header(pal, "Categories"),
+                flex_col(cat_rows).gap(Space::Xs.len()),
+                (!lang_rows.is_empty()).then(|| section_header(pal, "Languages")),
+                flex_col(lang_rows).gap(Space::Xs.len()),
+                (!filter_rows.is_empty()).then(|| section_header(pal, "Filters")),
+                flex_col(filter_rows).gap(Space::Xs.len()),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Length::px(6.0)),
+            .gap(Space::Md.len()),
         )
         .flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Length::px(8.0))
-    .padding(Length::px(8.0))
+    .gap(Space::Md.len())
+    .padding(Space::Md.len())
     .background_color(pal.panel)
-}
-
-/// A collapsible-style section header (with a disclosure caret) for the sidebar.
-fn sidebar_header(pal: &Palette, text: &'static str) -> impl WidgetView<App> + use<> {
-    label(format!("\u{25be}  {text}")).text_size(11.0).color(pal.text_muted)
 }
 
 /// A flat, full-width sidebar row: label left, count right, subtle highlight
 /// when selected (gpui's list rows, not pill buttons).
-fn sidebar_row<F: Fn(&mut App) + Send + Sync + 'static>(
-    pal: &Palette,
-    text: String,
-    count: String,
-    active: bool,
-    on_click: F,
-) -> impl WidgetView<App> + use<F> {
-    // The active row is an accent outline, not a filled bar, and the rows
-    // pack tight: gpui's sidebar is a dense list, closer to Glyphs.
-    let (fg, border) = if active {
-        (pal.role("accent"), pal.role("accent"))
-    } else {
-        (pal.text, xilem::Color::TRANSPARENT)
-    };
-    let count_color = if active { pal.role("accent") } else { pal.text_muted };
-    sized_box(
-        button(
-            flex_row((
-                label(text).text_size(12.0).color(fg),
-                FlexSpacer::Flex(1.0),
-                label(count).text_size(12.0).color(count_color),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Center),
-            move |app: &mut App| on_click(app),
-        )
-        .background_color(pal.panel)
-        .border_color(border)
-        .border_width(Length::px(1.0))
-        .corner_radius(Length::px(4.0)),
-    )
-    .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(22.0))))
-}
 
 fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
@@ -1116,8 +1069,8 @@ fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
         .flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Length::px(8.0))
-    .padding(Length::px(8.0))
+    .gap(Space::Md.len())
+    .padding(Space::Md.len())
     .background_color(pal.panel)
 }
 
@@ -1235,35 +1188,35 @@ fn path_section(app: &App) -> impl WidgetView<App> + use<> {
     };
     flex_col((
         section_header(pal, "Transformations"),
+        // Two even rows of four, the way gpui lays its icon grid out. A
+        // ragged 3 / 4 / 1 grid was the panel's most visible defect.
         flex_row((
             op("flip-h", |s| s.flip_horizontal()),
             op("flip-v", |s| s.flip_vertical()),
             op("rot-cw", |s| s.rotate_90()),
-        )).gap(Length::px(4.0)),
+            op("close", |s| s.decompose()),
+        )).gap(Space::Sm.len()),
         flex_row((
             op("union", |s| s.remove_overlap()),
             op("subtract", |s| s.boolean(BoolOp::Subtract)),
             op("intersect", |s| s.boolean(BoolOp::Intersect)),
             op("exclude", |s| s.boolean(BoolOp::Exclude)),
-        )).gap(Length::px(4.0)),
-        flex_row((
-            op("close", |s| s.decompose()),
-        )).gap(Length::px(4.0)),
+        )).gap(Space::Sm.len()),
         // Labeled transform buttons, matching gpui's Transformations block.
         flex_row((
             tbtn(pal, "Harmonize", |s| s.harmonize()),
             tbtn(pal, "Balance", |s| s.balance()),
-        )).gap(Length::px(4.0)),
+        )).gap(Space::Sm.len()),
         flex_row((
             tbtn(pal, "Optimize", |s| s.optimize()),
             tbtn(pal, "Round", |s| s.round_corners()),
-        )).gap(Length::px(4.0)),
+        )).gap(Space::Sm.len()),
         flex_row((
             tbtn(pal, "Reverse", |s| s.reverse()),
-        )).gap(Length::px(4.0)),
+        )).gap(Space::Sm.len()),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Length::px(6.0))
+    .gap(Space::Md.len())
 }
 
 /// The LSB/RSB text-buffer strings for a session.
@@ -1275,9 +1228,6 @@ fn metric_bufs(session: &Session) -> (String, String) {
 }
 
 /// A right-panel section header with a disclosure caret (gpui style).
-fn section_header(pal: &Palette, text: &'static str) -> impl WidgetView<App> + use<> {
-    label(format!("\u{25be}  {text}")).text_size(12.0).color(pal.text_muted)
-}
 
 /// A labeled path-operation button.
 fn tbtn(pal: &Palette, text: &'static str, f: fn(&mut Session) -> bool) -> impl WidgetView<App> + use<> {
@@ -1328,29 +1278,29 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
     let row = |a: usize| {
         flex_row((dot(QUADRANTS[a]), dot(QUADRANTS[a + 1]), dot(QUADRANTS[a + 2])))
             .cross_axis_alignment(CrossAxisAlignment::Center)
-            .gap(Length::px(8.0))
+            .gap(Space::Md.len())
     };
     let picker = flex_col((row(0), row(3), row(6)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Length::px(8.0))
-        .padding(Length::px(5.0));
+        .gap(Space::Md.len())
+        .padding(Space::Sm.len());
     let field = |name: &'static str, value: String, axis: usize| {
         flex_row((
-            sized_box(label(name).text_size(12.0).color(pal.text_muted))
+            sized_box(label(name).text_size(Type::Body.px()).color(pal.text_muted))
                 .dims(Dimensions::fixed(Length::px(14.0), Length::px(18.0))),
             text_input(value, move |app: &mut App, v| app.set_coord(axis, v))
                 .background_color(pal.field())
                 .flex(1.0),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Center)
-        .gap(Length::px(6.0))
+        .gap(Space::Md.len())
     };
     let size_row = bounds.map(|b| {
         flex_row((
-            label("Size").text_size(12.0).color(pal.text_muted),
+            label("Size").text_size(Type::Body.px()).color(pal.text_muted),
             FlexSpacer::Flex(1.0),
             label(format!("{:.0} x {:.0}", b.width(), b.height()))
-                .text_size(12.0)
+                .text_size(Type::Body.px())
                 .color(pal.text),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Center)
@@ -1364,15 +1314,15 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
                 field("Y", app.coord_y_buf.clone(), 1),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Length::px(4.0))
+            .gap(Space::Sm.len())
             .flex(1.0),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Center)
-        .gap(Length::px(10.0)),
+        .gap(Space::Md.len()),
         size_row,
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Length::px(6.0))
+    .gap(Space::Md.len())
 }
 
 fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
@@ -1389,28 +1339,16 @@ fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
         section_header(pal, "Mark"),
         flex_row((
             swatch(None, pal.control),
-        )).gap(Length::px(4.0)),
-        flex_row(marks).gap(Length::px(4.0)),
+        )).gap(Space::Sm.len()),
+        flex_row(marks).gap(Space::Sm.len()),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Length::px(4.0))
+    .gap(Space::Sm.len())
 }
 
 fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
-    let (muted, text) = (pal.text_muted, pal.text);
-    // Compact read-only row: label left, value right (gpui's panel rows).
-    let row = move |k: String, v: String| {
-        sized_box(
-            flex_row((
-                label(k).color(muted),
-                FlexSpacer::Flex(1.0),
-                label(v).color(text),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Center),
-        )
-        .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(18.0))))
-    };
+    let row = move |k: String, v: String| ui::kv(pal, k, v);
     let (name, adv, pts, cp) = match app.mode {
         Mode::Editor(_) => (
             app.session.glyph_name.clone(),
@@ -1432,38 +1370,38 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
     // Width / LSB / RSB in one row (gpui's metrics row). Each field commits
     // live; LSB shifts the glyph, RSB changes the advance.
     let field_bg = pal.field();
+    let _ = field_bg;
     let advance_field = editing.then(|| {
-        flex_row((
-            flex_col((
-                label("Width").color(pal.text_muted),
-                text_input(app.advance_buf.clone(), |app: &mut App, v| app.set_advance_from_buf(v))
-                    .background_color(field_bg),
-            )).cross_axis_alignment(CrossAxisAlignment::Start).gap(Length::px(4.0)).flex(1.0),
-            flex_col((
-                label("LSB").color(pal.text_muted),
-                text_input(app.lsb_buf.clone(), |app: &mut App, v| app.set_lsb_from_buf(v))
-                    .background_color(field_bg),
-            )).cross_axis_alignment(CrossAxisAlignment::Start).gap(Length::px(4.0)).flex(1.0),
-            flex_col((
-                label("RSB").color(pal.text_muted),
-                text_input(app.rsb_buf.clone(), |app: &mut App, v| app.set_rsb_from_buf(v))
-                    .background_color(field_bg),
-            )).cross_axis_alignment(CrossAxisAlignment::Start).gap(Length::px(4.0)).flex(1.0),
-        ))
-        .gap(Length::px(6.0))
+        ui::row(
+            (
+                ui::field(pal, "Width", app.advance_buf.clone(), |app: &mut App, v| {
+                    app.set_advance_from_buf(v)
+                })
+                .flex(1.0),
+                ui::field(pal, "LSB", app.lsb_buf.clone(), |app: &mut App, v| {
+                    app.set_lsb_from_buf(v)
+                })
+                .flex(1.0),
+                ui::field(pal, "RSB", app.rsb_buf.clone(), |app: &mut App, v| {
+                    app.set_rsb_from_buf(v)
+                })
+                .flex(1.0),
+            ),
+            Space::Md,
+        )
     });
     let name_field = editing.then(|| {
-        flex_col((
-            label("Name").color(pal.text_muted),
-            text_input(app.name_buf.clone(), |app: &mut App, v| app.name_buf = v)
-                .on_enter(|app: &mut App, _| app.commit_rename())
-                .background_color(pal.field()),
-            label("Unicode").color(pal.text_muted),
-            text_input(app.unicode_buf.clone(), |app: &mut App, v| app.set_unicode_from_buf(v))
-                .background_color(pal.field()),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Length::px(4.0))
+        ui::col(
+            (
+                ui::field(pal, "Name", app.name_buf.clone(), |app: &mut App, v| {
+                    app.name_buf = v
+                }),
+                ui::field(pal, "Unicode", app.unicode_buf.clone(), |app: &mut App, v| {
+                    app.set_unicode_from_buf(v)
+                }),
+            ),
+            Space::Md,
+        )
     });
     let show_multi_mark = !editing && !app.multi_selected.is_empty();
     flex_col((
@@ -1480,13 +1418,15 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
         editing.then(|| coordinates_section(app)),
         editing.then(|| path_section(app)),
         editing.then(|| {
-            flex_col((
-                section_header(pal, "Curves"),
-                text_button(if app.show_comb { "Comb: on" } else { "Comb: off" }, |app: &mut App| app.show_comb = !app.show_comb)
-                    .background_color(pal.button),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Length::px(4.0))
+            ui::section(
+                pal,
+                "Curves",
+                ui::action(
+                    pal,
+                    if app.show_comb { "Comb: on" } else { "Comb: off" }.to_string(),
+                    |app: &mut App| app.show_comb = !app.show_comb,
+                ),
+            )
         }),
         // Grouped: the flex tuple tops out at sixteen children.
         flex_col((
@@ -1496,11 +1436,11 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             (!editing).then(|| glyph_preview(app)).flatten(),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Length::px(6.0)),
+        .gap(Space::Md.len()),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Length::px(6.0))
-    .padding(Length::px(12.0))
+    .gap(Space::Md.len())
+    .padding(Space::Lg.len())
     .background_color(pal.panel)
 }
 
