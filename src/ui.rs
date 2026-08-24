@@ -52,9 +52,11 @@ where
         .gap(gap)
 }
 
-/// A section header: disclosure caret, caption type, muted.
+/// A section header: caption type, muted. No disclosure caret: the
+/// framework has no icon set and the default font has no coverage for
+/// the geometric shapes block, so the caret rendered as tofu.
 pub fn section_header(pal: &Palette, text: &'static str) -> impl WidgetView<App> + use<> {
-    label(format!("\u{25be}  {text}"))
+    label(text.to_string())
         .text_size(TextSize::Caption)
         .color(pal.text_muted)
 }
