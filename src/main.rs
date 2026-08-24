@@ -37,7 +37,8 @@ use model::FontModel;
 use runebender_core::category::GlyphCategory;
 use session::Session;
 use theme::Palette;
-use ui::{CONTROL_H, ROW_H, Space, Type, section_header};
+use masonry::kernel::{ControlSize, Radius, Space, Stroke, TextSize};
+use ui::section_header;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Sort {
@@ -721,8 +722,8 @@ fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
                             p.fill(&(t * path.clone()), ink).draw();
                         }))
                         .dims(Dimensions::new(
-                            Dim::Fixed(Length::px(20.0)),
-                            Dim::Fixed(Length::px(20.0)),
+                            Dim::from(ControlSize::Icon),
+                            Dim::from(ControlSize::Icon),
                         )),
                         move |app: &mut App| {
                             if !app.reference_layers.remove(&i) {
@@ -733,24 +734,24 @@ fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
                     .background_color(thumb_bg),
                 )
                 .dims(Dimensions::new(
-                    Dim::Fixed(Length::px(26.0)),
-                    Dim::Fixed(Length::px(26.0)),
+                    Dim::from(ControlSize::Control),
+                    Dim::from(ControlSize::Control),
                 ))
             });
             flex_row((
                 thumb,
                 sized_box(
                     button(
-                        label(name).text_size(Type::Body.px()).color(fg),
+                        label(name).text_size(TextSize::Body).color(fg),
                         move |app: &mut App| app.set_master(i),
                     )
                     .background_color(bg),
                 )
-                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(26.0))))
+                .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Control)))
                 .flex(1.0),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Center)
-            .gap(Space::Sm.len())
+            .gap(Space::Sm)
         })
         .collect();
     Some(
@@ -758,10 +759,10 @@ fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
             section_header(pal, "Layers"),
             flex_col(rows)
                 .cross_axis_alignment(CrossAxisAlignment::Start)
-                .gap(Space::Xs.len()),
+                .gap(Space::Xs),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::Sm.len()),
+        .gap(Space::Sm),
     )
 }
 
@@ -781,9 +782,9 @@ fn axes_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
             let value = app.axis_values.get(i).copied().unwrap_or(ax.default);
             flex_col((
                 flex_row((
-                    label(ax.tag.clone()).text_size(Type::Body.px()).color(muted),
+                    label(ax.tag.clone()).text_size(TextSize::Body).color(muted),
                     FlexSpacer::Flex(1.0),
-                    label(format!("{value:.0}")).text_size(Type::Body.px()).color(text),
+                    label(format!("{value:.0}")).text_size(TextSize::Body).color(text),
                 ))
                 .cross_axis_alignment(CrossAxisAlignment::Center),
                 slider(ax.min, ax.max, value, move |app: &mut App, v| {
@@ -792,22 +793,22 @@ fn axes_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
                 .width(Length::px(214.0)),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Space::Xs.len())
+            .gap(Space::Xs)
         })
         .collect();
     // A short hint when the location sits off any master.
     let hint = (!app.on_active_master())
-        .then(|| label("interpolated").text_size(Type::Caption.px()).color(pal.role("warning")));
+        .then(|| label("interpolated").text_size(TextSize::Caption).color(pal.role("warning")));
     Some(
         flex_col((
             section_header(pal, "Axes"),
             flex_col(rows)
                 .cross_axis_alignment(CrossAxisAlignment::Start)
-                .gap(Space::Md.len()),
+                .gap(Space::Md),
             hint,
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::Sm.len()),
+        .gap(Space::Sm),
     )
 }
 
@@ -844,18 +845,18 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
             text_button("‹ Overview", |app: &mut App| app.back_to_overview())
                 .background_color(pal.button)
         }),
-        (!editing).then(|| label(title).text_size(Type::Title.px()).color(pal.text)),
+        (!editing).then(|| label(title).text_size(TextSize::Title).color(pal.text)),
         FlexSpacer::Flex(1.0),
         editing.then(|| header_tools(app)),
-        editing.then(|| FlexSpacer::Fixed(Length::px(12.0))),
+        editing.then(|| FlexSpacer::Fixed(Space::Lg.length())),
         text_button(theme_label(app.theme_id), |app: &mut App| app.cycle_theme())
             .background_color(pal.button),
         label(save_text.to_string()).color(save_color),
         text_button("Save", |app: &mut App| app.save()).background_color(pal.button),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(Space::Lg.len())
-    .padding(Space::Md.len())
+    .gap(Space::Lg)
+    .padding(Space::Md)
     .background_color(pal.panel)
 }
 
@@ -882,7 +883,7 @@ fn header_tools(app: &App) -> impl WidgetView<App> + use<> {
         tile("measure", Tool::Measure),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(Space::Xs.len())
+    .gap(Space::Xs)
 }
 
 fn status(app: &App) -> impl WidgetView<App> + use<> {
@@ -913,7 +914,7 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
             text_button("", move |app: &mut App| app.set_mark(mark.clone()))
                 .background_color(color),
         )
-        .dims(Dimensions::fixed(Length::px(15.0), Length::px(15.0)))
+        .dims(Dimensions::fixed(ControlSize::Swatch, ControlSize::Swatch))
     };
     let marks: Vec<_> = app
         .palette
@@ -923,13 +924,13 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
         .collect();
     flex_row((
         swatch(None, pal.control),
-        flex_row(marks).gap(Space::Sm.len()),
-        FlexSpacer::Fixed(Length::px(14.0)),
+        flex_row(marks).gap(Space::Sm),
+        FlexSpacer::Fixed(Space::Lg.length()),
         label(text).color(pal.text_muted),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(Space::Md.len())
-    .padding(Space::Md.len())
+    .gap(Space::Md)
+    .padding(Space::Md)
     .background_color(pal.panel)
 }
 
@@ -1009,7 +1010,7 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
             }),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Center)
-        .gap(Space::Sm.len()),
+        .gap(Space::Sm),
         text_button(
             match app.sort { Sort::Name => "Sort: name", Sort::Unicode => "Sort: unicode" },
             |app: &mut App| {
@@ -1027,20 +1028,20 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         portal(
             flex_col((
                 section_header(pal, "Categories"),
-                flex_col(cat_rows).gap(Space::Xs.len()),
+                flex_col(cat_rows).gap(Space::Xs),
                 (!lang_rows.is_empty()).then(|| section_header(pal, "Languages")),
-                flex_col(lang_rows).gap(Space::Xs.len()),
+                flex_col(lang_rows).gap(Space::Xs),
                 (!filter_rows.is_empty()).then(|| section_header(pal, "Filters")),
-                flex_col(filter_rows).gap(Space::Xs.len()),
+                flex_col(filter_rows).gap(Space::Xs),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Space::Md.len()),
+            .gap(Space::Md),
         )
         .flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Md.len())
-    .padding(Space::Md.len())
+    .gap(Space::Md)
+    .padding(Space::Md)
     .background_color(pal.panel)
 }
 
@@ -1069,8 +1070,8 @@ fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
         .flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Md.len())
-    .padding(Space::Md.len())
+    .gap(Space::Md)
+    .padding(Space::Md)
     .background_color(pal.panel)
 }
 
@@ -1195,28 +1196,28 @@ fn path_section(app: &App) -> impl WidgetView<App> + use<> {
             op("flip-v", |s| s.flip_vertical()),
             op("rot-cw", |s| s.rotate_90()),
             op("close", |s| s.decompose()),
-        )).gap(Space::Sm.len()),
+        )).gap(Space::Sm),
         flex_row((
             op("union", |s| s.remove_overlap()),
             op("subtract", |s| s.boolean(BoolOp::Subtract)),
             op("intersect", |s| s.boolean(BoolOp::Intersect)),
             op("exclude", |s| s.boolean(BoolOp::Exclude)),
-        )).gap(Space::Sm.len()),
+        )).gap(Space::Sm),
         // Labeled transform buttons, matching gpui's Transformations block.
         flex_row((
             tbtn(pal, "Harmonize", |s| s.harmonize()),
             tbtn(pal, "Balance", |s| s.balance()),
-        )).gap(Space::Sm.len()),
+        )).gap(Space::Sm),
         flex_row((
             tbtn(pal, "Optimize", |s| s.optimize()),
             tbtn(pal, "Round", |s| s.round_corners()),
-        )).gap(Space::Sm.len()),
+        )).gap(Space::Sm),
         flex_row((
             tbtn(pal, "Reverse", |s| s.reverse()),
-        )).gap(Space::Sm.len()),
+        )).gap(Space::Sm),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Md.len())
+    .gap(Space::Md)
 }
 
 /// The LSB/RSB text-buffer strings for a session.
@@ -1267,40 +1268,40 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
             })
             // Without this the button's own padding sets a minimum width
             // and the dot stretches into a pill.
-            .padding(Length::px(0.0))
+            .padding(Space::None)
             .background_color(bg)
             .border_color(border)
-            .border_width(Length::px(1.0))
-            .corner_radius(Length::px(5.0)),
+            .border_width(Stroke::Hairline)
+            .corner_radius(Radius::Sm),
         )
-        .dims(Dimensions::fixed(Length::px(10.0), Length::px(10.0)))
+        .dims(Dimensions::fixed(ControlSize::Dot, ControlSize::Dot))
     };
     let row = |a: usize| {
         flex_row((dot(QUADRANTS[a]), dot(QUADRANTS[a + 1]), dot(QUADRANTS[a + 2])))
             .cross_axis_alignment(CrossAxisAlignment::Center)
-            .gap(Space::Md.len())
+            .gap(Space::Md)
     };
     let picker = flex_col((row(0), row(3), row(6)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::Md.len())
-        .padding(Space::Sm.len());
+        .gap(Space::Md)
+        .padding(Space::Sm);
     let field = |name: &'static str, value: String, axis: usize| {
         flex_row((
-            sized_box(label(name).text_size(Type::Body.px()).color(pal.text_muted))
-                .dims(Dimensions::fixed(Length::px(14.0), Length::px(18.0))),
+            sized_box(label(name).text_size(TextSize::Body).color(pal.text_muted))
+                .dims(Dimensions::fixed(ControlSize::Swatch, ControlSize::Icon)),
             text_input(value, move |app: &mut App, v| app.set_coord(axis, v))
                 .background_color(pal.field())
                 .flex(1.0),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Center)
-        .gap(Space::Md.len())
+        .gap(Space::Md)
     };
     let size_row = bounds.map(|b| {
         flex_row((
-            label("Size").text_size(Type::Body.px()).color(pal.text_muted),
+            label("Size").text_size(TextSize::Body).color(pal.text_muted),
             FlexSpacer::Flex(1.0),
             label(format!("{:.0} x {:.0}", b.width(), b.height()))
-                .text_size(Type::Body.px())
+                .text_size(TextSize::Body)
                 .color(pal.text),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Center)
@@ -1314,15 +1315,15 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
                 field("Y", app.coord_y_buf.clone(), 1),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Space::Sm.len())
+            .gap(Space::Sm)
             .flex(1.0),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Center)
-        .gap(Space::Md.len()),
+        .gap(Space::Md),
         size_row,
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Md.len())
+    .gap(Space::Md)
 }
 
 fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
@@ -1332,18 +1333,18 @@ fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
             text_button("", move |app: &mut App| app.set_mark(label.clone()))
                 .background_color(color),
         )
-        .dims(Dimensions::fixed(Length::px(22.0), Length::px(22.0)))
+        .dims(Dimensions::fixed(ControlSize::Row, ControlSize::Row))
     };
     let marks: Vec<_> = app.palette.mark_list().into_iter().map(|(name, color)| swatch(Some(name), color)).collect();
     flex_col((
         section_header(pal, "Mark"),
         flex_row((
             swatch(None, pal.control),
-        )).gap(Space::Sm.len()),
-        flex_row(marks).gap(Space::Sm.len()),
+        )).gap(Space::Sm),
+        flex_row(marks).gap(Space::Sm),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Sm.len())
+    .gap(Space::Sm)
 }
 
 fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
@@ -1436,11 +1437,11 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             (!editing).then(|| glyph_preview(app)).flatten(),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::Md.len()),
+        .gap(Space::Md),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Md.len())
-    .padding(Space::Lg.len())
+    .gap(Space::Md)
+    .padding(Space::Lg)
     .background_color(pal.panel)
 }
 
@@ -1467,7 +1468,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         status(app),
     ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Length::px(0.0))
+        .gap(Space::None)
         .background_color(pal.app);
 
     let left = match app.mode {
@@ -1488,7 +1489,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
             .background_color(pal.panel),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Length::px(0.0))
+    .gap(Space::None)
     .background_color(pal.app))
 }
 
