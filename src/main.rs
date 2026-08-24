@@ -1070,6 +1070,38 @@ fn preview_strip(app: &App) -> impl WidgetView<App> + use<> {
     })
 }
 
+/// A large preview of the selected glyph, at the foot of the inspector in
+/// overview mode (gpui's glyph preview panel). The grid cell is small; this
+/// is where you look at the shape.
+fn glyph_preview(app: &App) -> Option<impl WidgetView<App> + use<>> {
+    use masonry::imaging::Painter;
+    use masonry::kurbo::{Affine, Rect, Shape, Size, Stroke};
+    let entry = app.selected.and_then(|i| app.font.glyphs.get(i))?;
+    let outline = entry.outline.clone();
+    let advance = entry.advance;
+    let (asc, desc) = (app.font.ascender, app.font.descender);
+    let fill = app.palette.text;
+    let line = app.palette.role("gridBorder").with_alpha(0.5);
+    Some(
+        sized_box(canvas(move |_app: &mut App, _ctx, scene, size: Size| {
+            let mut p = Painter::new(scene);
+            let margin = 18.0;
+            let em_w = advance.max(1.0);
+            let em_h = (asc - desc).max(1.0);
+            let scale = ((size.width - margin * 2.0) / em_w)
+                .min((size.height - margin * 2.0) / em_h);
+            let ox = (size.width - em_w * scale) / 2.0;
+            let baseline = (size.height + em_h * scale) / 2.0 + desc * scale;
+            let t = Affine::new([scale, 0.0, 0.0, -scale, ox, baseline]);
+            // The advance box, so the preview reads as metrics, not art.
+            let box_path = t * Rect::new(0.0, desc, em_w, asc).to_path(0.1);
+            p.stroke(&box_path, &Stroke::new(1.0), line).draw();
+            p.fill(&(t * (*outline).clone()), fill).draw();
+        }))
+        .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(170.0)))),
+    )
+}
+
 fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
     let ghosts = Arc::new(
         app.font
@@ -1278,9 +1310,15 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             .cross_axis_alignment(CrossAxisAlignment::Start)
             .gap(Length::px(4.0))
         }),
-        editing.then(|| mark_section(app)),
-        layers_section(app),
-        editing.then(|| axes_section(app)).flatten(),
+        // Grouped: the flex tuple tops out at sixteen children.
+        flex_col((
+            editing.then(|| mark_section(app)),
+            layers_section(app),
+            editing.then(|| axes_section(app)).flatten(),
+            (!editing).then(|| glyph_preview(app)).flatten(),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(Length::px(6.0)),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Length::px(6.0))
