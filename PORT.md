@@ -632,3 +632,33 @@ driver). runebender-xilem remains the direct source for the tools.
   muted styling (Glyph, Transformations, Curves, Mark, Selection),
   matching gpui's organized panel. Dropped the redundant filename from
   the editor header so the theme/save cluster stops clipping.
+
+- 2026-08-23, slice 58: **Layers and Axes in the inspector.** The master
+  tab strip and the axis slider strip across the top of the canvas are
+  gone. Masters are now a Layers list in the right panel, one row per
+  master with a 22px thumbnail of the current glyph, and the axis
+  sliders are an Axes section under it, which is where gpui keeps both.
+  The thumbnail toggles that master as a ghost under the active outline
+  (gpui's eye), so the canvas is clean until a reference is asked for.
+  Before, every non-active master drew a ghost at all times: with eight
+  masters the glyph was unreadable. Pain points: the inspector needed a
+  portal to scroll, master names overflow their box because text does
+  not clip, and the flex tuple runs out of arity at sixteen children.
+
+- 2026-08-23, slice 59: **glyph preview panel in the overview.** The
+  selected glyph is drawn large at the foot of the overview inspector,
+  inside its advance box, the way gpui's preview panel does. The grid
+  cell is too small to judge a shape.
+
+- 2026-08-23, slice 60: **dense sidebar rows and search toggles.** Rows
+  went from 28px to 22px, and the active row is an accent outline rather
+  than a filled bar, which is what gpui and Glyphs both do. The search
+  box gained gpui's scope toggle (A/N/U) and case toggle, both wired to
+  the filter. No regex toggle: that needs a dependency.
+
+- 2026-08-23, slice 61: **Coordinates section.** A 9-point reference
+  picker beside X and Y fields, with the selection size under it. The
+  picker sets which corner of the selection the fields describe, and
+  typing a value moves the selection there. Replaces the read-only
+  Selection rows. Pain point: a 10px dot is a button with its padding
+  zeroed inside a fixed-size box, or it stretches into a pill.
