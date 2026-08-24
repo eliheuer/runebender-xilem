@@ -420,8 +420,62 @@ impl FontModel {
         Some(path)
     }
 
+    /// Outline and advance of `glyph_name` in master `index`, for the
+    /// layer thumbnails in the inspector.
+    pub fn master_glyph(&self, index: usize, glyph_name: &str) -> Option<(BezPath, f64)> {
+        let font = self.masters.get(index)?;
+        let glyph = font.get_glyph(glyph_name)?;
+        Some((glyph_paths::glyph_to_bezpath(glyph, font), glyph.width))
+    }
+
+    /// Short display names for the masters: the common family prefix is
+    /// dropped, so "Bricolage Grotesque 96pt ExtraBold" reads as
+    /// "96pt ExtraBold" in a narrow inspector.
+    pub fn short_master_names(&self) -> Vec<String> {
+        let names = &self.master_names;
+        if names.len() < 2 {
+            return names.clone();
+        }
+        // The longest common prefix, cut back to a word boundary.
+        let first = names[0].as_str();
+        let mut cut = first.len();
+        for other in &names[1..] {
+            let common = first
+                .char_indices()
+                .zip(other.chars())
+                .take_while(|((_, a), b)| a == b)
+                .map(|((i, a), _)| i + a.len_utf8())
+                .last()
+                .unwrap_or(0);
+            cut = cut.min(common);
+        }
+        let cut = first[..cut].rfind(' ').map(|i| i + 1).unwrap_or(0);
+        names
+            .iter()
+            .map(|n| {
+                let short = n[cut.min(n.len())..].trim();
+                if short.is_empty() { n.clone() } else { short.to_string() }
+            })
+            .collect()
+    }
+
+    /// Outlines of `glyph_name` in the masters listed in `which`, for the
+    /// ghost overlay. The inspector's Layers section owns that set.
+    pub fn reference_outlines(&self, glyph_name: &str, which: &std::collections::HashSet<usize>) -> Vec<BezPath> {
+        self.masters
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| which.contains(i) && *i != self.active)
+            .filter_map(|(_, font)| {
+                font.get_glyph(glyph_name)
+                    .map(|g| glyph_paths::glyph_to_bezpath(g, font))
+            })
+            .collect()
+    }
+
     /// Outlines of `glyph_name` in every master except the active one,
     /// for the ghost overlay.
+    #[allow(dead_code)]
     pub fn ghost_outlines(&self, glyph_name: &str) -> Vec<BezPath> {
         self.masters
             .iter()

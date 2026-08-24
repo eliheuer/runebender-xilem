@@ -98,6 +98,9 @@ pub struct App {
     axis_values: Vec<f64>,
     /// Active OKLCH theme id (dark | midnight | gray | light).
     theme_id: &'static str,
+    /// Masters drawn as ghost outlines under the active one. The Layers
+    /// section toggles these, one per thumbnail click (gpui's eye).
+    reference_layers: std::collections::HashSet<usize>,
 }
 
 impl App {
@@ -191,6 +194,7 @@ impl App {
             show_comb: false,
             axis_values,
             theme_id,
+            reference_layers: std::collections::HashSet::new(),
         })
     }
 
@@ -589,26 +593,114 @@ impl App {
     }
 }
 
-fn master_bar(app: &App) -> impl WidgetView<App> + use<> {
+/// Layers: one row per master, with a thumbnail of the current glyph in
+/// that master. Clicking a row switches the active master. This is the
+/// gpui inspector's Layers section, and it replaces the old tab strip
+/// that sat across the top of the canvas.
+fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
+    use masonry::imaging::Painter;
+    use masonry::kurbo::{Affine, Size};
+    if app.font.master_names.len() < 2 {
+        return None;
+    }
     let pal = &app.palette;
-    let buttons: Vec<_> = app
+    let glyph_name = match app.mode {
+        Mode::Editor(_) => Some(app.session.glyph_name.clone()),
+        Mode::Overview => app
+            .selected
+            .and_then(|i| app.font.glyphs.get(i))
+            .map(|g| g.name.clone()),
+    };
+    let (asc, desc) = (app.font.ascender, app.font.descender);
+    let rows: Vec<_> = app
         .font
-        .master_names
-        .iter()
+        .short_master_names()
+        .into_iter()
         .enumerate()
         .map(|(i, name)| {
             let active = i == app.font.active;
-            text_button(name.clone(), move |app: &mut App| app.set_master(i))
-                .background_color(if active { pal.role("accent") } else { pal.button })
+            let shown = app.reference_layers.contains(&i);
+            let (bg, fg) = if active {
+                (pal.role("gridSelected").with_alpha(0.22), pal.role("accent"))
+            } else {
+                (pal.panel, pal.text)
+            };
+            // A lit thumbnail means the master is drawn as a ghost under
+            // the active outline; clicking the thumbnail toggles that.
+            let ink = if active || shown { pal.text } else { pal.text_muted };
+            let thumb_bg = if shown {
+                pal.role("reference").with_alpha(0.28)
+            } else {
+                pal.control
+            };
+            let path_and_advance = glyph_name
+                .as_ref()
+                .and_then(|n| app.font.master_glyph(i, n));
+            let thumb = path_and_advance.map(|(path, advance)| {
+                sized_box(
+                    button(
+                        sized_box(canvas(move |_app: &mut App, _ctx, scene, size: Size| {
+                            let mut p = Painter::new(scene);
+                            let em = (asc - desc).max(1.0);
+                            let scale =
+                                (size.height / em).min(size.width / advance.max(1.0));
+                            let ox = (size.width - advance * scale) / 2.0;
+                            let baseline = size.height + desc * scale;
+                            let t = Affine::new([scale, 0.0, 0.0, -scale, ox, baseline]);
+                            p.fill(&(t * path.clone()), ink).draw();
+                        }))
+                        .dims(Dimensions::new(
+                            Dim::Fixed(Length::px(20.0)),
+                            Dim::Fixed(Length::px(20.0)),
+                        )),
+                        move |app: &mut App| {
+                            if !app.reference_layers.remove(&i) {
+                                app.reference_layers.insert(i);
+                            }
+                        },
+                    )
+                    .background_color(thumb_bg),
+                )
+                .dims(Dimensions::new(
+                    Dim::Fixed(Length::px(26.0)),
+                    Dim::Fixed(Length::px(26.0)),
+                ))
+            });
+            flex_row((
+                thumb,
+                sized_box(
+                    button(
+                        label(name).text_size(12.0).color(fg),
+                        move |app: &mut App| app.set_master(i),
+                    )
+                    .background_color(bg),
+                )
+                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(26.0))))
+                .flex(1.0),
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Center)
+            .gap(Length::px(4.0))
         })
         .collect();
-    portal(flex_row(buttons).gap(Length::px(4.0)))
-        .background_color(pal.panel)
+    Some(
+        flex_col((
+            section_header(pal, "Layers"),
+            flex_col(rows)
+                .cross_axis_alignment(CrossAxisAlignment::Start)
+                .gap(Length::px(2.0)),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(Length::px(4.0)),
+    )
 }
 
-fn axes_bar(app: &App) -> impl WidgetView<App> + use<> {
+/// Axes: one labeled slider per designspace axis, in the inspector.
+fn axes_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
+    if app.font.axes.is_empty() {
+        return None;
+    }
     let pal = &app.palette;
-    let on_master = app.on_active_master();
+    let (muted, text) = (pal.text_muted, pal.text);
     let rows: Vec<_> = app
         .font
         .axes
@@ -616,24 +708,36 @@ fn axes_bar(app: &App) -> impl WidgetView<App> + use<> {
         .enumerate()
         .map(|(i, ax)| {
             let value = app.axis_values.get(i).copied().unwrap_or(ax.default);
-            flex_row((
-                label(ax.tag.clone()).color(pal.text_muted),
-                slider(ax.min, ax.max, value, move |app: &mut App, v| app.set_axis(i, v)).width(Length::px(160.0)),
-                label(format!("{value:.0}")).color(pal.text),
+            flex_col((
+                flex_row((
+                    label(ax.tag.clone()).text_size(12.0).color(muted),
+                    FlexSpacer::Flex(1.0),
+                    label(format!("{value:.0}")).text_size(12.0).color(text),
+                ))
+                .cross_axis_alignment(CrossAxisAlignment::Center),
+                slider(ax.min, ax.max, value, move |app: &mut App, v| {
+                    app.set_axis(i, v)
+                })
+                .width(Length::px(214.0)),
             ))
-            .cross_axis_alignment(CrossAxisAlignment::Center)
-            .gap(Length::px(8.0))
+            .cross_axis_alignment(CrossAxisAlignment::Start)
+            .gap(Length::px(2.0))
         })
         .collect();
-    // A short hint when the location is interpolated (off any master).
-    let hint = (!on_master).then(|| label("interpolated").color(pal.role("warning")));
-    portal(
-        flex_row((flex_row(rows).gap(Length::px(18.0)), hint))
-            .cross_axis_alignment(CrossAxisAlignment::Center)
-            .gap(Length::px(18.0))
-            .padding(Length::px(6.0)),
+    // A short hint when the location sits off any master.
+    let hint = (!app.on_active_master())
+        .then(|| label("interpolated").text_size(11.0).color(pal.role("warning")));
+    Some(
+        flex_col((
+            section_header(pal, "Axes"),
+            flex_col(rows)
+                .cross_axis_alignment(CrossAxisAlignment::Start)
+                .gap(Length::px(8.0)),
+            hint,
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(Length::px(4.0)),
     )
-    .background_color(pal.panel)
 }
 
 /// Display name for a theme id, e.g. "dark" -> "Dark".
@@ -893,7 +997,9 @@ fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
     flex_col((
         text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
             .placeholder("Search"),
-        portal(grid(
+        // The grid scrolls itself, so no portal here: nesting the two
+        // gave the rail a dead area below the third row.
+        grid(
             app.filtered_cells(),
             app.cell_metrics(84.0),
             app.palette.clone(),
@@ -903,7 +1009,7 @@ fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
                 GridEvent::Selected { index, .. } => app.open_glyph(index),
                 GridEvent::Open(i) => app.open_glyph(i),
             },
-        ))
+        )
         .flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
@@ -965,7 +1071,10 @@ fn preview_strip(app: &App) -> impl WidgetView<App> + use<> {
 }
 
 fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
-    let ghosts = Arc::new(app.font.ghost_outlines(&app.session.glyph_name));
+    let ghosts = Arc::new(
+        app.font
+            .reference_outlines(&app.session.glyph_name, &app.reference_layers),
+    );
     let interp = app.interp_preview();
     editor(app.session.clone(), app.palette.clone(), app.tool, app.show_comb, ghosts, interp, |app: &mut App, ev| match ev {
         editor::EditorEvent::Selection(n) => app.selected_points = n,
@@ -1147,11 +1256,8 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
         .gap(Length::px(4.0))
     });
     let show_multi_mark = !editing && !app.multi_selected.is_empty();
-    let master_row = (app.font.master_names.len() > 1)
-        .then(|| row("Master".into(), app.font.master_names[app.font.active].clone()));
     flex_col((
         section_header(pal, "Glyph"),
-        master_row,
         show_multi_mark.then(|| row("Selected".into(), format!("{}", app.multi_selected.len()))),
         show_multi_mark.then(|| mark_section(app)),
         (!editing).then(|| row("Name".into(), name)),
@@ -1173,6 +1279,8 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             .gap(Length::px(4.0))
         }),
         editing.then(|| mark_section(app)),
+        layers_section(app),
+        editing.then(|| axes_section(app)).flatten(),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Length::px(6.0))
@@ -1196,12 +1304,8 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
     };
     let preview = matches!(app.mode, Mode::Editor(_))
         .then(|| sized_box(preview_strip(app)).dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(120.0)))).background_color(pal.panel));
-    let has_masters = app.font.master_names.len() > 1;
     let center = flex_col((
         titlebar(app),
-        has_masters.then(|| sized_box(master_bar(app)).dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(30.0))))),
-        (has_masters && !app.font.axes.is_empty() && matches!(app.mode, Mode::Editor(_)))
-            .then(|| sized_box(axes_bar(app)).dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(34.0))))),
         body.flex(1.0),
         preview,
         status(app),
@@ -1223,7 +1327,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
             .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
             .background_color(pal.app)
             .flex(1.0),
-        sized_box(info_panel(app))
+        sized_box(portal(info_panel(app)))
             .dims(Dimensions::new(Dim::Fixed(Length::px(250.0)), Dim::Stretch))
             .background_color(pal.panel),
     ))
