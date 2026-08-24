@@ -98,6 +98,10 @@ pub struct App {
     axis_values: Vec<f64>,
     /// Active OKLCH theme id (dark | midnight | gray | light).
     theme_id: &'static str,
+    /// Search scope: 0 name and unicode, 1 name only, 2 unicode only.
+    search_mode: u8,
+    /// Case-sensitive search.
+    search_case: bool,
     /// Masters drawn as ghost outlines under the active one. The Layers
     /// section toggles these, one per thumbnail click (gpui's eye).
     reference_layers: std::collections::HashSet<usize>,
@@ -194,24 +198,40 @@ impl App {
             show_comb: false,
             axis_values,
             theme_id,
+            search_mode: 0,
+            search_case: false,
             reference_layers: std::collections::HashSet::new(),
         })
     }
 
-    /// The cells that pass the current search + category filter.
+    /// The cells that pass the current search + category filter. The two
+    /// toggles beside the search box set the scope (name, unicode, both)
+    /// and whether the match is case-sensitive.
     fn filtered_cells(&self) -> Arc<Vec<Cell>> {
-        let q = self.filter.to_lowercase();
+        let q = if self.search_case {
+            self.filter.clone()
+        } else {
+            self.filter.to_lowercase()
+        };
+        let by_name = self.search_mode != 2;
+        let by_unicode = self.search_mode != 1;
         let out: Vec<Cell> = self
             .cells
             .iter()
             .filter(|c| {
                 let cat_ok = self.cell_matches_sel(c.index);
-                let q_ok = q.is_empty()
-                    || c.name.to_lowercase().contains(&q)
-                    || c
+                let name_hit = by_name
+                    && if self.search_case {
+                        c.name.contains(&q)
+                    } else {
+                        c.name.to_lowercase().contains(&q)
+                    };
+                let uni_hit = by_unicode
+                    && c
                         .codepoint
-                        .map(|cp| format!("{:04x}", cp as u32).contains(q.trim_start_matches("u+").trim_start_matches("0x")))
+                        .map(|cp| format!("{:04x}", cp as u32).contains(q.to_lowercase().trim_start_matches("u+").trim_start_matches("0x")))
                         .unwrap_or(false);
+                let q_ok = q.is_empty() || name_hit || uni_hit;
                 cat_ok && q_ok
             })
             .cloned()
@@ -919,9 +939,38 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         })
         .collect();
 
+    // Search row: the field, then gpui's small scope and case toggles.
+    let toggle = |text: String, active: bool, f: fn(&mut App)| {
+        let (fg, border) = if active {
+            (pal.role("accent"), pal.role("accent"))
+        } else {
+            (pal.text_muted, pal.role("gridBorder").with_alpha(0.6))
+        };
+        sized_box(
+            button(label(text).text_size(11.0).color(fg), move |app: &mut App| f(app))
+                .background_color(pal.panel)
+                .border_color(border)
+                .border_width(Length::px(1.0))
+                .corner_radius(Length::px(4.0)),
+        )
+        .dims(Dimensions::fixed(Length::px(26.0), Length::px(26.0)))
+    };
     flex_col((
-        text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
-            .placeholder("Search"),
+        flex_row((
+            text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
+                .placeholder("Search")
+                .flex(1.0),
+            toggle(
+                match app.search_mode { 1 => "N", 2 => "U", _ => "A" }.to_string(),
+                app.search_mode != 0,
+                |app: &mut App| app.search_mode = (app.search_mode + 1) % 3,
+            ),
+            toggle("Aa".into(), app.search_case, |app: &mut App| {
+                app.search_case = !app.search_case
+            }),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+        .gap(Length::px(4.0)),
         text_button(
             match app.sort { Sort::Name => "Sort: name", Sort::Unicode => "Sort: unicode" },
             |app: &mut App| {
@@ -970,25 +1019,30 @@ fn sidebar_row<F: Fn(&mut App) + Send + Sync + 'static>(
     active: bool,
     on_click: F,
 ) -> impl WidgetView<App> + use<F> {
-    let (bg, fg) = if active {
-        (pal.role("gridSelected").with_alpha(0.22), pal.role("accent"))
+    // The active row is an accent outline, not a filled bar, and the rows
+    // pack tight: gpui's sidebar is a dense list, closer to Glyphs.
+    let (fg, border) = if active {
+        (pal.role("accent"), pal.role("accent"))
     } else {
-        (pal.panel, pal.text)
+        (pal.text, xilem::Color::TRANSPARENT)
     };
-    let muted = pal.text_muted;
+    let count_color = if active { pal.role("accent") } else { pal.text_muted };
     sized_box(
         button(
             flex_row((
-                label(text).color(fg),
+                label(text).text_size(12.0).color(fg),
                 FlexSpacer::Flex(1.0),
-                label(count).color(muted),
+                label(count).text_size(12.0).color(count_color),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Center),
             move |app: &mut App| on_click(app),
         )
-        .background_color(bg),
+        .background_color(pal.panel)
+        .border_color(border)
+        .border_width(Length::px(1.0))
+        .corner_radius(Length::px(4.0)),
     )
-    .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(28.0))))
+    .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(22.0))))
 }
 
 fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
