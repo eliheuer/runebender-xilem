@@ -68,61 +68,137 @@ fn smart_value_for(glyph: &Glyph, component_index: usize, axis: &str) -> Option<
         .and_then(|v| v.as_real().or_else(|| v.as_signed_integer().map(|n| n as f64)))
 }
 
-/// Interpolated contours of a smart part at `value` along its first
-/// axis. The bottom pole is the default glyph (or a layer marked
-/// {axis: 1}), the top a layer marked {axis: 2}. Point-compatible
-/// poles interpolate; anything else falls back to the base.
-fn smart_contours(base: &Glyph, font: &Font, value: f64) -> Option<Vec<norad::Contour>> {
+/// Interpolated contours for a smart part at the given axis
+/// values. Each smart axis has a bottom pole (the default glyph,
+/// or a layer marked {axis: 1}) and a top pole (a layer marked
+/// {axis: 2}); a layer marked 2 on several axes is a corner pole.
+/// The blend is the standard corner-delta (variation) model:
+/// default + sum over pole layers of (product of the normalized
+/// values on that layer's top axes) x its inclusion-exclusion
+/// delta — for one axis, plain linear interpolation; for two
+/// axes with all corners, bilinear. Point-compatible layers
+/// only; anything else falls back to the default outline.
+fn smart_contours(
+    base: &Glyph,
+    font: &Font,
+    values: &std::collections::BTreeMap<String, f64>,
+) -> Option<Vec<norad::Contour>> {
+    use std::collections::BTreeMap;
+    use std::collections::BTreeSet;
     let axes = base.lib.get(SMART_AXES_KEY)?.as_array()?;
-    let axis = axes.first()?.as_dictionary()?;
-    let name = axis.get("name")?.as_string()?;
     let number = |v: &plist::Value| {
         v.as_real().or_else(|| v.as_signed_integer().map(|n| n as f64))
     };
-    let bottom = axis.get("bottomValue").and_then(number).unwrap_or(0.0);
-    let top = axis.get("topValue").and_then(number).unwrap_or(100.0);
-    if (top - bottom).abs() < 1e-9 {
+    // Normalized position per axis, in declaration order.
+    let mut t: BTreeMap<String, f64> = BTreeMap::new();
+    for axis in axes {
+        let axis = axis.as_dictionary()?;
+        let name = axis.get("name")?.as_string()?;
+        let bottom = axis.get("bottomValue").and_then(number).unwrap_or(0.0);
+        let top = axis.get("topValue").and_then(number).unwrap_or(100.0);
+        if (top - bottom).abs() < 1e-9 {
+            continue;
+        }
+        let value = values.get(name).copied().unwrap_or(bottom);
+        t.insert(
+            name.to_string(),
+            ((value - bottom) / (top - bottom)).clamp(0.0, 1.0),
+        );
+    }
+    if t.is_empty() {
         return None;
     }
-    let t = ((value - bottom) / (top - bottom)).clamp(0.0, 1.0);
-    // Find the top pole: a layer copy marked {axis: 2}.
-    let pole_of = |glyph: &Glyph| -> Option<i64> {
-        glyph
-            .lib
-            .get(PART_SELECTION_KEY)?
-            .as_dictionary()?
-            .get(name)
-            .and_then(|v| v.as_signed_integer())
+    // Pole layers: every layer copy of this glyph whose part
+    // selection marks at least one known axis with 2.
+    let flat = |glyph: &Glyph| -> Option<Vec<(f64, f64)>> {
+        if glyph.contours.len() != base.contours.len() {
+            return None;
+        }
+        let mut coords = Vec::new();
+        for (a, b) in base.contours.iter().zip(glyph.contours.iter()) {
+            if a.points.len() != b.points.len() {
+                return None;
+            }
+            for p in &b.points {
+                coords.push((p.x, p.y));
+            }
+        }
+        Some(coords)
     };
-    let mut top_glyph: Option<&Glyph> = None;
+    let default_coords = flat(base)?;
+    let mut poles: Vec<(BTreeSet<String>, Vec<(f64, f64)>)> = Vec::new();
     for layer in font.layers.iter() {
         let Some(candidate) = layer.get_glyph(base.name()) else {
             continue;
         };
-        if pole_of(candidate) == Some(2) {
-            top_glyph = Some(candidate);
-            break;
+        let Some(plist::Value::Dictionary(sel)) =
+            candidate.lib.get(PART_SELECTION_KEY)
+        else {
+            continue;
+        };
+        let tops: BTreeSet<String> = sel
+            .iter()
+            .filter(|(name, v)| {
+                t.contains_key(name.as_str())
+                    && v.as_signed_integer() == Some(2)
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+        if tops.is_empty() {
+            continue;
         }
+        let coords = flat(candidate)?;
+        poles.push((tops, coords));
     }
-    let top_glyph = top_glyph?;
-    if top_glyph.contours.len() != base.contours.len() {
+    if poles.is_empty() {
         return None;
     }
-    let mut out = Vec::with_capacity(base.contours.len());
-    for (a, b) in base.contours.iter().zip(top_glyph.contours.iter()) {
-        if a.points.len() != b.points.len() {
-            return None;
+    // Inclusion-exclusion deltas, singles before corners.
+    poles.sort_by_key(|(tops, _)| tops.len());
+    let n = default_coords.len();
+    let mut deltas: Vec<(BTreeSet<String>, Vec<(f64, f64)>)> = Vec::new();
+    for (tops, coords) in &poles {
+        let mut delta: Vec<(f64, f64)> = coords
+            .iter()
+            .zip(default_coords.iter())
+            .map(|(c, d)| (c.0 - d.0, c.1 - d.1))
+            .collect();
+        for (prev_tops, prev_delta) in &deltas {
+            if prev_tops.is_subset(tops) && prev_tops != tops {
+                for i in 0..n {
+                    delta[i].0 -= prev_delta[i].0;
+                    delta[i].1 -= prev_delta[i].1;
+                }
+            }
         }
-        let points = a
+        deltas.push((tops.clone(), delta));
+    }
+    let mut coords = default_coords;
+    for (tops, delta) in &deltas {
+        let weight: f64 = tops.iter().map(|a| t[a]).product();
+        if weight == 0.0 {
+            continue;
+        }
+        for i in 0..n {
+            coords[i].0 += weight * delta[i].0;
+            coords[i].1 += weight * delta[i].1;
+        }
+    }
+    // Reassemble along the default glyph's structure.
+    let mut out = Vec::with_capacity(base.contours.len());
+    let mut cursor = 0usize;
+    for contour in &base.contours {
+        let points = contour
             .points
             .iter()
-            .zip(b.points.iter())
-            .map(|(pa, pb)| {
+            .map(|p| {
+                let (x, y) = coords[cursor];
+                cursor += 1;
                 norad::ContourPoint::new(
-                    pa.x + (pb.x - pa.x) * t,
-                    pa.y + (pb.y - pa.y) * t,
-                    pa.typ.clone(),
-                    pa.smooth,
+                    x,
+                    y,
+                    p.typ.clone(),
+                    p.smooth,
                     None,
                     None,
                 )
@@ -132,7 +208,6 @@ fn smart_contours(base: &Glyph, font: &Font, value: f64) -> Option<Vec<norad::Co
     }
     Some(out)
 }
-
 fn append_components(
     path: &mut BezPath,
     glyph: &Glyph,
@@ -151,14 +226,26 @@ fn append_components(
         let t = component.transform;
         let combined = parent_transform
             * Affine::new([t.x_scale, t.xy_scale, t.yx_scale, t.y_scale, t.x_offset, t.y_offset]);
-        // A smart part with a value interpolates between its poles.
+        // A smart part with values interpolates between its poles.
         let smart = base
             .lib
             .get(SMART_AXES_KEY)
             .and_then(|v| v.as_array())
-            .and_then(|axes| axes.first()?.as_dictionary()?.get("name")?.as_string().map(str::to_string))
-            .and_then(|axis| smart_value_for(glyph, index, &axis))
-            .and_then(|value| smart_contours(base, font, value));
+            .map(|axes| {
+                axes.iter()
+                    .filter_map(|axis| {
+                        let name = axis
+                            .as_dictionary()?
+                            .get("name")?
+                            .as_string()?
+                            .to_string();
+                        let value = smart_value_for(glyph, index, &name)?;
+                        Some((name, value))
+                    })
+                    .collect::<std::collections::BTreeMap<_, _>>()
+            })
+            .filter(|values| !values.is_empty())
+            .and_then(|values| smart_contours(base, font, &values));
         match smart {
             Some(contours) => {
                 for contour in &contours {
@@ -330,6 +417,85 @@ mod smart_component_tests {
         plain.lib.remove("com.schriftgestaltung.Glyphs.componentsSmartComponentValues");
         let plain_path = components_to_bezpath(&plain, &font);
         assert!((plain_path.bounding_box().x1 - 200.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn two_axis_smart_component_blends_bilinearly() {
+        use norad::{Contour, ContourPoint, PointType};
+        let rect = |w: f64, h: f64| {
+            Contour::new(
+                [(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)]
+                    .iter()
+                    .map(|&(x, y)| {
+                        ContourPoint::new(x, y, PointType::Line, false, None, None)
+                    })
+                    .collect(),
+                None,
+            )
+        };
+        let axis = |name: &str| {
+            let mut d = plist::Dictionary::new();
+            d.insert("name".into(), plist::Value::String(name.into()));
+            d.insert("bottomValue".into(), plist::Value::Real(0.0));
+            d.insert("topValue".into(), plist::Value::Real(100.0));
+            plist::Value::Dictionary(d)
+        };
+        let pole = |tops: &[&str]| {
+            let mut d = plist::Dictionary::new();
+            for name in tops {
+                d.insert((*name).into(), plist::Value::Integer(2u64.into()));
+            }
+            plist::Value::Dictionary(d)
+        };
+        let mut font = norad::Font::default();
+        // Default 100x100; Width top 400x100; Height top 100x300;
+        // corner 500x350 (more than additive, so the corner delta
+        // is what proves bilinear).
+        let mut part = norad::Glyph::new("_part.box");
+        part.contours = vec![rect(100.0, 100.0)];
+        part.lib.insert(
+            "com.schriftgestaltung.Glyphs.smartComponentAxes".into(),
+            plist::Value::Array(vec![axis("Width"), axis("Height")]),
+        );
+        font.default_layer_mut().insert_glyph(part);
+        for (layer, w, h, tops) in [
+            ("box.w", 400.0, 100.0, vec!["Width"]),
+            ("box.h", 100.0, 300.0, vec!["Height"]),
+            ("box.wh", 500.0, 350.0, vec!["Width", "Height"]),
+        ] {
+            let mut g = norad::Glyph::new("_part.box");
+            g.contours = vec![rect(w, h)];
+            g.lib.insert(
+                "com.runebender.partSelection".into(),
+                pole(&tops),
+            );
+            font.layers
+                .get_or_create_layer(layer)
+                .unwrap()
+                .insert_glyph(g);
+        }
+        let mut user = norad::Glyph::new("boxdemo");
+        user.components.push(norad::Component::new(
+            norad::Name::new("_part.box").unwrap(),
+            norad::AffineTransform::default(),
+            None,
+        ));
+        let mut values = plist::Dictionary::new();
+        values.insert("Width".into(), plist::Value::Real(50.0));
+        values.insert("Height".into(), plist::Value::Real(50.0));
+        user.lib.insert(
+            "com.schriftgestaltung.Glyphs.componentsSmartComponentValues".into(),
+            plist::Value::Array(vec![plist::Value::Dictionary(values)]),
+        );
+        font.default_layer_mut().insert_glyph(user.clone());
+        use kurbo::Shape as _;
+        let bbox = components_to_bezpath(&user, &font).bounding_box();
+        // Bilinear at (.5,.5): w = 100 + .5*300 + .5*0 + .25*(500-400-100+100)
+        //                        = 100 + 150 + 25 = 275
+        //                      h = 100 + 0 + .5*200 + .25*(350-100-300+100)
+        //                        = 100 + 100 + 12.5 = 212.5
+        assert!((bbox.x1 - 275.0).abs() < 0.5, "w: {}", bbox.x1);
+        assert!((bbox.y1 - 212.5).abs() < 0.5, "h: {}", bbox.y1);
     }
 }
 
