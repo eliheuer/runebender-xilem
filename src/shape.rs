@@ -194,6 +194,18 @@ impl ShapingFont {
 
     /// Shape one run of text in one direction.
     pub fn shape(&self, text: &str, right_to_left: bool) -> Result<Vec<ShapedGlyph>, String> {
+        self.shape_with_features(text, right_to_left, &[])
+    }
+
+    /// Shape with per-feature overrides: (tag, on) pairs handed to
+    /// the shaper over the whole run; tags not listed keep the
+    /// shaper's defaults.
+    pub fn shape_with_features(
+        &self,
+        text: &str,
+        right_to_left: bool,
+        features: &[(String, bool)],
+    ) -> Result<Vec<ShapedGlyph>, String> {
         let font = FontRef::new(&self.bytes).map_err(|e| format!("shaping font: {e}"))?;
         let data = ShaperData::new(&font);
         let shaper = data.shaper(&font).build();
@@ -209,7 +221,21 @@ impl ShapingFont {
             buffer.set_script(script::ARABIC);
         }
 
-        let shaped = shaper.shape(buffer, &[]);
+        let overrides: Vec<harfrust::Feature> = features
+            .iter()
+            .filter(|(tag, _)| tag.len() == 4 && tag.is_ascii())
+            .map(|(tag, on)| {
+                let mut bytes = [b' '; 4];
+                bytes.copy_from_slice(tag.as_bytes());
+                harfrust::Feature::new(
+                    harfrust::Tag::new(&bytes),
+                    u32::from(*on),
+                    ..,
+                )
+            })
+            .collect();
+
+        let shaped = shaper.shape(buffer, &overrides);
         let infos = shaped.glyph_infos();
         let positions = shaped.glyph_positions();
         Ok(infos

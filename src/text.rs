@@ -374,6 +374,8 @@ pub struct TextBuffer {
     kerning: TextKerningModel,
     glyph_inventory: TextGlyphInventory,
     manual_kerning: Option<ManualKerningSession>,
+    /// Preview feature overrides handed to the shaper.
+    feature_overrides: Vec<(String, bool)>,
     /// Font compiled from the inventory + features.fea, built on first
     /// use and dropped whenever the inventory changes. The inner `None`
     /// means the compile failed, which is the normal state mid-edit.
@@ -399,6 +401,7 @@ impl Default for TextBuffer {
             kerning: TextKerningModel::default(),
             glyph_inventory: TextGlyphInventory::default(),
             manual_kerning: None,
+            feature_overrides: Vec::new(),
             shaping_font: ShapingFontCache::default(),
             bidi_runs: BidiRunCache::default(),
         }
@@ -524,6 +527,18 @@ impl TextBuffer {
             .iter()
             .filter(|sort| matches!(sort.kind, TextSortKind::LineBreak))
             .count()
+    }
+
+    /// Per-feature shaping overrides: (tag, on). Unlisted tags keep
+    /// the shaper's defaults. Hosts drive this from preview toggles.
+    pub fn set_feature_overrides(&mut self, overrides: Vec<(String, bool)>) {
+        if self.feature_overrides != overrides {
+            self.feature_overrides = overrides;
+        }
+    }
+
+    pub fn feature_overrides(&self) -> &[(String, bool)] {
+        &self.feature_overrides
     }
 
     pub fn set_kerning_model(&mut self, kerning: TextKerningModel) {
@@ -1194,7 +1209,11 @@ impl TextBuffer {
                         text.push(char);
                     }
 
-                    let Ok(shaped) = font.shape(&text, run_rtl) else {
+                    let Ok(shaped) = font.shape_with_features(
+                        &text,
+                        run_rtl,
+                        &self.feature_overrides,
+                    ) else {
                         return false;
                     };
 
