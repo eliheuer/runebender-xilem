@@ -1058,7 +1058,15 @@ impl TextBuffer {
 
     pub fn drag_manual_kerning(&mut self, current_x: f64) -> Option<f64> {
         let session = self.manual_kerning?;
-        let current_offset = (current_x - session.start_x).round();
+        let mut current_offset = (current_x - session.start_x).round();
+        // In a right-to-left line the pair's visual gap sits on the
+        // other side of the dragged sort — the logical-previous glyph
+        // draws to the right — so a rightward drag closes the gap and
+        // the offset flips sign.
+        let line = self.line_number_for_sort(session.sort_index);
+        if self.resolved_line_direction(line) == TextDirection::RightToLeft {
+            current_offset = -current_offset;
+        }
         if current_offset == session.current_offset {
             return None;
         }
@@ -3579,6 +3587,26 @@ mod tests {
         assert_eq!(item_x(&layout, 1), 0.0);
         assert_eq!(layout.cursor_x, 0.0);
         assert_eq!(layout.cursor_y, 0.0);
+    }
+
+    #[test]
+    fn manual_kerning_drag_flips_sign_in_rtl() {
+        // LTR: dragging right (+40) widens the pair by +40.
+        let mut buffer = TextBuffer::new();
+        buffer.insert_glyph("a", Some('a'), 100.0);
+        buffer.insert_glyph("b", Some('b'), 100.0);
+        assert!(buffer.begin_manual_kerning(1, 500.0));
+        assert_eq!(buffer.drag_manual_kerning(540.0), Some(40.0));
+        buffer.end_manual_kerning();
+
+        // RTL: the same rightward drag closes the visual gap, so the
+        // logical pair's kern goes to −40.
+        let mut rtl = TextBuffer::new();
+        rtl.set_direction(TextDirection::RightToLeft);
+        rtl.insert_glyph("alef-ar", Some('\u{0627}'), 100.0);
+        rtl.insert_glyph("beh-ar", Some('\u{0628}'), 100.0);
+        assert!(rtl.begin_manual_kerning(1, 500.0));
+        assert_eq!(rtl.drag_manual_kerning(540.0), Some(-40.0));
     }
 
     #[test]
