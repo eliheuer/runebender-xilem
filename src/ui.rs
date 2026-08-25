@@ -1,56 +1,26 @@
 // Copyright 2026 the Runebender Xix Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The style layer this app should not have to write.
+//! The recipes this application repeats.
 //!
-//! xix note, and the reason this file exists: the port drifted to twenty
-//! distinct spacing values and four text sizes because every xilem sizing
-//! API takes a free `f64`. The gpui port does not drift, because its
-//! vocabulary is a closed scale (`px_1`..`px_4`, `text_xs`/`text_sm`,
-//! `rounded_sm`/`rounded_md`) that an agent cannot land between. Nothing
-//! here is font-editor logic. It is `Space`, `Type`, `Radius`, and six
-//! composed parts, and all of it belongs in the framework (DESIGN.md D8,
-//! D11). Until it does, every app on xix rewrites this file, badly.
+//! The scale and the containers both live in the framework now:
+//! measurements are `xilem::kernel` steps, and a container states its
+//! `Region` instead of its gap and inset. What is left here is the small
+//! set of compositions a font editor uses over and over (a section, a
+//! key/value row, a labeled field, a list row, a toggle, a button), which
+//! are candidates for the framework's parts list. Each graduates when a
+//! second application needs the same one.
 
-pub use masonry::kernel::{ControlSize, Radius, Space, Stroke, TextSize};
+pub use masonry::kernel::{ControlSize, Radius, Region, Space, Stroke, TextSize};
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
-use masonry::properties::types::CrossAxisAlignment;
 use xilem::WidgetView;
 use xilem::style::Style;
-use xilem::view::{
-    FlexSpacer, button, flex_col, flex_row, label, sized_box, text_input,
-};
+use xilem::view::{FlexSpacer, button, column, label, row, sized_box, text_input};
 
 use crate::App;
 use crate::theme::Palette;
 
-
-/// A horizontal group, vertically centered, on the scale.
-pub fn row<S>(children: S, gap: Space) -> impl WidgetView<App> + use<S>
-where
-    S: xilem::view::FlexSequence<App, ()> + 'static,
-    xilem::view::Flex<S, App, ()>: WidgetView<App, ()>,
-    <xilem::view::Flex<S, App, ()> as WidgetView<App, ()>>::Widget:
-        masonry::core::UsesProperty<masonry::properties::Gap>,
-{
-    flex_row(children)
-        .cross_axis_alignment(CrossAxisAlignment::Center)
-        .gap(gap)
-}
-
-/// A vertical group, left aligned, on the scale.
-pub fn col<S>(children: S, gap: Space) -> impl WidgetView<App> + use<S>
-where
-    S: xilem::view::FlexSequence<App, ()> + 'static,
-    xilem::view::Flex<S, App, ()>: WidgetView<App, ()>,
-    <xilem::view::Flex<S, App, ()> as WidgetView<App, ()>>::Widget:
-        masonry::core::UsesProperty<masonry::properties::Gap>,
-{
-    flex_col(children)
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(gap)
-}
 
 /// A section header: caption type, muted. No disclosure caret: the
 /// framework has no icon set and the default font has no coverage for
@@ -67,19 +37,19 @@ pub fn section<V: WidgetView<App> + 'static>(
     title: &'static str,
     body: V,
 ) -> impl WidgetView<App> + use<V> {
-    col((section_header(pal, title), body), Space::Sm)
+    column(Region::Section, (section_header(pal, title), body))
 }
 
 /// A read-only label/value row: name left, value right, one row tall.
 pub fn kv(pal: &Palette, name: String, value: String) -> impl WidgetView<App> + use<> {
     let (muted, text) = (pal.text_muted, pal.text);
     sized_box(row(
+        Region::Inline,
         (
             label(name).text_size(TextSize::Body).color(muted),
             FlexSpacer::Flex(1.0),
             label(value).text_size(TextSize::Body).color(text),
         ),
-        Space::Sm,
     ))
     .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
 }
@@ -94,7 +64,8 @@ pub fn field<F>(
 where
     F: Fn(&mut App, String) + Send + Sync + 'static,
 {
-    col(
+    column(
+        Region::List,
         (
             label(name).text_size(TextSize::Caption).color(pal.text_muted),
             sized_box(
@@ -107,7 +78,6 @@ where
                 Dim::from(ControlSize::Control),
             )),
         ),
-        Space::Xs,
     )
 }
 
@@ -129,12 +99,12 @@ pub fn list_row<F: Fn(&mut App) + Send + Sync + 'static>(
     sized_box(
         button(
             row(
+                Region::Inline,
                 (
                     label(text).text_size(TextSize::Body).color(fg),
                     FlexSpacer::Flex(1.0),
                     label(trailing).text_size(TextSize::Body).color(trailing_color),
                 ),
-                Space::Sm,
             ),
             move |app: &mut App| on_click(app),
         )

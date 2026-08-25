@@ -25,8 +25,8 @@ use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
 use xilem::view::{
-    FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, label, portal, sized_box,
-    slider, text_button, text_input,
+    FlexExt as _, FlexSpacer, button, canvas, column as xcolumn, flex_col, flex_row, label, portal,
+    row as xrow, sized_box, slider, text_button, text_input,
 };
 use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
@@ -37,7 +37,7 @@ use model::FontModel;
 use runebender_core::category::GlyphCategory;
 use session::Session;
 use theme::Palette;
-use masonry::kernel::{ControlSize, Radius, Space, Stroke, TextSize};
+use masonry::kernel::{ControlSize, Radius, Region, Space, Stroke, TextSize};
 use ui::section_header;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -738,31 +738,28 @@ fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
                     Dim::from(ControlSize::Control),
                 ))
             });
-            flex_row((
-                thumb,
-                sized_box(
-                    button(
-                        label(name).text_size(TextSize::Body).color(fg),
-                        move |app: &mut App| app.set_master(i),
+            xrow(
+                Region::Inline,
+                (
+                    thumb,
+                    sized_box(
+                        button(
+                            label(name).text_size(TextSize::Body).color(fg),
+                            move |app: &mut App| app.set_master(i),
+                        )
+                        .background_color(bg),
                     )
-                    .background_color(bg),
-                )
-                .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Control)))
-                .flex(1.0),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Center)
-            .gap(Space::Sm)
+                    .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Control)))
+                    .flex(1.0),
+                ),
+            )
         })
         .collect();
     Some(
-        flex_col((
-            section_header(pal, "Layers"),
-            flex_col(rows)
-                .cross_axis_alignment(CrossAxisAlignment::Start)
-                .gap(Space::Xs),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::Sm),
+        xcolumn(
+            Region::Section,
+            (section_header(pal, "Layers"), xcolumn(Region::List, rows)),
+        ),
     )
 }
 
@@ -780,35 +777,37 @@ fn axes_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
         .enumerate()
         .map(|(i, ax)| {
             let value = app.axis_values.get(i).copied().unwrap_or(ax.default);
-            flex_col((
-                flex_row((
-                    label(ax.tag.clone()).text_size(TextSize::Body).color(muted),
-                    FlexSpacer::Flex(1.0),
-                    label(format!("{value:.0}")).text_size(TextSize::Body).color(text),
-                ))
-                .cross_axis_alignment(CrossAxisAlignment::Center),
-                slider(ax.min, ax.max, value, move |app: &mut App, v| {
-                    app.set_axis(i, v)
-                })
-                .width(Length::px(214.0)),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Space::Xs)
+            xcolumn(
+                Region::List,
+                (
+                    xrow(
+                        Region::Inline,
+                        (
+                            label(ax.tag.clone()).text_size(TextSize::Body).color(muted),
+                            FlexSpacer::Flex(1.0),
+                            label(format!("{value:.0}")).text_size(TextSize::Body).color(text),
+                        ),
+                    ),
+                    slider(ax.min, ax.max, value, move |app: &mut App, v| {
+                        app.set_axis(i, v)
+                    })
+                    .width(Length::px(214.0)),
+                ),
+            )
         })
         .collect();
     // A short hint when the location sits off any master.
     let hint = (!app.on_active_master())
         .then(|| label("interpolated").text_size(TextSize::Caption).color(pal.role("warning")));
     Some(
-        flex_col((
-            section_header(pal, "Axes"),
-            flex_col(rows)
-                .cross_axis_alignment(CrossAxisAlignment::Start)
-                .gap(Space::Md),
-            hint,
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::Sm),
+        xcolumn(
+            Region::Section,
+            (
+                section_header(pal, "Axes"),
+                xcolumn(Region::Form, rows),
+                hint,
+            ),
+        ),
     )
 }
 
@@ -840,23 +839,22 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
     } else {
         ("Saved", pal.text_muted)
     };
-    flex_row((
-        editing.then(|| {
-            text_button("‹ Overview", |app: &mut App| app.back_to_overview())
-                .background_color(pal.button)
-        }),
-        (!editing).then(|| label(title).text_size(TextSize::Title).color(pal.text)),
-        FlexSpacer::Flex(1.0),
-        editing.then(|| header_tools(app)),
-        editing.then(|| FlexSpacer::Fixed(Space::Lg.length())),
-        text_button(theme_label(app.theme_id), |app: &mut App| app.cycle_theme())
-            .background_color(pal.button),
-        label(save_text.to_string()).color(save_color),
-        text_button("Save", |app: &mut App| app.save()).background_color(pal.button),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(Space::Lg)
-    .padding(Space::Md)
+    xrow(
+        Region::Toolbar,
+        (
+            editing.then(|| {
+                text_button("‹ Overview", |app: &mut App| app.back_to_overview())
+                    .background_color(pal.button)
+            }),
+            (!editing).then(|| label(title).text_size(TextSize::Title).color(pal.text)),
+            FlexSpacer::Flex(1.0),
+            editing.then(|| header_tools(app)),
+            text_button(theme_label(app.theme_id), |app: &mut App| app.cycle_theme())
+                .background_color(pal.button),
+            label(save_text.to_string()).color(save_color),
+            text_button("Save", |app: &mut App| app.save()).background_color(pal.button),
+        ),
+    )
     .background_color(pal.panel)
 }
 
@@ -873,17 +871,18 @@ fn header_tools(app: &App) -> impl WidgetView<App> + use<> {
             app.tool = tool;
         })
     };
-    flex_row((
-        tile("select", Tool::Select),
-        tile("pen", Tool::Pen),
-        tile("hyperpen", Tool::HyperPen),
-        tile("shape-rectangle", Tool::Rect),
-        tile("shape-ellipse", Tool::Ellipse),
-        tile("knife", Tool::Knife),
-        tile("measure", Tool::Measure),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(Space::Xs)
+    xrow(
+        Region::List,
+        (
+            tile("select", Tool::Select),
+            tile("pen", Tool::Pen),
+            tile("hyperpen", Tool::HyperPen),
+            tile("shape-rectangle", Tool::Rect),
+            tile("shape-ellipse", Tool::Ellipse),
+            tile("knife", Tool::Knife),
+            tile("measure", Tool::Measure),
+        ),
+    )
 }
 
 fn status(app: &App) -> impl WidgetView<App> + use<> {
@@ -922,15 +921,14 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
         .into_iter()
         .map(|(name, color)| swatch(Some(name), color))
         .collect();
-    flex_row((
-        swatch(None, pal.control),
-        flex_row(marks).gap(Space::Sm),
-        FlexSpacer::Fixed(Space::Lg.length()),
-        label(text).color(pal.text_muted),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Center)
-    .gap(Space::Md)
-    .padding(Space::Md)
+    xrow(
+        Region::Toolbar,
+        (
+            swatch(None, pal.control),
+            xrow(Region::List, marks),
+            label(text).color(pal.text_muted),
+        ),
+    )
     .background_color(pal.panel)
 }
 
@@ -995,22 +993,25 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
     let toggle = |text: String, active: bool, f: fn(&mut App)| {
         ui::toggle(pal, text, active, move |app: &mut App| f(app))
     };
-    flex_col((
-        flex_row((
-            text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
-                .placeholder("Search")
-                .flex(1.0),
-            toggle(
-                match app.search_mode { 1 => "N", 2 => "U", _ => "A" }.to_string(),
-                app.search_mode != 0,
-                |app: &mut App| app.search_mode = (app.search_mode + 1) % 3,
+    xcolumn(
+        Region::Panel,
+        (
+        xrow(
+            Region::Inline,
+            (
+                text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
+                    .placeholder("Search")
+                    .flex(1.0),
+                toggle(
+                    match app.search_mode { 1 => "N", 2 => "U", _ => "A" }.to_string(),
+                    app.search_mode != 0,
+                    |app: &mut App| app.search_mode = (app.search_mode + 1) % 3,
+                ),
+                toggle("Aa".into(), app.search_case, |app: &mut App| {
+                    app.search_case = !app.search_case
+                }),
             ),
-            toggle("Aa".into(), app.search_case, |app: &mut App| {
-                app.search_case = !app.search_case
-            }),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Center)
-        .gap(Space::Sm),
+        ),
         text_button(
             match app.sort { Sort::Name => "Sort: name", Sort::Unicode => "Sort: unicode" },
             |app: &mut App| {
@@ -1025,23 +1026,30 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
                     .background_color(pal.role("accent"))
             })
         },
-        portal(
-            flex_col((
-                section_header(pal, "Categories"),
-                flex_col(cat_rows).gap(Space::Xs),
-                (!lang_rows.is_empty()).then(|| section_header(pal, "Languages")),
-                flex_col(lang_rows).gap(Space::Xs),
-                (!filter_rows.is_empty()).then(|| section_header(pal, "Filters")),
-                flex_col(filter_rows).gap(Space::Xs),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Space::Md),
-        )
+        portal(xcolumn(
+            Region::Panel,
+            (
+                xcolumn(
+                    Region::Section,
+                    (section_header(pal, "Categories"), xcolumn(Region::List, cat_rows)),
+                ),
+                (!lang_rows.is_empty()).then(|| {
+                    xcolumn(
+                        Region::Section,
+                        (section_header(pal, "Languages"), xcolumn(Region::List, lang_rows)),
+                    )
+                }),
+                (!filter_rows.is_empty()).then(|| {
+                    xcolumn(
+                        Region::Section,
+                        (section_header(pal, "Filters"), xcolumn(Region::List, filter_rows)),
+                    )
+                }),
+            ),
+        ))
         .flex(1.0),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Md)
-    .padding(Space::Md)
+        ),
+    )
     .background_color(pal.panel)
 }
 
@@ -1051,7 +1059,9 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
 fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let current = match app.mode { Mode::Editor(i) => Some(i), _ => None };
-    flex_col((
+    xcolumn(
+        Region::Panel,
+        (
         text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
             .placeholder("Search"),
         // The grid scrolls itself, so no portal here: nesting the two
@@ -1068,10 +1078,8 @@ fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
             },
         )
         .flex(1.0),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Md)
-    .padding(Space::Md)
+        ),
+    )
     .background_color(pal.panel)
 }
 
@@ -1187,37 +1195,48 @@ fn path_section(app: &App) -> impl WidgetView<App> + use<> {
     let op = move |icon: &'static str, f: fn(&mut Session) -> bool| {
         icon_button(icon, false, fg, fga, abg, hbg, move |app: &mut App| app.apply_op(f))
     };
-    flex_col((
-        section_header(pal, "Transformations"),
-        // Two even rows of four, the way gpui lays its icon grid out. A
-        // ragged 3 / 4 / 1 grid was the panel's most visible defect.
-        flex_row((
-            op("flip-h", |s| s.flip_horizontal()),
-            op("flip-v", |s| s.flip_vertical()),
-            op("rot-cw", |s| s.rotate_90()),
-            op("close", |s| s.decompose()),
-        )).gap(Space::Sm),
-        flex_row((
-            op("union", |s| s.remove_overlap()),
-            op("subtract", |s| s.boolean(BoolOp::Subtract)),
-            op("intersect", |s| s.boolean(BoolOp::Intersect)),
-            op("exclude", |s| s.boolean(BoolOp::Exclude)),
-        )).gap(Space::Sm),
-        // Labeled transform buttons, matching gpui's Transformations block.
-        flex_row((
-            tbtn(pal, "Harmonize", |s| s.harmonize()),
-            tbtn(pal, "Balance", |s| s.balance()),
-        )).gap(Space::Sm),
-        flex_row((
-            tbtn(pal, "Optimize", |s| s.optimize()),
-            tbtn(pal, "Round", |s| s.round_corners()),
-        )).gap(Space::Sm),
-        flex_row((
-            tbtn(pal, "Reverse", |s| s.reverse()),
-        )).gap(Space::Sm),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Md)
+    xcolumn(
+        Region::Section,
+        (
+            section_header(pal, "Transformations"),
+            // Two even rows of four, the way gpui lays its icon grid out. A
+            // ragged 3 / 4 / 1 grid was the panel's most visible defect.
+            xrow(
+                Region::List,
+                (
+                    op("flip-h", |s| s.flip_horizontal()),
+                    op("flip-v", |s| s.flip_vertical()),
+                    op("rot-cw", |s| s.rotate_90()),
+                    op("close", |s| s.decompose()),
+                ),
+            ),
+            xrow(
+                Region::List,
+                (
+                    op("union", |s| s.remove_overlap()),
+                    op("subtract", |s| s.boolean(BoolOp::Subtract)),
+                    op("intersect", |s| s.boolean(BoolOp::Intersect)),
+                    op("exclude", |s| s.boolean(BoolOp::Exclude)),
+                ),
+            ),
+            // Labeled transform buttons, matching gpui's Transformations block.
+            xrow(
+                Region::Inline,
+                (
+                    tbtn(pal, "Harmonize", |s| s.harmonize()),
+                    tbtn(pal, "Balance", |s| s.balance()),
+                ),
+            ),
+            xrow(
+                Region::Inline,
+                (
+                    tbtn(pal, "Optimize", |s| s.optimize()),
+                    tbtn(pal, "Round", |s| s.round_corners()),
+                ),
+            ),
+            xrow(Region::Inline, (tbtn(pal, "Reverse", |s| s.reverse()),)),
+        ),
+    )
 }
 
 /// The LSB/RSB text-buffer strings for a session.
@@ -1277,53 +1296,57 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
         .dims(Dimensions::fixed(ControlSize::Dot, ControlSize::Dot))
     };
     let row = |a: usize| {
-        flex_row((dot(QUADRANTS[a]), dot(QUADRANTS[a + 1]), dot(QUADRANTS[a + 2])))
-            .cross_axis_alignment(CrossAxisAlignment::Center)
-            .gap(Space::Md)
+        xrow(
+            Region::Card,
+            (dot(QUADRANTS[a]), dot(QUADRANTS[a + 1]), dot(QUADRANTS[a + 2])),
+        )
     };
-    let picker = flex_col((row(0), row(3), row(6)))
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::Md)
-        .padding(Space::Sm);
+    let picker = xcolumn(Region::Card, (row(0), row(3), row(6)));
     let field = |name: &'static str, value: String, axis: usize| {
-        flex_row((
-            sized_box(label(name).text_size(TextSize::Body).color(pal.text_muted))
-                .dims(Dimensions::fixed(ControlSize::Swatch, ControlSize::Icon)),
-            text_input(value, move |app: &mut App, v| app.set_coord(axis, v))
-                .background_color(pal.field())
-                .flex(1.0),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Center)
-        .gap(Space::Md)
+        xrow(
+            Region::Inline,
+            (
+                sized_box(label(name).text_size(TextSize::Body).color(pal.text_muted))
+                    .dims(Dimensions::fixed(ControlSize::Swatch, ControlSize::Icon)),
+                text_input(value, move |app: &mut App, v| app.set_coord(axis, v))
+                    .background_color(pal.field())
+                    .flex(1.0),
+            ),
+        )
     };
     let size_row = bounds.map(|b| {
-        flex_row((
-            label("Size").text_size(TextSize::Body).color(pal.text_muted),
-            FlexSpacer::Flex(1.0),
-            label(format!("{:.0} x {:.0}", b.width(), b.height()))
-                .text_size(TextSize::Body)
-                .color(pal.text),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Center)
+        xrow(
+            Region::Inline,
+            (
+                label("Size").text_size(TextSize::Body).color(pal.text_muted),
+                FlexSpacer::Flex(1.0),
+                label(format!("{:.0} x {:.0}", b.width(), b.height()))
+                    .text_size(TextSize::Body)
+                    .color(pal.text),
+            ),
+        )
     });
-    flex_col((
-        section_header(pal, "Coordinates"),
-        flex_row((
-            picker,
-            flex_col((
-                field("X", app.coord_x_buf.clone(), 0),
-                field("Y", app.coord_y_buf.clone(), 1),
-            ))
-            .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Space::Sm)
-            .flex(1.0),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Center)
-        .gap(Space::Md),
-        size_row,
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Md)
+    xcolumn(
+        Region::Section,
+        (
+            section_header(pal, "Coordinates"),
+            xrow(
+                Region::Inline,
+                (
+                    picker,
+                    xcolumn(
+                        Region::List,
+                        (
+                            field("X", app.coord_x_buf.clone(), 0),
+                            field("Y", app.coord_y_buf.clone(), 1),
+                        ),
+                    )
+                    .flex(1.0),
+                ),
+            ),
+            size_row,
+        ),
+    )
 }
 
 fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
@@ -1336,15 +1359,14 @@ fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
         .dims(Dimensions::fixed(ControlSize::Row, ControlSize::Row))
     };
     let marks: Vec<_> = app.palette.mark_list().into_iter().map(|(name, color)| swatch(Some(name), color)).collect();
-    flex_col((
-        section_header(pal, "Mark"),
-        flex_row((
-            swatch(None, pal.control),
-        )).gap(Space::Sm),
-        flex_row(marks).gap(Space::Sm),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Sm)
+    xcolumn(
+        Region::Section,
+        (
+            section_header(pal, "Mark"),
+            xrow(Region::Inline, (swatch(None, pal.control),)),
+            xrow(Region::List, marks),
+        ),
+    )
 }
 
 fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
@@ -1373,7 +1395,8 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
     let field_bg = pal.field();
     let _ = field_bg;
     let advance_field = editing.then(|| {
-        ui::row(
+        xrow(
+            Region::Form,
             (
                 ui::field(pal, "Width", app.advance_buf.clone(), |app: &mut App, v| {
                     app.set_advance_from_buf(v)
@@ -1388,11 +1411,11 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
                 })
                 .flex(1.0),
             ),
-            Space::Md,
         )
     });
     let name_field = editing.then(|| {
-        ui::col(
+        xcolumn(
+            Region::Form,
             (
                 ui::field(pal, "Name", app.name_buf.clone(), |app: &mut App, v| {
                     app.name_buf = v
@@ -1401,47 +1424,55 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
                     app.set_unicode_from_buf(v)
                 }),
             ),
-            Space::Md,
         )
     });
     let show_multi_mark = !editing && !app.multi_selected.is_empty();
-    flex_col((
-        section_header(pal, "Glyph"),
-        show_multi_mark.then(|| row("Selected".into(), format!("{}", app.multi_selected.len()))),
-        show_multi_mark.then(|| mark_section(app)),
-        (!editing).then(|| row("Name".into(), name)),
-        (!editing).then(|| row("Unicode".into(), cp.clone())),
-        name_field,
-        (!editing).then(|| row("Advance".into(), adv)),
-        advance_field,
-        (!pts.is_empty()).then(|| row("Points".into(), pts)),
-        editing.then(|| row("Selected".into(), format!("{}", app.selected_points))),
-        editing.then(|| coordinates_section(app)),
-        editing.then(|| path_section(app)),
-        editing.then(|| {
-            ui::section(
-                pal,
-                "Curves",
-                ui::action(
-                    pal,
-                    if app.show_comb { "Comb: on" } else { "Comb: off" }.to_string(),
-                    |app: &mut App| app.show_comb = !app.show_comb,
+    xcolumn(
+        Region::Panel,
+        (
+            xcolumn(
+                Region::Section,
+                (
+                    section_header(pal, "Glyph"),
+                    xcolumn(
+                        Region::List,
+                        (
+                            show_multi_mark.then(|| {
+                                row("Selected".into(), format!("{}", app.multi_selected.len()))
+                            }),
+                            (!editing).then(|| row("Name".into(), name)),
+                            (!editing).then(|| row("Unicode".into(), cp.clone())),
+                            (!editing).then(|| row("Advance".into(), adv)),
+                            (!pts.is_empty()).then(|| row("Points".into(), pts)),
+                            editing.then(|| {
+                                row("Selected".into(), format!("{}", app.selected_points))
+                            }),
+                        ),
+                    ),
+                    show_multi_mark.then(|| mark_section(app)),
+                    name_field,
+                    advance_field,
                 ),
-            )
-        }),
-        // Grouped: the flex tuple tops out at sixteen children.
-        flex_col((
+            ),
+            editing.then(|| coordinates_section(app)),
+            editing.then(|| path_section(app)),
+            editing.then(|| {
+                ui::section(
+                    pal,
+                    "Curves",
+                    ui::action(
+                        pal,
+                        if app.show_comb { "Comb: on" } else { "Comb: off" }.to_string(),
+                        |app: &mut App| app.show_comb = !app.show_comb,
+                    ),
+                )
+            }),
             editing.then(|| mark_section(app)),
             layers_section(app),
             editing.then(|| axes_section(app)).flatten(),
             (!editing).then(|| glyph_preview(app)).flatten(),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::Md),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::Md)
-    .padding(Space::Lg)
+        ),
+    )
     .background_color(pal.panel)
 }
 
