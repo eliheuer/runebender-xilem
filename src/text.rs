@@ -376,6 +376,10 @@ pub struct TextBuffer {
     manual_kerning: Option<ManualKerningSession>,
     /// Preview feature overrides handed to the shaper.
     feature_overrides: Vec<(String, bool)>,
+    /// Explicit shaping script (ISO 15924 tag) and language (BCP 47)
+    /// for the whole session; None keeps direction-derived defaults.
+    script_override: Option<String>,
+    language_override: Option<String>,
     /// Font compiled from the inventory + features.fea, built on first
     /// use and dropped whenever the inventory changes. The inner `None`
     /// means the compile failed, which is the normal state mid-edit.
@@ -402,6 +406,8 @@ impl Default for TextBuffer {
             glyph_inventory: TextGlyphInventory::default(),
             manual_kerning: None,
             feature_overrides: Vec::new(),
+            script_override: None,
+            language_override: None,
             shaping_font: ShapingFontCache::default(),
             bidi_runs: BidiRunCache::default(),
         }
@@ -539,6 +545,25 @@ impl TextBuffer {
 
     pub fn feature_overrides(&self) -> &[(String, bool)] {
         &self.feature_overrides
+    }
+
+    /// Shaping script/language overrides ("arab"/"ur"): language is
+    /// what makes languagesystem-specific rules (locl for Urdu or
+    /// Sindhi) fire in the preview.
+    pub fn set_shaping_locale(
+        &mut self,
+        script: Option<String>,
+        language: Option<String>,
+    ) {
+        self.script_override = script;
+        self.language_override = language;
+    }
+
+    pub fn shaping_locale(&self) -> (Option<&str>, Option<&str>) {
+        (
+            self.script_override.as_deref(),
+            self.language_override.as_deref(),
+        )
     }
 
     pub fn set_kerning_model(&mut self, kerning: TextKerningModel) {
@@ -1209,10 +1234,12 @@ impl TextBuffer {
                         text.push(char);
                     }
 
-                    let Ok(shaped) = font.shape_with_features(
+                    let Ok(shaped) = font.shape_with_options(
                         &text,
                         run_rtl,
                         &self.feature_overrides,
+                        self.script_override.as_deref(),
+                        self.language_override.as_deref(),
                     ) else {
                         return false;
                     };

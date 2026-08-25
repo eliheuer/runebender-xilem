@@ -206,6 +206,23 @@ impl ShapingFont {
         right_to_left: bool,
         features: &[(String, bool)],
     ) -> Result<Vec<ShapedGlyph>, String> {
+        self.shape_with_options(text, right_to_left, features, None, None)
+    }
+
+    /// Shape with explicit script and language overrides on top of
+    /// the feature list. `script` is an ISO 15924 tag ("arab",
+    /// "latn"); `language` a BCP 47 tag ("ur", "sd"). Either may be
+    /// None to keep the direction-derived default. Language-specific
+    /// OpenType rules (languagesystem arab URD) only fire when the
+    /// language is set here.
+    pub fn shape_with_options(
+        &self,
+        text: &str,
+        right_to_left: bool,
+        features: &[(String, bool)],
+        script: Option<&str>,
+        language: Option<&str>,
+    ) -> Result<Vec<ShapedGlyph>, String> {
         let font = FontRef::new(&self.bytes).map_err(|e| format!("shaping font: {e}"))?;
         let data = ShaperData::new(&font);
         let shaper = data.shaper(&font).build();
@@ -217,8 +234,28 @@ impl ShapingFont {
         } else {
             Direction::LeftToRight
         });
-        if right_to_left {
-            buffer.set_script(script::ARABIC);
+        match script.map(str::trim).filter(|s| s.len() == 4) {
+            Some(tag) => {
+                let mut bytes = [b' '; 4];
+                bytes.copy_from_slice(tag.as_bytes());
+                if let Some(script) =
+                    harfrust::Script::from_iso15924_tag(harfrust::Tag::new(&bytes))
+                {
+                    buffer.set_script(script);
+                }
+            }
+            None => {
+                if right_to_left {
+                    buffer.set_script(script::ARABIC);
+                }
+            }
+        }
+        if let Some(lang) = language
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .and_then(|l| l.parse::<harfrust::Language>().ok())
+        {
+            buffer.set_language(lang);
         }
 
         let overrides: Vec<harfrust::Feature> = features
@@ -315,6 +352,40 @@ mod tests {
             .iter()
             .map(|g| font.glyph_name(g.glyph_id).unwrap_or("?").to_string())
             .collect()
+    }
+
+    #[test]
+    fn language_override_fires_language_specific_rules() {
+        let mut src = virtua_grotesk();
+        // A locl rule that only applies for Urdu: alef becomes the
+        // lam_alef glyph (visually silly, unambiguous in a test).
+        // languagesystem statements must precede every feature
+        // block, so lift the originals out and re-emit them first.
+        let (systems, rest): (Vec<&str>, Vec<&str>) = src
+            .features
+            .lines()
+            .partition(|l| l.trim_start().starts_with("languagesystem"));
+        src.features = format!(
+            "{}\nlanguagesystem arab URD;\n{}\n\
+             feature locl {{\n\
+             script arab;\n\
+             language URD;\n\
+             sub alef-ar by lam_alef-ar;\n\
+             }} locl;\n",
+            systems.join("\n"),
+            rest.join("\n")
+        );
+        let font = ShapingFont::build(&src).expect("shaping font builds");
+        let urdu = font
+            .shape_with_options("\u{0627}", true, &[], Some("arab"), Some("ur"))
+            .expect("shaping succeeds");
+        let names: Vec<_> = urdu
+            .iter()
+            .map(|g| font.glyph_name(g.glyph_id).unwrap_or("?"))
+            .collect();
+        assert_eq!(names, ["lam_alef-ar"]);
+        // Without the language, the default rules leave alef alone.
+        assert_eq!(shaped_names(&font, "\u{0627}", true), ["alef-ar"]);
     }
 
     #[test]
