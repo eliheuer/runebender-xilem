@@ -16,7 +16,7 @@ glyphslib = "0.2.7"
 linesweeper = "0.4"
 norad = "0.18"
 # The web editor's autotracer, pinned to git like runebender-web.
-img2bez = { git = "https://github.com/eliheuer/img2bez", default-features = false }
+img2bez = { git = "https://github.com/eliheuer/img2bez", rev = "23073ca08ecdac61ad0e838bfae49a590bc2c7cc", default-features = false }
 plist = { version = "1.4", features = ["serde"] }
 quick-xml = { version = "0.38", features = ["serialize"] }
 # Structured metadata shared over serde_json between core and UI hosts.
@@ -36,7 +36,7 @@ write-fonts = "0.44"
 # The hyperbezier path type. spline solves on kurbo 0.9; both kurbo
 # versions live side by side and hyper.rs converts between them.
 kurbo_09 = { package = "kurbo", version = "0.9.5" }
-spline = { git = "https://github.com/linebender/spline" }
+spline = { git = "https://github.com/linebender/spline", rev = "83f46cbfebb1f5d6042059c867719c0010073d42" }
 
 # 2D geometry for the shared curve/measure modules. All consumers
 # (web, xilem, gpui) are on kurbo 0.13 now, so the old "kurbo-free
