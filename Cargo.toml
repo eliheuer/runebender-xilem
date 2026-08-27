@@ -39,6 +39,11 @@ tokio = { version = "1", features = ["rt"] }
 imaging_vello_cpu = "0.0.1"
 image = "0.25"
 
+[dev-dependencies]
+# Still the right tool for widget tests, where a fixed font and no system
+# fonts is exactly what you want. Just not for screenshots of the app.
+masonry_testing = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a8c364f2ab109e2083121e144" }
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
