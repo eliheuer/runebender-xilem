@@ -4,6 +4,7 @@
 //! Runebender on xix. A font editor: glyph grid, glyph editor, sidebar.
 //! See PORT.md for what each slice forced into the framework.
 
+mod context_menu;
 mod design;
 mod menu;
 mod watch;

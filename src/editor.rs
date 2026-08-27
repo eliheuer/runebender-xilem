@@ -9,7 +9,8 @@ use std::sync::Arc;
 use masonry::accesskit::{Node, Role};
 use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
-    AccessCtx, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx, PointerButton,
+    AccessCtx, ChildrenIds, EventCtx, LayerType, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
+    PointerButton, WidgetId,
     PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate, PropertiesMut,
     PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Widget,
 };
@@ -21,6 +22,7 @@ use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 use crate::App;
+use crate::context_menu::{ContextMenu, MenuAction, MenuRow};
 use crate::session::Session;
 use crate::text_label::{self, Anchor};
 use crate::theme::Palette;
@@ -29,23 +31,50 @@ use crate::Tool;
 const HIT_RADIUS_PX: f64 = 8.0;
 
 /// Context-menu items: (label, op). Op returns whether the glyph changed.
-const MENU_ITEMS: &[(&str, fn(&mut Session) -> bool)] = &[
-    ("Add Anchor", |_| false),
-    ("Set Start Point", |s| s.set_start()),
-    ("Round Corners", |s| s.round_corners()),
-    ("Reverse Contours", |s| s.reverse()),
-    ("Remove Overlap", |s| s.remove_overlap()),
-    ("Flip Horizontal", |s| s.flip_horizontal()),
-    ("Flip Vertical", |s| s.flip_vertical()),
-    ("Rotate 90", |s| s.rotate_90()),
-    ("Duplicate", |s| s.duplicate()),
-    ("Harmonize", |s| s.harmonize()),
-    ("Balance", |s| s.balance()),
-    ("Optimize", |s| s.optimize()),
-    ("Decompose", |s| s.decompose()),
+/// The right-click menu's rows. Shared with the layer that draws them.
+const MENU_ITEMS: &[MenuRow] = &[
+    MenuRow { label: "Add Anchor", action: MenuAction::AddAnchor },
+    MenuRow { label: "Set Start Point", action: MenuAction::Op(|s| s.set_start()) },
+    MenuRow { label: "Round Corners", action: MenuAction::Op(|s| s.round_corners()) },
+    MenuRow { label: "Reverse Contours", action: MenuAction::Op(|s| s.reverse()) },
+    MenuRow { label: "Remove Overlap", action: MenuAction::Op(|s| s.remove_overlap()) },
+    MenuRow { label: "Flip Horizontal", action: MenuAction::Op(|s| s.flip_horizontal()) },
+    MenuRow { label: "Flip Vertical", action: MenuAction::Op(|s| s.flip_vertical()) },
+    MenuRow { label: "Rotate 90", action: MenuAction::Op(|s| s.rotate_90()) },
+    MenuRow { label: "Duplicate", action: MenuAction::Op(|s| s.duplicate()) },
+    MenuRow { label: "Harmonize", action: MenuAction::Op(|s| s.harmonize()) },
+    MenuRow { label: "Balance", action: MenuAction::Op(|s| s.balance()) },
+    MenuRow { label: "Optimize", action: MenuAction::Op(|s| s.optimize()) },
+    MenuRow { label: "Decompose", action: MenuAction::Op(|s| s.decompose()) },
 ];
-const MENU_W: f64 = 180.0;
-const MENU_ROW: f64 = 26.0;
+
+impl EditorWidget {
+    /// Apply a context-menu choice. Called from the menu layer, which is
+    /// not a child of this widget and so cannot reach it with an action.
+    pub(crate) fn apply_menu_choice(
+        this: &mut masonry::core::WidgetMut<'_, Self>,
+        action: MenuAction,
+        at: Point,
+    ) {
+        let changed = match action {
+            MenuAction::AddAnchor => {
+                this.widget.session.add_anchor(at.x.round(), at.y.round());
+                true
+            }
+            MenuAction::Op(op) => op(&mut this.widget.session),
+        };
+        this.widget.menu = None;
+        if changed {
+            this.ctx.submit_action::<EditorEvent>(EditorEvent::Edited);
+        }
+        this.ctx.request_render();
+    }
+
+    /// The menu closed without a choice.
+    pub(crate) fn forget_menu(this: &mut masonry::core::WidgetMut<'_, Self>) {
+        this.widget.menu = None;
+    }
+}
 
 /// What the editor reports upward.
 #[derive(Debug)]
@@ -91,8 +120,8 @@ pub struct EditorWidget {
     drag: Drag,
     /// Last cursor position in design space, for the pen preview segment.
     hover: Option<Point>,
-    /// Open context menu: (screen anchor, hovered row).
-    menu: Option<(Point, usize)>,
+    /// The open context-menu layer, if there is one.
+    menu: Option<WidgetId>,
     view: ViewOptions,
 }
 
@@ -393,23 +422,6 @@ impl Widget for EditorWidget {
             }
         }
 
-        // Context menu (painted on top of everything else).
-        if let Some((anchor, row)) = self.menu {
-            let h = MENU_ITEMS.len() as f64 * MENU_ROW + 8.0;
-            let x = anchor.x.min(self.size.width - MENU_W - 4.0).max(4.0);
-            let y = anchor.y.min(self.size.height - h - 4.0).max(4.0);
-            let panel = Rect::new(x, y, x + MENU_W, y + h);
-            painter.fill(panel.to_rounded_rect(8.0), pal.panel).draw();
-            painter.stroke(panel.to_rounded_rect(8.0), &Stroke::new(1.0), pal.role("readonlyPoint")).draw();
-            for (i, (labeltext, _)) in MENU_ITEMS.iter().enumerate() {
-                let ry = y + 4.0 + i as f64 * MENU_ROW;
-                if row == i {
-                    painter.fill(Rect::new(x + 4.0, ry, x + MENU_W - 4.0, ry + MENU_ROW).to_rounded_rect(4.0), pal.role("gridSelected").with_alpha(0.3)).draw();
-                }
-                text_label::draw(painter, Point::new(x + 12.0, ry + MENU_ROW / 2.0), labeltext, 12.0, pal.text, Anchor::Start);
-            }
-        }
-
         // Marquee rectangle.
         if let Drag::Marquee { start, current, .. } = &self.drag {
             let rect = Rect::from_points(*start, *current);
@@ -465,28 +477,22 @@ impl Widget for EditorWidget {
             PointerEvent::Down(PointerButtonEvent { button, state, .. }) => {
                 ctx.request_focus();
                 let at = ctx.local_position(state.position);
-                // If a menu is open, a click either invokes a row or dismisses it.
-                if let Some((anchor, _)) = self.menu {
-                    if let Some(i) = menu_row_at(anchor, at, self.size) {
-                        let changed = if MENU_ITEMS[i].0 == "Add Anchor" {
-                            let d = self.session.viewport.screen_to_design(anchor);
-                            self.session.add_anchor(d.x.round(), d.y.round());
-                            true
-                        } else {
-                            (MENU_ITEMS[i].1)(&mut self.session)
-                        };
-                        self.menu = None;
-                        self.emit(ctx, changed);
-                    } else {
-                        self.menu = None;
-                        ctx.request_render();
-                    }
-                    ctx.set_handled();
-                    return;
-                }
                 if *button == Some(PointerButton::Secondary) {
-                    self.menu = Some((at, usize::MAX));
-                    ctx.request_render();
+                    // A layer, not a rectangle painted into this canvas:
+                    // it is rooted in window space, so it can hang past
+                    // the editor's edge like a menu should.
+                    if self.menu.is_none() {
+                        let design = self.session.viewport.screen_to_design(at);
+                        let menu = ContextMenu::new(
+                            ctx.widget_id(),
+                            MENU_ITEMS,
+                            self.palette.clone(),
+                            design,
+                        );
+                        let menu = NewWidget::new(menu);
+                        self.menu = Some(menu.id());
+                        ctx.create_layer(LayerType::Other, menu, ctx.to_window(at));
+                    }
                     ctx.set_handled();
                     return;
                 }
@@ -593,14 +599,6 @@ impl Widget for EditorWidget {
             }
             PointerEvent::Move(PointerUpdate { current, .. }) => {
                 let at = ctx.local_position(current.position);
-                if let Some((anchor, ref mut row)) = self.menu {
-                    let new = menu_row_at(anchor, at, self.size).unwrap_or(usize::MAX);
-                    if *row != new {
-                        *row = new;
-                        ctx.request_render();
-                    }
-                    return;
-                }
                 if matches!(self.tool, Tool::Pen | Tool::HyperPen) {
                     self.hover = Some(self.session.viewport.screen_to_design(at));
                     if self.session.active_contour.is_some() {
@@ -796,21 +794,7 @@ impl Widget for EditorWidget {
     }
 }
 
-/// Which menu row (if any) the point `at` is over, for a menu anchored at `anchor`.
-fn menu_row_at(anchor: Point, at: Point, size: Size) -> Option<usize> {
-    let h = MENU_ITEMS.len() as f64 * MENU_ROW + 8.0;
-    let x = anchor.x.min(size.width - MENU_W - 4.0).max(4.0);
-    let y = anchor.y.min(size.height - h - 4.0).max(4.0);
-    if at.x < x + 4.0 || at.x > x + MENU_W - 4.0 {
-        return None;
-    }
-    let rel = at.y - (y + 4.0);
-    if rel < 0.0 {
-        return None;
-    }
-    let i = (rel / MENU_ROW).floor() as usize;
-    if i < MENU_ITEMS.len() { Some(i) } else { None }
-}
+
 
 // ---------------------------------------------------------------------------
 /// Cheap equality for the interpolation overlay: same Arc, or both absent.
@@ -1006,5 +990,75 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             }
             None => MessageResult::Stale,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use masonry_testing::TestHarness;
+    use masonry::theme::default_property_set;
+
+    fn session() -> Session {
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 500.0;
+        let mut contour = norad::Contour::default();
+        for (x, y) in [(0.0, 0.0), (400.0, 0.0), (400.0, 700.0), (0.0, 700.0)] {
+            contour.points.push(norad::ContourPoint::new(
+                x,
+                y,
+                norad::PointType::Line,
+                false,
+                None,
+                None,
+            ));
+        }
+        glyph.contours.push(contour);
+        font.default_layer_mut().insert_glyph(glyph);
+        Session::new(&font, "A").expect("the glyph is there")
+    }
+
+    fn widget() -> EditorWidget {
+        EditorWidget {
+            session: session(),
+            palette: Arc::new(crate::theme::Palette::load("dark")),
+            tool: Tool::Select,
+            ghosts: Arc::new(Vec::new()),
+            interp: None,
+            underlay: Underlay::default(),
+            size: Size::ZERO,
+            drag: Drag::None,
+            hover: None,
+            menu: None,
+            view: ViewOptions::default(),
+        }
+    }
+
+    /// A right click opens the menu as a layer, and the editor remembers
+    /// which layer so a second right click does not stack another one.
+    #[test]
+    fn right_click_opens_one_menu_layer() {
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), widget().prepare(), (600, 400));
+        harness.mouse_move(Point::new(300.0, 200.0));
+        harness.mouse_button_press(Some(PointerButton::Secondary));
+        let first = harness.edit_root_widget(|root| root.widget.menu);
+        assert!(first.is_some(), "the menu layer was created");
+
+        harness.mouse_button_press(Some(PointerButton::Secondary));
+        let second = harness.edit_root_widget(|root| root.widget.menu);
+        assert_eq!(first, second, "a second right click did not stack a layer");
+    }
+
+    /// A left click still edits rather than being eaten by menu handling.
+    #[test]
+    fn left_click_is_not_swallowed() {
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), widget().prepare(), (600, 400));
+        harness.mouse_move(Point::new(300.0, 200.0));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        let menu = harness.edit_root_widget(|root| root.widget.menu);
+        assert!(menu.is_none(), "a left click does not open the menu");
     }
 }
