@@ -289,7 +289,7 @@ impl App {
             note: String::new(),
             view,
             initial_text: std::env::var("RUNEBENDER_TEXT").unwrap_or_default(),
-            cell_size: 104.0,
+            cell_size: 88.0,
             axis_values,
             theme_id,
             coord_quadrant: runebender_core::path::Quadrant::Center,
@@ -1666,14 +1666,23 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
                     .background_color(pal.role("accent"))
             })
         },
+        // Constrained horizontally, or the rows lay out at their
+        // intrinsic width and the sidebar grows a horizontal scrollbar
+        // with the counts cut off past the edge.
+        // A card, not a panel: this column is already inside the
+        // sidebar panel, and two panel insets in a row take 48px out of
+        // a 200px column, which is where the counts went. The card's
+        // smaller inset also keeps the counts clear of the scrollbar,
+        // which the portal draws over its own right edge.
         portal(xcolumn(
-            Region::Panel,
+            Region::Card,
             (
                 sidebar_group(app, "Categories", cat_rows),
                 (!lang_rows.is_empty()).then(|| sidebar_group(app, "Languages", lang_rows)),
                 (!filter_rows.is_empty()).then(|| sidebar_group(app, "Filters", filter_rows)),
             ),
         ))
+        .constrain_horizontal(true)
         .flex(1.0),
         ),
     )
@@ -1695,7 +1704,7 @@ fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
         // gave the rail a dead area below the third row.
         grid(
             app.filtered_cells(),
-            app.cell_metrics(84.0),
+            app.cell_metrics(58.0),
             app.palette.clone(),
             current,
             app.multi_selected.clone(),
@@ -2355,19 +2364,20 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
     let editing_mode = matches!(app.mode, Mode::Editor(_));
     let _ = &app.multi_selected;
 
-    // Center: title bar + body + status bar.
+    // The window, in the GPUI build's shape: one title bar across the
+    // whole width, then the three columns under it, then a bottom bar
+    // that runs under the sidebar and the middle but not under the
+    // inspector, which is full height.
     let body = match app.mode {
         Mode::Overview => Either::A(overview(app)),
         Mode::Editor(_) => Either::B(editor_pane(app)),
     };
-    let preview = matches!(app.mode, Mode::Editor(_))
-        .then(|| sized_box(preview_strip(app)).dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(120.0)))).background_color(pal.panel));
-    let center = flex_col((
-        titlebar(app),
-        body.flex(1.0),
-        preview,
-        status(app),
-    ))
+    let preview = matches!(app.mode, Mode::Editor(_)).then(|| {
+        sized_box(preview_strip(app))
+            .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(120.0))))
+            .background_color(pal.panel)
+    });
+    let middle = flex_col((body.flex(1.0), preview))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::None)
         .background_color(pal.app);
@@ -2376,13 +2386,25 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         Mode::Overview => Either::A(sidebar(app)),
         Mode::Editor(_) => Either::B(editor_nav(app)),
     };
-    let left_width = if app.left_collapsed {
-        0.0
-    } else if editing_mode {
-        232.0
-    } else {
-        224.0
-    };
+    let left_width = if app.left_collapsed { 0.0 } else { 220.0 };
+
+    let columns = flex_row((
+        sized_box(left)
+            .dims(Dimensions::new(Dim::Fixed(Length::px(left_width)), Dim::Stretch))
+            .background_color(pal.panel),
+        sized_box(middle)
+            .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
+            .background_color(pal.app)
+            .flex(1.0),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(Space::None);
+
+    let left_and_middle = flex_col((columns.flex(1.0), status(app)))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(Space::None)
+        .background_color(pal.app);
+
     // The menu bar is built on the main thread, which is here, and only
     // once. Xilem owns the event loop and offers no startup hook.
     menu::install();
@@ -2393,21 +2415,25 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
     // accepts: "ld: Assertion failed: (name.size() <= maxLength)". Not a
     // compile error, a link error, after a clean build of everything.
     // Erasing the type here cuts the chain.
-    let root = shortcuts::shortcut_host(flex_row((
-        sized_box(left)
-            .dims(Dimensions::new(Dim::Fixed(Length::px(left_width)), Dim::Stretch))
-            .background_color(pal.panel),
-        sized_box(center)
-            .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
-            .background_color(pal.app)
+    let root = shortcuts::shortcut_host(
+        flex_col((
+            titlebar(app),
+            flex_row((
+                sized_box(left_and_middle)
+                    .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
+                    .flex(1.0),
+                sized_box(portal(info_panel(app)).constrain_horizontal(true))
+                    .dims(Dimensions::new(Dim::Fixed(Length::px(240.0)), Dim::Stretch))
+                    .background_color(pal.panel),
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Start)
+            .gap(Space::None)
             .flex(1.0),
-        sized_box(portal(info_panel(app)))
-            .dims(Dimensions::new(Dim::Fixed(Length::px(250.0)), Dim::Stretch))
-            .background_color(pal.panel),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::None)
-    .background_color(pal.app))
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(Space::None)
+        .background_color(pal.app),
+    )
     .boxed();
     watch::with_watch(
         menu::with_menu_events(root),
