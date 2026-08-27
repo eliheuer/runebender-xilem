@@ -1,13 +1,36 @@
-# runebender-xix
+# runebender-xilem
 
-A font editor built on [xix](https://github.com/eliheuer/xix), a fork of
-Xilem. This is the third Runebender shell; it shares the editing engine
-[runebender-core](https://github.com/eliheuer/runebender-core) with
+A font editor built on [Xilem](https://github.com/linebender/xilem) and
+the Linebender stack. It shares its editing engine,
+[runebender-core](https://github.com/eliheuer/runebender-core), with
 [runebender-gpui](https://github.com/eliheuer/runebender-gpui) and
 [runebender-web](https://github.com/eliheuer/runebender-web).
 
-The port is a test of xix: Runebender is the kind of application xix is
-for, and `PORT.md` records what each slice forced into the framework.
+**This repository is one half of a controlled comparison.** The same
+editor, the same core, the same design, built twice: once on Xilem here,
+once on GPUI in runebender-gpui. The goal is to keep the two as close as
+a person can, so that what differs is the framework and not the app. The
+GPUI build's `PARITY.md` is the feature bar.
+
+It builds against **upstream Xilem**, pinned to a revision, and not
+against a fork. That is deliberate: a comparison is only worth something
+if it measures Xilem itself. Where Xilem has no answer for something the
+editor needs, the answer lives here in application code, and that code is
+part of the result. Two examples, both in this repository:
+
+- `src/design.rs`, about four hundred lines of spacing scale, control
+  sizes, radii, type scale, and a table of what each kind of container
+  measures. None of it is about fonts. GPUI ships this (`px_1`..`px_4`,
+  `text_xs`, `rounded_md`) so the equivalent file does not exist there.
+- `src/screenshot.rs`, a headless render path, because Xilem has none and
+  every visual decision here is made by looking at a PNG.
+
+Ideas prototyped inside the framework, rather than around it, live in
+[xix](https://github.com/eliheuer/xix), a fork used as a laboratory. The
+intent is that anything that works there is offered upstream.
+
+The old Druid-to-Xilem port that used to live in this repository stopped
+in August 2026 and is preserved at the tag `v0-druid-port-2026-08`.
 
 ## Run it
 
@@ -16,11 +39,13 @@ cargo run --release -- path/to/Font.ufo
 ```
 
 A `.designspace` opens its first master. Any UFO works; try one from a
-font project you have, or use the small test font in the
-runebender-xilem checkout:
+font project you have.
+
+To render one frame with no window, which is how review screenshots and
+agents see the editor:
 
 ```sh
-cargo run --release -- ../runebender-xilem/assets/hyper-matisse.ufo
+RUNEBENDER_SCREENSHOT=out.png cargo run --release -- path/to/Font.designspace
 ```
 
 Editing writes back to the UFO on save, so **work on a copy** if you

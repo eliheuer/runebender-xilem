@@ -4,6 +4,8 @@
 //! Runebender on xix. A font editor: glyph grid, glyph editor, sidebar.
 //! See PORT.md for what each slice forced into the framework.
 
+mod design;
+mod screenshot;
 mod editor;
 mod grid;
 mod icon_button;
@@ -24,9 +26,10 @@ use masonry::theme::default_property_set;
 use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
+use crate::design::{column as xcolumn, row as xrow};
 use xilem::view::{
-    FlexExt as _, FlexSpacer, button, canvas, column as xcolumn, flex_col, flex_row, label, portal,
-    row as xrow, sized_box, slider, text_button, text_input,
+    FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, label, portal, sized_box,
+    slider, text_button, text_input,
 };
 use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
@@ -37,7 +40,7 @@ use model::FontModel;
 use runebender_core::category::GlyphCategory;
 use session::Session;
 use theme::Palette;
-use masonry::kernel::{ControlSize, Radius, Region, Space, Stroke, TextSize};
+use design::{ControlSize, Radius, Region, Space, Stroke, TextSize};
 use ui::section_header;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -744,7 +747,7 @@ fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
                     thumb,
                     sized_box(
                         button(
-                            label(name).text_size(TextSize::Body).color(fg),
+                            label(name).text_size(TextSize::Body.px()).color(fg),
                             move |app: &mut App| app.set_master(i),
                         )
                         .background_color(bg),
@@ -783,9 +786,9 @@ fn axes_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
                     xrow(
                         Region::Inline,
                         (
-                            label(ax.tag.clone()).text_size(TextSize::Body).color(muted),
+                            label(ax.tag.clone()).text_size(TextSize::Body.px()).color(muted),
                             FlexSpacer::Flex(1.0),
-                            label(format!("{value:.0}")).text_size(TextSize::Body).color(text),
+                            label(format!("{value:.0}")).text_size(TextSize::Body.px()).color(text),
                         ),
                     ),
                     slider(ax.min, ax.max, value, move |app: &mut App, v| {
@@ -798,7 +801,7 @@ fn axes_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
         .collect();
     // A short hint when the location sits off any master.
     let hint = (!app.on_active_master())
-        .then(|| label("interpolated").text_size(TextSize::Caption).color(pal.role("warning")));
+        .then(|| label("interpolated").text_size(TextSize::Caption.px()).color(pal.role("warning")));
     Some(
         xcolumn(
             Region::Section,
@@ -846,7 +849,7 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
                 text_button("‹ Overview", |app: &mut App| app.back_to_overview())
                     .background_color(pal.button)
             }),
-            (!editing).then(|| label(title).text_size(TextSize::Title).color(pal.text)),
+            (!editing).then(|| label(title).text_size(TextSize::Title.px()).color(pal.text)),
             FlexSpacer::Flex(1.0),
             editing.then(|| header_tools(app)),
             text_button(theme_label(app.theme_id), |app: &mut App| app.cycle_theme())
@@ -913,7 +916,7 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
             text_button("", move |app: &mut App| app.set_mark(mark.clone()))
                 .background_color(color),
         )
-        .dims(Dimensions::fixed(ControlSize::Swatch, ControlSize::Swatch))
+        .dims(Dimensions::fixed(ControlSize::Swatch.length(), ControlSize::Swatch.length()))
     };
     let marks: Vec<_> = app
         .palette
@@ -1290,10 +1293,10 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
             .padding(Space::None)
             .background_color(bg)
             .border_color(border)
-            .border_width(Stroke::Hairline)
-            .corner_radius(Radius::Sm),
+            .border_width(Stroke::Hairline.length())
+            .corner_radius(Radius::Sm.length()),
         )
-        .dims(Dimensions::fixed(ControlSize::Dot, ControlSize::Dot))
+        .dims(Dimensions::fixed(ControlSize::Dot.length(), ControlSize::Dot.length()))
     };
     let row = |a: usize| {
         xrow(
@@ -1306,8 +1309,8 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
         xrow(
             Region::Inline,
             (
-                sized_box(label(name).text_size(TextSize::Body).color(pal.text_muted))
-                    .dims(Dimensions::fixed(ControlSize::Swatch, ControlSize::Icon)),
+                sized_box(label(name).text_size(TextSize::Body.px()).color(pal.text_muted))
+                    .dims(Dimensions::fixed(ControlSize::Swatch.length(), ControlSize::Icon.length())),
                 text_input(value, move |app: &mut App, v| app.set_coord(axis, v))
                     .background_color(pal.field())
                     .flex(1.0),
@@ -1318,10 +1321,10 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
         xrow(
             Region::Inline,
             (
-                label("Size").text_size(TextSize::Body).color(pal.text_muted),
+                label("Size").text_size(TextSize::Body.px()).color(pal.text_muted),
                 FlexSpacer::Flex(1.0),
                 label(format!("{:.0} x {:.0}", b.width(), b.height()))
-                    .text_size(TextSize::Body)
+                    .text_size(TextSize::Body.px())
                     .color(pal.text),
             ),
         )
@@ -1356,7 +1359,7 @@ fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
             text_button("", move |app: &mut App| app.set_mark(label.clone()))
                 .background_color(color),
         )
-        .dims(Dimensions::fixed(ControlSize::Row, ControlSize::Row))
+        .dims(Dimensions::fixed(ControlSize::Row.length(), ControlSize::Row.length()))
     };
     let marks: Vec<_> = app.palette.mark_list().into_iter().map(|(name, color)| swatch(Some(name), color)).collect();
     xcolumn(
@@ -1527,7 +1530,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
 fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
     let path = std::env::args()
         .nth(1)
-        .expect("usage: runebender-xix <Font.ufo|Font.designspace>");
+        .expect("usage: runebender-xilem <Font.ufo|Font.designspace>");
     let mut app = App::open(FsPath::new(&path)).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1)
@@ -1540,6 +1543,13 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         app.selected_points = n;
         app.session = std::sync::Arc::new(sess);
         app.refresh_coord_bufs();
+    }
+    // Headless: render one frame and exit. No window, no event loop.
+    if let Ok(path) = std::env::var("RUNEBENDER_SCREENSHOT") {
+        // The harness needs a root widget with a concrete type, so wrap
+        // the app's root view in a sized box.
+        screenshot::render_to(app, |app: &mut App| sized_box(app_logic(app)), (1100, 720), &path);
+        return Ok(());
     }
     let background = app.palette.app;
     let window_options =

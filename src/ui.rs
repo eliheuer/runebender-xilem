@@ -11,12 +11,13 @@
 //! are candidates for the framework's parts list. Each graduates when a
 //! second application needs the same one.
 
-pub use masonry::kernel::{ControlSize, Radius, Region, Space, Stroke, TextSize};
+pub use crate::design::{ControlSize, Radius, Region, Space, Stroke, TextSize};
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use xilem::WidgetView;
 use xilem::style::Style;
-use xilem::view::{FlexSpacer, button, column, label, row, sized_box, text_input};
+use crate::design::{column, row};
+use xilem::view::{FlexSpacer, button, label, sized_box, text_input};
 
 use crate::App;
 use crate::theme::Palette;
@@ -27,7 +28,7 @@ use crate::theme::Palette;
 /// the geometric shapes block, so the caret rendered as tofu.
 pub fn section_header(pal: &Palette, text: &'static str) -> impl WidgetView<App> + use<> {
     label(text.to_string())
-        .text_size(TextSize::Caption)
+        .text_size(TextSize::Caption.px())
         .color(pal.text_muted)
 }
 
@@ -46,9 +47,9 @@ pub fn kv(pal: &Palette, name: String, value: String) -> impl WidgetView<App> + 
     sized_box(row(
         Region::Inline,
         (
-            label(name).text_size(TextSize::Body).color(muted),
+            label(name).text_size(TextSize::Body.px()).color(muted),
             FlexSpacer::Flex(1.0),
-            label(value).text_size(TextSize::Body).color(text),
+            label(value).text_size(TextSize::Body.px()).color(text),
         ),
     ))
     .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
@@ -67,11 +68,11 @@ where
     column(
         Region::List,
         (
-            label(name).text_size(TextSize::Caption).color(pal.text_muted),
+            label(name).text_size(TextSize::Caption.px()).color(pal.text_muted),
             sized_box(
                 text_input(value, move |app: &mut App, v| on_change(app, v))
                     .background_color(pal.field())
-                    .corner_radius(Radius::Sm),
+                    .corner_radius(Radius::Sm.length()),
             )
             .dims(Dimensions::new(
                 Dim::Stretch,
@@ -101,17 +102,17 @@ pub fn list_row<F: Fn(&mut App) + Send + Sync + 'static>(
             row(
                 Region::Inline,
                 (
-                    label(text).text_size(TextSize::Body).color(fg),
+                    label(text).text_size(TextSize::Body.px()).color(fg),
                     FlexSpacer::Flex(1.0),
-                    label(trailing).text_size(TextSize::Body).color(trailing_color),
+                    label(trailing).text_size(TextSize::Body.px()).color(trailing_color),
                 ),
             ),
             move |app: &mut App| on_click(app),
         )
         .background_color(pal.panel)
         .border_color(border)
-        .border_width(Stroke::Hairline)
-        .corner_radius(Radius::Sm),
+        .border_width(Stroke::Hairline.length())
+        .corner_radius(Radius::Sm.length()),
     )
     .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
 }
@@ -130,16 +131,16 @@ pub fn toggle<F: Fn(&mut App) + Send + Sync + 'static>(
     };
     sized_box(
         button(
-            label(text).text_size(TextSize::Caption).color(fg),
+            label(text).text_size(TextSize::Caption.px()).color(fg),
             move |app: &mut App| on_click(app),
         )
         .padding(Space::None)
         .background_color(pal.panel)
         .border_color(border)
-        .border_width(Stroke::Hairline)
-        .corner_radius(Radius::Sm),
+        .border_width(Stroke::Hairline.length())
+        .corner_radius(Radius::Sm.length()),
     )
-    .dims(Dimensions::fixed(ControlSize::Control, ControlSize::Control))
+    .dims(Dimensions::fixed(ControlSize::Control.length(), ControlSize::Control.length()))
 }
 
 /// A labeled push button at control height.
@@ -150,11 +151,11 @@ pub fn action<F: Fn(&mut App) + Send + Sync + 'static>(
 ) -> impl WidgetView<App> + use<F> {
     sized_box(
         button(
-            label(text).text_size(TextSize::Body).color(pal.text),
+            label(text).text_size(TextSize::Body.px()).color(pal.text),
             move |app: &mut App| on_click(app),
         )
         .background_color(pal.button)
-        .corner_radius(Radius::Md),
+        .corner_radius(Radius::Md.length()),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
 }
