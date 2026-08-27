@@ -101,6 +101,8 @@ pub struct App {
     filter: String,
     /// The grid's Detail view: cells carry their category and advance.
     detail: bool,
+    /// Which tab the editor's left rail is showing.
+    rail: Rail,
     /// Writing direction for the text tool, or `None` for automatic.
     /// The chips that set it are in the title bar, which is why this is
     /// application state and not the buffer's.
@@ -256,6 +258,7 @@ impl App {
             multi_selected: std::sync::Arc::new(std::collections::HashSet::new()),
             filter: String::new(),
             detail: false,
+            rail: Rail::Glyphs,
             text_dir: None,
             left_collapsed: false,
             collapsed: std::collections::HashSet::new(),
@@ -1744,19 +1747,37 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
 /// A flat, full-width sidebar row: label left, count right, subtle highlight
 /// when selected (gpui's list rows, not pill buttons).
 
+/// The editor rail's tabs. The GPUI build has four (Glyphs, Shapes,
+/// Axes, Chat); these are the two this editor has something to put in.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Rail {
+    Glyphs,
+    Axes,
+}
+
 fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let current = match app.mode { Mode::Editor(i) => Some(i), _ => None };
+    let tab = |text: &'static str, which: Rail| {
+        tab_chip(pal, text.into(), app.rail == which, false, move |app: &mut App| {
+            app.rail = which;
+        })
+    };
     xcolumn(
         Region::Panel,
         (
-        text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
-            .placeholder("Search"),
+        xrow(Region::Inline, (tab("Glyphs", Rail::Glyphs), tab("Axes", Rail::Axes))),
+        (app.rail == Rail::Axes).then(|| axes_section(app)).flatten(),
+        (app.rail == Rail::Glyphs).then(|| {
+            text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
+                .placeholder("Search")
+        }),
         // The grid scrolls itself, so no portal here: nesting the two
         // gave the rail a dead area below the third row.
-        grid(
+        (app.rail == Rail::Glyphs).then(|| {
+            grid(
             app.filtered_cells(),
-            app.cell_metrics(58.0),
+            app.cell_metrics(62.0),
             app.palette.clone(),
             current,
             app.multi_selected.clone(),
@@ -1764,8 +1785,9 @@ fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
                 GridEvent::Selected { index, .. } => app.open_glyph(index),
                 GridEvent::Open(i) => app.open_glyph(i),
             },
-        )
-        .flex(1.0),
+            )
+            .flex(1.0)
+        }),
         ),
     )
     .background_color(pal.panel)
@@ -2451,7 +2473,6 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             editing.then(|| mark_section(app)),
             layers_section(app),
             (!editing).then(|| font_info_section(app)),
-            editing.then(|| axes_section(app)).flatten(),
             (!editing).then(|| glyph_preview(app)).flatten(),
         ),
     )
