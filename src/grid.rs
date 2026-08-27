@@ -21,12 +21,19 @@ use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
+use crate::design::Radius;
 use crate::model::FontModel;
 use crate::text_label::{self, Anchor};
 use crate::theme::Palette;
 
 const GAP: f64 = 8.0;
 const PAD: f64 = 12.0;
+/// The label block, in the GPUI build's measurements: a little air over
+/// the first line, the lines close together, and the same inset under
+/// them as at the sides.
+const LABEL_TOP: f64 = 4.0;
+const LABEL_BOTTOM: f64 = 8.0;
+const LABEL_GAP: f64 = 2.0;
 
 /// Column span for a glyph, from name length and advance/upm (matches gpui).
 fn column_span(name: &str, advance: f64, upm: f64) -> usize {
@@ -241,38 +248,90 @@ impl Widget for GridWidget {
                 let selected = self.selected == Some(cell.index);
                 let multi = self.multi.contains(&cell.index);
 
-                let bg = if multi { pal.role("gridSelected").with_alpha(0.18) } else { pal.panel };
-                painter.fill(rect.to_rounded_rect(10.0), bg).draw();
-                let border = if selected || multi { pal.role("gridSelected") } else { cell.mark.unwrap_or(cell_border) };
-                painter.stroke(rect.to_rounded_rect(10.0), &Stroke::new(if selected || multi { 2.0 } else { 1.0 }), border).draw();
+                // Selected and multi-selected read the same: one fill,
+                // one ring, one width. The GPUI build draws `border_1`
+                // on every cell and changes only the colour.
+                let picked = selected || multi;
+                let bg = if picked {
+                    pal.role("gridSelected").with_alpha(0.18)
+                } else {
+                    pal.panel
+                };
+                let radius = Radius::Md.px();
+                painter.fill(rect.to_rounded_rect(radius), bg).draw();
+                let border = if picked {
+                    pal.role("gridSelected")
+                } else {
+                    cell.mark.unwrap_or(cell_border)
+                };
+                painter
+                    .stroke(rect.to_rounded_rect(radius), &Stroke::new(1.0), border)
+                    .draw();
 
-                let preview_rect = Rect::new(rect.x0, rect.y0, rect.x1, rect.y1 - 30.0);
+                // The label block, sized from what it draws. Same rule as
+                // the GPUI build: under 34px wide a cell is a thumbnail
+                // with no text, under 90px it carries its name only, and
+                // above that the name and the codepoint.
+                let (label_size, label_lines): (f64, usize) = if w < 34.0 {
+                    (0.0, 0)
+                } else if w < 90.0 {
+                    (10.0, 1)
+                } else {
+                    (12.0, if cell.codepoint.is_some() { 2 } else { 1 })
+                };
+                let line = (label_size * 1.25).ceil();
+                let block = if label_lines == 0 {
+                    0.0
+                } else {
+                    LABEL_TOP + line * label_lines as f64 + LABEL_GAP * (label_lines - 1) as f64
+                        + LABEL_BOTTOM
+                };
+
+                let preview_rect = Rect::new(rect.x0, rect.y0, rect.x1, rect.y1 - block);
                 if !cell.outline.elements().is_empty() {
                     let preview = fit_transform(preview_rect, cell.advance, &self.metrics);
                     let outline = preview * (*cell.outline).clone();
                     // Fill the glyph with its mark colour (gpui), so the grid
                     // reads by category; selected cells use the ring colour,
                     // unmarked glyphs the default glyph fill.
-                    let glyph_color = if selected || multi {
+                    let glyph_color = if picked {
                         pal.role("gridSelected")
                     } else {
                         cell.mark.unwrap_or(glyph_fill)
                     };
                     painter.fill(&outline, glyph_color).draw();
                 }
-                // Two stacked, left-aligned lines (gpui's cell-labels box):
-                // the glyph name on top, its U+XXXX below in muted text.
+                if label_lines == 0 {
+                    continue;
+                }
                 let muted = self.palette.text_muted;
-                let name_color = if selected || multi {
+                let name_color = if picked {
                     pal.role("gridSelected")
                 } else {
                     cell.mark.unwrap_or(self.palette.text)
                 };
-                let has_uni = cell.codepoint.is_some();
-                let name_y = if has_uni { rect.y1 - 20.0 } else { rect.y1 - 9.0 };
-                text_label::draw(painter, Point::new(rect.x0 + 8.0, name_y), &cell.name, 10.0, name_color, Anchor::Start);
-                if let Some(cp) = cell.codepoint {
-                    text_label::draw(painter, Point::new(rect.x0 + 8.0, rect.y1 - 8.0), &format!("U+{:04X}", cp as u32), 10.0, muted, Anchor::Start);
+                let top = rect.y1 - block + LABEL_TOP;
+                // Baseline inside its own line box, not the box edge.
+                let baseline = |n: f64| top + (line + LABEL_GAP) * n + line * 0.8;
+                text_label::draw(
+                    painter,
+                    Point::new(rect.x0 + 8.0, baseline(0.0)),
+                    &cell.name,
+                    label_size as f32,
+                    name_color,
+                    Anchor::Start,
+                );
+                if label_lines > 1
+                    && let Some(cp) = cell.codepoint
+                {
+                    text_label::draw(
+                        painter,
+                        Point::new(rect.x0 + 8.0, baseline(1.0)),
+                        &format!("U+{:04X}", cp as u32),
+                        label_size as f32,
+                        muted,
+                        Anchor::Start,
+                    );
                 }
             }
         }

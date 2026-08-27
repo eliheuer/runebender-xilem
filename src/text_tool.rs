@@ -15,7 +15,7 @@
 use std::sync::Arc;
 
 use masonry::kurbo::{Affine, BezPath, Point};
-use runebender_core::text::{TextBuffer, TextGlyphInventory, TextKerningModel};
+use runebender_core::text::{TextBuffer, TextDirection, TextGlyphInventory, TextKerningModel};
 
 use crate::model::FontModel;
 
@@ -37,6 +37,10 @@ pub struct TextInputs {
     /// Text to start with. Only used when the buffer is created, so it
     /// is a starting state and not a binding.
     initial: String,
+    /// Writing direction, or `None` for automatic. This one *is* a
+    /// binding: the direction chips live in the title bar, which is
+    /// view-land, so the setting has to travel in with the inputs.
+    direction: Option<TextDirection>,
 }
 
 impl TextInputs {
@@ -55,7 +59,14 @@ impl TextInputs {
             ascender: font.ascender,
             descender: font.descender,
             initial: String::new(),
+            direction: None,
         }
+    }
+
+    /// Set the writing direction, or clear it back to automatic.
+    pub fn with_direction(mut self, direction: Option<TextDirection>) -> Self {
+        self.direction = direction;
+        self
     }
 
     /// Start the buffer with some text. `RUNEBENDER_TEXT` uses this, so
@@ -85,6 +96,10 @@ impl TextState {
         let mut buffer = TextBuffer::new();
         buffer.set_glyph_inventory(inputs.inventory.clone());
         buffer.set_kerning_model(inputs.kerning.clone());
+        match inputs.direction {
+            Some(direction) => buffer.set_direction(direction),
+            None => buffer.set_auto_direction(),
+        }
         for character in inputs.initial.chars() {
             buffer.insert_character(character);
         }
@@ -104,6 +119,22 @@ impl TextState {
     pub fn refresh(&mut self, inputs: &TextInputs) {
         self.buffer.set_glyph_inventory(inputs.inventory.clone());
         self.buffer.set_kerning_model(inputs.kerning.clone());
+        let direction_changed = match inputs.direction {
+            Some(direction) => {
+                let changed = self.buffer.direction_is_auto()
+                    || self.buffer.direction() != direction;
+                self.buffer.set_direction(direction);
+                changed
+            }
+            None => {
+                let changed = !self.buffer.direction_is_auto();
+                self.buffer.set_auto_direction();
+                changed
+            }
+        };
+        if direction_changed {
+            self.buffer.shape_arabic_if_rtl();
+        }
         self.outlines = inputs.outlines.clone();
         self.line_height = inputs.line_height;
         self.ascender = inputs.ascender;
