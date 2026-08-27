@@ -696,6 +696,54 @@ impl FontModel {
         changed
     }
 
+    /// How many glyphs are marked for export.
+    ///
+    /// A glyph is skipped when its lib says so, which is how both Glyphs
+    /// and the UFO spec record it. The GPUI build shows this count at
+    /// the head of its filter list.
+    pub fn exporting_count(&self) -> usize {
+        self.glyphs
+            .iter()
+            .filter(|entry| {
+                self.font
+                    .get_glyph(&entry.name)
+                    .and_then(|glyph| glyph.lib.get("public.skipExport"))
+                    .and_then(|value| value.as_boolean())
+                    != Some(true)
+            })
+            .count()
+    }
+
+    /// How many glyphs the masters disagree about.
+    ///
+    /// Interpolation needs every master to draw a glyph with the same
+    /// contours in the same order with the same number of points. This
+    /// counts the ones that do not, which is the number a designer wants
+    /// to see before a build, not after it.
+    pub fn incompatible_count(&self) -> usize {
+        if self.masters.len() < 2 {
+            return 0;
+        }
+        let shape = |font: &norad::Font, name: &str| {
+            font.get_glyph(name).map(|glyph| {
+                glyph
+                    .contours
+                    .iter()
+                    .map(|contour| contour.points.len())
+                    .collect::<Vec<_>>()
+            })
+        };
+        self.glyphs
+            .iter()
+            .filter(|entry| {
+                let first = shape(&self.masters[0], &entry.name);
+                self.masters[1..]
+                    .iter()
+                    .any(|master| shape(master, &entry.name) != first)
+            })
+            .count()
+    }
+
     /// The font's headline metadata, as label and value pairs.
     ///
     /// The GPUI build shows this whenever no glyph is picked, and it is
