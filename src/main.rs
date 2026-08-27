@@ -99,6 +99,9 @@ pub struct App {
     selected: Option<usize>,
     multi_selected: std::sync::Arc<std::collections::HashSet<usize>>,
     filter: String,
+    /// Whether the left column is folded away, as the GPUI build's
+    /// grid-icon button in the title bar does it.
+    left_collapsed: bool,
     /// Sidebar groups that are folded shut, by title. The GPUI build's
     /// sidebar folds, and a font with four filter groups needs it.
     collapsed: std::collections::HashSet<&'static str>,
@@ -246,6 +249,7 @@ impl App {
             selected: Some(open.unwrap_or(first)),
             multi_selected: std::sync::Arc::new(std::collections::HashSet::new()),
             filter: String::new(),
+            left_collapsed: false,
             collapsed: std::collections::HashSet::new(),
             sel: Sel::Category(match start_cat.as_deref() {
                 Some("Number") => GlyphCategory::Number,
@@ -1294,42 +1298,86 @@ fn theme_label(id: &str) -> String {
     }
 }
 
+/// The title bar, laid out like the GPUI build's header.
+///
+/// Left to right: a button that folds the left column away, the file
+/// name, the save state, the tools when a glyph is open, and the tab
+/// strip. The tabs live here in both modes, so the strip does not move
+/// when the mode changes.
 fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let editing = matches!(app.mode, Mode::Editor(_));
-    let filename = app
+    let mut title = app
         .font
         .source
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let title = match app.mode {
-        Mode::Overview => filename.clone(),
-        Mode::Editor(i) => app.font.glyphs.get(i).map(|g| g.name.clone()).unwrap_or_default(),
-    };
-    // Save status, gpui-style: yellow when unsaved, muted otherwise.
-    let (save_text, save_color) = if app.modified {
-        ("Not saved", pal.role("warning"))
-    } else {
-        ("Saved", pal.text_muted)
-    };
-    xrow(
+    // Truncated by hand, because nothing in the layout will clip it.
+    // With the tools in the bar there is no room for a long file name,
+    // and an over-wide label pushes the tab strip off the end of the
+    // window rather than being cut.
+    if editing && title.chars().count() > 12 {
+        let cut = title.char_indices().nth(11).map_or(title.len(), |(i, _)| i);
+        title.truncate(cut);
+        title.push('\u{2026}');
+    }
+    let status = if app.modified { "Not saved" } else { "Saved" };
+    let bar = xrow(
         Region::Toolbar,
         (
-            editing.then(|| {
-                text_button("‹ Overview", |app: &mut App| app.back_to_overview())
-                    .background_color(pal.button)
-            }),
-            (!editing).then(|| label(title).text_size(TextSize::Title.px()).color(pal.text)),
-            FlexSpacer::Flex(1.0),
+            icon_button(
+                "glyph-grid",
+                !app.left_collapsed,
+                pal.text_muted,
+                pal.text,
+                pal.control,
+                pal.control,
+                |app: &mut App| app.left_collapsed = !app.left_collapsed,
+            ),
+            // The name and the save state take whatever is left and
+            // clip. GPUI writes `flex_1` and `overflow_hidden` on this
+            // group for the same reason: when the window is narrow, the
+            // file name is the part that can go.
+            sized_box(xrow(
+                Region::Inline,
+                (
+                    label(title).text_size(TextSize::Body.px()).color(pal.text),
+                    label(status.to_string())
+                        .text_size(TextSize::Body.px())
+                        .color(pal.role("warning")),
+                ),
+            ))
+            // In the overview this takes the leftover space. In the
+            // editor it is sized to its content, and the content is
+            // truncated above, because nothing here will clip: a
+            // `Dim::Stretch` child with a flex factor still refuses to
+            // go under the intrinsic width of its text, and an
+            // over-wide label pushes the tab strip off the window
+            // instead of being cut.
+            .dims(Dimensions::new(
+                if editing { Dim::Auto } else { Dim::Stretch },
+                Dim::Auto,
+            ))
+            .flex(1.0),
             editing.then(|| header_tools(app)),
-            label(save_text.to_string())
-                .text_size(TextSize::Body.px())
-                .color(save_color),
-            text_button("Save", |app: &mut App| app.save()).background_color(pal.button),
+            tab_strip(app),
         ),
     )
-    .background_color(pal.panel)
+    .background_color(pal.panel);
+    // A rule under the header, drawn as a one pixel box. Masonry's
+    // border width is one value for all four sides, so there is no
+    // bottom-only border to set; GPUI writes `border_b_1`.
+    // No region here: this pair is one thing with no gap between its
+    // halves, which is the one case a region cannot state.
+    flex_col((
+        bar,
+        sized_box(label(""))
+            .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(1.0))))
+            .background_color(pal.role("gridBorder")),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(Space::None)
 }
 
 /// The tools as a horizontal row for the header (gpui puts them there,
@@ -1917,8 +1965,48 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
 /// thing here as in the other two editors.
 /// The tab strip: one tab per open glyph, with a close box, and a plus
 /// that opens a second view on the glyph in hand.
+/// The tab strip, in the title bar, as the GPUI build has it.
+///
+/// A "Font" tab that is active in the overview, one tab per open glyph
+/// with a close button, and a "+" that opens a second tab on the glyph
+/// in hand. Tabs are outlined rather than filled: accent when active,
+/// the grid border when not, which is the GPUI build's rule.
+fn tab_chip<F>(
+    pal: &Palette,
+    text: String,
+    active: bool,
+    fixed_width: bool,
+    on_click: F,
+) -> impl WidgetView<App> + use<F>
+where
+    F: Fn(&mut App) + Send + Sync + 'static,
+{
+    let (fg, border) = if active {
+        (pal.role("accent"), pal.role("accent"))
+    } else {
+        (pal.text_muted, pal.role("gridBorder"))
+    };
+    let width = if fixed_width {
+        Dim::from(ControlSize::Row)
+    } else {
+        Dim::Auto
+    };
+    sized_box(
+        button(
+            label(text).text_size(TextSize::Body.px()).color(fg),
+            move |app: &mut App| on_click(app),
+        )
+        .background_color(pal.panel)
+        .border_color(border)
+        .border_width(Stroke::Hairline.length())
+        .corner_radius(Radius::Sm.length()),
+    )
+    .dims(Dimensions::new(width, Dim::from(ControlSize::Row)))
+}
+
 fn tab_strip(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
+    let editing = matches!(app.mode, Mode::Editor(_));
     let active = app.active_tab;
     let closable = app.tabs.len() > 1;
     let tabs: Vec<_> = app
@@ -1926,27 +2014,18 @@ fn tab_strip(app: &App) -> impl WidgetView<App> + use<> {
         .iter()
         .enumerate()
         .map(|(index, tab)| {
-            let is_active = index == active;
-            let (bg, fg) = if is_active {
-                (pal.role("gridSelected").with_alpha(0.22), pal.role("accent"))
-            } else {
-                (pal.panel, pal.text)
-            };
             xrow(
-                Region::List,
+                Region::Inline,
                 (
-                    sized_box(
-                        button(
-                            label(tab.session.glyph_name.clone())
-                                .text_size(TextSize::Body.px())
-                                .color(fg),
-                            move |app: &mut App| app.activate_tab(index),
-                        )
-                        .background_color(bg),
-                    )
-                    .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Row))),
+                    tab_chip(
+                        pal,
+                        tab.session.glyph_name.clone(),
+                        editing && index == active,
+                        false,
+                        move |app: &mut App| app.activate_tab(index),
+                    ),
                     closable.then(|| {
-                        ui::toggle(pal, "x".into(), false, move |app: &mut App| {
+                        tab_chip(pal, "\u{00d7}".into(), false, true, move |app: &mut App| {
                             app.close_tab(index)
                         })
                     }),
@@ -1955,13 +2034,18 @@ fn tab_strip(app: &App) -> impl WidgetView<App> + use<> {
         })
         .collect();
     xrow(
-        Region::Toolbar,
+        Region::Inline,
         (
+            // The font itself is a tab, and it is the one that is active
+            // in the overview. Going back to the grid is picking that
+            // tab, not pressing a back button.
+            tab_chip(pal, "Font".into(), !editing, false, |app: &mut App| {
+                app.back_to_overview()
+            }),
             xrow(Region::Inline, tabs),
-            ui::toggle(pal, "+".into(), false, |app: &mut App| app.new_tab()),
+            tab_chip(pal, "+".into(), false, true, |app: &mut App| app.new_tab()),
         ),
     )
-    .background_color(pal.panel)
 }
 
 fn curves_section(app: &App) -> impl WidgetView<App> + use<> {
@@ -2247,7 +2331,6 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         .then(|| sized_box(preview_strip(app)).dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(120.0)))).background_color(pal.panel));
     let center = flex_col((
         titlebar(app),
-        editing_mode.then(|| tab_strip(app)),
         body.flex(1.0),
         preview,
         status(app),
@@ -2260,7 +2343,13 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         Mode::Overview => Either::A(sidebar(app)),
         Mode::Editor(_) => Either::B(editor_nav(app)),
     };
-    let left_width = if editing_mode { 232.0 } else { 224.0 };
+    let left_width = if app.left_collapsed {
+        0.0
+    } else if editing_mode {
+        232.0
+    } else {
+        224.0
+    };
     // The menu bar is built on the main thread, which is here, and only
     // once. Xilem owns the event loop and offers no startup hook.
     menu::install();

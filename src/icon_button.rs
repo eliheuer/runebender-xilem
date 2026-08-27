@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Xix Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! A 30x30 icon tile that paints one of runebender-core's toolbar icons
+//! A 24x24 icon tile that paints one of runebender-core's toolbar icons
 //! and reports clicks. Matches runebender-gpui's `icon_tile`.
 //!
 //! xix note: an icon button that paints a vector path is something the
@@ -19,7 +19,7 @@ use runebender_core::theme_oklch::toolbar_icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-const TILE: f64 = 30.0;
+const TILE: f64 = 24.0;
 
 #[derive(Debug)]
 pub struct IconClicked;
