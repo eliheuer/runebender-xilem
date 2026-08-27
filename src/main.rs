@@ -99,6 +99,9 @@ pub struct App {
     selected: Option<usize>,
     multi_selected: std::sync::Arc<std::collections::HashSet<usize>>,
     filter: String,
+    /// Sidebar groups that are folded shut, by title. The GPUI build's
+    /// sidebar folds, and a font with four filter groups needs it.
+    collapsed: std::collections::HashSet<&'static str>,
     sel: Sel,
     sort: Sort,
     // Editor session, when a glyph is open. This is the live one: the
@@ -243,6 +246,7 @@ impl App {
             selected: Some(open.unwrap_or(first)),
             multi_selected: std::sync::Arc::new(std::collections::HashSet::new()),
             filter: String::new(),
+            collapsed: std::collections::HashSet::new(),
             sel: Sel::Category(match start_cat.as_deref() {
                 Some("Number") => GlyphCategory::Number,
                 Some("Symbol") => GlyphCategory::Symbol,
@@ -470,6 +474,18 @@ impl App {
             self.multi_selected = std::sync::Arc::new(HashSet::new());
         }
         self.selected = Some(index);
+        // The overview panel edits the highlighted cell, so its boxes
+        // have to follow the highlight.
+        if matches!(self.mode, Mode::Overview)
+            && let Some(entry) = self.font.glyphs.get(index)
+        {
+            self.name_buf = entry.name.clone();
+            self.unicode_buf = entry
+                .codepoint
+                .map(|c| format!("{:04X}", c as u32))
+                .unwrap_or_default();
+            self.advance_buf = format!("{}", entry.advance as i64);
+        }
     }
 
     /// Write the live session back into its tab, so switching away from
@@ -1011,28 +1027,74 @@ impl App {
 
     fn commit_rename(&mut self) {
         let new = self.name_buf.trim().to_string();
-        if new.is_empty() || new == self.session.glyph_name {
+        self.rename_to(&self.session.glyph_name.clone(), &new);
+    }
+
+    /// Rename `old` to `new` everywhere, and keep the interface pointing
+    /// at the glyph rather than at the name it used to have.
+    fn rename_to(&mut self, old: &str, new: &str) {
+        if new.is_empty() || new == old {
             return;
         }
-        let old = self.session.glyph_name.clone();
-        if self.font.rename_glyph(&old, &new) {
-            // Tabs address their glyph by name, so every tab showing the
-            // old one has to learn the new one or it points at nothing.
-            for tab in &mut self.tabs {
-                if tab.session.glyph_name == old
-                    && let Some(session) = Session::new(&self.font.font, &new)
-                {
-                    tab.session = Arc::new(session);
-                }
+        if !self.font.rename_glyph(old, new) {
+            return;
+        }
+        // Tabs address their glyph by name, so every tab showing the
+        // old one has to learn the new one or it points at nothing.
+        for tab in &mut self.tabs {
+            if tab.session.glyph_name == old
+                && let Some(session) = Session::new(&self.font.font, new)
+            {
+                tab.session = Arc::new(session);
             }
-            self.cells = Arc::new(cells_of(&self.font, &self.palette));
-            if let Some(i) = self.font.index_of(&new) {
+        }
+        self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        if let Some(i) = self.font.index_of(new) {
+            self.selected = Some(i);
+            if matches!(self.mode, Mode::Editor(_)) {
                 self.mode = Mode::Editor(i);
-                self.selected = Some(i);
-                if let Some(sess) = Session::new(&self.font.font, &new) {
+                if let Some(sess) = Session::new(&self.font.font, new) {
                     self.session = Arc::new(sess);
                 }
             }
+        }
+        self.modified = true;
+    }
+
+    /// The overview panel writes to the highlighted cell, not to a
+    /// session: in that mode no glyph is open. Each of these is the
+    /// overview twin of an editor field.
+    fn overview_rename(&mut self, v: String) {
+        self.name_buf = v;
+        let Some(old) = self
+            .selected
+            .and_then(|i| self.font.glyphs.get(i))
+            .map(|g| g.name.clone())
+        else {
+            return;
+        };
+        let new = self.name_buf.trim().to_string();
+        self.rename_to(&old, &new);
+    }
+
+    fn overview_set_unicode(&mut self, v: String) {
+        self.unicode_buf = v;
+        if let Some(i) = self.selected
+            && self.font.set_glyph_unicode(i, &self.unicode_buf)
+        {
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+            self.modified = true;
+        }
+    }
+
+    fn overview_set_advance(&mut self, v: String) {
+        self.advance_buf = v;
+        let Ok(width) = self.advance_buf.trim().parse::<f64>() else {
+            return;
+        };
+        if let Some(i) = self.selected
+            && self.font.set_glyph_advance(i, width)
+        {
             self.modified = true;
         }
     }
@@ -1388,6 +1450,31 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
     .background_color(pal.panel)
 }
 
+/// One folding sidebar group: a header that toggles, and its rows.
+///
+/// This cannot be a closure inside `sidebar`, because the three groups
+/// hold three different row types and a closure cannot be generic. It is
+/// a small thing, and it is the shape of most of the scaffolding in this
+/// build: anything that takes children has to be a named generic
+/// function with a `Send + Sync` bound on the sequence.
+fn sidebar_group<V>(app: &App, title: &'static str, rows: Vec<V>) -> impl WidgetView<App> + use<V>
+where
+    V: WidgetView<App> + 'static,
+{
+    let open = !app.collapsed.contains(title);
+    xcolumn(
+        Region::Section,
+        (
+            ui::section_toggle(&app.palette, title, open, move |app: &mut App| {
+                if !app.collapsed.remove(title) {
+                    app.collapsed.insert(title);
+                }
+            }),
+            open.then(|| xcolumn(Region::List, rows)),
+        ),
+    )
+}
+
 fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
     use xilem::core::one_of::Either;
     let pal = &app.palette;
@@ -1506,22 +1593,9 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         portal(xcolumn(
             Region::Panel,
             (
-                xcolumn(
-                    Region::Section,
-                    (section_header(pal, "Categories"), xcolumn(Region::List, cat_rows)),
-                ),
-                (!lang_rows.is_empty()).then(|| {
-                    xcolumn(
-                        Region::Section,
-                        (section_header(pal, "Languages"), xcolumn(Region::List, lang_rows)),
-                    )
-                }),
-                (!filter_rows.is_empty()).then(|| {
-                    xcolumn(
-                        Region::Section,
-                        (section_header(pal, "Filters"), xcolumn(Region::List, filter_rows)),
-                    )
-                }),
+                sidebar_group(app, "Categories", cat_rows),
+                (!lang_rows.is_empty()).then(|| sidebar_group(app, "Languages", lang_rows)),
+                (!filter_rows.is_empty()).then(|| sidebar_group(app, "Filters", filter_rows)),
             ),
         ))
         .flex(1.0),
@@ -2050,9 +2124,19 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
         xcolumn(
             Region::Form,
             (
-                ui::field(pal, "Name", app.name_buf.clone(), |app: &mut App, v| {
-                    app.name_buf = v
-                }),
+                // Renaming waits for Enter: it rewrites every master and
+                // every component reference, which is not a per-keystroke
+                // operation.
+                ui::field_enter(
+                    pal,
+                    "Name",
+                    app.name_buf.clone(),
+                    |app: &mut App, v| app.name_buf = v,
+                    |app: &mut App, v| {
+                        app.name_buf = v;
+                        app.commit_rename();
+                    },
+                ),
                 ui::field(pal, "Unicode", app.unicode_buf.clone(), |app: &mut App, v| {
                     app.set_unicode_from_buf(v)
                 }),
@@ -2082,6 +2166,29 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             ),
         )
     });
+    // The overview panel used to be three read-only rows, and the GPUI
+    // build lets you rename a glyph, set its codepoint and set its width
+    // without opening it. These write to the highlighted cell.
+    let overview_fields = (!editing && app.selected.is_some()).then(|| {
+        xcolumn(
+            Region::Form,
+            (
+                ui::field_enter(
+                    pal,
+                    "Name",
+                    app.name_buf.clone(),
+                    |app: &mut App, v| app.name_buf = v,
+                    |app: &mut App, v| app.overview_rename(v),
+                ),
+                ui::field(pal, "Unicode", app.unicode_buf.clone(), |app: &mut App, v| {
+                    app.overview_set_unicode(v)
+                }),
+                ui::field(pal, "Advance", app.advance_buf.clone(), |app: &mut App, v| {
+                    app.overview_set_advance(v)
+                }),
+            ),
+        )
+    });
     let show_multi_mark = !editing && !app.multi_selected.is_empty();
     xcolumn(
         Region::Panel,
@@ -2096,9 +2203,6 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
                             show_multi_mark.then(|| {
                                 row("Selected".into(), format!("{}", app.multi_selected.len()))
                             }),
-                            (!editing).then(|| row("Name".into(), name)),
-                            (!editing).then(|| row("Unicode".into(), cp.clone())),
-                            (!editing).then(|| row("Advance".into(), adv)),
                             (!pts.is_empty()).then(|| row("Points".into(), pts)),
                             editing.then(|| {
                                 row("Selected".into(), format!("{}", app.selected_points))
@@ -2108,6 +2212,7 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
                     show_multi_mark.then(|| mark_section(app)),
                     name_field,
                     advance_field,
+                    overview_fields,
                 ),
             ),
             editing.then(|| coordinates_section(app)),

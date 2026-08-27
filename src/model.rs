@@ -696,6 +696,64 @@ impl FontModel {
         changed
     }
 
+    /// Set the advance of a glyph that is not open in the editor.
+    ///
+    /// The overview panel edits the selected cell directly, so this works
+    /// from an index rather than from a session. Only the active master
+    /// changes: an advance is a per-master measurement.
+    pub fn set_glyph_advance(&mut self, index: usize, width: f64) -> bool {
+        let Some(entry) = self.glyphs.get(index) else {
+            return false;
+        };
+        let Some(mut glyph) = self.font.get_glyph(&entry.name).cloned() else {
+            return false;
+        };
+        if glyph.width == width {
+            return false;
+        }
+        glyph.width = width;
+        self.replace_glyph(index, glyph);
+        true
+    }
+
+    /// Set the codepoints of a glyph, in every master.
+    ///
+    /// Unlike the advance, a codepoint is not a per-master measurement.
+    /// Masters that disagree about which character a glyph encodes
+    /// produce a family that does not build.
+    pub fn set_glyph_unicode(&mut self, index: usize, text: &str) -> bool {
+        let Some(entry) = self.glyphs.get(index) else {
+            return false;
+        };
+        let name = entry.name.clone();
+        let trimmed = text.trim();
+        let codepoints: Vec<char> = if trimmed.is_empty() {
+            Vec::new()
+        } else {
+            match u32::from_str_radix(trimmed, 16).ok().and_then(char::from_u32) {
+                Some(c) => vec![c],
+                // Not a hex codepoint yet. Typing "004" on the way to
+                // "0041" should not clear the glyph's encoding.
+                None => return false,
+            }
+        };
+        let apply = |font: &mut norad::Font| {
+            if let Some(glyph) = font.get_glyph_mut(&name) {
+                glyph.codepoints = norad::Codepoints::new(codepoints.iter().copied());
+            }
+        };
+        if let Some(font) = Arc::get_mut(&mut self.font) {
+            apply(font);
+        }
+        for master in &mut self.masters {
+            apply(master);
+        }
+        if let Some(entry) = self.glyphs.get_mut(index) {
+            entry.codepoint = codepoints.first().copied();
+        }
+        true
+    }
+
     /// Replace the glyph at `index` (in the font and the cache) after an edit.
     pub fn replace_glyph(&mut self, index: usize, glyph: norad::Glyph) {
         let Some(entry) = self.glyphs.get_mut(index) else {
