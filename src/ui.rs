@@ -180,10 +180,15 @@ pub fn list_row<F: Fn(&mut App) + Send + Sync + 'static>(
                     label(text).text_size(TextSize::Body.px()).color(fg),
                     FlexSpacer::Flex(1.0),
                     label(trailing).text_size(TextSize::Body.px()).color(trailing_color),
+                    // Clear of the scroll bar, which a portal draws over
+                    // its own right edge rather than beside it. Without
+                    // this the counts in the sidebar are cut in half.
+                    FlexSpacer::Fixed(Space::Sm.length()),
                 ),
             ),
             move |app: &mut App| on_click(app),
         )
+        .padding(Space::Sm)
         .background_color(pal.panel)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
@@ -229,10 +234,12 @@ pub fn list_row_with_icon<F: Fn(&mut App) + Send + Sync + 'static>(
                     label(trailing)
                         .text_size(TextSize::Body.px())
                         .color(trailing_color),
+                    FlexSpacer::Fixed(Space::Sm.length()),
                 ),
             ),
             move |app: &mut App| on_click(app),
         )
+        .padding(Space::Sm)
         .background_color(pal.panel)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
@@ -292,6 +299,7 @@ where
             // puts the row's intrinsic width past the sidebar and clips
             // the button it was meant to add.
             toggle_sized(pal, action, false, ControlSize::Icon, on_action),
+            FlexSpacer::Fixed(Space::Sm.length()),
         ),
     )
 }
@@ -325,6 +333,7 @@ pub fn toggle_sized<F: Fn(&mut App) + Send + Sync + 'static>(
             move |app: &mut App| on_click(app),
         )
         .padding(Space::None)
+        .padding(Space::Sm)
         .background_color(pal.panel)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
