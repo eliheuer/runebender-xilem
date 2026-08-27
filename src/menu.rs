@@ -49,6 +49,12 @@ pub struct Entry {
 pub const ACTIONS: &[Entry] = &[
     Entry {
         menu: "File",
+        title: "New Font",
+        accelerator: Some("CmdOrCtrl+N"),
+        action: AppAction::NewFont,
+    },
+    Entry {
+        menu: "File",
         title: "Save",
         accelerator: Some("CmdOrCtrl+S"),
         action: AppAction::Save,

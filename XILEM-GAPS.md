@@ -51,6 +51,25 @@ rasterize with Vello CPU. It works, and it turned up its own API wart:
 the harness needs a root with a concrete widget type, so the application
 root has to be wrapped in a `sized_box` first.
 
+**The root view can get too big for the linker.** Adding a file watcher
+around the menu pump around the shortcut host, all of them ordinary
+view combinators, produced this:
+
+```
+ld: Assertion failed: (name.size() <= maxLength),
+    function makeSymbolStringInPlace, file SymbolString.cpp, line 74.
+```
+
+Not a compile error. A link error, after everything compiled, on a
+clean build. Xilem views are monomorphized and nest their types, so
+three wrappers around an application-sized tree made a mangled symbol
+name longer than the macOS linker accepts. The fix is to erase the type
+with `.boxed()`, which works and takes one line, but it has to be
+discovered from a linker assertion, and nothing in the API suggests
+that composing views has a depth limit. This is the generics problem
+the Xilem maintainer's review describes, arriving in a form nobody
+predicted.
+
 ## 2. Taxes
 
 **The design system, 410 lines.** `src/design.rs` is a spacing scale,

@@ -6,6 +6,7 @@
 
 mod design;
 mod menu;
+mod watch;
 mod screenshot;
 mod editor;
 mod grid;
@@ -662,8 +663,75 @@ impl App {
             A::RemoveOverlap => self.apply_op(|s| s.remove_overlap()),
             A::Decompose => self.apply_op(|s| s.decompose()),
             A::Duplicate => self.apply_op(|s| s.duplicate()),
+            A::NewFont => self.new_font(),
             A::Copy => self.copy_contours(),
             A::Paste => self.paste_contours(),
+        }
+    }
+
+    /// Reload the font from disk, when something else has written it.
+    ///
+    /// Unsaved work wins: if this editor has edits that are not on disk,
+    /// the reload is skipped rather than throwing them away.
+    fn reload_from_disk(&mut self) {
+        if self.modified {
+            self.note = "sources changed on disk; save or discard first".into();
+            return;
+        }
+        let source = self.font.source.clone();
+        let open = self.session.glyph_name.clone();
+        match App::open(&source) {
+            Ok(mut fresh) => {
+                fresh.theme_id = self.theme_id;
+                fresh.palette = self.palette.clone();
+                fresh.sel = self.sel;
+                fresh.sort = self.sort;
+                fresh.filter = self.filter.clone();
+                let reopen = matches!(self.mode, Mode::Editor(_))
+                    .then(|| fresh.font.index_of(&open))
+                    .flatten();
+                *self = fresh;
+                if let Some(index) = reopen {
+                    self.open_glyph(index);
+                }
+                self.note = "reloaded".into();
+            }
+            Err(e) => self.note = e,
+        }
+    }
+
+    /// A new font from the template: GF metrics and the GF Latin Core
+    /// set as empty encoded glyphs, saved beside the font in hand.
+    ///
+    /// The GPUI build asks where to put it with a save dialog. There is
+    /// no file dialog here, so it lands next to the current source under
+    /// the first Untitled name that is free.
+    fn new_font(&mut self) {
+        let font = runebender_core::new_font::new_font("Untitled", "Regular", 400);
+        let dir = self
+            .font
+            .source
+            .parent()
+            .unwrap_or(FsPath::new("."))
+            .to_path_buf();
+        let mut path = dir.join("Untitled.ufo");
+        let mut n = 1;
+        while path.exists() {
+            path = dir.join(format!("Untitled-{n}.ufo"));
+            n += 1;
+        }
+        if let Err(e) = font.save(&path) {
+            self.note = format!("could not write {}: {e}", path.display());
+            return;
+        }
+        match App::open(&path) {
+            Ok(mut fresh) => {
+                fresh.theme_id = self.theme_id;
+                fresh.palette = self.palette.clone();
+                fresh.note = format!("new font at {}", path.display());
+                *self = fresh;
+            }
+            Err(e) => self.note = e,
         }
     }
 
@@ -1941,7 +2009,14 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
     // The menu bar is built on the main thread, which is here, and only
     // once. Xilem owns the event loop and offers no startup hook.
     menu::install();
-    menu::with_menu_events(shortcuts::shortcut_host(flex_row((
+    // Boxed on purpose, and not for tidiness. Every wrapper here adds a
+    // layer to a monomorphized view type that is already enormous, and
+    // with the watcher wrapped around the menu pump around the shortcut
+    // host, the mangled symbol name grew past what the macOS linker
+    // accepts: "ld: Assertion failed: (name.size() <= maxLength)". Not a
+    // compile error, a link error, after a clean build of everything.
+    // Erasing the type here cuts the chain.
+    let root = shortcuts::shortcut_host(flex_row((
         sized_box(left)
             .dims(Dimensions::new(Dim::Fixed(Length::px(left_width)), Dim::Stretch))
             .background_color(pal.panel),
@@ -1955,7 +2030,12 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Space::None)
-    .background_color(pal.app)))
+    .background_color(pal.app))
+    .boxed();
+    watch::with_watch(
+        menu::with_menu_events(root),
+        app.font.master_paths.clone(),
+    )
 }
 
 fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
