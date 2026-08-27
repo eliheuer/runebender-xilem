@@ -99,6 +99,10 @@ pub struct App {
     selected: Option<usize>,
     multi_selected: std::sync::Arc<std::collections::HashSet<usize>>,
     filter: String,
+    /// Writing direction for the text tool, or `None` for automatic.
+    /// The chips that set it are in the title bar, which is why this is
+    /// application state and not the buffer's.
+    text_dir: Option<runebender_core::text::TextDirection>,
     /// Whether the left column is folded away, as the GPUI build's
     /// grid-icon button in the title bar does it.
     left_collapsed: bool,
@@ -249,6 +253,7 @@ impl App {
             selected: Some(open.unwrap_or(first)),
             multi_selected: std::sync::Arc::new(std::collections::HashSet::new()),
             filter: String::new(),
+            text_dir: None,
             left_collapsed: false,
             collapsed: std::collections::HashSet::new(),
             sel: Sel::Category(match start_cat.as_deref() {
@@ -1307,21 +1312,20 @@ fn theme_label(id: &str) -> String {
 fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let editing = matches!(app.mode, Mode::Editor(_));
-    let mut title = app
-        .font
-        .source
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    // Truncated by hand, because nothing in the layout will clip it.
-    // With the tools in the bar there is no room for a long file name,
-    // and an over-wide label pushes the tab strip off the end of the
-    // window rather than being cut.
-    if editing && title.chars().count() > 12 {
-        let cut = title.char_indices().nth(11).map_or(title.len(), |(i, _)| i);
-        title.truncate(cut);
-        title.push('\u{2026}');
-    }
+    // The file name is dropped once a glyph is open: with the direction
+    // chips, the tools and the tab strip in the same row there is no
+    // room for it, and nothing in the layout will clip, so an over-wide
+    // label pushes the tabs off the end of the window rather than being
+    // cut. The open font is named by the first tab either way.
+    let title = if editing {
+        String::new()
+    } else {
+        app.font
+            .source
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
     let status = if app.modified { "Not saved" } else { "Saved" };
     let bar = xrow(
         Region::Toolbar,
@@ -1360,6 +1364,7 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
                 Dim::Auto,
             ))
             .flex(1.0),
+            editing.then(|| direction_chips(app)),
             editing.then(|| header_tools(app)),
             tab_strip(app),
         ),
@@ -1378,6 +1383,29 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Space::None)
+}
+
+/// LTR / RTL / Auto, as the GPUI build has them.
+///
+/// Up whenever a glyph is open, not only under the text tool: the
+/// direction is a property of what is being reviewed, not of the tool
+/// in hand.
+fn direction_chips(app: &App) -> impl WidgetView<App> + use<> {
+    use runebender_core::text::TextDirection;
+    let pal = &app.palette;
+    let chip = |text: &'static str, want: Option<TextDirection>| {
+        tab_chip(pal, text.into(), app.text_dir == want, false, move |app: &mut App| {
+            app.text_dir = want;
+        })
+    };
+    xrow(
+        Region::Inline,
+        (
+            chip("LTR", Some(TextDirection::LeftToRight)),
+            chip("RTL", Some(TextDirection::RightToLeft)),
+            chip("Auto", None),
+        ),
+    )
 }
 
 /// The tools as a horizontal row for the header (gpui puts them there,
@@ -1774,7 +1802,9 @@ fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
     let interp = app.interp_preview();
     editor(app.session.clone(), app.palette.clone(), app.tool, app.view, ghosts, interp, app.underlay(),
         (app.tool == Tool::Text).then(|| {
-            text_tool::TextInputs::new(&app.font).with_text(&app.initial_text)
+            text_tool::TextInputs::new(&app.font)
+                .with_text(&app.initial_text)
+                .with_direction(app.text_dir)
         }),
         |app: &mut App, ev| match ev {
         editor::EditorEvent::Selection(n) => {
@@ -1999,7 +2029,10 @@ where
         .background_color(pal.panel)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::Sm.length()),
+        .corner_radius(Radius::Sm.length())
+        // The stock button's padding is sized for a form button, not
+        // for a chip in a title bar. GPUI writes `px_2`.
+        .padding(Space::Md),
     )
     .dims(Dimensions::new(width, Dim::from(ControlSize::Row)))
 }
