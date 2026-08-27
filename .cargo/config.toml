@@ -1,0 +1,14 @@
+# Supply-chain cooldown (mirrors the .npmrc minimum-release-age policy):
+# refuse dependency versions published within the last 7 days, so a freshly
+# compromised release is not pulled in before it is caught and yanked.
+#
+# Cargo enforces this only under the nightly `-Zmin-publish-age` gate; stable
+# cargo silently ignores the key, so normal `cargo build` is unaffected.
+# Refresh dependencies with the cooldown applied:
+#
+#   cargo +nightly -Zmin-publish-age update
+#
+# Escape hatch for a specific, reviewed too-new version:
+#   CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo +nightly -Zmin-publish-age update -p <crate>
+[registry]
+global-min-publish-age = "7 days"

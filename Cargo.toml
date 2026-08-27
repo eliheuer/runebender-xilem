@@ -1,75 +1,30 @@
 [package]
-name = "runebender"
+name = "runebender-xix"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
-authors = ["Eli Heuer <elih@protonmail.com>"]
-license = "Apache-2.0"
-description = "Runebender Xilem - A font editor written in Rust using Xilem"
-repository = "https://github.com/eliheuer/runebender-xilem"
+rust-version = "1.96"
+license = "Apache-2.0 OR MIT"
+description = "A font editor built on xix, a fork of Xilem."
+repository = "https://github.com/eliheuer/runebender-xix"
+publish = false
 
 [[bin]]
-name = "runebender"
+name = "runebender-xix"
 path = "src/main.rs"
 
 [dependencies]
-# UI
-xilem = { git = "https://github.com/linebender/xilem", rev = "7819435e592f3b3dda75432740264ef5fc1ddaa2" }
-masonry = { git = "https://github.com/linebender/xilem", rev = "7819435e592f3b3dda75432740264ef5fc1ddaa2" }
+# xix is a fork of Xilem; its crates keep upstream names for now.
+xilem = { git = "https://github.com/eliheuer/xix", branch = "main", features = ["screenshot"] }
+masonry = { git = "https://github.com/eliheuer/xix", branch = "main" }
+runebender-core = { git = "https://github.com/eliheuer/runebender-core" }
+norad = "0.18"
+kurbo = "0.13"
+linesweeper = "0.4"
 winit = "0.30"
 
-# Shared editing+model types, also consumed by runebender-comfy.
-# From git so a plain clone builds without a sibling checkout; use a
-# cargo `paths` override above the checkouts to develop both at once.
-runebender-core = { git = "https://github.com/eliheuer/runebender-core" }
-
-# Font/UFO handling
-norad = "0.13"
-
-# Linebender ecosystem
-kurbo = "0.13"
-kurbo_09 = { package = "kurbo", version = "0.9.5" }
-parley = "0.8"
-peniko = "0.6"
-spline = { git = "https://github.com/linebender/spline" }
-
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-toml = "0.8"
-
-# Unicode
-unicode-general-category = "0.6"
-
-# Image loading
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-
-# Image tracing (bitmap → bezier contours)
-# TODO: switch to crates.io version once img2bez is published.
-img2bez = { path = "../img2bez", default-features = false }
-
-# QuiverAI vectorization (optional cloud-based alternative to img2bez)
-reqwest = { version = "0.12", features = ["blocking", "json", "multipart"] }
-base64 = "0.22"
-
-# Boolean path operations (remove overlap, union, subtract, etc.)
-linesweeper = "0.4"
-
-# Utilities
-anyhow = "1.0"
-chrono = "0.4"
-thiserror = "1.0"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# File watching
-notify = "8"
-
-# File dialogs
-rfd = "0.15"
-
-# System clipboard (text paste into the sort buffer)
-arboard = "3"
-
 [dev-dependencies]
-masonry_testing = { git = "https://github.com/linebender/xilem", rev = "7819435e592f3b3dda75432740264ef5fc1ddaa2" }
+masonry_testing = { git = "https://github.com/eliheuer/xix", branch = "main" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

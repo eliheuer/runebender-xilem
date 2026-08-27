@@ -1,155 +1,84 @@
-# Runebender Xilem
+# runebender-xix
 
-A font editor built with [Xilem](https://github.com/linebender/xilem), a Rust UI framework from the [Linebender](https://linebender.org/) ecosystem. This is a port of an earlier font editor called [Runebender](https://github.com/linebender/runebender) from [Druid](https://github.com/linebender/druid) to [Xilem](https://github.com/linebender/xilem).
+A font editor built on [xix](https://github.com/eliheuer/xix), a fork of
+Xilem. This is the third Runebender shell; it shares the editing engine
+[runebender-core](https://github.com/eliheuer/runebender-core) with
+[runebender-gpui](https://github.com/eliheuer/runebender-gpui) and
+[runebender-web](https://github.com/eliheuer/runebender-web).
 
-**Status**: Very alpha and actively under development.
+The port is a test of xix: Runebender is the kind of application xix is
+for, and `PORT.md` records what each slice forced into the framework.
 
-<img width="960" height="663" alt="Image" src="https://github.com/user-attachments/assets/458e37a8-5cb2-4ace-91e1-83e0adfc7cd1" />
+## Run it
 
-<img width="1512" height="982" alt="Image" src="https://github.com/user-attachments/assets/6b27b22c-2124-4ca7-8330-6f2d0ccb7d50" />
-
-![Image](https://github.com/user-attachments/assets/da1e7084-19d2-4583-b2fd-c7af7beb4abc)
-
-## Building from source
-
-Make sure [Rust](https://rust-lang.org/) is installed on your system (MSRV: 1.88), clone the repository and build/run the application:
-
-```bash
-git clone https://github.com/eliheuer/runebender-xilem.git
-cd runebender-xilem
-cargo run
+```sh
+cargo run --release -- path/to/Font.ufo
 ```
 
-Every dependency comes from crates.io or a public git repository, so
-this builds without any other checkout. The shared editing crate,
-[runebender-core](https://github.com/eliheuer/runebender-core), is a
-git dependency. To work on both at once, clone it and add a cargo
-`paths` override in the directory that holds both checkouts, not
-inside either repository:
+A `.designspace` opens its first master. Any UFO works; try one from a
+font project you have, or use the small test font in the
+runebender-xilem checkout:
+
+```sh
+cargo run --release -- ../runebender-xilem/assets/hyper-matisse.ufo
+```
+
+Editing writes back to the UFO on save, so **work on a copy** if you
+care about the source.
+
+## What works
+
+Overview grid (with glyph name + codepoint labels, mark colors, a
+search + category sidebar) and a glyph editor with these tools:
+
+- **Select** — click a point, shift-click to add, drag to move, drag
+  empty space for a marquee. Middle/right-drag pans; the wheel zooms.
+- **Pen** — click for corner points, click-drag for smooth points with
+  bezier handles, click the first point to close.
+- **HyperPen** — click to place hyperbezier points (the curve is solved
+  automatically, no handles); alt-click for a corner; click the first
+  point to close.
+- **Rect / Ellipse** — drag to draw.
+- **Knife** — drag a line to cut contours.
+- **Measure** — shows segment/stem lengths and side bearings.
+
+### Keyboard (while the editor canvas has focus)
+
+| Key | Action |
+| --- | --- |
+| Arrows | nudge selection (Shift = ×10) |
+| Delete / Backspace | delete selected points |
+| Cmd/Ctrl+A | select all |
+| Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z | undo, redo |
+| Cmd/Ctrl+S | save |
+| Escape | cancel the pen, or return to the overview |
+| h / v | flip horizontal / vertical |
+| r | rotate 90° |
+| ] | reverse contour direction |
+| o | remove overlap (union) |
+| d | decompose components |
+
+The single-letter operation keys (h/v/r/]/o/d) are temporary. They exist
+because xix does not yet have a window-level menu/shortcut layer, so
+these live on the editor's own key handler for now. See `PORT.md`.
+
+Click a glyph in the overview to select it, click again to open the
+editor. The toolbar's `‹ Overview` returns.
+
+## Develop against local xix / core
+
+Nothing in this repository points at a local path. To build against
+sibling checkouts of xix and runebender-core, put a
+`.cargo/config.toml` in the directory **above** the repositories:
 
 ```toml
-# .cargo/config.toml
 paths = ["runebender-core"]
+
+[patch."https://github.com/eliheuer/xix"]
+xilem = { path = "xix/xilem" }
+masonry = { path = "xix/masonry" }
 ```
-
-## Usage
-
-```bash
-cargo run                            # Opens a file picker
-cargo run -- assets/untitled.ufo     # Open a specific UFO file
-cargo run -- --verbose               # Run with verbose logging
-```
-
-## Keyboard Shortcuts
-
-### General
-
-| Shortcut | Action |
-|----------|--------|
-| `Cmd/Ctrl` + `S` | Save |
-| `Cmd/Ctrl` + `Z` | Undo |
-| `Cmd/Ctrl` + `Shift` + `Z` | Redo |
-| `Cmd/Ctrl` + `+` or `=` | Zoom in |
-| `Cmd/Ctrl` + `-` | Zoom out |
-| `Cmd/Ctrl` + `0` | Fit glyph to window |
-| `Tab` | Toggle side panels |
-| `Space` (hold) | Temporary preview mode |
-
-### Editing
-
-| Shortcut | Action |
-|----------|--------|
-| `Backspace` / `Delete` | Delete selected points or background image |
-| Arrow keys | Nudge selection (1 unit) |
-| `Shift` + Arrow keys | Nudge selection (10 units) |
-| `Cmd/Ctrl` + Arrow keys | Nudge selection (100 units) |
-| `T` | Toggle point type (smooth/corner) |
-| `R` | Reverse contour direction |
-| `Cmd/Ctrl` + `C` | Copy selected contours |
-| `Cmd/Ctrl` + `V` | Paste contours |
-| `Cmd/Ctrl` + `Shift` + `H` | Convert hyperbezier paths to cubic |
-
-### Transforms
-
-| Shortcut | Action |
-|----------|--------|
-| `Cmd/Ctrl` + `D` | Duplicate selection |
-| `Cmd/Ctrl` + `Shift` + `D` | Duplicate + repeat last transform |
-| `Shift` + `H` | Flip selection horizontally |
-| `Shift` + `V` | Flip selection vertically |
-| `Cmd/Ctrl` + `Shift` + `R` | Rotate selection 90° clockwise |
-| `Cmd/Ctrl` + `Shift` + `L` | Rotate selection 90° counter-clockwise |
-
-### Tools
-
-| Shortcut | Action |
-|----------|--------|
-| `V` | Select tool |
-| `P` | Pen tool |
-| `H` | Hyperbezier pen tool |
-| `K` | Knife tool |
-
-### Background Image & Autotrace
-
-| Shortcut | Action |
-|----------|--------|
-| `Cmd/Ctrl` + `I` | Import background image (file dialog) |
-| `Cmd/Ctrl` + `T` | Autotrace background image into bezier paths |
-| `Cmd/Ctrl` + `Shift` + `T` | Refit existing outlines to match background image |
-| `Cmd/Ctrl` + `L` | Toggle background image lock |
-| `Cmd/Ctrl` + `Shift` + `Y` | Trace background image using QuiverAI (cloud) |
-
-Import a reference image (PNG/JPEG) with `Cmd+I`, position and scale it behind your glyph using the drag handles, then press `Cmd+T` to trace it into editable cubic bezier contours using [img2bez](https://github.com/eliheuer/img2bez). Use `Cmd+Shift+T` to refit existing outlines onto the background image — this warps the current outlines to match the target shape while preserving point count, types, and winding direction for variable font interpolation compatibility. The background image is kept after tracing so you can compare the result.
-
-As an alternative to img2bez, press `Cmd+Shift+Y` to trace using [QuiverAI](https://quiver.ai/), a cloud-based AI vectorization service. This requires an API key — see the [QuiverAI Support](#quiverai-support) section below for setup. QuiverAI produces clean SVG paths with minimal control points — useful for complex shapes where traditional tracing struggles. Note: requires internet and uses API credits.
-
-## Features
-
-### Hyperbezier Path Support
-
-Runebender Xilem supports on-curve hyperbezier paths - smooth curves defined by only their on-curve points, with control points automatically computed by a spline solver. This makes drawing visually smooth curves easier.
-
-See [docs/hyperbezier-ufo-extension.md](docs/hyperbezier-ufo-extension.md) for the complete specification. Try using the Hyperbezier tool from the edit mode toolbar or load the example file `hyper-matisse.ufo` from the assets directory.
-
-### Background Image Tracing
-
-Import bitmap images (scanned sketches, reference drawings) as background layers in the glyph editor. Position and scale the image to match your glyph metrics, then autotrace it into editable bezier outlines. Two tracing backends are available:
-
-- **img2bez** (`Cmd+T`) — Local, deterministic bitmap-to-bezier tracing powered by [img2bez](https://github.com/eliheuer/img2bez). Works offline, instant results, font-aware (computes advance width and LSB). Tracing parameters (corner detection threshold, grid snapping) can be adjusted in `src/settings.rs`.
-- **QuiverAI** (`Cmd+Shift+Y`) — Cloud-based AI vectorization powered by [QuiverAI](https://quiver.ai/). Produces clean SVG paths with minimal control points — useful for complex shapes where traditional tracing struggles.
-
-### QuiverAI Support
-
-Runebender supports [QuiverAI](https://quiver.ai/) as an optional cloud-based alternative to img2bez for tracing background images into vector outlines. QuiverAI uses an AI model to convert raster images to SVG, producing clean paths with organized structure.
-
-**Setup:**
-
-1. Create an account at [quiver.ai](https://quiver.ai/) and generate an API key from Settings > Developers > API Keys
-2. Add your key to the Runebender config file at `~/.config/runebender/config.toml`:
-   ```toml
-   [quiver]
-   api_key = "your-quiverai-api-key-here"
-   ```
-   The config directory and a template file are created automatically on first launch. Alternatively, you can set the `QUIVERAI_API_KEY` environment variable.
-
-**Usage:**
-
-1. Import a background image with `Cmd+I`
-2. Position and scale the image behind your glyph
-3. Press `Cmd+Shift+Y` to trace with QuiverAI (or `Cmd+T` for local img2bez tracing)
-4. The traced outlines replace the current paths and are fully editable
-5. Undo with `Cmd+Z` if needed — the background image is preserved
-
-**Notes:**
-- Requires an internet connection and uses 1 API credit per trace
-- QuiverAI outputs general-purpose SVG, not font-specific outlines — you may need to adjust metrics after tracing
-- img2bez remains the recommended default for most font tracing workflows
-- Both backends produce the same output format (editable cubic bezier contours) and support undo
-
-## Contributing
-
-Contributions are welcome! Make a PR or issue, but keep in mind this project is very early and things can change quickly. If anyone besides Eli becomes a regular contributor to this we can move it off my personal Github to a new org.
 
 ## License
 
-Apache-2.0
+Apache-2.0 OR MIT, the Linebender convention.
