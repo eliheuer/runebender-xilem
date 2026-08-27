@@ -1193,6 +1193,8 @@ mod tests {
             ghosts: Arc::new(Vec::new()),
             interp: None,
             underlay: Underlay::default(),
+            text: None,
+            text_inputs: None,
             size: Size::ZERO,
             drag: Drag::None,
             hover: None,
