@@ -383,7 +383,7 @@ impl App {
     fn new_glyph(&mut self) {
         let name = self.filter.trim().to_string();
         let upm = self.font.units_per_em;
-        if self.font.add_glyph(&name, (upm * 0.5).round()) {
+        if self.font.add_glyph(&name, (upm * 0.5).round(), None) {
             self.cells = Arc::new(cells_of(&self.font, &self.palette));
             self.filter.clear();
             if let Some(i) = self.font.index_of(&name) {
@@ -391,6 +391,49 @@ impl App {
             }
             self.modified = true;
         }
+    }
+
+    /// How many glyphs a coverage filter is still missing.
+    fn filter_missing(&self, index: usize) -> usize {
+        let filters = runebender_core::sidebar::builtin_filters();
+        let Some(set) = filters.get(index).and_then(|f| f.glyphset.as_ref()) else {
+            return 0;
+        };
+        let expected = set
+            .expected_count
+            .unwrap_or_else(|| set.glyph_names.len().max(set.targets.len()));
+        expected.saturating_sub(self.filter_present(index))
+    }
+
+    /// Add every glyph a coverage filter is missing, to every master.
+    ///
+    /// The GF sets carry a name and a codepoint per glyph, so what lands
+    /// is named and encoded, which is what makes the row's count move.
+    fn generate_missing(&mut self, index: usize) {
+        let filters = runebender_core::sidebar::builtin_filters();
+        let Some(set) = filters.get(index).and_then(|f| f.glyphset.as_ref()) else {
+            return;
+        };
+        let mut wanted: Vec<(String, Option<u32>)> = set
+            .targets
+            .iter()
+            .map(|target| (target.name.clone(), Some(target.unicode)))
+            .collect();
+        for name in &set.glyph_names {
+            if !wanted.iter().any(|(existing, _)| existing == name) {
+                wanted.push((name.clone(), None));
+            }
+        }
+        let added = self.font.add_missing(&wanted);
+        if added > 0 {
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+            self.modified = true;
+        }
+        self.note = match added {
+            0 => "nothing missing".into(),
+            1 => "added 1 glyph".into(),
+            n => format!("added {n} glyphs"),
+        };
     }
 
     fn grid_select(&mut self, index: usize, cmd: bool, shift: bool) {
@@ -1282,6 +1325,7 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
 }
 
 fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
+    use xilem::core::one_of::Either;
     let pal = &app.palette;
 
     let cats = [
@@ -1328,13 +1372,32 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         .filter_map(|(i, b)| {
             let gs = b.glyphset.as_ref()?;
             let expected = gs.expected_count.unwrap_or(gs.glyph_names.len().max(gs.targets.len()));
-            Some(ui::list_row(
-                pal,
-                b.label.clone(),
-                format!("{}/{}", app.filter_present(i), expected),
-                app.sel == Sel::Filter(i),
-                move |app: &mut App| app.sel = Sel::Filter(i),
-            ))
+            // A row that is short of its target gets a plus that adds
+            // the glyphs it is missing, named and encoded, to every
+            // master. Selecting the row and filling it are different
+            // buttons on purpose: one is navigation, one writes.
+            let missing = app.filter_missing(i);
+            let count = format!("{}/{}", app.filter_present(i), expected);
+            let selected = app.sel == Sel::Filter(i);
+            Some(if missing > 0 {
+                Either::A(ui::list_row_with_action(
+                    pal,
+                    b.label.clone(),
+                    count,
+                    selected,
+                    move |app: &mut App| app.sel = Sel::Filter(i),
+                    "+".into(),
+                    move |app: &mut App| app.generate_missing(i),
+                ))
+            } else {
+                Either::B(ui::list_row(
+                    pal,
+                    b.label.clone(),
+                    count,
+                    selected,
+                    move |app: &mut App| app.sel = Sel::Filter(i),
+                ))
+            })
         })
         .collect();
 
