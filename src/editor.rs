@@ -132,6 +132,73 @@ pub struct EditorWidget {
 }
 
 impl EditorWidget {
+    /// The metrics panel that floats over the drawing, bottom left.
+    ///
+    /// The GPUI build has this, and it is a large part of why that
+    /// editor reads better: the numbers you are working on sit with the
+    /// drawing instead of in a column at the side.
+    ///
+    /// This is painted rather than composed. The view-land way is a
+    /// `zstack` around the editor pane, and that one extra container
+    /// around an application-sized view tree took the build from under a
+    /// minute to over thirty-five, at which point it was killed rather
+    /// than finished. Painting it here costs one method and no types.
+    fn paint_metrics(&self, painter: &mut Painter<'_>) {
+        const PAD: f64 = 10.0;
+        const ROW: f64 = 18.0;
+        let pal = &self.palette;
+        let bearings = self.session.side_bearings();
+        let bounds = self.session.selection_bounds();
+        let rows = 2 + if bounds.is_some() { 3 } else { 0 };
+        let height = rows as f64 * ROW + PAD * 2.0;
+        let width = 196.0;
+        let left = PAD;
+        let top = self.size.height - height - PAD;
+        if top < 0.0 || width + PAD * 2.0 > self.size.width {
+            return;
+        }
+        let frame = Rect::new(left, top, left + width, top + height).to_rounded_rect(6.0);
+        painter.fill(frame, pal.panel.with_alpha(0.92)).draw();
+        painter
+            .stroke(&frame, &Stroke::new(1.0), pal.role("gridBorder"))
+            .draw();
+
+        let text_at = |painter: &mut Painter<'_>, x: f64, row: f64, s: &str, size: f32, color, anchor| {
+            text_label::draw(
+                painter,
+                Point::new(left + x, top + PAD + row * ROW + ROW - 5.0),
+                s,
+                size,
+                color,
+                anchor,
+            );
+        };
+        text_at(painter, 10.0, 0.0, &self.session.glyph_name, 12.0_f32, pal.text, Anchor::Start);
+        if let Some(sb) = &bearings {
+            text_at(painter, 10.0, 1.0, "LSB", 10.0, pal.text_muted, Anchor::Start);
+            text_at(painter, 76.0, 1.0, &sb.lsb.to_string(), 11.0, pal.text, Anchor::End);
+            text_at(painter, 118.0, 1.0, &format!("{:.0}", sb.advance), 11.0, pal.text, Anchor::End);
+            text_at(painter, 152.0, 1.0, &sb.rsb.to_string(), 11.0, pal.text, Anchor::End);
+            text_at(painter, width - 10.0, 1.0, "RSB", 10.0, pal.text_muted, Anchor::End);
+        }
+        if let Some(b) = bounds {
+            text_at(painter, 10.0, 2.0, "Selection", 10.0, pal.text_muted, Anchor::Start);
+            for (row, (label_a, a, label_b, value_b)) in [
+                ("X", b.x0, "W", b.width()),
+                ("Y", b.y0, "H", b.height()),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let row = 3.0 + row as f64;
+                text_at(painter, 10.0, row, label_a, 10.0, pal.text_muted, Anchor::Start);
+                text_at(painter, 84.0, row, &format!("{a:.0}"), 11.0, pal.text, Anchor::End);
+                text_at(painter, 104.0, row, label_b, 10.0, pal.text_muted, Anchor::Start);
+                text_at(painter, 186.0, row, &format!("{value_b:.0}"), 11.0, pal.text, Anchor::End);
+            }
+        }
+    }
+
     fn screen_points(&self) -> Vec<(PointId, Point, bool, bool, bool)> {
         let affine = self.session.viewport.affine();
         self.session
@@ -533,6 +600,8 @@ impl Widget for EditorWidget {
                 }
             }
         }
+
+        self.paint_metrics(painter);
     }
 
     fn on_pointer_event(
