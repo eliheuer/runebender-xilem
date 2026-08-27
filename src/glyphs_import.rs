@@ -1,5 +1,5 @@
-//! Import Glyphs sources (.glyphs, Glyphs 2 or 3) by converting them to
-//! an in-memory UFO + designspace file set.
+//! Import Glyphs sources (.glyphs and .glyphspackage, Glyphs 2 or 3)
+//! by converting them to an in-memory UFO + designspace file set.
 //!
 //! Stage 1 of Glyphs support: the editor's existing UFO/designspace
 //! load pipeline stays the single ingestion path; a .glyphs file is
@@ -34,15 +34,38 @@ pub struct ConversionResult {
     pub warnings: Vec<String>,
 }
 
+/// Convert a single-file `.glyphs` source.
 pub fn glyphs_to_ufo_files(glyphs_text: &str) -> Result<ConversionResult, String> {
     let font = GlyphsFont::load_str(glyphs_text).map_err(|e| format!("parse .glyphs: {e}"))?;
+    convert(font)
+}
+
+/// Convert a `.glyphspackage` from its files, keyed by path relative to
+/// the package root: `fontinfo.plist`, `order.plist`, the optional
+/// `UIState.plist`, and `glyphs/<name>.glyph`.
+///
+/// Taking the entries rather than a directory keeps this usable where
+/// there is no filesystem to read, which is what the browser build
+/// needs.
+pub fn glyphs_package_to_ufo_files(
+    entries: &std::collections::HashMap<String, String>,
+) -> Result<ConversionResult, String> {
+    if !entries.keys().any(|k| k.ends_with("fontinfo.plist")) {
+        return Err("no fontinfo.plist in .glyphspackage".into());
+    }
+    let font = GlyphsFont::load_package_entries(entries)
+        .map_err(|e| format!("parse .glyphspackage: {e}"))?;
+    convert(font)
+}
+
+fn convert(font: GlyphsFont) -> Result<ConversionResult, String> {
     let font = font.upgrade();
     let font: &Glyphs3 = match &font {
         GlyphsFont::Glyphs3(f) => f,
         GlyphsFont::Glyphs2(_) => return Err("internal: upgrade did not yield Glyphs 3".into()),
     };
     if font.masters.is_empty() {
-        return Err("no masters in .glyphs file".into());
+        return Err("no masters in the Glyphs source".into());
     }
 
     let mut files = Vec::new();
@@ -512,6 +535,75 @@ fn fmt_f64(v: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Write the sample font out as a .glyphspackage, read the files
+    /// back as entries, and convert. A package holds the same data
+    /// split across files, so it must land on the same UFO set the
+    /// single-file path produces.
+    #[test]
+    fn package_matches_single_file() {
+        let from_file = glyphs_to_ufo_files(MINIMAL_GLYPHS3).unwrap();
+
+        let dir = std::env::temp_dir()
+            .join(format!("rb-glyphspackage-{}", std::process::id()));
+        let pkg = dir.join("TestSans.glyphspackage");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        GlyphsFont::load_str(MINIMAL_GLYPHS3)
+            .unwrap()
+            .save(&pkg)
+            .unwrap();
+
+        let mut entries = std::collections::HashMap::new();
+        for entry in walk(&pkg) {
+            let rel = entry
+                .strip_prefix(&pkg)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            entries.insert(rel, std::fs::read_to_string(&entry).unwrap());
+        }
+        assert!(entries.contains_key("fontinfo.plist"));
+        assert!(entries.contains_key("order.plist"));
+        assert!(entries.keys().any(|k| k.starts_with("glyphs/")));
+
+        let from_package = glyphs_package_to_ufo_files(&entries).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert_eq!(from_package.family_name, from_file.family_name);
+        let mut a: Vec<&str> =
+            from_package.files.iter().map(|f| f.path.as_str()).collect();
+        let mut b: Vec<&str> =
+            from_file.files.iter().map(|f| f.path.as_str()).collect();
+        a.sort();
+        b.sort();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn package_without_fontinfo_is_rejected() {
+        let entries = std::collections::HashMap::new();
+        let Err(err) = glyphs_package_to_ufo_files(&entries) else {
+            panic!("an empty package should not convert");
+        };
+        assert!(err.contains("fontinfo.plist"), "{err}");
+    }
+
+    fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+        let mut out = Vec::new();
+        let Ok(read) = std::fs::read_dir(dir) else {
+            return out;
+        };
+        for entry in read.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                out.extend(walk(&path));
+            } else {
+                out.push(path);
+            }
+        }
+        out
+    }
 
     const MINIMAL_GLYPHS3: &str = r#"{
 .formatVersion = 3;
