@@ -32,6 +32,45 @@ pub fn section_header(pal: &Palette, text: &'static str) -> impl WidgetView<App>
         .color(pal.text_muted)
 }
 
+/// A section header that collapses its section.
+///
+/// The GPUI build's sidebar groups fold, which matters once a font has
+/// four filter groups and a language list: without folding the sidebar
+/// is a single scroll of rows with no shape.
+pub fn section_toggle<F>(
+    pal: &Palette,
+    text: &'static str,
+    open: bool,
+    on_click: F,
+) -> impl WidgetView<App> + use<F>
+where
+    F: Fn(&mut App) + Send + Sync + 'static,
+{
+    let muted = pal.text_muted;
+    let mark = if open { "\u{25bc}" } else { "\u{25b6}" };
+    // A stretched row inside the button, because the stock button
+    // centres its child and a section header has to sit at the left edge
+    // with the rows it heads.
+    sized_box(
+        button(
+            row(
+                Region::Inline,
+                (
+                    label(format!("{mark} {text}"))
+                        .text_size(TextSize::Caption.px())
+                        .color(muted),
+                    FlexSpacer::Flex(1.0),
+                ),
+            ),
+            move |app: &mut App| on_click(app),
+        )
+        .background_color(pal.panel)
+        .border_width(Stroke::None.length())
+        .padding(Space::None),
+    )
+    .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
+}
+
 /// A section: header over body, with the section gap under it.
 pub fn section<V: WidgetView<App> + 'static>(
     pal: &Palette,
@@ -71,6 +110,42 @@ where
             label(name).text_size(TextSize::Caption.px()).color(pal.text_muted),
             sized_box(
                 text_input(value, move |app: &mut App, v| on_change(app, v))
+                    .background_color(pal.field())
+                    .corner_radius(Radius::Sm.length()),
+            )
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::from(ControlSize::Control),
+            )),
+        ),
+    )
+}
+
+/// A field that commits on Enter as well as reporting every keystroke.
+///
+/// Some edits cannot run per keystroke. Renaming a glyph rewrites every
+/// master and every component reference, so it has to wait for the whole
+/// name. Xilem's `text_input` has `on_enter` for exactly this, and the
+/// plain [`field`] above does not use it, which is how the editor ended
+/// up with a Name box that could be typed in but never applied.
+pub fn field_enter<F, G>(
+    pal: &Palette,
+    name: &'static str,
+    value: String,
+    on_change: F,
+    on_enter: G,
+) -> impl WidgetView<App> + use<F, G>
+where
+    F: Fn(&mut App, String) + Send + Sync + 'static,
+    G: Fn(&mut App, String) + Send + Sync + 'static,
+{
+    column(
+        Region::List,
+        (
+            label(name).text_size(TextSize::Caption.px()).color(pal.text_muted),
+            sized_box(
+                text_input(value, move |app: &mut App, v| on_change(app, v))
+                    .on_enter(move |app: &mut App, v| on_enter(app, v))
                     .background_color(pal.field())
                     .corner_radius(Radius::Sm.length()),
             )
