@@ -436,12 +436,32 @@ impl Widget for EditorWidget {
             } else {
                 pal.role("pointCorner")
             };
-            if on_curve && !smooth {
-                let r = 4.5;
-                painter.fill(Rect::new(sp.x - r, sp.y - r, sp.x + r, sp.y + r), fill).draw();
+            // A point is a dark window with a coloured ring, which is
+            // the GPUI build's recipe and the web editor's before it: a
+            // halo so the point keeps an edge over the outline, an
+            // interior that masks what runs under it, then a
+            // constant-width ring. A solid dot loses its shape against
+            // the curve it sits on.
+            let square = on_curve && !smooth;
+            let r = if square {
+                if selected { 4.5 } else { 3.5 }
+            } else if selected {
+                5.5
             } else {
-                let r = if on_curve { 4.5 } else { 3.0 };
-                painter.fill(Circle::new(sp, r), fill).draw();
+                4.5
+            };
+            let halo = pal.app.with_alpha(0.85);
+            let ring = Stroke::new(1.5);
+            if square {
+                let shape = Rect::new(sp.x - r, sp.y - r, sp.x + r, sp.y + r);
+                painter.stroke(shape, &Stroke::new(3.0), halo).draw();
+                painter.fill(shape, pal.app).draw();
+                painter.stroke(shape, &ring, fill).draw();
+            } else {
+                let shape = Circle::new(sp, r);
+                painter.stroke(shape, &Stroke::new(3.0), halo).draw();
+                painter.fill(shape, pal.app).draw();
+                painter.stroke(shape, &ring, fill).draw();
             }
         }
 
