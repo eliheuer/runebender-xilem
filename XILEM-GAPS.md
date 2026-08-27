@@ -34,13 +34,24 @@ one, and this one is `src/shortcuts.rs` (263 lines): a widget that wraps
 the entire application, catches what the focused widget did not consume,
 matches a keymap, and submits an action. It works, and it is a fake.
 
-**In-window popups exist one layer down, and are unreachable from
-application code.** Masonry has a `Layer` trait and
-`create_attached_layer`, used by its own tooltip and selector menu. There
-is no Xilem view that exposes it, so a right-click context menu cannot be
-built in application code the normal way. This editor paints its context
-menu into the editor canvas by hand and hit-tests it manually. That is
-why the menu cannot escape the canvas bounds.
+**In-window popups exist one layer down, and are unreachable from view
+code.** Masonry has a `Layer` trait and `create_layer`, used by its own
+tooltip and selector menu, and it works: this editor's right-click menu
+is now a real layer, rooted in window space, so it can hang past the
+canvas edge like a menu should.
+
+The catch is who can open one. `create_layer` is a method on the widget
+context, so only a hand-written Masonry widget can call it. There is no
+Xilem view for layers, so an application assembled out of views cannot
+open a popup at all. This editor manages only because its canvas is a
+custom widget already.
+
+Two smaller edges came with it. A layer is not a child of its creator,
+so it cannot report a choice with an ordinary action: it has to reach
+back with `mutate_later` and a downcast to the creating widget's type,
+which is what Masonry's own selector menu does. And the layer's own
+teardown has the same shape, so dismissing on an outside click is
+another `mutate_later` round trip.
 
 **No headless render path.** Every visual decision here is made by
 looking at a PNG, and an agent cannot see its own work any other way.
