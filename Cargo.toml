@@ -17,7 +17,10 @@ path = "src/main.rs"
 # comparing it against runebender-gpui measures Xilem and not a fork.
 xilem = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a8c364f2ab109e2083121e144" }
 masonry = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a8c364f2ab109e2083121e144" }
-runebender-core = { git = "https://github.com/eliheuer/runebender-core" }
+# Pinned, like every other git dependency here. A floating branch makes
+# `cargo install --git` need --locked and makes two checkouts of the same
+# source possible if anything else names it by bare URL.
+runebender-core = { git = "https://github.com/eliheuer/runebender-core", rev = "3e3c879d3e3e02e461c0cfee6b7aaf7fe89840a4" }
 norad = "0.18"
 kurbo = "0.13"
 linesweeper = "0.4"
