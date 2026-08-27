@@ -57,14 +57,33 @@ pub fn with_watch<V: xilem::WidgetView<App>>(
                     // A save is many file events. Wait for them to stop
                     // before saying anything, or one save reloads five
                     // times.
+                    //
+                    // Polled, never blocked. `recv()` is a synchronous
+                    // call: inside an async task it parks a runtime
+                    // worker and never gives it back, and then dropping
+                    // the runtime on quit waits for a thread that cannot
+                    // finish. The window closes and the process hangs.
+                    const TICK: Duration = Duration::from_millis(16);
+                    const SETTLE: Duration = Duration::from_millis(400);
                     loop {
-                        if rx.recv().is_err() {
-                            return;
+                        match rx.try_recv() {
+                            Ok(()) => {}
+                            Err(mpsc::TryRecvError::Empty) => {
+                                tokio::time::sleep(TICK).await;
+                                continue;
+                            }
+                            Err(mpsc::TryRecvError::Disconnected) => return,
                         }
-                        let settle = Instant::now();
-                        while settle.elapsed() < Duration::from_millis(400) {
-                            if rx.recv_timeout(Duration::from_millis(400)).is_err() {
-                                break;
+                        // Something changed. Keep reading until the
+                        // events stop for `SETTLE`.
+                        let mut quiet = Instant::now();
+                        while quiet.elapsed() < SETTLE {
+                            match rx.try_recv() {
+                                Ok(()) => quiet = Instant::now(),
+                                Err(mpsc::TryRecvError::Empty) => {
+                                    tokio::time::sleep(TICK).await;
+                                }
+                                Err(mpsc::TryRecvError::Disconnected) => return,
                             }
                         }
                         if proxy.message(SourcesChanged).is_err() {
