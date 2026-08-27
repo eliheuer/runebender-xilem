@@ -700,6 +700,18 @@ impl Session {
         self.glyph.anchors.get(idx).map(|a| Point::new(a.x, a.y))
     }
 
+    /// Continuity of every on-curve node: corner, kink, G1, G2, G3.
+    pub fn continuity(&self) -> Vec<runebender_core::curve::NodeContinuity> {
+        let cubics = runebender_core::curve::cubics_from_norad(&self.glyph);
+        runebender_core::curve::node_continuity(&cubics)
+    }
+
+    /// The outline split into strokes colored by segment length, the web
+    /// editor's colorize mode.
+    pub fn colored_strokes(&self) -> Vec<runebender_core::measure::ColoredStroke> {
+        runebender_core::measure::colored_strokes(&self.paths())
+    }
+
     pub fn curvature_comb(&self) -> Vec<Vec<(Point, Point)>> {
         let cubics = runebender_core::curve::cubics_from_norad(&self.glyph);
         runebender_core::curve::curvature_comb(&cubics, 1.0, 4000.0, false, 12)

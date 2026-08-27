@@ -93,7 +93,7 @@ pub struct EditorWidget {
     hover: Option<Point>,
     /// Open context menu: (screen anchor, hovered row).
     menu: Option<(Point, usize)>,
-    show_comb: bool,
+    view: ViewOptions,
 }
 
 impl EditorWidget {
@@ -301,22 +301,84 @@ impl Widget for EditorWidget {
                 .draw();
         }
 
-        // Measure overlay: segment/handle/stem lengths and side bearings.
-        if self.tool == Tool::Measure && self.interp.is_none() {
+        // Curvature comb: a strip pushed out along the normal of every
+        // curved segment, so the shape of the curvature is visible.
+        if self.view.comb && self.interp.is_none() {
+            let comb = pal.role("accent").with_alpha(0.7);
+            for strip in self.session.curvature_comb() {
+                let mut previous: Option<Point> = None;
+                for (on, outer) in strip {
+                    let on = affine * on;
+                    let outer = affine * outer;
+                    painter
+                        .stroke(Line::new(on, outer), &Stroke::new(1.0), comb.with_alpha(0.35))
+                        .draw();
+                    if let Some(previous) = previous {
+                        painter
+                            .stroke(Line::new(previous, outer), &Stroke::new(1.0), comb)
+                            .draw();
+                    }
+                    previous = Some(outer);
+                }
+            }
+        }
+
+        // Continuity: one dot per on-curve node, colored by how smooth
+        // the join actually is. A kink is a node marked smooth whose
+        // tangents do not line up, which is the defect worth seeing.
+        if self.view.continuity && self.interp.is_none() {
+            use runebender_core::curve::GLevel;
+            for node in self.session.continuity() {
+                let color = match node.level {
+                    GLevel::Kink => pal.role("error"),
+                    GLevel::Corner => pal.role("metricQuiet"),
+                    GLevel::G1 => pal.role("warning"),
+                    GLevel::G1Line => pal.role("pointOffcurve"),
+                    GLevel::G2 | GLevel::G3 => pal.role("success"),
+                };
+                let at = affine * node.at;
+                painter.fill(Circle::new(at, 4.5), color).draw();
+            }
+        }
+
+        // Colorize: tint the outline and its handles by segment length,
+        // the web editor's mode for spotting odd measurements.
+        if self.view.colorize && self.interp.is_none() {
+            for stroke in self.session.colored_strokes() {
+                let color = pal.popcount(stroke.popcount);
+                let width = if stroke.wide { 2.0 } else { 1.0 };
+                painter
+                    .stroke(&(affine * stroke.path), &Stroke::new(width), color)
+                    .draw();
+            }
+        }
+
+        // Measure overlay: segment and handle lengths, and side bearings.
+        if self.view.measures() && self.interp.is_none() {
             let zoom = self.session.viewport.zoom;
             for m in self.session.measurements() {
+                use runebender_core::measure::MeasureKind;
+                let wanted = match m.kind {
+                    MeasureKind::Handle => self.view.handles,
+                    MeasureKind::Segment => self.view.segments,
+                    _ => self.view.segments,
+                };
+                if !wanted {
+                    continue;
+                }
                 let a = affine * m.a;
                 let b = affine * m.b;
                 let color = match m.kind {
-                    runebender_core::measure::MeasureKind::Handle => pal.role("pointOffcurve"),
-                    runebender_core::measure::MeasureKind::Segment => pal.role("accent"),
+                    MeasureKind::Handle => pal.role("pointOffcurve"),
+                    MeasureKind::Segment => pal.role("accent"),
                     _ => pal.role("selection"),
                 };
                 painter.stroke(Line::new(a, b), &Stroke::new(1.0), color).draw();
                 let mid = Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
-                text_label::draw(painter, mid, &m.length.to_string(), 11.0, color, Anchor::Middle);
+                let text = self.view.label(m.length);
+                text_label::draw(painter, mid, &text, 11.0, color, Anchor::Middle);
             }
-            if let Some(sb) = self.session.side_bearings() {
+            if let Some(sb) = self.session.side_bearings().filter(|_| self.view.bearings) {
                 let quiet = pal.role("metricQuiet");
                 let y = (affine * Point::new(0.0, sb.y_left.min(sb.y_right) - 40.0 / zoom.max(0.001))).y;
                 let l = affine * Point::new(0.0, 0.0);
@@ -325,8 +387,9 @@ impl Widget for EditorWidget {
                 let adv = affine * Point::new(sb.advance, 0.0);
                 painter.stroke(Line::new((l.x, y), (ink_l.x, y)), &Stroke::new(1.0), quiet).draw();
                 painter.stroke(Line::new((ink_r.x, y), (adv.x, y)), &Stroke::new(1.0), quiet).draw();
-                text_label::draw(painter, Point::new((l.x + ink_l.x) / 2.0, y - 8.0), &sb.lsb.to_string(), 11.0, quiet, Anchor::Middle);
-                text_label::draw(painter, Point::new((ink_r.x + adv.x) / 2.0, y - 8.0), &sb.rsb.to_string(), 11.0, quiet, Anchor::Middle);
+                let (lsb, rsb) = (self.view.label(sb.lsb), self.view.label(sb.rsb));
+                text_label::draw(painter, Point::new((l.x + ink_l.x) / 2.0, y - 8.0), &lsb, 11.0, quiet, Anchor::Middle);
+                text_label::draw(painter, Point::new((ink_r.x + adv.x) / 2.0, y - 8.0), &rsb, 11.0, quiet, Anchor::Middle);
             }
         }
 
@@ -765,7 +828,7 @@ pub struct EditorView<F> {
     session: Arc<Session>,
     palette: Arc<Palette>,
     tool: Tool,
-    show_comb: bool,
+    view: ViewOptions,
     ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
     interp: Option<Arc<masonry::kurbo::BezPath>>,
     underlay: Underlay,
@@ -776,7 +839,7 @@ pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
     session: Arc<Session>,
     palette: Arc<Palette>,
     tool: Tool,
-    show_comb: bool,
+    view: ViewOptions,
     ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
     interp: Option<Arc<masonry::kurbo::BezPath>>,
     underlay: Underlay,
@@ -786,11 +849,62 @@ pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
         session,
         palette,
         tool,
-        show_comb,
+        view,
         ghosts,
         interp,
         underlay,
         on_event,
+    }
+}
+
+/// The analysis overlays: what the editor draws on top of the outline
+/// besides the points.
+///
+/// These match the GPUI build's Measure and Curves options, and all of
+/// them read from `runebender-core`, so the three editors agree about
+/// what a kink or a stem is.
+#[derive(Clone, Copy, Default, PartialEq)]
+pub struct ViewOptions {
+    /// The curvature comb.
+    pub comb: bool,
+    /// A dot per on-curve node, colored by continuity level.
+    pub continuity: bool,
+    /// Tint the outline and handles by segment length.
+    pub colorize: bool,
+    /// Label handle lengths.
+    pub handles: bool,
+    /// Label straight segment lengths.
+    pub segments: bool,
+    /// Draw and label the side bearings.
+    pub bearings: bool,
+    /// Spell lengths as sums of powers of two: 96 = 64+32.
+    pub popcount: bool,
+}
+
+impl ViewOptions {
+    /// What the Measure tool turns on when it is picked.
+    pub fn measuring() -> Self {
+        Self {
+            handles: true,
+            segments: true,
+            bearings: true,
+            popcount: true,
+            ..Self::default()
+        }
+    }
+
+    /// Whether anything in the measure group is on.
+    pub fn measures(self) -> bool {
+        self.colorize || self.handles || self.segments || self.bearings
+    }
+
+    /// A length, spelled the way the options ask for.
+    fn label(self, value: i64) -> String {
+        if self.popcount {
+            runebender_core::measure::label(value)
+        } else {
+            value.to_string()
+        }
     }
 }
 
@@ -822,7 +936,7 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             drag: Drag::None,
             hover: None,
             menu: None,
-            show_comb: self.show_comb,
+            view: self.view,
         };
         (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())
     }
@@ -851,8 +965,8 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             }
             dirty = true;
         }
-        if self.show_comb != prev.show_comb {
-            element.widget.show_comb = self.show_comb;
+        if self.view != prev.view {
+            element.widget.view = self.view;
             dirty = true;
         }
         if !Arc::ptr_eq(&self.ghosts, &prev.ghosts) {
