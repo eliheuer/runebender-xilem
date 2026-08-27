@@ -300,31 +300,57 @@ impl FontModel {
 
     /// Create an empty glyph and refresh the cache. Returns false if the name
     /// is empty or already exists.
-    pub fn add_glyph(&mut self, name: &str, default_advance: f64) -> bool {
+    /// Add an empty glyph to every master.
+    ///
+    /// Encoded when a codepoint is given, or when the name is a single
+    /// character. A glyph that exists in one master and not another is a
+    /// designspace that does not build, so this writes all of them.
+    pub fn add_glyph(&mut self, name: &str, default_advance: f64, unicode: Option<u32>) -> bool {
         let name = name.trim();
         if name.is_empty() || self.font.get_glyph(name).is_some() {
             return false;
         }
+        let make = || {
+            let mut glyph = norad::Glyph::new(name);
+            glyph.width = default_advance;
+            let codepoint = unicode
+                .and_then(char::from_u32)
+                .or_else(|| (name.chars().count() == 1).then(|| name.chars().next()).flatten());
+            if let Some(c) = codepoint {
+                glyph.codepoints = norad::Codepoints::new([c]);
+            }
+            glyph
+        };
         let Some(font) = Arc::get_mut(&mut self.font) else {
             return false;
         };
-        let mut glyph = norad::Glyph::new(name);
-        glyph.width = default_advance;
-        // If the name is a single character, encode it.
-        if name.chars().count() == 1 {
-            if let Some(c) = name.chars().next() {
-                glyph.codepoints = norad::Codepoints::new([c]);
+        font.default_layer_mut().insert_glyph(make());
+        for master in &mut self.masters {
+            if master.get_glyph(name).is_none() {
+                master.default_layer_mut().insert_glyph(make());
             }
         }
-        font.default_layer_mut().insert_glyph(glyph);
-        let font = Arc::try_unwrap(std::mem::replace(&mut self.font, Arc::new(norad::Font::default())))
-            .unwrap_or_else(|arc| (*arc).clone());
-        let source = self.source.clone();
-        *self = Self::from_font(font, source);
+        // Rebuild the glyph cache only. Rebuilding the whole model here
+        // used to drop the masters, the axes and their locations, which
+        // quietly turned a designspace into a single-master font.
+        let rebuilt = Self::from_font((*self.font).clone(), self.source.clone());
+        self.glyphs = rebuilt.glyphs;
         true
     }
 
-    /// Rename a glyph in the font (updates references) and refresh the cache.
+    /// Add every glyph in `targets` that the font does not have yet, and
+    /// report how many were added.
+    pub fn add_missing(&mut self, targets: &[(String, Option<u32>)]) -> usize {
+        let advance = (self.units_per_em * 0.5).round();
+        let mut added = 0;
+        for (name, unicode) in targets {
+            if self.add_glyph(name, advance, *unicode) {
+                added += 1;
+            }
+        }
+        added
+    }
+
     /// Rename a glyph, in every master.
     ///
     /// `runebender_core` does the work inside one font: the glyph, the
@@ -332,11 +358,6 @@ impl FontModel {
     /// either side. This applies that to all the masters, because a
     /// designspace whose sources disagree about a glyph name does not
     /// build.
-    ///
-    /// It used to rebuild the whole model from the active font, which
-    /// silently dropped the masters, the axes, and the master locations,
-    /// so renaming a glyph in a designspace left a single-master font
-    /// with no interpolation and a save that wrote one UFO.
     pub fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
         let renamed = Arc::get_mut(&mut self.font)
             .map(|font| runebender_core::glyph_ops::rename_glyph(font, old, new))

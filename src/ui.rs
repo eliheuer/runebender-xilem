@@ -17,7 +17,7 @@ use masonry::properties::Dimensions;
 use xilem::WidgetView;
 use xilem::style::Style;
 use crate::design::{column, row};
-use xilem::view::{FlexSpacer, button, label, sized_box, text_input};
+use xilem::view::{FlexExt as _, FlexSpacer, button, label, sized_box, text_input};
 
 use crate::App;
 use crate::theme::Palette;
@@ -117,11 +117,77 @@ pub fn list_row<F: Fn(&mut App) + Send + Sync + 'static>(
     .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
 }
 
+/// A list row with a small action button after it.
+///
+/// The row and the button are separate targets on purpose: one selects,
+/// one writes. The row's width is `Auto` plus `flex`, not `Stretch`,
+/// because a stretched child in a flex row claims the whole width and
+/// pushes the button off the edge.
+pub fn list_row_with_action<F, G>(
+    pal: &Palette,
+    text: String,
+    trailing: String,
+    active: bool,
+    on_click: F,
+    action: String,
+    on_action: G,
+) -> impl WidgetView<App> + use<F, G>
+where
+    F: Fn(&mut App) + Send + Sync + 'static,
+    G: Fn(&mut App) + Send + Sync + 'static,
+{
+    let (fg, border) = if active {
+        (pal.role("accent"), pal.role("accent"))
+    } else {
+        (pal.text, xilem::Color::TRANSPARENT)
+    };
+    let trailing_color = if active { pal.role("accent") } else { pal.text_muted };
+    row(
+        Region::List,
+        (
+            button(
+                row(
+                    Region::Inline,
+                    (
+                        label(text).text_size(TextSize::Body.px()).color(fg),
+                        FlexSpacer::Flex(1.0),
+                        label(trailing)
+                            .text_size(TextSize::Body.px())
+                            .color(trailing_color),
+                    ),
+                ),
+                move |app: &mut App| on_click(app),
+            )
+            .background_color(pal.panel)
+            .border_color(border)
+            .border_width(Stroke::Hairline.length())
+            .corner_radius(Radius::Sm.length())
+            .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Row)))
+            .flex(1.0),
+            // Icon-sized, not control-sized: a control-sized button here
+            // puts the row's intrinsic width past the sidebar and clips
+            // the button it was meant to add.
+            toggle_sized(pal, action, false, ControlSize::Icon, on_action),
+        ),
+    )
+}
+
 /// A square toggle: the small A / Aa / eye controls beside a field.
 pub fn toggle<F: Fn(&mut App) + Send + Sync + 'static>(
     pal: &Palette,
     text: String,
     active: bool,
+    on_click: F,
+) -> impl WidgetView<App> + use<F> {
+    toggle_sized(pal, text, active, ControlSize::Control, on_click)
+}
+
+/// A square toggle at a chosen size.
+pub fn toggle_sized<F: Fn(&mut App) + Send + Sync + 'static>(
+    pal: &Palette,
+    text: String,
+    active: bool,
+    size: ControlSize,
     on_click: F,
 ) -> impl WidgetView<App> + use<F> {
     let (fg, border) = if active {
@@ -140,7 +206,7 @@ pub fn toggle<F: Fn(&mut App) + Send + Sync + 'static>(
         .border_width(Stroke::Hairline.length())
         .corner_radius(Radius::Sm.length()),
     )
-    .dims(Dimensions::fixed(ControlSize::Control.length(), ControlSize::Control.length()))
+    .dims(Dimensions::fixed(size.length(), size.length()))
 }
 
 /// A labeled push button at control height.
