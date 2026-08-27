@@ -99,6 +99,14 @@ pub struct CellMetrics {
     pub ascender: f64,
     pub descender: f64,
     pub upm: f64,
+    /// Detail view: a third line under the name with the category and
+    /// the advance, as the GPUI build's Detail mode has it.
+    ///
+    /// This rides in the metrics rather than being its own parameter
+    /// because adding one field to the widget means editing the widget
+    /// struct, the view struct, `build`, `rebuild` and the constructor's
+    /// signature, in five places, for a bool.
+    pub detail: bool,
 }
 
 pub fn cells_of(font: &FontModel, palette: &Palette) -> Vec<Cell> {
@@ -277,7 +285,11 @@ impl Widget for GridWidget {
                 } else if w < 90.0 {
                     (10.0, 1)
                 } else {
-                    (12.0, if cell.codepoint.is_some() { 2 } else { 1 })
+                    let mut lines = if cell.codepoint.is_some() { 2 } else { 1 };
+                    if self.metrics.detail {
+                        lines += 1;
+                    }
+                    (12.0, lines)
                 };
                 let line = (label_size * 1.25).ceil();
                 let block = if label_lines == 0 {
@@ -328,6 +340,23 @@ impl Widget for GridWidget {
                         painter,
                         Point::new(rect.x0 + 8.0, baseline(1.0)),
                         &format!("U+{:04X}", cp as u32),
+                        label_size as f32,
+                        muted,
+                        Anchor::Start,
+                    );
+                }
+                if label_lines > 2 {
+                    let category = cell
+                        .codepoint
+                        .map(|c| {
+                            runebender_core::category::GlyphCategory::from_codepoint(c)
+                                .display_name()
+                        })
+                        .unwrap_or("Unencoded");
+                    text_label::draw(
+                        painter,
+                        Point::new(rect.x0 + 8.0, baseline(2.0)),
+                        &format!("{category} \u{00b7} {:.0}", cell.advance),
                         label_size as f32,
                         muted,
                         Anchor::Start,

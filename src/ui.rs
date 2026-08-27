@@ -89,6 +89,8 @@ pub fn kv(pal: &Palette, name: String, value: String) -> impl WidgetView<App> + 
             label(name).text_size(TextSize::Body.px()).color(muted),
             FlexSpacer::Flex(1.0),
             label(value).text_size(TextSize::Body.px()).color(text),
+            // Clear of the scroll bar, as in the list rows above.
+            FlexSpacer::Fixed(Space::Sm.length()),
         ),
     ))
     .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))

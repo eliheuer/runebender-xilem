@@ -696,6 +696,37 @@ impl FontModel {
         changed
     }
 
+    /// The font's headline metadata, as label and value pairs.
+    ///
+    /// The GPUI build shows this whenever no glyph is picked, and it is
+    /// most of what its right panel holds in the overview. These are
+    /// read here rather than edited: writing them back means a form per
+    /// master and a rule about which values are per-master, which the
+    /// editor does not have yet.
+    pub fn info_rows(&self) -> Vec<(&'static str, String)> {
+        let info = &self.font.font_info;
+        let text = |value: &Option<String>| value.clone().unwrap_or_default();
+        let number = |value: Option<f64>| {
+            value.map(|v| format!("{v:.0}")).unwrap_or_default()
+        };
+        vec![
+            ("Family Name", text(&info.family_name)),
+            ("Style Name", text(&info.style_name)),
+            ("UPM", number(info.units_per_em.map(|v| v.as_f64()))),
+            ("Italic Angle", number(info.italic_angle)),
+            ("Ascender", number(info.ascender)),
+            ("Descender", number(info.descender)),
+            ("x-Height", number(info.x_height)),
+            ("Cap Height", number(info.cap_height)),
+            ("typoAsc", number(info.open_type_os2_typo_ascender.map(f64::from))),
+            ("typoDesc", number(info.open_type_os2_typo_descender.map(f64::from))),
+            ("hheaAsc", number(info.open_type_hhea_ascender.map(f64::from))),
+            ("hheaDesc", number(info.open_type_hhea_descender.map(f64::from))),
+            ("winAsc", number(info.open_type_os2_win_ascent.map(f64::from))),
+            ("winDesc", number(info.open_type_os2_win_descent.map(f64::from))),
+        ]
+    }
+
     /// Set the advance of a glyph that is not open in the editor.
     ///
     /// The overview panel edits the selected cell directly, so this works

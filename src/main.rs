@@ -99,6 +99,8 @@ pub struct App {
     selected: Option<usize>,
     multi_selected: std::sync::Arc<std::collections::HashSet<usize>>,
     filter: String,
+    /// The grid's Detail view: cells carry their category and advance.
+    detail: bool,
     /// Writing direction for the text tool, or `None` for automatic.
     /// The chips that set it are in the title bar, which is why this is
     /// application state and not the buffer's.
@@ -253,6 +255,7 @@ impl App {
             selected: Some(open.unwrap_or(first)),
             multi_selected: std::sync::Arc::new(std::collections::HashSet::new()),
             filter: String::new(),
+            detail: false,
             text_dir: None,
             left_collapsed: false,
             collapsed: std::collections::HashSet::new(),
@@ -401,6 +404,7 @@ impl App {
             ascender: self.font.ascender,
             descender: self.font.descender,
             upm: self.font.units_per_em,
+            detail: self.detail,
         }
     }
 
@@ -814,6 +818,13 @@ impl App {
             }
             Err(e) => self.note = e,
         }
+    }
+
+    /// Set the editor's zoom outright, for the slider in the bar.
+    fn zoom_to(&mut self, zoom: f64) {
+        let mut session = (*self.session).clone();
+        session.viewport.zoom = zoom.clamp(0.02, 64.0);
+        self.session = Arc::new(session);
     }
 
     /// Zoom the editor's viewport about the middle of the canvas.
@@ -1441,10 +1452,12 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
     let text = match app.mode {
         // No path here: it is in the title bar, and a long one ate the
         // whole bar, pushing the zoom control off the end.
-        Mode::Overview => match app.multi_selected.len() {
-            0 => format!("{} glyphs", app.font.glyphs.len()),
-            n => format!("{n} selected \u{00b7} {} glyphs", app.font.glyphs.len()),
-        },
+        Mode::Overview => format!(
+            "{} selected \u{00b7} {}/{} glyphs",
+            app.multi_selected.len(),
+            app.filtered_cells().len(),
+            app.font.glyphs.len(),
+        ),
         Mode::Editor(_) => format!(
             "{} \u{00b7} advance {} \u{00b7} {} points \u{00b7} {} selected",
             app.session.glyph_name.as_str(),
@@ -1482,26 +1495,44 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
         (
             swatch(None, pal.control),
             xrow(Region::List, marks),
+            // Clears the mark, like the GPUI build's crossed swatch.
+            ui::toggle_sized(pal, "\u{00d7}".into(), false, ControlSize::Swatch, |app: &mut App| {
+                app.set_mark(None)
+            }),
             FlexSpacer::Flex(1.0),
             label(text)
                 .text_size(TextSize::Caption.px())
                 .color(pal.text_muted),
             FlexSpacer::Flex(1.0),
-            // Cell size in the grid, zoom in the editor: one control in
-            // one place, whichever surface is showing.
-            editing.then(|| {
+            // Grid or Detail, as the GPUI build has them. Its List and
+            // Forms views are not built here yet, and a control that
+            // does nothing is worse than one that is missing.
+            (!editing).then(|| {
                 xrow(
                     Region::Inline,
                     (
-                        ui::toggle_sized(pal, "\u{2212}".into(), false, ControlSize::Icon, |app: &mut App| {
-                            app.zoom_by(1.0 / 1.25)
+                        tab_chip(pal, "Grid".into(), !app.detail, false, |app: &mut App| {
+                            app.detail = false;
                         }),
-                        label(format!("{:.0}%", app.session.viewport.zoom * 100.0))
+                        tab_chip(pal, "Detail".into(), app.detail, false, |app: &mut App| {
+                            app.detail = true;
+                        }),
+                    ),
+                )
+            }),
+            // Cell size in the grid, zoom in the editor: one control in
+            // one place, whichever surface is showing. A slider, because
+            // that is what the GPUI build puts here.
+            editing.then(|| {
+                let zoom = app.session.viewport.zoom.clamp(0.05, 8.0);
+                xrow(
+                    Region::Inline,
+                    (
+                        slider(0.05, 8.0, zoom, |app: &mut App, v| app.zoom_to(v))
+                            .width(Length::px(96.0)),
+                        label(format!("{:.0}%", zoom * 100.0))
                             .text_size(TextSize::Caption.px())
                             .color(pal.text_muted),
-                        ui::toggle_sized(pal, "+".into(), false, ControlSize::Icon, |app: &mut App| {
-                            app.zoom_by(1.25)
-                        }),
                     ),
                 )
             }),
@@ -1509,15 +1540,13 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
                 xrow(
                     Region::Inline,
                     (
-                        ui::toggle_sized(pal, "\u{2212}".into(), false, ControlSize::Icon, |app: &mut App| {
-                            app.cell_size = (app.cell_size / 1.25).max(48.0);
-                        }),
+                        slider(48.0, 200.0, app.cell_size, |app: &mut App, v| {
+                            app.cell_size = v;
+                        })
+                        .width(Length::px(96.0)),
                         label(format!("{:.0}", app.cell_size))
                             .text_size(TextSize::Caption.px())
                             .color(pal.text_muted),
-                        ui::toggle_sized(pal, "+".into(), false, ControlSize::Icon, |app: &mut App| {
-                            app.cell_size = (app.cell_size * 1.25).min(320.0);
-                        }),
                     ),
                 )
             }),
@@ -1581,7 +1610,8 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
     let lang_rows: Vec<_> = runebender_core::sidebar::language_groups()
         .iter()
         .enumerate()
-        .filter(|(i, _)| app.language_count(*i) > 0)
+        // Every script, including the ones this font has nothing for.
+        // A zero is information: it says the coverage is not there.
         .map(|(i, g)| {
             ui::list_row_with_icon(
                 pal,
@@ -2202,6 +2232,22 @@ fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
     )
 }
 
+/// The font's metadata, which is what the GPUI build's right panel
+/// holds when no glyph is picked.
+fn font_info_section(app: &App) -> impl WidgetView<App> + use<> {
+    let pal = &app.palette;
+    let rows: Vec<_> = app
+        .font
+        .info_rows()
+        .into_iter()
+        .map(|(name, value)| ui::kv(pal, name.to_string(), value))
+        .collect();
+    xcolumn(
+        Region::Section,
+        (section_header(pal, "Font Info"), xcolumn(Region::List, rows)),
+    )
+}
+
 fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let row = move |k: String, v: String| ui::kv(pal, k, v);
@@ -2348,6 +2394,7 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             editing.then(|| background_section(app)),
             editing.then(|| mark_section(app)),
             layers_section(app),
+            (!editing).then(|| font_info_section(app)),
             editing.then(|| axes_section(app)).flatten(),
             (!editing).then(|| glyph_preview(app)).flatten(),
         ),
@@ -2423,7 +2470,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
                     .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
                     .flex(1.0),
                 sized_box(portal(info_panel(app)).constrain_horizontal(true))
-                    .dims(Dimensions::new(Dim::Fixed(Length::px(240.0)), Dim::Stretch))
+                    .dims(Dimensions::new(Dim::Fixed(Length::px(256.0)), Dim::Stretch))
                     .background_color(pal.panel),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)
