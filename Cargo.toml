@@ -25,6 +25,8 @@ winit = "0.30"
 # Native menu bar. Xilem is on winit, which has no menu API, so this is
 # the application's job. Tauri's crate, the same one Zed-class apps use.
 muda = "0.19"
+# Reload when the sources change under us, the way the GPUI build does.
+notify = "8"
 # Headless rendering, for review screenshots and for agents to see their
 # own output. Upstream Xilem has no such path, so this is app-side.
 masonry_testing = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a8c364f2ab109e2083121e144" }

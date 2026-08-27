@@ -106,6 +106,10 @@ pub struct FontModel {
 
 impl FontModel {
     pub fn open(path: &FsPath) -> Result<Self, String> {
+        if path.extension().is_some_and(|e| e == "glyphs") {
+            let converted = Self::import_glyphs(path)?;
+            return Self::open(&converted);
+        }
         if path.extension().is_some_and(|e| e == "designspace") {
             let doc = norad::designspace::DesignSpaceDocument::load(path)
                 .map_err(|e| format!("{}: {e}", path.display()))?;
@@ -152,6 +156,48 @@ impl FontModel {
             let name = font.font_info.style_name.clone().unwrap_or_else(|| "Regular".into());
             Ok(Self::from_masters(vec![font], vec![name], vec![path.to_path_buf()], 0))
         }
+    }
+
+    /// Convert a `.glyphs` file to UFO sources beside it and return the
+    /// path to open: the designspace when the family has masters, and
+    /// the first UFO otherwise.
+    ///
+    /// The conversion is `runebender-core`'s, so a family imported here
+    /// and in the GPUI build produces the same sources.
+    fn import_glyphs(path: &FsPath) -> Result<PathBuf, String> {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let result = runebender_core::glyphs_import::glyphs_to_ufo_files(&text)?;
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "glyphs-import".into());
+        let out_dir = path
+            .parent()
+            .unwrap_or(FsPath::new("."))
+            .join(format!("{stem}-ufo"));
+        let mut designspace = None;
+        let mut first_ufo = None;
+        for file in &result.files {
+            let target = out_dir.join(&file.path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("{e}"))?;
+            }
+            std::fs::write(&target, &file.text).map_err(|e| format!("{e}"))?;
+            if file.path.ends_with(".designspace") {
+                designspace = Some(target);
+            } else if first_ufo.is_none()
+                && let Some(ufo) = file.path.split('/').next()
+                && ufo.ends_with(".ufo")
+            {
+                first_ufo = Some(out_dir.join(ufo));
+            }
+        }
+        for warning in &result.warnings {
+            eprintln!("glyphs import: {warning}");
+        }
+        designspace
+            .or(first_ufo)
+            .ok_or_else(|| "glyphs import produced no sources".to_string())
     }
 
     fn from_masters(
