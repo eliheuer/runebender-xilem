@@ -488,6 +488,31 @@ impl FontModel {
             .collect()
     }
 
+    /// The kerning group this glyph belongs to on one side, if any.
+    ///
+    /// `first_side` is the left side in left-to-right text: `public.kern1`.
+    pub fn kern_group(&self, glyph: &str, first_side: bool) -> String {
+        runebender_core::glyph_ops::kern_group(&self.font, glyph, first_side)
+            .map(|name| name.to_string())
+            .unwrap_or_default()
+    }
+
+    /// Put the glyph in a kerning group on one side, in every master.
+    ///
+    /// Kerning groups are font-wide, and a designspace's masters have to
+    /// agree about them or the kerning will not interpolate, so this
+    /// writes all of them rather than only the active one.
+    pub fn set_kern_group(&mut self, glyph: &str, first_side: bool, group: &str) -> bool {
+        let mut changed = false;
+        if let Some(font) = Arc::get_mut(&mut self.font) {
+            changed |= runebender_core::glyph_ops::set_kern_group(font, glyph, first_side, group);
+        }
+        for master in &mut self.masters {
+            runebender_core::glyph_ops::set_kern_group(master, glyph, first_side, group);
+        }
+        changed
+    }
+
     /// Replace the glyph at `index` (in the font and the cache) after an edit.
     pub fn replace_glyph(&mut self, index: usize, glyph: norad::Glyph) {
         let Some(entry) = self.glyphs.get_mut(index) else {

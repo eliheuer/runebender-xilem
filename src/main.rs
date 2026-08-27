@@ -101,6 +101,9 @@ pub struct App {
     rsb_buf: String,
     name_buf: String,
     unicode_buf: String,
+    /// Kerning group names for the open glyph, left side then right.
+    kern1_buf: String,
+    kern2_buf: String,
     /// Current axis location in user units, one per designspace axis.
     axis_values: Vec<f64>,
     /// Active OKLCH theme id (dark | midnight | gray | light).
@@ -174,6 +177,10 @@ impl App {
         // (the opened one in editor mode, else the first).
         let shown = open.unwrap_or(first);
         let first_name = font.glyphs[shown].name.clone();
+        let (kern1, kern2) = (
+            font.kern_group(&first_name, true),
+            font.kern_group(&first_name, false),
+        );
         let first_uni = font.glyphs[shown]
             .codepoint
             .map(|c| format!("{:04X}", c as u32))
@@ -196,6 +203,8 @@ impl App {
             advance_buf: format!("{}", session.advance() as i64),
             lsb_buf: metric_bufs(&session).0,
             rsb_buf: metric_bufs(&session).1,
+            kern1_buf: kern1,
+            kern2_buf: kern2,
             name_buf: first_name,
             unicode_buf: first_uni,
             session,
@@ -555,6 +564,23 @@ impl App {
         let (l, r) = metric_bufs(&self.session);
         self.lsb_buf = l;
         self.rsb_buf = r;
+        let name = self.session.glyph_name.clone();
+        self.kern1_buf = self.font.kern_group(&name, true);
+        self.kern2_buf = self.font.kern_group(&name, false);
+    }
+
+    /// Put the open glyph in a kerning group on one side. An empty name
+    /// takes it out of the group.
+    fn set_kern_group(&mut self, first_side: bool, value: String) {
+        if first_side {
+            self.kern1_buf = value.clone();
+        } else {
+            self.kern2_buf = value.clone();
+        }
+        let name = self.session.glyph_name.clone();
+        if self.font.set_kern_group(&name, first_side, value.trim()) {
+            self.modified = true;
+        }
     }
 
     /// Set the left sidebearing: shift the glyph so its ink left edge sits at
@@ -1427,6 +1453,29 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
                 ui::field(pal, "Unicode", app.unicode_buf.clone(), |app: &mut App, v| {
                     app.set_unicode_from_buf(v)
                 }),
+                // Kerning groups, left side then right, as gpui's Glyph
+                // panel has them. Empty takes the glyph out of the group,
+                // and the write lands in every master, because a
+                // designspace's masters have to agree about groups.
+                label("Kerning Groups (L \u{00b7} R)")
+                    .text_size(TextSize::Caption.px())
+                    .color(pal.text_muted),
+                // Fixed widths: a group name is long enough that letting
+                // the inputs size to their content pushes the whole
+                // inspector past its column.
+                xrow(
+                    Region::Form,
+                    (
+                        sized_box(ui::field(pal, "", app.kern1_buf.clone(), |app: &mut App, v| {
+                            app.set_kern_group(true, v)
+                        }))
+                        .dims(Dimensions::new(Dim::Fixed(Length::px(105.0)), Dim::Auto)),
+                        sized_box(ui::field(pal, "", app.kern2_buf.clone(), |app: &mut App, v| {
+                            app.set_kern_group(false, v)
+                        }))
+                        .dims(Dimensions::new(Dim::Fixed(Length::px(105.0)), Dim::Auto)),
+                    ),
+                ),
             ),
         )
     });
