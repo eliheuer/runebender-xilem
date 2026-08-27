@@ -729,6 +729,15 @@ impl Session {
             .collect()
     }
 
+    /// Replace every contour, keeping the advance. Used by the swap with
+    /// the background layer, which is an edit like any other.
+    pub fn set_contours(&mut self, contours: Vec<norad::Contour>) -> bool {
+        self.record(EditType::Normal);
+        self.glyph.contours = contours;
+        self.selection.clear();
+        true
+    }
+
     /// Append contours to the glyph, and select the points they brought.
     pub fn paste_contours(&mut self, contours: &[norad::Contour]) -> bool {
         if contours.is_empty() {
