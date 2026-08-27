@@ -104,6 +104,9 @@ pub struct App {
     /// Kerning group names for the open glyph, left side then right.
     kern1_buf: String,
     kern2_buf: String,
+    /// Copied contours. An in-app clipboard, as in the GPUI build: the
+    /// system clipboard carries text, not outlines.
+    clipboard: Vec<norad::Contour>,
     /// Current axis location in user units, one per designspace axis.
     axis_values: Vec<f64>,
     /// Active OKLCH theme id (dark | midnight | gray | light).
@@ -205,6 +208,7 @@ impl App {
             rsb_buf: metric_bufs(&session).1,
             kern1_buf: kern1,
             kern2_buf: kern2,
+            clipboard: Vec::new(),
             name_buf: first_name,
             unicode_buf: first_uni,
             session,
@@ -513,7 +517,33 @@ impl App {
             A::RemoveOverlap => self.apply_op(|s| s.remove_overlap()),
             A::Decompose => self.apply_op(|s| s.decompose()),
             A::Duplicate => self.apply_op(|s| s.duplicate()),
+            A::Copy => self.copy_contours(),
+            A::Paste => self.paste_contours(),
         }
+    }
+
+    /// Copy the selected contours, or all of them when nothing is
+    /// selected.
+    fn copy_contours(&mut self) {
+        if !matches!(self.mode, Mode::Editor(_)) {
+            return;
+        }
+        self.clipboard = self.session.contours_for_copy();
+        self.note = match self.clipboard.len() {
+            0 => "nothing to copy".into(),
+            1 => "copied 1 contour".into(),
+            n => format!("copied {n} contours"),
+        };
+    }
+
+    /// Paste the copied contours into the open glyph, with undo.
+    fn paste_contours(&mut self) {
+        if !matches!(self.mode, Mode::Editor(_)) || self.clipboard.is_empty() {
+            return;
+        }
+        let contours = self.clipboard.clone();
+        self.apply_op(move |session| session.paste_contours(&contours));
+        self.note = format!("pasted {} contours", self.clipboard.len());
     }
 
     /// Recompute the LSB/RSB/advance text buffers from the current session.

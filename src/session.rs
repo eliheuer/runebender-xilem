@@ -713,6 +713,39 @@ impl Session {
         runebender_core::theme_oklch::set_glyph_mark(&mut self.glyph, label);
     }
 
+    /// The contours to copy: the ones holding a selected point, or every
+    /// contour when nothing is selected. This is the web editor's rule,
+    /// and the GPUI build's.
+    pub fn contours_for_copy(&self) -> Vec<norad::Contour> {
+        if self.selection.is_empty() {
+            return self.glyph.contours.clone();
+        }
+        self.glyph
+            .contours
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| self.selection.iter().any(|(c, _)| c == index))
+            .map(|(_, contour)| contour.clone())
+            .collect()
+    }
+
+    /// Append contours to the glyph, and select the points they brought.
+    pub fn paste_contours(&mut self, contours: &[norad::Contour]) -> bool {
+        if contours.is_empty() {
+            return false;
+        }
+        self.record(EditType::Normal);
+        let first_new = self.glyph.contours.len();
+        self.glyph.contours.extend(contours.iter().cloned());
+        self.selection.clear();
+        for (offset, contour) in contours.iter().enumerate() {
+            for point in 0..contour.points.len() {
+                self.selection.insert((first_new + offset, point));
+            }
+        }
+        true
+    }
+
     pub fn select_all(&mut self) {
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }
@@ -729,4 +762,66 @@ fn resolve_components(font: &norad::Font, glyph: &norad::Glyph) -> Vec<norad::Co
         }
     }
     work.contours.split_off(before)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A glyph with two square contours, so copy has something to choose
+    /// between.
+    fn two_squares() -> Session {
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("test");
+        for offset in [0.0, 200.0] {
+            let mut contour = norad::Contour::default();
+            for (x, y) in [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)] {
+                contour.points.push(norad::ContourPoint::new(
+                    x + offset,
+                    y,
+                    norad::PointType::Line,
+                    false,
+                    None,
+                    None,
+                ));
+            }
+            glyph.contours.push(contour);
+        }
+        font.default_layer_mut().insert_glyph(glyph);
+        Session::new(&font, "test").expect("glyph is there")
+    }
+
+    #[test]
+    fn copy_with_no_selection_takes_every_contour() {
+        let session = two_squares();
+        assert_eq!(session.contours_for_copy().len(), 2);
+    }
+
+    #[test]
+    fn copy_takes_the_contours_holding_a_selected_point() {
+        let mut session = two_squares();
+        session.selection.insert((1, 0));
+        let copied = session.contours_for_copy();
+        assert_eq!(copied.len(), 1);
+        // The second square starts at x = 200.
+        assert_eq!(copied[0].points[0].x, 200.0);
+    }
+
+    #[test]
+    fn paste_appends_and_selects_what_it_pasted() {
+        let mut session = two_squares();
+        let copied = session.contours_for_copy();
+        assert!(session.paste_contours(&copied));
+        assert_eq!(session.glyph.contours.len(), 4);
+        // Every point of the two new contours, and nothing else.
+        assert_eq!(session.selection.len(), 8);
+        assert!(session.selection.iter().all(|(c, _)| *c >= 2));
+    }
+
+    #[test]
+    fn pasting_nothing_changes_nothing() {
+        let mut session = two_squares();
+        assert!(!session.paste_contours(&[]));
+        assert_eq!(session.glyph.contours.len(), 2);
+    }
 }
