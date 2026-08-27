@@ -79,6 +79,12 @@ enum Mode {
     Editor(usize),
 }
 
+/// One editing tab: a parked session and the tool it was left on.
+pub struct Tab {
+    session: Arc<Session>,
+    tool: Tool,
+}
+
 pub struct App {
     font: FontModel,
     palette: Arc<Palette>,
@@ -89,8 +95,14 @@ pub struct App {
     filter: String,
     sel: Sel,
     sort: Sort,
-    // Editor session, when a glyph is open.
+    // Editor session, when a glyph is open. This is the live one: the
+    // active tab's copy is only written back when tabs change.
     session: Arc<Session>,
+    /// One parked session per open tab, in strip order. Each carries its
+    /// own selection, viewport and undo stack, and it tracks its glyph by
+    /// name, so a rename or a master switch does not lose it.
+    tabs: Vec<Tab>,
+    active_tab: usize,
     selected_points: usize,
     tool: Tool,
     modified: bool,
@@ -238,6 +250,11 @@ impl App {
             reference_buf,
             name_buf: first_name,
             unicode_buf: first_uni,
+            tabs: vec![Tab {
+                session: session.clone(),
+                tool: Tool::Select,
+            }],
+            active_tab: 0,
             session,
             selected_points: 0,
             tool: match std::env::var("RUNEBENDER_TOOL").as_deref() {
@@ -399,7 +416,87 @@ impl App {
         self.selected = Some(index);
     }
 
+    /// Write the live session back into its tab, so switching away from
+    /// it does not lose the edit, the selection, or the undo stack.
+    fn park(&mut self) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            tab.session = self.session.clone();
+            tab.tool = self.tool;
+        }
+    }
+
+    /// Make a tab the live one.
+    fn activate_tab(&mut self, index: usize) {
+        let Some(tab) = self.tabs.get(index) else { return };
+        let (session, tool) = (tab.session.clone(), tab.tool);
+        self.park();
+        self.active_tab = index;
+        self.session = session;
+        self.tool = tool;
+        let name = self.session.glyph_name.clone();
+        if let Some(glyph) = self.font.index_of(&name) {
+            self.selected = Some(glyph);
+            self.mode = Mode::Editor(glyph);
+        }
+        self.selected_points = 0;
+        self.refresh_metric_bufs();
+        self.refresh_coord_bufs();
+        self.name_buf = name;
+        self.unicode_buf = self
+            .selected
+            .and_then(|i| self.font.glyphs.get(i))
+            .and_then(|g| g.codepoint)
+            .map(|c| format!("{:04X}", c as u32))
+            .unwrap_or_default();
+    }
+
+    /// A second tab on the glyph that is open, with its own session.
+    fn new_tab(&mut self) {
+        let Some(session) = Session::new(&self.font.font, &self.session.glyph_name) else {
+            return;
+        };
+        self.park();
+        self.tabs.push(Tab {
+            session: Arc::new(session),
+            tool: self.tool,
+        });
+        self.activate_tab(self.tabs.len() - 1);
+    }
+
+    /// Close a tab. Closing the last one leaves the editor.
+    fn close_tab(&mut self, index: usize) {
+        if index >= self.tabs.len() {
+            return;
+        }
+        if self.tabs.len() == 1 {
+            self.back_to_overview();
+            return;
+        }
+        self.park();
+        self.tabs.remove(index);
+        let next = if self.active_tab > index {
+            self.active_tab - 1
+        } else {
+            self.active_tab.min(self.tabs.len() - 1)
+        };
+        self.active_tab = usize::MAX; // parking again would write to the wrong tab
+        self.activate_tab(next);
+    }
+
     fn open_glyph(&mut self, index: usize) {
+        // A glyph that already has a tab gets that tab, rather than a
+        // second one on the same glyph.
+        if let Some(entry) = self.font.glyphs.get(index) {
+            let name = entry.name.clone();
+            if let Some(existing) = self
+                .tabs
+                .iter()
+                .position(|tab| tab.session.glyph_name == name)
+            {
+                self.activate_tab(existing);
+                return;
+            }
+        }
         if let Some(entry) = self.font.glyphs.get(index) {
             if let Some(session) = Session::new(&self.font.font, &entry.name) {
                 self.advance_buf = format!("{}", session.advance() as i64);
@@ -409,6 +506,15 @@ impl App {
                 self.name_buf = entry.name.clone();
                 self.unicode_buf = entry.codepoint.map(|c| format!("{:04X}", c as u32)).unwrap_or_default();
                 self.session = Arc::new(session);
+                if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                    tab.session = self.session.clone();
+                } else {
+                    self.tabs.push(Tab {
+                        session: self.session.clone(),
+                        tool: self.tool,
+                    });
+                    self.active_tab = self.tabs.len() - 1;
+                }
                 self.selected = Some(index);
                 self.selected_points = 0;
                 self.mode = Mode::Editor(index);
@@ -1517,6 +1623,55 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
 /// Curves: the two analyses that are about shape quality rather than
 /// measurement. Both read from runebender-core, so they say the same
 /// thing here as in the other two editors.
+/// The tab strip: one tab per open glyph, with a close box, and a plus
+/// that opens a second view on the glyph in hand.
+fn tab_strip(app: &App) -> impl WidgetView<App> + use<> {
+    let pal = &app.palette;
+    let active = app.active_tab;
+    let closable = app.tabs.len() > 1;
+    let tabs: Vec<_> = app
+        .tabs
+        .iter()
+        .enumerate()
+        .map(|(index, tab)| {
+            let is_active = index == active;
+            let (bg, fg) = if is_active {
+                (pal.role("gridSelected").with_alpha(0.22), pal.role("accent"))
+            } else {
+                (pal.panel, pal.text)
+            };
+            xrow(
+                Region::List,
+                (
+                    sized_box(
+                        button(
+                            label(tab.session.glyph_name.clone())
+                                .text_size(TextSize::Body.px())
+                                .color(fg),
+                            move |app: &mut App| app.activate_tab(index),
+                        )
+                        .background_color(bg),
+                    )
+                    .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Row))),
+                    closable.then(|| {
+                        ui::toggle(pal, "x".into(), false, move |app: &mut App| {
+                            app.close_tab(index)
+                        })
+                    }),
+                ),
+            )
+        })
+        .collect();
+    xrow(
+        Region::Toolbar,
+        (
+            xrow(Region::Inline, tabs),
+            ui::toggle(pal, "+".into(), false, |app: &mut App| app.new_tab()),
+        ),
+    )
+    .background_color(pal.panel)
+}
+
 fn curves_section(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let view = app.view;
@@ -1769,6 +1924,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         .then(|| sized_box(preview_strip(app)).dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(120.0)))).background_color(pal.panel));
     let center = flex_col((
         titlebar(app),
+        editing_mode.then(|| tab_strip(app)),
         body.flex(1.0),
         preview,
         status(app),
@@ -1838,4 +1994,96 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
 
 fn main() -> Result<(), EventLoopError> {
     run(EventLoop::with_user_event())
+}
+
+#[cfg(test)]
+mod tab_tests {
+    use super::*;
+
+    /// A two-glyph UFO on disk, because `App::open` takes a path. Each
+    /// test gets its own directory so they can run in parallel.
+    fn app() -> App {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        let mut font = norad::Font::new();
+        for name in ["A", "B"] {
+            let mut glyph = norad::Glyph::new(name);
+            glyph.width = 500.0;
+            let mut contour = norad::Contour::default();
+            for (x, y) in [(0.0, 0.0), (400.0, 0.0), (400.0, 700.0), (0.0, 700.0)] {
+                contour.points.push(norad::ContourPoint::new(
+                    x,
+                    y,
+                    norad::PointType::Line,
+                    false,
+                    None,
+                    None,
+                ));
+            }
+            glyph.contours.push(contour);
+            font.default_layer_mut().insert_glyph(glyph);
+        }
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("runebender-tabs-{n}.ufo"));
+        let _ = std::fs::remove_dir_all(&path);
+        font.save(&path).expect("save the test font");
+        App::open(&path).expect("open the test font")
+    }
+
+    #[test]
+    fn opening_a_glyph_twice_reuses_its_tab() {
+        let mut app = app();
+        let a = app.font.index_of("A").expect("A");
+        let b = app.font.index_of("B").expect("B");
+        app.open_glyph(a);
+        app.new_tab();
+        app.open_glyph(b);
+        let tabs = app.tabs.len();
+        app.open_glyph(a);
+        assert_eq!(app.tabs.len(), tabs, "no tab was added");
+        assert_eq!(app.session.glyph_name, "A");
+    }
+
+    #[test]
+    fn a_tab_keeps_its_own_selection() {
+        let mut app = app();
+        let a = app.font.index_of("A").expect("A");
+        app.open_glyph(a);
+        let mut session = (*app.session).clone();
+        session.select_all();
+        app.session = Arc::new(session);
+        let selected = app.session.selection.len();
+        assert!(selected > 0, "the test glyph has points");
+
+        app.new_tab();
+        assert_eq!(app.session.selection.len(), 0, "the new tab starts clean");
+
+        app.activate_tab(0);
+        assert_eq!(app.session.selection.len(), selected, "the first tab kept it");
+    }
+
+    #[test]
+    fn closing_the_last_tab_leaves_the_editor() {
+        let mut app = app();
+        let a = app.font.index_of("A").expect("A");
+        app.open_glyph(a);
+        app.close_tab(0);
+        assert!(matches!(app.mode, Mode::Overview));
+    }
+
+    #[test]
+    fn closing_a_tab_before_the_active_one_keeps_the_right_glyph() {
+        let mut app = app();
+        let a = app.font.index_of("A").expect("A");
+        let b = app.font.index_of("B").expect("B");
+        app.open_glyph(a);
+        app.new_tab();
+        app.open_glyph(b);
+        assert_eq!(app.tabs.len(), 2);
+        app.activate_tab(1);
+        let active = app.session.glyph_name.clone();
+        app.close_tab(0);
+        assert_eq!(app.session.glyph_name, active);
+    }
 }
