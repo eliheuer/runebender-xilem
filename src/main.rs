@@ -117,6 +117,8 @@ pub struct App {
     view: editor::ViewOptions,
     /// What the text tool starts with, from RUNEBENDER_TEXT.
     initial_text: String,
+    /// Grid cell size, driven by the bottom bar's zoom.
+    cell_size: f64,
     advance_buf: String,
     lsb_buf: String,
     rsb_buf: String,
@@ -274,6 +276,7 @@ impl App {
             note: String::new(),
             view,
             initial_text: std::env::var("RUNEBENDER_TEXT").unwrap_or_default(),
+            cell_size: 104.0,
             axis_values,
             theme_id,
             coord_quadrant: runebender_core::path::Quadrant::Center,
@@ -716,6 +719,7 @@ impl App {
             A::Decompose => self.apply_op(|s| s.decompose()),
             A::Duplicate => self.apply_op(|s| s.duplicate()),
             A::NewFont => self.new_font(),
+            A::CycleTheme => self.cycle_theme(),
             A::Copy => self.copy_contours(),
             A::Paste => self.paste_contours(),
         }
@@ -785,6 +789,14 @@ impl App {
             }
             Err(e) => self.note = e,
         }
+    }
+
+    /// Zoom the editor's viewport about the middle of the canvas.
+    fn zoom_by(&mut self, factor: f64) {
+        let mut session = (*self.session).clone();
+        let zoom = (session.viewport.zoom * factor).clamp(0.02, 64.0);
+        session.viewport.zoom = zoom;
+        self.session = Arc::new(session);
     }
 
     /// Copy the selected contours, or all of them when nothing is
@@ -1249,9 +1261,9 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
             (!editing).then(|| label(title).text_size(TextSize::Title.px()).color(pal.text)),
             FlexSpacer::Flex(1.0),
             editing.then(|| header_tools(app)),
-            text_button(theme_label(app.theme_id), |app: &mut App| app.cycle_theme())
-                .background_color(pal.button),
-            label(save_text.to_string()).color(save_color),
+            label(save_text.to_string())
+                .text_size(TextSize::Body.px())
+                .color(save_color),
             text_button("Save", |app: &mut App| app.save()).background_color(pal.button),
         ),
     )
@@ -1289,13 +1301,14 @@ fn header_tools(app: &App) -> impl WidgetView<App> + use<> {
 fn status(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let text = match app.mode {
-        Mode::Overview => format!(
-            "{} glyphs   {}",
-            app.font.glyphs.len(),
-            app.font.source.display()
-        ),
+        // No path here: it is in the title bar, and a long one ate the
+        // whole bar, pushing the zoom control off the end.
+        Mode::Overview => match app.multi_selected.len() {
+            0 => format!("{} glyphs", app.font.glyphs.len()),
+            n => format!("{n} selected \u{00b7} {} glyphs", app.font.glyphs.len()),
+        },
         Mode::Editor(_) => format!(
-            "{}   advance {}   {} points   {} selected",
+            "{} \u{00b7} advance {} \u{00b7} {} points \u{00b7} {} selected",
             app.session.glyph_name.as_str(),
             app.session.advance(),
             app.session.point_count(),
@@ -1307,12 +1320,15 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
     } else {
         format!("{}   {}", text, app.note)
     };
-    // Bottom bar: mark swatches on the left (set the current/selected glyphs'
-    // mark), then the status text (gpui's bottom bar).
+    // Bottom bar: mark swatches on the left, the status centred, and the
+    // zoom on the right, which is where the GPUI build puts them.
+    // Circular, because a mark is a dot in every font editor.
     let swatch = |mark: Option<String>, color: xilem::Color| {
         sized_box(
             text_button("", move |app: &mut App| app.set_mark(mark.clone()))
-                .background_color(color),
+                .background_color(color)
+                .padding(Space::None)
+                .corner_radius(Radius::Full.length()),
         )
         .dims(Dimensions::fixed(ControlSize::Swatch.length(), ControlSize::Swatch.length()))
     };
@@ -1322,12 +1338,51 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
         .into_iter()
         .map(|(name, color)| swatch(Some(name), color))
         .collect();
+    let editing = matches!(app.mode, Mode::Editor(_));
     xrow(
         Region::Toolbar,
         (
             swatch(None, pal.control),
             xrow(Region::List, marks),
-            label(text).color(pal.text_muted),
+            FlexSpacer::Flex(1.0),
+            label(text)
+                .text_size(TextSize::Caption.px())
+                .color(pal.text_muted),
+            FlexSpacer::Flex(1.0),
+            // Cell size in the grid, zoom in the editor: one control in
+            // one place, whichever surface is showing.
+            editing.then(|| {
+                xrow(
+                    Region::Inline,
+                    (
+                        ui::toggle_sized(pal, "\u{2212}".into(), false, ControlSize::Icon, |app: &mut App| {
+                            app.zoom_by(1.0 / 1.25)
+                        }),
+                        label(format!("{:.0}%", app.session.viewport.zoom * 100.0))
+                            .text_size(TextSize::Caption.px())
+                            .color(pal.text_muted),
+                        ui::toggle_sized(pal, "+".into(), false, ControlSize::Icon, |app: &mut App| {
+                            app.zoom_by(1.25)
+                        }),
+                    ),
+                )
+            }),
+            (!editing).then(|| {
+                xrow(
+                    Region::Inline,
+                    (
+                        ui::toggle_sized(pal, "\u{2212}".into(), false, ControlSize::Icon, |app: &mut App| {
+                            app.cell_size = (app.cell_size / 1.25).max(48.0);
+                        }),
+                        label(format!("{:.0}", app.cell_size))
+                            .text_size(TextSize::Caption.px())
+                            .color(pal.text_muted),
+                        ui::toggle_sized(pal, "+".into(), false, ControlSize::Icon, |app: &mut App| {
+                            app.cell_size = (app.cell_size * 1.25).min(320.0);
+                        }),
+                    ),
+                )
+            }),
         ),
     )
     .background_color(pal.panel)
@@ -1365,8 +1420,9 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         .enumerate()
         .filter(|(i, _)| app.language_count(*i) > 0)
         .map(|(i, g)| {
-            ui::list_row(
+            ui::list_row_with_icon(
                 pal,
+                g.icon.clone(),
                 g.label.clone(),
                 format!("{}", app.language_count(i)),
                 app.sel == Sel::Language(i),
@@ -1505,7 +1561,7 @@ fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
 }
 
 fn overview(app: &App) -> impl WidgetView<App> + use<> {
-    let metrics = app.cell_metrics(104.0);
+    let metrics = app.cell_metrics(app.cell_size);
     grid(
         app.filtered_cells(),
         metrics,
@@ -2153,7 +2209,16 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
     if let Ok(path) = std::env::var("RUNEBENDER_SCREENSHOT") {
         // The harness needs a root widget with a concrete type, so wrap
         // the app's root view in a sized box.
-        screenshot::render_to(app, |app: &mut App| sized_box(app_logic(app)), (1100, 720), &path);
+        // RUNEBENDER_SIZE=1000x680 renders at a chosen size, so a shot
+        // can be matched against the GPUI build's window for comparison.
+        let size = std::env::var("RUNEBENDER_SIZE")
+            .ok()
+            .and_then(|spec| {
+                let (w, h) = spec.split_once('x')?;
+                Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+            })
+            .unwrap_or((1100, 720));
+        screenshot::render_to(app, |app: &mut App| sized_box(app_logic(app)), size, &path);
         return Ok(());
     }
     let background = app.palette.app;

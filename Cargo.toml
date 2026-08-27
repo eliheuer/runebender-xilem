@@ -32,8 +32,12 @@ muda = "0.19"
 notify = "8"
 # Headless rendering, for review screenshots and for agents to see their
 # own output. Upstream Xilem has no such path, so this is app-side.
-masonry_testing = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a8c364f2ab109e2083121e144" }
 tokio = { version = "1", features = ["rt"] }
+# The headless renderer. masonry_testing would be less code, but it
+# builds its RenderRoot with system fonts turned off, so screenshots of
+# anything outside the default font come out blank. See src/screenshot.rs.
+imaging_vello_cpu = "0.0.1"
+image = "0.25"
 
 [profile.release]
 lto = "thin"

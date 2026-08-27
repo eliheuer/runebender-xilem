@@ -109,6 +109,12 @@ pub const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "View",
+        title: "Cycle Theme",
+        accelerator: Some("CmdOrCtrl+T"),
+        action: AppAction::CycleTheme,
+    },
+    Entry {
+        menu: "View",
         title: "Overview",
         accelerator: Some("Escape"),
         action: AppAction::Overview,

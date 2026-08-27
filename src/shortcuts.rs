@@ -41,6 +41,7 @@ pub enum AppAction {
     Copy,
     Paste,
     NewFont,
+    CycleTheme,
 }
 
 /// Resolve a key press the focused widget did not consume to an app action.

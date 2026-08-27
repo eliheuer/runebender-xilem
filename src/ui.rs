@@ -117,6 +117,55 @@ pub fn list_row<F: Fn(&mut App) + Send + Sync + 'static>(
     .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
 }
 
+/// A list row with a leading icon.
+///
+/// The icon gets its own fixed-width column rather than being glued to
+/// the label. It has to: a script icon like `\u{0636}` is right to left,
+/// and inside one string the bidi algorithm moves it to the other end,
+/// so "icon then name" renders as "name then icon". A separate box is
+/// also how the GPUI build lays it out.
+pub fn list_row_with_icon<F: Fn(&mut App) + Send + Sync + 'static>(
+    pal: &Palette,
+    icon: String,
+    text: String,
+    trailing: String,
+    active: bool,
+    on_click: F,
+) -> impl WidgetView<App> + use<F> {
+    let (fg, border) = if active {
+        (pal.role("accent"), pal.role("accent"))
+    } else {
+        (pal.text, xilem::Color::TRANSPARENT)
+    };
+    let trailing_color = if active { pal.role("accent") } else { pal.text_muted };
+    let icon_color = if active { pal.role("accent") } else { pal.text_muted };
+    sized_box(
+        button(
+            row(
+                Region::Inline,
+                (
+                    sized_box(label(icon).text_size(TextSize::Body.px()).color(icon_color))
+                        .dims(Dimensions::fixed(
+                            ControlSize::Swatch.length(),
+                            ControlSize::Row.length(),
+                        )),
+                    label(text).text_size(TextSize::Body.px()).color(fg),
+                    FlexSpacer::Flex(1.0),
+                    label(trailing)
+                        .text_size(TextSize::Body.px())
+                        .color(trailing_color),
+                ),
+            ),
+            move |app: &mut App| on_click(app),
+        )
+        .background_color(pal.panel)
+        .border_color(border)
+        .border_width(Stroke::Hairline.length())
+        .corner_radius(Radius::Sm.length()),
+    )
+    .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
+}
+
 /// A list row with a small action button after it.
 ///
 /// The row and the button are separate targets on purpose: one selects,
