@@ -953,6 +953,15 @@ impl App {
         }
         let old = self.session.glyph_name.clone();
         if self.font.rename_glyph(&old, &new) {
+            // Tabs address their glyph by name, so every tab showing the
+            // old one has to learn the new one or it points at nothing.
+            for tab in &mut self.tabs {
+                if tab.session.glyph_name == old
+                    && let Some(session) = Session::new(&self.font.font, &new)
+                {
+                    tab.session = Arc::new(session);
+                }
+            }
             self.cells = Arc::new(cells_of(&self.font, &self.palette));
             if let Some(i) = self.font.index_of(&new) {
                 self.mode = Mode::Editor(i);
@@ -2142,6 +2151,40 @@ mod tab_tests {
 
         app.activate_tab(0);
         assert_eq!(app.session.selection.len(), selected, "the first tab kept it");
+    }
+
+    /// Renaming used to rebuild the model from the active master, which
+    /// dropped the other masters, the axes and their locations. In a
+    /// designspace that meant losing interpolation and saving one UFO.
+    #[test]
+    fn renaming_keeps_the_other_masters() {
+        let mut app = app();
+        let a = app.font.index_of("A").expect("A");
+        app.open_glyph(a);
+        let masters = app.font.master_names.len();
+        app.name_buf = "Alpha".into();
+        app.commit_rename();
+        assert_eq!(app.font.master_names.len(), masters);
+        assert!(app.font.index_of("Alpha").is_some());
+        assert!(app.font.index_of("A").is_none());
+    }
+
+    /// A tab addresses its glyph by name, so a rename has to reach it.
+    #[test]
+    fn renaming_follows_the_open_tab() {
+        let mut app = app();
+        let a = app.font.index_of("A").expect("A");
+        app.open_glyph(a);
+        app.name_buf = "Alpha".into();
+        app.commit_rename();
+        assert_eq!(app.session.glyph_name, "Alpha");
+        assert!(
+            app.tabs.iter().all(|tab| tab.session.glyph_name != "A"),
+            "no tab still points at the old name"
+        );
+        // And the tab still resolves: activating it finds the glyph.
+        app.activate_tab(0);
+        assert_eq!(app.session.glyph_name, "Alpha");
     }
 
     #[test]

@@ -325,17 +325,33 @@ impl FontModel {
     }
 
     /// Rename a glyph in the font (updates references) and refresh the cache.
+    /// Rename a glyph, in every master.
+    ///
+    /// `runebender_core` does the work inside one font: the glyph, the
+    /// components that place it, group memberships, and kerning keys on
+    /// either side. This applies that to all the masters, because a
+    /// designspace whose sources disagree about a glyph name does not
+    /// build.
+    ///
+    /// It used to rebuild the whole model from the active font, which
+    /// silently dropped the masters, the axes, and the master locations,
+    /// so renaming a glyph in a designspace left a single-master font
+    /// with no interpolation and a save that wrote one UFO.
     pub fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
-        let ok = Arc::get_mut(&mut self.font)
-            .map(|f| runebender_core::glyph_ops::rename_glyph(f, old, new))
+        let renamed = Arc::get_mut(&mut self.font)
+            .map(|font| runebender_core::glyph_ops::rename_glyph(font, old, new))
             .unwrap_or(false);
-        if ok {
-            let font = Arc::try_unwrap(std::mem::replace(&mut self.font, Arc::new(norad::Font::default())))
-                .unwrap_or_else(|arc| (*arc).clone());
-            let source = self.source.clone();
-            *self = Self::from_font(font, source);
+        if !renamed {
+            return false;
         }
-        ok
+        for master in &mut self.masters {
+            runebender_core::glyph_ops::rename_glyph(master, old, new);
+        }
+        // Only names changed, so the metrics stand; rebuild the glyph
+        // cache and keep everything that describes the family.
+        let rebuilt = Self::from_font((*self.font).clone(), self.source.clone());
+        self.glyphs = rebuilt.glyphs;
+        true
     }
 
     pub fn save(&mut self) -> Result<(), String> {
