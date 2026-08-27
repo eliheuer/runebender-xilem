@@ -5,6 +5,7 @@
 //! See PORT.md for what each slice forced into the framework.
 
 mod design;
+mod menu;
 mod screenshot;
 mod editor;
 mod grid;
@@ -1510,7 +1511,10 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         Mode::Editor(_) => Either::B(editor_nav(app)),
     };
     let left_width = if editing_mode { 232.0 } else { 224.0 };
-    shortcuts::shortcut_host(flex_row((
+    // The menu bar is built on the main thread, which is here, and only
+    // once. Xilem owns the event loop and offers no startup hook.
+    menu::install();
+    menu::with_menu_events(shortcuts::shortcut_host(flex_row((
         sized_box(left)
             .dims(Dimensions::new(Dim::Fixed(Length::px(left_width)), Dim::Stretch))
             .background_color(pal.panel),
@@ -1524,7 +1528,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Space::None)
-    .background_color(pal.app))
+    .background_color(pal.app)))
 }
 
 fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
