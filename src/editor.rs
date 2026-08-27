@@ -87,6 +87,8 @@ pub enum EditorEvent {
     Selection(usize),
     /// The user asked to leave the editor (Escape).
     Exit,
+    /// The text tool activated a sort: open that glyph for editing.
+    EditGlyph(String),
 }
 
 enum Drag {
@@ -116,6 +118,10 @@ pub struct EditorWidget {
     interp: Option<Arc<masonry::kurbo::BezPath>>,
     /// Background layer and reference glyph, drawn under everything.
     underlay: Underlay,
+    /// The text tool's buffer, present only while that tool is in hand.
+    text: Option<crate::text_tool::TextState>,
+    /// The master the buffer was built from.
+    text_inputs: Option<crate::text_tool::TextInputs>,
     size: Size,
     drag: Drag,
     /// Last cursor position in design space, for the pen preview segment.
@@ -152,6 +158,34 @@ impl EditorWidget {
             m.ascender,
             m.descender,
             0.62,
+        );
+        self.session.fitted = true;
+    }
+
+    /// Frame the whole text line rather than one glyph.
+    ///
+    /// The editor's normal fit is one advance wide, which shows about two
+    /// letters of a word. Typing is for judging spacing, so the view has
+    /// to hold the line.
+    fn fit_text(&mut self) {
+        let Some(text) = &self.text else { return };
+        let m = self.session.metrics;
+        let width: f64 = text
+            .placed()
+            .iter()
+            .map(|sort| sort.origin.x + sort.advance)
+            .fold(self.session.advance(), f64::max);
+        // Width first, and only then height. `fit_to_canvas` sizes to the
+        // em, which is right for one glyph and wrong for a word: a line
+        // of fifteen letters would fit vertically and run off both sides.
+        let width = width.max(m.upm);
+        let design_height = (m.ascender - m.descender).max(1.0);
+        let zoom = ((self.size.width * 0.9) / width).min((self.size.height * 0.8) / design_height);
+        self.session.viewport.zoom = zoom.max(0.001);
+        let center_y = (m.ascender + m.descender) / 2.0;
+        self.session.viewport.offset = masonry::kurbo::Vec2::new(
+            (self.size.width - width * self.session.viewport.zoom) / 2.0,
+            self.size.height / 2.0 + center_y * self.session.viewport.zoom,
         );
         self.session.fitted = true;
     }
@@ -196,7 +230,13 @@ impl Widget for EditorWidget {
         if self.size != size {
             self.size = size;
             if !self.session.fitted {
-                self.fit();
+                // The text tool frames the line; everything else frames
+                // the glyph.
+                if self.text.is_some() {
+                    self.fit_text();
+                } else {
+                    self.fit();
+                }
             }
         }
         ctx.set_clip_path(size.to_rect());
@@ -206,6 +246,41 @@ impl Widget for EditorWidget {
         let pal = self.palette.clone();
         let affine = self.session.viewport.affine();
         painter.fill_rect(self.size.to_rect(), pal.canvas);
+
+        // The text tool draws a line of glyphs rather than one glyph.
+        // The active sort is the one being edited, so it keeps the
+        // editing colour and the rest are quiet.
+        if let Some(text) = &self.text {
+            let m = &self.session.metrics;
+            let ink = pal.text;
+            let quiet = pal.text.with_alpha(0.55);
+            for sort in text.placed() {
+                let color = if sort.active { ink } else { quiet };
+                painter.fill(&(affine * sort.path), color).draw();
+                if sort.active {
+                    let box_ = Rect::from_points(
+                        affine * Point::new(sort.origin.x, m.descender + sort.origin.y),
+                        affine
+                            * Point::new(
+                                sort.origin.x + sort.advance,
+                                m.ascender + sort.origin.y,
+                            ),
+                    );
+                    painter
+                        .stroke(box_, &Stroke::new(1.0), pal.role("accent").with_alpha(0.6))
+                        .draw();
+                }
+            }
+            // The caret, full em height, so it reads as a text cursor
+            // rather than a mark on the baseline.
+            let caret = text.caret();
+            let top = affine * Point::new(caret.x, caret.y + m.ascender);
+            let bottom = affine * Point::new(caret.x, caret.y + m.descender);
+            painter
+                .stroke(Line::new(top, bottom), &Stroke::new(1.5), pal.role("accent"))
+                .draw();
+            return;
+        }
 
         // Underlay, drawn first so everything else sits on top of it. The
         // reference glyph is a quiet fill (it is a shape to match), the
@@ -477,6 +552,21 @@ impl Widget for EditorWidget {
             PointerEvent::Down(PointerButtonEvent { button, state, .. }) => {
                 ctx.request_focus();
                 let at = ctx.local_position(state.position);
+                // Text tool: a click is a caret placement, and a click on
+                // a sort makes that glyph the one being edited.
+                if let Some(text) = self.text.as_mut()
+                    && *button == Some(PointerButton::Primary)
+                {
+                    let design = self.session.viewport.screen_to_design(at);
+                    if let Some(index) = text.click(design)
+                        && let Some(glyph) = text.activate(index)
+                    {
+                        ctx.submit_action::<EditorEvent>(EditorEvent::EditGlyph(glyph));
+                    }
+                    ctx.request_render();
+                    ctx.set_handled();
+                    return;
+                }
                 if *button == Some(PointerButton::Secondary) {
                     // A layer, not a rectangle painted into this canvas:
                     // it is rooted in window space, so it can hang past
@@ -741,6 +831,50 @@ impl Widget for EditorWidget {
         let cmd = key.modifiers.meta() || key.modifiers.ctrl();
         let shift = key.modifiers.shift();
         let step = if shift { 10.0 } else { 1.0 };
+
+        // The text tool types. Everything a key would otherwise do to
+        // the outline is off while it is in hand, because a person
+        // typing "n" means the letter, not the pen.
+        if let Some(text) = self.text.as_mut()
+            && !cmd
+        {
+            let handled = match &key.key {
+                Key::Character(typed) => {
+                    let mut any = false;
+                    for character in typed.chars() {
+                        any |= text.insert(character);
+                    }
+                    any
+                }
+                Key::Named(NamedKey::Backspace) => text.buffer.delete_before_cursor().is_some(),
+                Key::Named(NamedKey::Delete) => text.buffer.delete_after_cursor().is_some(),
+                Key::Named(NamedKey::Enter) => {
+                    text.buffer.insert_line_break();
+                    true
+                }
+                Key::Named(NamedKey::ArrowLeft) => {
+                    text.buffer.move_cursor_visual_left();
+                    true
+                }
+                Key::Named(NamedKey::ArrowRight) => {
+                    text.buffer.move_cursor_visual_right();
+                    true
+                }
+                _ => false,
+            };
+            if handled {
+                // A longer line needs more room; refit only while the
+                // caret is at the end, so it does not fight a person who
+                // has zoomed in on a pair.
+                let at_end = text.buffer.cursor() == text.buffer.len();
+                if at_end {
+                    self.fit_text();
+                }
+                ctx.request_render();
+                ctx.set_handled();
+            }
+            return;
+        }
         let (edited, handled) = match &key.key {
             Key::Named(NamedKey::Escape) => {
                 if self.session.pen_is_active() || self.session.active_contour.is_some() {
@@ -816,6 +950,7 @@ pub struct EditorView<F> {
     ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
     interp: Option<Arc<masonry::kurbo::BezPath>>,
     underlay: Underlay,
+    text: Option<crate::text_tool::TextInputs>,
     on_event: F,
 }
 
@@ -827,6 +962,7 @@ pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
     ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
     interp: Option<Arc<masonry::kurbo::BezPath>>,
     underlay: Underlay,
+    text: Option<crate::text_tool::TextInputs>,
     on_event: F,
 ) -> EditorView<F> {
     EditorView {
@@ -837,6 +973,7 @@ pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
         ghosts,
         interp,
         underlay,
+        text,
         on_event,
     }
 }
@@ -909,13 +1046,24 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
     type ViewState = ();
 
     fn build(&self, ctx: &mut ViewCtx, _: &mut App) -> (Self::Element, Self::ViewState) {
+        let mut session = (*self.session).clone();
+        if self.text.is_some() {
+            // Framing is decided in layout, and the text line needs a
+            // different frame than one glyph.
+            session.fitted = false;
+        }
         let widget = EditorWidget {
-            session: (*self.session).clone(),
+            session,
             palette: self.palette.clone(),
             tool: self.tool,
             ghosts: self.ghosts.clone(),
             interp: self.interp.clone(),
             underlay: self.underlay.clone(),
+            text: self
+                .text
+                .as_ref()
+                .map(crate::text_tool::TextState::new),
+            text_inputs: self.text.clone(),
             size: Size::ZERO,
             drag: Drag::None,
             hover: None,
@@ -963,6 +1111,24 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
         }
         if self.underlay != prev.underlay {
             element.widget.underlay = self.underlay.clone();
+            dirty = true;
+        }
+        // The buffer is the widget's while the tool is in hand, so this
+        // only replaces it when the app supplies a different one: a new
+        // master, a reopened glyph, or the tool being picked up.
+        if self.text != element.widget.text_inputs {
+            match (&self.text, element.widget.text.as_mut()) {
+                // Same tool, new master or edited glyph: keep what has
+                // been typed and re-read the metrics.
+                (Some(inputs), Some(state)) => state.refresh(inputs),
+                (Some(inputs), None) => {
+                    element.widget.text = Some(crate::text_tool::TextState::new(inputs));
+                    element.widget.fit_text();
+                    element.ctx.request_layout();
+                }
+                (None, _) => element.widget.text = None,
+            }
+            element.widget.text_inputs = self.text.clone();
             dirty = true;
         }
         if dirty {

@@ -16,6 +16,7 @@ mod model;
 mod session;
 mod shortcuts;
 mod text_label;
+mod text_tool;
 mod theme;
 mod ui;
 
@@ -71,6 +72,9 @@ pub enum Tool {
     HyperPen,
     Knife,
     Measure,
+    /// Type glyphs into a line and edit them in context: the web
+    /// editor's text tool, on runebender-core's text engine.
+    Text,
 }
 
 /// Which surface is showing.
@@ -111,6 +115,8 @@ pub struct App {
     note: String,
     /// Which analysis overlays the editor draws.
     view: editor::ViewOptions,
+    /// What the text tool starts with, from RUNEBENDER_TEXT.
+    initial_text: String,
     advance_buf: String,
     lsb_buf: String,
     rsb_buf: String,
@@ -261,11 +267,13 @@ impl App {
             selected_points: 0,
             tool: match std::env::var("RUNEBENDER_TOOL").as_deref() {
                 Ok("measure") => Tool::Measure,
+                Ok("text") => Tool::Text,
                 _ => Tool::Select,
             },
             modified: false,
             note: String::new(),
             view,
+            initial_text: std::env::var("RUNEBENDER_TEXT").unwrap_or_default(),
             axis_values,
             theme_id,
             coord_quadrant: runebender_core::path::Quadrant::Center,
@@ -1273,6 +1281,7 @@ fn header_tools(app: &App) -> impl WidgetView<App> + use<> {
             tile("shape-ellipse", Tool::Ellipse),
             tile("knife", Tool::Knife),
             tile("measure", Tool::Measure),
+            tile("text", Tool::Text),
         ),
     )
 }
@@ -1585,7 +1594,11 @@ fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
             .reference_outlines(&app.session.glyph_name, &app.reference_layers),
     );
     let interp = app.interp_preview();
-    editor(app.session.clone(), app.palette.clone(), app.tool, app.view, ghosts, interp, app.underlay(), |app: &mut App, ev| match ev {
+    editor(app.session.clone(), app.palette.clone(), app.tool, app.view, ghosts, interp, app.underlay(),
+        (app.tool == Tool::Text).then(|| {
+            text_tool::TextInputs::new(&app.font).with_text(&app.initial_text)
+        }),
+        |app: &mut App, ev| match ev {
         editor::EditorEvent::Selection(n) => {
             app.selected_points = n;
             app.refresh_coord_bufs();
@@ -1593,6 +1606,14 @@ fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
         editor::EditorEvent::Edited => app.refresh_open_glyph(),
         editor::EditorEvent::Save => app.save(),
         editor::EditorEvent::Exit => app.back_to_overview(),
+        editor::EditorEvent::EditGlyph(name) => {
+            if let Some(index) = app.font.index_of(&name) {
+                app.open_glyph(index);
+                // Stay in the text tool: the point is to edit the glyph
+                // while the word around it is still on screen.
+                app.tool = Tool::Text;
+            }
+        }
     })
 }
 

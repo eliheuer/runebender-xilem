@@ -106,7 +106,7 @@ pub struct FontModel {
 
 impl FontModel {
     pub fn open(path: &FsPath) -> Result<Self, String> {
-        if path.extension().is_some_and(|e| e == "glyphs") {
+        if path.extension().is_some_and(|e| e == "glyphs" || e == "glyphspackage") {
             let converted = Self::import_glyphs(path)?;
             return Self::open(&converted);
         }
@@ -165,8 +165,17 @@ impl FontModel {
     /// The conversion is `runebender-core`'s, so a family imported here
     /// and in the GPUI build produces the same sources.
     fn import_glyphs(path: &FsPath) -> Result<PathBuf, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let result = runebender_core::glyphs_import::glyphs_to_ufo_files(&text)?;
+        let result = if path.is_dir() {
+            // A .glyphspackage is a directory of plists. Core takes the
+            // files as a map rather than a path, because the browser
+            // build has no filesystem to hand it.
+            let entries = Self::read_package(path)?;
+            runebender_core::glyphs_import::glyphs_package_to_ufo_files(&entries)?
+        } else {
+            let text =
+                std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+            runebender_core::glyphs_import::glyphs_to_ufo_files(&text)?
+        };
         let stem = path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
@@ -198,6 +207,35 @@ impl FontModel {
         designspace
             .or(first_ufo)
             .ok_or_else(|| "glyphs import produced no sources".to_string())
+    }
+
+    /// Every text file in a `.glyphspackage`, keyed by its path relative
+    /// to the package root. Anything that is not UTF-8 is not source, so
+    /// it is skipped rather than failing the open.
+    fn read_package(root: &FsPath) -> Result<std::collections::HashMap<String, String>, String> {
+        fn walk(
+            dir: &FsPath,
+            root: &FsPath,
+            out: &mut std::collections::HashMap<String, String>,
+        ) -> Result<(), String> {
+            for entry in std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
+                let path = entry.map_err(|e| format!("{e}"))?.path();
+                if path.is_dir() {
+                    walk(&path, root, out)?;
+                } else if let Ok(text) = std::fs::read_to_string(&path) {
+                    let relative = path
+                        .strip_prefix(root)
+                        .map_err(|e| format!("{e}"))?
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    out.insert(relative, text);
+                }
+            }
+            Ok(())
+        }
+        let mut entries = std::collections::HashMap::new();
+        walk(root, root, &mut entries)?;
+        Ok(entries)
     }
 
     fn from_masters(
