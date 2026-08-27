@@ -85,6 +85,8 @@ pub struct EditorWidget {
     ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
     /// Read-only interpolated instance overlay at the current axis location.
     interp: Option<Arc<masonry::kurbo::BezPath>>,
+    /// Background layer and reference glyph, drawn under everything.
+    underlay: Underlay,
     size: Size,
     drag: Drag,
     /// Last cursor position in design space, for the pen preview segment.
@@ -175,6 +177,24 @@ impl Widget for EditorWidget {
         let pal = self.palette.clone();
         let affine = self.session.viewport.affine();
         painter.fill_rect(self.size.to_rect(), pal.canvas);
+
+        // Underlay, drawn first so everything else sits on top of it. The
+        // reference glyph is a quiet fill (it is a shape to match), the
+        // background layer is a quiet outline (it is a trace to follow).
+        if let Some(reference) = &self.underlay.reference {
+            painter
+                .fill(&(affine * (**reference).clone()), pal.text_muted.with_alpha(0.18))
+                .draw();
+        }
+        if let Some(background) = &self.underlay.background {
+            painter
+                .stroke(
+                    &(affine * (**background).clone()),
+                    &Stroke::new(1.0),
+                    pal.text_muted.with_alpha(0.5),
+                )
+                .draw();
+        }
 
         // Interpolation ghosts: the other masters' outlines, faint.
         for ghost in self.ghosts.iter() {
@@ -748,6 +768,7 @@ pub struct EditorView<F> {
     show_comb: bool,
     ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
     interp: Option<Arc<masonry::kurbo::BezPath>>,
+    underlay: Underlay,
     on_event: F,
 }
 
@@ -758,6 +779,7 @@ pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
     show_comb: bool,
     ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
     interp: Option<Arc<masonry::kurbo::BezPath>>,
+    underlay: Underlay,
     on_event: F,
 ) -> EditorView<F> {
     EditorView {
@@ -767,8 +789,20 @@ pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
         show_comb,
         ghosts,
         interp,
+        underlay,
         on_event,
     }
+}
+
+/// What is drawn under the outline: the UFO background layer, and a
+/// reference glyph. Both are read-only and quiet on purpose; they are
+/// there to trace against, not to compete with the drawing.
+#[derive(Clone, Default, PartialEq)]
+pub struct Underlay {
+    /// The glyph's contours in the UFO's background layer.
+    pub background: Option<Arc<masonry::kurbo::BezPath>>,
+    /// Another glyph, shown behind this one.
+    pub reference: Option<Arc<masonry::kurbo::BezPath>>,
 }
 
 impl<F> ViewMarker for EditorView<F> {}
@@ -783,6 +817,7 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             tool: self.tool,
             ghosts: self.ghosts.clone(),
             interp: self.interp.clone(),
+            underlay: self.underlay.clone(),
             size: Size::ZERO,
             drag: Drag::None,
             hover: None,
@@ -826,6 +861,10 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
         }
         if !interp_eq(&self.interp, &prev.interp) {
             element.widget.interp = self.interp.clone();
+            dirty = true;
+        }
+        if self.underlay != prev.underlay {
+            element.widget.underlay = self.underlay.clone();
             dirty = true;
         }
         if dirty {

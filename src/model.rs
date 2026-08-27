@@ -488,6 +488,68 @@ impl FontModel {
             .collect()
     }
 
+    /// The name of the UFO background layer, if the font has one.
+    ///
+    /// UFOs in the wild use either spelling, and the web editor reads
+    /// both, so this does too.
+    fn background_layer(font: &norad::Font) -> Option<norad::Name> {
+        for candidate in ["public.background", "background"] {
+            if let Ok(name) = norad::Name::new(candidate)
+                && font.layers.get(&name).is_some()
+            {
+                return Some(name);
+            }
+        }
+        None
+    }
+
+    /// The glyph's outline in the background layer, as a path.
+    pub fn background_outline(&self, glyph: &str) -> Option<BezPath> {
+        let layer = Self::background_layer(&self.font)?;
+        let background = self.font.layers.get(&layer)?.get_glyph(glyph)?;
+        Some(glyph_paths::glyph_to_bezpath(background, &self.font))
+    }
+
+    /// Copy contours into the glyph's background layer, creating the
+    /// layer the first time.
+    pub fn send_to_background(&mut self, glyph: &str, contours: Vec<norad::Contour>, width: f64) {
+        let Some(font) = Arc::get_mut(&mut self.font) else {
+            return;
+        };
+        let Ok(layer) = font.layers.get_or_create_layer("public.background") else {
+            return;
+        };
+        let mut background = norad::Glyph::new(glyph);
+        background.width = width;
+        background.contours = contours;
+        layer.insert_glyph(background);
+    }
+
+    /// The contours held in the background layer for this glyph.
+    pub fn background_contours(&self, glyph: &str) -> Option<Vec<norad::Contour>> {
+        let layer = Self::background_layer(&self.font)?;
+        let background = self.font.layers.get(&layer)?.get_glyph(glyph)?;
+        Some(background.contours.clone())
+    }
+
+    /// Empty the glyph's background layer.
+    pub fn clear_background(&mut self, glyph: &str) {
+        let Some(layer) = Self::background_layer(&self.font) else {
+            return;
+        };
+        if let Some(font) = Arc::get_mut(&mut self.font)
+            && let Some(layer) = font.layers.get_mut(&layer)
+        {
+            layer.remove_glyph(glyph);
+        }
+    }
+
+    /// Another glyph's outline, for the reference underlay.
+    pub fn glyph_outline(&self, glyph: &str) -> Option<Arc<BezPath>> {
+        let index = self.index_of(glyph)?;
+        Some(self.glyphs[index].outline.clone())
+    }
+
     /// The kerning group this glyph belongs to on one side, if any.
     ///
     /// `first_side` is the left side in left-to-right text: `public.kern1`.

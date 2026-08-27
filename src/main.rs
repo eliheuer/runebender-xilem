@@ -107,6 +107,10 @@ pub struct App {
     /// Copied contours. An in-app clipboard, as in the GPUI build: the
     /// system clipboard carries text, not outlines.
     clipboard: Vec<norad::Contour>,
+    /// Draw the UFO background layer under the outline.
+    show_background: bool,
+    /// A glyph name to show behind the drawing, empty for none.
+    reference_buf: String,
     /// Current axis location in user units, one per designspace axis.
     axis_values: Vec<f64>,
     /// Active OKLCH theme id (dark | midnight | gray | light).
@@ -164,6 +168,10 @@ impl App {
         } else {
             font.master_axis_values(font.active)
         };
+        // Headless overrides, so a render can show a state that normally
+        // takes clicks to reach. The GPUI build has the same idea.
+        let reference_buf = std::env::var("RUNEBENDER_REFERENCE").unwrap_or_default();
+        let show_background = std::env::var("RUNEBENDER_BACKGROUND").is_ok();
         // Headless override: RUNEBENDER_AXIS="wght=500,wdth=80".
         if let Ok(spec) = std::env::var("RUNEBENDER_AXIS") {
             for pair in spec.split(',') {
@@ -209,6 +217,8 @@ impl App {
             kern1_buf: kern1,
             kern2_buf: kern2,
             clipboard: Vec::new(),
+            show_background,
+            reference_buf,
             name_buf: first_name,
             unicode_buf: first_uni,
             session,
@@ -544,6 +554,72 @@ impl App {
         let contours = self.clipboard.clone();
         self.apply_op(move |session| session.paste_contours(&contours));
         self.note = format!("pasted {} contours", self.clipboard.len());
+    }
+
+    /// Copy the open glyph's outline into the UFO background layer.
+    fn send_to_background(&mut self) {
+        if !matches!(self.mode, Mode::Editor(_)) {
+            return;
+        }
+        let name = self.session.glyph_name.clone();
+        let contours = self.session.glyph.contours.clone();
+        let width = self.session.advance();
+        self.font.send_to_background(&name, contours, width);
+        self.show_background = true;
+        self.modified = true;
+        self.note = "sent to background".into();
+    }
+
+    /// Exchange the outline with the background layer's copy.
+    fn swap_background(&mut self) {
+        if !matches!(self.mode, Mode::Editor(_)) {
+            return;
+        }
+        let name = self.session.glyph_name.clone();
+        let Some(background) = self.font.background_contours(&name) else {
+            self.note = "no background to swap".into();
+            return;
+        };
+        let foreground = self.session.glyph.contours.clone();
+        let width = self.session.advance();
+        self.apply_op(move |session| session.set_contours(background));
+        self.font.send_to_background(&name, foreground, width);
+        self.modified = true;
+        self.note = "swapped with background".into();
+    }
+
+    /// Empty the open glyph's background layer.
+    fn clear_background(&mut self) {
+        if !matches!(self.mode, Mode::Editor(_)) {
+            return;
+        }
+        let name = self.session.glyph_name.clone();
+        self.font.clear_background(&name);
+        self.modified = true;
+        self.note = "cleared background".into();
+    }
+
+    /// What sits under the drawing: the background layer if it is turned
+    /// on, and the reference glyph if one is named.
+    fn underlay(&self) -> editor::Underlay {
+        if !matches!(self.mode, Mode::Editor(_)) {
+            return editor::Underlay::default();
+        }
+        let background = self
+            .show_background
+            .then(|| self.font.background_outline(&self.session.glyph_name))
+            .flatten()
+            .map(Arc::new);
+        let reference = {
+            let name = self.reference_buf.trim();
+            (!name.is_empty() && name != self.session.glyph_name)
+                .then(|| self.font.glyph_outline(name))
+                .flatten()
+        };
+        editor::Underlay {
+            background,
+            reference,
+        }
     }
 
     /// Recompute the LSB/RSB/advance text buffers from the current session.
@@ -1233,7 +1309,7 @@ fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
             .reference_outlines(&app.session.glyph_name, &app.reference_layers),
     );
     let interp = app.interp_preview();
-    editor(app.session.clone(), app.palette.clone(), app.tool, app.show_comb, ghosts, interp, |app: &mut App, ev| match ev {
+    editor(app.session.clone(), app.palette.clone(), app.tool, app.show_comb, ghosts, interp, app.underlay(), |app: &mut App, ev| match ev {
         editor::EditorEvent::Selection(n) => {
             app.selected_points = n;
             app.refresh_coord_bufs();
@@ -1409,6 +1485,35 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
     )
 }
 
+/// Background: the UFO's background layer, and a reference glyph. Both
+/// are things to trace against, so both draw quietly and neither can be
+/// selected.
+fn background_section(app: &App) -> impl WidgetView<App> + use<> {
+    let pal = &app.palette;
+    let has_background = app.font.background_contours(&app.session.glyph_name).is_some();
+    let show = app.show_background;
+    xcolumn(
+        Region::Section,
+        (
+            section_header(pal, "Background"),
+            xrow(
+                Region::Inline,
+                (
+                    ui::toggle(pal, "Show".into(), show && has_background, |app: &mut App| {
+                        app.show_background = !app.show_background;
+                    }),
+                    ui::action(pal, "Send".into(), |app: &mut App| app.send_to_background()),
+                    ui::action(pal, "Swap".into(), |app: &mut App| app.swap_background()),
+                    ui::action(pal, "Clear".into(), |app: &mut App| app.clear_background()),
+                ),
+            ),
+            ui::field(pal, "Reference glyph", app.reference_buf.clone(), |app: &mut App, v| {
+                app.reference_buf = v;
+            }),
+        ),
+    )
+}
+
 fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
     let swatch = |label: Option<String>, color: xilem::Color| {
@@ -1550,6 +1655,7 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
                     ),
                 )
             }),
+            editing.then(|| background_section(app)),
             editing.then(|| mark_section(app)),
             layers_section(app),
             editing.then(|| axes_section(app)).flatten(),
