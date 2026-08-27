@@ -71,6 +71,19 @@ impl Palette {
             .collect()
     }
 
+    /// Popcount tier ramp, shared with the GPUI build and the web
+    /// editor: one power of two is structural (green), two an elegant
+    /// sum (yellow), three acceptable (orange), four or more a flagged
+    /// correction (red).
+    pub fn popcount(&self, count: u32) -> Color {
+        match count {
+            0 | 1 => Color::from_rgb8(0x17, 0xb8, 0x70),
+            2 => Color::from_rgb8(0xff, 0xdb, 0x33),
+            3 => Color::from_rgb8(0xff, 0x99, 0x0f),
+            _ => Color::from_rgb8(0xff, 0x4a, 0x3d),
+        }
+    }
+
     pub fn mark(&self, label: &str) -> Option<Color> {
         self.marks.get(label).copied()
     }

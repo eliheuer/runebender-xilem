@@ -95,7 +95,8 @@ pub struct App {
     tool: Tool,
     modified: bool,
     note: String,
-    show_comb: bool,
+    /// Which analysis overlays the editor draws.
+    view: editor::ViewOptions,
     advance_buf: String,
     lsb_buf: String,
     rsb_buf: String,
@@ -172,6 +173,22 @@ impl App {
         // takes clicks to reach. The GPUI build has the same idea.
         let reference_buf = std::env::var("RUNEBENDER_REFERENCE").unwrap_or_default();
         let show_background = std::env::var("RUNEBENDER_BACKGROUND").is_ok();
+        // RUNEBENDER_VIEW=comb,continuity,colorize,handles,segments,bearings
+        let mut view = editor::ViewOptions::default();
+        if let Ok(spec) = std::env::var("RUNEBENDER_VIEW") {
+            for name in spec.split(',').map(str::trim) {
+                match name {
+                    "comb" => view.comb = true,
+                    "continuity" => view.continuity = true,
+                    "colorize" => view.colorize = true,
+                    "handles" => view.handles = true,
+                    "segments" => view.segments = true,
+                    "bearings" => view.bearings = true,
+                    "popcount" => view.popcount = true,
+                    _ => {}
+                }
+            }
+        }
         // Headless override: RUNEBENDER_AXIS="wght=500,wdth=80".
         if let Ok(spec) = std::env::var("RUNEBENDER_AXIS") {
             for pair in spec.split(',') {
@@ -229,7 +246,7 @@ impl App {
             },
             modified: false,
             note: String::new(),
-            show_comb: false,
+            view,
             axis_values,
             theme_id,
             coord_quadrant: runebender_core::path::Quadrant::Center,
@@ -520,7 +537,19 @@ impl App {
                     self.back_to_overview();
                 }
             }
-            A::Tool(t) => self.tool = t,
+            A::Tool(t) => {
+                self.tool = t;
+                // Picking Measure turns on what the tool is for, keeping
+                // whatever curve analyses were already showing.
+                if t == Tool::Measure && !self.view.measures() {
+                    let measuring = editor::ViewOptions::measuring();
+                    self.view = editor::ViewOptions {
+                        comb: self.view.comb,
+                        continuity: self.view.continuity,
+                        ..measuring
+                    };
+                }
+            }
             A::FlipHorizontal => self.apply_op(|s| s.flip_horizontal()),
             A::FlipVertical => self.apply_op(|s| s.flip_vertical()),
             A::Rotate90 => self.apply_op(|s| s.rotate_90()),
@@ -1309,7 +1338,7 @@ fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
             .reference_outlines(&app.session.glyph_name, &app.reference_layers),
     );
     let interp = app.interp_preview();
-    editor(app.session.clone(), app.palette.clone(), app.tool, app.show_comb, ghosts, interp, app.underlay(), |app: &mut App, ev| match ev {
+    editor(app.session.clone(), app.palette.clone(), app.tool, app.view, ghosts, interp, app.underlay(), |app: &mut App, ev| match ev {
         editor::EditorEvent::Selection(n) => {
             app.selected_points = n;
             app.refresh_coord_bufs();
@@ -1485,6 +1514,72 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
     )
 }
 
+/// Curves: the two analyses that are about shape quality rather than
+/// measurement. Both read from runebender-core, so they say the same
+/// thing here as in the other two editors.
+fn curves_section(app: &App) -> impl WidgetView<App> + use<> {
+    let pal = &app.palette;
+    let view = app.view;
+    xcolumn(
+        Region::Section,
+        (
+            section_header(pal, "Curves"),
+            xrow(
+                Region::Inline,
+                (
+                    ui::toggle(pal, "Comb".into(), view.comb, |app: &mut App| {
+                        app.view.comb = !app.view.comb;
+                    }),
+                    ui::toggle(pal, "G0-G3".into(), view.continuity, |app: &mut App| {
+                        app.view.continuity = !app.view.continuity;
+                    }),
+                ),
+            ),
+        ),
+    )
+}
+
+/// Measure: the option toggles the Measure tool works through. Picking
+/// the tool turns the usual three on; the toggles are what make it
+/// answer a specific question instead of drawing everything at once.
+fn measure_section(app: &App) -> impl WidgetView<App> + use<> {
+    let pal = &app.palette;
+    let view = app.view;
+    xcolumn(
+        Region::Section,
+        (
+            section_header(pal, "Measure"),
+            xrow(
+                Region::Inline,
+                (
+                    ui::toggle(pal, "Color".into(), view.colorize, |app: &mut App| {
+                        app.view.colorize = !app.view.colorize;
+                    }),
+                    ui::toggle(pal, "Handles".into(), view.handles, |app: &mut App| {
+                        app.view.handles = !app.view.handles;
+                    }),
+                ),
+            ),
+            xrow(
+                Region::Inline,
+                (
+                    ui::toggle(pal, "Segments".into(), view.segments, |app: &mut App| {
+                        app.view.segments = !app.view.segments;
+                    }),
+                    ui::toggle(pal, "Bearings".into(), view.bearings, |app: &mut App| {
+                        app.view.bearings = !app.view.bearings;
+                    }),
+                ),
+            ),
+            // Lengths as sums of powers of two: 96 reads as 64+32. The
+            // web editor's habit, and the reason for the tier colors.
+            ui::toggle(pal, "Popcount sums".into(), view.popcount, |app: &mut App| {
+                app.view.popcount = !app.view.popcount;
+            }),
+        ),
+    )
+}
+
 /// Background: the UFO's background layer, and a reference glyph. Both
 /// are things to trace against, so both draw quietly and neither can be
 /// selected.
@@ -1644,17 +1739,8 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             ),
             editing.then(|| coordinates_section(app)),
             editing.then(|| path_section(app)),
-            editing.then(|| {
-                ui::section(
-                    pal,
-                    "Curves",
-                    ui::action(
-                        pal,
-                        if app.show_comb { "Comb: on" } else { "Comb: off" }.to_string(),
-                        |app: &mut App| app.show_comb = !app.show_comb,
-                    ),
-                )
-            }),
+            editing.then(|| curves_section(app)),
+            editing.then(|| measure_section(app)),
             editing.then(|| background_section(app)),
             editing.then(|| mark_section(app)),
             layers_section(app),
