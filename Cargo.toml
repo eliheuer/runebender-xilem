@@ -1,29 +1,31 @@
 [package]
-name = "runebender-xix"
+name = "runebender-xilem"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.96"
 license = "Apache-2.0 OR MIT"
-description = "A font editor built on xix, a fork of Xilem."
-repository = "https://github.com/eliheuer/runebender-xix"
+description = "A font editor built on Xilem and the Linebender stack."
+repository = "https://github.com/eliheuer/runebender-xilem"
 publish = false
 
 [[bin]]
-name = "runebender-xix"
+name = "runebender-xilem"
 path = "src/main.rs"
 
 [dependencies]
-# xix is a fork of Xilem; its crates keep upstream names for now.
-xilem = { git = "https://github.com/eliheuer/xix", branch = "main", features = ["screenshot"] }
-masonry = { git = "https://github.com/eliheuer/xix", branch = "main" }
+# Upstream Xilem, pinned. This editor builds on the real thing, so that
+# comparing it against runebender-gpui measures Xilem and not a fork.
+xilem = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a8c364f2ab109e2083121e144" }
+masonry = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a8c364f2ab109e2083121e144" }
 runebender-core = { git = "https://github.com/eliheuer/runebender-core" }
 norad = "0.18"
 kurbo = "0.13"
 linesweeper = "0.4"
 winit = "0.30"
-
-[dev-dependencies]
-masonry_testing = { git = "https://github.com/eliheuer/xix", branch = "main" }
+# Headless rendering, for review screenshots and for agents to see their
+# own output. Upstream Xilem has no such path, so this is app-side.
+masonry_testing = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a8c364f2ab109e2083121e144" }
+tokio = { version = "1", features = ["rt"] }
 
 [profile.release]
 lto = "thin"
