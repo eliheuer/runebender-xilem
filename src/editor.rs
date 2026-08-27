@@ -376,7 +376,12 @@ impl Widget for EditorWidget {
 
         let m = &self.session.metrics;
         let thin = Stroke::new(1.0);
-        let quiet = pal.role("metricQuiet");
+        // The metric lines and the em box are the accent colour, as they
+        // are in the GPUI build and the web editor. Drawn quiet they
+        // read as chrome; drawn in the accent they read as the frame the
+        // drawing is measured against, which is what they are.
+        let quiet = pal.role("accent").with_alpha(0.55);
+        let frame = pal.role("accent").with_alpha(0.85);
         let x0 = (affine * Point::new(-10_000.0, 0.0)).x;
         let x1 = (affine * Point::new(10_000.0, 0.0)).x;
         for y in [0.0, m.x_height, m.cap_height, m.ascender, m.descender] {
@@ -389,7 +394,7 @@ impl Widget for EditorWidget {
             affine * Point::new(0.0, m.descender),
             affine * Point::new(self.session.advance(), m.ascender),
         );
-        painter.stroke(em_box, &Stroke::new(1.0), quiet).draw();
+        painter.stroke(em_box, &Stroke::new(1.0), frame).draw();
 
         // Editing affordances only render on a master. Off a master the view
         // shows the read-only interpolated instance instead (web/Glyphs

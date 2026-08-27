@@ -1252,7 +1252,14 @@ fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
     Some(
         xcolumn(
             Region::Section,
-            (section_header(pal, "Layers"), xcolumn(Region::List, rows)),
+            (
+                ui::section_toggle(pal, "Layers", !app.collapsed.contains("Layers"), move |app: &mut App| {
+                    if !app.collapsed.remove("Layers") {
+                        app.collapsed.insert("Layers");
+                    }
+                }),
+                (!app.collapsed.contains("Layers")).then(|| xcolumn(Region::List, rows)),
+            ),
         ),
     )
 }
@@ -1297,9 +1304,13 @@ fn axes_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
         xcolumn(
             Region::Section,
             (
-                section_header(pal, "Axes"),
-                xcolumn(Region::Form, rows),
-                hint,
+                ui::section_toggle(pal, "Axes", !app.collapsed.contains("Axes"), move |app: &mut App| {
+                    if !app.collapsed.remove("Axes") {
+                        app.collapsed.insert("Axes");
+                    }
+                }),
+(!app.collapsed.contains("Axes")).then(|| xcolumn(Region::Form, rows)),
+(!app.collapsed.contains("Axes")).then(|| hint),
             ),
         ),
     )
@@ -1878,10 +1889,14 @@ fn path_section(app: &App) -> impl WidgetView<App> + use<> {
     xcolumn(
         Region::Section,
         (
-            section_header(pal, "Transformations"),
+                ui::section_toggle(pal, "Transformations", !app.collapsed.contains("Transformations"), move |app: &mut App| {
+                    if !app.collapsed.remove("Transformations") {
+                        app.collapsed.insert("Transformations");
+                    }
+                }),
             // Two even rows of four, the way gpui lays its icon grid out. A
             // ragged 3 / 4 / 1 grid was the panel's most visible defect.
-            xrow(
+(!app.collapsed.contains("Transformations")).then(|| xrow(
                 Region::List,
                 (
                     op("flip-h", |s| s.flip_horizontal()),
@@ -1889,8 +1904,8 @@ fn path_section(app: &App) -> impl WidgetView<App> + use<> {
                     op("rot-cw", |s| s.rotate_90()),
                     op("close", |s| s.decompose()),
                 ),
-            ),
-            xrow(
+            )),
+(!app.collapsed.contains("Transformations")).then(|| xrow(
                 Region::List,
                 (
                     op("union", |s| s.remove_overlap()),
@@ -1898,24 +1913,24 @@ fn path_section(app: &App) -> impl WidgetView<App> + use<> {
                     op("intersect", |s| s.boolean(BoolOp::Intersect)),
                     op("exclude", |s| s.boolean(BoolOp::Exclude)),
                 ),
-            ),
+            )),
             // Labeled transform buttons, matching gpui's Transformations block.
-            xrow(
+(!app.collapsed.contains("Transformations")).then(|| xrow(
                 Region::Inline,
                 (
                     tbtn(pal, "Harmonize", |s| s.harmonize()),
                     tbtn(pal, "Balance", |s| s.balance()),
                 ),
-            ),
-            xrow(
+            )),
+(!app.collapsed.contains("Transformations")).then(|| xrow(
                 Region::Inline,
                 (
                     tbtn(pal, "Optimize", |s| s.optimize()),
                     tbtn(pal, "Round", |s| s.round_corners()),
                 ),
+            )),
+(!app.collapsed.contains("Transformations")).then(|| xrow(Region::Inline, (tbtn(pal, "Reverse", |s| s.reverse()),))),
             ),
-            xrow(Region::Inline, (tbtn(pal, "Reverse", |s| s.reverse()),)),
-        ),
     )
 }
 
@@ -2009,8 +2024,12 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
     xcolumn(
         Region::Section,
         (
-            section_header(pal, "Coordinates"),
-            xrow(
+                ui::section_toggle(pal, "Coordinates", !app.collapsed.contains("Coordinates"), move |app: &mut App| {
+                    if !app.collapsed.remove("Coordinates") {
+                        app.collapsed.insert("Coordinates");
+                    }
+                }),
+(!app.collapsed.contains("Coordinates")).then(|| xrow(
                 Region::Inline,
                 (
                     picker,
@@ -2023,9 +2042,9 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
                     )
                     .flex(1.0),
                 ),
+            )),
+(!app.collapsed.contains("Coordinates")).then(|| size_row),
             ),
-            size_row,
-        ),
     )
 }
 
@@ -2126,8 +2145,12 @@ fn curves_section(app: &App) -> impl WidgetView<App> + use<> {
     xcolumn(
         Region::Section,
         (
-            section_header(pal, "Curves"),
-            xrow(
+                ui::section_toggle(pal, "Curves", !app.collapsed.contains("Curves"), move |app: &mut App| {
+                    if !app.collapsed.remove("Curves") {
+                        app.collapsed.insert("Curves");
+                    }
+                }),
+(!app.collapsed.contains("Curves")).then(|| xrow(
                 Region::Inline,
                 (
                     ui::toggle(pal, "Comb".into(), view.comb, |app: &mut App| {
@@ -2137,8 +2160,8 @@ fn curves_section(app: &App) -> impl WidgetView<App> + use<> {
                         app.view.continuity = !app.view.continuity;
                     }),
                 ),
+            )),
             ),
-        ),
     )
 }
 
@@ -2151,8 +2174,12 @@ fn measure_section(app: &App) -> impl WidgetView<App> + use<> {
     xcolumn(
         Region::Section,
         (
-            section_header(pal, "Measure"),
-            xrow(
+                ui::section_toggle(pal, "Measure", !app.collapsed.contains("Measure"), move |app: &mut App| {
+                    if !app.collapsed.remove("Measure") {
+                        app.collapsed.insert("Measure");
+                    }
+                }),
+(!app.collapsed.contains("Measure")).then(|| xrow(
                 Region::Inline,
                 (
                     ui::toggle(pal, "Color".into(), view.colorize, |app: &mut App| {
@@ -2162,8 +2189,8 @@ fn measure_section(app: &App) -> impl WidgetView<App> + use<> {
                         app.view.handles = !app.view.handles;
                     }),
                 ),
-            ),
-            xrow(
+            )),
+(!app.collapsed.contains("Measure")).then(|| xrow(
                 Region::Inline,
                 (
                     ui::toggle(pal, "Segments".into(), view.segments, |app: &mut App| {
@@ -2173,13 +2200,13 @@ fn measure_section(app: &App) -> impl WidgetView<App> + use<> {
                         app.view.bearings = !app.view.bearings;
                     }),
                 ),
-            ),
+            )),
             // Lengths as sums of powers of two: 96 reads as 64+32. The
             // web editor's habit, and the reason for the tier colors.
-            ui::toggle(pal, "Popcount sums".into(), view.popcount, |app: &mut App| {
+(!app.collapsed.contains("Measure")).then(|| ui::toggle(pal, "Popcount sums".into(), view.popcount, |app: &mut App| {
                 app.view.popcount = !app.view.popcount;
-            }),
-        ),
+            })),
+            ),
     )
 }
 
@@ -2193,8 +2220,12 @@ fn background_section(app: &App) -> impl WidgetView<App> + use<> {
     xcolumn(
         Region::Section,
         (
-            section_header(pal, "Background"),
-            xrow(
+                ui::section_toggle(pal, "Background", !app.collapsed.contains("Background"), move |app: &mut App| {
+                    if !app.collapsed.remove("Background") {
+                        app.collapsed.insert("Background");
+                    }
+                }),
+(!app.collapsed.contains("Background")).then(|| xrow(
                 Region::Inline,
                 (
                     ui::toggle(pal, "Show".into(), show && has_background, |app: &mut App| {
@@ -2204,11 +2235,11 @@ fn background_section(app: &App) -> impl WidgetView<App> + use<> {
                     ui::action(pal, "Swap".into(), |app: &mut App| app.swap_background()),
                     ui::action(pal, "Clear".into(), |app: &mut App| app.clear_background()),
                 ),
-            ),
-            ui::field(pal, "Reference glyph", app.reference_buf.clone(), |app: &mut App, v| {
+            )),
+(!app.collapsed.contains("Background")).then(|| ui::field(pal, "Reference glyph", app.reference_buf.clone(), |app: &mut App, v| {
                 app.reference_buf = v;
-            }),
-        ),
+            })),
+            ),
     )
 }
 
@@ -2225,10 +2256,14 @@ fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
     xcolumn(
         Region::Section,
         (
-            section_header(pal, "Mark"),
-            xrow(Region::Inline, (swatch(None, pal.control),)),
-            xrow(Region::List, marks),
-        ),
+                ui::section_toggle(pal, "Mark", !app.collapsed.contains("Mark"), move |app: &mut App| {
+                    if !app.collapsed.remove("Mark") {
+                        app.collapsed.insert("Mark");
+                    }
+                }),
+(!app.collapsed.contains("Mark")).then(|| xrow(Region::Inline, (swatch(None, pal.control),))),
+(!app.collapsed.contains("Mark")).then(|| xrow(Region::List, marks)),
+            ),
     )
 }
 
@@ -2244,7 +2279,14 @@ fn font_info_section(app: &App) -> impl WidgetView<App> + use<> {
         .collect();
     xcolumn(
         Region::Section,
-        (section_header(pal, "Font Info"), xcolumn(Region::List, rows)),
+        (
+                ui::section_toggle(pal, "Font Info", !app.collapsed.contains("Font Info"), move |app: &mut App| {
+                    if !app.collapsed.remove("Font Info") {
+                        app.collapsed.insert("Font Info");
+                    }
+                }),
+                (!app.collapsed.contains("Font Info")).then(|| xcolumn(Region::List, rows)),
+            ),
     )
 }
 
@@ -2368,8 +2410,12 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             xcolumn(
                 Region::Section,
                 (
-                    section_header(pal, "Glyph"),
-                    xcolumn(
+                ui::section_toggle(pal, "Glyph", !app.collapsed.contains("Glyph"), move |app: &mut App| {
+                    if !app.collapsed.remove("Glyph") {
+                        app.collapsed.insert("Glyph");
+                    }
+                }),
+(!app.collapsed.contains("Glyph")).then(|| xcolumn(
                         Region::List,
                         (
                             show_multi_mark.then(|| {
@@ -2380,12 +2426,12 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
                                 row("Selected".into(), format!("{}", app.selected_points))
                             }),
                         ),
-                    ),
-                    show_multi_mark.then(|| mark_section(app)),
-                    name_field,
-                    advance_field,
-                    overview_fields,
-                ),
+                    )),
+(!app.collapsed.contains("Glyph")).then(|| show_multi_mark.then(|| mark_section(app))),
+(!app.collapsed.contains("Glyph")).then(|| name_field),
+(!app.collapsed.contains("Glyph")).then(|| advance_field),
+(!app.collapsed.contains("Glyph")).then(|| overview_fields),
+            ),
             ),
             editing.then(|| coordinates_section(app)),
             editing.then(|| path_section(app)),
