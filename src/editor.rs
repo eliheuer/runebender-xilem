@@ -174,6 +174,23 @@ impl EditorWidget {
             );
         };
         text_at(painter, 10.0, 0.0, &self.session.glyph_name, 12.0_f32, pal.text, Anchor::Start);
+        // The codepoint, right aligned on the same line, as the GPUI
+        // build has it. This one is free because the session carries the
+        // glyph; the kerning groups it also shows are not, because they
+        // live in the font model, and reaching them means threading two
+        // strings through the widget, the view, `build`, `rebuild` and
+        // the constructor.
+        if let Some(codepoint) = self.session.glyph.codepoints.iter().next() {
+            text_at(
+                painter,
+                width - 10.0,
+                0.0,
+                &format!("{:04X}", codepoint as u32),
+                11.0,
+                pal.text_muted,
+                Anchor::End,
+            );
+        }
         if let Some(sb) = &bearings {
             text_at(painter, 10.0, 1.0, "LSB", 10.0, pal.text_muted, Anchor::Start);
             text_at(painter, 76.0, 1.0, &sb.lsb.to_string(), 11.0, pal.text, Anchor::End);
