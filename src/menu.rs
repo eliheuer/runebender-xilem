@@ -55,6 +55,18 @@ pub const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "Edit",
+        title: "Copy",
+        accelerator: Some("CmdOrCtrl+C"),
+        action: AppAction::Copy,
+    },
+    Entry {
+        menu: "Edit",
+        title: "Paste",
+        accelerator: Some("CmdOrCtrl+V"),
+        action: AppAction::Paste,
+    },
+    Entry {
+        menu: "Edit",
         title: "Duplicate",
         accelerator: Some("CmdOrCtrl+D"),
         action: AppAction::Duplicate,
