@@ -1721,6 +1721,17 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
                 sidebar_group(app, "Categories", cat_rows),
                 (!lang_rows.is_empty()).then(|| sidebar_group(app, "Languages", lang_rows)),
                 (!filter_rows.is_empty()).then(|| sidebar_group(app, "Filters", filter_rows)),
+            // Two counts the GPUI build puts at the head of its filters:
+            // how much of the font exports, and how much of it the
+            // masters disagree about. Neither is a filter to click, so
+            // they are rows, not buttons.
+            xcolumn(
+                Region::List,
+                (
+                    ui::kv(pal, "Exporting glyphs".into(), format!("{}", app.font.exporting_count())),
+                    ui::kv(pal, "Incompatible masters".into(), format!("{}", app.font.incompatible_count())),
+                ),
+            ),
             ),
         ))
         .constrain_horizontal(true)
@@ -1789,11 +1800,10 @@ fn preview_strip(app: &App) -> impl WidgetView<App> + use<> {
     let has_components = !interp.is_some() && !components.elements().is_empty();
     let m = app.session.metrics;
     let advance = app.session.advance();
-    let fill = if interp.is_some() {
-        app.palette.role("warning")
-    } else {
-        app.palette.text
-    };
+    // The preview is drawn in the status yellow, as the GPUI build draws
+    // it: the strip is a reading of the letter, not another copy of the
+    // canvas, and the colour is what tells you so at a glance.
+    let fill = app.palette.role("warning");
     canvas(move |_app: &mut App, _ctx, scene, size: Size| {
         let mut p = Painter::new(scene);
         // Fit the em box (advance wide, ascender..descender tall) into the strip.
