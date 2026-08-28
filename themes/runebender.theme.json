@@ -371,9 +371,10 @@
       "$comment": "Mid grey with dark ink, following runebender.org: square corners and a 2px rule in the text colour, so the borders draw the layout instead of tints doing it. The role hues stay coloured \u2014 a point type you cannot tell apart is a usability cost the website never has to pay.",
       "markStep": "dim",
       "geometry": {
-        "radiusSmall": 0.0,
-        "radiusMedium": 0.0,
-        "stroke": 2.0
+        "radius": 0.0,
+        "radiusControl": 0.0,
+        "stroke": 2.0,
+        "strokeEmphasis": 3.0
       },
       "surfaces": {
         "app": "neutral.71",
@@ -484,22 +485,34 @@
     }
   ],
   "$comment_geometry": [
-    "Shape, not colour. A theme decides its corner radii and its stroke",
-    "width the same way it decides its greys, because those carry as much",
-    "of a UI's character as hue does: the same palette at radius 0 with a",
-    "2px rule reads as a drawing tool, and at radius 6 with a hairline as",
-    "a document app.",
+    "Shape, not colour. A theme decides its corner radii and its rule",
+    "weights the same way it decides its greys, because those carry as",
+    "much of a UI's character as hue does: the same palette at radius 0",
+    "with a 2px rule reads as a drawing tool, and at radius 6 with a",
+    "hairline as a document app.",
+    "",
+    "The tokens are named for what they are used on, not for their size,",
+    "so a theme that disagrees about the sizes still knows what each one",
+    "is for:",
+    "",
+    "  radius          the default corner, on small chrome",
+    "  radiusControl   pressable tiles: toolbar tiles, tabs, toggles",
+    "  stroke          the ordinary rule, on panels and chrome",
+    "  strokeEmphasis  rings that mark a thing selected or grabbable",
+    "",
+    "strokeEmphasis is its own token rather than stroke doubled. Doubling",
+    "works from a 1px base and breaks from a 2px one: a 4px ring on an",
+    "18px swatch leaves 10px of colour.",
     "",
     "Values are in px. A theme names only what it changes; anything it",
-    "leaves out falls back to `default` below. Frontends read these as",
-    "geometry tokens rather than hardcoding rounded_sm/border_1, which is",
-    "what makes a theme able to change them at all."
+    "leaves out falls back to `default` below."
   ],
   "geometry": {
     "default": {
-      "radiusSmall": 3.0,
-      "radiusMedium": 6.0,
-      "stroke": 1.0
+      "radius": 3.0,
+      "radiusControl": 6.0,
+      "stroke": 1.0,
+      "strokeEmphasis": 2.0
     }
   }
 }

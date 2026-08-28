@@ -116,11 +116,12 @@ struct MarkColorDef {
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
 #[serde(default)]
 struct GeometryDef {
-    #[serde(rename = "radiusSmall")]
-    radius_small: Option<f32>,
-    #[serde(rename = "radiusMedium")]
-    radius_medium: Option<f32>,
+    radius: Option<f32>,
+    #[serde(rename = "radiusControl")]
+    radius_control: Option<f32>,
     stroke: Option<f32>,
+    #[serde(rename = "strokeEmphasis")]
+    stroke_emphasis: Option<f32>,
 }
 
 #[derive(Deserialize)]
@@ -143,17 +144,21 @@ struct TokenFile {
 /// otherwise the file's default.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Geometry {
-    /// Corner radius for small chrome: tiles, tabs, swatches.
-    pub radius_small: f32,
-    /// Corner radius for larger surfaces: panels, popovers, buttons.
-    pub radius_medium: f32,
-    /// Border width for every themed rule.
+    /// The default corner, on small chrome.
+    pub radius: f32,
+    /// Pressable tiles: toolbar tiles, sidebar tabs, toggles.
+    pub radius_control: f32,
+    /// The ordinary rule, on panels and chrome.
     pub stroke: f32,
+    /// Rings that mark a thing selected or grabbable. Its own token
+    /// rather than `stroke` doubled: doubling works from a 1px base
+    /// and breaks from a 2px one.
+    pub stroke_emphasis: f32,
 }
 
 impl Default for Geometry {
     fn default() -> Self {
-        Self { radius_small: 3.0, radius_medium: 6.0, stroke: 1.0 }
+        Self { radius: 3.0, radius_control: 6.0, stroke: 1.0, stroke_emphasis: 2.0 }
     }
 }
 
@@ -255,16 +260,22 @@ pub fn load_theme(theme_id: &str) -> Option<Theme> {
     let base = file.geometry.get("default").copied().unwrap_or_default();
     let own = def.geometry.unwrap_or_default();
     let fallback = Geometry::default();
+    let pick = |own: Option<f32>, base: Option<f32>, fallback: f32| {
+        own.or(base).unwrap_or(fallback)
+    };
     let geometry = Geometry {
-        radius_small: own
-            .radius_small
-            .or(base.radius_small)
-            .unwrap_or(fallback.radius_small),
-        radius_medium: own
-            .radius_medium
-            .or(base.radius_medium)
-            .unwrap_or(fallback.radius_medium),
-        stroke: own.stroke.or(base.stroke).unwrap_or(fallback.stroke),
+        radius: pick(own.radius, base.radius, fallback.radius),
+        radius_control: pick(
+            own.radius_control,
+            base.radius_control,
+            fallback.radius_control,
+        ),
+        stroke: pick(own.stroke, base.stroke, fallback.stroke),
+        stroke_emphasis: pick(
+            own.stroke_emphasis,
+            base.stroke_emphasis,
+            fallback.stroke_emphasis,
+        ),
     };
     Some(Theme {
         geometry,
@@ -542,7 +553,12 @@ mod geometry_tests {
         for id in ["dark", "midnight", "light", "gray", "paper"] {
             let theme = load_theme(id).expect("theme in the token file");
             assert!(theme.geometry.stroke > 0.0, "{id} stroke");
-            assert!(theme.geometry.radius_small >= 0.0, "{id} radius");
+            assert!(theme.geometry.radius >= 0.0, "{id} radius");
+            assert!(
+                theme.geometry.stroke_emphasis >= theme.geometry.stroke,
+                "{id}: an emphasis ring must be at least as heavy as the \
+                 ordinary rule, or selection reads as less than chrome"
+            );
         }
     }
 
@@ -556,8 +572,10 @@ mod geometry_tests {
     fn paper_overrides_the_default() {
         let paper = load_theme("paper").expect("paper");
         assert_eq!(paper.geometry.stroke, 2.0);
-        assert_eq!(paper.geometry.radius_small, 0.0);
-        assert_eq!(paper.geometry.radius_medium, 0.0);
+        assert_eq!(paper.geometry.radius, 0.0);
+        assert_eq!(paper.geometry.radius_control, 0.0);
+        // Not stroke * 2: 4px on an 18px swatch leaves 10px of colour.
+        assert_eq!(paper.geometry.stroke_emphasis, 3.0);
         assert_ne!(paper.geometry, Geometry::default());
     }
 
