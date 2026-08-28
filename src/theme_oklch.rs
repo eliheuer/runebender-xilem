@@ -102,11 +102,25 @@ struct ThemeDef {
     roles: HashMap<String, String>,
     #[serde(rename = "markStep")]
     mark_step: Option<String>,
+    #[serde(default)]
+    geometry: Option<GeometryDef>,
 }
 
 #[derive(Deserialize)]
 struct MarkColorDef {
     name: String,
+}
+
+/// Shape tokens. Every field is optional in the file: a theme names
+/// only what it changes, and the rest comes from `geometry.default`.
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(default)]
+struct GeometryDef {
+    #[serde(rename = "radiusSmall")]
+    radius_small: Option<f32>,
+    #[serde(rename = "radiusMedium")]
+    radius_medium: Option<f32>,
+    stroke: Option<f32>,
 }
 
 #[derive(Deserialize)]
@@ -115,12 +129,32 @@ struct TokenFile {
     steps: HashMap<String, StepDef>,
     neutral: NeutralDef,
     themes: HashMap<String, ThemeDef>,
+    #[serde(default)]
+    geometry: HashMap<String, GeometryDef>,
     #[serde(rename = "markColors", default)]
     mark_colors: Vec<MarkColorDef>,
     /// Frozen `public.markColor` strings, keyed by label. File
     /// contents, so they do not follow display tuning.
     #[serde(rename = "ufoMarkColors", default)]
     ufo_mark_colors: HashMap<String, String>,
+}
+
+/// Shape tokens, resolved: a theme's own value where it names one,
+/// otherwise the file's default.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Geometry {
+    /// Corner radius for small chrome: tiles, tabs, swatches.
+    pub radius_small: f32,
+    /// Corner radius for larger surfaces: panels, popovers, buttons.
+    pub radius_medium: f32,
+    /// Border width for every themed rule.
+    pub stroke: f32,
+}
+
+impl Default for Geometry {
+    fn default() -> Self {
+        Self { radius_small: 3.0, radius_medium: 6.0, stroke: 1.0 }
+    }
 }
 
 /// One resolved theme: every surface, text, and role token as sRGB.
@@ -131,6 +165,8 @@ pub struct Theme {
     /// Glyph mark colours in palette order, drawn at this theme's
     /// `markStep` (matches the web's `--rb-mark-{name}` variables).
     pub marks: Vec<(String, ColorRgba)>,
+    /// Corner radii and stroke width for this theme.
+    pub geometry: Geometry,
 }
 
 impl Theme {
@@ -216,7 +252,22 @@ pub fn load_theme(theme_id: &str) -> Option<Theme> {
                 .map(|c| (m.name.clone(), c))
         })
         .collect();
+    let base = file.geometry.get("default").copied().unwrap_or_default();
+    let own = def.geometry.unwrap_or_default();
+    let fallback = Geometry::default();
+    let geometry = Geometry {
+        radius_small: own
+            .radius_small
+            .or(base.radius_small)
+            .unwrap_or(fallback.radius_small),
+        radius_medium: own
+            .radius_medium
+            .or(base.radius_medium)
+            .unwrap_or(fallback.radius_medium),
+        stroke: own.stroke.or(base.stroke).unwrap_or(fallback.stroke),
+    };
     Some(Theme {
+        geometry,
         surfaces: resolve_map(&def.surfaces),
         text: resolve_map(&def.text),
         roles: resolve_map(&def.roles),
@@ -479,5 +530,44 @@ mod icon_tests {
             assert!(!icon.path.elements().is_empty());
             assert!(icon.view_box.width() > 0.0 && icon.view_box.height() > 0.0);
         }
+    }
+}
+
+#[cfg(test)]
+mod geometry_tests {
+    use super::*;
+
+    #[test]
+    fn every_theme_resolves_geometry() {
+        for id in ["dark", "midnight", "light", "gray", "paper"] {
+            let theme = load_theme(id).expect("theme in the token file");
+            assert!(theme.geometry.stroke > 0.0, "{id} stroke");
+            assert!(theme.geometry.radius_small >= 0.0, "{id} radius");
+        }
+    }
+
+    #[test]
+    fn a_theme_without_geometry_takes_the_default() {
+        let dark = load_theme("dark").expect("dark");
+        assert_eq!(dark.geometry, Geometry::default());
+    }
+
+    #[test]
+    fn paper_overrides_the_default() {
+        let paper = load_theme("paper").expect("paper");
+        assert_eq!(paper.geometry.stroke, 2.0);
+        assert_eq!(paper.geometry.radius_small, 0.0);
+        assert_eq!(paper.geometry.radius_medium, 0.0);
+        assert_ne!(paper.geometry, Geometry::default());
+    }
+
+    #[test]
+    fn paper_draws_its_rules_in_the_text_colour() {
+        // The website's borders are the text colour, not a lighter
+        // tint. That is the whole look; if these drift apart the theme
+        // stops resembling it.
+        let paper = load_theme("paper").expect("paper");
+        assert_eq!(paper.surface("outline"), paper.text("primary"));
+        assert_eq!(paper.surface("divider"), paper.text("primary"));
     }
 }

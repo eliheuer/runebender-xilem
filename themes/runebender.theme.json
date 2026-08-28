@@ -2,7 +2,7 @@
   "$comment": [
     "The one place colour is decided. `pnpm run theme` turns this into",
     "src/themeTokens.generated.ts, which the app reads at startup and on",
-    "every theme switch — both for the CSS custom properties and for the",
+    "every theme switch \u2014 both for the CSS custom properties and for the",
     "colours handed to the wasm renderer.",
     "",
     "Everything is authored in OKLCH, where lightness and chroma mean the",
@@ -11,7 +11,7 @@
     "L 0.56 to L 0.94 and from C 0.11 to C 0.30, with three greens and two",
     "purples nobody had compared.",
     "",
-    "The character is poster paint — Bauhaus blocks, kindergarten",
+    "The character is poster paint \u2014 Bauhaus blocks, kindergarten",
     "primaries. Sampling those references in OKLCH says what that means",
     "in numbers, and it is not a flat ramp:",
     "",
@@ -35,18 +35,48 @@
     "for authoring in OKLCH in the first place. 0.8 was a step too far:",
     "the palette went chalky."
   ],
-
   "hues": {
-    "red": { "hue": 27, "lightness": 0.61, "chroma": 0.167 },
-    "orange": { "hue": 46, "lightness": 0.68, "chroma": 0.15 },
-    "yellow": { "hue": 96, "lightness": 0.82, "chroma": 0.135 },
-    "green": { "hue": 152, "lightness": 0.69, "chroma": 0.126 },
-    "teal": { "hue": 186, "lightness": 0.7, "chroma": 0.095 },
-    "blue": { "hue": 248, "lightness": 0.64, "chroma": 0.119 },
-    "purple": { "hue": 292, "lightness": 0.61, "chroma": 0.15 },
-    "pink": { "hue": 350, "lightness": 0.68, "chroma": 0.15 }
+    "red": {
+      "hue": 27,
+      "lightness": 0.61,
+      "chroma": 0.167
+    },
+    "orange": {
+      "hue": 46,
+      "lightness": 0.68,
+      "chroma": 0.15
+    },
+    "yellow": {
+      "hue": 96,
+      "lightness": 0.82,
+      "chroma": 0.135
+    },
+    "green": {
+      "hue": 152,
+      "lightness": 0.69,
+      "chroma": 0.126
+    },
+    "teal": {
+      "hue": 186,
+      "lightness": 0.7,
+      "chroma": 0.095
+    },
+    "blue": {
+      "hue": 248,
+      "lightness": 0.64,
+      "chroma": 0.119
+    },
+    "purple": {
+      "hue": 292,
+      "lightness": 0.61,
+      "chroma": 0.15
+    },
+    "pink": {
+      "hue": 350,
+      "lightness": 0.68,
+      "chroma": 0.15
+    }
   },
-
   "$comment_steps": [
     "Three steps per hue, as offsets from the hue's own pair. `dim` is",
     "for light backgrounds and quiet states, `bright` for the few things",
@@ -55,11 +85,19 @@
     "there is what produces a colour that looks lit from inside."
   ],
   "steps": {
-    "dim": { "lightness": -0.17, "chroma": -0.02 },
-    "base": { "lightness": 0.0, "chroma": 0.0 },
-    "bright": { "lightness": 0.13, "chroma": -0.03 }
+    "dim": {
+      "lightness": -0.17,
+      "chroma": -0.02
+    },
+    "base": {
+      "lightness": 0.0,
+      "chroma": 0.0
+    },
+    "bright": {
+      "lightness": 0.13,
+      "chroma": -0.03
+    }
   },
-
   "$comment_neutral": [
     "Grey, and actually grey: chroma 0. An earlier version carried a",
     "trace of blue on the theory that it would sit better beside the",
@@ -67,16 +105,35 @@
     "thing a neutral must not do.",
     "",
     "The steps are lightness in percent, chosen so the ramp lands on the",
-    "greys the editor was drawn around — 15 is #0c0c0c, 37 is #404040,",
+    "greys the editor was drawn around \u2014 15 is #0c0c0c, 37 is #404040,",
     "65 is #909090. They mean the same in every theme: a light theme",
     "takes its surfaces from the other end, it does not renumber them."
   ],
   "neutral": {
     "hue": 255,
     "chroma": 0,
-    "steps": [15, 17, 18, 21, 23, 26, 31, 37, 43, 49, 55, 60, 65, 71, 76, 81, 91, 96, 99]
+    "steps": [
+      15,
+      17,
+      18,
+      21,
+      23,
+      26,
+      31,
+      37,
+      43,
+      49,
+      55,
+      60,
+      65,
+      71,
+      76,
+      81,
+      91,
+      96,
+      99
+    ]
   },
-
   "themes": {
     "dark": {
       "name": "Dark",
@@ -135,10 +192,9 @@
         "popcount4": "red.base"
       }
     },
-
     "midnight": {
       "name": "Midnight",
-      "$comment": "Same palette, deeper surfaces and quieter text — for working at night or on a bright screen.",
+      "$comment": "Same palette, deeper surfaces and quieter text \u2014 for working at night or on a bright screen.",
       "surfaces": {
         "app": "neutral.15",
         "panel": "neutral.15",
@@ -194,7 +250,6 @@
         "popcount4": "red.dim"
       }
     },
-
     "light": {
       "name": "Light",
       "$comment": "Surfaces come from the other end of the same ramp; the hues drop to their dim step so they hold up on white.",
@@ -253,7 +308,6 @@
         "popcount4": "red.dim"
       }
     },
-
     "gray": {
       "name": "Gray",
       "$comment": "Mid-tone grey chrome with dark ink, after the workstation UIs of the nineties. The canvas stays lighter than the panels around it, because that is the part you draw on.",
@@ -311,9 +365,71 @@
         "popcount3": "orange.dim",
         "popcount4": "red.dim"
       }
+    },
+    "paper": {
+      "name": "Paper",
+      "$comment": "Mid grey with dark ink, following runebender.org: square corners and a 2px rule in the text colour, so the borders draw the layout instead of tints doing it. The role hues stay coloured \u2014 a point type you cannot tell apart is a usability cost the website never has to pay.",
+      "markStep": "dim",
+      "geometry": {
+        "radiusSmall": 0.0,
+        "radiusMedium": 0.0,
+        "stroke": 2.0
+      },
+      "surfaces": {
+        "app": "neutral.71",
+        "panel": "neutral.65",
+        "control": "neutral.71",
+        "button": "neutral.76",
+        "buttonHover": "neutral.81",
+        "field": "neutral.91",
+        "outline": "neutral.23",
+        "divider": "neutral.23",
+        "canvas": "neutral.81"
+      },
+      "text": {
+        "primary": "neutral.23",
+        "secondary": "neutral.31",
+        "muted": "neutral.37",
+        "subdued": "neutral.43",
+        "overlay": "neutral.15",
+        "glyph": "neutral.23"
+      },
+      "roles": {
+        "gridSelected": "neutral.23",
+        "accent": "green.dim",
+        "warning": "orange.dim",
+        "danger": "red.dim",
+        "selection": "orange.dim",
+        "component": "purple.dim",
+        "componentSelected": "pink.dim",
+        "pointSmooth": "blue.dim",
+        "pointCorner": "green.dim",
+        "pointOffcurve": "purple.dim",
+        "pointHyper": "teal.dim",
+        "pointSelected": "orange.dim",
+        "pointInner": "neutral.96",
+        "startNode": "orange.dim",
+        "textCursor": "orange.dim",
+        "kernActive": "teal.dim",
+        "kernPrevious": "orange.dim",
+        "pathStroke": "neutral.23",
+        "previewFill": "neutral.43",
+        "background": "neutral.49",
+        "reference": "neutral.71",
+        "halo": "neutral.91",
+        "metricQuiet": "neutral.71",
+        "readonlyPoint": "neutral.49",
+        "continuityG2": "teal.dim",
+        "continuityG1": "yellow.dim",
+        "continuityLine": "neutral.49",
+        "continuityKink": "red.dim",
+        "popcount1": "green.dim",
+        "popcount2": "yellow.dim",
+        "popcount3": "orange.dim",
+        "popcount4": "red.dim"
+      }
     }
   },
-
   "$comment_marks": [
     "Mark colours are what a designer sees in the glyph grid, and they",
     "are written into the UFO, so their names are fixed by convention.",
@@ -337,14 +453,53 @@
     "purple": "0.54,0.44,0.88,1",
     "pink": "0.9,0.42,0.67,1"
   },
-
   "markColors": [
-    { "name": "red", "step": "red.base" },
-    { "name": "orange", "step": "orange.base" },
-    { "name": "yellow", "step": "yellow.base" },
-    { "name": "green", "step": "green.base" },
-    { "name": "blue", "step": "blue.base" },
-    { "name": "purple", "step": "purple.base" },
-    { "name": "pink", "step": "pink.base" }
-  ]
+    {
+      "name": "red",
+      "step": "red.base"
+    },
+    {
+      "name": "orange",
+      "step": "orange.base"
+    },
+    {
+      "name": "yellow",
+      "step": "yellow.base"
+    },
+    {
+      "name": "green",
+      "step": "green.base"
+    },
+    {
+      "name": "blue",
+      "step": "blue.base"
+    },
+    {
+      "name": "purple",
+      "step": "purple.base"
+    },
+    {
+      "name": "pink",
+      "step": "pink.base"
+    }
+  ],
+  "$comment_geometry": [
+    "Shape, not colour. A theme decides its corner radii and its stroke",
+    "width the same way it decides its greys, because those carry as much",
+    "of a UI's character as hue does: the same palette at radius 0 with a",
+    "2px rule reads as a drawing tool, and at radius 6 with a hairline as",
+    "a document app.",
+    "",
+    "Values are in px. A theme names only what it changes; anything it",
+    "leaves out falls back to `default` below. Frontends read these as",
+    "geometry tokens rather than hardcoding rounded_sm/border_1, which is",
+    "what makes a theme able to change them at all."
+  ],
+  "geometry": {
+    "default": {
+      "radiusSmall": 3.0,
+      "radiusMedium": 6.0,
+      "stroke": 1.0
+    }
+  }
 }
