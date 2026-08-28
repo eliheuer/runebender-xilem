@@ -28,6 +28,11 @@ use crate::text_label::{self, Anchor};
 use crate::theme::Palette;
 use crate::Tool;
 
+/// The metrics panel's geometry, shared by its painting and its boxes.
+const PANEL_PAD: f64 = 10.0;
+const PANEL_ROW: f64 = 18.0;
+const PANEL_WIDTH: f64 = 196.0;
+
 const HIT_RADIUS_PX: f64 = 8.0;
 
 /// Context-menu items: (label, op). Op returns whether the glyph changed.
@@ -129,6 +134,23 @@ pub struct EditorWidget {
     /// The open context-menu layer, if there is one.
     menu: Option<WidgetId>,
     view: ViewOptions,
+    /// The metric box being typed into, if any, and what has been typed.
+    ///
+    /// This is a hand-written text field. The panel it lives in is
+    /// painted rather than composed, so it cannot hold Xilem's
+    /// `text_input`: there is no view for a floating panel, and the
+    /// `zstack` that would have composed one never finished compiling.
+    /// Three numbers over the drawing therefore cost an editing mode.
+    field: Option<MetricField>,
+    field_buf: String,
+}
+
+/// Which number in the metrics panel is being typed into.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum MetricField {
+    Lsb,
+    Width,
+    Rsb,
 }
 
 impl EditorWidget {
@@ -143,9 +165,110 @@ impl EditorWidget {
     /// around an application-sized view tree took the build from under a
     /// minute to over thirty-five, at which point it was killed rather
     /// than finished. Painting it here costs one method and no types.
+    /// Where the three metric boxes are, in widget coordinates.
+    ///
+    /// Paint and hit testing both read this, so the box you click is the
+    /// box you can see. Writing it twice is how a painted control drifts.
+    fn metric_boxes(&self) -> Option<[(MetricField, Rect); 3]> {
+        self.session.side_bearings()?;
+        let (left, top) = self.metrics_panel_origin()?;
+        let y = top + PANEL_PAD + PANEL_ROW;
+        let box_at = |x: f64| Rect::new(left + x, y + 1.0, left + x + 42.0, y + PANEL_ROW - 1.0);
+        Some([
+            (MetricField::Lsb, box_at(32.0)),
+            (MetricField::Width, box_at(76.0)),
+            (MetricField::Rsb, box_at(120.0)),
+        ])
+    }
+
+    /// The panel's top left corner, or `None` when it does not fit.
+    fn metrics_panel_origin(&self) -> Option<(f64, f64)> {
+        let rows = 2 + if self.session.selection_bounds().is_some() { 3 } else { 0 };
+        let height = f64::from(rows) * PANEL_ROW + PANEL_PAD * 2.0;
+        let top = self.size.height - height - PANEL_PAD;
+        if top < 0.0 || PANEL_WIDTH + PANEL_PAD * 2.0 > self.size.width {
+            return None;
+        }
+        Some((PANEL_PAD, top))
+    }
+
+    /// Type a key into the focused metric box. Returns whether the glyph
+    /// changed, and whether the key was ours.
+    fn metric_key(&mut self, key: &masonry::core::KeyboardEvent) -> (bool, bool) {
+        let Some(field) = self.field else {
+            return (false, false);
+        };
+        match &key.key {
+            Key::Character(typed) => {
+                for character in typed.chars() {
+                    if character.is_ascii_digit() || character == '-' {
+                        self.field_buf.push(character);
+                    }
+                }
+                (false, true)
+            }
+            Key::Named(NamedKey::Backspace) => {
+                self.field_buf.pop();
+                (false, true)
+            }
+            Key::Named(NamedKey::Escape) => {
+                self.field = None;
+                (false, true)
+            }
+            Key::Named(NamedKey::Tab) => {
+                let next = match field {
+                    MetricField::Lsb => MetricField::Width,
+                    MetricField::Width => MetricField::Rsb,
+                    MetricField::Rsb => MetricField::Lsb,
+                };
+                let edited = self.commit_metric();
+                self.focus_metric(next);
+                (edited, true)
+            }
+            Key::Named(NamedKey::Enter) => {
+                let edited = self.commit_metric();
+                self.field = None;
+                (edited, true)
+            }
+            _ => (false, false),
+        }
+    }
+
+    /// Put the caret in a box and seed it with the value it shows.
+    fn focus_metric(&mut self, field: MetricField) {
+        let Some(sb) = self.session.side_bearings() else {
+            return;
+        };
+        self.field_buf = match field {
+            MetricField::Lsb => sb.lsb.to_string(),
+            MetricField::Width => format!("{:.0}", sb.advance),
+            MetricField::Rsb => sb.rsb.to_string(),
+        };
+        self.field = Some(field);
+    }
+
+    /// Apply what was typed. The sidebearing rules are the ones the
+    /// inspector's fields use: the left one moves the outline, the right
+    /// one moves the advance.
+    fn commit_metric(&mut self) -> bool {
+        let Some(field) = self.field else { return false };
+        let Ok(value) = self.field_buf.trim().parse::<f64>() else {
+            return false;
+        };
+        let Some(sb) = self.session.side_bearings() else {
+            return false;
+        };
+        match field {
+            MetricField::Lsb => self.session.shift_glyph(value - sb.min_x),
+            MetricField::Width => self.session.set_advance(value),
+            MetricField::Rsb => self.session.set_advance(sb.max_x + value),
+        }
+        true
+    }
+
     fn paint_metrics(&self, painter: &mut Painter<'_>) {
-        const PAD: f64 = 10.0;
-        const ROW: f64 = 18.0;
+        const PAD: f64 = PANEL_PAD;
+        const ROW: f64 = PANEL_ROW;
         let pal = &self.palette;
         let bearings = self.session.side_bearings();
         let bounds = self.session.selection_bounds();
@@ -193,10 +316,49 @@ impl EditorWidget {
         }
         if let Some(sb) = &bearings {
             text_at(painter, 10.0, 1.0, "LSB", 10.0, pal.text_muted, Anchor::Start);
-            text_at(painter, 76.0, 1.0, &sb.lsb.to_string(), 11.0, pal.text, Anchor::End);
-            text_at(painter, 118.0, 1.0, &format!("{:.0}", sb.advance), 11.0, pal.text, Anchor::End);
-            text_at(painter, 152.0, 1.0, &sb.rsb.to_string(), 11.0, pal.text, Anchor::End);
             text_at(painter, width - 10.0, 1.0, "RSB", 10.0, pal.text_muted, Anchor::End);
+            // Three boxes you can type in, like the GPUI build's. Each
+            // one is drawn here and hit tested from the same rectangles,
+            // because a painted control that computes its geometry twice
+            // will drift the moment either copy is edited.
+            if let Some(boxes) = self.metric_boxes() {
+                for (field, rect) in boxes {
+                    let focused = self.field == Some(field);
+                    let value = if focused {
+                        self.field_buf.clone()
+                    } else {
+                        match field {
+                            MetricField::Lsb => sb.lsb.to_string(),
+                            MetricField::Width => format!("{:.0}", sb.advance),
+                            MetricField::Rsb => sb.rsb.to_string(),
+                        }
+                    };
+                    let border = if focused {
+                        pal.role("accent")
+                    } else {
+                        pal.role("gridBorder")
+                    };
+                    painter.fill(rect.to_rounded_rect(3.0), pal.field()).draw();
+                    painter
+                        .stroke(&rect.to_rounded_rect(3.0), &Stroke::new(1.0), border)
+                        .draw();
+                    let baseline = rect.y0 + rect.height() - 4.0;
+                    text_label::draw(
+                        painter,
+                        Point::new(rect.x1 - 6.0, baseline),
+                        &value,
+                        11.0,
+                        pal.text,
+                        Anchor::End,
+                    );
+                    if focused {
+                        // A caret, drawn by hand, because this is a text
+                        // field drawn by hand.
+                        let caret = Rect::new(rect.x1 - 4.0, rect.y0 + 3.0, rect.x1 - 3.0, rect.y1 - 3.0);
+                        painter.fill(caret, pal.role("accent")).draw();
+                    }
+                }
+            }
         }
         if let Some(b) = bounds {
             text_at(painter, 10.0, 2.0, "Selection", 10.0, pal.text_muted, Anchor::Start);
@@ -659,6 +821,29 @@ impl Widget for EditorWidget {
                 return;
             }
         }
+        // A click in a metric box goes to the box, not to the drawing
+        // underneath it. The panel is painted, so nothing else will do
+        // this for us: a composed panel would have taken the click by
+        // being in front.
+        if let PointerEvent::Down(PointerButtonEvent { button: Some(PointerButton::Primary), state, .. }) = event {
+            let at = ctx.local_position(state.position);
+            if let Some(boxes) = self.metric_boxes() {
+                if let Some((field, _)) = boxes.iter().find(|(_, rect)| rect.contains(at)) {
+                    let edited = self.commit_metric();
+                    self.focus_metric(*field);
+                    ctx.request_focus();
+                    self.emit(ctx, edited);
+                    ctx.set_handled();
+                    return;
+                }
+            }
+            // A click anywhere else puts the value away.
+            if self.field.is_some() {
+                let edited = self.commit_metric();
+                self.field = None;
+                self.emit(ctx, edited);
+            }
+        }
         match event {
             PointerEvent::Down(PointerButtonEvent { button, state, .. }) => {
                 ctx.request_focus();
@@ -943,6 +1128,17 @@ impl Widget for EditorWidget {
         let shift = key.modifiers.shift();
         let step = if shift { 10.0 } else { 1.0 };
 
+        // A focused metric box takes the keys first. Everything below
+        // this point would otherwise read a digit as a nudge or a tool.
+        if self.field.is_some() && !cmd {
+            let (edited, handled) = self.metric_key(key);
+            if handled {
+                self.emit(ctx, edited);
+                ctx.set_handled();
+                return;
+            }
+        }
+
         // The text tool types. Everything a key would otherwise do to
         // the outline is off while it is in hand, because a person
         // typing "n" means the letter, not the pen.
@@ -1180,6 +1376,8 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             hover: None,
             menu: None,
             view: self.view,
+            field: None,
+            field_buf: String::new(),
         };
         (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())
     }
@@ -1311,6 +1509,36 @@ mod tests {
             hover: None,
             menu: None,
             view: ViewOptions::default(),
+            field: None,
+            field_buf: String::new(),
+        }
+    }
+
+    /// Typing in the width box changes the advance, and only on Enter.
+    #[test]
+    fn metric_box_commits_on_enter() {
+        let mut widget = widget();
+        widget.size = Size::new(600.0, 400.0);
+        let before = widget.session.advance();
+        widget.focus_metric(MetricField::Width);
+        widget.field_buf.clear();
+        widget.field_buf.push_str("900");
+        assert_eq!(widget.session.advance(), before, "not until Enter");
+        assert!(widget.commit_metric());
+        assert_eq!(widget.session.advance(), 900.0);
+    }
+
+    /// The boxes are where the panel paints them, at the bottom left.
+    #[test]
+    fn metric_boxes_sit_in_the_panel() {
+        let mut widget = widget();
+        widget.size = Size::new(600.0, 400.0);
+        let boxes = widget.metric_boxes().expect("the panel fits");
+        let (_, origin) = (0, widget.metrics_panel_origin().expect("it fits"));
+        for (_, rect) in boxes {
+            assert!(rect.x0 >= origin.0, "inside the panel's left edge");
+            assert!(rect.x1 <= origin.0 + PANEL_WIDTH, "inside its right edge");
+            assert!(rect.y0 >= origin.1, "below its top");
         }
     }
 
