@@ -7,6 +7,10 @@ license = "Apache-2.0"
 description = "Platform-independent core types for the Runebender font editor"
 repository = "https://github.com/eliheuer/runebender-core"
 
+[[bin]]
+name = "runebender"
+path = "src/bin/runebender.rs"
+
 [lib]
 name = "runebender_core"
 path = "src/lib.rs"
@@ -14,6 +18,7 @@ path = "src/lib.rs"
 [dependencies]
 glyphslib = "0.2.7"
 linesweeper = "0.4"
+clap = { version = "4", features = ["derive"] }
 norad = "0.18"
 # The web editor's autotracer, pinned to git like runebender-web.
 img2bez = { git = "https://github.com/eliheuer/img2bez", rev = "23073ca08ecdac61ad0e838bfae49a590bc2c7cc", default-features = false }

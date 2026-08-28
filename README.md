@@ -1,69 +1,96 @@
 # runebender-core
 
-Platform-independent core types for the [Runebender][rb] font editor.
+The editing engine behind the [Runebender][rb] font editor, with no
+interface attached.
 
-The two front-ends — native [`runebender-xilem`][xilem] and
-WASM/Vue [`runebender-comfy`][comfy] — both depend on this crate so
-they share a single source of truth for the editing state and data
-model that doesn't depend on the host UI framework.
+Every operation that changes a font lives here: point edits, segment
+surgery, overlap removal, components and anchors, kerning with group
+fallback, curvature analysis, shaping, measurement, interpolation.
+The front-ends own their window, input and drawing, and call this
+crate for the rest.
 
-## Status
+One rule decides what belongs: **if an edit changes a font, it goes
+here.** The test is not whether the code is about drawing. It is
+whether another front-end would need it. Where a click lands is the
+shell's business. What that click does to the outline is this crate's.
 
-Early. Only modules with no `kurbo` geometry in their public API live
-here right now:
+Two things follow. The hard parts are testable without opening a
+window, so they have tests that run in milliseconds. And a new
+front-end is a new interface rather than a second editor.
+
+## The command line
+
+```sh
+cargo install --git https://github.com/eliheuer/runebender-core
+
+runebender info Font.ufo
+runebender measure Font.ufo --glyph eight
+runebender check --a Light.ufo --b Bold.ufo
+```
+
+Every command takes `--json`. Exit codes are 0 ok, 1 findings, 2 usage,
+4 failed, matching [font-ml][fml] so the two are driven the same way.
+An operation you can only reach by opening a window is one a script, a
+build, or an agent cannot use.
+
+## Layout
 
 ```
 src/
-├── editing/
-│   ├── edit_types.rs    # EditType enum (undo grouping)
-│   ├── selection.rs     # Selection set (Arc<BTreeSet<EntityId>>)
-│   └── undo.rs          # UndoState<T> (generic undo/redo)
-└── model/
-    ├── entity_id.rs     # EntityId (unique IDs for points/paths)
-    └── kerning.rs       # UFO-spec kerning lookup
+├── glyph_ops.rs      point edits, deletion with segment surgery,
+│                     pen primitives, decompose, overlap, metrics, kerning
+├── glyph_paths.rs    norad → kurbo outlines, components resolved
+├── path/             segment maths: cubic, quadratic, hyperbezier
+├── curve.rs          curvature: continuity, kinks, extrema
+├── text.rs           shaping and the text-context editing model
+├── composites.rs     components and anchors
+├── var_model.rs      interpolation across a designspace
+├── knife.rs          slicing
+├── shape.rs          primitives
+├── measure.rs        measurement and sidebearings
+├── glyphs_import.rs  .glyphs and .glyphspackage
+├── theme*.rs         the OKLCH token file every editor resolves from
+├── editing/          selection, undo, viewport
+├── model/            entity ids, kerning, workspace, glyph metadata
+└── bin/runebender.rs the command line
 ```
 
-The rest (`path/`, `viewport`, `mouse`, `hit_test`, `workspace`,
-`glyph_renderer`) is still duplicated in each consumer because of a
-`kurbo` version conflict:
+## The format is the model
 
-- `runebender-xilem` is pinned to `kurbo = "0.12"` by `masonry 0.4`.
-- `runebender-comfy` is on `kurbo = "0.13"` by `peniko 0.5` / `vello`.
+Sources are edited as UFO through [norad][norad], rather than read into
+a private model and written back. Nothing is lost in translation, and
+another tool can read the sources mid-session. The cost is that the
+file's shape is the editor's shape, awkward parts of UFO included.
 
-A library can only declare one `kurbo` version; until the xilem-side
-ecosystem catches up to 0.13 (the upcoming `masonry-2` transition),
-the geometry-touching modules stay duplicated. When the alignment
-happens, they'll move here.
+This is also why a script or an agent can work alongside a running
+editor: the editor reloads what changed on disk.
+
+## Two versions of kurbo
+
+This crate carries `kurbo` twice, as `kurbo_09` and through its
+consumers. Front-ends are pinned to their toolkit's version, and a library can
+only declare one. Rather than hold every front-end to the oldest, the
+geometry types are pinned here and converted at the boundary. It is a
+real cost, and the reason some geometry-touching code still lives in
+each front-end.
+
+## Front-ends
+
+| | |
+| --- | --- |
+| [runebender-gpui][gpui] | The current editor. Native and browser from one codebase. |
+| [runebender-xilem][xilem] | The same editor on Xilem, the Linebender stack. More experimental. |
+| [runebender-web][web] | Vello and Kurbo in WebAssembly, with a Vue interface. |
+| [runebender-druid][druid] | The original, kept as project history. |
 
 ## License
 
-Apache-2.0 — matches `runebender-xilem` (the source of the ported
-modules) and stays GPL-3.0-compatible so `runebender-comfy` can
-include it.
+Apache-2.0.
 
-[rb]: https://github.com/eliheuer/runebender-xilem
+[rb]: https://runebender.org
+[gpui]: https://github.com/eliheuer/runebender-gpui
 [xilem]: https://github.com/eliheuer/runebender-xilem
-[comfy]: https://github.com/eliheuer/runebender-comfy
-
-## Architecture
-
-This crate is the editor engine shared by every Runebender UI
-(runebender-web, runebender-xilem, runebender-gpui). The goal is
-that the UIs are thin, swappable shells:
-
-- `glyph_ops` — UI-free editing operations on norad glyphs: point
-  moves, deletion with segment surgery, smooth constraints, pen
-  primitives, shapes, decompose, remove overlap, metrics, kerning
-  with group fallback, undo snapshots, compatibility signatures.
-- `glyph_paths` — norad → kurbo outline building (contours,
-  recursively resolved components).
-- `curve` — curvature analysis and quality operations: G0–G3
-  continuity, curvature comb, harmonize, Tunni balance, contour
-  optimizer.
-- `var_model` — designspace interpolation (fontTools
-  VariationModel port).
-- `editing`, `model`, `category`, `shaping`, `mark_color`,
-  `theme` — shared editing/state types and metadata.
-
-New features should land here first when they have no UI in them;
-the shells own input handling, caching, and rendering only.
+[web]: https://github.com/eliheuer/runebender-web
+[druid]: https://github.com/linebender/runebender
+[norad]: https://github.com/linebender/norad
+[fml]: https://github.com/eliheuer/font-ml
