@@ -96,6 +96,10 @@
     "bright": {
       "lightness": 0.13,
       "chroma": -0.03
+    },
+    "deep": {
+      "lightness": -0.26,
+      "chroma": 0.0
     }
   },
   "$comment_neutral": [
@@ -272,7 +276,7 @@
         "overlay": "neutral.18",
         "glyph": "neutral.31"
       },
-      "markStep": "dim",
+      "markStep": "deep",
       "roles": {
         "gridSelected": "neutral.31",
         "accent": "green.dim",
@@ -311,7 +315,7 @@
     "gray": {
       "name": "Gray",
       "$comment": "Mid grey with dark ink, following runebender.org: square corners and a 2px rule in the text colour, so the borders draw the layout instead of tints doing it. The role hues stay coloured \u2014 a point type you cannot tell apart is a usability cost the website never has to pay.",
-      "markStep": "dim",
+      "markStep": "base",
       "geometry": {
         "radius": 0.0,
         "radiusControl": 0.0,
@@ -370,13 +374,31 @@
         "popcount2": "yellow.dim",
         "popcount3": "orange.dim",
         "popcount4": "red.dim"
-      }
+      },
+      "markStyle": "fill",
+      "markOutline": "neutral.23",
+      "markInk": "neutral.15"
     }
   },
   "$comment_marks": [
-    "Mark colours are what a designer sees in the glyph grid, and they",
-    "are written into the UFO, so their names are fixed by convention.",
-    "They use the bright step: a mark has to read at thumbnail size."
+    "How a glyph mark is drawn, not just which colour it is. On a near",
+    "black or near white canvas a hue can simply be lighter or darker",
+    "than the ground, so tinting the cell's border is enough. On a mid",
+    "grey there is nowhere to go: a colour saturated enough to read as a",
+    "hue sits at mid lightness too, and mid on mid is invisible. Gray's",
+    "yellow against its panel measured 1.00 contrast, which is not dim,",
+    "it is the same luminance.",
+    "",
+    "So the treatment is a theme's decision:",
+    "",
+    "  style   border  tint the cell's rule, leave the fill alone",
+    "          fill    fill the cell with the hue and key it with a rule",
+    "  outline the keyline colour, for style fill",
+    "  ink     the label colour drawn on top of a filled mark",
+    "",
+    "Fill works on any ground because the hue stops competing with the",
+    "background and becomes it, and the dark keyline separates the cell",
+    "regardless of what the two luminances are doing."
   ],
   "$comment_ufoMarkColors": [
     "What `public.markColor` gets in the UFO, frozen. These came from",

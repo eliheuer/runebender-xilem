@@ -102,6 +102,12 @@ struct ThemeDef {
     roles: HashMap<String, String>,
     #[serde(rename = "markStep")]
     mark_step: Option<String>,
+    #[serde(rename = "markStyle")]
+    mark_style: Option<String>,
+    #[serde(rename = "markOutline")]
+    mark_outline: Option<String>,
+    #[serde(rename = "markInk")]
+    mark_ink: Option<String>,
     #[serde(default)]
     geometry: Option<GeometryDef>,
 }
@@ -140,6 +146,17 @@ struct TokenFile {
     ufo_mark_colors: HashMap<String, String>,
 }
 
+/// How a theme draws a glyph mark.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MarkStyle {
+    /// Tint the cell's rule and label, leave the fill alone. Works
+    /// where the ground is far from mid lightness.
+    Border,
+    /// Fill the cell with the hue and key it with a rule. The only
+    /// treatment that survives a mid-grey ground.
+    Fill,
+}
+
 /// Shape tokens, resolved: a theme's own value where it names one,
 /// otherwise the file's default.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -172,6 +189,12 @@ pub struct Theme {
     pub marks: Vec<(String, ColorRgba)>,
     /// Corner radii and stroke width for this theme.
     pub geometry: Geometry,
+    /// How marks are drawn.
+    pub mark_style: MarkStyle,
+    /// Keyline around a filled mark.
+    pub mark_outline: Option<ColorRgba>,
+    /// Label colour drawn on top of a filled mark.
+    pub mark_ink: Option<ColorRgba>,
 }
 
 impl Theme {
@@ -277,8 +300,20 @@ pub fn load_theme(theme_id: &str) -> Option<Theme> {
             fallback.stroke_emphasis,
         ),
     };
+    let mark_style = match def.mark_style.as_deref() {
+        Some("fill") => MarkStyle::Fill,
+        _ => MarkStyle::Border,
+    };
+    let mark_outline = def
+        .mark_outline
+        .as_deref()
+        .and_then(|t| resolve_token(&file, t));
+    let mark_ink = def.mark_ink.as_deref().and_then(|t| resolve_token(&file, t));
     Some(Theme {
         geometry,
+        mark_style,
+        mark_outline,
+        mark_ink,
         surfaces: resolve_map(&def.surfaces),
         text: resolve_map(&def.text),
         roles: resolve_map(&def.roles),
@@ -587,5 +622,91 @@ mod geometry_tests {
         let gray = load_theme("gray").expect("gray");
         assert_eq!(gray.surface("outline"), gray.text("primary"));
         assert_eq!(gray.surface("divider"), gray.text("primary"));
+    }
+}
+
+#[cfg(test)]
+mod mark_contrast {
+    use super::*;
+
+    fn relative_luminance(c: ColorRgba) -> f64 {
+        let f = |v: u8| {
+            let s = v as f64 / 255.0;
+            if s <= 0.03928 {
+                s / 12.92
+            } else {
+                ((s + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b)
+    }
+
+    /// WCAG contrast ratio, 1.0 (identical) to 21.0 (black on white).
+    fn contrast(a: ColorRgba, b: ColorRgba) -> f64 {
+        let (x, y) = (relative_luminance(a), relative_luminance(b));
+        let (hi, lo) = if x > y { (x, y) } else { (y, x) };
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    /// A mark has to be legible against whatever it is actually drawn
+    /// on, and that depends on the treatment. This is the test that was
+    /// missing: Gray borrowed the Light theme's dim marks, whose
+    /// lightness is tuned for a near-white canvas, and drew them as
+    /// tinted rules on a mid-grey panel. Yellow came out at 1.00 —
+    /// the same luminance as the ground it sat on.
+    #[test]
+    fn every_mark_is_legible_on_every_theme() {
+        const FLOOR: f64 = 3.0;
+        for id in ["dark", "midnight", "light", "gray"] {
+            let theme = load_theme(id).expect("theme");
+            for (name, mark) in &theme.marks {
+                match theme.mark_style {
+                    // A tinted rule is read against the surfaces behind it.
+                    MarkStyle::Border => {
+                        for surface in ["canvas", "panel"] {
+                            let ratio = contrast(*mark, theme.surface(surface));
+                            assert!(
+                                ratio >= FLOOR,
+                                "{id}: {name} on {surface} is {ratio:.2}, \
+                                 under {FLOOR:.1}"
+                            );
+                        }
+                    }
+                    // A filled mark IS the ground, so what has to be
+                    // legible is the label on top of it.
+                    MarkStyle::Fill => {
+                        let ink = theme
+                            .mark_ink
+                            .expect("a fill theme names the ink drawn on it");
+                        let ratio = contrast(*mark, ink);
+                        assert!(
+                            ratio >= FLOOR,
+                            "{id}: ink on {name} is {ratio:.2}, under {FLOOR:.1}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// A filled mark is separated from its neighbours by the keyline,
+    /// not by luminance, so the keyline itself has to read.
+    #[test]
+    fn a_filled_theme_keys_its_marks() {
+        let gray = load_theme("gray").expect("gray");
+        assert_eq!(gray.mark_style, MarkStyle::Fill);
+        let outline = gray.mark_outline.expect("gray names a keyline");
+        for (name, mark) in &gray.marks {
+            let ratio = contrast(*mark, outline);
+            assert!(ratio >= 3.0, "gray: keyline on {name} is {ratio:.2}");
+        }
+    }
+
+    #[test]
+    fn border_themes_need_no_fill_tokens() {
+        for id in ["dark", "midnight", "light"] {
+            let theme = load_theme(id).expect("theme");
+            assert_eq!(theme.mark_style, MarkStyle::Border, "{id}");
+        }
     }
 }
