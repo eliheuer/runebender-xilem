@@ -550,7 +550,7 @@ mod geometry_tests {
 
     #[test]
     fn every_theme_resolves_geometry() {
-        for id in ["dark", "midnight", "light", "gray", "paper"] {
+        for id in ["dark", "midnight", "light", "gray"] {
             let theme = load_theme(id).expect("theme in the token file");
             assert!(theme.geometry.stroke > 0.0, "{id} stroke");
             assert!(theme.geometry.radius >= 0.0, "{id} radius");
@@ -569,23 +569,23 @@ mod geometry_tests {
     }
 
     #[test]
-    fn paper_overrides_the_default() {
-        let paper = load_theme("paper").expect("paper");
-        assert_eq!(paper.geometry.stroke, 2.0);
-        assert_eq!(paper.geometry.radius, 0.0);
-        assert_eq!(paper.geometry.radius_control, 0.0);
+    fn gray_overrides_the_default() {
+        let gray = load_theme("gray").expect("gray");
+        assert_eq!(gray.geometry.stroke, 2.0);
+        assert_eq!(gray.geometry.radius, 0.0);
+        assert_eq!(gray.geometry.radius_control, 0.0);
         // Not stroke * 2: 4px on an 18px swatch leaves 10px of colour.
-        assert_eq!(paper.geometry.stroke_emphasis, 3.0);
-        assert_ne!(paper.geometry, Geometry::default());
+        assert_eq!(gray.geometry.stroke_emphasis, 3.0);
+        assert_ne!(gray.geometry, Geometry::default());
     }
 
     #[test]
-    fn paper_draws_its_rules_in_the_text_colour() {
+    fn gray_draws_its_rules_in_the_text_colour() {
         // The website's borders are the text colour, not a lighter
         // tint. That is the whole look; if these drift apart the theme
         // stops resembling it.
-        let paper = load_theme("paper").expect("paper");
-        assert_eq!(paper.surface("outline"), paper.text("primary"));
-        assert_eq!(paper.surface("divider"), paper.text("primary"));
+        let gray = load_theme("gray").expect("gray");
+        assert_eq!(gray.surface("outline"), gray.text("primary"));
+        assert_eq!(gray.surface("divider"), gray.text("primary"));
     }
 }
