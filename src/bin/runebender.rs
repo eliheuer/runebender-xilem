@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use norad::Font;
-use runebender_core::{glyph_ops, optical};
+use runebender_core::{glyph_ops, optical, spacing};
 use serde_json::{json, Value};
 
 /// Exit codes, matching font-ml so a caller can branch on them.
@@ -72,6 +72,14 @@ enum Command {
         #[arg(long, default_value = "0.15")]
         tolerance: f64,
     },
+    /// Find sidebearings off the grid the family is drawn on.
+    Spacing {
+        /// A .ufo directory.
+        source: PathBuf,
+        /// Grid step in units. Inferred from the font when not given.
+        #[arg(long)]
+        step: Option<f64>,
+    },
     /// Compare two masters for interpolation compatibility.
     Check {
         /// The lighter master.
@@ -92,6 +100,7 @@ fn main() -> std::process::ExitCode {
         Command::Info { source } => info(source, cli.json),
         Command::Measure { source, glyph } => measure(source, glyph, cli.json),
         Command::Color { source, tolerance } => color(source, *tolerance, cli.json),
+        Command::Spacing { source, step } => spacing_cmd(source, *step, cli.json),
         Command::Check { a, b, limit } => check(a, b, *limit, cli.json),
     };
     std::process::ExitCode::from(code as u8)
@@ -252,6 +261,65 @@ fn color(source: &Path, tolerance: f64, json: bool) -> i32 {
             );
         }
         println!("{} of {} compared", found.len(), lower.len() + upper.len());
+    }
+    if ok { exit::OK } else { exit::FINDINGS }
+}
+
+/// Spacing against the family's own grid.
+fn spacing_cmd(source: &Path, step: Option<f64>, json: bool) -> i32 {
+    let font = match open(source, json) {
+        Ok(f) => f,
+        Err(code) => return code,
+    };
+    let sides = spacing::sidebearings(&font);
+    let Some(step) = step.or_else(|| spacing::infer_step(&sides)) else {
+        return fail(
+            json,
+            exit::USAGE,
+            "no grid step fits this spacing; pass --step to check against one",
+        );
+    };
+    let found = spacing::off_grid(&sides, step);
+    let ok = found.is_empty();
+    if json {
+        let items: Vec<Value> = found
+            .iter()
+            .map(|o| json!({
+                "glyph": o.glyph, "side": o.side,
+                "value": o.value, "offBy": o.off_by,
+            }))
+            .collect();
+        println!("{}", json!({
+            "ok": ok, "step": step, "glyphs": sides.len(), "findings": items,
+        }));
+    } else if ok {
+        println!("{} glyphs on a {step:.0}-unit grid, none off it", sides.len());
+    } else {
+        for o in &found {
+            println!(
+                "{:<22} {:<5} {:>7.1}  off by {:>+5.1}",
+                o.glyph, o.side, o.value, o.off_by
+            );
+        }
+        println!(
+            "{} of {} sidebearings off the {step:.0}-unit grid",
+            found.len(),
+            sides.len() * 2
+        );
+        // Findings that all sit exactly half a step out are not drift.
+        // They are a family using a finer grid than the one inferred.
+        let half = found
+            .iter()
+            .filter(|o| (o.off_by.abs() - step / 2.0).abs() < 0.01)
+            .count();
+        if half * 10 >= found.len() * 6 {
+            println!(
+                "{half} of them are exactly half a step out, so this family \
+                 may be drawn on {:.0}s: try --step {:.0}",
+                step / 2.0,
+                step / 2.0
+            );
+        }
     }
     if ok { exit::OK } else { exit::FINDINGS }
 }

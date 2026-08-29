@@ -30,6 +30,7 @@ pub mod point_ops;
 pub mod segment_ops;
 pub mod sidebar;
 pub mod shape;
+pub mod spacing;
 pub mod shaping;
 pub mod text;
 pub mod theme;
