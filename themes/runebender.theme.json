@@ -314,13 +314,11 @@
     },
     "gray": {
       "name": "Gray",
-      "$comment": "Mid grey with dark ink, following runebender.org: square corners and a 2px rule in the text colour, so the borders draw the layout instead of tints doing it. The role hues stay coloured \u2014 a point type you cannot tell apart is a usability cost the website never has to pay.",
+      "$comment": "Mid grey with dark ink, after runebender.org: square corners, and rules drawn in the text colour rather than a lighter tint, so the borders draw the layout instead of tints doing it. It takes the colour of the site's rules and not their weight: 2px reads as structure on a web page with room around it, and as heavy at editor density. The role hues stay coloured, since a point type you cannot tell apart is a usability cost the website never has to pay.",
       "markStep": "base",
       "geometry": {
         "radius": 0.0,
-        "radiusControl": 0.0,
-        "stroke": 2.0,
-        "strokeEmphasis": 3.0
+        "radiusControl": 0.0
       },
       "surfaces": {
         "app": "neutral.71",

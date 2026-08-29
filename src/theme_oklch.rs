@@ -606,12 +606,15 @@ mod geometry_tests {
     #[test]
     fn gray_overrides_the_default() {
         let gray = load_theme("gray").expect("gray");
-        assert_eq!(gray.geometry.stroke, 2.0);
         assert_eq!(gray.geometry.radius, 0.0);
         assert_eq!(gray.geometry.radius_control, 0.0);
-        // Not stroke * 2: 4px on an 18px swatch leaves 10px of colour.
-        assert_eq!(gray.geometry.stroke_emphasis, 3.0);
         assert_ne!(gray.geometry, Geometry::default());
+        // Gray changes the corners and not the rule weight, so the
+        // two stroke widths come from geometry.default. This is the
+        // partial-override case the optional fields exist for.
+        let fallback = Geometry::default();
+        assert_eq!(gray.geometry.stroke, fallback.stroke);
+        assert_eq!(gray.geometry.stroke_emphasis, fallback.stroke_emphasis);
     }
 
     #[test]
