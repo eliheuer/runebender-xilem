@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use norad::Font;
-use runebender_core::glyph_ops;
+use runebender_core::{glyph_ops, optical};
 use serde_json::{json, Value};
 
 /// Exit codes, matching font-ml so a caller can branch on them.
@@ -64,6 +64,14 @@ enum Command {
         #[arg(long)]
         glyph: String,
     },
+    /// Find glyphs that read darker or lighter than the rest.
+    Color {
+        /// A .ufo directory.
+        source: PathBuf,
+        /// How far off the group's median counts, as a fraction.
+        #[arg(long, default_value = "0.15")]
+        tolerance: f64,
+    },
     /// Compare two masters for interpolation compatibility.
     Check {
         /// The lighter master.
@@ -83,6 +91,7 @@ fn main() -> std::process::ExitCode {
     let code = match &cli.command {
         Command::Info { source } => info(source, cli.json),
         Command::Measure { source, glyph } => measure(source, glyph, cli.json),
+        Command::Color { source, tolerance } => color(source, *tolerance, cli.json),
         Command::Check { a, b, limit } => check(a, b, *limit, cli.json),
     };
     std::process::ExitCode::from(code as u8)
@@ -173,6 +182,78 @@ fn measure(source: &Path, name: &str, json: bool) -> i32 {
             println!("  components  {}", glyph.components.len());
         },
     )
+}
+
+/// Optical weight: the proof-reading pass, done by measurement.
+///
+/// Glyphs are compared within their own case, because lowercase and
+/// uppercase fill their boxes differently and comparing across them
+/// would flag the whole alphabet.
+fn color(source: &Path, tolerance: f64, json: bool) -> i32 {
+    let font = match open(source, json) {
+        Ok(f) => f,
+        Err(code) => return code,
+    };
+    let x_height = font.font_info.x_height.unwrap_or(0.0);
+    let cap_height = font.font_info.cap_height.unwrap_or(0.0);
+    if x_height <= 0.0 || cap_height <= 0.0 {
+        return fail(
+            json,
+            exit::USAGE,
+            "the source needs xHeight and capHeight in fontinfo",
+        );
+    }
+    let mut lower = Vec::new();
+    let mut upper = Vec::new();
+    for glyph in font.default_layer().iter() {
+        let Some(c) = glyph.codepoints.iter().next() else {
+            continue;
+        };
+        if c.is_lowercase() {
+            lower.push(glyph.name().to_string());
+        } else if c.is_uppercase() {
+            upper.push(glyph.name().to_string());
+        }
+    }
+    let mut found = optical::outliers(&font, &lower, x_height, tolerance, "lowercase");
+    found.extend(optical::outliers(&font, &upper, cap_height, tolerance, "uppercase"));
+    let ok = found.is_empty();
+    if json {
+        let items: Vec<Value> = found
+            .iter()
+            .map(|o| {
+                json!({
+                    "glyph": o.glyph, "group": o.group,
+                    "ratio": (o.ratio * 1000.0).round() / 1000.0,
+                    "density": (o.density * 10000.0).round() / 10000.0,
+                    "median": (o.median * 10000.0).round() / 10000.0,
+                    "reads": if o.ratio > 1.0 { "darker" } else { "lighter" },
+                })
+            })
+            .collect();
+        println!("{}", json!({
+            "ok": ok, "tolerance": tolerance,
+            "compared": lower.len() + upper.len(), "findings": items,
+        }));
+    } else if ok {
+        println!(
+            "{} glyphs compared, none more than {:.0}% off",
+            lower.len() + upper.len(),
+            tolerance * 100.0
+        );
+    } else {
+        for o in &found {
+            let dir = if o.ratio > 1.0 { "darker" } else { "lighter" };
+            println!(
+                "{:<20} {:>6.1}% {dir} than the {} median",
+                o.glyph,
+                (o.ratio - 1.0).abs() * 100.0,
+                o.group
+            );
+        }
+        println!("{} of {} compared", found.len(), lower.len() + upper.len());
+    }
+    if ok { exit::OK } else { exit::FINDINGS }
 }
 
 /// Interpolation compatibility, the check that costs the most to get
