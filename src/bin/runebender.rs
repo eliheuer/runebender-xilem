@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use norad::Font;
-use runebender_core::{glyph_ops, optical, spacing};
+use runebender_core::{embolden, glyph_ops, optical, spacing};
 use serde_json::{json, Value};
 
 /// Exit codes, matching font-ml so a caller can branch on them.
@@ -72,6 +72,30 @@ enum Command {
         #[arg(long, default_value = "0.15")]
         tolerance: f64,
     },
+    /// Learn how much weight a heavier master adds, from glyphs drawn
+    /// in both, and report what it would do to the rest.
+    Bolden {
+        /// The lighter master.
+        #[arg(long)]
+        from: PathBuf,
+        /// The heavier master, part-drawn.
+        #[arg(long)]
+        to: PathBuf,
+        /// Glyphs to learn from. Defaults to n,o,H,O.
+        #[arg(long, value_delimiter = ',')]
+        references: Option<Vec<String>>,
+        /// Glyphs to report on. Defaults to every one still identical
+        /// in both masters, which is the work not yet done.
+        #[arg(long, value_delimiter = ',')]
+        glyphs: Option<Vec<String>>,
+        /// Stop after this many.
+        #[arg(long, default_value = "40")]
+        limit: usize,
+        /// Score the learned offset against glyphs drawn in both
+        /// masters instead of listing what is undrawn.
+        #[arg(long)]
+        check: bool,
+    },
     /// Find sidebearings off the grid the family is drawn on.
     Spacing {
         /// A .ufo directory.
@@ -100,6 +124,15 @@ fn main() -> std::process::ExitCode {
         Command::Info { source } => info(source, cli.json),
         Command::Measure { source, glyph } => measure(source, glyph, cli.json),
         Command::Color { source, tolerance } => color(source, *tolerance, cli.json),
+        Command::Bolden { from, to, references, glyphs, limit, check } => bolden(
+            from,
+            to,
+            references.as_deref(),
+            glyphs.as_deref(),
+            *limit,
+            *check,
+            cli.json,
+        ),
         Command::Spacing { source, step } => spacing_cmd(source, *step, cli.json),
         Command::Check { a, b, limit } => check(a, b, *limit, cli.json),
     };
@@ -263,6 +296,212 @@ fn color(source: &Path, tolerance: f64, json: bool) -> i32 {
         println!("{} of {} compared", found.len(), lower.len() + upper.len());
     }
     if ok { exit::OK } else { exit::FINDINGS }
+}
+
+/// What the reference glyphs say the heavier master should do.
+///
+/// Reports rather than writes. Seeing the offset and the list first is
+/// the difference between a tool you can trust with a font and one you
+/// run once and then undo.
+fn bolden(
+    from: &Path,
+    to: &Path,
+    references: Option<&[String]>,
+    glyphs: Option<&[String]>,
+    limit: usize,
+    check: bool,
+    json: bool,
+) -> i32 {
+    let (light, heavy) = match (open(from, json), open(to, json)) {
+        (Ok(a), Ok(b)) => (a, b),
+        (Err(code), _) | (_, Err(code)) => return code,
+    };
+    let default_refs = ["n".to_string(), "o".to_string(), "H".to_string(), "O".to_string()];
+    let refs: &[String] = references.unwrap_or(&default_refs);
+    let pairs: Vec<_> = refs
+        .iter()
+        .filter_map(|n| {
+            Some((
+                light.default_layer().get_glyph(n.as_str())?,
+                heavy.default_layer().get_glyph(n.as_str())?,
+            ))
+        })
+        .collect();
+    let Some(offset) = embolden::learn_offset(&pairs) else {
+        return fail(
+            json,
+            exit::USAGE,
+            "no reference glyph is drawn and compatible in both masters",
+        );
+    };
+    // What is left to do: glyphs whose heavier master still matches
+    // the lighter one point for point.
+    let todo: Vec<String> = match glyphs {
+        Some(list) => list.to_vec(),
+        None => light
+            .default_layer()
+            .iter()
+            .filter(|g| !g.contours.is_empty() && g.components.is_empty())
+            .filter(|g| {
+                heavy
+                    .default_layer()
+                    .get_glyph(g.name().as_str())
+                    .is_some_and(|h| {
+                        glyph_ops::glyph_signature(h) == glyph_ops::glyph_signature(g)
+                            && h.contours == g.contours
+                    })
+            })
+            .map(|g| g.name().to_string())
+            .collect(),
+    };
+    if check {
+        return bolden_check(&light, &heavy, offset, glyphs, limit, json);
+    }
+    let mut rows = Vec::new();
+    for name in todo.iter().take(limit) {
+        let Some(g) = light.default_layer().get_glyph(name.as_str()) else {
+            continue;
+        };
+        let out = embolden::embolden(g, offset);
+        let moved = g
+            .contours
+            .iter()
+            .flat_map(|c| c.points.iter())
+            .zip(out.contours.iter().flat_map(|c| c.points.iter()))
+            .filter(|(a, b)| a.x != b.x || a.y != b.y)
+            .count();
+        let points: usize = g.contours.iter().map(|c| c.points.len()).sum();
+        rows.push((name.clone(), moved, points));
+    }
+    if json {
+        println!("{}", json!({
+            "ok": true,
+            "offset": { "x": offset.x, "y": offset.y },
+            "references": refs,
+            "pending": todo.len(),
+            "glyphs": rows.iter().map(|(n, m, p)| json!({
+                "glyph": n, "pointsMoved": m, "points": p,
+            })).collect::<Vec<_>>(),
+        }));
+    } else {
+        println!(
+            "learned from {} reference glyphs: push out {:.1} horizontally, \
+             {:.1} vertically",
+            pairs.len(),
+            offset.x,
+            offset.y
+        );
+        println!("{} glyphs still undrawn in the heavier master", todo.len());
+        for (name, moved, points) in &rows {
+            println!("  {name:<22} {moved}/{points} points would move");
+        }
+        if todo.len() > rows.len() {
+            println!("  ... and {} more", todo.len() - rows.len());
+        }
+    }
+    exit::OK
+}
+
+/// Score the learned offset where the answer is already known.
+///
+/// The same protocol the model is scored with: mean point error
+/// against the heavier master somebody drew, next to the error from
+/// shifting every point by the average amount. A method that cannot
+/// beat that constant is not carrying its weight.
+fn bolden_check(
+    light: &Font,
+    heavy: &Font,
+    offset: embolden::Offset,
+    glyphs: Option<&[String]>,
+    limit: usize,
+    json: bool,
+) -> i32 {
+    let names: Vec<String> = match glyphs {
+        Some(list) => list.to_vec(),
+        None => light
+            .default_layer()
+            .iter()
+            .filter(|g| !g.contours.is_empty() && g.components.is_empty())
+            .filter(|g| {
+                heavy.default_layer().get_glyph(g.name().as_str()).is_some_and(|h| {
+                    glyph_ops::glyph_signature(h) == glyph_ops::glyph_signature(g)
+                        && h.contours != g.contours
+                })
+            })
+            .map(|g| g.name().to_string())
+            .collect(),
+    };
+    let flat = |g: &norad::Glyph| -> Vec<(f64, f64)> {
+        g.contours.iter().flat_map(|c| c.points.iter().map(|p| (p.x, p.y))).collect()
+    };
+    let mut rows = Vec::new();
+    let (mut sum_dx, mut sum_dy, mut n) = (0.0, 0.0, 0usize);
+    for name in names.iter().take(limit) {
+        let (Some(l), Some(h)) = (
+            light.default_layer().get_glyph(name.as_str()),
+            heavy.default_layer().get_glyph(name.as_str()),
+        ) else {
+            continue;
+        };
+        let (a, b) = (flat(l), flat(h));
+        if a.len() != b.len() || a.is_empty() {
+            continue;
+        }
+        for (p, q) in a.iter().zip(&b) {
+            sum_dx += q.0 - p.0;
+            sum_dy += q.1 - p.1;
+            n += 1;
+        }
+        let pred = flat(&embolden::embolden(l, offset));
+        let err = pred
+            .iter()
+            .zip(&b)
+            .map(|(p, q)| (p.0 - q.0).abs() + (p.1 - q.1).abs())
+            .sum::<f64>()
+            / (a.len() as f64 * 2.0);
+        rows.push((name.clone(), err, a, b));
+    }
+    if rows.is_empty() || n == 0 {
+        return fail(json, exit::FAILED, "no glyph is drawn in both masters");
+    }
+    let (mx, my) = (sum_dx / n as f64, sum_dy / n as f64);
+    let mut offset_total = 0.0;
+    let mut base_total = 0.0;
+    let mut wins = 0usize;
+    let mut per = Vec::new();
+    for (name, err, a, b) in &rows {
+        let base = a
+            .iter()
+            .zip(b)
+            .map(|(p, q)| (p.0 + mx - q.0).abs() + (p.1 + my - q.1).abs())
+            .sum::<f64>()
+            / (a.len() as f64 * 2.0);
+        offset_total += err;
+        base_total += base;
+        if *err < base {
+            wins += 1;
+        }
+        per.push(json!({ "glyph": name, "offset": err, "baseline": base }));
+    }
+    let count = rows.len() as f64;
+    if json {
+        println!("{}", json!({
+            "ok": true, "glyphs": rows.len(),
+            "offset_mae": offset_total / count,
+            "baseline_mae": base_total / count,
+            "beats_baseline": wins,
+            "per_glyph": per,
+        }));
+    } else {
+        println!(
+            "{} glyphs drawn in both: offset {:.1}, baseline {:.1}, \
+             offset wins on {wins}",
+            rows.len(),
+            offset_total / count,
+            base_total / count
+        );
+    }
+    exit::OK
 }
 
 /// Spacing against the family's own grid.
