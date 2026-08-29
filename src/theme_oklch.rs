@@ -710,3 +710,99 @@ mod mark_contrast {
         }
     }
 }
+
+#[cfg(test)]
+mod ui_contrast {
+    use super::*;
+
+    fn relative_luminance(c: ColorRgba) -> f64 {
+        let f = |v: u8| {
+            let s = v as f64 / 255.0;
+            if s <= 0.03928 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b)
+    }
+
+    fn contrast(a: ColorRgba, b: ColorRgba) -> f64 {
+        let (x, y) = (relative_luminance(a), relative_luminance(b));
+        let (hi, lo) = if x > y { (x, y) } else { (y, x) };
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    /// WCAG's floor for user interface components and graphical
+    /// objects. Body-text prose wants 4.5, but almost nothing in an
+    /// editor chrome is prose: it is labels, tiles and marks.
+    const FLOOR: f64 = 3.0;
+
+    const THEMES: [&str; 4] = ["dark", "midnight", "gray", "light"];
+    const SURFACES: [&str; 6] = ["app", "panel", "control", "button", "field", "canvas"];
+    /// The text tokens the editor actually draws with. `muted` and
+    /// `subdued` are in the file for other front-ends and are not
+    /// checked here, because a floor nothing has to meet is noise.
+    const TEXT: [&str; 3] = ["primary", "secondary", "glyph"];
+
+    #[test]
+    fn text_reads_on_every_surface() {
+        for id in THEMES {
+            let theme = load_theme(id).expect("theme");
+            for surface in SURFACES {
+                for text in TEXT {
+                    let ratio = contrast(theme.text(text), theme.surface(surface));
+                    assert!(
+                        ratio >= FLOOR,
+                        "{id}: {text} text on {surface} is {ratio:.2}, under {FLOOR:.1}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Point colours are drawn on the canvas, not the panel. Checking
+    /// them against the wrong ground is how a real problem hides: it
+    /// passes against one surface and fails on the one you look at.
+    #[test]
+    fn point_colours_read_on_the_canvas() {
+        const POINTS: [&str; 5] = [
+            "pointSmooth", "pointCorner", "pointOffcurve", "pointSelected", "startNode",
+        ];
+        for id in THEMES {
+            let theme = load_theme(id).expect("theme");
+            let canvas = theme.surface("canvas");
+            for role in POINTS {
+                let ratio = contrast(theme.role(role), canvas);
+                assert!(ratio >= FLOOR, "{id}: {role} on canvas is {ratio:.2}");
+            }
+        }
+    }
+
+    /// The chrome roles are drawn over panels.
+    ///
+    /// This is what caught Gray: its accent measured 1.62 against a
+    /// panel two steps darker than the app behind it, so the selected
+    /// thing was the hardest thing to see.
+    #[test]
+    fn chrome_roles_read_on_the_panel() {
+        for id in THEMES {
+            let theme = load_theme(id).expect("theme");
+            let panel = theme.surface("panel");
+            for role in ["accent", "danger", "warning", "selection"] {
+                let ratio = contrast(theme.role(role), panel);
+                assert!(ratio >= FLOOR, "{id}: {role} on panel is {ratio:.2}");
+            }
+        }
+    }
+
+    /// Primary and secondary have to stay apart, or the hierarchy the
+    /// two tokens exist for is not there.
+    #[test]
+    fn the_two_text_levels_stay_distinct() {
+        for id in THEMES {
+            let theme = load_theme(id).expect("theme");
+            let ratio = contrast(theme.text("primary"), theme.text("secondary"));
+            assert!(
+                ratio > 1.05,
+                "{id}: primary and secondary are the same colour ({ratio:.3})"
+            );
+        }
+    }
+}
