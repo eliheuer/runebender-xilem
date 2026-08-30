@@ -6,23 +6,24 @@
 
 mod context_menu;
 mod design;
-mod menu;
-mod watch;
-mod screenshot;
 mod editor;
 mod grid;
 mod icon_button;
+mod menu;
 mod model;
+mod screenshot;
 mod session;
 mod shortcuts;
 mod text_label;
 mod text_tool;
 mod theme;
 mod ui;
+mod watch;
 
 use std::path::Path as FsPath;
 use std::sync::Arc;
 
+use crate::design::{column as xcolumn, row as xrow};
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use masonry::properties::types::CrossAxisAlignment;
@@ -30,21 +31,20 @@ use masonry::theme::default_property_set;
 use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
-use crate::design::{column as xcolumn, row as xrow};
 use xilem::view::{
-    FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, label, portal, sized_box,
-    slider, text_button, text_input,
+    FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, label, portal, sized_box, slider,
+    text_button, text_input,
 };
 use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
+use design::{ControlSize, Radius, Region, Space, Stroke, TextSize};
 use editor::editor;
 use grid::{Cell, CellMetrics, GridEvent, cells_of, grid};
 use icon_button::icon_button;
 use model::FontModel;
-use runebender_core::category::GlyphCategory;
+use runebender_core::analysis::category::GlyphCategory;
 use session::Session;
 use theme::Palette;
-use design::{ControlSize, Radius, Region, Space, Stroke, TextSize};
 use ui::section_header;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -106,7 +106,7 @@ pub struct App {
     /// Writing direction for the text tool, or `None` for automatic.
     /// The chips that set it are in the title bar, which is why this is
     /// application state and not the buffer's.
-    text_dir: Option<runebender_core::text::TextDirection>,
+    text_dir: Option<runebender_core::text::buffer::TextDirection>,
     /// Whether the left column is folded away, as the GPUI build's
     /// grid-icon button in the title bar does it.
     left_collapsed: bool,
@@ -153,7 +153,7 @@ pub struct App {
     /// Active OKLCH theme id (dark | midnight | gray | light).
     theme_id: &'static str,
     /// Reference corner for the Coordinates fields (the 9-point picker).
-    coord_quadrant: runebender_core::path::Quadrant,
+    coord_quadrant: runebender_core::outline::path::Quadrant,
     coord_x_buf: String,
     coord_y_buf: String,
     /// Search scope: 0 name and unicode, 1 name only, 2 unicode only.
@@ -179,22 +179,29 @@ impl App {
         let first = font
             .index_of("A")
             .or_else(|| font.index_of("a"))
-            .or(if font.glyphs.is_empty() { None } else { Some(0) })
+            .or(if font.glyphs.is_empty() {
+                None
+            } else {
+                Some(0)
+            })
             .ok_or_else(|| "font has no glyphs".to_string())?;
-        let session = Arc::new(
-            Session::new(&font.font, &font.glyphs[first].name).ok_or("glyph missing")?,
-        );
+        let session =
+            Arc::new(Session::new(&font.font, &font.glyphs[first].name).ok_or("glyph missing")?);
         // For headless screenshots: optionally select all points.
         // (set later, after session is final)
-        
+
         let start_cat = std::env::var("RUNEBENDER_CAT").ok();
-        let (mode, open) = match std::env::var("RUNEBENDER_OPEN").ok().and_then(|n| font.index_of(&n)) {
+        let (mode, open) = match std::env::var("RUNEBENDER_OPEN")
+            .ok()
+            .and_then(|n| font.index_of(&n))
+        {
             Some(i) => (Mode::Editor(i), Some(i)),
             None => (Mode::Overview, None),
         };
         let session = match open {
             Some(i) => Arc::new(
-                Session::new(&font.font, &font.glyphs[i].name).unwrap_or_else(|| (*session).clone()),
+                Session::new(&font.font, &font.glyphs[i].name)
+                    .unwrap_or_else(|| (*session).clone()),
             ),
             None => session,
         };
@@ -230,7 +237,11 @@ impl App {
             for pair in spec.split(',') {
                 if let Some((tag, val)) = pair.split_once('=') {
                     if let Ok(v) = val.trim().parse::<f64>() {
-                        if let Some(i) = font.axes.iter().position(|a| a.tag == tag.trim() || a.name == tag.trim()) {
+                        if let Some(i) = font
+                            .axes
+                            .iter()
+                            .position(|a| a.tag == tag.trim() || a.name == tag.trim())
+                        {
                             axis_values[i] = v.clamp(font.axes[i].min, font.axes[i].max);
                         }
                     }
@@ -298,7 +309,7 @@ impl App {
             cell_size: 88.0,
             axis_values,
             theme_id,
-            coord_quadrant: runebender_core::path::Quadrant::Center,
+            coord_quadrant: runebender_core::outline::path::Quadrant::Center,
             coord_x_buf: String::new(),
             coord_y_buf: String::new(),
             search_mode: 0,
@@ -330,9 +341,14 @@ impl App {
                         c.name.to_lowercase().contains(&q)
                     };
                 let uni_hit = by_unicode
-                    && c
-                        .codepoint
-                        .map(|cp| format!("{:04x}", cp as u32).contains(q.to_lowercase().trim_start_matches("u+").trim_start_matches("0x")))
+                    && c.codepoint
+                        .map(|cp| {
+                            format!("{:04x}", cp as u32).contains(
+                                q.to_lowercase()
+                                    .trim_start_matches("u+")
+                                    .trim_start_matches("0x"),
+                            )
+                        })
                         .unwrap_or(false);
                 let q_ok = q.is_empty() || name_hit || uni_hit;
                 cat_ok && q_ok
@@ -342,7 +358,9 @@ impl App {
         let mut out = out;
         match self.sort {
             Sort::Name => {}
-            Sort::Unicode => out.sort_by_key(|c| c.codepoint.map(|cp| cp as u32).unwrap_or(u32::MAX)),
+            Sort::Unicode => {
+                out.sort_by_key(|c| c.codepoint.map(|cp| cp as u32).unwrap_or(u32::MAX))
+            }
         }
         Arc::new(out)
     }
@@ -354,27 +372,37 @@ impl App {
 
     /// Does the glyph at `index` pass the active sidebar selection?
     fn cell_matches_sel(&self, index: usize) -> bool {
-        use runebender_core::sidebar as sb;
+        use runebender_core::ui::sidebar as sb;
         let entry = &self.font.glyphs[index];
         match self.sel {
             Sel::Category(GlyphCategory::All) => true,
             Sel::Category(cat) => entry.category == cat,
             Sel::Language(i) => sb::language_groups()
                 .get(i)
-                .map(|g| sb::glyph_matches_language_group(&entry.name, &Self::entry_codepoints(entry), g))
+                .map(|g| {
+                    sb::glyph_matches_language_group(&entry.name, &Self::entry_codepoints(entry), g)
+                })
                 .unwrap_or(false),
             Sel::Filter(i) => sb::builtin_filters()
                 .get(i)
                 .and_then(|b| b.glyphset.as_ref())
-                .map(|f| sb::glyph_matches_character_filter(&entry.name, &Self::entry_codepoints(entry), f))
+                .map(|f| {
+                    sb::glyph_matches_character_filter(
+                        &entry.name,
+                        &Self::entry_codepoints(entry),
+                        f,
+                    )
+                })
                 .unwrap_or(false),
         }
     }
 
     /// How many glyphs in the font match language group `i`.
     fn language_count(&self, i: usize) -> usize {
-        use runebender_core::sidebar as sb;
-        let Some(g) = sb::language_groups().get(i) else { return 0 };
+        use runebender_core::ui::sidebar as sb;
+        let Some(g) = sb::language_groups().get(i) else {
+            return 0;
+        };
         self.font
             .glyphs
             .iter()
@@ -384,8 +412,13 @@ impl App {
 
     /// Present-count for GF-coverage filter `i` (glyphs the font has).
     fn filter_present(&self, i: usize) -> usize {
-        use runebender_core::sidebar as sb;
-        let Some(f) = sb::builtin_filters().get(i).and_then(|b| b.glyphset.as_ref()) else { return 0 };
+        use runebender_core::ui::sidebar as sb;
+        let Some(f) = sb::builtin_filters()
+            .get(i)
+            .and_then(|b| b.glyphset.as_ref())
+        else {
+            return 0;
+        };
         self.font
             .glyphs
             .iter()
@@ -397,7 +430,11 @@ impl App {
         if cat == GlyphCategory::All {
             self.font.glyphs.len()
         } else {
-            self.font.glyphs.iter().filter(|g| g.category == cat).count()
+            self.font
+                .glyphs
+                .iter()
+                .filter(|g| g.category == cat)
+                .count()
         }
     }
 
@@ -426,7 +463,7 @@ impl App {
 
     /// How many glyphs a coverage filter is still missing.
     fn filter_missing(&self, index: usize) -> usize {
-        let filters = runebender_core::sidebar::builtin_filters();
+        let filters = runebender_core::ui::sidebar::builtin_filters();
         let Some(set) = filters.get(index).and_then(|f| f.glyphset.as_ref()) else {
             return 0;
         };
@@ -441,7 +478,7 @@ impl App {
     /// The GF sets carry a name and a codepoint per glyph, so what lands
     /// is named and encoded, which is what makes the row's count move.
     fn generate_missing(&mut self, index: usize) {
-        let filters = runebender_core::sidebar::builtin_filters();
+        let filters = runebender_core::ui::sidebar::builtin_filters();
         let Some(set) = filters.get(index).and_then(|f| f.glyphset.as_ref()) else {
             return;
         };
@@ -479,7 +516,9 @@ impl App {
             // Range from the current single selection to this index, in cell order.
             let cells = self.filtered_cells();
             let order: Vec<usize> = cells.iter().map(|c| c.index).collect();
-            let a = self.selected.and_then(|s| order.iter().position(|&i| i == s));
+            let a = self
+                .selected
+                .and_then(|s| order.iter().position(|&i| i == s));
             let b = order.iter().position(|&i| i == index);
             if let (Some(a), Some(b)) = (a, b) {
                 let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
@@ -515,7 +554,9 @@ impl App {
 
     /// Make a tab the live one.
     fn activate_tab(&mut self, index: usize) {
-        let Some(tab) = self.tabs.get(index) else { return };
+        let Some(tab) = self.tabs.get(index) else {
+            return;
+        };
         let (session, tool) = (tab.session.clone(), tab.tool);
         self.park();
         self.active_tab = index;
@@ -592,7 +633,10 @@ impl App {
                 self.lsb_buf = l;
                 self.rsb_buf = r;
                 self.name_buf = entry.name.clone();
-                self.unicode_buf = entry.codepoint.map(|c| format!("{:04X}", c as u32)).unwrap_or_default();
+                self.unicode_buf = entry
+                    .codepoint
+                    .map(|c| format!("{:04X}", c as u32))
+                    .unwrap_or_default();
                 self.session = Arc::new(session);
                 if let Some(tab) = self.tabs.get_mut(self.active_tab) {
                     tab.session = self.session.clone();
@@ -629,7 +673,10 @@ impl App {
     /// Advance to the next theme, reloading the palette and the baked cell
     /// colors. Exercises the design-token kernel: one id swaps every role.
     fn cycle_theme(&mut self) {
-        let i = Self::THEMES.iter().position(|t| *t == self.theme_id).unwrap_or(0);
+        let i = Self::THEMES
+            .iter()
+            .position(|t| *t == self.theme_id)
+            .unwrap_or(0);
         self.theme_id = Self::THEMES[(i + 1) % Self::THEMES.len()];
         self.palette = Arc::new(Palette::load(self.theme_id));
         self.cells = Arc::new(cells_of(&self.font, &self.palette));
@@ -653,7 +700,8 @@ impl App {
                 .and_then(|_| self.font.index_of(&self.session.glyph_name))
             {
                 self.mode = Mode::Editor(idx);
-                if let Some(sess) = Session::new(&self.font.font, &self.session.glyph_name.clone()) {
+                if let Some(sess) = Session::new(&self.font.font, &self.session.glyph_name.clone())
+                {
                     self.session = Arc::new(sess);
                 }
             }
@@ -676,7 +724,10 @@ impl App {
             Some(m) => self.font.axes.iter().enumerate().all(|(i, a)| {
                 // axis_values are user coords; master locations are design coords.
                 let cur = a.user_to_design(self.axis_values.get(i).copied().unwrap_or(a.default));
-                let mst = m.get(&a.name).copied().unwrap_or_else(|| a.user_to_design(a.default));
+                let mst = m
+                    .get(&a.name)
+                    .copied()
+                    .unwrap_or_else(|| a.user_to_design(a.default));
                 (cur - mst).abs() < 1e-6
             }),
             None => true,
@@ -795,7 +846,7 @@ impl App {
     /// no file dialog here, so it lands next to the current source under
     /// the first Untitled name that is free.
     fn new_font(&mut self) {
-        let font = runebender_core::new_font::new_font("Untitled", "Regular", 400);
+        let font = runebender_core::document::new_font::new_font("Untitled", "Regular", 400);
         let dir = self
             .font
             .source
@@ -1138,7 +1189,7 @@ impl App {
         for i in indices {
             if let Some(entry) = self.font.glyphs.get(i) {
                 if let Some(mut g) = self.font.font.get_glyph(&entry.name).cloned() {
-                    runebender_core::theme_oklch::set_glyph_mark(&mut g, label.as_deref());
+                    runebender_core::ui::theme_oklch::set_glyph_mark(&mut g, label.as_deref());
                     self.font.replace_glyph(i, g);
                 }
             }
@@ -1190,13 +1241,20 @@ fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
             let active = i == app.font.active;
             let shown = app.reference_layers.contains(&i);
             let (bg, fg) = if active {
-                (pal.role("gridSelected").with_alpha(0.22), pal.role("accent"))
+                (
+                    pal.role("gridSelected").with_alpha(0.22),
+                    pal.role("accent"),
+                )
             } else {
                 (pal.panel, pal.text)
             };
             // A lit thumbnail means the master is drawn as a ghost under
             // the active outline; clicking the thumbnail toggles that.
-            let ink = if active || shown { pal.text } else { pal.text_muted };
+            let ink = if active || shown {
+                pal.text
+            } else {
+                pal.text_muted
+            };
             let thumb_bg = if shown {
                 pal.role("reference").with_alpha(0.28)
             } else {
@@ -1211,8 +1269,7 @@ fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
                         sized_box(canvas(move |_app: &mut App, _ctx, scene, size: Size| {
                             let mut p = Painter::new(scene);
                             let em = (asc - desc).max(1.0);
-                            let scale =
-                                (size.height / em).min(size.width / advance.max(1.0));
+                            let scale = (size.height / em).min(size.width / advance.max(1.0));
                             let ox = (size.width - advance * scale) / 2.0;
                             let baseline = size.height + desc * scale;
                             let t = Affine::new([scale, 0.0, 0.0, -scale, ox, baseline]);
@@ -1246,25 +1303,31 @@ fn layers_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
                         )
                         .background_color(bg),
                     )
-                    .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Control)))
+                    .dims(Dimensions::new(
+                        Dim::Stretch,
+                        Dim::from(ControlSize::Control),
+                    ))
                     .flex(1.0),
                 ),
             )
         })
         .collect();
-    Some(
-        xcolumn(
-            Region::Section,
-            (
-                ui::section_toggle(pal, "Layers", !app.collapsed.contains("Layers"), move |app: &mut App| {
+    Some(xcolumn(
+        Region::Section,
+        (
+            ui::section_toggle(
+                pal,
+                "Layers",
+                !app.collapsed.contains("Layers"),
+                move |app: &mut App| {
                     if !app.collapsed.remove("Layers") {
                         app.collapsed.insert("Layers");
                     }
-                }),
-                (!app.collapsed.contains("Layers")).then(|| xcolumn(Region::List, rows)),
+                },
             ),
+            (!app.collapsed.contains("Layers")).then(|| xcolumn(Region::List, rows)),
         ),
-    )
+    ))
 }
 
 /// Axes: one labeled slider per designspace axis, in the inspector.
@@ -1287,9 +1350,13 @@ fn axes_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
                     xrow(
                         Region::Inline,
                         (
-                            label(ax.tag.clone()).text_size(TextSize::Body.px()).color(muted),
+                            label(ax.tag.clone())
+                                .text_size(TextSize::Body.px())
+                                .color(muted),
                             FlexSpacer::Flex(1.0),
-                            label(format!("{value:.0}")).text_size(TextSize::Body.px()).color(text),
+                            label(format!("{value:.0}"))
+                                .text_size(TextSize::Body.px())
+                                .color(text),
                         ),
                     ),
                     slider(ax.min, ax.max, value, move |app: &mut App, v| {
@@ -1301,22 +1368,28 @@ fn axes_section(app: &App) -> Option<impl WidgetView<App> + use<>> {
         })
         .collect();
     // A short hint when the location sits off any master.
-    let hint = (!app.on_active_master())
-        .then(|| label("interpolated").text_size(TextSize::Caption.px()).color(pal.role("warning")));
-    Some(
-        xcolumn(
-            Region::Section,
-            (
-                ui::section_toggle(pal, "Axes", !app.collapsed.contains("Axes"), move |app: &mut App| {
+    let hint = (!app.on_active_master()).then(|| {
+        label("interpolated")
+            .text_size(TextSize::Caption.px())
+            .color(pal.role("warning"))
+    });
+    Some(xcolumn(
+        Region::Section,
+        (
+            ui::section_toggle(
+                pal,
+                "Axes",
+                !app.collapsed.contains("Axes"),
+                move |app: &mut App| {
                     if !app.collapsed.remove("Axes") {
                         app.collapsed.insert("Axes");
                     }
-                }),
-(!app.collapsed.contains("Axes")).then(|| xcolumn(Region::Form, rows)),
-(!app.collapsed.contains("Axes")).then(|| hint),
+                },
             ),
+            (!app.collapsed.contains("Axes")).then(|| xcolumn(Region::Form, rows)),
+            (!app.collapsed.contains("Axes")).then(|| hint),
         ),
-    )
+    ))
 }
 
 /// Display name for a theme id, e.g. "dark" -> "Dark".
@@ -1416,12 +1489,18 @@ fn titlebar(app: &App) -> impl WidgetView<App> + use<> {
 /// direction is a property of what is being reviewed, not of the tool
 /// in hand.
 fn direction_chips(app: &App) -> impl WidgetView<App> + use<> {
-    use runebender_core::text::TextDirection;
+    use runebender_core::text::buffer::TextDirection;
     let pal = &app.palette;
     let chip = |text: &'static str, want: Option<TextDirection>| {
-        tab_chip(pal, text.into(), app.text_dir == want, false, move |app: &mut App| {
-            app.text_dir = want;
-        })
+        tab_chip(
+            pal,
+            text.into(),
+            app.text_dir == want,
+            false,
+            move |app: &mut App| {
+                app.text_dir = want;
+            },
+        )
     };
     xrow(
         Region::Inline,
@@ -1442,9 +1521,17 @@ fn header_tools(app: &App) -> impl WidgetView<App> + use<> {
     let active_bg = pal.role("gridSelected").with_alpha(0.25);
     let hover_bg = pal.control;
     let tile = move |icon: &'static str, tool: Tool| {
-        icon_button(icon, app.tool == tool, fg, fg_active, active_bg, hover_bg, move |app: &mut App| {
-            app.tool = tool;
-        })
+        icon_button(
+            icon,
+            app.tool == tool,
+            fg,
+            fg_active,
+            active_bg,
+            hover_bg,
+            move |app: &mut App| {
+                app.tool = tool;
+            },
+        )
     };
     xrow(
         Region::List,
@@ -1495,7 +1582,10 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
                 .padding(Space::None)
                 .corner_radius(Radius::Full.length()),
         )
-        .dims(Dimensions::fixed(ControlSize::Swatch.length(), ControlSize::Swatch.length()))
+        .dims(Dimensions::fixed(
+            ControlSize::Swatch.length(),
+            ControlSize::Swatch.length(),
+        ))
     };
     let marks: Vec<_> = app
         .palette
@@ -1510,9 +1600,13 @@ fn status(app: &App) -> impl WidgetView<App> + use<> {
             swatch(None, pal.control),
             xrow(Region::List, marks),
             // Clears the mark, like the GPUI build's crossed swatch.
-            ui::toggle_sized(pal, "\u{00d7}".into(), false, ControlSize::Swatch, |app: &mut App| {
-                app.set_mark(None)
-            }),
+            ui::toggle_sized(
+                pal,
+                "\u{00d7}".into(),
+                false,
+                ControlSize::Swatch,
+                |app: &mut App| app.set_mark(None),
+            ),
             FlexSpacer::Flex(1.0),
             label(text)
                 .text_size(TextSize::Caption.px())
@@ -1621,7 +1715,7 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         })
         .collect();
 
-    let lang_rows: Vec<_> = runebender_core::sidebar::language_groups()
+    let lang_rows: Vec<_> = runebender_core::ui::sidebar::language_groups()
         .iter()
         .enumerate()
         // Every script, including the ones this font has nothing for.
@@ -1638,12 +1732,14 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
         })
         .collect();
 
-    let filter_rows: Vec<_> = runebender_core::sidebar::builtin_filters()
+    let filter_rows: Vec<_> = runebender_core::ui::sidebar::builtin_filters()
         .iter()
         .enumerate()
         .filter_map(|(i, b)| {
             let gs = b.glyphset.as_ref()?;
-            let expected = gs.expected_count.unwrap_or(gs.glyph_names.len().max(gs.targets.len()));
+            let expected = gs
+                .expected_count
+                .unwrap_or(gs.glyph_names.len().max(gs.targets.len()));
             // A row that is short of its target gets a plus that adds
             // the glyphs it is missing, named and encoded, to every
             // master. Selecting the row and filling it are different
@@ -1680,65 +1776,87 @@ fn sidebar(app: &App) -> impl WidgetView<App> + use<> {
     xcolumn(
         Region::Panel,
         (
-        xrow(
-            Region::Inline,
-            (
-                text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
-                    .placeholder("Search")
-                    .flex(1.0),
-                toggle(
-                    match app.search_mode { 1 => "N", 2 => "U", _ => "A" }.to_string(),
-                    app.search_mode != 0,
-                    |app: &mut App| app.search_mode = (app.search_mode + 1) % 3,
-                ),
-                toggle("Aa".into(), app.search_case, |app: &mut App| {
-                    app.search_case = !app.search_case
-                }),
-            ),
-        ),
-        text_button(
-            match app.sort { Sort::Name => "Sort: name", Sort::Unicode => "Sort: unicode" },
-            |app: &mut App| {
-                app.sort = match app.sort { Sort::Name => Sort::Unicode, Sort::Unicode => Sort::Name };
-            },
-        )
-        .background_color(pal.button),
-        {
-            let fresh = !app.filter.trim().is_empty() && app.font.index_of(app.filter.trim()).is_none();
-            fresh.then(|| {
-                text_button(format!("+ New {}", app.filter.trim()), |app: &mut App| app.new_glyph())
-                    .background_color(pal.role("accent"))
-            })
-        },
-        // Constrained horizontally, or the rows lay out at their
-        // intrinsic width and the sidebar grows a horizontal scrollbar
-        // with the counts cut off past the edge.
-        // A card, not a panel: this column is already inside the
-        // sidebar panel, and two panel insets in a row take 48px out of
-        // a 200px column, which is where the counts went. The card's
-        // smaller inset also keeps the counts clear of the scrollbar,
-        // which the portal draws over its own right edge.
-        portal(xcolumn(
-            Region::Card,
-            (
-                sidebar_group(app, "Categories", cat_rows),
-                (!lang_rows.is_empty()).then(|| sidebar_group(app, "Languages", lang_rows)),
-                (!filter_rows.is_empty()).then(|| sidebar_group(app, "Filters", filter_rows)),
-            // Two counts the GPUI build puts at the head of its filters:
-            // how much of the font exports, and how much of it the
-            // masters disagree about. Neither is a filter to click, so
-            // they are rows, not buttons.
-            xcolumn(
-                Region::List,
+            xrow(
+                Region::Inline,
                 (
-                    ui::kv(pal, "Exporting glyphs".into(), format!("{}", app.font.exporting_count())),
-                    ui::kv(pal, "Incompatible masters".into(), format!("{}", app.font.incompatible_count())),
+                    text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
+                        .placeholder("Search")
+                        .flex(1.0),
+                    toggle(
+                        match app.search_mode {
+                            1 => "N",
+                            2 => "U",
+                            _ => "A",
+                        }
+                        .to_string(),
+                        app.search_mode != 0,
+                        |app: &mut App| app.search_mode = (app.search_mode + 1) % 3,
+                    ),
+                    toggle("Aa".into(), app.search_case, |app: &mut App| {
+                        app.search_case = !app.search_case
+                    }),
                 ),
             ),
-            ),
-        ))
-        .constrain_horizontal(true)
-        .flex(1.0),
+            text_button(
+                match app.sort {
+                    Sort::Name => "Sort: name",
+                    Sort::Unicode => "Sort: unicode",
+                },
+                |app: &mut App| {
+                    app.sort = match app.sort {
+                        Sort::Name => Sort::Unicode,
+                        Sort::Unicode => Sort::Name,
+                    };
+                },
+            )
+            .background_color(pal.button),
+            {
+                let fresh =
+                    !app.filter.trim().is_empty() && app.font.index_of(app.filter.trim()).is_none();
+                fresh.then(|| {
+                    text_button(format!("+ New {}", app.filter.trim()), |app: &mut App| {
+                        app.new_glyph()
+                    })
+                    .background_color(pal.role("accent"))
+                })
+            },
+            // Constrained horizontally, or the rows lay out at their
+            // intrinsic width and the sidebar grows a horizontal scrollbar
+            // with the counts cut off past the edge.
+            // A card, not a panel: this column is already inside the
+            // sidebar panel, and two panel insets in a row take 48px out of
+            // a 200px column, which is where the counts went. The card's
+            // smaller inset also keeps the counts clear of the scrollbar,
+            // which the portal draws over its own right edge.
+            portal(xcolumn(
+                Region::Card,
+                (
+                    sidebar_group(app, "Categories", cat_rows),
+                    (!lang_rows.is_empty()).then(|| sidebar_group(app, "Languages", lang_rows)),
+                    (!filter_rows.is_empty()).then(|| sidebar_group(app, "Filters", filter_rows)),
+                    // Two counts the GPUI build puts at the head of its filters:
+                    // how much of the font exports, and how much of it the
+                    // masters disagree about. Neither is a filter to click, so
+                    // they are rows, not buttons.
+                    xcolumn(
+                        Region::List,
+                        (
+                            ui::kv(
+                                pal,
+                                "Exporting glyphs".into(),
+                                format!("{}", app.font.exporting_count()),
+                            ),
+                            ui::kv(
+                                pal,
+                                "Incompatible masters".into(),
+                                format!("{}", app.font.incompatible_count()),
+                            ),
+                        ),
+                    ),
+                ),
+            ))
+            .constrain_horizontal(true)
+            .flex(1.0),
         ),
     )
     .background_color(pal.panel)
@@ -1757,37 +1875,51 @@ enum Rail {
 
 fn editor_nav(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
-    let current = match app.mode { Mode::Editor(i) => Some(i), _ => None };
+    let current = match app.mode {
+        Mode::Editor(i) => Some(i),
+        _ => None,
+    };
     let tab = |text: &'static str, which: Rail| {
-        tab_chip(pal, text.into(), app.rail == which, false, move |app: &mut App| {
-            app.rail = which;
-        })
+        tab_chip(
+            pal,
+            text.into(),
+            app.rail == which,
+            false,
+            move |app: &mut App| {
+                app.rail = which;
+            },
+        )
     };
     xcolumn(
         Region::Panel,
         (
-        xrow(Region::Inline, (tab("Glyphs", Rail::Glyphs), tab("Axes", Rail::Axes))),
-        (app.rail == Rail::Axes).then(|| axes_section(app)).flatten(),
-        (app.rail == Rail::Glyphs).then(|| {
-            text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
-                .placeholder("Search")
-        }),
-        // The grid scrolls itself, so no portal here: nesting the two
-        // gave the rail a dead area below the third row.
-        (app.rail == Rail::Glyphs).then(|| {
-            grid(
-            app.filtered_cells(),
-            app.cell_metrics(62.0),
-            app.palette.clone(),
-            current,
-            app.multi_selected.clone(),
-            |app: &mut App, ev| match ev {
-                GridEvent::Selected { index, .. } => app.open_glyph(index),
-                GridEvent::Open(i) => app.open_glyph(i),
-            },
-            )
-            .flex(1.0)
-        }),
+            xrow(
+                Region::Inline,
+                (tab("Glyphs", Rail::Glyphs), tab("Axes", Rail::Axes)),
+            ),
+            (app.rail == Rail::Axes)
+                .then(|| axes_section(app))
+                .flatten(),
+            (app.rail == Rail::Glyphs).then(|| {
+                text_input(app.filter.clone(), |app: &mut App, v| app.filter = v)
+                    .placeholder("Search")
+            }),
+            // The grid scrolls itself, so no portal here: nesting the two
+            // gave the rail a dead area below the third row.
+            (app.rail == Rail::Glyphs).then(|| {
+                grid(
+                    app.filtered_cells(),
+                    app.cell_metrics(62.0),
+                    app.palette.clone(),
+                    current,
+                    app.multi_selected.clone(),
+                    |app: &mut App, ev| match ev {
+                        GridEvent::Selected { index, .. } => app.open_glyph(index),
+                        GridEvent::Open(i) => app.open_glyph(i),
+                    },
+                )
+                .flex(1.0)
+            }),
         ),
     )
     .background_color(pal.panel)
@@ -1862,8 +1994,8 @@ fn glyph_preview(app: &App) -> Option<impl WidgetView<App> + use<>> {
             let margin = 18.0;
             let em_w = advance.max(1.0);
             let em_h = (asc - desc).max(1.0);
-            let scale = ((size.width - margin * 2.0) / em_w)
-                .min((size.height - margin * 2.0) / em_h);
+            let scale =
+                ((size.width - margin * 2.0) / em_w).min((size.height - margin * 2.0) / em_h);
             let ox = (size.width - em_w * scale) / 2.0;
             let baseline = (size.height + em_h * scale) / 2.0 + desc * scale;
             let t = Affine::new([scale, 0.0, 0.0, -scale, ox, baseline]);
@@ -1882,29 +2014,37 @@ fn editor_pane(app: &App) -> impl WidgetView<App> + use<> {
             .reference_outlines(&app.session.glyph_name, &app.reference_layers),
     );
     let interp = app.interp_preview();
-    editor(app.session.clone(), app.palette.clone(), app.tool, app.view, ghosts, interp, app.underlay(),
+    editor(
+        app.session.clone(),
+        app.palette.clone(),
+        app.tool,
+        app.view,
+        ghosts,
+        interp,
+        app.underlay(),
         (app.tool == Tool::Text).then(|| {
             text_tool::TextInputs::new(&app.font)
                 .with_text(&app.initial_text)
                 .with_direction(app.text_dir)
         }),
         |app: &mut App, ev| match ev {
-        editor::EditorEvent::Selection(n) => {
-            app.selected_points = n;
-            app.refresh_coord_bufs();
-        }
-        editor::EditorEvent::Edited => app.refresh_open_glyph(),
-        editor::EditorEvent::Save => app.save(),
-        editor::EditorEvent::Exit => app.back_to_overview(),
-        editor::EditorEvent::EditGlyph(name) => {
-            if let Some(index) = app.font.index_of(&name) {
-                app.open_glyph(index);
-                // Stay in the text tool: the point is to edit the glyph
-                // while the word around it is still on screen.
-                app.tool = Tool::Text;
+            editor::EditorEvent::Selection(n) => {
+                app.selected_points = n;
+                app.refresh_coord_bufs();
             }
-        }
-    })
+            editor::EditorEvent::Edited => app.refresh_open_glyph(),
+            editor::EditorEvent::Save => app.save(),
+            editor::EditorEvent::Exit => app.back_to_overview(),
+            editor::EditorEvent::EditGlyph(name) => {
+                if let Some(index) = app.font.index_of(&name) {
+                    app.open_glyph(index);
+                    // Stay in the text tool: the point is to edit the glyph
+                    // while the word around it is still on screen.
+                    app.tool = Tool::Text;
+                }
+            }
+        },
+    )
 }
 
 fn path_section(app: &App) -> impl WidgetView<App> + use<> {
@@ -1916,53 +2056,69 @@ fn path_section(app: &App) -> impl WidgetView<App> + use<> {
     let abg = pal.role("gridSelected").with_alpha(0.25);
     let hbg = pal.control;
     let op = move |icon: &'static str, f: fn(&mut Session) -> bool| {
-        icon_button(icon, false, fg, fga, abg, hbg, move |app: &mut App| app.apply_op(f))
+        icon_button(icon, false, fg, fga, abg, hbg, move |app: &mut App| {
+            app.apply_op(f)
+        })
     };
     xcolumn(
         Region::Section,
         (
-                ui::section_toggle(pal, "Transformations", !app.collapsed.contains("Transformations"), move |app: &mut App| {
+            ui::section_toggle(
+                pal,
+                "Transformations",
+                !app.collapsed.contains("Transformations"),
+                move |app: &mut App| {
                     if !app.collapsed.remove("Transformations") {
                         app.collapsed.insert("Transformations");
                     }
-                }),
+                },
+            ),
             // Two even rows of four, the way gpui lays its icon grid out. A
             // ragged 3 / 4 / 1 grid was the panel's most visible defect.
-(!app.collapsed.contains("Transformations")).then(|| xrow(
-                Region::List,
-                (
-                    op("flip-h", |s| s.flip_horizontal()),
-                    op("flip-v", |s| s.flip_vertical()),
-                    op("rot-cw", |s| s.rotate_90()),
-                    op("close", |s| s.decompose()),
-                ),
-            )),
-(!app.collapsed.contains("Transformations")).then(|| xrow(
-                Region::List,
-                (
-                    op("union", |s| s.remove_overlap()),
-                    op("subtract", |s| s.boolean(BoolOp::Subtract)),
-                    op("intersect", |s| s.boolean(BoolOp::Intersect)),
-                    op("exclude", |s| s.boolean(BoolOp::Exclude)),
-                ),
-            )),
+            (!app.collapsed.contains("Transformations")).then(|| {
+                xrow(
+                    Region::List,
+                    (
+                        op("flip-h", |s| s.flip_horizontal()),
+                        op("flip-v", |s| s.flip_vertical()),
+                        op("rot-cw", |s| s.rotate_90()),
+                        op("close", |s| s.decompose()),
+                    ),
+                )
+            }),
+            (!app.collapsed.contains("Transformations")).then(|| {
+                xrow(
+                    Region::List,
+                    (
+                        op("union", |s| s.remove_overlap()),
+                        op("subtract", |s| s.boolean(BoolOp::Subtract)),
+                        op("intersect", |s| s.boolean(BoolOp::Intersect)),
+                        op("exclude", |s| s.boolean(BoolOp::Exclude)),
+                    ),
+                )
+            }),
             // Labeled transform buttons, matching gpui's Transformations block.
-(!app.collapsed.contains("Transformations")).then(|| xrow(
-                Region::Inline,
-                (
-                    tbtn(pal, "Harmonize", |s| s.harmonize()),
-                    tbtn(pal, "Balance", |s| s.balance()),
-                ),
-            )),
-(!app.collapsed.contains("Transformations")).then(|| xrow(
-                Region::Inline,
-                (
-                    tbtn(pal, "Optimize", |s| s.optimize()),
-                    tbtn(pal, "Round", |s| s.round_corners()),
-                ),
-            )),
-(!app.collapsed.contains("Transformations")).then(|| xrow(Region::Inline, (tbtn(pal, "Reverse", |s| s.reverse()),))),
-            ),
+            (!app.collapsed.contains("Transformations")).then(|| {
+                xrow(
+                    Region::Inline,
+                    (
+                        tbtn(pal, "Harmonize", |s| s.harmonize()),
+                        tbtn(pal, "Balance", |s| s.balance()),
+                    ),
+                )
+            }),
+            (!app.collapsed.contains("Transformations")).then(|| {
+                xrow(
+                    Region::Inline,
+                    (
+                        tbtn(pal, "Optimize", |s| s.optimize()),
+                        tbtn(pal, "Round", |s| s.round_corners()),
+                    ),
+                )
+            }),
+            (!app.collapsed.contains("Transformations"))
+                .then(|| xrow(Region::Inline, (tbtn(pal, "Reverse", |s| s.reverse()),))),
+        ),
     )
 }
 
@@ -1977,7 +2133,11 @@ fn metric_bufs(session: &Session) -> (String, String) {
 /// A right-panel section header with a disclosure caret (gpui style).
 
 /// A labeled path-operation button.
-fn tbtn(pal: &Palette, text: &'static str, f: fn(&mut Session) -> bool) -> impl WidgetView<App> + use<> {
+fn tbtn(
+    pal: &Palette,
+    text: &'static str,
+    f: fn(&mut Session) -> bool,
+) -> impl WidgetView<App> + use<> {
     text_button(text, move |app: &mut App| app.apply_op(f)).background_color(pal.button)
 }
 
@@ -1985,7 +2145,7 @@ fn tbtn(pal: &Palette, text: &'static str, f: fn(&mut Session) -> bool) -> impl 
 /// the selection's size on the right. gpui keeps this panel up whether or
 /// not anything is selected, so the inspector does not jump.
 fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
-    use runebender_core::path::Quadrant;
+    use runebender_core::outline::path::Quadrant;
     const QUADRANTS: [Quadrant; 9] = [
         Quadrant::TopLeft,
         Quadrant::Top,
@@ -2020,12 +2180,19 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
             .border_width(Stroke::Hairline.length())
             .corner_radius(Radius::Sm.length()),
         )
-        .dims(Dimensions::fixed(ControlSize::Dot.length(), ControlSize::Dot.length()))
+        .dims(Dimensions::fixed(
+            ControlSize::Dot.length(),
+            ControlSize::Dot.length(),
+        ))
     };
     let row = |a: usize| {
         xrow(
             Region::Card,
-            (dot(QUADRANTS[a]), dot(QUADRANTS[a + 1]), dot(QUADRANTS[a + 2])),
+            (
+                dot(QUADRANTS[a]),
+                dot(QUADRANTS[a + 1]),
+                dot(QUADRANTS[a + 2]),
+            ),
         )
     };
     let picker = xcolumn(Region::Card, (row(0), row(3), row(6)));
@@ -2033,8 +2200,15 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
         xrow(
             Region::Inline,
             (
-                sized_box(label(name).text_size(TextSize::Body.px()).color(pal.text_muted))
-                    .dims(Dimensions::fixed(ControlSize::Swatch.length(), ControlSize::Icon.length())),
+                sized_box(
+                    label(name)
+                        .text_size(TextSize::Body.px())
+                        .color(pal.text_muted),
+                )
+                .dims(Dimensions::fixed(
+                    ControlSize::Swatch.length(),
+                    ControlSize::Icon.length(),
+                )),
                 text_input(value, move |app: &mut App, v| app.set_coord(axis, v))
                     .background_color(pal.field())
                     .flex(1.0),
@@ -2045,7 +2219,9 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
         xrow(
             Region::Inline,
             (
-                label("Size").text_size(TextSize::Body.px()).color(pal.text_muted),
+                label("Size")
+                    .text_size(TextSize::Body.px())
+                    .color(pal.text_muted),
                 FlexSpacer::Flex(1.0),
                 label(format!("{:.0} x {:.0}", b.width(), b.height()))
                     .text_size(TextSize::Body.px())
@@ -2056,27 +2232,34 @@ fn coordinates_section(app: &App) -> impl WidgetView<App> + use<> {
     xcolumn(
         Region::Section,
         (
-                ui::section_toggle(pal, "Coordinates", !app.collapsed.contains("Coordinates"), move |app: &mut App| {
+            ui::section_toggle(
+                pal,
+                "Coordinates",
+                !app.collapsed.contains("Coordinates"),
+                move |app: &mut App| {
                     if !app.collapsed.remove("Coordinates") {
                         app.collapsed.insert("Coordinates");
                     }
-                }),
-(!app.collapsed.contains("Coordinates")).then(|| xrow(
-                Region::Inline,
-                (
-                    picker,
-                    xcolumn(
-                        Region::List,
-                        (
-                            field("X", app.coord_x_buf.clone(), 0),
-                            field("Y", app.coord_y_buf.clone(), 1),
-                        ),
-                    )
-                    .flex(1.0),
-                ),
-            )),
-(!app.collapsed.contains("Coordinates")).then(|| size_row),
+                },
             ),
+            (!app.collapsed.contains("Coordinates")).then(|| {
+                xrow(
+                    Region::Inline,
+                    (
+                        picker,
+                        xcolumn(
+                            Region::List,
+                            (
+                                field("X", app.coord_x_buf.clone(), 0),
+                                field("Y", app.coord_y_buf.clone(), 1),
+                            ),
+                        )
+                        .flex(1.0),
+                    ),
+                )
+            }),
+            (!app.collapsed.contains("Coordinates")).then(|| size_row),
+        ),
     )
 }
 
@@ -2177,23 +2360,30 @@ fn curves_section(app: &App) -> impl WidgetView<App> + use<> {
     xcolumn(
         Region::Section,
         (
-                ui::section_toggle(pal, "Curves", !app.collapsed.contains("Curves"), move |app: &mut App| {
+            ui::section_toggle(
+                pal,
+                "Curves",
+                !app.collapsed.contains("Curves"),
+                move |app: &mut App| {
                     if !app.collapsed.remove("Curves") {
                         app.collapsed.insert("Curves");
                     }
-                }),
-(!app.collapsed.contains("Curves")).then(|| xrow(
-                Region::Inline,
-                (
-                    ui::toggle(pal, "Comb".into(), view.comb, |app: &mut App| {
-                        app.view.comb = !app.view.comb;
-                    }),
-                    ui::toggle(pal, "G0-G3".into(), view.continuity, |app: &mut App| {
-                        app.view.continuity = !app.view.continuity;
-                    }),
-                ),
-            )),
+                },
             ),
+            (!app.collapsed.contains("Curves")).then(|| {
+                xrow(
+                    Region::Inline,
+                    (
+                        ui::toggle(pal, "Comb".into(), view.comb, |app: &mut App| {
+                            app.view.comb = !app.view.comb;
+                        }),
+                        ui::toggle(pal, "G0-G3".into(), view.continuity, |app: &mut App| {
+                            app.view.continuity = !app.view.continuity;
+                        }),
+                    ),
+                )
+            }),
+        ),
     )
 }
 
@@ -2206,39 +2396,55 @@ fn measure_section(app: &App) -> impl WidgetView<App> + use<> {
     xcolumn(
         Region::Section,
         (
-                ui::section_toggle(pal, "Measure", !app.collapsed.contains("Measure"), move |app: &mut App| {
+            ui::section_toggle(
+                pal,
+                "Measure",
+                !app.collapsed.contains("Measure"),
+                move |app: &mut App| {
                     if !app.collapsed.remove("Measure") {
                         app.collapsed.insert("Measure");
                     }
-                }),
-(!app.collapsed.contains("Measure")).then(|| xrow(
-                Region::Inline,
-                (
-                    ui::toggle(pal, "Color".into(), view.colorize, |app: &mut App| {
-                        app.view.colorize = !app.view.colorize;
-                    }),
-                    ui::toggle(pal, "Handles".into(), view.handles, |app: &mut App| {
-                        app.view.handles = !app.view.handles;
-                    }),
-                ),
-            )),
-(!app.collapsed.contains("Measure")).then(|| xrow(
-                Region::Inline,
-                (
-                    ui::toggle(pal, "Segments".into(), view.segments, |app: &mut App| {
-                        app.view.segments = !app.view.segments;
-                    }),
-                    ui::toggle(pal, "Bearings".into(), view.bearings, |app: &mut App| {
-                        app.view.bearings = !app.view.bearings;
-                    }),
-                ),
-            )),
+                },
+            ),
+            (!app.collapsed.contains("Measure")).then(|| {
+                xrow(
+                    Region::Inline,
+                    (
+                        ui::toggle(pal, "Color".into(), view.colorize, |app: &mut App| {
+                            app.view.colorize = !app.view.colorize;
+                        }),
+                        ui::toggle(pal, "Handles".into(), view.handles, |app: &mut App| {
+                            app.view.handles = !app.view.handles;
+                        }),
+                    ),
+                )
+            }),
+            (!app.collapsed.contains("Measure")).then(|| {
+                xrow(
+                    Region::Inline,
+                    (
+                        ui::toggle(pal, "Segments".into(), view.segments, |app: &mut App| {
+                            app.view.segments = !app.view.segments;
+                        }),
+                        ui::toggle(pal, "Bearings".into(), view.bearings, |app: &mut App| {
+                            app.view.bearings = !app.view.bearings;
+                        }),
+                    ),
+                )
+            }),
             // Lengths as sums of powers of two: 96 reads as 64+32. The
             // web editor's habit, and the reason for the tier colors.
-(!app.collapsed.contains("Measure")).then(|| ui::toggle(pal, "Popcount sums".into(), view.popcount, |app: &mut App| {
-                app.view.popcount = !app.view.popcount;
-            })),
-            ),
+            (!app.collapsed.contains("Measure")).then(|| {
+                ui::toggle(
+                    pal,
+                    "Popcount sums".into(),
+                    view.popcount,
+                    |app: &mut App| {
+                        app.view.popcount = !app.view.popcount;
+                    },
+                )
+            }),
+        ),
     )
 }
 
@@ -2247,31 +2453,53 @@ fn measure_section(app: &App) -> impl WidgetView<App> + use<> {
 /// selected.
 fn background_section(app: &App) -> impl WidgetView<App> + use<> {
     let pal = &app.palette;
-    let has_background = app.font.background_contours(&app.session.glyph_name).is_some();
+    let has_background = app
+        .font
+        .background_contours(&app.session.glyph_name)
+        .is_some();
     let show = app.show_background;
     xcolumn(
         Region::Section,
         (
-                ui::section_toggle(pal, "Background", !app.collapsed.contains("Background"), move |app: &mut App| {
+            ui::section_toggle(
+                pal,
+                "Background",
+                !app.collapsed.contains("Background"),
+                move |app: &mut App| {
                     if !app.collapsed.remove("Background") {
                         app.collapsed.insert("Background");
                     }
-                }),
-(!app.collapsed.contains("Background")).then(|| xrow(
-                Region::Inline,
-                (
-                    ui::toggle(pal, "Show".into(), show && has_background, |app: &mut App| {
-                        app.show_background = !app.show_background;
-                    }),
-                    ui::action(pal, "Send".into(), |app: &mut App| app.send_to_background()),
-                    ui::action(pal, "Swap".into(), |app: &mut App| app.swap_background()),
-                    ui::action(pal, "Clear".into(), |app: &mut App| app.clear_background()),
-                ),
-            )),
-(!app.collapsed.contains("Background")).then(|| ui::field(pal, "Reference glyph", app.reference_buf.clone(), |app: &mut App, v| {
-                app.reference_buf = v;
-            })),
+                },
             ),
+            (!app.collapsed.contains("Background")).then(|| {
+                xrow(
+                    Region::Inline,
+                    (
+                        ui::toggle(
+                            pal,
+                            "Show".into(),
+                            show && has_background,
+                            |app: &mut App| {
+                                app.show_background = !app.show_background;
+                            },
+                        ),
+                        ui::action(pal, "Send".into(), |app: &mut App| app.send_to_background()),
+                        ui::action(pal, "Swap".into(), |app: &mut App| app.swap_background()),
+                        ui::action(pal, "Clear".into(), |app: &mut App| app.clear_background()),
+                    ),
+                )
+            }),
+            (!app.collapsed.contains("Background")).then(|| {
+                ui::field(
+                    pal,
+                    "Reference glyph",
+                    app.reference_buf.clone(),
+                    |app: &mut App, v| {
+                        app.reference_buf = v;
+                    },
+                )
+            }),
+        ),
     )
 }
 
@@ -2282,20 +2510,34 @@ fn mark_section(app: &App) -> impl WidgetView<App> + use<> {
             text_button("", move |app: &mut App| app.set_mark(label.clone()))
                 .background_color(color),
         )
-        .dims(Dimensions::fixed(ControlSize::Row.length(), ControlSize::Row.length()))
+        .dims(Dimensions::fixed(
+            ControlSize::Row.length(),
+            ControlSize::Row.length(),
+        ))
     };
-    let marks: Vec<_> = app.palette.mark_list().into_iter().map(|(name, color)| swatch(Some(name), color)).collect();
+    let marks: Vec<_> = app
+        .palette
+        .mark_list()
+        .into_iter()
+        .map(|(name, color)| swatch(Some(name), color))
+        .collect();
     xcolumn(
         Region::Section,
         (
-                ui::section_toggle(pal, "Mark", !app.collapsed.contains("Mark"), move |app: &mut App| {
+            ui::section_toggle(
+                pal,
+                "Mark",
+                !app.collapsed.contains("Mark"),
+                move |app: &mut App| {
                     if !app.collapsed.remove("Mark") {
                         app.collapsed.insert("Mark");
                     }
-                }),
-(!app.collapsed.contains("Mark")).then(|| xrow(Region::Inline, (swatch(None, pal.control),))),
-(!app.collapsed.contains("Mark")).then(|| xrow(Region::List, marks)),
+                },
             ),
+            (!app.collapsed.contains("Mark"))
+                .then(|| xrow(Region::Inline, (swatch(None, pal.control),))),
+            (!app.collapsed.contains("Mark")).then(|| xrow(Region::List, marks)),
+        ),
     )
 }
 
@@ -2312,13 +2554,18 @@ fn font_info_section(app: &App) -> impl WidgetView<App> + use<> {
     xcolumn(
         Region::Section,
         (
-                ui::section_toggle(pal, "Font Info", !app.collapsed.contains("Font Info"), move |app: &mut App| {
+            ui::section_toggle(
+                pal,
+                "Font Info",
+                !app.collapsed.contains("Font Info"),
+                move |app: &mut App| {
                     if !app.collapsed.remove("Font Info") {
                         app.collapsed.insert("Font Info");
                     }
-                }),
-                (!app.collapsed.contains("Font Info")).then(|| xcolumn(Region::List, rows)),
+                },
             ),
+            (!app.collapsed.contains("Font Info")).then(|| xcolumn(Region::List, rows)),
+        ),
     )
 }
 
@@ -2336,9 +2583,12 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             let g = app.selected.and_then(|i| app.font.glyphs.get(i));
             (
                 g.map(|g| g.name.clone()).unwrap_or_default(),
-                g.map(|g| format!("{}", g.advance as i64)).unwrap_or_default(),
+                g.map(|g| format!("{}", g.advance as i64))
+                    .unwrap_or_default(),
                 String::new(),
-                g.and_then(|g| g.codepoint).map(|c| format!("U+{:04X}", c as u32)).unwrap_or_default(),
+                g.and_then(|g| g.codepoint)
+                    .map(|c| format!("U+{:04X}", c as u32))
+                    .unwrap_or_default(),
             )
         }
     };
@@ -2383,9 +2633,12 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
                         app.commit_rename();
                     },
                 ),
-                ui::field(pal, "Unicode", app.unicode_buf.clone(), |app: &mut App, v| {
-                    app.set_unicode_from_buf(v)
-                }),
+                ui::field(
+                    pal,
+                    "Unicode",
+                    app.unicode_buf.clone(),
+                    |app: &mut App, v| app.set_unicode_from_buf(v),
+                ),
                 // Kerning groups, left side then right, as gpui's Glyph
                 // panel has them. Empty takes the glyph out of the group,
                 // and the write lands in every master, because a
@@ -2399,13 +2652,19 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
                 xrow(
                     Region::Form,
                     (
-                        sized_box(ui::field(pal, "", app.kern1_buf.clone(), |app: &mut App, v| {
-                            app.set_kern_group(true, v)
-                        }))
+                        sized_box(ui::field(
+                            pal,
+                            "",
+                            app.kern1_buf.clone(),
+                            |app: &mut App, v| app.set_kern_group(true, v),
+                        ))
                         .dims(Dimensions::new(Dim::Fixed(Length::px(105.0)), Dim::Auto)),
-                        sized_box(ui::field(pal, "", app.kern2_buf.clone(), |app: &mut App, v| {
-                            app.set_kern_group(false, v)
-                        }))
+                        sized_box(ui::field(
+                            pal,
+                            "",
+                            app.kern2_buf.clone(),
+                            |app: &mut App, v| app.set_kern_group(false, v),
+                        ))
                         .dims(Dimensions::new(Dim::Fixed(Length::px(105.0)), Dim::Auto)),
                     ),
                 ),
@@ -2426,12 +2685,18 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
                     |app: &mut App, v| app.name_buf = v,
                     |app: &mut App, v| app.overview_rename(v),
                 ),
-                ui::field(pal, "Unicode", app.unicode_buf.clone(), |app: &mut App, v| {
-                    app.overview_set_unicode(v)
-                }),
-                ui::field(pal, "Advance", app.advance_buf.clone(), |app: &mut App, v| {
-                    app.overview_set_advance(v)
-                }),
+                ui::field(
+                    pal,
+                    "Unicode",
+                    app.unicode_buf.clone(),
+                    |app: &mut App, v| app.overview_set_unicode(v),
+                ),
+                ui::field(
+                    pal,
+                    "Advance",
+                    app.advance_buf.clone(),
+                    |app: &mut App, v| app.overview_set_advance(v),
+                ),
             ),
         )
     });
@@ -2442,28 +2707,36 @@ fn info_panel(app: &App) -> impl WidgetView<App> + use<> {
             xcolumn(
                 Region::Section,
                 (
-                ui::section_toggle(pal, "Glyph", !app.collapsed.contains("Glyph"), move |app: &mut App| {
-                    if !app.collapsed.remove("Glyph") {
-                        app.collapsed.insert("Glyph");
-                    }
-                }),
-(!app.collapsed.contains("Glyph")).then(|| xcolumn(
-                        Region::List,
-                        (
-                            show_multi_mark.then(|| {
-                                row("Selected".into(), format!("{}", app.multi_selected.len()))
-                            }),
-                            (!pts.is_empty()).then(|| row("Points".into(), pts)),
-                            editing.then(|| {
-                                row("Selected".into(), format!("{}", app.selected_points))
-                            }),
-                        ),
-                    )),
-(!app.collapsed.contains("Glyph")).then(|| show_multi_mark.then(|| mark_section(app))),
-(!app.collapsed.contains("Glyph")).then(|| name_field),
-(!app.collapsed.contains("Glyph")).then(|| advance_field),
-(!app.collapsed.contains("Glyph")).then(|| overview_fields),
-            ),
+                    ui::section_toggle(
+                        pal,
+                        "Glyph",
+                        !app.collapsed.contains("Glyph"),
+                        move |app: &mut App| {
+                            if !app.collapsed.remove("Glyph") {
+                                app.collapsed.insert("Glyph");
+                            }
+                        },
+                    ),
+                    (!app.collapsed.contains("Glyph")).then(|| {
+                        xcolumn(
+                            Region::List,
+                            (
+                                show_multi_mark.then(|| {
+                                    row("Selected".into(), format!("{}", app.multi_selected.len()))
+                                }),
+                                (!pts.is_empty()).then(|| row("Points".into(), pts)),
+                                editing.then(|| {
+                                    row("Selected".into(), format!("{}", app.selected_points))
+                                }),
+                            ),
+                        )
+                    }),
+                    (!app.collapsed.contains("Glyph"))
+                        .then(|| show_multi_mark.then(|| mark_section(app))),
+                    (!app.collapsed.contains("Glyph")).then(|| name_field),
+                    (!app.collapsed.contains("Glyph")).then(|| advance_field),
+                    (!app.collapsed.contains("Glyph")).then(|| overview_fields),
+                ),
             ),
             editing.then(|| coordinates_section(app)),
             editing.then(|| path_section(app)),
@@ -2514,7 +2787,10 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
 
     let columns = flex_row((
         sized_box(left)
-            .dims(Dimensions::new(Dim::Fixed(Length::px(left_width)), Dim::Stretch))
+            .dims(Dimensions::new(
+                Dim::Fixed(Length::px(left_width)),
+                Dim::Stretch,
+            ))
             .background_color(pal.panel),
         sized_box(middle)
             .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
@@ -2559,10 +2835,7 @@ fn app_logic(app: &mut App) -> impl WidgetView<App> + use<> {
         .background_color(pal.app),
     )
     .boxed();
-    watch::with_watch(
-        menu::with_menu_events(root),
-        app.font.master_paths.clone(),
-    )
+    watch::with_watch(menu::with_menu_events(root), app.font.master_paths.clone())
 }
 
 fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
@@ -2577,7 +2850,13 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         let mut sess = (*app.session).clone();
         sess.select_all();
         app.selected_points = sess.selection_bounds().map(|_| 999).unwrap_or(0);
-        let n = { let mut c = 0; for co in &sess.glyph.contours { c += co.points.len(); } c };
+        let n = {
+            let mut c = 0;
+            for co in &sess.glyph.contours {
+                c += co.points.len();
+            }
+            c
+        };
         app.selected_points = n;
         app.session = std::sync::Arc::new(sess);
         app.refresh_coord_bufs();
@@ -2606,7 +2885,6 @@ fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         .with_default_base_color(background)
         .run_in(event_loop)
 }
-
 
 fn main() -> Result<(), EventLoopError> {
     run(EventLoop::with_user_event())
@@ -2676,7 +2954,11 @@ mod tab_tests {
         assert_eq!(app.session.selection.len(), 0, "the new tab starts clean");
 
         app.activate_tab(0);
-        assert_eq!(app.session.selection.len(), selected, "the first tab kept it");
+        assert_eq!(
+            app.session.selection.len(),
+            selected,
+            "the first tab kept it"
+        );
     }
 
     /// Renaming used to rebuild the model from the active master, which

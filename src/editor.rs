@@ -10,23 +10,22 @@ use masonry::accesskit::{Node, Role};
 use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
     AccessCtx, ChildrenIds, EventCtx, LayerType, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
-    PointerButton, WidgetId,
-    PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate, PropertiesMut,
-    PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Widget,
+    PointerButton, PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate,
+    PropertiesMut, PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Widget, WidgetId,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, Circle, Line, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-use runebender_core::glyph_ops::PointId;
+use runebender_core::outline::glyph_ops::PointId;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
 use crate::App;
+use crate::Tool;
 use crate::context_menu::{ContextMenu, MenuAction, MenuRow};
 use crate::session::Session;
 use crate::text_label::{self, Anchor};
 use crate::theme::Palette;
-use crate::Tool;
 
 /// The metrics panel's geometry, shared by its painting and its boxes.
 const PANEL_PAD: f64 = 10.0;
@@ -38,19 +37,58 @@ const HIT_RADIUS_PX: f64 = 8.0;
 /// Context-menu items: (label, op). Op returns whether the glyph changed.
 /// The right-click menu's rows. Shared with the layer that draws them.
 const MENU_ITEMS: &[MenuRow] = &[
-    MenuRow { label: "Add Anchor", action: MenuAction::AddAnchor },
-    MenuRow { label: "Set Start Point", action: MenuAction::Op(|s| s.set_start()) },
-    MenuRow { label: "Round Corners", action: MenuAction::Op(|s| s.round_corners()) },
-    MenuRow { label: "Reverse Contours", action: MenuAction::Op(|s| s.reverse()) },
-    MenuRow { label: "Remove Overlap", action: MenuAction::Op(|s| s.remove_overlap()) },
-    MenuRow { label: "Flip Horizontal", action: MenuAction::Op(|s| s.flip_horizontal()) },
-    MenuRow { label: "Flip Vertical", action: MenuAction::Op(|s| s.flip_vertical()) },
-    MenuRow { label: "Rotate 90", action: MenuAction::Op(|s| s.rotate_90()) },
-    MenuRow { label: "Duplicate", action: MenuAction::Op(|s| s.duplicate()) },
-    MenuRow { label: "Harmonize", action: MenuAction::Op(|s| s.harmonize()) },
-    MenuRow { label: "Balance", action: MenuAction::Op(|s| s.balance()) },
-    MenuRow { label: "Optimize", action: MenuAction::Op(|s| s.optimize()) },
-    MenuRow { label: "Decompose", action: MenuAction::Op(|s| s.decompose()) },
+    MenuRow {
+        label: "Add Anchor",
+        action: MenuAction::AddAnchor,
+    },
+    MenuRow {
+        label: "Set Start Point",
+        action: MenuAction::Op(|s| s.set_start()),
+    },
+    MenuRow {
+        label: "Round Corners",
+        action: MenuAction::Op(|s| s.round_corners()),
+    },
+    MenuRow {
+        label: "Reverse Contours",
+        action: MenuAction::Op(|s| s.reverse()),
+    },
+    MenuRow {
+        label: "Remove Overlap",
+        action: MenuAction::Op(|s| s.remove_overlap()),
+    },
+    MenuRow {
+        label: "Flip Horizontal",
+        action: MenuAction::Op(|s| s.flip_horizontal()),
+    },
+    MenuRow {
+        label: "Flip Vertical",
+        action: MenuAction::Op(|s| s.flip_vertical()),
+    },
+    MenuRow {
+        label: "Rotate 90",
+        action: MenuAction::Op(|s| s.rotate_90()),
+    },
+    MenuRow {
+        label: "Duplicate",
+        action: MenuAction::Op(|s| s.duplicate()),
+    },
+    MenuRow {
+        label: "Harmonize",
+        action: MenuAction::Op(|s| s.harmonize()),
+    },
+    MenuRow {
+        label: "Balance",
+        action: MenuAction::Op(|s| s.balance()),
+    },
+    MenuRow {
+        label: "Optimize",
+        action: MenuAction::Op(|s| s.optimize()),
+    },
+    MenuRow {
+        label: "Decompose",
+        action: MenuAction::Op(|s| s.decompose()),
+    },
 ];
 
 impl EditorWidget {
@@ -98,20 +136,38 @@ pub enum EditorEvent {
 
 enum Drag {
     None,
-    Points { start: Point },
-    Pan { last: Point },
+    Points {
+        start: Point,
+    },
+    Pan {
+        last: Point,
+    },
     /// Pen mouse-down at `origin` (design space); becomes handle-drag past a threshold.
-    Pen { origin: Point, dragging: bool },
+    Pen {
+        origin: Point,
+        dragging: bool,
+    },
     /// Rubber-band selection in screen space.
-    Marquee { start: Point, current: Point, additive: bool },
+    Marquee {
+        start: Point,
+        current: Point,
+        additive: bool,
+    },
     /// Drawing a shape; endpoints in design space.
-    Shape { start: Point, current: Point },
+    Shape {
+        start: Point,
+        current: Point,
+    },
     /// Dragging an anchor by index.
-    Anchor { idx: usize },
+    Anchor {
+        idx: usize,
+    },
     /// Dragging the advance (right sidebearing) line.
     AdvanceLine,
     /// Dragging the left sidebearing line; carries the last cursor x (screen).
-    LeftLine { last_x: f64 },
+    LeftLine {
+        last_x: f64,
+    },
 }
 
 pub struct EditorWidget {
@@ -183,7 +239,11 @@ impl EditorWidget {
 
     /// The panel's top left corner, or `None` when it does not fit.
     fn metrics_panel_origin(&self) -> Option<(f64, f64)> {
-        let rows = 2 + if self.session.selection_bounds().is_some() { 3 } else { 0 };
+        let rows = 2 + if self.session.selection_bounds().is_some() {
+            3
+        } else {
+            0
+        };
         let height = f64::from(rows) * PANEL_ROW + PANEL_PAD * 2.0;
         let top = self.size.height - height - PANEL_PAD;
         if top < 0.0 || PANEL_WIDTH + PANEL_PAD * 2.0 > self.size.width {
@@ -251,7 +311,9 @@ impl EditorWidget {
     /// inspector's fields use: the left one moves the outline, the right
     /// one moves the advance.
     fn commit_metric(&mut self) -> bool {
-        let Some(field) = self.field else { return false };
+        let Some(field) = self.field else {
+            return false;
+        };
         let Ok(value) = self.field_buf.trim().parse::<f64>() else {
             return false;
         };
@@ -286,17 +348,26 @@ impl EditorWidget {
             .stroke(&frame, &Stroke::new(1.0), pal.role("gridBorder"))
             .draw();
 
-        let text_at = |painter: &mut Painter<'_>, x: f64, row: f64, s: &str, size: f32, color, anchor| {
-            text_label::draw(
-                painter,
-                Point::new(left + x, top + PAD + row * ROW + ROW - 5.0),
-                s,
-                size,
-                color,
-                anchor,
-            );
-        };
-        text_at(painter, 10.0, 0.0, &self.session.glyph_name, 12.0_f32, pal.text, Anchor::Start);
+        let text_at =
+            |painter: &mut Painter<'_>, x: f64, row: f64, s: &str, size: f32, color, anchor| {
+                text_label::draw(
+                    painter,
+                    Point::new(left + x, top + PAD + row * ROW + ROW - 5.0),
+                    s,
+                    size,
+                    color,
+                    anchor,
+                );
+            };
+        text_at(
+            painter,
+            10.0,
+            0.0,
+            &self.session.glyph_name,
+            12.0_f32,
+            pal.text,
+            Anchor::Start,
+        );
         // The codepoint, right aligned on the same line, as the GPUI
         // build has it. This one is free because the session carries the
         // glyph; the kerning groups it also shows are not, because they
@@ -315,8 +386,24 @@ impl EditorWidget {
             );
         }
         if let Some(sb) = &bearings {
-            text_at(painter, 10.0, 1.0, "LSB", 10.0, pal.text_muted, Anchor::Start);
-            text_at(painter, width - 10.0, 1.0, "RSB", 10.0, pal.text_muted, Anchor::End);
+            text_at(
+                painter,
+                10.0,
+                1.0,
+                "LSB",
+                10.0,
+                pal.text_muted,
+                Anchor::Start,
+            );
+            text_at(
+                painter,
+                width - 10.0,
+                1.0,
+                "RSB",
+                10.0,
+                pal.text_muted,
+                Anchor::End,
+            );
             // Three boxes you can type in, like the GPUI build's. Each
             // one is drawn here and hit tested from the same rectangles,
             // because a painted control that computes its geometry twice
@@ -354,26 +441,65 @@ impl EditorWidget {
                     if focused {
                         // A caret, drawn by hand, because this is a text
                         // field drawn by hand.
-                        let caret = Rect::new(rect.x1 - 4.0, rect.y0 + 3.0, rect.x1 - 3.0, rect.y1 - 3.0);
+                        let caret =
+                            Rect::new(rect.x1 - 4.0, rect.y0 + 3.0, rect.x1 - 3.0, rect.y1 - 3.0);
                         painter.fill(caret, pal.role("accent")).draw();
                     }
                 }
             }
         }
         if let Some(b) = bounds {
-            text_at(painter, 10.0, 2.0, "Selection", 10.0, pal.text_muted, Anchor::Start);
-            for (row, (label_a, a, label_b, value_b)) in [
-                ("X", b.x0, "W", b.width()),
-                ("Y", b.y0, "H", b.height()),
-            ]
-            .into_iter()
-            .enumerate()
+            text_at(
+                painter,
+                10.0,
+                2.0,
+                "Selection",
+                10.0,
+                pal.text_muted,
+                Anchor::Start,
+            );
+            for (row, (label_a, a, label_b, value_b)) in
+                [("X", b.x0, "W", b.width()), ("Y", b.y0, "H", b.height())]
+                    .into_iter()
+                    .enumerate()
             {
                 let row = 3.0 + row as f64;
-                text_at(painter, 10.0, row, label_a, 10.0, pal.text_muted, Anchor::Start);
-                text_at(painter, 84.0, row, &format!("{a:.0}"), 11.0, pal.text, Anchor::End);
-                text_at(painter, 104.0, row, label_b, 10.0, pal.text_muted, Anchor::Start);
-                text_at(painter, 186.0, row, &format!("{value_b:.0}"), 11.0, pal.text, Anchor::End);
+                text_at(
+                    painter,
+                    10.0,
+                    row,
+                    label_a,
+                    10.0,
+                    pal.text_muted,
+                    Anchor::Start,
+                );
+                text_at(
+                    painter,
+                    84.0,
+                    row,
+                    &format!("{a:.0}"),
+                    11.0,
+                    pal.text,
+                    Anchor::End,
+                );
+                text_at(
+                    painter,
+                    104.0,
+                    row,
+                    label_b,
+                    10.0,
+                    pal.text_muted,
+                    Anchor::Start,
+                );
+                text_at(
+                    painter,
+                    186.0,
+                    row,
+                    &format!("{value_b:.0}"),
+                    11.0,
+                    pal.text,
+                    Anchor::End,
+                );
             }
         }
     }
@@ -488,7 +614,12 @@ impl Widget for EditorWidget {
         ctx.set_clip_path(size.to_rect());
     }
 
-    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn paint(
+        &mut self,
+        _ctx: &mut PaintCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
         let pal = self.palette.clone();
         let affine = self.session.viewport.affine();
         painter.fill_rect(self.size.to_rect(), pal.canvas);
@@ -507,10 +638,7 @@ impl Widget for EditorWidget {
                     let box_ = Rect::from_points(
                         affine * Point::new(sort.origin.x, m.descender + sort.origin.y),
                         affine
-                            * Point::new(
-                                sort.origin.x + sort.advance,
-                                m.ascender + sort.origin.y,
-                            ),
+                            * Point::new(sort.origin.x + sort.advance, m.ascender + sort.origin.y),
                     );
                     painter
                         .stroke(box_, &Stroke::new(1.0), pal.role("accent").with_alpha(0.6))
@@ -523,7 +651,11 @@ impl Widget for EditorWidget {
             let top = affine * Point::new(caret.x, caret.y + m.ascender);
             let bottom = affine * Point::new(caret.x, caret.y + m.descender);
             painter
-                .stroke(Line::new(top, bottom), &Stroke::new(1.5), pal.role("accent"))
+                .stroke(
+                    Line::new(top, bottom),
+                    &Stroke::new(1.5),
+                    pal.role("accent"),
+                )
                 .draw();
             return;
         }
@@ -533,7 +665,10 @@ impl Widget for EditorWidget {
         // background layer is a quiet outline (it is a trace to follow).
         if let Some(reference) = &self.underlay.reference {
             painter
-                .fill(&(affine * (**reference).clone()), pal.text_muted.with_alpha(0.18))
+                .fill(
+                    &(affine * (**reference).clone()),
+                    pal.text_muted.with_alpha(0.18),
+                )
                 .draw();
         }
         if let Some(background) = &self.underlay.background {
@@ -549,7 +684,11 @@ impl Widget for EditorWidget {
         // Interpolation ghosts: the other masters' outlines, faint.
         for ghost in self.ghosts.iter() {
             painter
-                .stroke(&(affine * ghost.clone()), &Stroke::new(1.0), pal.role("reference").with_alpha(0.55))
+                .stroke(
+                    &(affine * ghost.clone()),
+                    &Stroke::new(1.0),
+                    pal.role("reference").with_alpha(0.55),
+                )
                 .draw();
         }
 
@@ -565,7 +704,9 @@ impl Widget for EditorWidget {
         let x1 = (affine * Point::new(10_000.0, 0.0)).x;
         for y in [0.0, m.x_height, m.cap_height, m.ascender, m.descender] {
             let sy = (affine * Point::new(0.0, y)).y;
-            painter.stroke(Line::new((x0, sy), (x1, sy)), &thin, quiet).draw();
+            painter
+                .stroke(Line::new((x0, sy), (x1, sy)), &thin, quiet)
+                .draw();
         }
         // Em box: the advance width by the ascender..descender height, framing
         // the glyph like gpui/Glyphs rather than infinite sidebearing lines.
@@ -579,100 +720,123 @@ impl Widget for EditorWidget {
         // shows the read-only interpolated instance instead (web/Glyphs
         // behavior): swap the outline, don't ghost it behind an editable one.
         if self.interp.is_none() {
-        if !self.session.components.elements().is_empty() {
+            if !self.session.components.elements().is_empty() {
+                painter
+                    .fill(
+                        &(affine * self.session.components.clone()),
+                        pal.role("component").with_alpha(0.5),
+                    )
+                    .draw();
+            }
+            let outline = affine * self.session.outline();
             painter
-                .fill(&(affine * self.session.components.clone()), pal.role("component").with_alpha(0.5))
+                .fill(&outline, pal.role("pathStroke").with_alpha(0.08))
                 .draw();
-        }
-        let outline = affine * self.session.outline();
-        painter.fill(&outline, pal.role("pathStroke").with_alpha(0.08)).draw();
-        painter.stroke(&outline, &Stroke::new(1.0), pal.role("pathStroke")).draw();
+            painter
+                .stroke(&outline, &Stroke::new(1.0), pal.role("pathStroke"))
+                .draw();
 
-        let handle = Stroke::new(1.0);
-        for contour in &self.session.glyph.contours {
-            let n = contour.points.len();
-            for i in 0..n {
-                if !matches!(contour.points[i].typ, norad::PointType::OffCurve) {
-                    continue;
-                }
-                let off = affine * Point::new(contour.points[i].x, contour.points[i].y);
-                for j in [(i + n - 1) % n, (i + 1) % n] {
-                    if !matches!(contour.points[j].typ, norad::PointType::OffCurve) {
-                        let on = affine * Point::new(contour.points[j].x, contour.points[j].y);
-                        painter
-                            .stroke(Line::new(off, on), &handle, pal.role("pointOffcurve").with_alpha(0.7))
-                            .draw();
+            let handle = Stroke::new(1.0);
+            for contour in &self.session.glyph.contours {
+                let n = contour.points.len();
+                for i in 0..n {
+                    if !matches!(contour.points[i].typ, norad::PointType::OffCurve) {
+                        continue;
+                    }
+                    let off = affine * Point::new(contour.points[i].x, contour.points[i].y);
+                    for j in [(i + n - 1) % n, (i + 1) % n] {
+                        if !matches!(contour.points[j].typ, norad::PointType::OffCurve) {
+                            let on = affine * Point::new(contour.points[j].x, contour.points[j].y);
+                            painter
+                                .stroke(
+                                    Line::new(off, on),
+                                    &handle,
+                                    pal.role("pointOffcurve").with_alpha(0.7),
+                                )
+                                .draw();
+                        }
                     }
                 }
             }
-        }
 
-        for (id, sp, on_curve, smooth, start) in self.screen_points() {
-            let selected = self.session.selection.contains(&id);
-            let fill = if selected {
-                pal.role("pointSelected")
-            } else if start {
-                pal.role("startNode")
-            } else if !on_curve {
-                pal.role("pointOffcurve")
-            } else if smooth {
-                pal.role("pointSmooth")
-            } else {
-                pal.role("pointCorner")
-            };
-            // A point is a dark window with a coloured ring, which is
-            // the GPUI build's recipe and the web editor's before it: a
-            // halo so the point keeps an edge over the outline, an
-            // interior that masks what runs under it, then a
-            // constant-width ring. A solid dot loses its shape against
-            // the curve it sits on.
-            let square = on_curve && !smooth;
-            let r = if square {
-                if selected { 4.5 } else { 3.5 }
-            } else if selected {
-                5.5
-            } else {
-                4.5
-            };
-            let halo = pal.app.with_alpha(0.85);
-            let ring = Stroke::new(1.5);
-            if square {
-                let shape = Rect::new(sp.x - r, sp.y - r, sp.x + r, sp.y + r);
-                painter.stroke(shape, &Stroke::new(3.0), halo).draw();
-                painter.fill(shape, pal.app).draw();
-                painter.stroke(shape, &ring, fill).draw();
-            } else {
-                let shape = Circle::new(sp, r);
-                painter.stroke(shape, &Stroke::new(3.0), halo).draw();
-                painter.fill(shape, pal.app).draw();
-                painter.stroke(shape, &ring, fill).draw();
+            for (id, sp, on_curve, smooth, start) in self.screen_points() {
+                let selected = self.session.selection.contains(&id);
+                let fill = if selected {
+                    pal.role("pointSelected")
+                } else if start {
+                    pal.role("startNode")
+                } else if !on_curve {
+                    pal.role("pointOffcurve")
+                } else if smooth {
+                    pal.role("pointSmooth")
+                } else {
+                    pal.role("pointCorner")
+                };
+                // A point is a dark window with a coloured ring, which is
+                // the GPUI build's recipe and the web editor's before it: a
+                // halo so the point keeps an edge over the outline, an
+                // interior that masks what runs under it, then a
+                // constant-width ring. A solid dot loses its shape against
+                // the curve it sits on.
+                let square = on_curve && !smooth;
+                let r = if square {
+                    if selected { 4.5 } else { 3.5 }
+                } else if selected {
+                    5.5
+                } else {
+                    4.5
+                };
+                let halo = pal.app.with_alpha(0.85);
+                let ring = Stroke::new(1.5);
+                if square {
+                    let shape = Rect::new(sp.x - r, sp.y - r, sp.x + r, sp.y + r);
+                    painter.stroke(shape, &Stroke::new(3.0), halo).draw();
+                    painter.fill(shape, pal.app).draw();
+                    painter.stroke(shape, &ring, fill).draw();
+                } else {
+                    let shape = Circle::new(sp, r);
+                    painter.stroke(shape, &Stroke::new(3.0), halo).draw();
+                    painter.fill(shape, pal.app).draw();
+                    painter.stroke(shape, &ring, fill).draw();
+                }
             }
-        }
 
-        // Anchors: a small diamond at each, in the accent color.
-        let anchor_color = pal.role("accent");
-        for (ai, anchor) in self.session.glyph.anchors.iter().enumerate() {
-            let p = affine * Point::new(anchor.x, anchor.y);
-            let selected = self.session.selected_anchor == Some(ai);
-            let anchor_color = if selected { pal.role("pointSelected") } else { anchor_color };
-            let r = if selected { 6.5 } else { 5.0 };
-            let diamond = masonry::kurbo::BezPath::from_vec(vec![
-                masonry::kurbo::PathEl::MoveTo(Point::new(p.x, p.y - r)),
-                masonry::kurbo::PathEl::LineTo(Point::new(p.x + r, p.y)),
-                masonry::kurbo::PathEl::LineTo(Point::new(p.x, p.y + r)),
-                masonry::kurbo::PathEl::LineTo(Point::new(p.x - r, p.y)),
-                masonry::kurbo::PathEl::ClosePath,
-            ]);
-            painter.stroke(&diamond, &Stroke::new(1.5), anchor_color).draw();
-            painter.fill(Circle::new(p, 1.5), anchor_color).draw();
-        }
+            // Anchors: a small diamond at each, in the accent color.
+            let anchor_color = pal.role("accent");
+            for (ai, anchor) in self.session.glyph.anchors.iter().enumerate() {
+                let p = affine * Point::new(anchor.x, anchor.y);
+                let selected = self.session.selected_anchor == Some(ai);
+                let anchor_color = if selected {
+                    pal.role("pointSelected")
+                } else {
+                    anchor_color
+                };
+                let r = if selected { 6.5 } else { 5.0 };
+                let diamond = masonry::kurbo::BezPath::from_vec(vec![
+                    masonry::kurbo::PathEl::MoveTo(Point::new(p.x, p.y - r)),
+                    masonry::kurbo::PathEl::LineTo(Point::new(p.x + r, p.y)),
+                    masonry::kurbo::PathEl::LineTo(Point::new(p.x, p.y + r)),
+                    masonry::kurbo::PathEl::LineTo(Point::new(p.x - r, p.y)),
+                    masonry::kurbo::PathEl::ClosePath,
+                ]);
+                painter
+                    .stroke(&diamond, &Stroke::new(1.5), anchor_color)
+                    .draw();
+                painter.fill(Circle::new(p, 1.5), anchor_color).draw();
+            }
         } else if let Some(interp) = &self.interp {
             // Read-only interpolated instance in warm amber, filled and
             // stroked, standing in for the editable outline.
             let path = affine * (**interp).clone();
-            painter.fill(&path, pal.role("warning").with_alpha(0.14)).draw();
             painter
-                .stroke(&path, &Stroke::new(1.75), pal.role("warning").with_alpha(0.95))
+                .fill(&path, pal.role("warning").with_alpha(0.14))
+                .draw();
+            painter
+                .stroke(
+                    &path,
+                    &Stroke::new(1.75),
+                    pal.role("warning").with_alpha(0.95),
+                )
                 .draw();
         }
 
@@ -686,7 +850,11 @@ impl Widget for EditorWidget {
                     let on = affine * on;
                     let outer = affine * outer;
                     painter
-                        .stroke(Line::new(on, outer), &Stroke::new(1.0), comb.with_alpha(0.35))
+                        .stroke(
+                            Line::new(on, outer),
+                            &Stroke::new(1.0),
+                            comb.with_alpha(0.35),
+                        )
                         .draw();
                     if let Some(previous) = previous {
                         painter
@@ -702,7 +870,7 @@ impl Widget for EditorWidget {
         // the join actually is. A kink is a node marked smooth whose
         // tangents do not line up, which is the defect worth seeing.
         if self.view.continuity && self.interp.is_none() {
-            use runebender_core::curve::GLevel;
+            use runebender_core::analysis::curve::GLevel;
             for node in self.session.continuity() {
                 let color = match node.level {
                     GLevel::Kink => pal.role("error"),
@@ -732,7 +900,7 @@ impl Widget for EditorWidget {
         if self.view.measures() && self.interp.is_none() {
             let zoom = self.session.viewport.zoom;
             for m in self.session.measurements() {
-                use runebender_core::measure::MeasureKind;
+                use runebender_core::analysis::measure::MeasureKind;
                 let wanted = match m.kind {
                     MeasureKind::Handle => self.view.handles,
                     MeasureKind::Segment => self.view.segments,
@@ -748,32 +916,64 @@ impl Widget for EditorWidget {
                     MeasureKind::Segment => pal.role("accent"),
                     _ => pal.role("selection"),
                 };
-                painter.stroke(Line::new(a, b), &Stroke::new(1.0), color).draw();
+                painter
+                    .stroke(Line::new(a, b), &Stroke::new(1.0), color)
+                    .draw();
                 let mid = Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
                 let text = self.view.label(m.length);
                 text_label::draw(painter, mid, &text, 11.0, color, Anchor::Middle);
             }
             if let Some(sb) = self.session.side_bearings().filter(|_| self.view.bearings) {
                 let quiet = pal.role("metricQuiet");
-                let y = (affine * Point::new(0.0, sb.y_left.min(sb.y_right) - 40.0 / zoom.max(0.001))).y;
+                let y = (affine
+                    * Point::new(0.0, sb.y_left.min(sb.y_right) - 40.0 / zoom.max(0.001)))
+                .y;
                 let l = affine * Point::new(0.0, 0.0);
                 let ink_l = affine * Point::new(sb.min_x, 0.0);
                 let ink_r = affine * Point::new(sb.max_x, 0.0);
                 let adv = affine * Point::new(sb.advance, 0.0);
-                painter.stroke(Line::new((l.x, y), (ink_l.x, y)), &Stroke::new(1.0), quiet).draw();
-                painter.stroke(Line::new((ink_r.x, y), (adv.x, y)), &Stroke::new(1.0), quiet).draw();
+                painter
+                    .stroke(Line::new((l.x, y), (ink_l.x, y)), &Stroke::new(1.0), quiet)
+                    .draw();
+                painter
+                    .stroke(
+                        Line::new((ink_r.x, y), (adv.x, y)),
+                        &Stroke::new(1.0),
+                        quiet,
+                    )
+                    .draw();
                 let (lsb, rsb) = (self.view.label(sb.lsb), self.view.label(sb.rsb));
-                text_label::draw(painter, Point::new((l.x + ink_l.x) / 2.0, y - 8.0), &lsb, 11.0, quiet, Anchor::Middle);
-                text_label::draw(painter, Point::new((ink_r.x + adv.x) / 2.0, y - 8.0), &rsb, 11.0, quiet, Anchor::Middle);
+                text_label::draw(
+                    painter,
+                    Point::new((l.x + ink_l.x) / 2.0, y - 8.0),
+                    &lsb,
+                    11.0,
+                    quiet,
+                    Anchor::Middle,
+                );
+                text_label::draw(
+                    painter,
+                    Point::new((ink_r.x + adv.x) / 2.0, y - 8.0),
+                    &rsb,
+                    11.0,
+                    quiet,
+                    Anchor::Middle,
+                );
             }
         }
 
         // Marquee rectangle.
         if let Drag::Marquee { start, current, .. } = &self.drag {
             let rect = Rect::from_points(*start, *current);
-            painter.fill(rect, pal.role("selection").with_alpha(0.15)).draw();
             painter
-                .stroke(rect, &Stroke::new(1.0), pal.role("selection").with_alpha(0.8))
+                .fill(rect, pal.role("selection").with_alpha(0.15))
+                .draw();
+            painter
+                .stroke(
+                    rect,
+                    &Stroke::new(1.0),
+                    pal.role("selection").with_alpha(0.8),
+                )
                 .draw();
         }
 
@@ -785,7 +985,9 @@ impl Widget for EditorWidget {
             match self.tool {
                 Tool::Knife => {
                     let danger = pal.role("danger");
-                    painter.stroke(Line::new(p0, p1), &Stroke::new(1.0), danger).draw();
+                    painter
+                        .stroke(Line::new(p0, p1), &Stroke::new(1.0), danger)
+                        .draw();
                     for hit in self.session.knife_hits(*start, *current) {
                         let sp = affine * hit;
                         painter.fill(Circle::new(sp, 3.5), danger).draw();
@@ -816,7 +1018,11 @@ impl Widget for EditorWidget {
     ) {
         // Off a master the view is a read-only instance: swallow edit clicks.
         if self.interp.is_some() {
-            if let PointerEvent::Down(PointerButtonEvent { button: Some(PointerButton::Primary | PointerButton::Secondary), .. }) = event {
+            if let PointerEvent::Down(PointerButtonEvent {
+                button: Some(PointerButton::Primary | PointerButton::Secondary),
+                ..
+            }) = event
+            {
                 ctx.set_handled();
                 return;
             }
@@ -825,7 +1031,12 @@ impl Widget for EditorWidget {
         // underneath it. The panel is painted, so nothing else will do
         // this for us: a composed panel would have taken the click by
         // being in front.
-        if let PointerEvent::Down(PointerButtonEvent { button: Some(PointerButton::Primary), state, .. }) = event {
+        if let PointerEvent::Down(PointerButtonEvent {
+            button: Some(PointerButton::Primary),
+            state,
+            ..
+        }) = event
+        {
             let at = ctx.local_position(state.position);
             if let Some(boxes) = self.metric_boxes() {
                 if let Some((field, _)) = boxes.iter().find(|(_, rect)| rect.contains(at)) {
@@ -902,11 +1113,16 @@ impl Widget for EditorWidget {
                         ctx.set_handled();
                         return;
                     }
-                    Some(PointerButton::Primary) if matches!(self.tool, Tool::Rect | Tool::Ellipse | Tool::Knife) => {
+                    Some(PointerButton::Primary)
+                        if matches!(self.tool, Tool::Rect | Tool::Ellipse | Tool::Knife) =>
+                    {
                         ctx.request_focus();
                         ctx.capture_pointer();
                         let d = self.session.viewport.screen_to_design(at);
-                        self.drag = Drag::Shape { start: d, current: d };
+                        self.drag = Drag::Shape {
+                            start: d,
+                            current: d,
+                        };
                         ctx.set_handled();
                         return;
                     }
@@ -923,7 +1139,10 @@ impl Widget for EditorWidget {
                             self.emit(ctx, true);
                         } else {
                             let origin = self.session.viewport.screen_to_design(at);
-                            self.drag = Drag::Pen { origin, dragging: false };
+                            self.drag = Drag::Pen {
+                                origin,
+                                dragging: false,
+                            };
                         }
                         ctx.set_handled();
                         return;
@@ -947,7 +1166,10 @@ impl Widget for EditorWidget {
                             }
                         }
                         // Anchor hit takes priority over points.
-                        if let Some(ai) = self.session.anchor_at(self.session.viewport.screen_to_design(at), HIT_RADIUS_PX / self.session.viewport.zoom) {
+                        if let Some(ai) = self.session.anchor_at(
+                            self.session.viewport.screen_to_design(at),
+                            HIT_RADIUS_PX / self.session.viewport.zoom,
+                        ) {
                             self.session.selected_anchor = Some(ai);
                             self.session.selection.clear();
                             self.drag = Drag::Anchor { idx: ai };
@@ -975,7 +1197,11 @@ impl Widget for EditorWidget {
                                     self.session.selection.clear();
                                     self.emit(ctx, false);
                                 }
-                                self.drag = Drag::Marquee { start: at, current: at, additive: shift };
+                                self.drag = Drag::Marquee {
+                                    start: at,
+                                    current: at,
+                                    additive: shift,
+                                };
                             }
                         }
                     }
@@ -1064,7 +1290,11 @@ impl Widget for EditorWidget {
                     self.drag = Drag::None;
                     self.emit(ctx, true);
                 }
-                Drag::Marquee { start, current, additive } => {
+                Drag::Marquee {
+                    start,
+                    current,
+                    additive,
+                } => {
                     let rect = Rect::from_points(*start, *current);
                     let additive = *additive;
                     if !additive {
@@ -1114,8 +1344,15 @@ impl Widget for EditorWidget {
         }
     }
 
-    fn on_text_event(&mut self, ctx: &mut EventCtx<'_>, _props: &mut PropertiesMut<'_>, event: &TextEvent) {
-        let TextEvent::Keyboard(key) = event else { return };
+    fn on_text_event(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &TextEvent,
+    ) {
+        let TextEvent::Keyboard(key) = event else {
+            return;
+        };
         if key.state != KeyState::Down {
             return;
         }
@@ -1226,7 +1463,12 @@ impl Widget for EditorWidget {
         Role::Canvas
     }
 
-    fn accessibility(&mut self, _ctx: &mut AccessCtx<'_>, _props: &PropertiesRef<'_>, node: &mut Node) {
+    fn accessibility(
+        &mut self,
+        _ctx: &mut AccessCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        node: &mut Node,
+    ) {
         node.set_description(format!("Glyph editor: {}", self.session.glyph_name));
     }
 
@@ -1235,11 +1477,12 @@ impl Widget for EditorWidget {
     }
 }
 
-
-
 // ---------------------------------------------------------------------------
 /// Cheap equality for the interpolation overlay: same Arc, or both absent.
-fn interp_eq(a: &Option<Arc<masonry::kurbo::BezPath>>, b: &Option<Arc<masonry::kurbo::BezPath>>) -> bool {
+fn interp_eq(
+    a: &Option<Arc<masonry::kurbo::BezPath>>,
+    b: &Option<Arc<masonry::kurbo::BezPath>>,
+) -> bool {
     match (a, b) {
         (Some(x), Some(y)) => Arc::ptr_eq(x, y),
         (None, None) => true,
@@ -1329,7 +1572,7 @@ impl ViewOptions {
     /// A length, spelled the way the options ask for.
     fn label(self, value: i64) -> String {
         if self.popcount {
-            runebender_core::measure::label(value)
+            runebender_core::analysis::measure::label(value)
         } else {
             value.to_string()
         }
@@ -1366,10 +1609,7 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             ghosts: self.ghosts.clone(),
             interp: self.interp.clone(),
             underlay: self.underlay.clone(),
-            text: self
-                .text
-                .as_ref()
-                .map(crate::text_tool::TextState::new),
+            text: self.text.as_ref().map(crate::text_tool::TextState::new),
             text_inputs: self.text.clone(),
             size: Size::ZERO,
             drag: Drag::None,
@@ -1471,8 +1711,8 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use masonry_testing::TestHarness;
     use masonry::theme::default_property_set;
+    use masonry_testing::TestHarness;
 
     fn session() -> Session {
         let mut font = norad::Font::new();

@@ -15,7 +15,7 @@ use masonry::core::{
 use masonry::imaging::Painter;
 use masonry::kurbo::{Affine, Axis, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-use runebender_core::theme_oklch::toolbar_icons;
+use runebender_core::ui::theme_oklch::toolbar_icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
@@ -55,12 +55,21 @@ impl Widget for IconWidget {
         self.size = size;
     }
 
-    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn paint(
+        &mut self,
+        _ctx: &mut PaintCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
         let rect = self.size.to_rect();
         if self.active {
-            painter.fill(rect.to_rounded_rect(6.0), self.active_bg).draw();
+            painter
+                .fill(rect.to_rounded_rect(6.0), self.active_bg)
+                .draw();
         } else if self.hovered {
-            painter.fill(rect.to_rounded_rect(6.0), self.hover_bg).draw();
+            painter
+                .fill(rect.to_rounded_rect(6.0), self.hover_bg)
+                .draw();
         }
         let Some(icon) = toolbar_icons().get(self.icon) else {
             return;
@@ -71,7 +80,9 @@ impl Widget for IconWidget {
             .min((self.size.height - pad * 2.0) / vb.height());
         let dx = (self.size.width - vb.width() * scale) / 2.0;
         let dy = (self.size.height - vb.height() * scale) / 2.0;
-        let t = Affine::translate((dx, dy)) * Affine::scale(scale) * Affine::translate((-vb.x0, -vb.y0));
+        let t = Affine::translate((dx, dy))
+            * Affine::scale(scale)
+            * Affine::translate((-vb.x0, -vb.y0));
         let color = if self.active { self.fg_active } else { self.fg };
         let path = t * icon.path.clone();
         if icon.stroke {
@@ -81,7 +92,12 @@ impl Widget for IconWidget {
         }
     }
 
-    fn on_pointer_event(&mut self, ctx: &mut EventCtx<'_>, _props: &mut PropertiesMut<'_>, event: &PointerEvent) {
+    fn on_pointer_event(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &PointerEvent,
+    ) {
         match event {
             PointerEvent::Enter(_) => {
                 self.hovered = true;
@@ -91,7 +107,10 @@ impl Widget for IconWidget {
                 self.hovered = false;
                 ctx.request_render();
             }
-            PointerEvent::Down(PointerButtonEvent { button: Some(PointerButton::Primary), .. }) => {
+            PointerEvent::Down(PointerButtonEvent {
+                button: Some(PointerButton::Primary),
+                ..
+            }) => {
                 ctx.submit_action::<IconClicked>(IconClicked);
                 ctx.set_handled();
             }
@@ -103,7 +122,12 @@ impl Widget for IconWidget {
         Role::Button
     }
 
-    fn accessibility(&mut self, _ctx: &mut AccessCtx<'_>, _props: &PropertiesRef<'_>, node: &mut Node) {
+    fn accessibility(
+        &mut self,
+        _ctx: &mut AccessCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        node: &mut Node,
+    ) {
         node.set_label(self.icon);
     }
 
@@ -132,7 +156,15 @@ pub fn icon_button<State: 'static, F: Fn(&mut State) + 'static>(
     hover_bg: Color,
     on_click: F,
 ) -> IconView<F> {
-    IconView { icon, active, fg, fg_active, active_bg, hover_bg, on_click }
+    IconView {
+        icon,
+        active,
+        fg,
+        fg_active,
+        active_bg,
+        hover_bg,
+        on_click,
+    }
 }
 
 impl<F> ViewMarker for IconView<F> {}
@@ -154,7 +186,14 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
         (ctx.with_action_widget(|ctx| ctx.create_pod(w)), ())
     }
 
-    fn rebuild(&self, prev: &Self, (): &mut Self::ViewState, _ctx: &mut ViewCtx, mut el: Mut<'_, Self::Element>, _: &mut State) {
+    fn rebuild(
+        &self,
+        prev: &Self,
+        (): &mut Self::ViewState,
+        _ctx: &mut ViewCtx,
+        mut el: Mut<'_, Self::Element>,
+        _: &mut State,
+    ) {
         if self.active != prev.active {
             el.widget.active = self.active;
             el.ctx.request_render();
@@ -163,7 +202,13 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
 
     fn teardown(&self, (): &mut Self::ViewState, _: &mut ViewCtx, _: Mut<'_, Self::Element>) {}
 
-    fn message(&self, (): &mut Self::ViewState, message: &mut MessageCtx, _el: Mut<'_, Self::Element>, state: &mut State) -> MessageResult<()> {
+    fn message(
+        &self,
+        (): &mut Self::ViewState,
+        message: &mut MessageCtx,
+        _el: Mut<'_, Self::Element>,
+        state: &mut State,
+    ) -> MessageResult<()> {
         match message.take_message::<IconClicked>() {
             Some(_) => {
                 (self.on_click)(state);

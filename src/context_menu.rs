@@ -123,7 +123,12 @@ impl Widget for ContextMenu {
         self.size = size;
     }
 
-    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn paint(
+        &mut self,
+        _ctx: &mut PaintCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
         let pal = &self.palette;
         let frame = self.size.to_rect();
         painter.fill(frame.to_rounded_rect(6.0), pal.panel).draw();
@@ -227,9 +232,9 @@ impl Layer for ContextMenu {
         event: &PointerEvent,
     ) {
         let dismiss = match event {
-            PointerEvent::Down(PointerButtonEvent { state, .. }) => {
-                !ctx.border_box().contains(ctx.local_position(state.position))
-            }
+            PointerEvent::Down(PointerButtonEvent { state, .. }) => !ctx
+                .border_box()
+                .contains(ctx.local_position(state.position)),
             PointerEvent::Cancel(..) => true,
             _ => false,
         };

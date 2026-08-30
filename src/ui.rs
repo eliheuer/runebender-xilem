@@ -12,16 +12,15 @@
 //! second application needs the same one.
 
 pub use crate::design::{ControlSize, Radius, Region, Space, Stroke, TextSize};
+use crate::design::{column, row};
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use xilem::WidgetView;
 use xilem::style::Style;
-use crate::design::{column, row};
 use xilem::view::{FlexExt as _, FlexSpacer, button, label, sized_box, text_input};
 
 use crate::App;
 use crate::theme::Palette;
-
 
 /// A section header: caption type, muted. No disclosure caret: the
 /// framework has no icon set and the default font has no coverage for
@@ -109,7 +108,9 @@ where
     column(
         Region::List,
         (
-            label(name).text_size(TextSize::Caption.px()).color(pal.text_muted),
+            label(name)
+                .text_size(TextSize::Caption.px())
+                .color(pal.text_muted),
             sized_box(
                 text_input(value, move |app: &mut App, v| on_change(app, v))
                     .background_color(pal.field())
@@ -144,7 +145,9 @@ where
     column(
         Region::List,
         (
-            label(name).text_size(TextSize::Caption.px()).color(pal.text_muted),
+            label(name)
+                .text_size(TextSize::Caption.px())
+                .color(pal.text_muted),
             sized_box(
                 text_input(value, move |app: &mut App, v| on_change(app, v))
                     .on_enter(move |app: &mut App, v| on_enter(app, v))
@@ -173,7 +176,11 @@ pub fn list_row<F: Fn(&mut App) + Send + Sync + 'static>(
     } else {
         (pal.text, xilem::Color::TRANSPARENT)
     };
-    let trailing_color = if active { pal.role("accent") } else { pal.text_muted };
+    let trailing_color = if active {
+        pal.role("accent")
+    } else {
+        pal.text_muted
+    };
     sized_box(
         button(
             row(
@@ -181,7 +188,9 @@ pub fn list_row<F: Fn(&mut App) + Send + Sync + 'static>(
                 (
                     label(text).text_size(TextSize::Body.px()).color(fg),
                     FlexSpacer::Flex(1.0),
-                    label(trailing).text_size(TextSize::Body.px()).color(trailing_color),
+                    label(trailing)
+                        .text_size(TextSize::Body.px())
+                        .color(trailing_color),
                     // Clear of the scroll bar, which a portal draws over
                     // its own right edge rather than beside it. Without
                     // this the counts in the sidebar are cut in half.
@@ -219,18 +228,24 @@ pub fn list_row_with_icon<F: Fn(&mut App) + Send + Sync + 'static>(
     } else {
         (pal.text, xilem::Color::TRANSPARENT)
     };
-    let trailing_color = if active { pal.role("accent") } else { pal.text_muted };
-    let icon_color = if active { pal.role("accent") } else { pal.text_muted };
+    let trailing_color = if active {
+        pal.role("accent")
+    } else {
+        pal.text_muted
+    };
+    let icon_color = if active {
+        pal.role("accent")
+    } else {
+        pal.text_muted
+    };
     sized_box(
         button(
             row(
                 Region::Inline,
                 (
-                    sized_box(label(icon).text_size(TextSize::Body.px()).color(icon_color))
-                        .dims(Dimensions::fixed(
-                            ControlSize::Swatch.length(),
-                            ControlSize::Row.length(),
-                        )),
+                    sized_box(label(icon).text_size(TextSize::Body.px()).color(icon_color)).dims(
+                        Dimensions::fixed(ControlSize::Swatch.length(), ControlSize::Row.length()),
+                    ),
                     label(text).text_size(TextSize::Body.px()).color(fg),
                     FlexSpacer::Flex(1.0),
                     label(trailing)
@@ -274,7 +289,11 @@ where
     } else {
         (pal.text, xilem::Color::TRANSPARENT)
     };
-    let trailing_color = if active { pal.role("accent") } else { pal.text_muted };
+    let trailing_color = if active {
+        pal.role("accent")
+    } else {
+        pal.text_muted
+    };
     row(
         Region::List,
         (
