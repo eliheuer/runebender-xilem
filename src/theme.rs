@@ -7,8 +7,8 @@
 //! not hand-map named tokens into a palette; the framework's theme should
 //! carry them and the widgets should read them.
 
-use runebender_core::theme::ColorRgba;
-use runebender_core::theme_oklch::{Theme as CoreTheme, load_theme};
+use runebender_core::ui::theme::ColorRgba;
+use runebender_core::ui::theme_oklch::{Theme as CoreTheme, load_theme};
 use std::collections::HashMap;
 use xilem::Color;
 
@@ -49,8 +49,16 @@ impl Palette {
             divider: color(t.surface("divider")),
             text: color(t.text("primary")),
             text_muted: color(t.text("muted")),
-            roles: t.roles.iter().map(|(k, v)| (k.clone(), color(*v))).collect(),
-            marks: t.marks.iter().map(|(k, v)| (k.clone(), color(*v))).collect(),
+            roles: t
+                .roles
+                .iter()
+                .map(|(k, v)| (k.clone(), color(*v)))
+                .collect(),
+            marks: t
+                .marks
+                .iter()
+                .map(|(k, v)| (k.clone(), color(*v)))
+                .collect(),
             mark_order: t.marks.iter().map(|(k, _)| k.clone()).collect(),
         }
     }

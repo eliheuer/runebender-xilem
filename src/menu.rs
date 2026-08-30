@@ -28,7 +28,6 @@
 use crate::shortcuts::AppAction;
 use crate::{App, Tool};
 
-
 /// One row of the application's action table.
 ///
 /// The same row supplies the menu item's title, its accelerator label,
@@ -275,29 +274,29 @@ pub fn with_menu_events<V: xilem::WidgetView<App>>(
     fork(
         view,
         task(
-        |proxy: xilem::core::MessageProxy<muda::MenuId>, _: &mut App| async move {
-            let channel = muda::MenuEvent::receiver();
-            loop {
-                // Polled, never blocked. `recv()` is a synchronous call:
-                // inside an async task it parks a runtime worker and
-                // never gives it back, and then dropping the runtime on
-                // quit waits for a thread that cannot finish. The window
-                // closes and the process hangs.
-                match channel.try_recv() {
-                    Ok(event) => {
-                        if proxy.message(event.id).is_err() {
-                            return;
+            |proxy: xilem::core::MessageProxy<muda::MenuId>, _: &mut App| async move {
+                let channel = muda::MenuEvent::receiver();
+                loop {
+                    // Polled, never blocked. `recv()` is a synchronous call:
+                    // inside an async task it parks a runtime worker and
+                    // never gives it back, and then dropping the runtime on
+                    // quit waits for a thread that cannot finish. The window
+                    // closes and the process hangs.
+                    match channel.try_recv() {
+                        Ok(event) => {
+                            if proxy.message(event.id).is_err() {
+                                return;
+                            }
+                        }
+                        // Empty, or (never, for a static channel)
+                        // disconnected. Either way, wait a frame and look
+                        // again.
+                        Err(_) => {
+                            tokio::time::sleep(std::time::Duration::from_millis(16)).await;
                         }
                     }
-                    // Empty, or (never, for a static channel)
-                    // disconnected. Either way, wait a frame and look
-                    // again.
-                    Err(_) => {
-                        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
-                    }
                 }
-            }
-        },
+            },
             |app: &mut App, id: muda::MenuId| {
                 if let Some(action) = platform::action_for(&id) {
                     app.dispatch(action);

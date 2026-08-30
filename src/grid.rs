@@ -12,8 +12,8 @@ use std::sync::Arc;
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
     AccessCtx, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx, PointerButton,
-    PointerButtonEvent, PointerEvent, PointerScrollEvent, PropertiesMut,
-    PropertiesRef, RegisterCtx, ScrollDelta, Widget,
+    PointerButtonEvent, PointerEvent, PointerScrollEvent, PropertiesMut, PropertiesRef,
+    RegisterCtx, ScrollDelta, Widget,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Affine, Axis, Point, Rect, Size, Stroke};
@@ -43,7 +43,15 @@ fn column_span(name: &str, advance: f64, upm: f64) -> usize {
         _ => 3,
     };
     let ratio = if upm > 0.0 { advance / upm } else { 0.0 };
-    let width_span = if ratio <= 1.5 { 1 } else if ratio <= 2.8 { 2 } else if ratio <= 4.0 { 3 } else { 4 };
+    let width_span = if ratio <= 1.5 {
+        1
+    } else if ratio <= 2.8 {
+        2
+    } else if ratio <= 4.0 {
+        3
+    } else {
+        4
+    };
     name_span.max(width_span)
 }
 
@@ -128,7 +136,11 @@ pub fn cells_of(font: &FontModel, palette: &Palette) -> Vec<Cell> {
 /// What the grid reports upward.
 #[derive(Debug)]
 pub enum GridEvent {
-    Selected { index: usize, cmd: bool, shift: bool },
+    Selected {
+        index: usize,
+        cmd: bool,
+        shift: bool,
+    },
     Open(usize),
 }
 
@@ -231,7 +243,12 @@ impl Widget for GridWidget {
         ctx.set_clip_path(size.to_rect());
     }
 
-    fn paint(&mut self, _ctx: &mut PaintCtx<'_>, _props: &PropertiesRef<'_>, painter: &mut Painter<'_>) {
+    fn paint(
+        &mut self,
+        _ctx: &mut PaintCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        painter: &mut Painter<'_>,
+    ) {
         let pal = &self.palette;
         painter.fill_rect(self.size.to_rect(), pal.app);
 
@@ -252,7 +269,9 @@ impl Widget for GridWidget {
                 let w = self.cell_width(span);
                 let rect = Rect::new(x, y, x + w, y + self.metrics.cell);
                 x += w + GAP;
-                let Some(cell) = self.cells.get(ci) else { continue };
+                let Some(cell) = self.cells.get(ci) else {
+                    continue;
+                };
                 let selected = self.selected == Some(cell.index);
                 let multi = self.multi.contains(&cell.index);
 
@@ -295,7 +314,9 @@ impl Widget for GridWidget {
                 let block = if label_lines == 0 {
                     0.0
                 } else {
-                    LABEL_TOP + line * label_lines as f64 + LABEL_GAP * (label_lines - 1) as f64
+                    LABEL_TOP
+                        + line * label_lines as f64
+                        + LABEL_GAP * (label_lines - 1) as f64
                         + LABEL_BOTTOM
                 };
 
@@ -349,7 +370,7 @@ impl Widget for GridWidget {
                     let category = cell
                         .codepoint
                         .map(|c| {
-                            runebender_core::category::GlyphCategory::from_codepoint(c)
+                            runebender_core::analysis::category::GlyphCategory::from_codepoint(c)
                                 .display_name()
                         })
                         .unwrap_or("Unencoded");
@@ -371,7 +392,12 @@ impl Widget for GridWidget {
             let thumb_h = (track_h * track_h / self.content_height(total)).max(24.0);
             let thumb_y = (self.scroll / max) * (track_h - thumb_h);
             let sx = self.size.width - 6.0;
-            painter.fill(Rect::new(sx, thumb_y, sx + 4.0, thumb_y + thumb_h).to_rounded_rect(2.0), pal.text_muted.with_alpha(0.5)).draw();
+            painter
+                .fill(
+                    Rect::new(sx, thumb_y, sx + 4.0, thumb_y + thumb_h).to_rounded_rect(2.0),
+                    pal.text_muted.with_alpha(0.5),
+                )
+                .draw();
         }
     }
 
@@ -424,7 +450,12 @@ impl Widget for GridWidget {
         Role::Canvas
     }
 
-    fn accessibility(&mut self, _ctx: &mut AccessCtx<'_>, _props: &PropertiesRef<'_>, node: &mut Node) {
+    fn accessibility(
+        &mut self,
+        _ctx: &mut AccessCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        node: &mut Node,
+    ) {
         node.set_description(format!("Glyph grid, {} glyphs", self.cells.len()));
     }
 
@@ -432,7 +463,6 @@ impl Widget for GridWidget {
         ChildrenIds::new()
     }
 }
-
 
 /// Map design space into a cell: fit the em box (advance wide, ascender..descender tall)
 /// with a margin, Y-flipped, biased toward the top so descenders have room.

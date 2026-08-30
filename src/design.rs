@@ -372,10 +372,7 @@ pub type RegionStack<Seq, State, Action> =
     Prop<Padding, Prop<Gap, Flex<Seq, State, Action>, State, Action>, State, Action>;
 
 /// A vertical container whose spacing comes from its [`Region`].
-pub fn column<State, Action, Seq>(
-    region: Region,
-    children: Seq,
-) -> RegionStack<Seq, State, Action>
+pub fn column<State, Action, Seq>(region: Region, children: Seq) -> RegionStack<Seq, State, Action>
 where
     State: 'static,
     Action: 'static,

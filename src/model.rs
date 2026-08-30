@@ -8,9 +8,9 @@ use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 
 use kurbo::{BezPath, Rect};
-use runebender_core::category::GlyphCategory;
-use runebender_core::glyph_paths;
-use runebender_core::theme_oklch::{load_theme, mark_label_for_glyph};
+use runebender_core::analysis::category::GlyphCategory;
+use runebender_core::outline::glyph_paths;
+use runebender_core::ui::theme_oklch::{load_theme, mark_label_for_glyph};
 
 /// Everything the grid and previews need for one glyph, without touching norad.
 #[derive(Clone)]
@@ -41,7 +41,11 @@ impl Axis {
             let (x0, y0) = w[0];
             let (x1, y1) = w[1];
             if v >= x0 && v <= x1 {
-                let t = if (x1 - x0).abs() < 1e-9 { 0.0 } else { (v - x0) / (x1 - x0) };
+                let t = if (x1 - x0).abs() < 1e-9 {
+                    0.0
+                } else {
+                    (v - x0) / (x1 - x0)
+                };
                 return y0 + t * (y1 - y0);
             }
         }
@@ -66,7 +70,11 @@ impl Axis {
             let (x1, y1) = w[1];
             let (lo, hi) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
             if v >= lo && v <= hi {
-                let t = if (y1 - y0).abs() < 1e-9 { 0.0 } else { (v - y0) / (y1 - y0) };
+                let t = if (y1 - y0).abs() < 1e-9 {
+                    0.0
+                } else {
+                    (v - y0) / (y1 - y0)
+                };
                 return x0 + t * (x1 - x0);
             }
         }
@@ -106,7 +114,10 @@ pub struct FontModel {
 
 impl FontModel {
     pub fn open(path: &FsPath) -> Result<Self, String> {
-        if path.extension().is_some_and(|e| e == "glyphs" || e == "glyphspackage") {
+        if path
+            .extension()
+            .is_some_and(|e| e == "glyphs" || e == "glyphspackage")
+        {
             let converted = Self::import_glyphs(path)?;
             return Self::open(&converted);
         }
@@ -121,40 +132,70 @@ impl FontModel {
                 let ufo_path = dir.join(&src.filename);
                 let font = norad::Font::load(&ufo_path)
                     .map_err(|e| format!("{}: {e}", ufo_path.display()))?;
-                names.push(
-                    src.name.clone().unwrap_or_else(|| {
-                        font.font_info.style_name.clone().unwrap_or_else(|| "master".into())
-                    }),
-                );
+                names.push(src.name.clone().unwrap_or_else(|| {
+                    font.font_info
+                        .style_name
+                        .clone()
+                        .unwrap_or_else(|| "master".into())
+                }));
                 paths.push(ufo_path);
                 masters.push(font);
             }
             if masters.is_empty() {
                 return Err("designspace has no sources".into());
             }
-            let axes: Vec<Axis> = doc.axes.iter().map(|a| Axis {
-                name: a.name.clone(),
-                tag: a.tag.clone(),
-                min: a.minimum.unwrap_or(a.default) as f64,
-                default: a.default as f64,
-                max: a.maximum.unwrap_or(a.default) as f64,
-                map: a.map.as_ref().map(|ms| {
-                    let mut v: Vec<(f64, f64)> = ms.iter().map(|m| (m.input as f64, m.output as f64)).collect();
-                    v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-                    v
-                }).unwrap_or_default(),
-            }).collect();
-            let master_locations: Vec<std::collections::HashMap<String, f64>> = doc.sources.iter().map(|src| {
-                src.location.iter().filter_map(|d| d.xvalue.map(|v| (d.name.clone(), v as f64))).collect()
-            }).collect();
+            let axes: Vec<Axis> = doc
+                .axes
+                .iter()
+                .map(|a| Axis {
+                    name: a.name.clone(),
+                    tag: a.tag.clone(),
+                    min: a.minimum.unwrap_or(a.default) as f64,
+                    default: a.default as f64,
+                    max: a.maximum.unwrap_or(a.default) as f64,
+                    map: a
+                        .map
+                        .as_ref()
+                        .map(|ms| {
+                            let mut v: Vec<(f64, f64)> = ms
+                                .iter()
+                                .map(|m| (m.input as f64, m.output as f64))
+                                .collect();
+                            v.sort_by(|a, b| {
+                                a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
+                            });
+                            v
+                        })
+                        .unwrap_or_default(),
+                })
+                .collect();
+            let master_locations: Vec<std::collections::HashMap<String, f64>> = doc
+                .sources
+                .iter()
+                .map(|src| {
+                    src.location
+                        .iter()
+                        .filter_map(|d| d.xvalue.map(|v| (d.name.clone(), v as f64)))
+                        .collect()
+                })
+                .collect();
             let mut model = Self::from_masters(masters, names, paths, 0);
             model.axes = axes;
             model.master_locations = master_locations;
             Ok(model)
         } else {
             let font = norad::Font::load(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            let name = font.font_info.style_name.clone().unwrap_or_else(|| "Regular".into());
-            Ok(Self::from_masters(vec![font], vec![name], vec![path.to_path_buf()], 0))
+            let name = font
+                .font_info
+                .style_name
+                .clone()
+                .unwrap_or_else(|| "Regular".into());
+            Ok(Self::from_masters(
+                vec![font],
+                vec![name],
+                vec![path.to_path_buf()],
+                0,
+            ))
         }
     }
 
@@ -170,11 +211,11 @@ impl FontModel {
             // files as a map rather than a path, because the browser
             // build has no filesystem to hand it.
             let entries = Self::read_package(path)?;
-            runebender_core::glyphs_import::glyphs_package_to_ufo_files(&entries)?
+            runebender_core::formats::glyphs_import::glyphs_package_to_ufo_files(&entries)?
         } else {
             let text =
                 std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            runebender_core::glyphs_import::glyphs_to_ufo_files(&text)?
+            runebender_core::formats::glyphs_import::glyphs_to_ufo_files(&text)?
         };
         let stem = path
             .file_stem()
@@ -260,7 +301,10 @@ impl FontModel {
         }
         // Preserve edits to the current master.
         self.masters[self.active] = (*self.font).clone();
-        let rebuilt = Self::from_font(self.masters[index].clone(), self.master_paths[index].clone());
+        let rebuilt = Self::from_font(
+            self.masters[index].clone(),
+            self.master_paths[index].clone(),
+        );
         self.font = rebuilt.font;
         self.glyphs = rebuilt.glyphs;
         self.units_per_em = rebuilt.units_per_em;
@@ -351,9 +395,11 @@ impl FontModel {
         let make = || {
             let mut glyph = norad::Glyph::new(name);
             glyph.width = default_advance;
-            let codepoint = unicode
-                .and_then(char::from_u32)
-                .or_else(|| (name.chars().count() == 1).then(|| name.chars().next()).flatten());
+            let codepoint = unicode.and_then(char::from_u32).or_else(|| {
+                (name.chars().count() == 1)
+                    .then(|| name.chars().next())
+                    .flatten()
+            });
             if let Some(c) = codepoint {
                 glyph.codepoints = norad::Codepoints::new([c]);
             }
@@ -398,13 +444,13 @@ impl FontModel {
     /// build.
     pub fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
         let renamed = Arc::get_mut(&mut self.font)
-            .map(|font| runebender_core::glyph_ops::rename_glyph(font, old, new))
+            .map(|font| runebender_core::document::font_ops::rename_glyph(font, old, new))
             .unwrap_or(false);
         if !renamed {
             return false;
         }
         for master in &mut self.masters {
-            runebender_core::glyph_ops::rename_glyph(master, old, new);
+            runebender_core::document::font_ops::rename_glyph(master, old, new);
         }
         // Only names changed, so the metrics stand; rebuild the glyph
         // cache and keep everything that describes the family.
@@ -455,7 +501,7 @@ impl FontModel {
         // Master locations are stored in design coords; the target arrives in
         // user coords. Both normalize against the design-space extents so
         // avar-mapped axes interpolate correctly.
-        use runebender_core::var_model::normalize_value;
+        use runebender_core::document::var_model::normalize_value;
         let norm_design = |loc: &std::collections::HashMap<String, f64>| -> std::collections::HashMap<String, f64> {
             self.axes.iter().map(|ax| {
                 let dmin = ax.user_to_design(ax.min);
@@ -465,10 +511,14 @@ impl FontModel {
                 (ax.name.clone(), normalize_value(v, dmin, ddef, dmax))
             }).collect()
         };
-        let target_design: std::collections::HashMap<String, f64> = self.axes.iter().map(|ax| {
-            let v = location.get(&ax.name).copied().unwrap_or(ax.default);
-            (ax.name.clone(), ax.user_to_design(v))
-        }).collect();
+        let target_design: std::collections::HashMap<String, f64> = self
+            .axes
+            .iter()
+            .map(|ax| {
+                let v = location.get(&ax.name).copied().unwrap_or(ax.default);
+                (ax.name.clone(), ax.user_to_design(v))
+            })
+            .collect();
         let locations: Vec<_> = self.master_locations.iter().map(&norm_design).collect();
         let target = norm_design(&target_design);
         self.interpolate_outline_depth(glyph_name, &locations, &target, 0)
@@ -481,7 +531,7 @@ impl FontModel {
         target: &std::collections::HashMap<String, f64>,
         depth: u8,
     ) -> Option<BezPath> {
-        use runebender_core::var_model::VariationModel;
+        use runebender_core::document::var_model::VariationModel;
         if depth > 8 {
             return None;
         }
@@ -535,7 +585,12 @@ impl FontModel {
             if let Some(base) =
                 self.interpolate_outline_depth(&comp.base, locations, target, depth + 1)
             {
-                path.extend((glyph_paths::component_affine(&xform) * base).elements().iter().copied());
+                path.extend(
+                    (glyph_paths::component_affine(&xform) * base)
+                        .elements()
+                        .iter()
+                        .copied(),
+                );
             }
         }
         Some(path)
@@ -575,14 +630,22 @@ impl FontModel {
             .iter()
             .map(|n| {
                 let short = n[cut.min(n.len())..].trim();
-                if short.is_empty() { n.clone() } else { short.to_string() }
+                if short.is_empty() {
+                    n.clone()
+                } else {
+                    short.to_string()
+                }
             })
             .collect()
     }
 
     /// Outlines of `glyph_name` in the masters listed in `which`, for the
     /// ghost overlay. The inspector's Layers section owns that set.
-    pub fn reference_outlines(&self, glyph_name: &str, which: &std::collections::HashSet<usize>) -> Vec<BezPath> {
+    pub fn reference_outlines(
+        &self,
+        glyph_name: &str,
+        which: &std::collections::HashSet<usize>,
+    ) -> Vec<BezPath> {
         self.masters
             .iter()
             .enumerate()
@@ -675,7 +738,7 @@ impl FontModel {
     ///
     /// `first_side` is the left side in left-to-right text: `public.kern1`.
     pub fn kern_group(&self, glyph: &str, first_side: bool) -> String {
-        runebender_core::glyph_ops::kern_group(&self.font, glyph, first_side)
+        runebender_core::document::font_ops::kern_group(&self.font, glyph, first_side)
             .map(|name| name.to_string())
             .unwrap_or_default()
     }
@@ -688,10 +751,11 @@ impl FontModel {
     pub fn set_kern_group(&mut self, glyph: &str, first_side: bool, group: &str) -> bool {
         let mut changed = false;
         if let Some(font) = Arc::get_mut(&mut self.font) {
-            changed |= runebender_core::glyph_ops::set_kern_group(font, glyph, first_side, group);
+            changed |=
+                runebender_core::document::font_ops::set_kern_group(font, glyph, first_side, group);
         }
         for master in &mut self.masters {
-            runebender_core::glyph_ops::set_kern_group(master, glyph, first_side, group);
+            runebender_core::document::font_ops::set_kern_group(master, glyph, first_side, group);
         }
         changed
     }
@@ -754,9 +818,7 @@ impl FontModel {
     pub fn info_rows(&self) -> Vec<(&'static str, String)> {
         let info = &self.font.font_info;
         let text = |value: &Option<String>| value.clone().unwrap_or_default();
-        let number = |value: Option<f64>| {
-            value.map(|v| format!("{v:.0}")).unwrap_or_default()
-        };
+        let number = |value: Option<f64>| value.map(|v| format!("{v:.0}")).unwrap_or_default();
         vec![
             ("Family Name", text(&info.family_name)),
             ("Style Name", text(&info.style_name)),
@@ -766,12 +828,30 @@ impl FontModel {
             ("Descender", number(info.descender)),
             ("x-Height", number(info.x_height)),
             ("Cap Height", number(info.cap_height)),
-            ("typoAsc", number(info.open_type_os2_typo_ascender.map(f64::from))),
-            ("typoDesc", number(info.open_type_os2_typo_descender.map(f64::from))),
-            ("hheaAsc", number(info.open_type_hhea_ascender.map(f64::from))),
-            ("hheaDesc", number(info.open_type_hhea_descender.map(f64::from))),
-            ("winAsc", number(info.open_type_os2_win_ascent.map(f64::from))),
-            ("winDesc", number(info.open_type_os2_win_descent.map(f64::from))),
+            (
+                "typoAsc",
+                number(info.open_type_os2_typo_ascender.map(f64::from)),
+            ),
+            (
+                "typoDesc",
+                number(info.open_type_os2_typo_descender.map(f64::from)),
+            ),
+            (
+                "hheaAsc",
+                number(info.open_type_hhea_ascender.map(f64::from)),
+            ),
+            (
+                "hheaDesc",
+                number(info.open_type_hhea_descender.map(f64::from)),
+            ),
+            (
+                "winAsc",
+                number(info.open_type_os2_win_ascent.map(f64::from)),
+            ),
+            (
+                "winDesc",
+                number(info.open_type_os2_win_descent.map(f64::from)),
+            ),
         ]
     }
 
@@ -809,7 +889,10 @@ impl FontModel {
         let codepoints: Vec<char> = if trimmed.is_empty() {
             Vec::new()
         } else {
-            match u32::from_str_radix(trimmed, 16).ok().and_then(char::from_u32) {
+            match u32::from_str_radix(trimmed, 16)
+                .ok()
+                .and_then(char::from_u32)
+            {
                 Some(c) => vec![c],
                 // Not a hex codepoint yet. Typing "004" on the way to
                 // "0041" should not clear the glyph's encoding.
@@ -839,7 +922,8 @@ impl FontModel {
             return;
         };
         // Update the font's copy so component references and saving stay correct.
-        if let Some(slot) = Arc::get_mut(&mut self.font).and_then(|f| f.get_glyph_mut(&entry.name)) {
+        if let Some(slot) = Arc::get_mut(&mut self.font).and_then(|f| f.get_glyph_mut(&entry.name))
+        {
             *slot = glyph.clone();
         }
         let outline = glyph_paths::glyph_to_bezpath(&glyph, &self.font);

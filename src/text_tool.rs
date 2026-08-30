@@ -5,7 +5,7 @@
 //!
 //! Spacing and kerning are judged in words, not on one glyph at a time,
 //! so a font editor needs a place to type. The engine is
-//! `runebender_core::text`, the same one the web and GPUI builds use:
+//! `runebender_core::text::buffer`, the same one the web and GPUI builds use:
 //! it owns the buffer, the shaping, the bidi runs, the kerning, the
 //! caret, and the hit testing. What lives here is the part that is
 //! specific to this editor: keeping the buffer fed with the current
@@ -15,7 +15,9 @@
 use std::sync::Arc;
 
 use masonry::kurbo::{Affine, BezPath, Point};
-use runebender_core::text::{TextBuffer, TextDirection, TextGlyphInventory, TextKerningModel};
+use runebender_core::text::buffer::{
+    TextBuffer, TextDirection, TextGlyphInventory, TextKerningModel,
+};
 
 use crate::model::FontModel;
 
@@ -121,8 +123,8 @@ impl TextState {
         self.buffer.set_kerning_model(inputs.kerning.clone());
         let direction_changed = match inputs.direction {
             Some(direction) => {
-                let changed = self.buffer.direction_is_auto()
-                    || self.buffer.direction() != direction;
+                let changed =
+                    self.buffer.direction_is_auto() || self.buffer.direction() != direction;
                 self.buffer.set_direction(direction);
                 changed
             }
@@ -205,13 +207,8 @@ impl TextState {
         let hit = self
             .buffer
             .hit_test(at.x, at.y, self.line_height, self.ascender, self.descender);
-        self.buffer.place_cursor_at(
-            at.x,
-            at.y,
-            self.line_height,
-            self.ascender,
-            self.descender,
-        );
+        self.buffer
+            .place_cursor_at(at.x, at.y, self.line_height, self.ascender, self.descender);
         hit.active_sort
     }
 
