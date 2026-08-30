@@ -6,7 +6,9 @@
 //! behavior), `com.glyphsapp.component.alignment` (component
 //! anchor alignment), and `com.runebender.*`.
 fn main() {
-    let path = std::env::args().nth(1).expect("usage: normalize <font.ufo>");
+    let path = std::env::args()
+        .nth(1)
+        .expect("usage: normalize <font.ufo>");
     let mut font = norad::Font::load(&path).expect("load");
 
     let stripped: Vec<String> = font
@@ -21,14 +23,12 @@ fn main() {
     println!("{path}: {} font lib keys stripped", stripped.len());
 
     let mut glyph_keys = 0;
-    let layer_names: Vec<norad::Name> =
-        font.layers.iter().map(|l| l.name().clone()).collect();
+    let layer_names: Vec<norad::Name> = font.layers.iter().map(|l| l.name().clone()).collect();
     for layer_name in layer_names {
         let Some(layer) = font.layers.get_mut(&layer_name) else {
             continue;
         };
-        let names: Vec<norad::Name> =
-            layer.iter().map(|g| g.name().clone()).collect();
+        let names: Vec<norad::Name> = layer.iter().map(|g| g.name().clone()).collect();
         for name in names {
             let Some(glyph) = layer.get_glyph_mut(&name) else {
                 continue;
