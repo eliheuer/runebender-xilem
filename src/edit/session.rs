@@ -1,15 +1,18 @@
 // Copyright 2026 the Runebender Xix Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! An edit session: one glyph, its selection, viewport, and undo stack.
+//! Edit sessions: one glyph, its selection, viewport, and undo stack,
+//! and the tabs that hold them: opening a glyph, parking and resuming,
+//! switching masters, and the axis location.
 //!
 //! The session works on a `norad::Glyph` directly so every operation in
 //! `runebender_core::outline::glyph_ops` and `point_ops` applies without conversion.
 //! The editor island owns the session; the app receives copies of the glyph.
 
+use crate::*;
 use std::collections::{HashMap, HashSet};
 
-use masonry::kurbo::{self as kurbo, BezPath, Point, Rect, Shape};
+use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};
 use runebender_core::outline::glyph_ops::{self, GlyphSnapshot, PointId};
 use runebender_core::outline::glyph_paths;
 use runebender_core::outline::point_ops;
@@ -20,7 +23,6 @@ use runebender_core::ui::editing::viewport::ViewPort;
 /// Boolean operation kinds, mapped to `linesweeper::BinaryOp` internally.
 #[derive(Clone, Copy)]
 pub enum BoolOp {
-    Union,
     Subtract,
     Intersect,
     Exclude,
@@ -154,16 +156,6 @@ impl Session {
         glyph_paths::contours_to_bezpath(&self.glyph)
     }
 
-    pub fn ink(&self) -> Option<Rect> {
-        let mut path = self.outline();
-        path.extend(self.components.iter());
-        if path.elements().is_empty() {
-            None
-        } else {
-            Some(path.bounding_box())
-        }
-    }
-
     pub fn points(&self) -> Vec<PointView> {
         let mut out = Vec::new();
         for (ci, contour) in self.glyph.contours.iter().enumerate() {
@@ -183,14 +175,6 @@ impl Session {
 
     pub fn point_count(&self) -> usize {
         self.glyph.contours.iter().map(|c| c.points.len()).sum()
-    }
-
-    pub fn can_undo(&self) -> bool {
-        self.undo.can_undo()
-    }
-
-    pub fn can_redo(&self) -> bool {
-        self.undo.can_redo()
     }
 
     // ---- edits ----
@@ -300,11 +284,6 @@ impl Session {
         changed
     }
 
-    /// The last committed on-curve point in the pen buffer, in design space.
-    pub fn pen_last_point(&self) -> Option<Point> {
-        self.pen.iter().rev().find(|p| !p.off).map(|p| p.point)
-    }
-
     /// The first point of the pen buffer, in design space.
     pub fn pen_first_point(&self) -> Option<Point> {
         self.pen.first().map(|p| p.point)
@@ -397,32 +376,30 @@ impl Session {
 
     /// Close the active contour.
     pub fn pen_close(&mut self) {
-        if let Some(c) = self.active_contour.take() {
-            if let Some(contour) = self.glyph.contours.get_mut(c) {
-                if contour.points.first().map(|p| p.typ) == Some(norad::PointType::Move)
-                    && contour.points.len() > 1
-                {
-                    let first = contour.points.remove(0);
-                    let typ = if contour
-                        .points
-                        .last()
-                        .map(|p| p.typ == norad::PointType::OffCurve)
-                        .unwrap_or(false)
-                    {
-                        norad::PointType::Curve
-                    } else {
-                        norad::PointType::Line
-                    };
-                    contour.points.push(norad::ContourPoint::new(
-                        first.x,
-                        first.y,
-                        typ,
-                        first.smooth,
-                        None,
-                        None,
-                    ));
-                }
-            }
+        if let Some(c) = self.active_contour.take()
+            && let Some(contour) = self.glyph.contours.get_mut(c)
+            && contour.points.first().map(|p| p.typ) == Some(norad::PointType::Move)
+            && contour.points.len() > 1
+        {
+            let first = contour.points.remove(0);
+            let typ = if contour
+                .points
+                .last()
+                .map(|p| p.typ == norad::PointType::OffCurve)
+                .unwrap_or(false)
+            {
+                norad::PointType::Curve
+            } else {
+                norad::PointType::Line
+            };
+            contour.points.push(norad::ContourPoint::new(
+                first.x,
+                first.y,
+                typ,
+                first.smooth,
+                None,
+                None,
+            ));
         }
         self.pen.clear();
     }
@@ -459,12 +436,6 @@ impl Session {
     pub fn first_contour_point(&self) -> Option<Point> {
         let c = self.active_contour?;
         let p = self.glyph.contours.get(c)?.points.first()?;
-        Some(Point::new(p.x, p.y))
-    }
-
-    pub fn last_contour_point(&self) -> Option<Point> {
-        let c = self.active_contour?;
-        let p = self.glyph.contours.get(c)?.points.last()?;
         Some(Point::new(p.x, p.y))
     }
 
@@ -550,9 +521,7 @@ impl Session {
             return false;
         }
         self.record(EditType::Normal);
-        self.glyph
-            .contours
-            .extend(self.component_contours.drain(..));
+        self.glyph.contours.append(&mut self.component_contours);
         self.glyph.components.clear();
         self.components = kurbo::BezPath::new();
         true
@@ -560,7 +529,6 @@ impl Session {
 
     pub fn boolean(&mut self, op: BoolOp) -> bool {
         let op = match op {
-            BoolOp::Union => linesweeper::BinaryOp::Union,
             BoolOp::Subtract => linesweeper::BinaryOp::Difference,
             BoolOp::Intersect => linesweeper::BinaryOp::Intersection,
             BoolOp::Exclude => linesweeper::BinaryOp::Xor,
@@ -750,10 +718,6 @@ impl Session {
         }
     }
 
-    pub fn anchor_point(&self, idx: usize) -> Option<Point> {
-        self.glyph.anchors.get(idx).map(|a| Point::new(a.x, a.y))
-    }
-
     /// Continuity of every on-curve node: corner, kink, G1, G2, G3.
     pub fn continuity(&self) -> Vec<runebender_core::analysis::curve::NodeContinuity> {
         let cubics = runebender_core::analysis::curve::cubics_from_norad(&self.glyph);
@@ -838,6 +802,220 @@ fn resolve_components(font: &norad::Font, glyph: &norad::Glyph) -> Vec<norad::Co
         }
     }
     work.contours.split_off(before)
+}
+
+impl Workspace {
+    /// The OKLCH themes in menu order (matches runebender-gpui).
+    pub(crate) const THEMES: [&'static str; 4] = ["dark", "midnight", "gray", "light"];
+
+    /// Write the live session back into its tab, so switching away from
+    /// it does not lose the edit, the selection, or the undo stack.
+    pub(crate) fn park(&mut self) {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            tab.session = self.session.clone();
+            tab.tool = self.tool;
+        }
+    }
+
+    /// Make a tab the live one.
+    pub(crate) fn activate_tab(&mut self, index: usize) {
+        let Some(tab) = self.tabs.get(index) else {
+            return;
+        };
+        let (session, tool) = (tab.session.clone(), tab.tool);
+        self.park();
+        self.active_tab = index;
+        self.session = session;
+        self.tool = tool;
+        let name = self.session.glyph_name.clone();
+        if let Some(glyph) = self.font.index_of(&name) {
+            self.selected = Some(glyph);
+            self.mode = Mode::Editor(glyph);
+        }
+        self.selected_points = 0;
+        self.refresh_metric_bufs();
+        self.refresh_coord_bufs();
+        self.name_buf = name;
+        self.unicode_buf = self
+            .selected
+            .and_then(|i| self.font.glyphs.get(i))
+            .and_then(|g| g.codepoint)
+            .map(|c| format!("{:04X}", c as u32))
+            .unwrap_or_default();
+    }
+
+    /// A second tab on the glyph that is open, with its own session.
+    pub(crate) fn new_tab(&mut self) {
+        let Some(session) = Session::new(&self.font.font, &self.session.glyph_name) else {
+            return;
+        };
+        self.park();
+        self.tabs.push(Tab {
+            session: Arc::new(session),
+            tool: self.tool,
+        });
+        self.activate_tab(self.tabs.len() - 1);
+    }
+
+    /// Close a tab. Closing the last one leaves the editor.
+    pub(crate) fn close_tab(&mut self, index: usize) {
+        if index >= self.tabs.len() {
+            return;
+        }
+        if self.tabs.len() == 1 {
+            self.back_to_overview();
+            return;
+        }
+        self.park();
+        self.tabs.remove(index);
+        let next = if self.active_tab > index {
+            self.active_tab - 1
+        } else {
+            self.active_tab.min(self.tabs.len() - 1)
+        };
+        self.active_tab = usize::MAX; // parking again would write to the wrong tab
+        self.activate_tab(next);
+    }
+
+    pub(crate) fn open_glyph(&mut self, index: usize) {
+        // A glyph that already has a tab gets that tab, rather than a
+        // second one on the same glyph.
+        if let Some(entry) = self.font.glyphs.get(index) {
+            let name = entry.name.clone();
+            if let Some(existing) = self
+                .tabs
+                .iter()
+                .position(|tab| tab.session.glyph_name == name)
+            {
+                self.activate_tab(existing);
+                return;
+            }
+        }
+        if let Some(entry) = self.font.glyphs.get(index)
+            && let Some(session) = Session::new(&self.font.font, &entry.name)
+        {
+            self.advance_buf = format!("{}", session.advance() as i64);
+            let (l, r) = metric_bufs(&session);
+            self.lsb_buf = l;
+            self.rsb_buf = r;
+            self.name_buf = entry.name.clone();
+            self.unicode_buf = entry
+                .codepoint
+                .map(|c| format!("{:04X}", c as u32))
+                .unwrap_or_default();
+            self.session = Arc::new(session);
+            if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                tab.session = self.session.clone();
+            } else {
+                self.tabs.push(Tab {
+                    session: self.session.clone(),
+                    tool: self.tool,
+                });
+                self.active_tab = self.tabs.len() - 1;
+            }
+            self.selected = Some(index);
+            self.selected_points = 0;
+            self.mode = Mode::Editor(index);
+        }
+    }
+
+    /// After an edit, pull the glyph back out of the session and refresh
+    /// the model + grid cache so the overview preview matches.
+    /// Replace the app's session with the island's live one (called on every
+    /// editor event so save/preview see interactive edits).
+    pub(crate) fn sync_session_from(&mut self, session: &Session) {
+        self.session = Arc::new(session.clone());
+        // Keep the panel's advance field in step after canvas edits
+        // (sidebearing/advance drags). This path is never hit by typing in
+        // the field, so it does not clobber input.
+        self.refresh_metric_bufs();
+        self.selected_points = self.session.selection.len();
+    }
+
+    pub(crate) fn set_master(&mut self, index: usize) {
+        if index == self.font.active {
+            return;
+        }
+        self.font.set_active(index);
+        self.axis_values = self.font.master_axis_values(index);
+        self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        // Reopen the current glyph in the new master, keeping the viewport.
+        if let Mode::Editor(i) = self.mode {
+            if let Some(entry) = self.font.glyphs.get(i) {
+                if let Some(sess) = Session::new(&self.font.font, &entry.name) {
+                    self.session = Arc::new(sess);
+                }
+            } else if let Some(idx) = self
+                .selected
+                .and_then(|_| self.font.index_of(&self.session.glyph_name))
+            {
+                self.mode = Mode::Editor(idx);
+                if let Some(sess) = Session::new(&self.font.font, &self.session.glyph_name.clone())
+                {
+                    self.session = Arc::new(sess);
+                }
+            }
+        }
+    }
+
+    /// The current axis location as a name->value map (user units).
+    pub(crate) fn axis_location(&self) -> std::collections::HashMap<String, f64> {
+        self.font
+            .axes
+            .iter()
+            .zip(&self.axis_values)
+            .map(|(a, v)| (a.name.clone(), *v))
+            .collect()
+    }
+
+    /// True when the sliders sit exactly on the active master's location.
+    pub(crate) fn on_active_master(&self) -> bool {
+        match self.font.master_locations.get(self.font.active) {
+            Some(m) => self.font.axes.iter().enumerate().all(|(i, a)| {
+                // axis_values are user coords; master locations are design coords.
+                let cur = a.user_to_design(self.axis_values.get(i).copied().unwrap_or(a.default));
+                let mst = m
+                    .get(&a.name)
+                    .copied()
+                    .unwrap_or_else(|| a.user_to_design(a.default));
+                (cur - mst).abs() < 1e-6
+            }),
+            None => true,
+        }
+    }
+
+    /// The interpolated instance outline at the current axis location, shown as
+    /// a read-only overlay. `None` on a master (the editable outline is enough)
+    /// or when the glyph is not interpolatable.
+    pub(crate) fn interp_preview(&self) -> Option<Arc<masonry::kurbo::BezPath>> {
+        if self.on_active_master() {
+            return None;
+        }
+        self.font
+            .interpolate_outline(&self.session.glyph_name, &self.axis_location())
+            .map(Arc::new)
+    }
+
+    pub(crate) fn set_axis(&mut self, index: usize, value: f64) {
+        if let Some(v) = self.axis_values.get_mut(index) {
+            *v = value;
+        }
+    }
+
+    pub(crate) fn refresh_open_glyph(&mut self) {
+        if let Mode::Editor(index) = self.mode {
+            let glyph = self.session.glyph.clone();
+            self.font.replace_glyph(index, glyph);
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+            self.modified = true;
+            self.note.clear();
+        }
+    }
+
+    pub(crate) fn back_to_overview(&mut self) {
+        self.refresh_open_glyph();
+        self.mode = Mode::Overview;
+    }
 }
 
 #[cfg(test)]

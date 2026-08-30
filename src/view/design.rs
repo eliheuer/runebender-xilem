@@ -22,7 +22,6 @@
 use masonry::layout::{Dim, Length};
 use masonry::properties::types::CrossAxisAlignment;
 use masonry::properties::{Gap, Padding};
-use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::{Flex, FlexSequence, Prop, flex_col, flex_row};
 
@@ -70,7 +69,7 @@ impl Space {
 
 /// The control-height scale: how tall an interactive thing is.
 ///
-/// Named `ControlSize`, not `Size`, because [`kurbo::Size`](crate::kurbo::Size)
+/// Named `ControlSize`, not `Size`, because [`masonry::kurbo::Size`]
 /// is everywhere in this stack and a clash there is worse than a longer
 /// name here.
 ///
@@ -264,10 +263,6 @@ impl From<TextSize> for f32 {
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Region {
-    /// The window's own content area, around everything else.
-    Window,
-    /// A dialog or a sheet: the most generous thing on screen.
-    Dialog,
     /// A panel, sidebar, or inspector. The default for a pane of content.
     #[default]
     Panel,
@@ -289,8 +284,6 @@ impl Region {
     /// The space between children of this region.
     pub const fn gap(self) -> Space {
         match self {
-            Self::Window => Space::Xl,
-            Self::Dialog => Space::Lg,
             Self::Panel => Space::Lg,
             Self::Section => Space::Md,
             Self::Card => Space::Sm,
@@ -309,44 +302,11 @@ impl Region {
     /// margin conversation.
     pub const fn inset(self) -> Space {
         match self {
-            Self::Window => Space::Xl,
-            Self::Dialog => Space::Xl,
             Self::Panel => Space::Lg,
             Self::Section => Space::None,
             Self::Card => Space::Md,
             Self::Toolbar => Space::Md,
             Self::Form | Self::Inline | Self::List => Space::None,
-        }
-    }
-
-    /// Whether this region paints a surface of its own.
-    ///
-    /// A painted region owns an inset and a corner. An unpainted one is
-    /// pure grouping.
-    pub const fn is_surface(self) -> bool {
-        matches!(
-            self,
-            Self::Window | Self::Dialog | Self::Panel | Self::Card | Self::Toolbar
-        )
-    }
-
-    /// How loose this region is, from the window inward.
-    ///
-    /// The order is not a taste ranking: it is which regions can contain
-    /// which, and the test below holds it to the gaps. Getting this wrong
-    /// is what the invariant catches. The first version of this table put
-    /// a toolbar inside a card, and the test said so.
-    pub const fn rank(self) -> u8 {
-        match self {
-            Self::Window => 0,
-            Self::Dialog => 1,
-            Self::Panel => 2,
-            Self::Toolbar => 3,
-            Self::Section => 4,
-            Self::Form => 5,
-            Self::Card => 6,
-            Self::Inline => 7,
-            Self::List => 8,
         }
     }
 }
@@ -365,7 +325,7 @@ impl From<Space> for Gap {
     }
 }
 
-/// What [`column`] and [`row`] return: a flex container with its gap and
+/// What [`column()`] and [`row()`] return: a flex container with its gap and
 /// inset already set from its [`Region`]. Named rather than hidden behind
 /// `impl WidgetView` so the result stays styleable.
 pub type RegionStack<Seq, State, Action> =

@@ -160,12 +160,6 @@ impl TextState {
         inserted
     }
 
-    /// Insert a named glyph, for typing something with no codepoint.
-    pub fn insert_glyph(&mut self, name: &str, advance: f64, codepoint: Option<char>) {
-        self.buffer.insert_glyph(name, codepoint, advance);
-        self.buffer.shape_arabic_if_rtl();
-    }
-
     /// Every sort to draw, as a path already placed on the line.
     ///
     /// Absorbed sorts (a character folded into a ligature drawn by an
@@ -186,7 +180,6 @@ impl TextState {
                 let outline = self.outline(name)?;
                 let placed = Affine::translate((item.x, item.y)) * (**outline).clone();
                 Some(PlacedSort {
-                    index: item.index,
                     path: placed,
                     origin: Point::new(item.x, item.y),
                     advance: item.advance_width,
@@ -225,7 +218,6 @@ impl TextState {
 
 /// One sort, ready to draw.
 pub struct PlacedSort {
-    pub index: usize,
     pub path: BezPath,
     pub origin: Point,
     pub advance: f64,

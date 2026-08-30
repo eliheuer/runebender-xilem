@@ -25,8 +25,8 @@
 //! with Masonry's layer system. That split is most of why this is not
 //! simply a pull request against Xilem.
 
-use crate::shortcuts::AppAction;
-use crate::{App, Tool};
+use crate::widgets::shortcuts::AppAction;
+use crate::{Tool, Workspace};
 
 /// One row of the application's action table.
 ///
@@ -174,7 +174,7 @@ mod platform {
     use muda::{Menu, MenuId, MenuItem, Submenu};
 
     use super::{ACTIONS, MENUS};
-    use crate::shortcuts::AppAction;
+    use crate::widgets::shortcuts::AppAction;
 
     thread_local! {
         /// The menu is built once and held for the life of the process:
@@ -221,7 +221,7 @@ mod platform {
         }
         // On macOS the bar belongs to the application, not to a window,
         // so this needs no window handle. Xilem does not hand one out.
-        let _ = bar.init_for_nsapp();
+        bar.init_for_nsapp();
         MENU.with(|slot| *slot.borrow_mut() = Some(bar));
         let _ = IDS.set(ids);
     }
@@ -245,7 +245,7 @@ mod platform {
 
 #[cfg(not(target_os = "macos"))]
 mod platform {
-    use crate::shortcuts::AppAction;
+    use crate::widgets::shortcuts::AppAction;
 
     /// Not yet: muda's menu bar needs a GTK window on Linux and an HWND
     /// on Windows, and Xilem hands out neither. Those platforms want an
@@ -265,16 +265,16 @@ pub use platform::install;
 /// Menu events do not travel through winit's event loop, so without this
 /// they never reach the widget tree at all. The pump produces no widget,
 /// which is why it is forked alongside the tree rather than placed in it.
-pub fn with_menu_events<V: xilem::WidgetView<App>>(
+pub fn with_menu_events<V: xilem::WidgetView<Workspace>>(
     view: V,
-) -> impl xilem::WidgetView<App> + use<V> {
+) -> impl xilem::WidgetView<Workspace> + use<V> {
     use xilem::core::fork;
     use xilem::view::task;
 
     fork(
         view,
         task(
-            |proxy: xilem::core::MessageProxy<muda::MenuId>, _: &mut App| async move {
+            |proxy: xilem::core::MessageProxy<muda::MenuId>, _: &mut Workspace| async move {
                 let channel = muda::MenuEvent::receiver();
                 loop {
                     // Polled, never blocked. `recv()` is a synchronous call:
@@ -297,7 +297,7 @@ pub fn with_menu_events<V: xilem::WidgetView<App>>(
                     }
                 }
             },
-            |app: &mut App, id: muda::MenuId| {
+            |app: &mut Workspace, id: muda::MenuId| {
                 if let Some(action) = platform::action_for(&id) {
                     app.dispatch(action);
                 }

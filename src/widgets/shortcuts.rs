@@ -24,9 +24,9 @@ use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx, WidgetView};
 
-use crate::{App, Tool};
+use crate::{Tool, Workspace};
 
-/// App-level actions a shortcut (or, later, a menu item) can fire.
+/// Workspace-level actions a shortcut (or, later, a menu item) can fire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppAction {
     Save,
@@ -158,19 +158,19 @@ pub struct ShortcutHostView<V> {
     inner: V,
 }
 
-pub fn shortcut_host<V: WidgetView<App>>(inner: V) -> ShortcutHostView<V> {
+pub fn shortcut_host<V: WidgetView<Workspace>>(inner: V) -> ShortcutHostView<V> {
     ShortcutHostView { inner }
 }
 
 impl<V> ViewMarker for ShortcutHostView<V> {}
-impl<V> View<App, (), ViewCtx> for ShortcutHostView<V>
+impl<V> View<Workspace, (), ViewCtx> for ShortcutHostView<V>
 where
-    V: WidgetView<App>,
+    V: WidgetView<Workspace>,
 {
     type Element = Pod<ShortcutHost>;
     type ViewState = V::ViewState;
 
-    fn build(&self, ctx: &mut ViewCtx, app: &mut App) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, app: &mut Workspace) -> (Self::Element, Self::ViewState) {
         let (child, child_state) = self.inner.build(ctx, app);
         let widget = ShortcutHost::new(child.new_widget);
         let pod = ctx.with_action_widget(|ctx| ctx.create_pod(widget));
@@ -183,7 +183,7 @@ where
         view_state: &mut Self::ViewState,
         ctx: &mut ViewCtx,
         mut element: Mut<'_, Self::Element>,
-        app: &mut App,
+        app: &mut Workspace,
     ) {
         let mut child = ShortcutHost::child_mut(&mut element);
         self.inner
@@ -205,7 +205,7 @@ where
         view_state: &mut Self::ViewState,
         message: &mut MessageCtx,
         mut element: Mut<'_, Self::Element>,
-        app: &mut App,
+        app: &mut Workspace,
     ) -> MessageResult<()> {
         if message.remaining_path().is_empty() {
             return match message.take_message::<AppAction>() {

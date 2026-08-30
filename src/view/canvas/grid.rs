@@ -21,10 +21,10 @@ use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::design::Radius;
 use crate::model::FontModel;
-use crate::text_label::{self, Anchor};
-use crate::theme::Palette;
+use crate::view::design::Radius;
+use crate::view::theme::Palette;
+use crate::widgets::text_label::{self, Anchor};
 
 const GAP: f64 = 8.0;
 const PAD: f64 = 12.0;
@@ -94,7 +94,6 @@ pub struct Cell {
     pub name: Arc<str>,
     pub codepoint: Option<char>,
     pub outline: Arc<masonry::kurbo::BezPath>,
-    pub ink: Rect,
     pub advance: f64,
     pub mark: Option<Color>,
 }
@@ -126,7 +125,6 @@ pub fn cells_of(font: &FontModel, palette: &Palette) -> Vec<Cell> {
             name: Arc::from(g.name.as_str()),
             codepoint: g.codepoint,
             outline: g.outline.clone(),
-            ink: g.ink,
             advance: g.advance,
             mark: g.mark.as_deref().and_then(|m| palette.mark(m)),
         })
@@ -494,7 +492,7 @@ pub struct GridView<F> {
     on_event: F,
 }
 
-pub fn grid<F, App: 'static>(
+pub fn grid<F, Workspace: 'static>(
     cells: Arc<Vec<Cell>>,
     metrics: CellMetrics,
     palette: Arc<Palette>,
@@ -503,7 +501,7 @@ pub fn grid<F, App: 'static>(
     on_event: F,
 ) -> GridView<F>
 where
-    F: Fn(&mut App, GridEvent) + 'static,
+    F: Fn(&mut Workspace, GridEvent) + 'static,
 {
     GridView {
         cells,
@@ -516,14 +514,14 @@ where
 }
 
 impl<F> ViewMarker for GridView<F> {}
-impl<F, App: 'static> View<App, (), ViewCtx> for GridView<F>
+impl<F, Workspace: 'static> View<Workspace, (), ViewCtx> for GridView<F>
 where
-    F: Fn(&mut App, GridEvent) + 'static,
+    F: Fn(&mut Workspace, GridEvent) + 'static,
 {
     type Element = Pod<GridWidget>;
     type ViewState = ();
 
-    fn build(&self, ctx: &mut ViewCtx, _: &mut App) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _: &mut Workspace) -> (Self::Element, Self::ViewState) {
         let widget = GridWidget {
             cells: self.cells.clone(),
             metrics: self.metrics,
@@ -542,7 +540,7 @@ where
         (): &mut Self::ViewState,
         _ctx: &mut ViewCtx,
         mut element: Mut<'_, Self::Element>,
-        _: &mut App,
+        _: &mut Workspace,
     ) {
         let mut changed = false;
         if !Arc::ptr_eq(&self.cells, &prev.cells) {
@@ -570,7 +568,7 @@ where
         (): &mut Self::ViewState,
         message: &mut MessageCtx,
         _element: Mut<'_, Self::Element>,
-        app: &mut App,
+        app: &mut Workspace,
     ) -> MessageResult<()> {
         match message.take_message::<GridEvent>() {
             Some(event) => {

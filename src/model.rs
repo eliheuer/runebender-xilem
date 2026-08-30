@@ -5,6 +5,7 @@
 //! for painting (outline, ink box, advance, mark). One master for now.
 
 use std::path::{Path as FsPath, PathBuf};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use kurbo::{BezPath, Rect};
@@ -95,7 +96,7 @@ pub struct GlyphEntry {
 }
 
 pub struct FontModel {
-    pub font: Arc<norad::Font>,
+    pub font: Rc<norad::Font>,
     pub source: PathBuf,
     pub glyphs: Vec<GlyphEntry>,
     pub units_per_em: f64,
@@ -359,7 +360,7 @@ impl FontModel {
             })
             .collect();
         Self {
-            font: Arc::new(font),
+            font: Rc::new(font),
             source,
             glyphs,
             units_per_em: upm,
@@ -405,7 +406,7 @@ impl FontModel {
             }
             glyph
         };
-        let Some(font) = Arc::get_mut(&mut self.font) else {
+        let Some(font) = Rc::get_mut(&mut self.font) else {
             return false;
         };
         font.default_layer_mut().insert_glyph(make());
@@ -443,7 +444,7 @@ impl FontModel {
     /// designspace whose sources disagree about a glyph name does not
     /// build.
     pub fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
-        let renamed = Arc::get_mut(&mut self.font)
+        let renamed = Rc::get_mut(&mut self.font)
             .map(|font| runebender_core::document::font_ops::rename_glyph(font, old, new))
             .unwrap_or(false);
         if !renamed {
@@ -579,7 +580,7 @@ impl FontModel {
         for comp in &g.components {
             let (dx, dy) = (out[i], out[i + 1]);
             i += 2;
-            let mut xform = comp.transform.clone();
+            let mut xform = comp.transform;
             xform.x_offset = dx;
             xform.y_offset = dy;
             if let Some(base) =
@@ -697,7 +698,7 @@ impl FontModel {
     /// Copy contours into the glyph's background layer, creating the
     /// layer the first time.
     pub fn send_to_background(&mut self, glyph: &str, contours: Vec<norad::Contour>, width: f64) {
-        let Some(font) = Arc::get_mut(&mut self.font) else {
+        let Some(font) = Rc::get_mut(&mut self.font) else {
             return;
         };
         let Ok(layer) = font.layers.get_or_create_layer("public.background") else {
@@ -721,7 +722,7 @@ impl FontModel {
         let Some(layer) = Self::background_layer(&self.font) else {
             return;
         };
-        if let Some(font) = Arc::get_mut(&mut self.font)
+        if let Some(font) = Rc::get_mut(&mut self.font)
             && let Some(layer) = font.layers.get_mut(&layer)
         {
             layer.remove_glyph(glyph);
@@ -750,7 +751,7 @@ impl FontModel {
     /// writes all of them rather than only the active one.
     pub fn set_kern_group(&mut self, glyph: &str, first_side: bool, group: &str) -> bool {
         let mut changed = false;
-        if let Some(font) = Arc::get_mut(&mut self.font) {
+        if let Some(font) = Rc::get_mut(&mut self.font) {
             changed |=
                 runebender_core::document::font_ops::set_kern_group(font, glyph, first_side, group);
         }
@@ -904,7 +905,7 @@ impl FontModel {
                 glyph.codepoints = norad::Codepoints::new(codepoints.iter().copied());
             }
         };
-        if let Some(font) = Arc::get_mut(&mut self.font) {
+        if let Some(font) = Rc::get_mut(&mut self.font) {
             apply(font);
         }
         for master in &mut self.masters {
@@ -922,8 +923,7 @@ impl FontModel {
             return;
         };
         // Update the font's copy so component references and saving stay correct.
-        if let Some(slot) = Arc::get_mut(&mut self.font).and_then(|f| f.get_glyph_mut(&entry.name))
-        {
+        if let Some(slot) = Rc::get_mut(&mut self.font).and_then(|f| f.get_glyph_mut(&entry.name)) {
             *slot = glyph.clone();
         }
         let outline = glyph_paths::glyph_to_bezpath(&glyph, &self.font);
