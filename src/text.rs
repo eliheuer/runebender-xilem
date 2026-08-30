@@ -1,9 +1,19 @@
-//! Text buffer state for the Text tool.
+//! Text buffer behind the editor's Text tool.
 //!
-//! This is the wasm-core counterpart to runebender-xilem's `sort`
-//! buffer. It intentionally starts small: Vue still owns glyph lookup
-//! and preview rendering today, but cursor movement, line breaks, and
-//! active sort selection now have a Rust-side home we can migrate to.
+//! A `TextBuffer` holds a line of sorts, one `TextSort` per typed glyph
+//! or line break, plus a cursor and an optional active sort that the
+//! glyph editor opens. Each line reads left to right or right to left,
+//! either pinned by the toolbar or detected from its first strong
+//! character, and the Unicode Bidirectional Algorithm splits a line
+//! into visual runs so Latin inside Arabic keeps its own order. Sorts
+//! are shaped through the font's own `features.fea` when it compiles,
+//! and through the built-in Arabic joining rules in the `shaping`
+//! module otherwise. Kerning comes from a `TextKerningModel` that
+//! resolves pairs through UFO `kern1` and `kern2` groups, and a manual
+//! kerning drag writes a direct pair value back into that model. The
+//! `layout` and `hit_test` methods place every sort in font units and
+//! map a point back to a cursor position or a sort, which is what the
+//! `runebender` CLI and runebender-gpui draw and click on.
 
 use crate::{model::kerning::lookup_kerning as lookup_xilem_kerning, shaping};
 use serde::{Deserialize, Serialize};
@@ -40,44 +50,62 @@ pub fn strong_direction(char: char) -> Option<TextDirection> {
     None
 }
 
+/// Reading direction of a line or a bidi run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TextDirection {
+    /// Reads left to right, the default.
     #[default]
     LeftToRight,
+    /// Reads right to left, as Arabic and Hebrew do.
     RightToLeft,
 }
 
+/// What a sort holds: a glyph with its metrics, or a line break.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TextSortKind {
+    /// A glyph slot. `name` is the glyph drawn, `codepoint` the character typed, if any, and `advance_width` its width in font units.
     Glyph {
         name: String,
         codepoint: Option<char>,
         advance_width: f64,
     },
+    /// A hard line break. It draws nothing and starts a new line.
     LineBreak,
 }
 
+/// One slot in the buffer: a glyph or a line break, with its editing state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextSort {
+    /// What this sort holds.
     pub kind: TextSortKind,
+    /// True when this is the sort open in the glyph editor. Only one sort is active at a time.
     pub active: bool,
     /// Set by shaping when this character was folded into a ligature
     /// drawn by an earlier sort. See `TextSort::is_absorbed`.
     pub absorbed: bool,
 }
 
+/// Result of `TextBuffer::layout`: every drawn sort placed in font units, plus the caret position.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextLayout {
+    /// One entry per drawn sort. Line breaks and absorbed sorts have no item.
     pub items: Vec<TextLayoutItem>,
+    /// Caret x in font units, at the edge the caret's line reads from when the line is empty.
     pub cursor_x: f64,
+    /// Caret baseline y. Lines go down, so line `n` sits at `-n * line_height`.
     pub cursor_y: f64,
 }
 
+/// Placement of one sort in a layout.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextLayoutItem {
+    /// Index of the sort in the buffer.
     pub index: usize,
+    /// Left edge of the glyph in font units, kerning already applied.
     pub x: f64,
+    /// Baseline y of the glyph's line.
     pub y: f64,
+    /// Advance width of the glyph as placed, after shaping.
     pub advance_width: f64,
 }
 
@@ -125,19 +153,29 @@ fn kern_between(
     }
 }
 
+/// Result of `TextBuffer::hit_test`: where a click lands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TextHit {
+    /// Cursor position the click maps to, as a boundary index between sorts.
     pub cursor: usize,
+    /// The sort whose box contains the point, if any.
     pub active_sort: Option<usize>,
 }
 
+/// Result of `TextBuffer::activate_sort_at`: the sort that was activated and where it sits.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextSortActivation {
+    /// Index of the activated sort in the buffer.
     pub index: usize,
+    /// Left edge of the sort in the layout, in font units.
     pub x: f64,
+    /// Baseline y of the sort's line.
     pub y: f64,
 }
 
+/// Kerning pairs and groups for one master, in UFO terms.
+///
+/// Pairs may name glyphs or `public.kern1` and `public.kern2` groups. Lookup tries the glyph pair first, then falls back through the groups.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize, Serialize)]
 pub struct TextKerningModel {
     #[serde(default)]
@@ -150,6 +188,7 @@ pub struct TextKerningModel {
     kerning: HashMap<String, HashMap<String, f64>>,
 }
 
+/// What the buffer knows about a master's glyphs: codepoint map, advance widths, optional SVG outlines, the feature file, and units per em.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct TextGlyphInventory {
     #[serde(default)]
@@ -262,6 +301,7 @@ struct ManualKerningSession {
 }
 
 impl TextSort {
+    /// Make an inactive glyph sort with the given name, typed character, and advance width.
     pub fn glyph(name: impl Into<String>, codepoint: Option<char>, advance_width: f64) -> Self {
         Self {
             kind: TextSortKind::Glyph {
@@ -274,6 +314,7 @@ impl TextSort {
         }
     }
 
+    /// Make an inactive line-break sort.
     pub fn line_break() -> Self {
         Self {
             kind: TextSortKind::LineBreak,
@@ -290,6 +331,7 @@ impl TextSort {
         self.absorbed
     }
 
+    /// The glyph this sort draws, or `None` for a line break.
     pub fn glyph_name(&self) -> Option<&str> {
         match &self.kind {
             TextSortKind::Glyph { name, .. } => Some(name),
@@ -414,34 +456,42 @@ impl Default for TextBuffer {
 }
 
 impl TextBuffer {
+    /// Make an empty buffer with no glyphs, no kerning, and per-line direction detection on.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Number of sorts in the buffer, line breaks included.
     pub fn len(&self) -> usize {
         self.sorts.len()
     }
 
+    /// True when the buffer holds no sorts.
     pub fn is_empty(&self) -> bool {
         self.sorts.is_empty()
     }
 
+    /// Caret position as a boundary index: `0` is before the first sort, `len()` is after the last.
     pub fn cursor(&self) -> usize {
         self.cursor
     }
 
+    /// Index of the sort open in the glyph editor, if any.
     pub fn active_sort(&self) -> Option<usize> {
         self.active_sort
     }
 
+    /// Index of the sort being dragged in a manual kerning session, or `None` when no drag is in progress.
     pub fn manual_kerning_sort(&self) -> Option<usize> {
         self.manual_kerning.map(|session| session.sort_index)
     }
 
+    /// The sort at `index`, or `None` when the index is out of range.
     pub fn sort(&self, index: usize) -> Option<&TextSort> {
         self.sorts.get(index)
     }
 
+    /// The SVG path data stored for a glyph, or `None` when the inventory has no outline for it.
     pub fn glyph_outline_svg(&self, glyph_name: &str) -> Option<&str> {
         self.glyph_inventory
             .outlines
@@ -449,6 +499,8 @@ impl TextBuffer {
             .map(String::as_str)
     }
 
+    /// Replace the name, codepoint, and advance width of the glyph sort at `index`.
+    /// Returns false when the index is out of range or the sort is a line break.
     pub fn update_glyph(
         &mut self,
         index: usize,
@@ -473,6 +525,7 @@ impl TextBuffer {
         true
     }
 
+    /// The pinned base direction. In auto mode this is only the fallback for lines with no strong character.
     pub fn direction(&self) -> TextDirection {
         self.direction
     }
@@ -526,6 +579,7 @@ impl TextBuffer {
             .count()
     }
 
+    /// Number of lines, which is one more than the number of line breaks.
     pub fn line_count(&self) -> usize {
         1 + self
             .sorts
@@ -542,6 +596,7 @@ impl TextBuffer {
         }
     }
 
+    /// The per-feature shaping overrides set by `set_feature_overrides`, as `(tag, on)` pairs.
     pub fn feature_overrides(&self) -> &[(String, bool)] {
         &self.feature_overrides
     }
@@ -554,6 +609,7 @@ impl TextBuffer {
         self.language_override = language;
     }
 
+    /// The script and language overrides set by `set_shaping_locale`, each `None` when unset.
     pub fn shaping_locale(&self) -> (Option<&str>, Option<&str>) {
         (
             self.script_override.as_deref(),
@@ -561,10 +617,12 @@ impl TextBuffer {
         )
     }
 
+    /// Replace the kerning model. Any manual kerning edits in the old model are lost.
     pub fn set_kerning_model(&mut self, kerning: TextKerningModel) {
         self.kerning = kerning;
     }
 
+    /// The current kerning model, including pairs written by manual kerning.
     pub fn kerning_model(&self) -> &TextKerningModel {
         &self.kerning
     }
@@ -596,20 +654,27 @@ impl TextBuffer {
         self.shaping_font.clear();
     }
 
+    /// Replace the whole glyph inventory, outlines included, and drop the cached shaping font so it is rebuilt on next use.
     pub fn set_glyph_inventory(&mut self, glyph_inventory: TextGlyphInventory) {
         self.glyph_inventory = glyph_inventory;
         // Advances, codepoints and features all feed the shaping font.
         self.shaping_font.clear();
     }
 
+    /// Iterate over the sorts in logical order.
     pub fn iter(&self) -> impl Iterator<Item = &TextSort> {
         self.sorts.iter()
     }
 
+    /// Insert the glyph mapped to `char` at the cursor, using the inventory's advance width.
+    /// Returns false when the inventory has no glyph for the character. See `insert_character_with_active_advance`.
     pub fn insert_character(&mut self, char: char) -> bool {
         self.insert_character_with_active_advance(char, None)
     }
 
+    /// Insert the glyph mapped to `char` at the cursor as an inactive sort and advance the cursor.
+    /// `active_advance_width` is the live width of the glyph being edited and wins over the inventory width, except for Arabic characters on an RTL line, which shaping will resize anyway.
+    /// Reshapes around the insertion point. Returns false when the inventory has no glyph for the character.
     pub fn insert_character_with_active_advance(
         &mut self,
         char: char,
@@ -634,6 +699,8 @@ impl TextBuffer {
     // drawn whether or not it is on screen. At a page of text this is the
     // bulk of a frame. Cache the layout against a buffer revision, and
     // cull sorts outside the viewport before handing them to the scene.
+    /// Place every drawn sort and the caret in font units.
+    /// Lines stack downward by `line_height`; LTR lines start at x `0` and RTL lines share one right edge at the widest line. Kerning and bidi run order are applied. Absorbed sorts and line breaks get no item.
     pub fn layout(&self, line_height: f64) -> TextLayout {
         let mut items = Vec::with_capacity(self.sorts.len());
         let mut cursor_x = 0.0;
@@ -762,6 +829,8 @@ impl TextBuffer {
         }
     }
 
+    /// Place every drawn sort on one visual line at y `0`, for the preview strip.
+    /// Consecutive lines that read the same way run on as one paragraph. Kerning is applied within a run but never across a line break.
     pub fn preview_layout(&self) -> Vec<TextLayoutItem> {
         // The strip is one visual line. Lines that read the same way run
         // on into each other as a single paragraph — an Arabic paragraph
@@ -841,6 +910,8 @@ impl TextBuffer {
             .any(|sort| matches!(sort.kind, TextSortKind::LineBreak))
     }
 
+    /// Find what a point in font units lands on.
+    /// Returns the sort whose box, from `descender` to `ascender` above its baseline, contains the point, with the cursor placed after it. Otherwise returns the nearest cursor boundary on the line under `y` and no sort.
     pub fn hit_test(
         &self,
         x: f64,
@@ -897,6 +968,7 @@ impl TextBuffer {
         }
     }
 
+    /// Remove every sort, reset the cursor, active sort, and manual kerning session, and go back to auto direction. The inventory and kerning model are kept.
     pub fn clear(&mut self) {
         self.sorts.clear();
         self.cursor = 0;
@@ -906,6 +978,8 @@ impl TextBuffer {
         self.auto_direction = true;
     }
 
+    /// Insert a glyph sort at the cursor, make it the active sort, and advance the cursor past it.
+    /// Deactivates the previous active sort and ends any manual kerning session.
     pub fn insert_glyph(
         &mut self,
         name: impl Into<String>,
@@ -926,6 +1000,8 @@ impl TextBuffer {
         self.cursor += 1;
     }
 
+    /// Insert a glyph sort at the cursor without activating it, and advance the cursor past it.
+    /// The active sort index shifts right when it sits at or after the cursor. Ends any manual kerning session.
     pub fn insert_inactive_glyph(
         &mut self,
         name: impl Into<String>,
@@ -935,6 +1011,8 @@ impl TextBuffer {
         self.insert_inactive_glyph_at_cursor(name, codepoint, advance_width);
     }
 
+    /// Insert a line break at the cursor and advance the cursor past it.
+    /// The active sort index shifts right when it sits at or after the cursor. Ends any manual kerning session.
     pub fn insert_line_break(&mut self) {
         self.manual_kerning = None;
         let index = self.cursor;
@@ -947,6 +1025,8 @@ impl TextBuffer {
         }
     }
 
+    /// Backspace: remove the sort before the cursor and move the cursor back.
+    /// Returns the removed sort, or `None` at the start of the buffer. Clears the active sort if it was removed, and ends any manual kerning session.
     pub fn delete_before_cursor(&mut self) -> Option<TextSort> {
         if self.cursor == 0 {
             return None;
@@ -959,6 +1039,8 @@ impl TextBuffer {
         Some(deleted)
     }
 
+    /// Forward delete: remove the sort at the cursor, leaving the cursor in place.
+    /// Returns the removed sort, or `None` at the end of the buffer. Clears the active sort if it was removed, and ends any manual kerning session.
     pub fn delete_after_cursor(&mut self) -> Option<TextSort> {
         if self.cursor >= self.sorts.len() {
             return None;
@@ -969,14 +1051,17 @@ impl TextBuffer {
         Some(deleted)
     }
 
+    /// Move the cursor one sort back in logical order, stopping at `0`.
     pub fn move_cursor_left(&mut self) {
         self.cursor = self.cursor.saturating_sub(1);
     }
 
+    /// Move the cursor one sort forward in logical order, stopping at `len()`.
     pub fn move_cursor_right(&mut self) {
         self.cursor = (self.cursor + 1).min(self.sorts.len());
     }
 
+    /// Move the cursor one sort toward the left of the screen: back on an LTR line, forward on an RTL line.
     pub fn move_cursor_visual_left(&mut self) {
         match self.cursor_direction() {
             TextDirection::LeftToRight => self.move_cursor_left(),
@@ -984,6 +1069,7 @@ impl TextBuffer {
         }
     }
 
+    /// Move the cursor one sort toward the right of the screen: forward on an LTR line, back on an RTL line.
     pub fn move_cursor_visual_right(&mut self) {
         match self.cursor_direction() {
             TextDirection::LeftToRight => self.move_cursor_right(),
@@ -1035,10 +1121,13 @@ impl TextBuffer {
         self.cursor
     }
 
+    /// Move the cursor to a boundary index, clamped to `len()`.
     pub fn set_cursor(&mut self, cursor: usize) {
         self.cursor = cursor.min(self.sorts.len());
     }
 
+    /// Make the sort at `index` the active one and deactivate the previous active sort.
+    /// Returns false, changing nothing, when the index is out of range or the sort is a line break.
     pub fn activate_sort(&mut self, index: usize) -> bool {
         if !matches!(
             self.sorts.get(index).map(|sort| &sort.kind),
@@ -1050,6 +1139,8 @@ impl TextBuffer {
         true
     }
 
+    /// Activate the sort whose box contains the point, using the same hit rules as `hit_test`.
+    /// Returns the activated sort and its layout position, or `None` when no sort is under the point.
     pub fn activate_sort_at(
         &mut self,
         x: f64,
@@ -1068,6 +1159,8 @@ impl TextBuffer {
             })
     }
 
+    /// Start dragging the kerning of the pair that ends at `sort_index`, with the pointer at `start_x`.
+    /// Records the pair's current value as the baseline and activates the sort. Returns false for index `0`, a line break, or an index out of range.
     pub fn begin_manual_kerning(&mut self, sort_index: usize, start_x: f64) -> bool {
         if sort_index == 0
             || !matches!(
@@ -1092,6 +1185,8 @@ impl TextBuffer {
         true
     }
 
+    /// Update the dragged pair from the pointer's new x, rounding the offset to whole units.
+    /// The offset is negated on an RTL line so a rightward drag still closes the gap. Writes the new value into the kerning model and returns it, or `None` when no session is open or the rounded offset did not change.
     pub fn drag_manual_kerning(&mut self, current_x: f64) -> Option<f64> {
         let session = self.manual_kerning?;
         let mut current_offset = (current_x - session.start_x).round();
@@ -1116,6 +1211,7 @@ impl TextBuffer {
         Some(value)
     }
 
+    /// Close the manual kerning session, keeping the value written so far. Returns false when no session was open.
     pub fn end_manual_kerning(&mut self) -> bool {
         self.manual_kerning.take().is_some()
     }
@@ -1288,6 +1384,8 @@ impl TextBuffer {
         changed || absorbed_changed
     }
 
+    /// Shape the whole buffer: through the font's `features.fea` when it compiles, otherwise with the built-in Arabic joining rules on RTL lines.
+    /// Updates glyph names and advance widths in place. Returns true when any sort changed.
     pub fn shape_arabic(&mut self) -> bool {
         // The font's own GSUB first: it gives ligatures and contextual
         // rules the joining table below cannot express. Falls through
@@ -1333,6 +1431,8 @@ impl TextBuffer {
         self.shape_arabic()
     }
 
+    /// Shape after an edit at `position`.
+    /// With a shaping font the whole buffer is reshaped, since a ligature can form several sorts away. Without one only the Arabic neighbors are rejoined, and only when the line reads RTL. Returns true when any sort changed.
     pub fn shape_arabic_around_if_rtl(&mut self, position: usize) -> bool {
         // Reshaping the whole buffer through the font is cheap at editor
         // sizes, and a ligature can appear or break several sorts away
