@@ -33,6 +33,8 @@ use crate::{Tool, Workspace};
 /// The same row supplies the menu item's title, its accelerator label,
 /// and the action both the menu and the keymap fire. They cannot drift,
 /// because there is one of them.
+// Only the native menu bar reads the table, and that exists on macOS.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub struct Entry {
     /// Which menu it belongs under.
     pub menu: &'static str,
@@ -45,6 +47,7 @@ pub struct Entry {
 }
 
 /// Every action the application exposes, in menu order.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub const ACTIONS: &[Entry] = &[
     Entry {
         menu: "File",
@@ -163,6 +166,7 @@ pub const ACTIONS: &[Entry] = &[
 ];
 
 /// The order menus appear in the bar.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const MENUS: &[&str] = &["File", "Edit", "Glyph", "View", "Tools"];
 
 #[cfg(target_os = "macos")]

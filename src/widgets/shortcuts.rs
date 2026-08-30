@@ -26,7 +26,10 @@ use xilem::{Pod, ViewCtx, WidgetView};
 
 use crate::{Tool, Workspace};
 
-/// Workspace-level actions a shortcut (or, later, a menu item) can fire.
+/// Workspace-level actions a shortcut or a menu item can fire.
+// Some variants are only constructed by the menu table, which the
+// native menu bar reads, and that exists on macOS.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppAction {
     Save,
