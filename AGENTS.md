@@ -1,150 +1,103 @@
 # AGENTS.md
 
-Context for AI coding agents working on `runebender-core`. Evergreen
-info only. Task-specific plans live under `.agents/`. New agents:
-read this top-to-bottom before touching code, then check `.agents/`
-for active plans and `.agents/active/` for in-flight claims by other
-agents.
-
-Agent-name-agnostic: Codex (native `AGENTS.md` convention),
-Claude Code (via `CLAUDE.md` → here), and any other human-driven
-agent that reads this file get the same instructions.
+Context for anyone, human or agent, working on `runebender-core`.
+The reference for how the code is organized is
+[runebender.org/docs/code-layout.html](https://runebender.org/docs/code-layout.html).
+This file is the short version plus what you need to build and
+submit a change.
 
 ## What this is
 
-`runebender-core` is the platform-independent crate shared by the
-two Runebender front-ends. It holds editing state, undo/redo,
-selection, entity IDs, kerning, and glyph categorization — anything
-that doesn't need to know whether it's running natively or in WASM.
+The editing engine behind the Runebender font editor, with no
+interface. One rule decides what belongs here: if an operation
+changes a font, or reads one to answer a question, it lives in this
+crate. The front-ends own the window, the input, and the drawing.
+The `runebender` binary in `src/bin` exposes the same operations on
+the command line.
 
-Apache-2.0 licensed so both consumers can include it (xilem is
-Apache-2.0; comfy is GPL-3.0 and Apache-2.0 is GPL-compatible).
-
-## Sister repos
-
-All assumed to be siblings under `~/GH/repos/`:
-
-| Repo | License | Role |
-|---|---|---|
-| `runebender-core` | Apache-2.0 | **This repo.** Shared editing/model crate. |
-| `runebender-xilem` | Apache-2.0 | Native consumer. Source of the ported modules; canonical UI/UX. |
-| `runebender-comfy` | GPL-3.0 | WASM/Vue consumer (ComfyUI custom node). |
-
-Both consumers depend on this crate via local
-`path = "../runebender-core"`. Re-test both consumers after any
-non-trivial change here — regressions ripple.
-
-## ⚠ Load-bearing gotcha: the kurbo version split
-
-This is why `runebender-core` is currently small.
-
-- `runebender-xilem` is pinned to **kurbo 0.12** (via masonry 0.4).
-- `runebender-comfy` is on **kurbo 0.13** (forced by peniko 0.5 /
-  vello 0.8).
-
-A library crate can only declare one `kurbo` version. Until the
-xilem ecosystem catches up to 0.13 (the masonry-2 transition), this
-crate can only host modules whose public API contains NO
-`kurbo::Point`, `kurbo::Affine`, `kurbo::BezPath`, etc.
-
-**Eligible to live here:** selection, undo, edit_types, entity_id,
-kerning, glyph categorization.
-
-**Not eligible (until kurbo aligns):** `path/`, `viewport`,
-`hit_test`, `mouse`, `workspace`, `glyph_renderer`. These are
-duplicated in each consumer.
-
-If you find yourself adding a `kurbo::` type to a public signature
-in this crate, stop — it belongs in the consumer repos for now.
+The in-memory font is `norad::Font`. Functions take norad types or
+kurbo geometry and return the same. There is no private model.
 
 ## Layout
 
-```
-src/
-├── lib.rs              # module declarations + re-exports
-├── category.rs         # GlyphCategory enum + Unicode mapping
-├── editing/
-│   ├── edit_types.rs   # EditType enum (undo grouping)
-│   ├── selection.rs    # Selection set (Arc<BTreeSet<EntityId>>)
-│   └── undo.rs         # UndoState<T> (generic undo/redo)
-└── model/
-    ├── entity_id.rs    # EntityId (unique IDs for points/paths)
-    └── kerning.rs      # UFO-spec kerning lookup
-```
+`src/` is six directories, one per concern. Each `mod.rs` says what
+belongs in it. Read those six comments first.
+
+| Directory | Holds |
+|---|---|
+| `outline/` | what changes a shape, and `path/` for the segment maths |
+| `analysis/` | what reads a font |
+| `formats/` | lib keys, and every format besides UFO |
+| `document/` | `Master`, `Project`, interpolation, composites, `model/` |
+| `text/` | `shape` (harfrust), `joining` (Arabic rules), `buffer` (the Text tool) |
+| `ui/` | themes, sidebar data, `editing/` (selection, undo, viewport) |
+
+Paths follow the tree: `runebender_core::outline::glyph_ops`. There
+are no re-exports at the root except three types.
 
 ## Build and test
 
 ```sh
 cargo build
-cargo test           # ~22 tests, keep them green
+cargo test        # about 300 tests
 cargo fmt
-cargo clippy
+cargo clippy --all-targets
 ```
 
-No WASM target needed here — consumers compile for whichever target
-they need. Don't add `#[cfg(target_arch = "wasm32")]` gates; this
-crate must compile cleanly on every platform its consumers target.
+Tests that need a real font load Virtua Grotesk from
+`../runebender-web/assets/test-fonts`, or from `$RUNEBENDER_TEST_FONTS`.
+`src/test_fonts.rs` is the one place that knows. Clone
+[runebender-web](https://github.com/eliheuer/runebender-web) beside
+this repository or set the variable.
+
+## The gate
+
+CI runs on every push, on Linux and macOS, and at the minimum Rust in
+`Cargo.toml`: `cargo fmt --check`, `cargo clippy --all-targets`,
+`cargo doc --no-deps`, and `cargo test`, with warnings denied. The
+manifest forbids `unsafe` and warns on `missing_docs`, so a public
+item without a doc comment fails the build.
+
+CI's stable can be newer than yours. If clippy passes locally and
+fails there, run it under the toolchain CI reports.
 
 ## Conventions
 
-- **Edition 2024, MSRV 1.88** (matches both consumers).
-- **No kurbo types in public APIs.** See the load-bearing gotcha.
-- **Test coverage for new modules.** Both consumers depend on this;
-  regressions ripple. Aim for unit tests in the same file.
-- **No `unsafe` without a comment explaining the invariant.**
-- **Line width:** target 80 chars, 100 max (matches xilem).
-- **Function order:** public before private, constructors first.
+- One file, one concern, named for what it does to a font. Its header
+  comment says so in a sentence.
+- Every public item has a doc comment that says what it does, what it
+  returns, and any precondition or side effect. Wrap type names in
+  backticks.
+- An operation that edits in place returns whether it changed
+  anything, or how many things it changed.
+- A UFO lib key has one constant, one reader, and one writer, in
+  `formats/lib_keys.rs` or the module for its format.
+- Tests live next to the code, in a `tests` module at the bottom of
+  the file.
+- No path to a sibling checkout in a committed file. Local overrides
+  go in a `.cargo/config.toml` above the repositories.
+- Edition 2024. Line width 100.
 
-## Git workflow
+## Git
 
-- **Commit locally as you work, push only when a phase is coherent.**
-  Don't push every commit. Squash iteration commits before pushing.
-- Don't squash commits that have already been pushed.
-- Do not include `Co-Authored-By: Claude` (or similar agent
-  attribution) in commit messages.
+- Commit locally as you work. Push when a phase is coherent. Squash
+  iteration commits before pushing; never squash pushed commits.
+- Commit messages say why. The diff shows what.
+- No `Co-Authored-By` trailers for agents.
+- Stage explicit paths. Never `git add -A`; checkouts carry
+  uncommitted work.
 
-## Multi-agent coordination
+## Consumers
 
-Multiple agents (Claude Code, Codex, Hermes, future others) may be
-working in this repo concurrently — possibly across machines. The
-protocol uses git as the lowest-common-denominator coordination
-channel and lives in `.agents/active/`.
+`runebender-gpui` pins this crate by git revision in its `Cargo.toml`.
+After pushing a change here, bump that pin. `runebender-xilem` pins
+an older revision and does not follow the current paths.
 
-**Before starting any non-trivial task:**
+## Working alongside other agents
 
-1. **Pull `main` and skim `.agents/active/*.md`.** Each file is a
-   claim by an agent currently working on something. If your task
-   overlaps an existing claim's `touches:` list, pick a different
-   slice or check with the human.
-2. **Write your own claim file** to `.agents/active/<slug>.md` using
-   `.agents/active/_template.md`. `<slug>` is short kebab-case. One
-   file per concurrent task.
-3. **Commit and push the claim immediately.** This is an explicit
-   exception to the "push at milestones" rule — the claim is
-   coordination state, not feature work, and is useless if other
-   agents can't see it. Commit message: `claim: <slug>`.
-4. **Work in a git worktree, not the main checkout:**
-   ```sh
-   git fetch origin
-   git worktree add ~/Temp/worktrees/runebender-core-<slug> \
-     -b agent/<slug> origin/main
-   ```
-   Worktrees isolate `target/` and Cargo lockfile churn. `~/Temp/` is
-   user-policy for scratch dirs.
-5. **Bump `last_touched:`** in the claim file when you resume after
-   an idle stretch (hour+).
-6. **Delete the claim file** when you finish, hand off, or abandon.
-   Commit + push the deletion. A claim with `last_touched:` older
-   than ~24h is stale — don't silently reclaim, ping the human first.
-
-When the feature work merges, the worktree can be removed:
-`git worktree remove ~/Temp/worktrees/runebender-core-<slug>`.
-
-**Cross-repo work:** if your task spans this repo plus
-`runebender-xilem` or `runebender-comfy`, file the claim in your
-primary repo and list cross-repo paths in `touches:` (e.g.,
-`../runebender-comfy/rust-core/src/wasm_api.rs`). Skim the other
-repos' `.agents/active/` too.
-
-Long-lived multi-session plans live at `.agents/<NAME>.md`, not
-under `active/`. `active/` is only for in-flight claims.
+Claims for in-flight work live in `.agents/active/`, one file per
+task, from `.agents/active/_template.md`. Before a non-trivial task,
+pull `main`, read the claims, write yours, and push it at once. Work
+in a git worktree under `~/Temp/worktrees/`. Delete the claim when
+you finish. A claim untouched for a day is stale; ask before taking
+it over.
