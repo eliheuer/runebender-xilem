@@ -155,7 +155,7 @@ fn facing_gaps(edges: &[Edge], kind: MeasureKind, out: &mut Vec<Measurement>) {
             if overlap < MIN_OVERLAP {
                 continue;
             }
-            if best.map_or(true, |b| f.pos < b.pos) {
+            if best.is_none_or(|b| f.pos < b.pos) {
                 best = Some(f);
             }
         }
@@ -442,21 +442,6 @@ pub fn label(value: i64) -> String {
     format!("{value} = {}", parts.join("+"))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn labels_and_popcount() {
-        assert_eq!(label(256), "256 = 2^8");
-        assert_eq!(label(96), "96 = 64+32");
-        assert_eq!(label(272), "272 = 256+16");
-        assert_eq!(popcount(256), 1);
-        assert_eq!(popcount(96), 2);
-        assert_eq!(popcount(116), 4); // 64+32+16+4
-    }
-}
-
 /// The y-extent of a glyph's ink at one joining edge: outline
 /// points (components resolved) at or past x = 0 going left, or at
 /// or past x = advance going right — joining strokes overlap the
@@ -500,4 +485,19 @@ pub fn joining_band(
         }
     }
     band
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn labels_and_popcount() {
+        assert_eq!(label(256), "256 = 2^8");
+        assert_eq!(label(96), "96 = 64+32");
+        assert_eq!(label(272), "272 = 256+16");
+        assert_eq!(popcount(256), 1);
+        assert_eq!(popcount(96), 2);
+        assert_eq!(popcount(116), 4); // 64+32+16+4
+    }
 }

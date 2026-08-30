@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 /// A set of selected entities (points, paths, guides, etc.)
 ///
-/// Uses Arc<BTreeSet> for efficient cloning and ordered iteration.
+/// Uses `Arc<BTreeSet>` for efficient cloning and ordered iteration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Selection {
     inner: Arc<BTreeSet<EntityId>>,

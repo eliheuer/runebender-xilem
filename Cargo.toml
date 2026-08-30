@@ -11,6 +11,9 @@ repository = "https://github.com/eliheuer/runebender-core"
 name = "runebender"
 path = "src/bin/runebender.rs"
 
+[lints.rust]
+unsafe_code = "forbid"
+
 [lib]
 name = "runebender_core"
 path = "src/lib.rs"

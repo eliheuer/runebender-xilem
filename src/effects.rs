@@ -51,12 +51,11 @@ pub fn expand_stroke_contours(
             }
             sub.push(*el);
         }
-        if !sub.elements().is_empty() {
-            if let Some(c) = bezpath_to_contour(&sub, &empty) {
+        if !sub.elements().is_empty()
+            && let Some(c) = bezpath_to_contour(&sub, &empty) {
                 out.push(c);
                 made = true;
             }
-        }
         if made {
             any = true;
         } else {
@@ -207,11 +206,10 @@ pub fn extrude_glyph_contours(
         }
         sub.push(*el);
     }
-    if !sub.elements().is_empty() {
-        if let Some(c) = bezpath_to_contour(&sub, &empty_map) {
+    if !sub.elements().is_empty()
+        && let Some(c) = bezpath_to_contour(&sub, &empty_map) {
             contours.push(c);
         }
-    }
     if contours.is_empty() {
         return false;
     }

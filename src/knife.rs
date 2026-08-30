@@ -951,7 +951,6 @@ mod tests {
     }
 
     #[cfg(test)]
-
     fn rect_path(rect: Rect) -> Path {
         let points = vec![
             path_point(rect.origin(), false),

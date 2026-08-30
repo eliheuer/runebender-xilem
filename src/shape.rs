@@ -152,8 +152,10 @@ impl ShapingFont {
                 side_bearing: 0,
             })
             .collect();
-        let mut hhea = Hhea::default();
-        hhea.number_of_h_metrics = glyph_count;
+        let mut hhea = Hhea {
+            number_of_h_metrics: glyph_count,
+            ..Hhea::default()
+        };
         let upem_i16 = i16::try_from(upem_u16).unwrap_or(1000);
         hhea.ascender = (upem_i16 / 5 * 4).into();
         hhea.descender = (-(upem_i16 / 5)).into();
@@ -288,6 +290,15 @@ impl ShapingFont {
     pub fn glyph_name(&self, glyph_id: u16) -> Option<&str> {
         self.names.get(glyph_id as usize).map(String::as_str)
     }
+}
+
+/// Where a failed feature-file compile goes. Silent in the browser
+/// console rather than fatal: the file will not compile halfway through
+/// an edit, and typing has to keep working.
+pub fn log_shaping_failure(message: &str) {
+    // Hosts that want browser-console output can wrap this; core
+    // stays free of platform crates.
+    let _ = message;
 }
 
 #[cfg(test)]
@@ -453,13 +464,4 @@ mod tests {
         source.features = "feature liga { sub nonexistent by alsoMissing; } liga;".into();
         assert!(ShapingFont::build(&source).is_err());
     }
-}
-
-/// Where a failed feature-file compile goes. Silent in the browser
-/// console rather than fatal: the file will not compile halfway through
-/// an edit, and typing has to keep working.
-pub fn log_shaping_failure(message: &str) {
-    // Hosts that want browser-console output can wrap this; core
-    // stays free of platform crates.
-    let _ = message;
 }

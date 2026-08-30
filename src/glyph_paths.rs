@@ -39,6 +39,10 @@ pub fn components_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
     path
 }
 
+/// A sparse-layer pole: the axis tags it sits at the top of, and its
+/// point coordinates in that layer.
+type Pole = (std::collections::BTreeSet<String>, Vec<(f64, f64)>);
+
 /// The affine of a norad component transform.
 pub fn component_affine(t: &norad::AffineTransform) -> Affine {
     Affine::new([
@@ -131,7 +135,7 @@ fn smart_contours(
         Some(coords)
     };
     let default_coords = flat(base)?;
-    let mut poles: Vec<(BTreeSet<String>, Vec<(f64, f64)>)> = Vec::new();
+    let mut poles: Vec<Pole> = Vec::new();
     for layer in font.layers.iter() {
         let Some(candidate) = layer.get_glyph(base.name()) else {
             continue;
@@ -156,7 +160,7 @@ fn smart_contours(
     // Inclusion-exclusion deltas, singles before corners.
     poles.sort_by_key(|(tops, _)| tops.len());
     let n = default_coords.len();
-    let mut deltas: Vec<(BTreeSet<String>, Vec<(f64, f64)>)> = Vec::new();
+    let mut deltas: Vec<Pole> = Vec::new();
     for (tops, coords) in &poles {
         let mut delta: Vec<(f64, f64)> = coords
             .iter()
@@ -194,7 +198,7 @@ fn smart_contours(
             .map(|p| {
                 let (x, y) = coords[cursor];
                 cursor += 1;
-                norad::ContourPoint::new(x, y, p.typ.clone(), p.smooth, None, None)
+                norad::ContourPoint::new(x, y, p.typ, p.smooth, None, None)
             })
             .collect();
         out.push(norad::Contour::new(points, None));

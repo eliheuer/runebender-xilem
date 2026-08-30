@@ -1236,7 +1236,7 @@ pub fn duplicate_selection(
                 norad::ContourPoint::new(
                     p.x + 20.0,
                     p.y + 20.0,
-                    p.typ.clone(),
+                    p.typ,
                     p.smooth,
                     p.name.clone(),
                     None,
