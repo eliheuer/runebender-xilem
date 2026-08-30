@@ -90,6 +90,16 @@ these live on the editor's own key handler for now. See `PORT.md`.
 Click a glyph in the overview to select it, click again to open the
 editor. The toolbar's `‹ Overview` returns.
 
+## Layout
+
+The layout mirrors runebender-gpui file for file where the two share
+a concern, so a change in one editor is easy to carry to the other:
+`workspace.rs`, `actions.rs`, `launch.rs`, and the `view/`, `edit/`,
+`platform/`, and `widgets/` directories, each with a `mod.rs` that
+says what belongs in it. `AGENTS.md` has the table, and
+[runebender.org/docs/code-layout.html](https://runebender.org/docs/code-layout.html)
+the long version.
+
 ## Develop against local xix / core
 
 Nothing in this repository points at a local path. To build against

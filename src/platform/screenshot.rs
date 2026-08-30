@@ -30,10 +30,10 @@ use masonry::imaging::record::{Scene, replay_transformed};
 use masonry::imaging::render::ImageRenderer as _;
 use masonry::kurbo::Rect;
 use masonry::theme::default_property_set;
-use xilem::core::{ProxyError, RawProxy, SendMessage, View, ViewId};
+use xilem::core::{ProxyError, RawProxy, SendMessage, ViewId};
 use xilem::{ViewCtx, WidgetView};
 
-use crate::App;
+use crate::Workspace;
 
 /// A proxy that drops messages: nothing can arrive in one frame.
 #[derive(Debug)]
@@ -55,11 +55,11 @@ impl RawProxy for NoProxy {
 /// rebuild below downcasts the root back to it. Wrapping the
 /// application's root view in a `sized_box` is enough, and that is what
 /// the caller does.
-pub fn render_to<V, F>(mut app: App, logic: F, size: (u32, u32), path: &str)
+pub fn render_to<V, F>(mut app: Workspace, logic: F, size: (u32, u32), path: &str)
 where
-    V: WidgetView<App>,
+    V: WidgetView<Workspace>,
     V::Widget: Sized,
-    F: Fn(&mut App) -> V,
+    F: Fn(&mut Workspace) -> V,
 {
     let background = app.palette.app;
     let runtime = Arc::new(

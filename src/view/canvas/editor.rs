@@ -20,12 +20,12 @@ use runebender_core::outline::glyph_ops::PointId;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
-use crate::App;
 use crate::Tool;
-use crate::context_menu::{ContextMenu, MenuAction, MenuRow};
-use crate::session::Session;
-use crate::text_label::{self, Anchor};
-use crate::theme::Palette;
+use crate::Workspace;
+use crate::edit::session::Session;
+use crate::view::theme::Palette;
+use crate::widgets::context_menu::{ContextMenu, MenuAction, MenuRow};
+use crate::widgets::text_label::{self, Anchor};
 
 /// The metrics panel's geometry, shared by its painting and its boxes.
 const PANEL_PAD: f64 = 10.0;
@@ -124,12 +124,8 @@ impl EditorWidget {
 pub enum EditorEvent {
     /// The glyph changed; the app should refresh its cached preview.
     Edited,
-    /// The user pressed the save shortcut while the editor had focus.
-    Save,
     /// Selection changed; carries how many points are selected.
     Selection(usize),
-    /// The user asked to leave the editor (Escape).
-    Exit,
     /// The text tool activated a sort: open that glyph for editing.
     EditGlyph(String),
 }
@@ -180,9 +176,9 @@ pub struct EditorWidget {
     /// Background layer and reference glyph, drawn under everything.
     underlay: Underlay,
     /// The text tool's buffer, present only while that tool is in hand.
-    text: Option<crate::text_tool::TextState>,
+    text: Option<crate::edit::text_tool::TextState>,
     /// The master the buffer was built from.
-    text_inputs: Option<crate::text_tool::TextInputs>,
+    text_inputs: Option<crate::edit::text_tool::TextInputs>,
     size: Size,
     drag: Drag,
     /// Last cursor position in design space, for the pen preview segment.
@@ -345,7 +341,7 @@ impl EditorWidget {
         let frame = Rect::new(left, top, left + width, top + height).to_rounded_rect(6.0);
         painter.fill(frame, pal.panel.with_alpha(0.92)).draw();
         painter
-            .stroke(&frame, &Stroke::new(1.0), pal.role("gridBorder"))
+            .stroke(frame, &Stroke::new(1.0), pal.role("gridBorder"))
             .draw();
 
         let text_at =
@@ -427,7 +423,7 @@ impl EditorWidget {
                     };
                     painter.fill(rect.to_rounded_rect(3.0), pal.field()).draw();
                     painter
-                        .stroke(&rect.to_rounded_rect(3.0), &Stroke::new(1.0), border)
+                        .stroke(rect.to_rounded_rect(3.0), &Stroke::new(1.0), border)
                         .draw();
                     let baseline = rect.y0 + rect.height() - 4.0;
                     text_label::draw(
@@ -997,7 +993,7 @@ impl Widget for EditorWidget {
                     let c = ((p0.x + p1.x) / 2.0, (p0.y + p1.y) / 2.0);
                     let rr = ((p1.x - p0.x).abs() / 2.0, (p1.y - p0.y).abs() / 2.0);
                     let e = masonry::kurbo::Ellipse::new(c, rr, 0.0);
-                    painter.stroke(&e, &Stroke::new(1.0), accent).draw();
+                    painter.stroke(e, &Stroke::new(1.0), accent).draw();
                 }
                 _ => {
                     painter
@@ -1017,15 +1013,14 @@ impl Widget for EditorWidget {
         event: &PointerEvent,
     ) {
         // Off a master the view is a read-only instance: swallow edit clicks.
-        if self.interp.is_some() {
-            if let PointerEvent::Down(PointerButtonEvent {
+        if self.interp.is_some()
+            && let PointerEvent::Down(PointerButtonEvent {
                 button: Some(PointerButton::Primary | PointerButton::Secondary),
                 ..
             }) = event
-            {
-                ctx.set_handled();
-                return;
-            }
+        {
+            ctx.set_handled();
+            return;
         }
         // A click in a metric box goes to the box, not to the drawing
         // underneath it. The panel is painted, so nothing else will do
@@ -1038,15 +1033,15 @@ impl Widget for EditorWidget {
         }) = event
         {
             let at = ctx.local_position(state.position);
-            if let Some(boxes) = self.metric_boxes() {
-                if let Some((field, _)) = boxes.iter().find(|(_, rect)| rect.contains(at)) {
-                    let edited = self.commit_metric();
-                    self.focus_metric(*field);
-                    ctx.request_focus();
-                    self.emit(ctx, edited);
-                    ctx.set_handled();
-                    return;
-                }
+            if let Some(boxes) = self.metric_boxes()
+                && let Some((field, _)) = boxes.iter().find(|(_, rect)| rect.contains(at))
+            {
+                let edited = self.commit_metric();
+                self.focus_metric(*field);
+                ctx.request_focus();
+                self.emit(ctx, edited);
+                ctx.set_handled();
+                return;
             }
             // A click anywhere else puts the value away.
             if self.field.is_some() {
@@ -1500,11 +1495,14 @@ pub struct EditorView<F> {
     ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
     interp: Option<Arc<masonry::kurbo::BezPath>>,
     underlay: Underlay,
-    text: Option<crate::text_tool::TextInputs>,
+    text: Option<crate::edit::text_tool::TextInputs>,
     on_event: F,
 }
 
-pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
+// The editor takes every input it draws from as its own argument, so the
+// call site reads as a list of what the view depends on.
+#[allow(clippy::too_many_arguments)]
+pub fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
     session: Arc<Session>,
     palette: Arc<Palette>,
     tool: Tool,
@@ -1512,7 +1510,7 @@ pub fn editor<F: Fn(&mut App, EditorEvent) + 'static>(
     ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
     interp: Option<Arc<masonry::kurbo::BezPath>>,
     underlay: Underlay,
-    text: Option<crate::text_tool::TextInputs>,
+    text: Option<crate::edit::text_tool::TextInputs>,
     on_event: F,
 ) -> EditorView<F> {
     EditorView {
@@ -1591,11 +1589,11 @@ pub struct Underlay {
 }
 
 impl<F> ViewMarker for EditorView<F> {}
-impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorView<F> {
+impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> for EditorView<F> {
     type Element = Pod<EditorWidget>;
     type ViewState = ();
 
-    fn build(&self, ctx: &mut ViewCtx, _: &mut App) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, _: &mut Workspace) -> (Self::Element, Self::ViewState) {
         let mut session = (*self.session).clone();
         if self.text.is_some() {
             // Framing is decided in layout, and the text line needs a
@@ -1609,7 +1607,10 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
             ghosts: self.ghosts.clone(),
             interp: self.interp.clone(),
             underlay: self.underlay.clone(),
-            text: self.text.as_ref().map(crate::text_tool::TextState::new),
+            text: self
+                .text
+                .as_ref()
+                .map(crate::edit::text_tool::TextState::new),
             text_inputs: self.text.clone(),
             size: Size::ZERO,
             drag: Drag::None,
@@ -1628,7 +1629,7 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
         (): &mut Self::ViewState,
         _ctx: &mut ViewCtx,
         mut element: Mut<'_, Self::Element>,
-        _: &mut App,
+        _: &mut Workspace,
     ) {
         let mut dirty = false;
         if !Arc::ptr_eq(&self.session, &prev.session) {
@@ -1671,7 +1672,7 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
                 // been typed and re-read the metrics.
                 (Some(inputs), Some(state)) => state.refresh(inputs),
                 (Some(inputs), None) => {
-                    element.widget.text = Some(crate::text_tool::TextState::new(inputs));
+                    element.widget.text = Some(crate::edit::text_tool::TextState::new(inputs));
                     element.widget.fit_text();
                     element.ctx.request_layout();
                 }
@@ -1692,7 +1693,7 @@ impl<F: Fn(&mut App, EditorEvent) + 'static> View<App, (), ViewCtx> for EditorVi
         (): &mut Self::ViewState,
         message: &mut MessageCtx,
         element: Mut<'_, Self::Element>,
-        app: &mut App,
+        app: &mut Workspace,
     ) -> MessageResult<()> {
         match message.take_message::<EditorEvent>() {
             Some(event) => {
@@ -1737,7 +1738,7 @@ mod tests {
     fn widget() -> EditorWidget {
         EditorWidget {
             session: session(),
-            palette: Arc::new(crate::theme::Palette::load("dark")),
+            palette: Arc::new(crate::view::theme::Palette::load("dark")),
             tool: Tool::Select,
             ghosts: Arc::new(Vec::new()),
             interp: None,

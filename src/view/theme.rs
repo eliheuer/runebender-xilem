@@ -24,7 +24,6 @@ pub struct Palette {
     pub button: Color,
     pub canvas: Color,
     pub field: Color,
-    pub divider: Color,
     pub text: Color,
     pub text_muted: Color,
     roles: HashMap<String, Color>,
@@ -46,7 +45,6 @@ impl Palette {
             button: color(t.surface("button")),
             canvas: color(t.surface("canvas")),
             field: color(t.surface("field")),
-            divider: color(t.surface("divider")),
             text: color(t.text("primary")),
             text_muted: color(t.text("muted")),
             roles: t

@@ -16,24 +16,24 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use crate::App;
+use crate::Workspace;
 
 /// Sent when the sources on disk have changed and settled.
 #[derive(Debug)]
 pub struct SourcesChanged;
 
 /// Runs `view`, and alongside it watches the font's sources.
-pub fn with_watch<V: xilem::WidgetView<App>>(
+pub fn with_watch<V: xilem::WidgetView<Workspace>>(
     view: V,
     paths: Vec<PathBuf>,
-) -> impl xilem::WidgetView<App> + use<V> {
+) -> impl xilem::WidgetView<Workspace> + use<V> {
     use xilem::core::fork;
     use xilem::view::task_raw;
 
     fork(
         view,
         task_raw(
-            move |proxy: xilem::core::MessageProxy<SourcesChanged>, _: &mut App| {
+            move |proxy: xilem::core::MessageProxy<SourcesChanged>, _: &mut Workspace| {
                 let paths = paths.clone();
                 async move {
                     let (tx, rx) = mpsc::channel();
@@ -92,7 +92,7 @@ pub fn with_watch<V: xilem::WidgetView<App>>(
                     }
                 }
             },
-            |app: &mut App, _: SourcesChanged| app.reload_from_disk(),
+            |app: &mut Workspace, _: SourcesChanged| app.reload_from_disk(),
         ),
     )
 }

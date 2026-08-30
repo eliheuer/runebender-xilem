@@ -32,9 +32,9 @@ use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 
-use crate::editor::EditorWidget;
-use crate::text_label::{self, Anchor};
-use crate::theme::Palette;
+use crate::view::canvas::editor::EditorWidget;
+use crate::view::theme::Palette;
+use crate::widgets::text_label::{self, Anchor};
 
 /// Row height, and the menu's width. Fixed, because a context menu that
 /// resizes to its longest label is harder to aim at than one that does
@@ -50,7 +50,7 @@ const PAD: f64 = 4.0;
 #[derive(Clone, Copy)]
 pub enum MenuAction {
     /// Run a session operation, and report whether the glyph changed.
-    Op(fn(&mut crate::session::Session) -> bool),
+    Op(fn(&mut crate::edit::session::Session) -> bool),
     /// Add an anchor where the menu was opened.
     AddAnchor,
 }
@@ -134,7 +134,7 @@ impl Widget for ContextMenu {
         painter.fill(frame.to_rounded_rect(6.0), pal.panel).draw();
         painter
             .stroke(
-                &frame.to_rounded_rect(6.0),
+                frame.to_rounded_rect(6.0),
                 &Stroke::new(1.0),
                 pal.role("gridBorder"),
             )
