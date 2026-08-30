@@ -20,10 +20,15 @@ use kurbo::{Point, Vec2};
 /// (`straight = true`, curvature 0).
 #[derive(Clone, Copy, Debug)]
 pub struct Cubic {
+    /// Start on-curve point.
     pub p0: Point,
+    /// First off-curve handle; lies on the chord when `straight` is set.
     pub p1: Point,
+    /// Second off-curve handle; lies on the chord when `straight` is set.
     pub p2: Point,
+    /// End on-curve point.
     pub p3: Point,
+    /// Whether the source segment is a straight line stored in cubic form.
     pub straight: bool,
     /// Whether the on-curve point starting this segment (`p0`) is smooth.
     pub start_smooth: bool,
@@ -231,7 +236,9 @@ pub enum GLevel {
 /// Continuity of one on-curve node joining an incoming and outgoing cubic.
 #[derive(Clone, Copy, Debug)]
 pub struct NodeContinuity {
+    /// The on-curve point where the two segments meet.
     pub at: Point,
+    /// The highest continuity level the join satisfies.
     pub level: GLevel,
     /// Relative curvature mismatch across the join (0 = perfectly G2).
     pub jump: f64,
@@ -318,8 +325,11 @@ fn classify(in_seg: &Cubic, out_seg: &Cubic) -> GLevel {
 /// pushed-out point, plus the curvature magnitude for coloring.
 #[derive(Clone, Copy, Debug)]
 pub struct CombSample {
+    /// The sampled point on the curve.
     pub on: Point,
+    /// The point pushed out along the normal by the scaled curvature.
     pub outer: Point,
+    /// Signed curvature magnitude at the sample, for coloring.
     pub kappa: f64,
 }
 
@@ -509,8 +519,11 @@ fn curvature_variance(p0: Point, p1: Point, p2: Point, p3: Point) -> f64 {
 /// One point for the optimizer.
 #[derive(Clone, Copy)]
 pub struct OptPoint {
+    /// Position in design space.
     pub p: Point,
+    /// Whether the point is on-curve; off-curve handles may move.
     pub on: bool,
+    /// Whether an on-curve point is smooth; the optimizer keeps its tangent continuous.
     pub smooth: bool,
 }
 

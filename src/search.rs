@@ -8,14 +8,21 @@
 /// `enc:no`, `comp:beh-ar`, `has:anchors`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SearchPred {
+    /// Compare the advance width with a value: `w>600`, `w<600`, `w=600`.
     Width(std::cmp::Ordering, f64),
+    /// Match the glyph's category by lowercase name: `cat:mark`.
     Category(String),
+    /// Match the glyph's mark label by lowercase name: `mark:red`.
     MarkLabel(String),
+    /// Match whether the glyph has a Unicode codepoint: `enc:yes` or `enc:no`.
     Encoded(bool),
+    /// Match glyphs that use the named glyph as a component: `comp:beh-ar`.
     UsesComponent(String),
+    /// Match glyphs that have the named feature, such as `has:anchors`.
     Has(String),
 }
 
+/// Parses a whitespace-separated query into predicates. Returns `None` for an empty query, a plain-text term, or a malformed value.
 pub fn parse_search_predicates(query: &str) -> Option<Vec<SearchPred>> {
     let mut preds = Vec::new();
     for term in query.split_whitespace() {

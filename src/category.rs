@@ -8,19 +8,29 @@
 use unicode_general_category::{GeneralCategory, get_general_category};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// A coarse glyph bucket used by the grid-view category filter.
 pub enum GlyphCategory {
     #[default]
+    /// Every glyph; no filtering.
     All,
+    /// Unicode letters (`Lu`, `Ll`, `Lt`, `Lm`, `Lo`).
     Letter,
+    /// Unicode numbers (`Nd`, `Nl`, `No`).
     Number,
+    /// Unicode punctuation (all `P*` categories).
     Punctuation,
+    /// Unicode symbols (`Sm`, `Sc`, `Sk`, `So`).
     Symbol,
+    /// Combining and enclosing marks (`Mn`, `Mc`, `Me`).
     Mark,
+    /// Space, line, and paragraph separators (`Zs`, `Zl`, `Zp`).
     Separator,
+    /// Everything else: controls, formats, unassigned, and glyphs with no codepoint.
     Other,
 }
 
 impl GlyphCategory {
+    /// Returns the label shown in the sidebar for this category.
     pub fn display_name(&self) -> &'static str {
         match self {
             GlyphCategory::All => "All",
@@ -34,6 +44,7 @@ impl GlyphCategory {
         }
     }
 
+    /// Returns every category in sidebar display order, starting with `All`.
     pub fn all_categories() -> &'static [GlyphCategory] {
         &[
             GlyphCategory::All,

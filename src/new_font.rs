@@ -12,12 +12,17 @@ use serde::Deserialize;
 
 /// Vertical metrics, in font units (web newProject.ts).
 pub const UPM: f64 = 1000.0;
+/// Default ascender for a new font, in font units.
 pub const ASCENDER: f64 = 800.0;
+/// Default descender for a new font, in font units. Negative, below the baseline.
 pub const DESCENDER: f64 = -200.0;
+/// Default cap height for a new font, in font units.
 pub const CAP_HEIGHT: f64 = 700.0;
+/// Default x-height for a new font, in font units.
 pub const X_HEIGHT: f64 = 500.0;
 /// Placeholder advance widths — a starting point, not a design.
 pub const DEFAULT_WIDTH: f64 = 600.0;
+/// Placeholder advance width of the space glyph, in font units.
 pub const SPACE_WIDTH: f64 = 260.0;
 
 #[derive(Deserialize)]

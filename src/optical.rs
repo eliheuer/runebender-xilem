@@ -33,6 +33,7 @@ use crate::{glyph_ops, glyph_paths};
 /// One glyph's ink, and how much of its box that fills.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Density {
+    /// Name of the glyph measured.
     pub glyph: String,
     /// Outline area in square units, components resolved.
     pub ink: f64,
@@ -45,7 +46,9 @@ pub struct Density {
 /// A glyph whose density is out of step with its group.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Outlier {
+    /// Name of the glyph flagged.
     pub glyph: String,
+    /// The glyph's own `ink / box_area` value.
     pub density: f64,
     /// The median density of the group it was compared against.
     pub median: f64,

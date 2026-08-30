@@ -20,6 +20,7 @@ use crate::glyph_paths::contour_to_bezpath;
 /// see baked outlines).
 pub const MASKS_KEY: &str = "com.runebender.masks";
 
+/// Reads the mask contour indices from the glyph lib. Negative or non-integer entries are skipped.
 pub fn read_masks(glyph: &norad::Glyph) -> HashSet<usize> {
     glyph
         .lib
@@ -35,6 +36,7 @@ pub fn read_masks(glyph: &norad::Glyph) -> HashSet<usize> {
         .unwrap_or_default()
 }
 
+/// Writes the mask contour indices to the glyph lib in sorted order. An empty set removes the key.
 pub fn write_masks(glyph: &mut norad::Glyph, masks: &HashSet<usize>) {
     if masks.is_empty() {
         glyph.lib.remove(MASKS_KEY);
@@ -95,9 +97,6 @@ pub fn bake_masks(glyph: &mut norad::Glyph) -> bool {
     true
 }
 
-/// Editor annotations, the Glyphs annotation tool's marks: arrows,
-/// circles, plus/minus, and text notes pinned to design-space
-/// points. Stored in a glyph lib key; never exported.
 /// Saved sidebar filters: searches the user pinned, stored in the
 /// font lib as an array of {name, query} dicts. Glyphs calls these
 /// smart filters; ours reuse the search-field predicate language.
@@ -107,6 +106,7 @@ pub const SAVED_FILTERS_KEY: &str = "com.runebender.savedFilters";
 /// ufo2ft/fontc at compile time).
 pub const PSNAMES_KEY: &str = "public.postscriptNames";
 
+/// Looks up the production name for `glyph` in `public.postscriptNames`, if set.
 pub fn read_production_name(font: &norad::Font, glyph: &str) -> Option<String> {
     match font.lib.get(PSNAMES_KEY)? {
         plist::Value::Dictionary(d) => d.get(glyph)?.as_string().map(str::to_string),
@@ -152,6 +152,7 @@ pub fn write_production_name(font: &mut norad::Font, glyph: &str, text: &str) ->
     }
 }
 
+/// Reads the saved sidebar filters from the font lib as `(name, query)` pairs. Malformed rows are skipped.
 pub fn read_saved_filters(font: &norad::Font) -> Vec<(String, String)> {
     let Some(plist::Value::Array(rows)) = font.lib.get(SAVED_FILTERS_KEY) else {
         return Vec::new();
@@ -166,6 +167,7 @@ pub fn read_saved_filters(font: &norad::Font) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Writes the saved sidebar filters to the font lib. An empty slice removes the key.
 pub fn write_saved_filters(font: &mut norad::Font, filters: &[(String, String)]) {
     if filters.is_empty() {
         font.lib.remove(SAVED_FILTERS_KEY);
@@ -184,16 +186,23 @@ pub fn write_saved_filters(font: &mut norad::Font, filters: &[(String, String)])
         .insert(SAVED_FILTERS_KEY.into(), plist::Value::Array(rows));
 }
 
+/// Glyph lib key holding editor annotations as an array of `{kind, x, y, text}` dicts.
 pub const ANNOTATIONS_KEY: &str = "com.runebender.annotations";
 
 #[derive(Clone, Debug, PartialEq)]
+/// One editor annotation pinned to a design-space point.
 pub struct Annotation {
+    /// Annotation kind, such as `arrow`, `circle`, `plus`, `minus`, or `note`.
     pub kind: String,
+    /// X position in font units.
     pub x: f64,
+    /// Y position in font units.
     pub y: f64,
+    /// Optional note text; empty when the annotation has no text.
     pub text: String,
 }
 
+/// Reads the annotations from the glyph lib. Rows without `kind`, `x`, and `y` are skipped.
 pub fn read_annotations(glyph: &norad::Glyph) -> Vec<Annotation> {
     glyph
         .lib
@@ -219,6 +228,7 @@ pub fn read_annotations(glyph: &norad::Glyph) -> Vec<Annotation> {
         .unwrap_or_default()
 }
 
+/// Writes the annotations to the glyph lib. An empty slice removes the key.
 pub fn write_annotations(glyph: &mut norad::Glyph, notes: &[Annotation]) {
     if notes.is_empty() {
         glyph.lib.remove(ANNOTATIONS_KEY);
@@ -249,6 +259,7 @@ pub fn write_annotations(glyph: &mut norad::Glyph, notes: &[Annotation]) {
 /// re-editing; the baked brace layers are what compilers consume.
 pub const HOI_INTERMEDIATE_KEY: &str = "com.runebender.hoiIntermediate";
 
+/// Reads HOI intermediate points from the glyph lib, keyed by `(contour, point)` index, as absolute design coordinates.
 pub fn read_hoi_intermediates(
     glyph: &norad::Glyph,
 ) -> std::collections::HashMap<(usize, usize), (f64, f64)> {
@@ -270,6 +281,7 @@ pub fn read_hoi_intermediates(
         .unwrap_or_default()
 }
 
+/// Writes HOI intermediate points to the glyph lib. An empty map removes the key.
 pub fn write_hoi_intermediates(
     glyph: &mut norad::Glyph,
     map: &std::collections::HashMap<(usize, usize), (f64, f64)>,

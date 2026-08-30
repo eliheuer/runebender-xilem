@@ -4,14 +4,20 @@
 //! Platform-independent shaping helpers shared by Runebender frontends.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// The contextual form an Arabic letter takes based on its neighbors.
 pub enum PositionalForm {
+    /// Not joined on either side.
     Isolated,
+    /// Joined to the following letter only.
     Initial,
+    /// Joined on both sides.
     Medial,
+    /// Joined to the preceding letter only.
     Final,
 }
 
 impl PositionalForm {
+    /// Returns the glyph-name suffix for this form, such as `.init`; empty for `Isolated`.
     pub const fn suffix(self) -> &'static str {
         match self {
             Self::Isolated => "",
@@ -23,28 +29,39 @@ impl PositionalForm {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// How a character joins with its neighbors, after Unicode `Joining_Type`.
 pub enum ArabicJoiningType {
+    /// Joins on both sides, like `beh`.
     Dual,
+    /// Joins to the preceding letter only, like `alef` or `dal`.
     Right,
+    /// Never joins, such as a non-Arabic character.
     NonJoining,
+    /// Forces joining on both sides; the tatweel (`U+0640`).
     JoinCausing,
+    /// Marks that are skipped when finding the joining neighbors.
     Transparent,
 }
 
 impl ArabicJoiningType {
+    /// Returns `true` when a character of this type connects to the letter after it.
     pub const fn joins_forward(self) -> bool {
         matches!(self, Self::Dual | Self::JoinCausing)
     }
 
+    /// Returns `true` when a character of this type connects to the letter before it.
     pub const fn joins_backward(self) -> bool {
         matches!(self, Self::Dual | Self::Right | Self::JoinCausing)
     }
 
+    /// Returns `true` for `Transparent`.
     pub const fn is_transparent(self) -> bool {
         matches!(self, Self::Transparent)
     }
 }
 
+/// Returns the positional form of `chars[index]`, skipping transparent marks when looking at neighbors.
+/// Out-of-range indices and non-Arabic characters return `Isolated`.
 pub fn arabic_positional_form(chars: &[char], index: usize) -> PositionalForm {
     let Some(&char) = chars.get(index) else {
         return PositionalForm::Isolated;
@@ -96,6 +113,7 @@ fn next_joining_type(chars: &[char], index: usize) -> Option<ArabicJoiningType> 
     None
 }
 
+/// Returns `true` when the character is in the Arabic, Arabic Supplement, or Arabic Extended-A blocks.
 pub fn is_arabic(char: char) -> bool {
     let cp = char as u32;
     (0x0600..=0x06ff).contains(&cp)
@@ -103,6 +121,7 @@ pub fn is_arabic(char: char) -> bool {
         || (0x08a0..=0x08ff).contains(&cp)
 }
 
+/// Returns the joining type of an Arabic character; unknown characters are `NonJoining`.
 pub fn arabic_joining_type(char: char) -> ArabicJoiningType {
     match char as u32 {
         0x0622 | 0x0623 | 0x0625 | 0x0627 | 0x0629 | 0x062f | 0x0630 | 0x0631 | 0x0632 | 0x0648

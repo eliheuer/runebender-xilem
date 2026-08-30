@@ -185,8 +185,11 @@ impl Default for Geometry {
 
 /// One resolved theme: every surface, text, and role token as sRGB.
 pub struct Theme {
+    /// Surface colors by token name, such as backgrounds and panels.
     pub surfaces: HashMap<String, ColorRgba>,
+    /// Text colors by token name.
     pub text: HashMap<String, ColorRgba>,
+    /// Role colors by token name: points, handles, selection, and other editor roles.
     pub roles: HashMap<String, ColorRgba>,
     /// Glyph mark colours in palette order, drawn at this theme's
     /// `markStep` (matches the web's `--rb-mark-{name}` variables).
@@ -202,12 +205,15 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// Looks up a surface color by name. Returns the fallback color when the name is unknown.
     pub fn surface(&self, name: &str) -> ColorRgba {
         self.surfaces.get(name).copied().unwrap_or(FALLBACK)
     }
+    /// Looks up a text color by name. Returns the fallback color when the name is unknown.
     pub fn text(&self, name: &str) -> ColorRgba {
         self.text.get(name).copied().unwrap_or(FALLBACK)
     }
+    /// Looks up a role color by name. Returns the fallback color when the name is unknown.
     pub fn role(&self, name: &str) -> ColorRgba {
         self.roles.get(name).copied().unwrap_or(FALLBACK)
     }
@@ -557,6 +563,7 @@ mod tests {
 pub struct ToolbarIcon {
     /// Tight bounds of the outline in Y-down SVG space.
     pub view_box: kurbo::Rect,
+    /// The icon outline in the same Y-down space as `view_box`.
     pub path: kurbo::BezPath,
     /// Stroke instead of fill (open path icons).
     pub stroke: bool,

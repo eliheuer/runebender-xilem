@@ -6,6 +6,12 @@
 // and round-tripped as serialized JSON across the wasm-bindgen boundary.
 
 //! Font data model — owned, single-threaded data structures.
+//!
+//! These are the Xilem-era glyph types. They no longer hold the live
+//! font model, which is now `norad` based. Today they survive as the
+//! intermediate form that `crate::path` uses to convert contours to and
+//! from hyperbezier paths. See `Contour::from_norad` and
+//! `norad_contour_is_hyper`.
 
 use kurbo::Affine;
 use std::collections::HashMap;
@@ -19,10 +25,15 @@ use super::entity_id::EntityId;
 /// Internal representation of a glyph (owned data).
 #[derive(Debug, Clone)]
 pub struct Glyph {
+    /// The glyph name.
     pub name: String,
+    /// Advance width in font units.
     pub width: f64,
+    /// Advance height in font units, if the source sets one.
     pub height: Option<f64>,
+    /// Unicode codepoints mapped to this glyph; empty when unencoded.
     pub codepoints: Vec<char>,
+    /// The glyph's own outline contours.
     pub contours: Vec<Contour>,
     /// Components referencing other glyphs.
     pub components: Vec<Component>,
@@ -38,14 +49,18 @@ pub struct Glyph {
 /// A contour is a closed path.
 #[derive(Debug, Clone)]
 pub struct Contour {
+    /// The points in contour order.
     pub points: Vec<ContourPoint>,
 }
 
 /// A point in a contour.
 #[derive(Debug, Clone)]
 pub struct ContourPoint {
+    /// X coordinate in font units.
     pub x: f64,
+    /// Y coordinate in font units.
     pub y: f64,
+    /// How the point takes part in the path; see `PointType`.
     pub point_type: PointType,
     /// UFO smooth attribute — tangent continuity.
     pub smooth: bool,
@@ -54,10 +69,15 @@ pub struct ContourPoint {
 /// Point type classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PointType {
+    /// The first point of an open contour.
     Move,
+    /// An on-curve point reached by a straight line.
     Line,
+    /// An off-curve control handle.
     OffCurve,
+    /// An on-curve point ending a cubic segment.
     Curve,
+    /// An on-curve point ending a quadratic segment.
     QCurve,
     /// Hyperbezier smooth point (on-curve, auto control points).
     Hyper,
@@ -131,16 +151,23 @@ impl Glyph {
 /// in-memory shape that crosses the wasm-bindgen boundary.
 #[derive(Debug, Clone)]
 pub struct Workspace {
+    /// Family name from `fontinfo.plist`.
     pub family_name: String,
+    /// Style name from `fontinfo.plist`.
     pub style_name: String,
 
     /// All glyphs, indexed by name.
     pub glyphs: HashMap<String, Glyph>,
 
+    /// Units per em, if set in the font info.
     pub units_per_em: Option<f64>,
+    /// Ascender in font units, if set.
     pub ascender: Option<f64>,
+    /// Descender in font units, if set; normally negative.
     pub descender: Option<f64>,
+    /// X-height in font units, if set.
     pub x_height: Option<f64>,
+    /// Cap height in font units, if set.
     pub cap_height: Option<f64>,
 
     /// Kerning pairs: `first_member -> (second_member -> kern_value)`.

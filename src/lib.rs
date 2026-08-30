@@ -28,12 +28,15 @@
 //!   `font_memory`, `sidebar`, `theme`, `theme_oklch`.
 
 pub mod binary_import;
+/// Glyph categories and Unicode-based classification.
 pub mod category;
 pub mod cleanup;
 pub mod color_font;
 pub mod composites;
 pub mod convert;
+/// Curve-quality operations: harmonize, balance, and optimize.
 pub mod curve;
+/// Toolkit-free editor state: edit types, selection, undo, and viewport.
 pub mod editing;
 pub mod effects;
 pub mod embolden;
@@ -45,8 +48,10 @@ pub mod image_trace;
 pub mod knife;
 pub mod lib_keys;
 pub mod mark_color;
+/// Measurements of stems, handles, segments, and side bearings.
 pub mod measure;
 pub mod metrics_keys;
+/// The shared data model for paths, entities, and glyph state.
 pub mod model;
 pub mod new_font;
 pub mod optical;
@@ -55,6 +60,7 @@ pub mod point_ops;
 pub mod project;
 pub mod search;
 pub mod segment_ops;
+/// Text shaping through a compiled in-memory font.
 pub mod shape;
 pub mod shaping;
 pub mod sidebar;

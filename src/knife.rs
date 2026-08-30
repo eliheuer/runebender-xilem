@@ -38,6 +38,8 @@ enum SliceItem {
     SingleCubic(SingleHitCubicPath),
 }
 
+/// Cut every closed path in `paths` along `line` and return the resulting paths.
+/// Paths the line misses come back unchanged; a single hit on two nested contours joins them.
 pub fn slice_paths(paths: &[Path], line: Line) -> Vec<Path> {
     let mut items = Vec::new();
     for path in paths {

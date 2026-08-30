@@ -10,13 +10,17 @@
 /// arithmetic, "=50" is a constant.
 pub const LEFT_METRICS_KEY: &str = "com.schriftgestaltung.Glyphs.glyph.leftMetricsKey";
 
+/// Lib key for the right sidebearing formula. See [`LEFT_METRICS_KEY`] for the syntax.
 pub const RIGHT_METRICS_KEY: &str = "com.schriftgestaltung.Glyphs.glyph.rightMetricsKey";
 
 /// A parsed metrics-key formula.
 #[derive(Clone, Debug, PartialEq)]
 pub enum MetricsFormula {
+    /// A fixed sidebearing value in font units, such as `=50`.
     Constant(f64),
+    /// A sidebearing copied from another glyph, with optional mirroring and arithmetic.
     Reference {
+        /// Name of the glyph whose sidebearing is copied.
         glyph: String,
         /// Read the opposite sidebearing of the referenced glyph.
         mirror: bool,
@@ -25,6 +29,7 @@ pub enum MetricsFormula {
     },
 }
 
+/// Parses a metrics key such as `=n+10`. The leading `=` is optional. Returns `None` for empty text or a malformed number.
 pub fn parse_metrics_key(text: &str) -> Option<MetricsFormula> {
     let body = text.trim().trim_start_matches('=').trim();
     if body.is_empty() {
@@ -53,6 +58,7 @@ pub fn parse_metrics_key(text: &str) -> Option<MetricsFormula> {
     })
 }
 
+/// Reads the left (`left == true`) or right metrics key from the glyph lib, if present.
 pub fn read_metrics_key(glyph: &norad::Glyph, left: bool) -> Option<String> {
     let key = if left {
         LEFT_METRICS_KEY
@@ -66,6 +72,7 @@ pub fn read_metrics_key(glyph: &norad::Glyph, left: bool) -> Option<String> {
         .map(|v| v.to_string())
 }
 
+/// Writes the left (`left == true`) or right metrics key to the glyph lib. An empty or whitespace-only `value` removes the key.
 pub fn write_metrics_key(glyph: &mut norad::Glyph, left: bool, value: &str) {
     let key = if left {
         LEFT_METRICS_KEY

@@ -21,17 +21,22 @@ use norad::Font;
 /// One glyph's sidebearings.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Sides {
+    /// Name of the glyph.
     pub glyph: String,
+    /// Left sidebearing in font units.
     pub left: f64,
+    /// Right sidebearing in font units.
     pub right: f64,
 }
 
 /// A sidebearing that is not a multiple of the family's step.
 #[derive(Clone, Debug, PartialEq)]
 pub struct OffGrid {
+    /// Name of the glyph.
     pub glyph: String,
     /// Which side, for the report: "left" or "right".
     pub side: &'static str,
+    /// The sidebearing value in font units.
     pub value: f64,
     /// How far to the nearest multiple of the step.
     pub off_by: f64,

@@ -36,7 +36,9 @@ use write_fonts::{
 /// One glyph as the shaper needs to see it.
 #[derive(Debug, Clone)]
 pub struct ShapingGlyph {
+    /// The glyph name, used to build the post table and name lookups.
     pub name: String,
+    /// Advance width in font units.
     pub advance: f64,
     /// Codepoints that map to this glyph. Usually zero or one.
     pub unicodes: Vec<u32>,
@@ -45,6 +47,7 @@ pub struct ShapingGlyph {
 /// Everything needed to build a shaping font for one master.
 #[derive(Debug, Clone)]
 pub struct ShapingSource {
+    /// Units per em of the master.
     pub units_per_em: f64,
     /// Glyph order. Index is the glyph id, so `.notdef` belongs first.
     pub glyphs: Vec<ShapingGlyph>,
@@ -61,8 +64,11 @@ pub struct ShapedGlyph {
     /// cluster of its first character, so several glyphs can share one
     /// cluster and one glyph can stand for several characters.
     pub cluster: u32,
+    /// Horizontal advance in font units, after positioning.
     pub x_advance: f64,
+    /// Horizontal offset from the pen position in font units.
     pub x_offset: f64,
+    /// Vertical offset from the baseline in font units.
     pub y_offset: f64,
 }
 

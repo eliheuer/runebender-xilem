@@ -33,9 +33,13 @@ pub enum MeasureKind {
 /// design-unit distance to label.
 #[derive(Clone, Copy, Debug)]
 pub struct Measurement {
+    /// First endpoint of the span, in design units.
     pub a: Point,
+    /// Second endpoint of the span, in design units.
     pub b: Point,
+    /// Rounded distance from `a` to `b`, in design units.
     pub length: i64,
+    /// What the span describes.
     pub kind: MeasureKind,
 }
 
@@ -342,14 +346,19 @@ pub fn colored_strokes(paths: &[Path]) -> Vec<ColoredStroke> {
 /// those extreme points and the glyph's vertical extent are, for drawing.
 #[derive(Clone, Copy)]
 pub struct SideBearings {
+    /// The glyph's advance width in design units.
     pub advance: f64,
+    /// Left side bearing: rounded gap from x=0 to the leftmost point, in design units.
     pub lsb: i64,
+    /// Right side bearing: rounded gap from the rightmost point to the advance, in design units.
     pub rsb: i64,
     /// Extreme x positions of the outline (furthest-left / furthest-right).
     pub min_x: f64,
+    /// Furthest-right x position of the outline.
     pub max_x: f64,
     /// y of the leftmost / rightmost point (so the SB line points at it).
     pub y_left: f64,
+    /// y of the rightmost point.
     pub y_right: f64,
 }
 

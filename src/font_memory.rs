@@ -22,6 +22,7 @@ pub fn designspace_from_str(xml: &str) -> Result<DesignSpaceDocument, String> {
 /// A font assembled from memory plus the bookkeeping a host needs
 /// to write changes back: which file each glyph came from.
 pub struct UfoFiles {
+    /// The assembled font, with every glyph loaded into its default layer.
     pub font: Font,
     /// glyph name → path relative to the UFO root ("glyphs/A_.glif").
     pub glif_paths: HashMap<String, String>,

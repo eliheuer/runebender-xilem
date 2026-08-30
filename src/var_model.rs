@@ -65,6 +65,8 @@ pub struct VariationModel {
 }
 
 impl VariationModel {
+    /// Build a model for the given master locations. Locations must be normalized to -1..1 per axis.
+    /// The first location in sorted order becomes the base master.
     pub fn new(locations: &[Location]) -> Self {
         let sort_order = sort_locations(locations);
         let sorted: Vec<Location> = sort_order.iter().map(|&i| locations[i].clone()).collect();

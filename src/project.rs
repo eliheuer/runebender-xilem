@@ -39,20 +39,28 @@ fn mark_label(glyph: &norad::Glyph) -> Option<String> {
 /// inside the glyph so edits can address it.
 #[derive(Clone, Copy)]
 pub struct GlyphPoint {
+    /// X coordinate in font units.
     pub x: f64,
+    /// Y coordinate in font units.
     pub y: f64,
+    /// True for an on-curve point, false for a control point.
     pub on_curve: bool,
+    /// True when the on-curve point's handles are kept collinear.
     pub smooth: bool,
     /// Point in a hyperbezier contour (drawn in its own color).
     pub hyper: bool,
+    /// Index of the contour that owns this point.
     pub contour: usize,
+    /// Index of the point within its contour.
     pub index: usize,
 }
 
 /// One glyph, ready to paint: outline in font units (Y-up), advance
 /// width, and identifying info.
 pub struct GlyphEntry {
+    /// Glyph name.
     pub name: Arc<str>,
+    /// The glyph's Unicode codepoint, if it has one.
     pub codepoint: Option<char>,
     /// Contours + components combined (grid, preview).
     pub path: Arc<BezPath>,
@@ -60,9 +68,13 @@ pub struct GlyphEntry {
     pub contour_path: Arc<BezPath>,
     /// Resolved components only (editor, distinct color).
     pub component_path: Arc<BezPath>,
+    /// Every control point of the glyph's own contours.
     pub points: Arc<Vec<GlyphPoint>>,
+    /// Anchors as `(name, x, y)` in font units.
     pub anchors: Arc<Vec<(Arc<str>, f64, f64)>>,
+    /// Advance width in font units.
     pub advance: f64,
+    /// Base glyph names of the glyph's components, in order.
     pub component_names: Arc<Vec<Arc<str>>>,
     /// Mark label ("red", "green", …) from the glyph lib, if any.
     pub mark: Option<Arc<str>>,
@@ -71,7 +83,9 @@ pub struct GlyphEntry {
     pub ink: kurbo::Rect,
 }
 
+/// One UFO master with its change tracking and a paint-ready glyph cache.
 pub struct Master {
+    /// The loaded UFO.
     pub font: norad::Font,
     /// Names of glyphs edited since load/save (partial saves).
     pub modified_glyphs: HashSet<String>,
@@ -83,21 +97,29 @@ pub struct Master {
     /// glyph name → index into `glyphs` (text buffer sorts carry
     /// names, including unencoded ligature glyphs from shaping).
     pub name_map: HashMap<String, usize>,
+    /// Path of the UFO on disk, or a virtual path for in-memory hosts.
     pub source_path: PathBuf,
+    /// Units per em from fontinfo, or 1000 when unset.
     pub units_per_em: f64,
+    /// Ascender from fontinfo, in font units.
     pub ascender: f64,
+    /// Descender from fontinfo, in font units (usually negative).
     pub descender: f64,
     /// Optional guides: drawn only when fontinfo defines them, like
     /// the web's metric guides.
     pub x_height: Option<f64>,
+    /// Cap height from fontinfo, if defined.
     pub cap_height: Option<f64>,
+    /// Paint-ready entries in glyph grid order.
     pub glyphs: Vec<GlyphEntry>,
     /// Bumped when the glyph list itself changes (added, removed,
     /// renamed), so caches keyed on the list can tell.
     pub revision: u64,
+    /// True when anything changed since the last load or save.
     pub dirty: bool,
 }
 
+/// Collects a glyph's anchors as `(name, x, y)`. An unnamed anchor gets an empty name.
 pub fn extract_anchors(glyph: &norad::Glyph) -> Vec<(Arc<str>, f64, f64)> {
     glyph
         .anchors
@@ -116,6 +138,7 @@ pub fn extract_anchors(glyph: &norad::Glyph) -> Vec<(Arc<str>, f64, f64)> {
         .collect()
 }
 
+/// Collects every contour point of a glyph as [`GlyphPoint`] values, in contour order.
 pub fn extract_points(glyph: &norad::Glyph) -> Vec<GlyphPoint> {
     glyph
         .contours
@@ -229,6 +252,7 @@ impl Master {
         true
     }
 
+    /// Loads a UFO from disk and builds the glyph cache.
     pub fn load(path: &Path) -> Result<Self, norad::error::FontLoadError> {
         let font = norad::Font::load(path)?;
         Ok(Self::from_font(font, path.to_path_buf()))
@@ -307,6 +331,7 @@ impl Master {
         }
     }
 
+    /// Rebuilds one glyph's cached paths, points, anchors, advance, and mark from the font. Does nothing when the glyph is missing.
     pub fn rebuild_entry(&mut self, glyph_index: usize) {
         let name = self.glyphs[glyph_index].name.to_string();
         let Some(glyph) = self.font.get_glyph(name.as_str()) else {
@@ -352,6 +377,7 @@ impl Master {
         self.edit_glyph(glyph_index, |g| ops::restore(g, snapshot));
     }
 
+    /// Moves an anchor to `(x, y)`. Ignores an out-of-range anchor index.
     pub fn set_anchor(&mut self, glyph_index: usize, anchor: usize, x: f64, y: f64) {
         self.edit_glyph(glyph_index, |g| {
             if let Some(a) = g.anchors.get_mut(anchor) {
@@ -361,6 +387,7 @@ impl Master {
         });
     }
 
+    /// Adds an anchor at `(x, y)` named `anchor.N`, where `N` is the current anchor count.
     pub fn add_anchor(&mut self, glyph_index: usize, x: f64, y: f64) {
         self.edit_glyph(glyph_index, |g| {
             let n = g.anchors.len();
@@ -369,6 +396,7 @@ impl Master {
         });
     }
 
+    /// Removes the anchor at `anchor`. Ignores an out-of-range index.
     pub fn delete_anchor(&mut self, glyph_index: usize, anchor: usize) {
         self.edit_glyph(glyph_index, |g| {
             if anchor < g.anchors.len() {
@@ -389,6 +417,7 @@ impl Master {
         })
     }
 
+    /// Appends a point to an open hyperbezier contour. `corner` makes it a corner rather than a smooth point.
     pub fn append_hyper_point(
         &mut self,
         glyph_index: usize,
@@ -402,12 +431,14 @@ impl Master {
         });
     }
 
+    /// Closes an open hyperbezier contour.
     pub fn close_hyper_contour(&mut self, glyph_index: usize, contour: usize) {
         self.edit_glyph(glyph_index, |g| {
             crate::glyph_ops::close_hyper_contour(g, contour)
         });
     }
 
+    /// Starts a new open cubic contour at `(x, y)` for the pen tool. Returns its index.
     pub fn start_contour(&mut self, glyph_index: usize, x: f64, y: f64) -> Option<usize> {
         self.edit_glyph(glyph_index, |g| ops::start_contour(g, x, y))
     }
@@ -486,6 +517,7 @@ impl Master {
         }
     }
 
+    /// Sets the advance width in font units and marks the master dirty.
     pub fn set_advance(&mut self, glyph_index: usize, width: f64) {
         let name = self.glyphs[glyph_index].name.to_string();
         if let Some(glyph) = self.font.default_layer_mut().get_glyph_mut(name.as_str()) {
@@ -500,6 +532,7 @@ impl Master {
         self.edit_glyph(glyph_index, |g| ops::shift_ink(g, dx));
     }
 
+    /// Copies the glyph's advance width from the font into the cached entry.
     pub fn rebuild_metrics(&mut self, glyph_index: usize) {
         let name = self.glyphs[glyph_index].name.to_string();
         if let Some(glyph) = self.font.get_glyph(name.as_str()) {
@@ -547,6 +580,7 @@ impl Master {
             .collect()
     }
 
+    /// Appends copied contours to the glyph and rebuilds its cache. Does nothing for an empty slice.
     pub fn paste_contours(&mut self, glyph_index: usize, contours: &[norad::Contour]) {
         if contours.is_empty() {
             return;
@@ -579,6 +613,7 @@ impl Master {
         self.edit_glyph(glyph_index, |g| ops::add_shape_contour(g, rect, ellipse));
     }
 
+    /// Writes the master back to `source_path` and clears all dirty flags.
     pub fn save(&mut self) -> Result<(), norad::error::FontWriteError> {
         self.font.save(&self.source_path)?;
         self.dirty = false;
@@ -591,23 +626,32 @@ impl Master {
 /// One designspace axis, in design coordinates.
 #[derive(Clone)]
 pub struct AxisInfo {
+    /// Axis name as written in the designspace.
     pub name: String,
+    /// Four-letter OpenType axis tag.
     pub tag: Arc<str>,
+    /// Minimum value in design coordinates.
     pub min: f64,
+    /// Default value in design coordinates.
     pub default: f64,
+    /// Maximum value in design coordinates.
     pub max: f64,
 }
 
 /// An open project: one or more master UFOs, optionally tied together
 /// by a designspace document.
 pub struct Project {
+    /// The loaded masters, in designspace source order.
     pub masters: Vec<Master>,
+    /// Index into `masters` of the master being edited.
     pub active: usize,
     /// Style names for the master switcher, one per master.
     pub master_names: Vec<Arc<str>>,
+    /// The designspace axes, empty for a single UFO.
     pub axes: Vec<AxisInfo>,
     /// Normalized (-1..1) location of each master, by axis name.
     pub master_locations: Vec<Location>,
+    /// The variation model over `master_locations`, if there is more than one master.
     pub model: Option<VariationModel>,
     /// Current preview location, normalized, by axis name.
     pub location: Location,
@@ -644,8 +688,11 @@ pub struct BraceSource {
 /// Which Glyphs form a path names, if either.
 #[derive(Clone, Copy, PartialEq)]
 pub enum GlyphsSource {
+    /// A single `.glyphs` file.
     File,
+    /// A `.glyphspackage` directory.
     Package,
+    /// Not a Glyphs path.
     Neither,
 }
 
@@ -735,6 +782,7 @@ impl Project {
         project
     }
 
+    /// Opens a designspace, UFO, Glyphs source, or binary font. Sets `export_source` to `path` when the loader left it unset.
     pub fn load(path: &Path) -> Result<Self, String> {
         let mut project = Self::load_inner(path)?;
         if project.export_source.is_none() {
@@ -744,6 +792,7 @@ impl Project {
         Ok(project)
     }
 
+    /// Loads a project by file type without filling in `export_source` or computing compatibility. Prefer [`Project::load`].
     pub fn load_inner(path: &Path) -> Result<Self, String> {
         let glyphs_ext = path.extension().and_then(|e| e.to_str()).map(|e| {
             if e.eq_ignore_ascii_case("glyphspackage") {
@@ -1186,6 +1235,7 @@ impl Project {
         Ok(template)
     }
 
+    /// The interpolation at the current location as a combined path and advance width, using the active master to resolve components.
     pub fn interpolated_glyph(&self, glyph_name: &str) -> Option<(BezPath, f64)> {
         let glyph = self.interpolated_norad_glyph(glyph_name)?;
         let advance = glyph.width;
@@ -1418,10 +1468,12 @@ impl Project {
         None
     }
 
+    /// The master being edited.
     pub fn active_font(&self) -> &Master {
         &self.masters[self.active]
     }
 
+    /// The master being edited, mutably.
     pub fn active_font_mut(&mut self) -> &mut Master {
         &mut self.masters[self.active]
     }

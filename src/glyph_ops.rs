@@ -23,9 +23,13 @@ pub type PointUpdates = [(PointId, (f64, f64))];
 /// One undo step: a glyph's full editable state.
 #[derive(Clone)]
 pub struct GlyphSnapshot {
+    /// Every contour of the glyph, with its points.
     pub contours: Vec<Contour>,
+    /// Every component reference of the glyph.
     pub components: Vec<norad::Component>,
+    /// Every anchor of the glyph.
     pub anchors: Vec<norad::Anchor>,
+    /// The advance width in font units.
     pub width: f64,
 }
 
@@ -746,8 +750,11 @@ pub fn bezpath_to_contour(
 /// A curve-quality operation from [`crate::curve`].
 #[derive(Clone, Copy)]
 pub enum CurveOp {
+    /// Move control handles so curvature matches across each on-curve point.
     Harmonize,
+    /// Equalize the two handle lengths of each cubic segment.
     Balance,
+    /// Refit each contour with fewer points, within the given tolerance in font units.
     Optimize(f64),
 }
 

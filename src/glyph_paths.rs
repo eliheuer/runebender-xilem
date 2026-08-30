@@ -7,6 +7,8 @@
 use kurbo::{Affine, BezPath, Point};
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 
+/// Build a `BezPath` for a glyph, with components resolved recursively through `font`.
+/// Component transforms apply in full; a missing base glyph contributes nothing.
 pub fn glyph_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
     let mut path = BezPath::new();
     for contour in &glyph.contours {

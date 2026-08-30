@@ -20,8 +20,11 @@ const ALIGNMENT_KEY: &str = "com.glyphsapp.component.alignment";
 /// base glyph carries (in the base's own coordinates), where the
 /// component currently sits, and whether it is still anchor-locked.
 pub struct AlignInput {
+    /// Anchors the base glyph carries, as `(name, position)` in the base's own coordinates.
     pub anchors: Vec<(String, Point)>,
+    /// The component's current translation in the composite's coordinates.
     pub offset: Vec2,
+    /// True while the component still follows its anchor; false once it is cut loose.
     pub aligned: bool,
 }
 

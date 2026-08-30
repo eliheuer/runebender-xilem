@@ -33,12 +33,16 @@ use kurbo::BezPath;
 /// hyperbezier paths.
 #[derive(Debug, Clone)]
 pub enum Path {
+    /// A contour with explicit cubic control points (UFO `curve` segments).
     Cubic(CubicPath),
+    /// A contour with quadratic control points (UFO `qcurve` segments).
     Quadratic(QuadraticPath),
+    /// A hyperbezier contour; only on-curve points are stored and handles are solved.
     Hyper(HyperPath),
 }
 
 impl Path {
+    /// Renders this path as a new `kurbo::BezPath`.
     pub fn to_bezpath(&self) -> BezPath {
         match self {
             Path::Cubic(cubic) => cubic.to_bezpath(),
@@ -47,6 +51,7 @@ impl Path {
         }
     }
 
+    /// Appends this path's elements to an existing `BezPath` without clearing it.
     pub fn append_to_bezpath(&self, path: &mut BezPath) {
         match self {
             Path::Cubic(cubic) => cubic.append_to_bezpath(path),
@@ -80,6 +85,7 @@ impl Path {
         }
     }
 
+    /// Returns the path's editable points, whatever the curve type.
     pub fn points(&self) -> &PathPoints {
         match self {
             Path::Cubic(cubic) => cubic.points(),
@@ -88,6 +94,7 @@ impl Path {
         }
     }
 
+    /// Converts back to the `workspace::Contour` form used for saving and conversion.
     pub fn to_contour(&self) -> workspace::Contour {
         match self {
             Path::Cubic(cubic) => cubic.to_contour(),

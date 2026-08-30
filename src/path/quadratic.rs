@@ -16,13 +16,17 @@ use kurbo::BezPath;
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct QuadraticPath {
+    /// The on-curve and off-curve points in contour order.
     pub points: PathPoints,
+    /// Whether the contour is closed; closed paths join the last point back to index 0.
     pub closed: bool,
+    /// Unique identity for selection and hit testing.
     pub id: EntityId,
 }
 
 #[allow(dead_code)]
 impl QuadraticPath {
+    /// Creates a path from existing points and assigns it a fresh `EntityId`.
     pub fn new(points: PathPoints, closed: bool) -> Self {
         Self {
             points,
@@ -31,18 +35,22 @@ impl QuadraticPath {
         }
     }
 
+    /// Creates an open path with no points.
     pub fn empty() -> Self {
         Self::new(PathPoints::new(), false)
     }
 
+    /// Returns the number of points, on-curve and off-curve together.
     pub fn len(&self) -> usize {
         self.points.len()
     }
 
+    /// Returns `true` when the path has no points.
     pub fn is_empty(&self) -> bool {
         self.points.is_empty()
     }
 
+    /// Returns the path's points.
     pub fn points(&self) -> &PathPoints {
         &self.points
     }

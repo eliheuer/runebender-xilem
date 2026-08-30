@@ -22,15 +22,22 @@ use glyphslib::glyphs3::{Glyphs3, MetricType, Shape};
 use serde::Serialize;
 
 #[derive(Serialize)]
+/// One generated file of the converted UFO or designspace set.
 pub struct ConvertedFile {
+    /// Path relative to the output root, for example `Family-Regular.ufo/glyphs/A_.glif`.
     pub path: String,
+    /// The full text content of the file.
     pub text: String,
 }
 
 #[derive(Serialize)]
+/// The output of converting a Glyphs source: files to load plus warnings.
 pub struct ConversionResult {
+    /// The family name from the Glyphs source.
     pub family_name: String,
+    /// Every generated file, one UFO per master plus a designspace for multi-master fonts.
     pub files: Vec<ConvertedFile>,
+    /// Non-fatal problems met during conversion, such as skipped layers or features.
     pub warnings: Vec<String>,
 }
 

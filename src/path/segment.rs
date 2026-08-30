@@ -7,16 +7,22 @@ use kurbo::{CubicBez, Line, ParamCurve, ParamCurveNearest, Point, QuadBez};
 /// A segment of a path (line, quadratic, or cubic bezier curve).
 #[derive(Debug, Clone, Copy)]
 pub enum Segment {
+    /// A straight line between two on-curve points.
     Line(Line),
+    /// A quadratic bezier with one off-curve control point.
     Quadratic(QuadBez),
+    /// A cubic bezier with two off-curve control points.
     Cubic(CubicBez),
 }
 
 /// Information about a segment within a path.
 #[derive(Debug, Clone, Copy)]
 pub struct SegmentInfo {
+    /// The segment geometry, in design space.
     pub segment: Segment,
+    /// Index of the segment's starting on-curve point within its path's point list.
     pub start_index: usize,
+    /// Index of the segment's ending on-curve point within its path's point list.
     pub end_index: usize,
     /// The index of the path within `session.paths` that owns this
     /// segment. Used to disambiguate segments with identical local

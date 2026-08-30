@@ -65,8 +65,11 @@ pub enum TextDirection {
 pub enum TextSortKind {
     /// A glyph slot. `name` is the glyph drawn, `codepoint` the character typed, if any, and `advance_width` its width in font units.
     Glyph {
+        /// Name of the glyph drawn.
         name: String,
+        /// The character typed to produce this sort, if any.
         codepoint: Option<char>,
+        /// The glyph's advance width in font units.
         advance_width: f64,
     },
     /// A hard line break. It draws nothing and starts a new line.
@@ -402,6 +405,8 @@ impl PartialEq for BidiRunCache {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// A line of sorts under edit: the text, its cursor, direction, kerning, and cached shaping.
+/// This is the model behind the text tool; it owns no rendering.
 pub struct TextBuffer {
     sorts: Vec<TextSort>,
     cursor: usize,

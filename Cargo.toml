@@ -13,6 +13,7 @@ path = "src/bin/runebender.rs"
 
 [lints.rust]
 unsafe_code = "forbid"
+missing_docs = "warn"
 
 [lib]
 name = "runebender_core"

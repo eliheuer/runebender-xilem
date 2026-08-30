@@ -6,14 +6,20 @@
 //! reading, hue-snapping, and writing.
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+/// A UFO `public.markColor` value: four channels in the range 0.0 to 1.0.
 pub struct MarkColor {
+    /// Red channel, 0.0 to 1.0.
     pub red: f32,
+    /// Green channel, 0.0 to 1.0.
     pub green: f32,
+    /// Blue channel, 0.0 to 1.0.
     pub blue: f32,
+    /// Alpha channel, 0.0 to 1.0.
     pub alpha: f32,
 }
 
 impl MarkColor {
+    /// Parses a `r,g,b,a` string. Returns `None` unless there are exactly four finite values in 0.0 to 1.0.
     pub fn parse(value: &str) -> Option<Self> {
         let mut values = value.split(',').map(str::trim).map(str::parse::<f32>);
         let red = values.next()?.ok()?;
@@ -32,6 +38,7 @@ impl MarkColor {
         color.is_valid().then_some(color)
     }
 
+    /// Returns true when every channel is finite and within 0.0 to 1.0.
     pub fn is_valid(self) -> bool {
         [self.red, self.green, self.blue, self.alpha]
             .into_iter()
@@ -39,6 +46,7 @@ impl MarkColor {
     }
 }
 
+/// Normalizes a `public.markColor` string by trimming whitespace around each value. Keeps the original number text. Returns `None` for invalid input; an empty string stays empty.
 pub fn canonical_ufo_mark_color(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {

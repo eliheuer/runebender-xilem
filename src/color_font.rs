@@ -62,6 +62,7 @@ pub fn paint_glyph_layer(glyph: &str, child: plist::Value) -> plist::Value {
     plist::Value::Dictionary(dict)
 }
 
+/// Builds a PaintSolid (Format 2) paint at full alpha for the given palette index.
 pub fn paint_solid(palette: usize) -> plist::Value {
     let mut dict = plist::Dictionary::new();
     dict.insert("Format".into(), plist::Value::Integer(2u64.into()));
@@ -81,8 +82,10 @@ pub fn has_v1_entry(font: &norad::Font, glyph: &str) -> bool {
         .is_some_and(|d| d.contains_key(glyph))
 }
 
+/// Font lib key holding the ufo2ft color palettes as arrays of `[r, g, b, a]` rows.
 pub const COLOR_PALETTES_KEY: &str = "com.github.googlei18n.ufo2ft.colorPalettes";
 
+/// Font lib key mapping color layer names to palette indices, bottom layer first.
 pub const COLOR_LAYER_MAPPING_KEY: &str = "com.github.googlei18n.ufo2ft.colorLayerMapping";
 
 /// The first palette: [r, g, b, a] float rows.
@@ -112,6 +115,7 @@ pub fn read_color_palette(font: &norad::Font) -> Vec<[f64; 4]> {
         .unwrap_or_default()
 }
 
+/// Writes `palette` as the font's single color palette under [`COLOR_PALETTES_KEY`].
 pub fn write_color_palette(font: &mut norad::Font, palette: &[[f64; 4]]) {
     let value = plist::Value::Array(vec![plist::Value::Array(
         palette
@@ -144,6 +148,7 @@ pub fn read_color_mapping(font: &norad::Font) -> Vec<(String, usize)> {
         .unwrap_or_default()
 }
 
+/// Writes the layer-to-palette mapping under [`COLOR_LAYER_MAPPING_KEY`]. An empty `mapping` removes the key.
 pub fn write_color_mapping(font: &mut norad::Font, mapping: &[(String, usize)]) {
     if mapping.is_empty() {
         font.lib.remove(COLOR_LAYER_MAPPING_KEY);

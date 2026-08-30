@@ -15,14 +15,20 @@ use serde::Deserialize;
 /// One Google Fonts glyphset (GF_Latin_Core, …).
 #[derive(Deserialize)]
 pub struct GfGlyphset {
+    /// Glyphset identifier, such as `GF_Latin_Core`.
     pub id: String,
+    /// Human-readable name shown in the sidebar.
     pub label: String,
+    /// Script the glyphset belongs to, such as `Latin` or `Arabic`.
     pub script: String,
     #[serde(default)]
+    /// Longer description from the glyphset definition; empty when absent.
     pub description: String,
     #[serde(rename = "glyphNames")]
+    /// Glyph names the set expects the font to contain.
     pub glyph_names: Vec<String>,
     #[serde(rename = "expectedCount")]
+    /// Total number of glyphs in the set, used for coverage counts.
     pub expected_count: usize,
 }
 
@@ -39,17 +45,24 @@ pub fn gf_glyphsets() -> &'static [GfGlyphset] {
 /// named glyph still counts when its codepoint matches.
 #[derive(Clone)]
 pub struct GlyphTarget {
+    /// Expected glyph name.
     pub name: String,
+    /// Codepoint that also satisfies the target when the name differs.
     pub unicode: u32,
 }
 
 /// One row under a script: a set of glyphs matched by name list,
 /// target list, or codepoint ranges (web SidebarCharacterFilter).
 pub struct CharacterFilter {
+    /// Stable identifier for the filter.
     pub id: String,
+    /// Label shown in the sidebar row.
     pub label: String,
+    /// Glyph names that match this filter.
     pub glyph_names: Vec<String>,
+    /// Name-plus-codepoint targets that match this filter.
     pub targets: Vec<GlyphTarget>,
+    /// Inclusive codepoint ranges that match this filter.
     pub ranges: Vec<(u32, u32)>,
     /// The full size of the set, for "present/expected" coverage.
     pub expected_count: Option<usize>,
@@ -57,8 +70,11 @@ pub struct CharacterFilter {
 
 /// A script group in the Languages section.
 pub struct LanguageGroup {
+    /// Stable identifier for the group.
     pub id: String,
+    /// Label shown on the group row.
     pub label: String,
+    /// Icon text shown next to the label.
     pub icon: String,
     /// What the group row itself selects: the script's own Unicode
     /// blocks (the glyphsets carry Latin punctuation, so OR-ing the
@@ -66,12 +82,15 @@ pub struct LanguageGroup {
     pub script_ranges: Vec<(u32, u32)>,
     /// Glyph-name suffix for forms with no codepoint (`beh-ar.init`).
     pub name_suffix: Option<String>,
+    /// The sub-filter rows listed under this group.
     pub filters: Vec<CharacterFilter>,
 }
 
 /// A row in the Filters section (web SidebarBuiltinFilter).
 pub struct BuiltinFilter {
+    /// Stable identifier for the filter.
     pub id: String,
+    /// Label shown in the sidebar row.
     pub label: String,
     /// None = a Runebender builtin (exporting, incompatible);
     /// Some = a GF glyphset promoted into the Filters list.

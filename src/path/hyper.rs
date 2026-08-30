@@ -20,8 +20,11 @@ use std::sync::Arc;
 /// Control points are automatically computed by the spline solver.
 #[derive(Debug, Clone)]
 pub struct HyperPath {
+    /// The on-curve points only; the solver derives the handles.
     pub points: PathPoints,
+    /// Whether the contour is closed.
     pub closed: bool,
+    /// Unique identity for selection and hit testing.
     pub id: EntityId,
     /// Cached bezier path for rendering.
     bezier: Arc<BezPath>,
@@ -60,6 +63,7 @@ impl HyperPath {
         path
     }
 
+    /// Creates an open path with no points and an empty bezier cache.
     pub fn empty() -> Self {
         Self {
             points: PathPoints::new(),
@@ -69,14 +73,17 @@ impl HyperPath {
         }
     }
 
+    /// Returns the number of on-curve points.
     pub fn len(&self) -> usize {
         self.points.len()
     }
 
+    /// Returns `true` when the path has no points.
     pub fn is_empty(&self) -> bool {
         self.points.is_empty()
     }
 
+    /// Returns the path's on-curve points.
     pub fn points(&self) -> &PathPoints {
         &self.points
     }
@@ -86,10 +93,12 @@ impl HyperPath {
         self.rebuild_bezier();
     }
 
+    /// Returns a copy of the cached solved bezier.
     pub fn to_bezpath(&self) -> BezPath {
         (*self.bezier).clone()
     }
 
+    /// Appends the cached solved bezier's elements to `path`.
     pub fn append_to_bezpath(&self, path: &mut BezPath) {
         for el in self.bezier.elements() {
             path.push(*el);
@@ -169,11 +178,13 @@ impl HyperPath {
         self.rebuild_bezier();
     }
 
+    /// Marks the path closed and re-solves the spline.
     pub fn close_path(&mut self) {
         self.closed = true;
         self.rebuild_bezier();
     }
 
+    /// Returns the first on-curve point, or `None` when the path is empty.
     pub fn start_point(&self) -> Option<&PathPoint> {
         self.points.iter().next()
     }

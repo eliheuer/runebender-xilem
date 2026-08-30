@@ -7,16 +7,23 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Summary data for one glyph, enough to draw a glyph-grid cell without loading outlines.
 pub struct GlyphMetadata {
+    /// The glyph name, as in the UFO.
     pub name: String,
+    /// Advance width in font units.
     pub width: f64,
+    /// Number of contours in the glyph outline.
     pub contours: usize,
+    /// The first codepoint as an uppercase hex string, or `None` when the glyph has no codepoint.
     pub unicode: Option<String>,
     #[serde(default)]
+    /// All codepoints as uppercase hex strings; empty when the glyph is unencoded.
     pub unicodes: Vec<String>,
 }
 
 impl GlyphMetadata {
+    /// Builds metadata from its parts and derives `unicode` from the first entry of `unicodes`.
     pub fn new(
         name: impl Into<String>,
         width: f64,

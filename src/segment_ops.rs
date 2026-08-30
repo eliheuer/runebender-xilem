@@ -14,6 +14,7 @@ use crate::glyph_ops::PointId;
 /// One segment of a contour, addressed by its on-curve endpoints.
 #[derive(Debug, Clone)]
 pub struct SegmentHit {
+    /// Index of the contour that holds the segment.
     pub contour: usize,
     /// Index of the on-curve point the segment starts at.
     pub start: usize,
@@ -22,6 +23,7 @@ pub struct SegmentHit {
     pub end: usize,
     /// Indices of the off-curve controls between them, in order.
     pub controls: Vec<usize>,
+    /// The segment's geometry as a kurbo `PathSeg`.
     pub seg: PathSeg,
 }
 

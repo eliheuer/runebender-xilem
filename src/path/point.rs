@@ -30,10 +30,12 @@ pub enum PointType {
 }
 
 impl PointType {
+    /// Returns `true` for `OnCurve` points.
     pub fn is_on_curve(&self) -> bool {
         matches!(self, PointType::OnCurve { .. })
     }
 
+    /// Returns `true` for `OffCurve` handles.
     pub fn is_off_curve(&self) -> bool {
         matches!(self, PointType::OffCurve { .. })
     }
@@ -42,8 +44,11 @@ impl PointType {
 /// A point in a bezier path with unique identity.
 #[derive(Debug, Clone)]
 pub struct PathPoint {
+    /// Unique identity for selection and hit testing.
     pub id: EntityId,
+    /// Position in design space.
     pub point: Point,
+    /// On-curve or off-curve classification.
     pub typ: PointType,
 }
 
@@ -56,10 +61,12 @@ impl PathPoint {
         }
     }
 
+    /// Returns `true` when this point lies on the curve.
     pub fn is_on_curve(&self) -> bool {
         self.typ.is_on_curve()
     }
 
+    /// Returns `true` when this point is a control handle.
     pub fn is_off_curve(&self) -> bool {
         self.typ.is_off_curve()
     }

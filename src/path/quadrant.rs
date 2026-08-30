@@ -11,15 +11,24 @@ use kurbo::{Point, Rect};
 /// A quadrant within a 2D rectangular space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Quadrant {
+    /// The top-left corner.
     TopLeft,
+    /// The middle of the top edge.
     Top,
+    /// The top-right corner.
     TopRight,
+    /// The middle of the left edge.
     Left,
     #[default]
+    /// The center of the rect; the default reference point.
     Center,
+    /// The middle of the right edge.
     Right,
+    /// The bottom-left corner.
     BottomLeft,
+    /// The middle of the bottom edge.
     Bottom,
+    /// The bottom-right corner.
     BottomRight,
 }
 
