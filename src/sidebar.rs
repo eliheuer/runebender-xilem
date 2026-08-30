@@ -752,7 +752,7 @@ mod tests {
 
     fn fixture_glyphs() -> Vec<(String, Vec<u32>)> {
         let font =
-            norad::Font::load("../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo")
+            norad::Font::load(crate::test_fonts::regular_ufo())
                 .expect("fixture font");
         font.iter_layers()
             .next()

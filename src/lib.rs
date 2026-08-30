@@ -52,6 +52,7 @@ pub mod new_font;
 pub mod optical;
 pub mod path;
 pub mod point_ops;
+pub mod project;
 pub mod search;
 pub mod segment_ops;
 pub mod shape;
@@ -59,6 +60,8 @@ pub mod shaping;
 pub mod sidebar;
 pub mod spacing;
 pub mod svg;
+#[cfg(test)]
+mod test_fonts;
 pub mod text;
 pub mod theme;
 pub mod theme_oklch;

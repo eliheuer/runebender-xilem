@@ -283,7 +283,7 @@ mod tests {
     #[test]
     fn fixture_agrave_realign_is_a_fixpoint() {
         let font =
-            norad::Font::load("../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo")
+            norad::Font::load(crate::test_fonts::regular_ufo())
                 .expect("fixture font");
         let mut agrave = font.get_glyph("Agrave").expect("Agrave").clone();
         // A well-formed source is already aligned: realigning must
