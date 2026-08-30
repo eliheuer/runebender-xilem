@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn fixture_agrave_realign_is_a_fixpoint() {
-        let font = norad::Font::load(crate::test_fonts::regular_ufo()).expect("fixture font");
+        let font = norad::Font::load(crate::testing::fonts::regular_ufo()).expect("fixture font");
         let mut agrave = font.get_glyph("Agrave").expect("Agrave").clone();
         // A well-formed source is already aligned: realigning must
         // not move anything.

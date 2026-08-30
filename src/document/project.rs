@@ -1510,11 +1510,12 @@ mod tests {
     use crate::formats::lib_keys::write_hoi_intermediates;
     use crate::formats::metrics_keys::{read_metrics_key, write_metrics_key};
     use crate::outline::glyph_ops as ops;
-    use crate::test_fonts;
+    use crate::testing::fonts;
 
     #[test]
     fn designspace_loads_with_masters() {
-        let project = Project::load(&crate::test_fonts::designspace()).expect("designspace loads");
+        let project =
+            Project::load(&crate::testing::fonts::designspace()).expect("designspace loads");
         assert_eq!(project.masters.len(), 2, "regular + bold");
         assert!(project.master_names.iter().any(|n| n.contains("Bold")));
         // Active master is the default location (Regular).
@@ -1535,7 +1536,7 @@ mod tests {
     fn designspace_roundtrip_and_instance_edit() {
         // The saved document must equal the loaded one: instance
         // editing rewrites the whole file, so nothing may be lost.
-        let path = crate::test_fonts::designspace();
+        let path = crate::testing::fonts::designspace();
         let doc = norad::designspace::DesignSpaceDocument::load(&path).expect("designspace loads");
         let tmp = std::env::temp_dir().join("rb-ds-roundtrip.designspace");
         doc.save(&tmp).expect("designspace saves");
@@ -1557,7 +1558,7 @@ mod tests {
 
     #[test]
     fn brace_layer_refines_interpolation() {
-        let mut project = Project::load(&crate::test_fonts::designspace()).expect("loads");
+        let mut project = Project::load(&crate::testing::fonts::designspace()).expect("loads");
         // Freeze n's Regular outline into a {500} brace layer, then
         // nudge its first point +40: at wght 500 the interpolation
         // must hit the brace exactly, not the linear blend.
@@ -1608,7 +1609,7 @@ mod tests {
 
     #[test]
     fn reinterpolate_rebuilds_a_master_from_the_others() {
-        let mut project = Project::load(&crate::test_fonts::designspace()).expect("loads");
+        let mut project = Project::load(&crate::testing::fonts::designspace()).expect("loads");
         // Two masters: rebuilding the active one from "the others"
         // must reproduce the other master exactly.
         assert_eq!(project.masters.len(), 2);
@@ -1657,7 +1658,7 @@ mod tests {
 
         // And the real Arabic set: a medial beh (a composite —
         // components must resolve) touches both edges.
-        let project = Project::load(&crate::test_fonts::designspace()).expect("loads");
+        let project = Project::load(&crate::testing::fonts::designspace()).expect("loads");
         let font = project.active_font();
         if let Some(g) = font.font.get_glyph("beh-ar.medi") {
             let i = font.name_map["beh-ar.medi"];
@@ -1677,7 +1678,7 @@ mod tests {
     #[test]
     fn metrics_keys_sync_roundtrip() {
         // n's LSB copied onto h in both masters through the lib key.
-        let mut project = Project::load(&crate::test_fonts::designspace()).expect("loads");
+        let mut project = Project::load(&crate::testing::fonts::designspace()).expect("loads");
         for master in project.masters.iter_mut() {
             let glyph = master.font.get_glyph_mut("h").expect("has h");
             write_metrics_key(glyph, true, "=n+10");
@@ -1704,7 +1705,7 @@ mod tests {
         // An intermediate point in the lib key alone (no baked brace
         // layers) must already curve the preview: at mid-axis the
         // node sits exactly on Q, at quarter-axis on the quadratic.
-        let mut project = Project::load(&crate::test_fonts::designspace()).expect("loads");
+        let mut project = Project::load(&crate::testing::fonts::designspace()).expect("loads");
         let name = "n";
         let axis = project.axes[0].clone();
         let (lo, hi) = project.axis_end_masters().expect("two ends");
@@ -1757,7 +1758,7 @@ mod tests {
 
     #[test]
     fn trajectories_sample_the_axis_and_bend_with_braces() {
-        let mut project = Project::load(&crate::test_fonts::designspace()).expect("loads");
+        let mut project = Project::load(&crate::testing::fonts::designspace()).expect("loads");
         let name = "n";
         let tracks = project
             .trajectory_samples(name, 10)
@@ -1806,7 +1807,7 @@ mod tests {
 
     #[test]
     fn rule_substitute_switches_past_the_condition() {
-        let mut project = Project::load(&crate::test_fonts::designspace()).expect("loads");
+        let mut project = Project::load(&crate::testing::fonts::designspace()).expect("loads");
         let axis = project.axes[0].clone();
         let doc = project.ds_doc.as_mut().expect("doc kept");
         doc.rules.rules.push(norad::designspace::Rule {
@@ -1851,7 +1852,7 @@ mod tests {
         use crate::outline::path::hyper_model::Contour as WContour;
         // Measured straight from the test font's H, the same path the
         // Dimensions section walks.
-        let project = Project::load(&crate::test_fonts::designspace()).expect("loads");
+        let project = Project::load(&crate::testing::fonts::designspace()).expect("loads");
         let font = project.active_font();
         let g = font.font.get_glyph("H").expect("has H");
         let paths: Vec<crate::outline::path::Path> = g
@@ -1874,7 +1875,7 @@ mod tests {
 
     #[test]
     fn snapshot_restore_roundtrip() {
-        let mut model = Master::load(&crate::test_fonts::regular_ufo()).expect("load");
+        let mut model = Master::load(&crate::testing::fonts::regular_ufo()).expect("load");
         let index = model
             .glyphs
             .iter()
@@ -1891,7 +1892,7 @@ mod tests {
 
     #[test]
     fn pen_primitives_build_a_closed_contour() {
-        let mut model = Master::load(&crate::test_fonts::regular_ufo()).expect("load");
+        let mut model = Master::load(&crate::testing::fonts::regular_ufo()).expect("load");
         let index = model
             .glyphs
             .iter()
@@ -1933,7 +1934,7 @@ mod tests {
 
     #[test]
     fn delete_and_smooth_operations() {
-        let mut model = Master::load(&crate::test_fonts::regular_ufo()).expect("load");
+        let mut model = Master::load(&crate::testing::fonts::regular_ufo()).expect("load");
         let index = model
             .glyphs
             .iter()
@@ -2012,7 +2013,7 @@ mod tests {
 
     #[test]
     fn curve_ops_run_via_shared_core() {
-        let mut model = Master::load(&crate::test_fonts::regular_ufo()).expect("load");
+        let mut model = Master::load(&crate::testing::fonts::regular_ufo()).expect("load");
         let index = model
             .glyphs
             .iter()
@@ -2049,7 +2050,7 @@ mod tests {
 
     #[test]
     fn metric_edits() {
-        let mut model = Master::load(&crate::test_fonts::regular_ufo()).expect("load");
+        let mut model = Master::load(&crate::testing::fonts::regular_ufo()).expect("load");
         let index = model
             .glyphs
             .iter()
@@ -2074,7 +2075,7 @@ mod tests {
 
     #[test]
     fn smooth_handle_constraint_keeps_collinearity() {
-        let mut model = Master::load(&crate::test_fonts::regular_ufo()).expect("load");
+        let mut model = Master::load(&crate::testing::fonts::regular_ufo()).expect("load");
         let index = model
             .glyphs
             .iter()
@@ -2138,7 +2139,7 @@ mod tests {
 
     #[test]
     fn anchor_lifecycle_with_undo_snapshot() {
-        let mut model = Master::load(&crate::test_fonts::regular_ufo()).expect("load");
+        let mut model = Master::load(&crate::testing::fonts::regular_ufo()).expect("load");
         let index = model
             .glyphs
             .iter()
@@ -2164,7 +2165,7 @@ mod tests {
 
     #[test]
     fn kerning_lookup_and_exception() {
-        let mut model = Master::load(&crate::test_fonts::regular_ufo()).expect("load");
+        let mut model = Master::load(&crate::testing::fonts::regular_ufo()).expect("load");
         // Group fallback resolves (VirtuaGrotesk has kern groups); the
         // exact value doesn't matter, just that lookup doesn't panic
         // and exceptions override.
@@ -2177,7 +2178,8 @@ mod tests {
 
     #[test]
     fn interpolation_at_midpoint() {
-        let mut project = Project::load(&crate::test_fonts::designspace()).expect("designspace");
+        let mut project =
+            Project::load(&crate::testing::fonts::designspace()).expect("designspace");
         assert!(project.model.is_some(), "two masters, model expected");
         // Move every axis to its normalized midpoint toward max.
         let axis_names: Vec<String> = project.axes.iter().map(|a| a.name.clone()).collect();
@@ -2205,7 +2207,7 @@ mod tests {
 
     #[test]
     fn shape_contours() {
-        let mut model = Master::load(&crate::test_fonts::regular_ufo()).expect("load");
+        let mut model = Master::load(&crate::testing::fonts::regular_ufo()).expect("load");
         let index = model
             .glyphs
             .iter()
@@ -2231,7 +2233,8 @@ mod tests {
 
     #[test]
     fn compat_map_flags_structure_changes() {
-        let mut project = Project::load(&crate::test_fonts::designspace()).expect("designspace");
+        let mut project =
+            Project::load(&crate::testing::fonts::designspace()).expect("designspace");
         // Demo masters are interpolation-compatible for letters.
         assert_eq!(project.compat.get("n"), Some(&true));
         // Break compatibility in one master and recheck.
@@ -2248,7 +2251,7 @@ mod tests {
 
     #[test]
     fn decompose_components() {
-        let mut model = Master::load(&crate::test_fonts::regular_ufo()).expect("load");
+        let mut model = Master::load(&crate::testing::fonts::regular_ufo()).expect("load");
         let index = model
             .glyphs
             .iter()
@@ -2273,7 +2276,7 @@ mod tests {
     #[test]
     fn remove_overlap_unions_contours() {
         use kurbo::Shape;
-        let mut model = Master::load(&crate::test_fonts::regular_ufo()).expect("load");
+        let mut model = Master::load(&crate::testing::fonts::regular_ufo()).expect("load");
         let index = model
             .glyphs
             .iter()
@@ -2295,12 +2298,12 @@ mod tests {
 
     #[test]
     fn move_point_and_save_roundtrip() {
-        let src = test_fonts::regular_ufo();
+        let src = fonts::regular_ufo();
         let tmp = std::env::temp_dir().join("rbg-save-test.ufo");
         if tmp.exists() {
             std::fs::remove_dir_all(&tmp).unwrap();
         }
-        let copy_options = test_fonts::copy_dir(&src, &tmp).is_ok();
+        let copy_options = fonts::copy_dir(&src, &tmp).is_ok();
         assert!(copy_options, "copying test UFO failed");
 
         let mut model = Master::load(&tmp).expect("load");

@@ -1250,7 +1250,7 @@ mod norad_tests {
 
     #[test]
     fn knife_cuts_fixture_zero_into_four_contours() {
-        let path = crate::test_fonts::regular_ufo();
+        let path = crate::testing::fonts::regular_ufo();
         let font = norad::Font::load(path).expect("fixture UFO loads");
         let mut glyph = font.get_glyph("zero").expect("zero exists").clone();
         assert_eq!(glyph.contours.len(), 2);

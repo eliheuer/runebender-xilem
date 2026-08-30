@@ -32,7 +32,7 @@ pub mod document;
 pub mod formats;
 pub mod outline;
 #[cfg(test)]
-mod test_fonts;
+mod testing;
 pub mod text;
 pub mod ui;
 

@@ -53,7 +53,7 @@ src/
 ├── text/        shape (harfrust over the font's own features),
 │                joining (Arabic rules), buffer (the Text tool)
 ├── ui/          theme, theme_oklch, sidebar, editing/
-├── test_fonts.rs where the tests find Virtua Grotesk
+├── testing/     fonts.rs, where the tests find Virtua Grotesk
 └── bin/runebender.rs the command line
 ```
 
