@@ -10,7 +10,7 @@
 // off the length. Kept ungated and free of render deps so it unit-tests on
 // native `cargo test`.
 
-use kurbo::{BezPath, Line, ParamCurve, PathSeg, Point, Shape};
+use kurbo::{BezPath, Line, ParamCurve, PathEl, PathSeg, Point, Shape};
 
 use crate::path::Path;
 
@@ -455,4 +455,49 @@ mod tests {
         assert_eq!(popcount(96), 2);
         assert_eq!(popcount(116), 4); // 64+32+16+4
     }
+}
+
+/// The y-extent of a glyph's ink at one joining edge: outline
+/// points (components resolved) at or past x = 0 going left, or at
+/// or past x = advance going right — joining strokes overlap the
+/// edge on purpose (the anti-seam tongue), so the test is
+/// one-sided. None when nothing reaches the edge — for a form that
+/// should join, that is itself the defect.
+pub fn joining_band(
+    outline: &BezPath,
+    advance: f64,
+    left: bool,
+    tolerance: f64,
+) -> Option<(f64, f64)> {
+    let mut band: Option<(f64, f64)> = None;
+    let mut visit = |p: kurbo::Point| {
+        let reaches = if left {
+            p.x <= tolerance
+        } else {
+            p.x >= advance - tolerance
+        };
+        if !reaches {
+            return;
+        }
+        band = Some(match band {
+            Some((lo, hi)) => (lo.min(p.y), hi.max(p.y)),
+            None => (p.y, p.y),
+        });
+    };
+    for el in outline.elements() {
+        match el {
+            PathEl::MoveTo(p) | PathEl::LineTo(p) => visit(*p),
+            PathEl::QuadTo(c, p) => {
+                visit(*c);
+                visit(*p);
+            }
+            PathEl::CurveTo(c1, c2, p) => {
+                visit(*c1);
+                visit(*c2);
+                visit(*p);
+            }
+            PathEl::ClosePath => {}
+        }
+    }
+    band
 }

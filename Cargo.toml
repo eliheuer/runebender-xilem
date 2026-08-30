@@ -20,6 +20,8 @@ glyphslib = "0.2.7"
 linesweeper = "0.4"
 clap = { version = "4", features = ["derive"] }
 norad = "0.18"
+# Reads compiled TTF/OTF outlines for `binary_import`.
+skrifa = "0.44"
 # The web editor's autotracer, pinned to git like runebender-web.
 img2bez = { git = "https://github.com/eliheuer/img2bez", rev = "23073ca08ecdac61ad0e838bfae49a590bc2c7cc", default-features = false }
 plist = { version = "1.4", features = ["serde"] }
