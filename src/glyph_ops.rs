@@ -715,21 +715,18 @@ pub fn bezpath_to_contour(
     // If the last on-curve duplicates the start, its segment closes
     // the contour: rotate that on-curve (and controls) to the front
     // per the UFO closed convention (no Move point).
-    if let Some(last_on) = points.iter().rposition(|p| p.typ != PointType::OffCurve) {
-        let lp = &points[last_on];
-        if (lp.x - start.x.round()).abs() < 0.51 && (lp.y - start.y.round()).abs() < 0.51 {
-            let tail: Vec<ContourPoint> = points.drain(last_on..).collect();
-            let (controls, on_pt) = tail.split_at(tail.len() - 1);
-            let mut rotated = vec![on_pt[0].clone()];
-            rotated.extend(points);
-            rotated.extend(controls.iter().cloned());
-            points = rotated;
-        } else {
-            let first = on(start.x, start.y, false, smooth(start.x, start.y));
-            points.insert(0, first);
-        }
+    let last_on = points.iter().rposition(|p| p.typ != PointType::OffCurve)?;
+    let lp = &points[last_on];
+    if (lp.x - start.x.round()).abs() < 0.51 && (lp.y - start.y.round()).abs() < 0.51 {
+        let tail: Vec<ContourPoint> = points.drain(last_on..).collect();
+        let (controls, on_pt) = tail.split_at(tail.len() - 1);
+        let mut rotated = vec![on_pt[0].clone()];
+        rotated.extend(points);
+        rotated.extend(controls.iter().cloned());
+        points = rotated;
     } else {
-        return None;
+        let first = on(start.x, start.y, false, smooth(start.x, start.y));
+        points.insert(0, first);
     }
     if points
         .iter()
@@ -1381,7 +1378,7 @@ pub fn rename_glyph(font: &mut Font, old: &str, new: &str) -> bool {
         }
     }
     // Group memberships.
-    for (_, members) in font.groups.iter_mut() {
+    for members in font.groups.values_mut() {
         for member in members.iter_mut() {
             if member.as_str() == old {
                 *member = new_name.clone();
@@ -1394,7 +1391,7 @@ pub fn rename_glyph(font: &mut Font, old: &str, new: &str) -> bool {
         if let Some(seconds) = font.kerning.remove(&old_key) {
             font.kerning.insert(new_name.clone(), seconds);
         }
-        for (_, seconds) in font.kerning.iter_mut() {
+        for seconds in font.kerning.values_mut() {
             if let Some(value) = seconds.remove(&old_key) {
                 seconds.insert(new_name.clone(), value);
             }

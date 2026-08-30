@@ -33,10 +33,10 @@ pub fn parse_search_predicates(query: &str) -> Option<Vec<SearchPred>> {
             SearchPred::Encoded(matches!(rest, "yes" | "y" | "true"))
         } else if let Some(rest) = term.strip_prefix("comp:") {
             SearchPred::UsesComponent(rest.to_string())
-        } else if let Some(rest) = term.strip_prefix("has:") {
-            SearchPred::Has(rest.to_lowercase())
         } else {
-            return None; // any plain term: not a predicate query
+            // Any plain term means this is not a predicate query.
+            let rest = term.strip_prefix("has:")?;
+            SearchPred::Has(rest.to_lowercase())
         };
         preds.push(pred);
     }
