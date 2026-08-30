@@ -1,6 +1,6 @@
 # The gate every change passes: formatted, clippy-clean, documented,
 # and built and tested on Linux and macOS. The Linux job installs the
-# libraries winit and Vello link against.
+# libraries winit, Vello, and the native file dialog link against.
 name: CI
 
 on:
@@ -30,7 +30,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libfontconfig-dev libwayland-dev libxkbcommon-dev \
-            libx11-dev libxcb1-dev libvulkan1 libssl-dev
+            libx11-dev libxcb1-dev libvulkan1 libssl-dev \
+            libglib2.0-dev libgtk-3-dev
       # rust-toolchain.toml pins stable; this only adds the components.
       - uses: dtolnay/rust-toolchain@master
         with:
