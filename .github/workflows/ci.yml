@@ -1,0 +1,71 @@
+# The gate every change passes: formatted, clippy-clean, documented,
+# and tested on Linux and macOS, at the pinned minimum Rust as well
+# as stable. The tests load Virtua Grotesk from the runebender-web
+# repository, checked out beside this one the way a developer has it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  check:
+    name: fmt, clippy, doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: runebender-core
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runebender-core
+      - name: fmt
+        working-directory: runebender-core
+        run: cargo fmt --check
+      - name: clippy
+        working-directory: runebender-core
+        run: cargo clippy --all-targets
+      - name: doc
+        working-directory: runebender-core
+        run: cargo doc --no-deps
+
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.rust }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        rust: [stable]
+        include:
+          # The minimum supported Rust, from rust-version in Cargo.toml.
+          - os: ubuntu-latest
+            rust: "1.88"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: runebender-core
+      - name: Fixture fonts
+        uses: actions/checkout@v4
+        with:
+          repository: eliheuer/runebender-web
+          path: runebender-web
+          sparse-checkout: assets/test-fonts
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runebender-core
+      - name: test
+        working-directory: runebender-core
+        run: cargo test

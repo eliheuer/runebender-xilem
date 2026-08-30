@@ -1060,11 +1060,12 @@ impl TextBuffer {
     ) -> Option<TextSortActivation> {
         let layout = self.layout(line_height);
         let item = self.hit_sort_item_at(x, y, line_height, ascender, descender, &layout)?;
-        self.activate_sort(item.index).then_some(TextSortActivation {
-            index: item.index,
-            x: item.x,
-            y: item.y,
-        })
+        self.activate_sort(item.index)
+            .then_some(TextSortActivation {
+                index: item.index,
+                x: item.x,
+                y: item.y,
+            })
     }
 
     pub fn begin_manual_kerning(&mut self, sort_index: usize, start_x: f64) -> bool {

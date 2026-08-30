@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 use norad::Font;
 use runebender_core::{embolden, glyph_ops, optical, spacing};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Exit codes, matching font-ml so a caller can branch on them.
 mod exit {
@@ -124,7 +124,14 @@ fn main() -> std::process::ExitCode {
         Command::Info { source } => info(source, cli.json),
         Command::Measure { source, glyph } => measure(source, glyph, cli.json),
         Command::Color { source, tolerance } => color(source, *tolerance, cli.json),
-        Command::Bolden { from, to, references, glyphs, limit, check } => bolden(
+        Command::Bolden {
+            from,
+            to,
+            references,
+            glyphs,
+            limit,
+            check,
+        } => bolden(
             from,
             to,
             references.as_deref(),
@@ -202,7 +209,11 @@ fn measure(source: &Path, name: &str, json: bool) -> i32 {
         Err(code) => return code,
     };
     let Some(glyph) = font.default_layer().get_glyph(name) else {
-        return fail(json, exit::USAGE, &format!("no glyph {name} in {}", source.display()));
+        return fail(
+            json,
+            exit::USAGE,
+            &format!("no glyph {name} in {}", source.display()),
+        );
     };
     let advance = glyph.width;
     let contours = glyph.contours.len();
@@ -258,7 +269,13 @@ fn color(source: &Path, tolerance: f64, json: bool) -> i32 {
         }
     }
     let mut found = optical::outliers(&font, &lower, x_height, tolerance, "lowercase");
-    found.extend(optical::outliers(&font, &upper, cap_height, tolerance, "uppercase"));
+    found.extend(optical::outliers(
+        &font,
+        &upper,
+        cap_height,
+        tolerance,
+        "uppercase",
+    ));
     let ok = found.is_empty();
     if json {
         let items: Vec<Value> = found
@@ -273,10 +290,13 @@ fn color(source: &Path, tolerance: f64, json: bool) -> i32 {
                 })
             })
             .collect();
-        println!("{}", json!({
-            "ok": ok, "tolerance": tolerance,
-            "compared": lower.len() + upper.len(), "findings": items,
-        }));
+        println!(
+            "{}",
+            json!({
+                "ok": ok, "tolerance": tolerance,
+                "compared": lower.len() + upper.len(), "findings": items,
+            })
+        );
     } else if ok {
         println!(
             "{} glyphs compared, none more than {:.0}% off",
@@ -316,7 +336,12 @@ fn bolden(
         (Ok(a), Ok(b)) => (a, b),
         (Err(code), _) | (_, Err(code)) => return code,
     };
-    let default_refs = ["n".to_string(), "o".to_string(), "H".to_string(), "O".to_string()];
+    let default_refs = [
+        "n".to_string(),
+        "o".to_string(),
+        "H".to_string(),
+        "O".to_string(),
+    ];
     let refs: &[String] = references.unwrap_or(&default_refs);
     let pairs: Vec<_> = refs
         .iter()
@@ -374,15 +399,18 @@ fn bolden(
         rows.push((name.clone(), moved, points));
     }
     if json {
-        println!("{}", json!({
-            "ok": true,
-            "offset": { "x": offset.x, "y": offset.y },
-            "references": refs,
-            "pending": todo.len(),
-            "glyphs": rows.iter().map(|(n, m, p)| json!({
-                "glyph": n, "pointsMoved": m, "points": p,
-            })).collect::<Vec<_>>(),
-        }));
+        println!(
+            "{}",
+            json!({
+                "ok": true,
+                "offset": { "x": offset.x, "y": offset.y },
+                "references": refs,
+                "pending": todo.len(),
+                "glyphs": rows.iter().map(|(n, m, p)| json!({
+                    "glyph": n, "pointsMoved": m, "points": p,
+                })).collect::<Vec<_>>(),
+            })
+        );
     } else {
         println!(
             "learned from {} reference glyphs: push out {:.1} horizontally, \
@@ -423,16 +451,22 @@ fn bolden_check(
             .iter()
             .filter(|g| !g.contours.is_empty() && g.components.is_empty())
             .filter(|g| {
-                heavy.default_layer().get_glyph(g.name().as_str()).is_some_and(|h| {
-                    glyph_ops::glyph_signature(h) == glyph_ops::glyph_signature(g)
-                        && h.contours != g.contours
-                })
+                heavy
+                    .default_layer()
+                    .get_glyph(g.name().as_str())
+                    .is_some_and(|h| {
+                        glyph_ops::glyph_signature(h) == glyph_ops::glyph_signature(g)
+                            && h.contours != g.contours
+                    })
             })
             .map(|g| g.name().to_string())
             .collect(),
     };
     let flat = |g: &norad::Glyph| -> Vec<(f64, f64)> {
-        g.contours.iter().flat_map(|c| c.points.iter().map(|p| (p.x, p.y))).collect()
+        g.contours
+            .iter()
+            .flat_map(|c| c.points.iter().map(|p| (p.x, p.y)))
+            .collect()
     };
     let mut rows = Vec::new();
     let (mut sum_dx, mut sum_dy, mut n) = (0.0, 0.0, 0usize);
@@ -485,13 +519,16 @@ fn bolden_check(
     }
     let count = rows.len() as f64;
     if json {
-        println!("{}", json!({
-            "ok": true, "glyphs": rows.len(),
-            "offset_mae": offset_total / count,
-            "baseline_mae": base_total / count,
-            "beats_baseline": wins,
-            "per_glyph": per,
-        }));
+        println!(
+            "{}",
+            json!({
+                "ok": true, "glyphs": rows.len(),
+                "offset_mae": offset_total / count,
+                "baseline_mae": base_total / count,
+                "beats_baseline": wins,
+                "per_glyph": per,
+            })
+        );
     } else {
         println!(
             "{} glyphs drawn in both: offset {:.1}, baseline {:.1}, \
@@ -523,16 +560,24 @@ fn spacing_cmd(source: &Path, step: Option<f64>, json: bool) -> i32 {
     if json {
         let items: Vec<Value> = found
             .iter()
-            .map(|o| json!({
-                "glyph": o.glyph, "side": o.side,
-                "value": o.value, "offBy": o.off_by,
-            }))
+            .map(|o| {
+                json!({
+                    "glyph": o.glyph, "side": o.side,
+                    "value": o.value, "offBy": o.off_by,
+                })
+            })
             .collect();
-        println!("{}", json!({
-            "ok": ok, "step": step, "glyphs": sides.len(), "findings": items,
-        }));
+        println!(
+            "{}",
+            json!({
+                "ok": ok, "step": step, "glyphs": sides.len(), "findings": items,
+            })
+        );
     } else if ok {
-        println!("{} glyphs on a {step:.0}-unit grid, none off it", sides.len());
+        println!(
+            "{} glyphs on a {step:.0}-unit grid, none off it",
+            sides.len()
+        );
     } else {
         for o in &found {
             println!(
@@ -579,7 +624,10 @@ fn check(a: &Path, b: &Path, limit: usize, json: bool) -> i32 {
             continue;
         };
         compared += 1;
-        let (sa, sb) = (glyph_ops::glyph_signature(glyph), glyph_ops::glyph_signature(other));
+        let (sa, sb) = (
+            glyph_ops::glyph_signature(glyph),
+            glyph_ops::glyph_signature(other),
+        );
         if sa.len() != sb.len() {
             findings.push(json!({
                 "glyph": name, "problem": "contour count",
@@ -598,7 +646,10 @@ fn check(a: &Path, b: &Path, limit: usize, json: bool) -> i32 {
     }
     let ok = findings.is_empty();
     if json {
-        println!("{}", json!({ "ok": ok, "compared": compared, "findings": findings }));
+        println!(
+            "{}",
+            json!({ "ok": ok, "compared": compared, "findings": findings })
+        );
     } else if ok {
         println!("{compared} glyphs compared, no mismatches");
     } else {
@@ -623,9 +674,7 @@ mod tests {
         let mut g = Glyph::new(name);
         for n in counts {
             let points = (0..*n)
-                .map(|i| {
-                    ContourPoint::new(i as f64, 0.0, PointType::Line, false, None, None)
-                })
+                .map(|i| ContourPoint::new(i as f64, 0.0, PointType::Line, false, None, None))
                 .collect();
             g.contours.push(Contour::new(points, None));
         }
@@ -638,14 +687,20 @@ mod tests {
     fn a_point_count_difference_is_a_mismatch() {
         let a = glyph("a", &[4, 4]);
         let b = glyph("a", &[4, 5]);
-        assert_ne!(glyph_ops::glyph_signature(&a), glyph_ops::glyph_signature(&b));
+        assert_ne!(
+            glyph_ops::glyph_signature(&a),
+            glyph_ops::glyph_signature(&b)
+        );
     }
 
     #[test]
     fn the_same_shape_matches() {
         let a = glyph("a", &[4, 4]);
         let b = glyph("a", &[4, 4]);
-        assert_eq!(glyph_ops::glyph_signature(&a), glyph_ops::glyph_signature(&b));
+        assert_eq!(
+            glyph_ops::glyph_signature(&a),
+            glyph_ops::glyph_signature(&b)
+        );
     }
 
     /// Exit codes are the interface for a script, so they are pinned.

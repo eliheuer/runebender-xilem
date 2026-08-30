@@ -379,9 +379,10 @@ fn hue_of(r: f64, g: f64, b: f64) -> Option<f64> {
 /// palette hue (display only — never written back).
 pub fn mark_label_for_glyph(glyph: &norad::Glyph, theme: &Theme) -> Option<String> {
     if let Some(plist::Value::String(label)) = glyph.lib.get(MARK_LABEL_KEY)
-        && theme.mark(label).is_some() {
-            return Some(label.clone());
-        }
+        && theme.mark(label).is_some()
+    {
+        return Some(label.clone());
+    }
     let plist::Value::String(rgba) = glyph.lib.get("public.markColor")? else {
         return None;
     };

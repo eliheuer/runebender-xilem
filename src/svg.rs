@@ -79,9 +79,10 @@ pub fn svg_to_contours(
         sub.push(*el);
     }
     if !sub.elements().is_empty()
-        && let Some(c) = bezpath_to_contour(&sub, &empty) {
-            contours.push(c);
-        }
+        && let Some(c) = bezpath_to_contour(&sub, &empty)
+    {
+        contours.push(c);
+    }
     (!contours.is_empty())
         .then_some(contours)
         .ok_or_else(|| "SVG outlines did not convert".into())

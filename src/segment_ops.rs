@@ -169,9 +169,10 @@ pub fn convert_line_to_curve(glyph: &mut Glyph, hit: &SegmentHit) -> Option<[Poi
         hit.end
     };
     if let Some(end) = contour.points.get_mut(end_index)
-        && end.typ == PointType::Line {
-            end.typ = PointType::Curve;
-        }
+        && end.typ == PointType::Line
+    {
+        end.typ = PointType::Curve;
+    }
     Some([(hit.contour, insert_index), (hit.contour, insert_index + 1)])
 }
 

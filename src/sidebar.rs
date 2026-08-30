@@ -751,9 +751,7 @@ mod tests {
     use super::*;
 
     fn fixture_glyphs() -> Vec<(String, Vec<u32>)> {
-        let font =
-            norad::Font::load(crate::test_fonts::regular_ufo())
-                .expect("fixture font");
+        let font = norad::Font::load(crate::test_fonts::regular_ufo()).expect("fixture font");
         font.iter_layers()
             .next()
             .expect("default layer")

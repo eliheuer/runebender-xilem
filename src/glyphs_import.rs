@@ -239,11 +239,12 @@ fn fontinfo_plist(
         push_num(&mut body, "capHeight", v as f64);
     }
     if let Some(v) = metric_value(font, master, MetricType::ItalicAngle)
-        && v != 0.0 {
-            // Glyphs stores the slant clockwise; UFO italicAngle is
-            // counter-clockwise (glyphsLib negates the same way).
-            push_num(&mut body, "italicAngle", -v as f64);
-        }
+        && v != 0.0
+    {
+        // Glyphs stores the slant clockwise; UFO italicAngle is
+        // counter-clockwise (glyphsLib negates the same way).
+        push_num(&mut body, "italicAngle", -v as f64);
+    }
     body.push_str("</dict>");
     plist_doc(&body)
 }
