@@ -18,7 +18,9 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use norad::Font;
-use runebender_core::{embolden, glyph_ops, optical, spacing};
+use runebender_core::{
+    analysis::optical, analysis::spacing, outline::embolden, outline::glyph_ops,
+};
 use serde_json::{Value, json};
 
 /// Exit codes, matching font-ml so a caller can branch on them.

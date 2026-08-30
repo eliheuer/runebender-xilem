@@ -35,31 +35,25 @@ build, or an agent cannot use.
 
 ## Layout
 
-Modules are named for what they do to a font. `src/lib.rs` carries
-the map; the long form, with the conventions and the CI gate, is at
+Directories group the modules by what they do to a font, and each
+`mod.rs` says what belongs in it. `src/lib.rs` carries the map; the long form, with the conventions and the CI gate, is at
 [runebender.org/docs/code-layout.html][layout].
 
 ```
 src/
-├── glyph_ops.rs      point edits, segment surgery, pen primitives,
-│                     decompose, overlap, metrics, kerning
-├── cleanup.rs        tidy, direction, rounding, extremes, handle fitting
-├── effects.rs        offset, extrude, roughen, expand stroke, bolden
-├── convert.rs        quadratic ↔ cubic
-├── knife.rs          slicing            shape.rs      primitives
-├── measure.rs        stems, sidebearings, joining bands
-├── optical.rs        ink density        spacing.rs    grid checks
-├── curve.rs          curvature: continuity, kinks, extrema
-├── lib_keys.rs       every com.runebender.* key, one reader and writer each
-├── metrics_keys.rs   color_font.rs  mark_color.rs   shared keys
-├── svg.rs            binary_import.rs  glyphs_import.rs  image_trace.rs
-├── project.rs        the document: Master and Project
-├── var_model.rs      interpolation      composites.rs components, anchors
-├── shaping.rs        text.rs            shaping and the text buffer
-├── glyph_paths.rs    norad → kurbo      path/         segment maths
-├── editing/          selection, undo, viewport
-├── theme*.rs         the OKLCH token file every editor resolves from
-├── test_fonts.rs     where the tests find Virtua Grotesk
+├── outline/     what changes a shape: glyph_ops, point_ops, segment_ops,
+│                knife, cleanup, effects, convert, embolden, glyph_paths,
+│                and path/ for the segment maths
+├── analysis/    what reads a font: measure, optical, spacing, curve,
+│                category, search
+├── formats/     lib_keys, metrics_keys, mark_color, color_font, svg,
+│                binary_import, glyphs_import, image_trace
+├── document/    project (Master, Project), var_model, composites,
+│                font_memory, new_font, and model/ (kerning, metadata)
+├── text/        shape (harfrust over the font's own features),
+│                joining (Arabic rules), buffer (the Text tool)
+├── ui/          theme, theme_oklch, sidebar, editing/
+├── test_fonts.rs where the tests find Virtua Grotesk
 └── bin/runebender.rs the command line
 ```
 

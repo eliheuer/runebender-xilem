@@ -12,67 +12,30 @@
 //! on the command line.
 //!
 //! The in-memory font is `norad::Font`. Every function here takes
-//! norad types, or kurbo geometry, and returns the same. The modules
-//! group by what they do to a font:
+//! norad types, or kurbo geometry, and returns the same. The
+//! directories group the modules by what they do to a font:
 //!
-//! - Outline editing: `glyph_ops`, `point_ops`, `segment_ops`,
-//!   `knife`, `shape`, `cleanup`, `effects`, `convert`, `embolden`.
-//! - Reading a font: `measure`, `optical`, `spacing`, `curve`,
-//!   `category`, `search`.
-//! - Lib keys and formats: `lib_keys`, `metrics_keys`, `color_font`,
-//!   `mark_color`, `svg`, `binary_import`, `glyphs_import`,
-//!   `image_trace`.
-//! - Families and text: `var_model`, `composites`, `model`,
-//!   `shaping`, `text`.
-//! - Editor state that is not toolkit specific: `editing`,
-//!   `font_memory`, `sidebar`, `theme`, `theme_oklch`.
+//! - [`outline`]: what changes a shape. Point and segment edits, the
+//!   knife, cleanup, effects, conversion, emboldening, and the
+//!   segment maths in `outline::path`.
+//! - [`analysis`]: what reads a font. Measurement, optical weight,
+//!   spacing, curvature, categories, search.
+//! - [`formats`]: lib keys, and every format besides UFO.
+//! - [`document`]: the open font and its family. `Master`, `Project`,
+//!   interpolation, composites, in-memory fonts.
+//! - [`text`]: shaping, joining rules, and the text buffer.
+//! - [`ui`]: what every front-end shares that is not font data.
+//!   Themes, the sidebar's filter data, selection and undo.
 
-pub mod binary_import;
-/// Glyph categories and Unicode-based classification.
-pub mod category;
-pub mod cleanup;
-pub mod color_font;
-pub mod composites;
-pub mod convert;
-/// Curve-quality operations: harmonize, balance, and optimize.
-pub mod curve;
-/// Toolkit-free editor state: edit types, selection, undo, and viewport.
-pub mod editing;
-pub mod effects;
-pub mod embolden;
-pub mod font_memory;
-pub mod glyph_ops;
-pub mod glyph_paths;
-pub mod glyphs_import;
-pub mod image_trace;
-pub mod knife;
-pub mod lib_keys;
-pub mod mark_color;
-/// Measurements of stems, handles, segments, and side bearings.
-pub mod measure;
-pub mod metrics_keys;
-/// The shared data model for paths, entities, and glyph state.
-pub mod model;
-pub mod new_font;
-pub mod optical;
-pub mod path;
-pub mod point_ops;
-pub mod project;
-pub mod search;
-pub mod segment_ops;
-/// Text shaping through a compiled in-memory font.
-pub mod shape;
-pub mod shaping;
-pub mod sidebar;
-pub mod spacing;
-pub mod svg;
+pub mod analysis;
+pub mod document;
+pub mod formats;
+pub mod outline;
 #[cfg(test)]
 mod test_fonts;
 pub mod text;
-pub mod theme;
-pub mod theme_oklch;
-pub mod var_model;
+pub mod ui;
 
-pub use category::GlyphCategory;
-pub use mark_color::MarkColor;
-pub use model::GlyphMetadata;
+pub use analysis::category::GlyphCategory;
+pub use document::model::GlyphMetadata;
+pub use formats::mark_color::MarkColor;
