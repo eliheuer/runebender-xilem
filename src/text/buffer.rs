@@ -2980,9 +2980,8 @@ mod tests {
     /// way the editor sets one up.
     fn buffer_with_shaping_font() -> TextBuffer {
         let ufo_dir = crate::testing::fonts::regular_ufo();
-        let font = norad::Font::load(ufo_dir).expect("test UFO loads");
-        let features =
-            std::fs::read_to_string(ufo_dir.join("features.fea")).expect("features.fea");
+        let font = norad::Font::load(&ufo_dir).expect("test UFO loads");
+        let features = std::fs::read_to_string(ufo_dir.join("features.fea")).expect("features.fea");
 
         let mut widths = HashMap::new();
         let mut unicode = HashMap::new();

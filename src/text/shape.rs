@@ -316,8 +316,8 @@ mod tests {
     /// editor would hand them over.
     fn virtua_grotesk() -> ShapingSource {
         let ufo_dir = crate::testing::fonts::regular_ufo();
-        let font = norad::Font::load(ufo_dir).expect("test UFO loads");
-        let features = std::fs::read_to_string(format!("{ufo_dir}/features.fea"))
+        let font = norad::Font::load(&ufo_dir).expect("test UFO loads");
+        let features = std::fs::read_to_string(ufo_dir.join("features.fea"))
             .expect("test UFO has features.fea");
 
         // .notdef first, then the font's own glyph order.
@@ -424,20 +424,15 @@ mod tests {
     #[test]
     fn calt_fires_so_contextual_alternates_are_visible_in_the_editor() {
         // Arabic dot placement depends on what follows: a beh before alef
-        // wants its dot centred, a beh before another dotted letter wants it
-        // out of the way. That is a calt rule, and it is only worth writing
-        // if the editor applies it — otherwise the font would look right
-        // everywhere except where it is drawn.
-        let mut source = virtua_grotesk();
-        source.features.push_str(
-            "\nfeature calt {\nscript arab;\nlanguage dflt;\n\
-             sub beh-ar.init' alef-ar.fina by beh-ar.fina;\n} calt;\n",
-        );
-        let font = ShapingFont::build(&source).expect("shaping font builds");
-        // با — visual order, so the alef comes back first
+        // wants its dot centred. Virtua Grotesk writes that as a calt
+        // rule (beh-ar.init before alef becomes beh-ar.init.ctr), and it
+        // is only worth writing if the editor applies it. Otherwise the
+        // font would look right everywhere except where it is drawn.
+        let font = ShapingFont::build(&virtua_grotesk()).expect("shaping font builds");
+        // با: visual order, so the alef comes back first.
         assert_eq!(
             shaped_names(&font, "\u{0628}\u{0627}", true),
-            ["alef-ar.fina", "beh-ar.fina"],
+            ["alef-ar.fina", "beh-ar.init.ctr"],
             "calt did not fire: contextual alternates would be invisible here"
         );
     }
