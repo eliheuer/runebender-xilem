@@ -2034,10 +2034,7 @@ mod tests {
     /// of it, active index stable (regression for a GPUI overlap).
     #[test]
     fn typing_after_active_sort_lays_out_beside_it() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo"
-        );
+        let path = crate::testing::fonts::regular_ufo();
         let font = norad::Font::load(path).expect("fixture UFO loads");
         let mut buffer = TextBuffer::new();
         buffer.set_glyph_inventory(TextGlyphInventory::from_font(&font));
@@ -2073,10 +2070,7 @@ mod tests {
     /// kerning resolution the editors already use (glyph_ops).
     #[test]
     fn from_font_builds_working_models() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo"
-        );
+        let path = crate::testing::fonts::regular_ufo();
         let font = norad::Font::load(path).expect("fixture UFO loads");
         let inventory = TextGlyphInventory::from_font(&font);
         let kerning = TextKerningModel::from_font(&font);
@@ -2985,10 +2979,7 @@ mod tests {
     /// A buffer wired to the bundled font's inventory and features, the
     /// way the editor sets one up.
     fn buffer_with_shaping_font() -> TextBuffer {
-        let ufo_dir = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo"
-        );
+        let ufo_dir = crate::testing::fonts::regular_ufo();
         let font = norad::Font::load(ufo_dir).expect("test UFO loads");
         let features =
             std::fs::read_to_string(format!("{ufo_dir}/features.fea")).expect("features.fea");

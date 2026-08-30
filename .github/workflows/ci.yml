@@ -1,7 +1,8 @@
 # The gate every change passes: formatted, clippy-clean, documented,
 # and tested on Linux and macOS, at the pinned minimum Rust as well
-# as stable. The tests load Virtua Grotesk from the runebender-web
-# repository, checked out beside this one the way a developer has it.
+# as stable. The tests load Virtua Grotesk from its own repository,
+# checked out beside this one the way a developer has it, so they run
+# against the current font.
 name: CI
 
 on:
@@ -57,9 +58,9 @@ jobs:
       - name: Fixture fonts
         uses: actions/checkout@v4
         with:
-          repository: eliheuer/runebender-web
-          path: runebender-web
-          sparse-checkout: assets/test-fonts
+          repository: eliheuer/virtua-grotesk
+          path: virtua-grotesk
+          sparse-checkout: sources
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}

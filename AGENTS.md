@@ -45,9 +45,9 @@ cargo clippy --all-targets
 ```
 
 Tests that need a real font load Virtua Grotesk from
-`../runebender-web/assets/test-fonts`, or from `$RUNEBENDER_TEST_FONTS`.
+`../virtua-grotesk/sources`, or from `$RUNEBENDER_TEST_FONTS`.
 `src/testing/fonts.rs` is the one place that knows. Clone
-[runebender-web](https://github.com/eliheuer/runebender-web) beside
+[virtua-grotesk](https://github.com/eliheuer/virtua-grotesk) beside
 this repository or set the variable.
 
 ## The gate

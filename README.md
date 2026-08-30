@@ -63,7 +63,7 @@ CI runs `cargo fmt --check`, `cargo clippy --all-targets` and
 `cargo doc` with warnings denied, and the tests on Linux and macOS
 and at the minimum Rust. `unsafe` is forbidden in the manifest.
 
-The tests load Virtua Grotesk from [runebender-web][web], cloned
+The tests load Virtua Grotesk from its own repository, [virtua-grotesk][vg], cloned
 beside this repository or named by `RUNEBENDER_TEST_FONTS`.
 
 ## The format is the model
@@ -105,4 +105,5 @@ Apache-2.0.
 [druid]: https://github.com/linebender/runebender
 [norad]: https://github.com/linebender/norad
 [fml]: https://github.com/eliheuer/font-ml
+[vg]: https://github.com/eliheuer/virtua-grotesk
 [layout]: https://runebender.org/docs/code-layout.html

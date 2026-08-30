@@ -315,10 +315,7 @@ mod tests {
     /// order, advances, codepoints and features.fea, exactly as the
     /// editor would hand them over.
     fn virtua_grotesk() -> ShapingSource {
-        let ufo_dir = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo"
-        );
+        let ufo_dir = crate::testing::fonts::regular_ufo();
         let font = norad::Font::load(ufo_dir).expect("test UFO loads");
         let features = std::fs::read_to_string(format!("{ufo_dir}/features.fea"))
             .expect("test UFO has features.fea");
