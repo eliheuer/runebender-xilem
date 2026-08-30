@@ -107,8 +107,14 @@ mod tests {
 
     #[test]
     fn punct_and_symbol() {
-        assert_eq!(GlyphCategory::from_codepoint('.'), GlyphCategory::Punctuation);
-        assert_eq!(GlyphCategory::from_codepoint('('), GlyphCategory::Punctuation);
+        assert_eq!(
+            GlyphCategory::from_codepoint('.'),
+            GlyphCategory::Punctuation
+        );
+        assert_eq!(
+            GlyphCategory::from_codepoint('('),
+            GlyphCategory::Punctuation
+        );
         assert_eq!(GlyphCategory::from_codepoint('+'), GlyphCategory::Symbol);
         assert_eq!(GlyphCategory::from_codepoint('$'), GlyphCategory::Symbol);
     }
@@ -117,6 +123,9 @@ mod tests {
     fn separators_and_other() {
         assert_eq!(GlyphCategory::from_codepoint(' '), GlyphCategory::Separator);
         // Control character → Other
-        assert_eq!(GlyphCategory::from_codepoint('\u{0007}'), GlyphCategory::Other);
+        assert_eq!(
+            GlyphCategory::from_codepoint('\u{0007}'),
+            GlyphCategory::Other
+        );
     }
 }

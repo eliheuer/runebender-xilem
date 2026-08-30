@@ -233,13 +233,7 @@ pub fn translate_points(
         let mut updates: Vec<(usize, kurbo::Point)> = Vec::new();
         for &index in &moved {
             if selected_here.contains(&index) && is_off(&contour.points[index]) {
-                smooth_handle_updates(
-                    &contour.points,
-                    &selected_here,
-                    closed,
-                    index,
-                    &mut updates,
-                );
+                smooth_handle_updates(&contour.points, &selected_here, closed, index, &mut updates);
             }
         }
         for (index, p) in updates {
@@ -293,13 +287,7 @@ pub fn snap_selected_offcurves(glyph: &mut Glyph, selected: &HashSet<PointId>) -
         let mut updates: Vec<(usize, kurbo::Point)> = Vec::new();
         for &index in &selected_here {
             if is_off(&contour.points[index]) {
-                smooth_handle_updates(
-                    &contour.points,
-                    &selected_here,
-                    closed,
-                    index,
-                    &mut updates,
-                );
+                smooth_handle_updates(&contour.points, &selected_here, closed, index, &mut updates);
             }
         }
         for (index, p) in updates {
@@ -337,9 +325,7 @@ mod tests {
             p(-20.0, 50.0, PointType::OffCurve, false),
         ];
         let mut glyph = Glyph::new("test");
-        glyph
-            .contours
-            .push(Contour::new(points, None));
+        glyph.contours.push(Contour::new(points, None));
         glyph
     }
 
@@ -402,8 +388,7 @@ mod tests {
     fn originals_anchor_a_long_drag() {
         let mut glyph = curve_glyph();
         let selected: HashSet<PointId> = [(0, 0)].into_iter().collect();
-        let originals: HashMap<PointId, (f64, f64)> =
-            [((0, 0), (0.0, 0.0))].into_iter().collect();
+        let originals: HashMap<PointId, (f64, f64)> = [((0, 0), (0.0, 0.0))].into_iter().collect();
         // Two drag events from the same start: the second wins outright
         // instead of stacking on the first.
         translate_points(&mut glyph, &selected, &originals, (10.0, 0.0), true);

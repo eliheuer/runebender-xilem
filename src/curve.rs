@@ -15,7 +15,6 @@
 
 use kurbo::{Point, Vec2};
 
-
 /// A cubic segment of an outline: on-curve `p0`/`p3`, off-curve handles
 /// `p1`/`p2`. A straight line is stored as a cubic with handles on the chord
 /// (`straight = true`, curvature 0).
@@ -106,11 +105,10 @@ pub fn cubics_from_norad(glyph: &norad::Glyph) -> Vec<Vec<Cubic>> {
         // Smooth flags from the source points, matched by position.
         for seg in segs.iter_mut() {
             let p0 = seg.p0;
-            seg.start_smooth = contour.points.iter().any(|p| {
-                p.smooth
-                    && (p.x - p0.x).abs() < 0.01
-                    && (p.y - p0.y).abs() < 0.01
-            });
+            seg.start_smooth = contour
+                .points
+                .iter()
+                .any(|p| p.smooth && (p.x - p0.x).abs() < 0.01 && (p.y - p0.y).abs() < 0.01);
         }
         if !segs.is_empty() {
             out.push(segs);
@@ -388,7 +386,6 @@ pub fn max_curvature(contours: &[Vec<Cubic>]) -> f64 {
     }
     m
 }
-
 
 /// Infinite-line intersection of line (a,b) with line (c,d). `None` if parallel.
 fn line_intersect(a: Point, b: Point, c: Point, d: Point) -> Option<Point> {

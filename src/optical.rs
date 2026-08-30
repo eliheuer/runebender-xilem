@@ -216,13 +216,23 @@ mod tests {
         let mut accented = box_glyph("nacute", 100.0, 500.0, 200.0);
         let pt = |x: f64, y: f64| ContourPoint::new(x, y, PointType::Line, false, None, None);
         accented.contours.push(Contour::new(
-            vec![pt(0.0, 600.0), pt(100.0, 600.0), pt(100.0, 700.0), pt(0.0, 700.0)],
+            vec![
+                pt(0.0, 600.0),
+                pt(100.0, 600.0),
+                pt(100.0, 700.0),
+                pt(0.0, 700.0),
+            ],
             None,
         ));
         let font = font_with(vec![plain.clone(), accented.clone()]);
         let a = density(&font, &plain, 500.0).expect("ink");
         let b = density(&font, &accented, 500.0).expect("ink");
-        assert!((a.density - b.density).abs() < 1e-9, "{} vs {}", a.density, b.density);
+        assert!(
+            (a.density - b.density).abs() < 1e-9,
+            "{} vs {}",
+            a.density,
+            b.density
+        );
     }
 
     #[test]
@@ -271,7 +281,10 @@ mod tests {
         let font = font_with(glyphs);
         let found = outliers(&font, &names, 500.0, 0.15, "lowercase");
         let flagged: Vec<&str> = found.iter().map(|o| o.glyph.as_str()).collect();
-        assert!(flagged.contains(&"h1") && flagged.contains(&"h2"), "{flagged:?}");
+        assert!(
+            flagged.contains(&"h1") && flagged.contains(&"h2"),
+            "{flagged:?}"
+        );
         assert_eq!(found.len(), 2, "the even glyphs are not outliers");
     }
 

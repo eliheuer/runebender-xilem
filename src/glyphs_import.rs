@@ -544,8 +544,7 @@ mod tests {
     fn package_matches_single_file() {
         let from_file = glyphs_to_ufo_files(MINIMAL_GLYPHS3).unwrap();
 
-        let dir = std::env::temp_dir()
-            .join(format!("rb-glyphspackage-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("rb-glyphspackage-{}", std::process::id()));
         let pkg = dir.join("TestSans.glyphspackage");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -571,10 +570,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
 
         assert_eq!(from_package.family_name, from_file.family_name);
-        let mut a: Vec<&str> =
-            from_package.files.iter().map(|f| f.path.as_str()).collect();
-        let mut b: Vec<&str> =
-            from_file.files.iter().map(|f| f.path.as_str()).collect();
+        let mut a: Vec<&str> = from_package.files.iter().map(|f| f.path.as_str()).collect();
+        let mut b: Vec<&str> = from_file.files.iter().map(|f| f.path.as_str()).collect();
         a.sort();
         b.sort();
         assert_eq!(a, b);

@@ -69,8 +69,7 @@ pub fn oklch_to_rgb(l: f64, c: f64, h: f64) -> ColorRgba {
         chroma = low;
     }
     let rgb = oklch_to_linear(l, chroma, h);
-    let to_byte =
-        |v: f64| (linear_to_srgb(v).clamp(0.0, 1.0) * 255.0).round() as u8;
+    let to_byte = |v: f64| (linear_to_srgb(v).clamp(0.0, 1.0) * 255.0).round() as u8;
     ColorRgba::rgb(to_byte(rgb[0]), to_byte(rgb[1]), to_byte(rgb[2]))
 }
 
@@ -175,7 +174,12 @@ pub struct Geometry {
 
 impl Default for Geometry {
     fn default() -> Self {
-        Self { radius: 3.0, radius_control: 6.0, stroke: 1.0, stroke_emphasis: 2.0 }
+        Self {
+            radius: 3.0,
+            radius_control: 6.0,
+            stroke: 1.0,
+            stroke_emphasis: 2.0,
+        }
     }
 }
 
@@ -235,7 +239,12 @@ pub fn ufo_rgba_for_label(label: &str) -> Option<String> {
         let s = format!("{v}");
         if s == "0" { "0".to_string() } else { s }
     };
-    Some(format!("{},{},{},1", fmt(color.r), fmt(color.g), fmt(color.b)))
+    Some(format!(
+        "{},{},{},1",
+        fmt(color.r),
+        fmt(color.g),
+        fmt(color.b)
+    ))
 }
 
 const FALLBACK: ColorRgba = ColorRgba::rgb(0xff, 0x00, 0xff);
@@ -276,16 +285,14 @@ pub fn load_theme(theme_id: &str) -> Option<Theme> {
         .mark_colors
         .iter()
         .filter_map(|m| {
-            resolve_token(&file, &format!("{}.{mark_step}", m.name))
-                .map(|c| (m.name.clone(), c))
+            resolve_token(&file, &format!("{}.{mark_step}", m.name)).map(|c| (m.name.clone(), c))
         })
         .collect();
     let base = file.geometry.get("default").copied().unwrap_or_default();
     let own = def.geometry.unwrap_or_default();
     let fallback = Geometry::default();
-    let pick = |own: Option<f32>, base: Option<f32>, fallback: f32| {
-        own.or(base).unwrap_or(fallback)
-    };
+    let pick =
+        |own: Option<f32>, base: Option<f32>, fallback: f32| own.or(base).unwrap_or(fallback);
     let geometry = Geometry {
         radius: pick(own.radius, base.radius, fallback.radius),
         radius_control: pick(
@@ -308,7 +315,10 @@ pub fn load_theme(theme_id: &str) -> Option<Theme> {
         .mark_outline
         .as_deref()
         .and_then(|t| resolve_token(&file, t));
-    let mark_ink = def.mark_ink.as_deref().and_then(|t| resolve_token(&file, t));
+    let mark_ink = def
+        .mark_ink
+        .as_deref()
+        .and_then(|t| resolve_token(&file, t));
     Some(Theme {
         geometry,
         mark_style,
@@ -382,7 +392,10 @@ pub fn mark_label_for_glyph(glyph: &norad::Glyph, theme: &Theme) -> Option<Strin
 /// Snap a UFO "r,g,b,a" colour (0–1 floats) to the nearest palette
 /// label by hue. `None` for greys and colours far from every hue.
 pub fn label_for_rgba(rgba: &str, theme: &Theme) -> Option<String> {
-    let parts: Vec<f64> = rgba.split(',').filter_map(|p| p.trim().parse().ok()).collect();
+    let parts: Vec<f64> = rgba
+        .split(',')
+        .filter_map(|p| p.trim().parse().ok())
+        .collect();
     if parts.len() < 3 {
         return None;
     }
@@ -457,9 +470,18 @@ mod tests {
     fn snaps_rgba_to_palette_label() {
         let dark = load_theme("dark").expect("dark theme");
         // The exact UFO colours the web writes round-trip to their labels.
-        assert_eq!(label_for_rgba("0.88,0.3,0.27,1", &dark).as_deref(), Some("red"));
-        assert_eq!(label_for_rgba("0.27,0.44,1,1", &dark).as_deref(), Some("blue"));
-        assert_eq!(label_for_rgba("0.09,0.72,0.44,1", &dark).as_deref(), Some("green"));
+        assert_eq!(
+            label_for_rgba("0.88,0.3,0.27,1", &dark).as_deref(),
+            Some("red")
+        );
+        assert_eq!(
+            label_for_rgba("0.27,0.44,1,1", &dark).as_deref(),
+            Some("blue")
+        );
+        assert_eq!(
+            label_for_rgba("0.09,0.72,0.44,1", &dark).as_deref(),
+            Some("green")
+        );
         assert_eq!(label_for_rgba("0.5,0.5,0.5,1", &dark), None);
         assert_eq!(label_for_rgba("garbage", &dark), None);
     }
@@ -468,10 +490,22 @@ mod tests {
     /// strings exactly (files must not churn between editors).
     #[test]
     fn ufo_rgba_matches_web() {
-        assert_eq!(ufo_rgba_for_label("red").as_deref(), Some("0.88,0.3,0.27,1"));
-        assert_eq!(ufo_rgba_for_label("orange").as_deref(), Some("0.93,0.45,0.2,1"));
-        assert_eq!(ufo_rgba_for_label("yellow").as_deref(), Some("0.91,0.79,0.27,1"));
-        assert_eq!(ufo_rgba_for_label("green").as_deref(), Some("0.31,0.72,0.45,1"));
+        assert_eq!(
+            ufo_rgba_for_label("red").as_deref(),
+            Some("0.88,0.3,0.27,1")
+        );
+        assert_eq!(
+            ufo_rgba_for_label("orange").as_deref(),
+            Some("0.93,0.45,0.2,1")
+        );
+        assert_eq!(
+            ufo_rgba_for_label("yellow").as_deref(),
+            Some("0.91,0.79,0.27,1")
+        );
+        assert_eq!(
+            ufo_rgba_for_label("green").as_deref(),
+            Some("0.31,0.72,0.45,1")
+        );
         assert_eq!(ufo_rgba_for_label("mauve"), None);
     }
 
@@ -484,7 +518,10 @@ mod tests {
             glyph.lib.get("public.markColor"),
             Some(&plist::Value::String("0.31,0.72,0.45,1".into()))
         );
-        assert_eq!(mark_label_for_glyph(&glyph, &dark).as_deref(), Some("green"));
+        assert_eq!(
+            mark_label_for_glyph(&glyph, &dark).as_deref(),
+            Some("green")
+        );
         set_glyph_mark(&mut glyph, None);
         assert!(glyph.lib.get("public.markColor").is_none());
         assert!(glyph.lib.get(MARK_LABEL_KEY).is_none());
@@ -502,11 +539,13 @@ mod tests {
             "public.markColor".into(),
             plist::Value::String("0.93,0.45,0.2,1".into()),
         );
-        assert_eq!(mark_label_for_glyph(&glyph, &dark).as_deref(), Some("orange"));
-        glyph.lib.insert(
-            MARK_LABEL_KEY.into(),
-            plist::Value::String("blue".into()),
+        assert_eq!(
+            mark_label_for_glyph(&glyph, &dark).as_deref(),
+            Some("orange")
         );
+        glyph
+            .lib
+            .insert(MARK_LABEL_KEY.into(), plist::Value::String("blue".into()));
         assert_eq!(mark_label_for_glyph(&glyph, &dark).as_deref(), Some("blue"));
     }
 }
@@ -537,8 +576,7 @@ pub fn toolbar_icons() -> &'static HashMap<String, ToolbarIcon> {
             mode: Option<String>,
         }
         let raw: HashMap<String, Raw> =
-            serde_json::from_str(include_str!("../themes/toolbar-icons.json"))
-                .unwrap_or_default();
+            serde_json::from_str(include_str!("../themes/toolbar-icons.json")).unwrap_or_default();
         raw.into_iter()
             .filter_map(|(name, icon)| {
                 let numbers: Vec<f64> = icon
@@ -571,7 +609,9 @@ mod icon_tests {
     fn parses_all_toolbar_icons() {
         let icons = toolbar_icons();
         assert_eq!(icons.len(), 26);
-        for name in ["select", "pen", "knife", "measure", "shapes", "flip-h", "rot-cw", "union", "save"] {
+        for name in [
+            "select", "pen", "knife", "measure", "shapes", "flip-h", "rot-cw", "union", "save",
+        ] {
             let icon = icons.get(name).unwrap_or_else(|| panic!("missing {name}"));
             assert!(!icon.path.elements().is_empty());
             assert!(icon.view_box.width() > 0.0 && icon.view_box.height() > 0.0);
@@ -721,7 +761,11 @@ mod ui_contrast {
     fn relative_luminance(c: ColorRgba) -> f64 {
         let f = |v: u8| {
             let s = v as f64 / 255.0;
-            if s <= 0.03928 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+            if s <= 0.03928 {
+                s / 12.92
+            } else {
+                ((s + 0.055) / 1.055).powf(2.4)
+            }
         };
         0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b)
     }
@@ -766,7 +810,11 @@ mod ui_contrast {
     #[test]
     fn point_colours_read_on_the_canvas() {
         const POINTS: [&str; 5] = [
-            "pointSmooth", "pointCorner", "pointOffcurve", "pointSelected", "startNode",
+            "pointSmooth",
+            "pointCorner",
+            "pointOffcurve",
+            "pointSelected",
+            "startNode",
         ];
         for id in THEMES {
             let theme = load_theme(id).expect("theme");

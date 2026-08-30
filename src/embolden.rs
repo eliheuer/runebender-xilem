@@ -143,10 +143,7 @@ mod tests {
 
     /// Counter-clockwise, the way an outer contour is drawn.
     fn square(x0: f64, y0: f64, x1: f64, y1: f64) -> Contour {
-        Contour::new(
-            vec![pt(x0, y0), pt(x1, y0), pt(x1, y1), pt(x0, y1)],
-            None,
-        )
+        Contour::new(vec![pt(x0, y0), pt(x1, y0), pt(x1, y1), pt(x0, y1)], None)
     }
 
     fn glyph_of(contours: Vec<Contour>) -> Glyph {
@@ -162,7 +159,10 @@ mod tests {
         let out = embolden(&g, Offset { x: 10.0, y: 10.0 });
         let xs: Vec<f64> = out.contours[0].points.iter().map(|p| p.x).collect();
         assert!(xs.iter().cloned().fold(f64::MAX, f64::min) < 0.0, "{xs:?}");
-        assert!(xs.iter().cloned().fold(f64::MIN, f64::max) > 100.0, "{xs:?}");
+        assert!(
+            xs.iter().cloned().fold(f64::MIN, f64::max) > 100.0,
+            "{xs:?}"
+        );
     }
 
     /// A counter is wound the other way, so pushing outward has to
@@ -178,7 +178,10 @@ mod tests {
             xs.iter().cloned().fold(f64::MAX, f64::min),
             xs.iter().cloned().fold(f64::MIN, f64::max),
         );
-        assert!(lo > 20.0 && hi < 80.0, "the counter should close up: {xs:?}");
+        assert!(
+            lo > 20.0 && hi < 80.0,
+            "the counter should close up: {xs:?}"
+        );
     }
 
     /// The whole reason to move points rather than re-draw: the result

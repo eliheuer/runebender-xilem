@@ -126,9 +126,18 @@ mod tests {
     fn joining_types_match_xilem_subset() {
         assert_eq!(arabic_joining_type('\u{0627}'), ArabicJoiningType::Right);
         assert_eq!(arabic_joining_type('\u{0628}'), ArabicJoiningType::Dual);
-        assert_eq!(arabic_joining_type('\u{0621}'), ArabicJoiningType::NonJoining);
-        assert_eq!(arabic_joining_type('\u{0640}'), ArabicJoiningType::JoinCausing);
-        assert_eq!(arabic_joining_type('\u{064e}'), ArabicJoiningType::Transparent);
+        assert_eq!(
+            arabic_joining_type('\u{0621}'),
+            ArabicJoiningType::NonJoining
+        );
+        assert_eq!(
+            arabic_joining_type('\u{0640}'),
+            ArabicJoiningType::JoinCausing
+        );
+        assert_eq!(
+            arabic_joining_type('\u{064e}'),
+            ArabicJoiningType::Transparent
+        );
     }
 
     #[test]

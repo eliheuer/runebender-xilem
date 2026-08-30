@@ -45,7 +45,13 @@ pub fn canonical_ufo_mark_color(value: &str) -> Option<String> {
         return Some(String::new());
     }
     MarkColor::parse(trimmed)?;
-    Some(trimmed.split(',').map(str::trim).collect::<Vec<_>>().join(","))
+    Some(
+        trimmed
+            .split(',')
+            .map(str::trim)
+            .collect::<Vec<_>>()
+            .join(","),
+    )
 }
 
 #[cfg(test)]
@@ -80,5 +86,4 @@ mod tests {
         );
         assert_eq!(canonical_ufo_mark_color(""), Some(String::new()));
     }
-
 }

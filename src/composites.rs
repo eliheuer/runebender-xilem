@@ -42,7 +42,10 @@ pub fn component_alignment_disabled(component: &Component) -> bool {
 pub fn set_component_alignment_disabled(component: &mut Component, disabled: bool) {
     if disabled {
         let mut lib = component.lib().cloned().unwrap_or_default();
-        lib.insert(ALIGNMENT_KEY.to_string(), plist::Value::Integer((-1).into()));
+        lib.insert(
+            ALIGNMENT_KEY.to_string(),
+            plist::Value::Integer((-1).into()),
+        );
         component.replace_lib(lib);
     } else if let Some(lib) = component.lib_mut() {
         lib.remove(ALIGNMENT_KEY);
@@ -60,10 +63,7 @@ pub fn set_component_alignment_disabled(component: &mut Component, disabled: boo
 /// Anchors accumulate as we go: a component's outgoing anchors are
 /// offered to the components after it, which is how a second mark
 /// stacks on the first rather than landing back on the letter.
-pub fn realign_component_offsets(
-    components: &[AlignInput],
-    seed: &[(String, Point)],
-) -> Vec<Vec2> {
+pub fn realign_component_offsets(components: &[AlignInput], seed: &[(String, Point)]) -> Vec<Vec2> {
     let mut available: Vec<(&str, Point)> = seed
         .iter()
         .map(|(name, point)| (name.as_str(), *point))
@@ -105,9 +105,7 @@ fn base_anchors(font: &Font, base: &str) -> Vec<(String, Point)> {
             glyph
                 .anchors
                 .iter()
-                .filter_map(|a| {
-                    Some((a.name.as_ref()?.to_string(), Point::new(a.x, a.y)))
-                })
+                .filter_map(|a| Some((a.name.as_ref()?.to_string(), Point::new(a.x, a.y))))
                 .collect()
         })
         .unwrap_or_default()
@@ -121,10 +119,7 @@ pub fn align_inputs(font: &Font, glyph: &Glyph) -> Vec<AlignInput> {
         .iter()
         .map(|component| AlignInput {
             anchors: base_anchors(font, component.base.as_str()),
-            offset: Vec2::new(
-                component.transform.x_offset,
-                component.transform.y_offset,
-            ),
+            offset: Vec2::new(component.transform.x_offset, component.transform.y_offset),
             aligned: !component_alignment_disabled(component),
         })
         .collect()
@@ -143,9 +138,7 @@ pub fn realign_glyph(font: &Font, glyph: &mut Glyph, seed_own_anchors: bool) -> 
         glyph
             .anchors
             .iter()
-            .filter_map(|a| {
-                Some((a.name.as_ref()?.to_string(), Point::new(a.x, a.y)))
-            })
+            .filter_map(|a| Some((a.name.as_ref()?.to_string(), Point::new(a.x, a.y))))
             .collect()
     } else {
         Vec::new()
@@ -171,12 +164,7 @@ pub fn composites_using(font: &Font, base: &str) -> Vec<String> {
         .map(|layer| {
             layer
                 .iter()
-                .filter(|glyph| {
-                    glyph
-                        .components
-                        .iter()
-                        .any(|c| c.base.as_str() == base)
-                })
+                .filter(|glyph| glyph.components.iter().any(|c| c.base.as_str() == base))
                 .map(|glyph| glyph.name().to_string())
                 .collect()
         })
@@ -186,7 +174,7 @@ pub fn composites_using(font: &Font, base: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use norad::{Anchor, AffineTransform, Name};
+    use norad::{AffineTransform, Anchor, Name};
 
     fn glyph_with_anchor(name: &str, anchor: &str, x: f64, y: f64) -> Glyph {
         let mut glyph = Glyph::new(name);
@@ -294,10 +282,9 @@ mod tests {
 
     #[test]
     fn fixture_agrave_realign_is_a_fixpoint() {
-        let font = norad::Font::load(
-            "../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo",
-        )
-        .expect("fixture font");
+        let font =
+            norad::Font::load("../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo")
+                .expect("fixture font");
         let mut agrave = font.get_glyph("Agrave").expect("Agrave").clone();
         // A well-formed source is already aligned: realigning must
         // not move anything.

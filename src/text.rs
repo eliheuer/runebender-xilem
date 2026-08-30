@@ -217,8 +217,7 @@ impl TextKerningModel {
         let mut left_groups = HashMap::new();
         let mut right_groups = HashMap::new();
         for (name, members) in font.groups.iter() {
-            let members: Vec<String> =
-                members.iter().map(|m| m.to_string()).collect();
+            let members: Vec<String> = members.iter().map(|m| m.to_string()).collect();
             // UFO names groups by pair position: kern1 is the first
             // glyph's right edge, kern2 the second glyph's left edge.
             if name.starts_with("public.kern1.") {
@@ -550,11 +549,7 @@ impl TextBuffer {
     /// Shaping script/language overrides ("arab"/"ur"): language is
     /// what makes languagesystem-specific rules (locl for Urdu or
     /// Sindhi) fire in the preview.
-    pub fn set_shaping_locale(
-        &mut self,
-        script: Option<String>,
-        language: Option<String>,
-    ) {
+    pub fn set_shaping_locale(&mut self, script: Option<String>, language: Option<String>) {
         self.script_override = script;
         self.language_override = language;
     }

@@ -56,9 +56,7 @@ pub fn segments(glyph: &Glyph) -> Vec<SegmentHit> {
         if points.len() < 2 {
             continue;
         }
-        let on_indices: Vec<usize> = (0..points.len())
-            .filter(|&i| is_on(&points[i]))
-            .collect();
+        let on_indices: Vec<usize> = (0..points.len()).filter(|&i| is_on(&points[i])).collect();
         if on_indices.is_empty() {
             continue;
         }
@@ -181,11 +179,7 @@ pub fn convert_line_to_curve(glyph: &mut Glyph, hit: &SegmentHit) -> Option<[Poi
 /// Insert an on-curve point on a segment at parameter `t`, splitting
 /// curves exactly (the web pen tool's click-on-segment). Returns the
 /// new point's id.
-pub fn insert_point_on_segment(
-    glyph: &mut Glyph,
-    hit: &SegmentHit,
-    t: f64,
-) -> Option<PointId> {
+pub fn insert_point_on_segment(glyph: &mut Glyph, hit: &SegmentHit, t: f64) -> Option<PointId> {
     let t = t.clamp(0.0, 1.0);
     let contour = glyph.contours.get_mut(hit.contour)?;
     let insert_index = if hit.end > hit.start {
@@ -198,14 +192,7 @@ pub fn insert_point_on_segment(
             let p = snapped(line.eval(t));
             contour.points.insert(
                 insert_index,
-                ContourPoint::new(
-                    p.0,
-                    p.1,
-                    PointType::Line,
-                    false,
-                    None,
-                    None,
-                ),
+                ContourPoint::new(p.0, p.1, PointType::Line, false, None, None),
             );
             Some((hit.contour, insert_index))
         }
@@ -224,14 +211,7 @@ pub fn insert_point_on_segment(
                 hit.start + 1 - removed.iter().filter(|&&i| i < hit.start).count()
             };
             let (sx, sy) = snapped(left.p3);
-            let split = ContourPoint::new(
-                sx,
-                sy,
-                PointType::Curve,
-                false,
-                None,
-                None,
-            );
+            let split = ContourPoint::new(sx, sy, PointType::Curve, false, None, None);
             let new_points = vec![
                 off_point(left.p1),
                 off_point(left.p2),
@@ -259,16 +239,8 @@ pub fn insert_point_on_segment(
                 hit.start + 1 - removed.iter().filter(|&&i| i < hit.start).count()
             };
             let (sx, sy) = snapped(left.p2);
-            let split = ContourPoint::new(
-                sx,
-                sy,
-                PointType::QCurve,
-                false,
-                None,
-                None,
-            );
-            let new_points =
-                vec![off_point(left.p1), split, off_point(right.p1)];
+            let split = ContourPoint::new(sx, sy, PointType::QCurve, false, None, None);
+            let new_points = vec![off_point(left.p1), split, off_point(right.p1)];
             for (offset, p) in new_points.into_iter().enumerate() {
                 let index = (base + offset).min(contour.points.len());
                 contour.points.insert(index, p);
@@ -287,7 +259,11 @@ pub fn delete_last_pen_point(glyph: &mut Glyph, contour: usize) -> Option<usize>
         return None;
     }
     c.points.pop();
-    while c.points.last().is_some_and(|p| p.typ == PointType::OffCurve) {
+    while c
+        .points
+        .last()
+        .is_some_and(|p| p.typ == PointType::OffCurve)
+    {
         c.points.pop();
     }
     Some(c.points.len())
@@ -299,13 +275,8 @@ mod tests {
 
     fn rect_glyph() -> Glyph {
         let mut glyph = Glyph::new("test");
-        let points = [
-            (0.0, 0.0),
-            (100.0, 0.0),
-            (100.0, 100.0),
-            (0.0, 100.0),
-        ]
-        .map(|(x, y)| ContourPoint::new(x, y, PointType::Line, false, None, None));
+        let points = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+            .map(|(x, y)| ContourPoint::new(x, y, PointType::Line, false, None, None));
         glyph
             .contours
             .push(norad::Contour::new(points.to_vec(), None));
@@ -315,8 +286,7 @@ mod tests {
     #[test]
     fn nearest_segment_finds_the_bottom_edge() {
         let glyph = rect_glyph();
-        let (hit, t) =
-            nearest_segment_with_t(&glyph, Point::new(50.0, -2.0), 5.0).unwrap();
+        let (hit, t) = nearest_segment_with_t(&glyph, Point::new(50.0, -2.0), 5.0).unwrap();
         assert_eq!((hit.contour, hit.start, hit.end), (0, 0, 1));
         assert!((t - 0.5).abs() < 0.05);
         assert!(matches!(hit.seg, PathSeg::Line(_)));
@@ -326,8 +296,7 @@ mod tests {
     #[test]
     fn line_converts_to_curve_with_thirds_handles() {
         let mut glyph = rect_glyph();
-        let (hit, _) =
-            nearest_segment_with_t(&glyph, Point::new(50.0, -2.0), 5.0).unwrap();
+        let (hit, _) = nearest_segment_with_t(&glyph, Point::new(50.0, -2.0), 5.0).unwrap();
         let ids = convert_line_to_curve(&mut glyph, &hit).unwrap();
         let c = &glyph.contours[0];
         assert_eq!(c.points.len(), 6);
@@ -344,8 +313,7 @@ mod tests {
     fn closing_segment_converts_too() {
         let mut glyph = rect_glyph();
         // Left edge: from (0,100) back to (0,0) — the wrap-around.
-        let (hit, _) =
-            nearest_segment_with_t(&glyph, Point::new(-2.0, 50.0), 5.0).unwrap();
+        let (hit, _) = nearest_segment_with_t(&glyph, Point::new(-2.0, 50.0), 5.0).unwrap();
         assert!(hit.end < hit.start);
         assert!(convert_line_to_curve(&mut glyph, &hit).is_some());
         let c = &glyph.contours[0];
@@ -357,8 +325,7 @@ mod tests {
     #[test]
     fn insert_point_on_line_splits_it() {
         let mut glyph = rect_glyph();
-        let (hit, t) =
-            nearest_segment_with_t(&glyph, Point::new(50.0, -2.0), 5.0).unwrap();
+        let (hit, t) = nearest_segment_with_t(&glyph, Point::new(50.0, -2.0), 5.0).unwrap();
         let id = insert_point_on_segment(&mut glyph, &hit, t).unwrap();
         let c = &glyph.contours[0];
         assert_eq!(c.points.len(), 5);

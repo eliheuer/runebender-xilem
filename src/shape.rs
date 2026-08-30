@@ -264,11 +264,7 @@ impl ShapingFont {
             .map(|(tag, on)| {
                 let mut bytes = [b' '; 4];
                 bytes.copy_from_slice(tag.as_bytes());
-                harfrust::Feature::new(
-                    harfrust::Tag::new(&bytes),
-                    u32::from(*on),
-                    ..,
-                )
+                harfrust::Feature::new(harfrust::Tag::new(&bytes), u32::from(*on), ..)
             })
             .collect();
 

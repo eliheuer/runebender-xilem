@@ -18,7 +18,6 @@ use crate::path::{
 const MAX_KNIFE_RECURSE: usize = 16;
 const KNIFE_HIT_CLUSTER_TOLERANCE: f64 = 1e-4;
 
-
 #[derive(Clone, Copy)]
 struct Hit {
     line_t: f64,
@@ -935,93 +934,93 @@ mod tests {
     use super::*;
     use kurbo::{PathEl, Rect};
 
-fn path_point(point: Point, smooth: bool) -> PathPoint {
-    PathPoint {
-        id: EntityId::next(),
-        point,
-        typ: PointType::OnCurve { smooth },
+    fn path_point(point: Point, smooth: bool) -> PathPoint {
+        PathPoint {
+            id: EntityId::next(),
+            point,
+            typ: PointType::OnCurve { smooth },
+        }
     }
-}
 
-fn off_curve(point: Point) -> PathPoint {
-    PathPoint {
-        id: EntityId::next(),
-        point,
-        typ: PointType::OffCurve { auto: false },
+    fn off_curve(point: Point) -> PathPoint {
+        PathPoint {
+            id: EntityId::next(),
+            point,
+            typ: PointType::OffCurve { auto: false },
+        }
     }
-}
 
-#[cfg(test)]
+    #[cfg(test)]
 
-fn rect_path(rect: Rect) -> Path {
-    let points = vec![
-        path_point(rect.origin(), false),
-        path_point(Point::new(rect.max_x(), rect.min_y()), false),
-        path_point(Point::new(rect.max_x(), rect.max_y()), false),
-        path_point(Point::new(rect.min_x(), rect.max_y()), false),
-    ];
-    Path::Cubic(CubicPath::new(PathPoints::from_vec(points), true))
-}
+    fn rect_path(rect: Rect) -> Path {
+        let points = vec![
+            path_point(rect.origin(), false),
+            path_point(Point::new(rect.max_x(), rect.min_y()), false),
+            path_point(Point::new(rect.max_x(), rect.max_y()), false),
+            path_point(Point::new(rect.min_x(), rect.max_y()), false),
+        ];
+        Path::Cubic(CubicPath::new(PathPoints::from_vec(points), true))
+    }
 
-#[cfg(test)]
-fn quadratic_rect_path(rect: Rect) -> Path {
-    let points = vec![
-        path_point(rect.origin(), false),
-        path_point(Point::new(rect.max_x(), rect.min_y()), false),
-        path_point(Point::new(rect.max_x(), rect.max_y()), false),
-        path_point(Point::new(rect.min_x(), rect.max_y()), false),
-    ];
-    Path::Quadratic(QuadraticPath::new(PathPoints::from_vec(points), true))
-}
+    #[cfg(test)]
+    fn quadratic_rect_path(rect: Rect) -> Path {
+        let points = vec![
+            path_point(rect.origin(), false),
+            path_point(Point::new(rect.max_x(), rect.min_y()), false),
+            path_point(Point::new(rect.max_x(), rect.max_y()), false),
+            path_point(Point::new(rect.min_x(), rect.max_y()), false),
+        ];
+        Path::Quadratic(QuadraticPath::new(PathPoints::from_vec(points), true))
+    }
 
-#[cfg(test)]
-fn quadratic_curve_path() -> Path {
-    let points = vec![
-        path_point(Point::new(0.0, 0.0), false),
-        off_curve(Point::new(50.0, 100.0)),
-        path_point(Point::new(100.0, 0.0), true),
-        path_point(Point::new(100.0, 100.0), false),
-        path_point(Point::new(0.0, 100.0), false),
-    ];
-    Path::Quadratic(QuadraticPath::new(PathPoints::from_vec(points), true))
-}
+    #[cfg(test)]
+    fn quadratic_curve_path() -> Path {
+        let points = vec![
+            path_point(Point::new(0.0, 0.0), false),
+            off_curve(Point::new(50.0, 100.0)),
+            path_point(Point::new(100.0, 0.0), true),
+            path_point(Point::new(100.0, 100.0), false),
+            path_point(Point::new(0.0, 100.0), false),
+        ];
+        Path::Quadratic(QuadraticPath::new(PathPoints::from_vec(points), true))
+    }
 
-#[cfg(test)]
-fn hyper_curve_path() -> Path {
-    let points = vec![
-        path_point(Point::new(0.0, 0.0), true),
-        path_point(Point::new(100.0, 100.0), true),
-        path_point(Point::new(0.0, 100.0), true),
-        path_point(Point::new(100.0, 0.0), true),
-    ];
-    Path::Hyper(crate::path::HyperPath::from_points(
-        PathPoints::from_vec(points),
-        true,
-    ))
-}
+    #[cfg(test)]
+    fn hyper_curve_path() -> Path {
+        let points = vec![
+            path_point(Point::new(0.0, 0.0), true),
+            path_point(Point::new(100.0, 100.0), true),
+            path_point(Point::new(0.0, 100.0), true),
+            path_point(Point::new(100.0, 0.0), true),
+        ];
+        Path::Hyper(crate::path::HyperPath::from_points(
+            PathPoints::from_vec(points),
+            true,
+        ))
+    }
 
-#[cfg(test)]
-fn rounded_icon_counter_path() -> Path {
-    let points = vec![
-        path_point(Point::new(96.0, 128.0), true),
-        path_point(Point::new(96.0, 416.0), true),
-        off_curve(Point::new(96.0, 440.0)),
-        off_curve(Point::new(104.0, 448.0)),
-        path_point(Point::new(128.0, 448.0), true),
-        path_point(Point::new(640.0, 448.0), true),
-        off_curve(Point::new(663.5, 447.5)),
-        off_curve(Point::new(671.5, 439.5)),
-        path_point(Point::new(672.0, 416.0), true),
-        path_point(Point::new(672.0, 128.0), true),
-        off_curve(Point::new(671.5, 103.5)),
-        off_curve(Point::new(663.5, 95.5)),
-        path_point(Point::new(640.0, 96.0), true),
-        path_point(Point::new(128.0, 96.0), true),
-        off_curve(Point::new(103.5, 95.5)),
-        off_curve(Point::new(95.5, 103.5)),
-    ];
-    Path::Cubic(CubicPath::new(PathPoints::from_vec(points), true))
-}
+    #[cfg(test)]
+    fn rounded_icon_counter_path() -> Path {
+        let points = vec![
+            path_point(Point::new(96.0, 128.0), true),
+            path_point(Point::new(96.0, 416.0), true),
+            off_curve(Point::new(96.0, 440.0)),
+            off_curve(Point::new(104.0, 448.0)),
+            path_point(Point::new(128.0, 448.0), true),
+            path_point(Point::new(640.0, 448.0), true),
+            off_curve(Point::new(663.5, 447.5)),
+            off_curve(Point::new(671.5, 439.5)),
+            path_point(Point::new(672.0, 416.0), true),
+            path_point(Point::new(672.0, 128.0), true),
+            off_curve(Point::new(671.5, 103.5)),
+            off_curve(Point::new(663.5, 95.5)),
+            path_point(Point::new(640.0, 96.0), true),
+            path_point(Point::new(128.0, 96.0), true),
+            off_curve(Point::new(103.5, 95.5)),
+            off_curve(Point::new(95.5, 103.5)),
+        ];
+        Path::Cubic(CubicPath::new(PathPoints::from_vec(points), true))
+    }
     #[test]
     fn knife_splits_closed_rectangle_into_two_paths() {
         let paths = vec![rect_path(Rect::new(0.0, 0.0, 100.0, 100.0))];
@@ -1218,7 +1217,6 @@ fn rounded_icon_counter_path() -> Path {
             _ => false,
         }));
     }
-
 }
 
 // ---- norad bridge ----
@@ -1241,10 +1239,7 @@ pub fn knife_cut_glyph(glyph: &mut norad::Glyph, p0: Point, p1: Point) -> bool {
         // Nothing split and nothing joined: leave the glyph alone.
         return false;
     }
-    glyph.contours = sliced
-        .iter()
-        .map(|p| p.to_contour().to_norad())
-        .collect();
+    glyph.contours = sliced.iter().map(|p| p.to_contour().to_norad()).collect();
     true
 }
 
@@ -1252,40 +1247,29 @@ pub fn knife_cut_glyph(glyph: &mut norad::Glyph, p0: Point, p1: Point) -> bool {
 mod norad_tests {
     use super::*;
 
-#[test]
-fn knife_cuts_fixture_zero_into_four_contours() {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo"
-    );
-    let font = norad::Font::load(path).expect("fixture UFO loads");
-    let mut glyph = font.get_glyph("zero").expect("zero exists").clone();
-    assert_eq!(glyph.contours.len(), 2);
-    let hits = knife_hit_points(
-        &glyph,
-        Point::new(340.0, -200.0),
-        Point::new(340.0, 900.0),
-    );
-    assert_eq!(hits.len(), 4, "vertical line should cross zero 4 times");
-    assert!(knife_cut_glyph(
-        &mut glyph,
-        Point::new(340.0, -200.0),
-        Point::new(340.0, 900.0)
-    ));
-    assert_eq!(glyph.contours.len(), 4);
-}
-
+    #[test]
+    fn knife_cuts_fixture_zero_into_four_contours() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo"
+        );
+        let font = norad::Font::load(path).expect("fixture UFO loads");
+        let mut glyph = font.get_glyph("zero").expect("zero exists").clone();
+        assert_eq!(glyph.contours.len(), 2);
+        let hits = knife_hit_points(&glyph, Point::new(340.0, -200.0), Point::new(340.0, 900.0));
+        assert_eq!(hits.len(), 4, "vertical line should cross zero 4 times");
+        assert!(knife_cut_glyph(
+            &mut glyph,
+            Point::new(340.0, -200.0),
+            Point::new(340.0, 900.0)
+        ));
+        assert_eq!(glyph.contours.len(), 4);
+    }
 
     #[test]
     fn knife_cuts_a_norad_rectangle_in_two() {
         let mut glyph = norad::Glyph::new("test");
-        let points = [
-            (0.0, 0.0),
-            (100.0, 0.0),
-            (100.0, 100.0),
-            (0.0, 100.0),
-        ]
-        .map(|(x, y)| {
+        let points = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)].map(|(x, y)| {
             norad::ContourPoint::new(x, y, norad::PointType::Line, false, None, None)
         });
         glyph

@@ -85,10 +85,7 @@ mod tests {
         let a = font.get_glyph("A").unwrap();
         assert_eq!(a.width, DEFAULT_WIDTH);
         assert_eq!(a.codepoints.iter().next(), Some('A'));
-        assert_eq!(
-            font.font_info.family_name.as_deref(),
-            Some("Untitled")
-        );
+        assert_eq!(font.font_info.family_name.as_deref(), Some("Untitled"));
         assert_eq!(
             font.font_info.units_per_em.map(|v| v.as_f64()),
             Some(1000.0)

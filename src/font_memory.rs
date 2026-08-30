@@ -45,8 +45,7 @@ pub fn ufo_from_files<'a>(
     let mut font = Font::new();
 
     if let Some(bytes) = files.get("fontinfo.plist") {
-        font.font_info =
-            plist::from_bytes(bytes).map_err(|e| format!("fontinfo.plist: {e}"))?;
+        font.font_info = plist::from_bytes(bytes).map_err(|e| format!("fontinfo.plist: {e}"))?;
     }
     if let Some(bytes) = files.get("lib.plist") {
         let value: plist::Dictionary =
@@ -62,9 +61,7 @@ pub fn ufo_from_files<'a>(
 
     // Default layer glyphs via contents.plist (glyph name → file).
     let contents: HashMap<String, String> = match files.get("glyphs/contents.plist") {
-        Some(bytes) => {
-            plist::from_bytes(bytes).map_err(|e| format!("contents.plist: {e}"))?
-        }
+        Some(bytes) => plist::from_bytes(bytes).map_err(|e| format!("contents.plist: {e}"))?,
         None => HashMap::new(),
     };
     let mut glif_paths = HashMap::new();

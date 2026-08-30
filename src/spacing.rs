@@ -87,7 +87,10 @@ pub fn infer_step(sides: &[Sides]) -> Option<f64> {
         return None;
     }
     for step in CANDIDATES {
-        let on = values.iter().filter(|v| remainder(**v, step).abs() < EPSILON).count();
+        let on = values
+            .iter()
+            .filter(|v| remainder(**v, step).abs() < EPSILON)
+            .count();
         if on as f64 / values.len() as f64 >= COVERAGE {
             return Some(step);
         }
@@ -243,7 +246,14 @@ mod tests {
     fn spacing_with_no_grid_infers_nothing() {
         let font = font_with(
             (0..10)
-                .map(|i| glyph(&format!("g{i}"), 31.0 + i as f64, 200.0, 17.0 + i as f64 * 3.0))
+                .map(|i| {
+                    glyph(
+                        &format!("g{i}"),
+                        31.0 + i as f64,
+                        200.0,
+                        17.0 + i as f64 * 3.0,
+                    )
+                })
                 .collect(),
         );
         assert_eq!(infer_step(&sidebearings(&font)), None);

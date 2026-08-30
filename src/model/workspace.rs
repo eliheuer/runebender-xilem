@@ -270,8 +270,7 @@ impl Contour {
                 )
             })
             .collect();
-        let identifier =
-            hyper.then(|| norad::Identifier::new("hyperbezier").expect("static id"));
+        let identifier = hyper.then(|| norad::Identifier::new("hyperbezier").expect("static id"));
         norad::Contour::new(points, identifier)
     }
 }

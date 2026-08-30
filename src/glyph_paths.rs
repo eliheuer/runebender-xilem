@@ -41,7 +41,9 @@ pub fn components_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
 
 /// The affine of a norad component transform.
 pub fn component_affine(t: &norad::AffineTransform) -> Affine {
-    Affine::new([t.x_scale, t.xy_scale, t.yx_scale, t.y_scale, t.x_offset, t.y_offset])
+    Affine::new([
+        t.x_scale, t.xy_scale, t.yx_scale, t.y_scale, t.x_offset, t.y_offset,
+    ])
 }
 
 /// Smart-component metadata: axes live on the part glyph under the
@@ -50,8 +52,7 @@ pub fn component_affine(t: &norad::AffineTransform) -> Affine {
 /// ({axis: 1 bottom, 2 top}); an unmarked default glyph acts as the
 /// bottom pole.
 const SMART_AXES_KEY: &str = "com.schriftgestaltung.Glyphs.smartComponentAxes";
-const SMART_VALUES_KEY: &str =
-    "com.schriftgestaltung.Glyphs.componentsSmartComponentValues";
+const SMART_VALUES_KEY: &str = "com.schriftgestaltung.Glyphs.componentsSmartComponentValues";
 const PART_SELECTION_KEY: &str = "com.runebender.partSelection";
 
 /// The value the using glyph sets for `component_index`'s first
@@ -65,7 +66,10 @@ fn smart_value_for(glyph: &Glyph, component_index: usize, axis: &str) -> Option<
         .get(component_index)?
         .as_dictionary()?
         .get(axis)
-        .and_then(|v| v.as_real().or_else(|| v.as_signed_integer().map(|n| n as f64)))
+        .and_then(|v| {
+            v.as_real()
+                .or_else(|| v.as_signed_integer().map(|n| n as f64))
+        })
 }
 
 /// Interpolated contours for a smart part at the given axis
@@ -87,7 +91,8 @@ fn smart_contours(
     use std::collections::BTreeSet;
     let axes = base.lib.get(SMART_AXES_KEY)?.as_array()?;
     let number = |v: &plist::Value| {
-        v.as_real().or_else(|| v.as_signed_integer().map(|n| n as f64))
+        v.as_real()
+            .or_else(|| v.as_signed_integer().map(|n| n as f64))
     };
     // Normalized position per axis, in declaration order.
     let mut t: BTreeMap<String, f64> = BTreeMap::new();
@@ -131,17 +136,12 @@ fn smart_contours(
         let Some(candidate) = layer.get_glyph(base.name()) else {
             continue;
         };
-        let Some(plist::Value::Dictionary(sel)) =
-            candidate.lib.get(PART_SELECTION_KEY)
-        else {
+        let Some(plist::Value::Dictionary(sel)) = candidate.lib.get(PART_SELECTION_KEY) else {
             continue;
         };
         let tops: BTreeSet<String> = sel
             .iter()
-            .filter(|(name, v)| {
-                t.contains_key(name.as_str())
-                    && v.as_signed_integer() == Some(2)
-            })
+            .filter(|(name, v)| t.contains_key(name.as_str()) && v.as_signed_integer() == Some(2))
             .map(|(name, _)| name.clone())
             .collect();
         if tops.is_empty() {
@@ -194,14 +194,7 @@ fn smart_contours(
             .map(|p| {
                 let (x, y) = coords[cursor];
                 cursor += 1;
-                norad::ContourPoint::new(
-                    x,
-                    y,
-                    p.typ.clone(),
-                    p.smooth,
-                    None,
-                    None,
-                )
+                norad::ContourPoint::new(x, y, p.typ.clone(), p.smooth, None, None)
             })
             .collect();
         out.push(norad::Contour::new(points, None));
@@ -225,7 +218,9 @@ fn append_components(
         };
         let t = component.transform;
         let combined = parent_transform
-            * Affine::new([t.x_scale, t.xy_scale, t.yx_scale, t.y_scale, t.x_offset, t.y_offset]);
+            * Affine::new([
+                t.x_scale, t.xy_scale, t.yx_scale, t.y_scale, t.x_offset, t.y_offset,
+            ]);
         // A smart part with values interpolates between its poles.
         let smart = base
             .lib
@@ -234,11 +229,7 @@ fn append_components(
             .map(|axes| {
                 axes.iter()
                     .filter_map(|axis| {
-                        let name = axis
-                            .as_dictionary()?
-                            .get("name")?
-                            .as_string()?
-                            .to_string();
+                        let name = axis.as_dictionary()?.get("name")?.as_string()?.to_string();
                         let value = smart_value_for(glyph, index, &name)?;
                         Some((name, value))
                     })
@@ -411,10 +402,16 @@ mod smart_component_tests {
         let path = components_to_bezpath(&user, &font);
         let bbox = path.bounding_box();
         // Halfway between 200 and 500.
-        assert!((bbox.x1 - 350.0).abs() < 1.0, "interpolated width: {}", bbox.x1);
+        assert!(
+            (bbox.x1 - 350.0).abs() < 1.0,
+            "interpolated width: {}",
+            bbox.x1
+        );
         // No value -> the plain narrow base.
         let mut plain = user.clone();
-        plain.lib.remove("com.schriftgestaltung.Glyphs.componentsSmartComponentValues");
+        plain
+            .lib
+            .remove("com.schriftgestaltung.Glyphs.componentsSmartComponentValues");
         let plain_path = components_to_bezpath(&plain, &font);
         assert!((plain_path.bounding_box().x1 - 200.0).abs() < 1.0);
     }
@@ -426,9 +423,7 @@ mod smart_component_tests {
             Contour::new(
                 [(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)]
                     .iter()
-                    .map(|&(x, y)| {
-                        ContourPoint::new(x, y, PointType::Line, false, None, None)
-                    })
+                    .map(|&(x, y)| ContourPoint::new(x, y, PointType::Line, false, None, None))
                     .collect(),
                 None,
             )
@@ -465,10 +460,8 @@ mod smart_component_tests {
         ] {
             let mut g = norad::Glyph::new("_part.box");
             g.contours = vec![rect(w, h)];
-            g.lib.insert(
-                "com.runebender.partSelection".into(),
-                pole(&tops),
-            );
+            g.lib
+                .insert("com.runebender.partSelection".into(), pole(&tops));
             font.layers
                 .get_or_create_layer(layer)
                 .unwrap()
@@ -498,4 +491,3 @@ mod smart_component_tests {
         assert!((bbox.y1 - 212.5).abs() < 0.5, "h: {}", bbox.y1);
     }
 }
-

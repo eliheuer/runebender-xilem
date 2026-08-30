@@ -48,10 +48,8 @@ pub fn trace_image(image_bytes: &[u8], config: &TraceConfig) -> Result<norad::Gl
     opts.em_height = config.target_height.max(1.0);
     opts.invert = config.invert;
 
-    let mut metrics = img2bez::FontMetrics::from_target_height(
-        config.target_height.max(1.0),
-        config.y_offset,
-    );
+    let mut metrics =
+        img2bez::FontMetrics::from_target_height(config.target_height.max(1.0), config.y_offset);
     metrics.advance_width = Some(config.advance.max(1.0));
     metrics.lsb = config.lsb;
 
@@ -76,18 +74,14 @@ mod tests {
             }
         }
         let mut out = Vec::new();
-        img.write_to(
-            &mut std::io::Cursor::new(&mut out),
-            image::ImageFormat::Png,
-        )
-        .expect("encode png");
+        img.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+            .expect("encode png");
         out
     }
 
     #[test]
     fn traces_a_square_into_contours() {
-        let glyph = trace_image(&square_png(), &TraceConfig::default())
-            .expect("trace succeeds");
+        let glyph = trace_image(&square_png(), &TraceConfig::default()).expect("trace succeeds");
         assert!(!glyph.contours.is_empty());
     }
 

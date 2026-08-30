@@ -40,12 +40,8 @@ mod tests {
 
     #[test]
     fn first_unicode_is_compatibility_field() {
-        let metadata = GlyphMetadata::new(
-            "A",
-            600.0,
-            2,
-            vec!["0041".to_string(), "0391".to_string()],
-        );
+        let metadata =
+            GlyphMetadata::new("A", 600.0, 2, vec!["0041".to_string(), "0391".to_string()]);
 
         assert_eq!(metadata.unicode.as_deref(), Some("0041"));
         assert_eq!(metadata.unicodes, ["0041", "0391"]);

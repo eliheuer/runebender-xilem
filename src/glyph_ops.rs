@@ -155,8 +155,7 @@ pub fn constrain_smooth_neighbor(glyph: &mut Glyph, contour: usize, index: usize
     }
     let arm = |d: isize| -> Option<(usize, usize)> {
         let (a, sib) = (step(index, d)?, step(index, 2 * d)?);
-        (!is_off(&c.points[a]) && c.points[a].smooth && is_off(&c.points[sib]))
-            .then_some((a, sib))
+        (!is_off(&c.points[a]) && c.points[a].smooth && is_off(&c.points[sib])).then_some((a, sib))
     };
     let Some((a, sib)) = arm(1).or_else(|| arm(-1)) else {
         return;
@@ -257,7 +256,11 @@ pub fn delete_points(glyph: &mut Glyph, selected: &HashSet<PointId>) -> bool {
         let mut points: Vec<ContourPoint> = Vec::new();
         for (k, seg) in segs.iter().enumerate() {
             let is_first = k == 0;
-            let controls = if !closed && is_first { None } else { seg.controls };
+            let controls = if !closed && is_first {
+                None
+            } else {
+                seg.controls
+            };
             let typ = if !closed && is_first {
                 PointType::Move
             } else if controls.is_some() {
@@ -395,12 +398,17 @@ pub fn append_segment(
         c.points.push(off_point(c1));
         c.points.push(off_point(c2));
     }
-    c.points.push(ContourPoint::new(x, y, typ, smooth, None, None));
+    c.points
+        .push(ContourPoint::new(x, y, typ, smooth, None, None));
 }
 
 /// Close an open contour: the Move start point becomes the final
 /// segment's target. `controls` curves the closing segment.
-pub fn close_contour(glyph: &mut Glyph, contour: usize, controls: Option<((f64, f64), (f64, f64))>) {
+pub fn close_contour(
+    glyph: &mut Glyph,
+    contour: usize,
+    controls: Option<((f64, f64), (f64, f64))>,
+) {
     let Some(c) = glyph.contours.get_mut(contour) else {
         return;
     };
@@ -580,8 +588,7 @@ pub fn boolean_contours(glyph: &Glyph, op: linesweeper::BinaryOp) -> Option<Vec<
             (set_a, rest)
         }
     };
-    let result =
-        linesweeper::binary_op(&set_a, &set_b, linesweeper::FillRule::NonZero, op).ok()?;
+    let result = linesweeper::binary_op(&set_a, &set_b, linesweeper::FillRule::NonZero, op).ok()?;
     let smooth_at: HashMap<(i64, i64), bool> = glyph
         .contours
         .iter()
@@ -891,18 +898,13 @@ pub fn kern_group(font: &Font, glyph: &str, first_side: bool) -> Option<norad::N
 /// Convert hyperbezier contours to plain cubics through the solver
 /// (web convertHyperToCubic): the selected ones, or every hyper
 /// contour when the selection is empty.
-pub fn convert_hyper_to_cubic(
-    glyph: &mut Glyph,
-    selected: &HashSet<(usize, usize)>,
-) -> bool {
+pub fn convert_hyper_to_cubic(glyph: &mut Glyph, selected: &HashSet<(usize, usize)>) -> bool {
     let mut changed = false;
     for (ci, contour) in glyph.contours.iter_mut().enumerate() {
         if !crate::model::workspace::norad_contour_is_hyper(contour) {
             continue;
         }
-        if !selected.is_empty()
-            && !(0..contour.points.len())
-                .any(|pi| selected.contains(&(ci, pi)))
+        if !selected.is_empty() && !(0..contour.points.len()).any(|pi| selected.contains(&(ci, pi)))
         {
             continue;
         }
@@ -937,11 +939,7 @@ pub fn move_contour(glyph: &mut Glyph, index: usize, up: bool) -> bool {
 
 /// Replace one component with its resolved outline (point-exact,
 /// like decompose-all's resolved_component_contours).
-pub fn decompose_single_component(
-    font: &Font,
-    glyph: &mut Glyph,
-    index: usize,
-) -> bool {
+pub fn decompose_single_component(font: &Font, glyph: &mut Glyph, index: usize) -> bool {
     let Some(component) = glyph.components.get(index) else {
         return false;
     };
@@ -1063,12 +1061,8 @@ fn infer_round_profile(glyph: &Glyph) -> (f64, f64) {
             {
                 continue;
             }
-            let pt = |i: usize| {
-                kurbo::Point::new(contour.points[i].x, contour.points[i].y)
-            };
-            let Some(corner) =
-                round_line_intersection(pt(prev), pt(s), pt(end), pt(next))
-            else {
+            let pt = |i: usize| kurbo::Point::new(contour.points[i].x, contour.points[i].y);
+            let Some(corner) = round_line_intersection(pt(prev), pt(s), pt(end), pt(next)) else {
                 continue;
             };
             let start_offset = corner.distance(pt(s));
@@ -1128,26 +1122,17 @@ pub fn round_selected_corners(
                 .then(|| {
                     let prev = wrap(pi as isize - 1, n);
                     let next = wrap(pi as isize + 1, n);
-                    if !contour_is_on(contour, prev)
-                        || !contour_is_on(contour, next)
-                    {
+                    if !contour_is_on(contour, prev) || !contour_is_on(contour, next) {
                         return None;
                     }
                     let corner = kurbo::Point::new(point.x, point.y);
-                    let p_prev = kurbo::Point::new(
-                        contour.points[prev].x,
-                        contour.points[prev].y,
-                    );
-                    let p_next = kurbo::Point::new(
-                        contour.points[next].x,
-                        contour.points[next].y,
-                    );
+                    let p_prev = kurbo::Point::new(contour.points[prev].x, contour.points[prev].y);
+                    let p_next = kurbo::Point::new(contour.points[next].x, contour.points[next].y);
                     let prev_vec = p_prev - corner;
                     let next_vec = p_next - corner;
                     let prev_len = prev_vec.hypot();
                     let next_len = next_vec.hypot();
-                    if prev_len < ROUND_GRID * 2.0 || next_len < ROUND_GRID * 2.0
-                    {
+                    if prev_len < ROUND_GRID * 2.0 || next_len < ROUND_GRID * 2.0 {
                         return None;
                     }
                     let offset = offset_profile
@@ -1161,14 +1146,9 @@ pub fn round_selected_corners(
                     let handle_len = offset * handle_ratio;
                     let first_on = round_snap(corner + prev_unit * offset);
                     let second_on = round_snap(corner + next_unit * offset);
-                    let first_handle =
-                        round_snap(first_on - prev_unit * handle_len);
-                    let second_handle =
-                        round_snap(second_on - next_unit * handle_len);
-                    if first_on == corner
-                        || second_on == corner
-                        || first_on == second_on
-                    {
+                    let first_handle = round_snap(first_on - prev_unit * handle_len);
+                    let second_handle = round_snap(second_on - next_unit * handle_len);
+                    if first_on == corner || second_on == corner || first_on == second_on {
                         return None;
                     }
                     Some((first_on, first_handle, second_handle, second_on))
@@ -1290,13 +1270,7 @@ pub fn duplicate_anchor(glyph: &mut Glyph, index: usize) -> Option<usize> {
         .name
         .as_ref()
         .and_then(|n| norad::Name::new(&format!("{n}.copy")).ok());
-    let anchor = norad::Anchor::new(
-        source.x + 20.0,
-        source.y + 20.0,
-        name,
-        None,
-        None,
-    );
+    let anchor = norad::Anchor::new(source.x + 20.0, source.y + 20.0, name, None, None);
     glyph.anchors.push(anchor);
     Some(glyph.anchors.len() - 1)
 }
@@ -1305,12 +1279,7 @@ pub fn duplicate_anchor(glyph: &mut Glyph, index: usize) -> Option<usize> {
 /// membership on that side. `group` is the bare name ("A" becomes
 /// public.kern1.A); empty removes the membership. Returns true when
 /// anything changed.
-pub fn set_kern_group(
-    font: &mut Font,
-    glyph: &str,
-    first_side: bool,
-    group: &str,
-) -> bool {
+pub fn set_kern_group(font: &mut Font, glyph: &str, first_side: bool, group: &str) -> bool {
     let prefix = if first_side {
         "public.kern1."
     } else {
@@ -1371,10 +1340,7 @@ pub fn set_glyph_unicode(glyph: &mut Glyph, unicode: &str) -> bool {
         .or_else(|| trimmed.strip_prefix("0x"))
         .or_else(|| trimmed.strip_prefix("0X"))
         .unwrap_or(trimmed);
-    let Some(c) = u32::from_str_radix(hex, 16)
-        .ok()
-        .and_then(char::from_u32)
-    else {
+    let Some(c) = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32) else {
         return false;
     };
     glyph.codepoints = norad::Codepoints::new([c]);
@@ -1491,8 +1457,7 @@ mod tests {
         assert_eq!(g.contours[c].points[0].y, 0.0);
 
         // Rotate 90° twice = 180°: the rectangle maps onto itself.
-        let before: Vec<(f64, f64)> =
-            g.contours[c].points.iter().map(|p| (p.x, p.y)).collect();
+        let before: Vec<(f64, f64)> = g.contours[c].points.iter().map(|p| (p.x, p.y)).collect();
         for _ in 0..2 {
             assert!(transform_selection(
                 &mut g,
@@ -1502,13 +1467,14 @@ mod tests {
         }
         // 180° maps each corner to the opposite one; compare as sets.
         let round = |v: Vec<(f64, f64)>| {
-            let mut v: Vec<(i64, i64)> =
-                v.into_iter().map(|(x, y)| (x.round() as i64, y.round() as i64)).collect();
+            let mut v: Vec<(i64, i64)> = v
+                .into_iter()
+                .map(|(x, y)| (x.round() as i64, y.round() as i64))
+                .collect();
             v.sort();
             v
         };
-        let after: Vec<(f64, f64)> =
-            g.contours[c].points.iter().map(|p| (p.x, p.y)).collect();
+        let after: Vec<(f64, f64)> = g.contours[c].points.iter().map(|p| (p.x, p.y)).collect();
         assert_eq!(round(before), round(after));
 
         // Empty glyph: nothing to transform.
@@ -1541,7 +1507,10 @@ mod tests {
             kurbo::Affine::translate((10.0, 5.0)),
         ));
         // A single point's bbox center is itself; translate still moves it.
-        assert_eq!((g.contours[c].points[2].x, g.contours[c].points[2].y), (60.0, 85.0));
+        assert_eq!(
+            (g.contours[c].points[2].x, g.contours[c].points[2].y),
+            (60.0, 85.0)
+        );
         for (point, (x, y)) in g.contours[c].points.iter().zip(fixed) {
             assert_eq!((point.x, point.y), (x, y));
         }
@@ -1587,8 +1556,7 @@ mod tests {
         ] {
             add_shape_contour(&mut g, rect, false);
         }
-        let result =
-            boolean_contours(&g, linesweeper::BinaryOp::Difference).expect("subtract");
+        let result = boolean_contours(&g, linesweeper::BinaryOp::Difference).expect("subtract");
         // Outer minus inner: two contours (ring).
         assert_eq!(result.len(), 2);
 
@@ -1599,8 +1567,7 @@ mod tests {
         ] {
             add_shape_contour(&mut g2, rect, false);
         }
-        let merged =
-            boolean_contours(&g2, linesweeper::BinaryOp::Union).expect("union");
+        let merged = boolean_contours(&g2, linesweeper::BinaryOp::Union).expect("union");
         assert_eq!(merged.len(), 1);
     }
 
@@ -1617,10 +1584,12 @@ mod tests {
         );
         // Same point count, old start still present.
         assert_eq!(g.contours[0].points.len(), 4);
-        assert!(g.contours[0]
-            .points
-            .iter()
-            .any(|p| (p.x, p.y) == first_before));
+        assert!(
+            g.contours[0]
+                .points
+                .iter()
+                .any(|p| (p.x, p.y) == first_before)
+        );
         // Index 0 refuses (already the start), off-curves refuse.
         assert!(!set_contour_start(&mut g, 0, 0));
     }
@@ -1662,11 +1631,7 @@ mod tests {
     fn duplicate_clones_selected_contours_offset() {
         let mut g = bare_glyph();
         add_shape_contour(&mut g, kurbo::Rect::new(0.0, 0.0, 100.0, 100.0), false);
-        add_shape_contour(
-            &mut g,
-            kurbo::Rect::new(200.0, 0.0, 300.0, 100.0),
-            false,
-        );
+        add_shape_contour(&mut g, kurbo::Rect::new(200.0, 0.0, 300.0, 100.0), false);
         let selected: HashSet<(usize, usize)> = [(0, 0)].into();
         let new_sel = duplicate_selection(&mut g, &selected).expect("dup");
         assert_eq!(g.contours.len(), 3);
@@ -1738,7 +1703,9 @@ mod tests {
         assert!(font.get_glyph("A").is_none());
         assert!(font.get_glyph("A.new").is_some());
         assert_eq!(
-            font.get_glyph("Agrave").unwrap().components[0].base.as_str(),
+            font.get_glyph("Agrave").unwrap().components[0]
+                .base
+                .as_str(),
             "A.new"
         );
         assert_eq!(

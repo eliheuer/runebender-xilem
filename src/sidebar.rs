@@ -317,10 +317,8 @@ pub fn language_groups() -> &'static [LanguageGroup] {
     static GROUPS: OnceLock<Vec<LanguageGroup>> = OnceLock::new();
     GROUPS.get_or_init(|| {
         let mut arabic_basic_shapes = arabic_forms(ARABIC_BASIC_SHAPE_BASES);
-        arabic_basic_shapes
-            .extend(ARABIC_SHAPE_PARTS.iter().map(|s| s.to_string()));
-        let mut arabic_basic_bases: Vec<&str> =
-            ARABIC_BASIC_SHAPE_BASES.to_vec();
+        arabic_basic_shapes.extend(ARABIC_SHAPE_PARTS.iter().map(|s| s.to_string()));
+        let mut arabic_basic_bases: Vec<&str> = ARABIC_BASIC_SHAPE_BASES.to_vec();
         arabic_basic_bases.extend_from_slice(ARABIC_BASIC_EXTRA_BASES);
         let mut arabic_basic = arabic_forms(&arabic_basic_bases);
         arabic_basic.extend(ARABIC_SHAPE_PARTS.iter().map(|s| s.to_string()));
@@ -382,11 +380,7 @@ pub fn language_groups() -> &'static [LanguageGroup] {
                 id: "Cyrl".into(),
                 label: "Cyrillic".into(),
                 icon: "Я".into(),
-                script_ranges: vec![
-                    (0x0400, 0x052f),
-                    (0x2de0, 0x2dff),
-                    (0xa640, 0xa69f),
-                ],
+                script_ranges: vec![(0x0400, 0x052f), (0x2de0, 0x2dff), (0xa640, 0xa69f)],
                 name_suffix: None,
                 filters: glyphset_filters_for_script("Cyrillic"),
             },
@@ -442,9 +436,7 @@ pub fn language_groups() -> &'static [LanguageGroup] {
                         glyph_names: Vec::new(),
                         targets: hebrew_points_and_marks_targets(),
                         ranges: vec![(0x0591, 0x05c7)],
-                        expected_count: Some(
-                            hebrew_points_and_marks_targets().len(),
-                        ),
+                        expected_count: Some(hebrew_points_and_marks_targets().len()),
                     },
                     CharacterFilter {
                         id: "Hebrew_Presentation_Forms".into(),
@@ -452,9 +444,7 @@ pub fn language_groups() -> &'static [LanguageGroup] {
                         glyph_names: Vec::new(),
                         targets: hebrew_presentation_form_targets(),
                         ranges: HEBREW_PRESENTATION_FORM_RANGES.to_vec(),
-                        expected_count: Some(
-                            hebrew_presentation_form_targets().len(),
-                        ),
+                        expected_count: Some(hebrew_presentation_form_targets().len()),
                     },
                 ],
             },
@@ -584,8 +574,7 @@ pub fn missing_targets<'f>(
     if filter.targets.is_empty() {
         return Vec::new();
     }
-    let names: HashSet<&str> =
-        glyphs.iter().map(|(name, _)| name.as_str()).collect();
+    let names: HashSet<&str> = glyphs.iter().map(|(name, _)| name.as_str()).collect();
     let codepoints: HashSet<u32> = glyphs
         .iter()
         .flat_map(|(_, cps)| cps.iter().copied())
@@ -594,8 +583,7 @@ pub fn missing_targets<'f>(
         .targets
         .iter()
         .filter(|target| {
-            !names.contains(target.name.as_str())
-                && !codepoints.contains(&target.unicode)
+            !names.contains(target.name.as_str()) && !codepoints.contains(&target.unicode)
         })
         .collect()
 }
@@ -614,8 +602,7 @@ pub fn glyph_matches_character_filter(
         return false;
     }
     if !filter.targets.is_empty() {
-        let targets: HashSet<u32> =
-            filter.targets.iter().map(|t| t.unicode).collect();
+        let targets: HashSet<u32> = filter.targets.iter().map(|t| t.unicode).collect();
         if codepoints.iter().any(|cp| targets.contains(cp)) {
             return true;
         }
@@ -634,11 +621,7 @@ pub fn glyph_matches_character_filter(
 /// Does a glyph belong to a script group's own row? Matches the
 /// script's Unicode blocks plus the name suffix codepoint-less forms
 /// use; groups with neither fall back to any-sub-filter.
-pub fn glyph_matches_language_group(
-    name: &str,
-    codepoints: &[u32],
-    group: &LanguageGroup,
-) -> bool {
+pub fn glyph_matches_language_group(name: &str, codepoints: &[u32], group: &LanguageGroup) -> bool {
     if !group.script_ranges.is_empty() || group.name_suffix.is_some() {
         if let Some(suffix) = &group.name_suffix {
             let base = name.split('.').next().unwrap_or(name);
@@ -691,11 +674,7 @@ pub fn category_subfilters(category: &str) -> &'static [(&'static str, &'static 
 
 /// Category subfilters (web glyphMatchesCategorySubfilter). `category`
 /// must already match; this refines within it.
-pub fn glyph_matches_subfilter(
-    name: &str,
-    codepoints: &[u32],
-    subfilter: &str,
-) -> bool {
+pub fn glyph_matches_subfilter(name: &str, codepoints: &[u32], subfilter: &str) -> bool {
     let lower = name.to_lowercase();
     let first = codepoints.first().and_then(|&cp| char::from_u32(cp));
     match subfilter {
@@ -709,11 +688,9 @@ pub fn glyph_matches_subfilter(
                 || lower.contains(".numr")
                 || first.is_some_and(|c| "¼½¾⅓⅔⁄".contains(c))
         }
-        "superior-inferior" => {
-            [".sups", ".subs", "superior", "inferior", ".numr", ".dnom"]
-                .iter()
-                .any(|p| lower.contains(p))
-        }
+        "superior-inferior" => [".sups", ".subs", "superior", "inferior", ".numr", ".dnom"]
+            .iter()
+            .any(|p| lower.contains(p)),
         "space" => {
             ["space", "nbspace", "nonbreakingspace"].contains(&lower.as_str())
                 || codepoints.first() == Some(&0x20)
@@ -731,16 +708,19 @@ pub fn glyph_matches_subfilter(
                 || first.is_some_and(|c| "'\"‘’“”«»".contains(c))
         }
         "dash" => {
-            ["dash", "hyphen", "minus"].iter().any(|p| lower.contains(p))
+            ["dash", "hyphen", "minus"]
+                .iter()
+                .any(|p| lower.contains(p))
                 || first.is_some_and(|c| "-–—−".contains(c))
         }
         "paren" => {
-            ["paren", "bracket", "brace"].iter().any(|p| lower.contains(p))
+            ["paren", "bracket", "brace"]
+                .iter()
+                .any(|p| lower.contains(p))
                 || first.is_some_and(|c| "()[]{}".contains(c))
         }
         "currency" => [
-            "dollar", "cent", "sterling", "yen", "euro", "currency", "peso",
-            "rupee", "won",
+            "dollar", "cent", "sterling", "yen", "euro", "currency", "peso", "rupee", "won",
         ]
         .iter()
         .any(|p| lower.contains(p)),
@@ -758,10 +738,7 @@ pub fn glyph_matches_subfilter(
         .iter()
         .any(|p| lower.contains(p)),
         "arrow" => {
-            lower.contains("arrow")
-                || codepoints
-                    .iter()
-                    .any(|&cp| (0x2190..=0x21ff).contains(&cp))
+            lower.contains("arrow") || codepoints.iter().any(|&cp| (0x2190..=0x21ff).contains(&cp))
         }
         "nonspacing" => lower.contains("comb") || lower.contains("mark"),
         "spacing" => !lower.contains("comb") && !lower.contains("mark"),
@@ -774,10 +751,9 @@ mod tests {
     use super::*;
 
     fn fixture_glyphs() -> Vec<(String, Vec<u32>)> {
-        let font = norad::Font::load(
-            "../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo",
-        )
-        .expect("fixture font");
+        let font =
+            norad::Font::load("../runebender-web/assets/test-fonts/VirtuaGrotesk-Regular.ufo")
+                .expect("fixture font");
         font.iter_layers()
             .next()
             .expect("default layer")
@@ -791,15 +767,10 @@ mod tests {
             .collect()
     }
 
-    fn count_filter(
-        glyphs: &[(String, Vec<u32>)],
-        filter: &CharacterFilter,
-    ) -> usize {
+    fn count_filter(glyphs: &[(String, Vec<u32>)], filter: &CharacterFilter) -> usize {
         glyphs
             .iter()
-            .filter(|(name, cps)| {
-                glyph_matches_character_filter(name, cps, filter)
-            })
+            .filter(|(name, cps)| glyph_matches_character_filter(name, cps, filter))
             .count()
     }
 
@@ -848,16 +819,10 @@ mod tests {
         // "A" is Latin: the Arabic group row must not claim it even
         // though the GF Arabic glyphsets carry Latin punctuation.
         assert!(!glyph_matches_language_group("A", &[0x41], arabic));
-        assert!(glyph_matches_language_group(
-            "beh-ar.init",
-            &[],
-            arabic
-        ));
+        assert!(glyph_matches_language_group("beh-ar.init", &[], arabic));
         let count = glyphs
             .iter()
-            .filter(|(name, cps)| {
-                glyph_matches_language_group(name, cps, arabic)
-            })
+            .filter(|(name, cps)| glyph_matches_language_group(name, cps, arabic))
             .count();
         assert!(count > 0, "fixture font has Arabic glyphs");
     }
@@ -868,10 +833,6 @@ mod tests {
         assert!(!glyph_matches_subfilter("a", &[0x61], "uppercase"));
         assert!(glyph_matches_subfilter("f_i", &[], "ligature"));
         assert!(glyph_matches_subfilter("dollar", &[0x24], "currency"));
-        assert!(glyph_matches_subfilter(
-            "gravecomb",
-            &[0x300],
-            "nonspacing"
-        ));
+        assert!(glyph_matches_subfilter("gravecomb", &[0x300], "nonspacing"));
     }
 }
