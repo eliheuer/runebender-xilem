@@ -2055,7 +2055,7 @@ mod tests {
         let a_item = layout.items.iter().find(|i| i.index == 1).unwrap();
         let s_item = layout.items.iter().find(|i| i.index == 2).unwrap();
         assert_eq!(one_item.x, 0.0);
-        let kern_one_a = crate::outline::glyph_ops::kern_value(&font, "one", "a");
+        let kern_one_a = crate::document::font_ops::kern_value(&font, "one", "a");
         assert!(
             (a_item.x - (one.width + kern_one_a)).abs() < 1e-6,
             "a at {} expected {}",
@@ -2098,7 +2098,7 @@ mod tests {
                 let Some(rc) = other.codepoints.iter().next() else {
                     continue;
                 };
-                let expected = crate::outline::glyph_ops::kern_value(
+                let expected = crate::document::font_ops::kern_value(
                     &font,
                     glyph.name().as_str(),
                     other.name().as_str(),

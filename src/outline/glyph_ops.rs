@@ -11,7 +11,7 @@
 use std::collections::{HashMap, HashSet};
 
 use kurbo::BezPath;
-use norad::{Contour, ContourPoint, Font, Glyph, PointType};
+use norad::{Contour, ContourPoint, Glyph, PointType};
 
 use crate::outline::glyph_paths;
 
@@ -490,41 +490,6 @@ pub fn add_shape_contour(glyph: &mut Glyph, rect: kurbo::Rect, ellipse: bool) {
 // COMPONENTS
 // ============================================================================
 
-/// Contours of a glyph's components, recursively resolved and
-/// rounded to integer units.
-pub fn resolved_component_contours(font: &Font, glyph: &Glyph) -> Vec<Contour> {
-    fn collect(
-        font: &Font,
-        glyph: &Glyph,
-        parent: kurbo::Affine,
-        depth: u8,
-        out: &mut Vec<Contour>,
-    ) {
-        if depth > 8 {
-            return;
-        }
-        for component in &glyph.components {
-            let Some(base) = font.get_glyph(&component.base) else {
-                continue;
-            };
-            let affine = parent * glyph_paths::component_affine(&component.transform);
-            for contour in &base.contours {
-                let mut c = contour.clone();
-                for p in c.points.iter_mut() {
-                    let q = affine * kurbo::Point::new(p.x, p.y);
-                    p.x = q.x.round();
-                    p.y = q.y.round();
-                }
-                out.push(c);
-            }
-            collect(font, base, affine, depth + 1, out);
-        }
-    }
-    let mut out = Vec::new();
-    collect(font, glyph, kurbo::Affine::IDENTITY, 0, &mut out);
-    out
-}
-
 // ============================================================================
 // REMOVE OVERLAP
 // ============================================================================
@@ -623,41 +588,6 @@ pub fn set_contour_start(glyph: &mut Glyph, contour: usize, point: usize) -> boo
         return false;
     }
     c.points.rotate_left(point);
-    true
-}
-
-/// The topmost component whose resolved outline contains the point.
-pub fn component_at(font: &Font, glyph: &Glyph, pt: kurbo::Point) -> Option<usize> {
-    use kurbo::Shape as _;
-    for (i, component) in glyph.components.iter().enumerate().rev() {
-        let Some(base) = font.get_glyph(&component.base) else {
-            continue;
-        };
-        let transform = glyph_paths::component_affine(&component.transform);
-        let path = transform * &glyph_paths::glyph_to_bezpath(base, font);
-        if path.contains(pt) {
-            return Some(i);
-        }
-    }
-    None
-}
-
-/// Move a component by adjusting its transform offset.
-pub fn translate_component(glyph: &mut Glyph, index: usize, dx: f64, dy: f64) -> bool {
-    let Some(component) = glyph.components.get_mut(index) else {
-        return false;
-    };
-    component.transform.x_offset += dx;
-    component.transform.y_offset += dy;
-    true
-}
-
-/// Remove a component.
-pub fn delete_component(glyph: &mut Glyph, index: usize) -> bool {
-    if index >= glyph.components.len() {
-        return false;
-    }
-    glyph.components.remove(index);
     true
 }
 
@@ -869,35 +799,9 @@ pub fn shift_ink(glyph: &mut Glyph, dx: f64) {
     }
 }
 
-/// Structural signature used for interpolation compatibility: per
-/// contour, the ordered list of point types.
-pub fn glyph_signature(glyph: &Glyph) -> Vec<Vec<PointType>> {
-    glyph
-        .contours
-        .iter()
-        .map(|c| c.points.iter().map(|p| p.typ).collect())
-        .collect()
-}
-
 // ============================================================================
 // KERNING
 // ============================================================================
-
-/// The kern group ("public.kern1." / "public.kern2." prefix)
-/// containing a glyph, if any.
-pub fn kern_group(font: &Font, glyph: &str, first_side: bool) -> Option<norad::Name> {
-    let prefix = if first_side {
-        "public.kern1."
-    } else {
-        "public.kern2."
-    };
-    font.groups
-        .iter()
-        .find(|(name, members)| {
-            name.starts_with(prefix) && members.iter().any(|m| m.as_str() == glyph)
-        })
-        .map(|(name, _)| name.clone())
-}
 
 /// Convert hyperbezier contours to plain cubics through the solver
 /// (web convertHyperToCubic): the selected ones, or every hyper
@@ -938,45 +842,6 @@ pub fn move_contour(glyph: &mut Glyph, index: usize, up: bool) -> bool {
         }
         glyph.contours.swap(index, index + 1);
     }
-    true
-}
-
-/// Replace one component with its resolved outline (point-exact,
-/// like decompose-all's resolved_component_contours).
-pub fn decompose_single_component(font: &Font, glyph: &mut Glyph, index: usize) -> bool {
-    let Some(component) = glyph.components.get(index) else {
-        return false;
-    };
-    // A single-component wrapper glyph resolves through the shared
-    // collector by pretending the glyph only has this component.
-    let mut probe = Glyph::new("probe");
-    probe.components.push(component.clone());
-    let resolved = resolved_component_contours(font, &probe);
-    if resolved.is_empty() {
-        return false;
-    }
-    glyph.contours.extend(resolved);
-    glyph.components.remove(index);
-    true
-}
-
-/// Add a component placing `base`, anchor-locked so a mark lands on
-/// its anchor rather than at the origin (web addComponent).
-pub fn add_component(font: &Font, glyph: &mut Glyph, base: &str) -> bool {
-    if base.is_empty() || base == glyph.name().as_str() {
-        return false;
-    }
-    if font.get_glyph(base).is_none() {
-        return false;
-    }
-    let Ok(base_name) = norad::Name::new(base) else {
-        return false;
-    };
-    glyph.components.push(norad::Component::new(
-        base_name,
-        norad::AffineTransform::default(),
-        None,
-    ));
     true
 }
 
@@ -1256,17 +1121,6 @@ pub fn duplicate_selection(
     Some(new_selection)
 }
 
-/// Duplicate a component, offset by (20, 20). Returns the new index.
-pub fn duplicate_component(glyph: &mut Glyph, index: usize) -> Option<usize> {
-    let source = glyph.components.get(index)?;
-    let mut transform = source.transform;
-    transform.x_offset += 20.0;
-    transform.y_offset += 20.0;
-    let clone = norad::Component::new(source.base.clone(), transform, None);
-    glyph.components.push(clone);
-    Some(glyph.components.len() - 1)
-}
-
 /// Duplicate an anchor, offset by (20, 20). Returns the new index.
 pub fn duplicate_anchor(glyph: &mut Glyph, index: usize) -> Option<usize> {
     let source = glyph.anchors.get(index)?;
@@ -1279,163 +1133,12 @@ pub fn duplicate_anchor(glyph: &mut Glyph, index: usize) -> Option<usize> {
     Some(glyph.anchors.len() - 1)
 }
 
-/// Put a glyph into a kerning group (groups.plist), replacing any
-/// membership on that side. `group` is the bare name ("A" becomes
-/// public.kern1.A); empty removes the membership. Returns true when
-/// anything changed.
-pub fn set_kern_group(font: &mut Font, glyph: &str, first_side: bool, group: &str) -> bool {
-    let prefix = if first_side {
-        "public.kern1."
-    } else {
-        "public.kern2."
-    };
-    let target = group.trim();
-    let target_name = (!target.is_empty())
-        .then(|| norad::Name::new(&format!("{prefix}{target}")).ok())
-        .flatten();
-    let mut changed = false;
-    // Drop the glyph from every group on this side except the target.
-    let mut empty: Vec<norad::Name> = Vec::new();
-    for (name, members) in font.groups.iter_mut() {
-        if !name.starts_with(prefix) {
-            continue;
-        }
-        if Some(name) == target_name.as_ref() {
-            continue;
-        }
-        let before = members.len();
-        members.retain(|m| m.as_str() != glyph);
-        if members.len() != before {
-            changed = true;
-        }
-        if members.is_empty() {
-            empty.push(name.clone());
-        }
-    }
-    for name in empty {
-        font.groups.remove(&name);
-        changed = true;
-    }
-    if let Some(target_name) = target_name {
-        let glyph_name = match norad::Name::new(glyph) {
-            Ok(name) => name,
-            Err(_) => return changed,
-        };
-        let members = font.groups.entry(target_name).or_default();
-        if !members.iter().any(|m| m.as_str() == glyph) {
-            members.push(glyph_name);
-            changed = true;
-        }
-    }
-    changed
-}
-
-/// Set a glyph's (first) codepoint from text: "0041", "U+0041", or
-/// "0x41"; empty clears. Returns false when the text does not parse.
-pub fn set_glyph_unicode(glyph: &mut Glyph, unicode: &str) -> bool {
-    let trimmed = unicode.trim();
-    if trimmed.is_empty() {
-        glyph.codepoints = norad::Codepoints::new([]);
-        return true;
-    }
-    let hex = trimmed
-        .strip_prefix("U+")
-        .or_else(|| trimmed.strip_prefix("u+"))
-        .or_else(|| trimmed.strip_prefix("0x"))
-        .or_else(|| trimmed.strip_prefix("0X"))
-        .unwrap_or(trimmed);
-    let Some(c) = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32) else {
-        return false;
-    };
-    glyph.codepoints = norad::Codepoints::new([c]);
-    true
-}
-
-/// Rename a glyph and every reference to it: components in other
-/// glyphs, kerning group memberships, and direct kerning pair keys.
-/// Refuses when the new name is taken or invalid.
-pub fn rename_glyph(font: &mut Font, old: &str, new: &str) -> bool {
-    let new = new.trim();
-    if new.is_empty() || new == old {
-        return false;
-    }
-    let Ok(new_name) = norad::Name::new(new) else {
-        return false;
-    };
-    if font.get_glyph(new).is_some() {
-        return false;
-    }
-    let layer = font.default_layer_mut();
-    if layer.rename_glyph(old, new, false).is_err() {
-        return false;
-    }
-    // Components in every glyph that places it.
-    let renames: Vec<norad::Name> = layer
-        .iter()
-        .filter(|g| g.components.iter().any(|c| c.base.as_str() == old))
-        .map(|g| g.name().clone())
-        .collect();
-    for user in renames {
-        if let Some(user_glyph) = layer.get_glyph_mut(user.as_str()) {
-            for component in user_glyph.components.iter_mut() {
-                if component.base.as_str() == old {
-                    component.base = new_name.clone();
-                }
-            }
-        }
-    }
-    // Group memberships.
-    for members in font.groups.values_mut() {
-        for member in members.iter_mut() {
-            if member.as_str() == old {
-                *member = new_name.clone();
-            }
-        }
-    }
-    // Direct kerning keys on either side.
-    let old_key = norad::Name::new(old).ok();
-    if let Some(old_key) = old_key {
-        if let Some(seconds) = font.kerning.remove(&old_key) {
-            font.kerning.insert(new_name.clone(), seconds);
-        }
-        for seconds in font.kerning.values_mut() {
-            if let Some(value) = seconds.remove(&old_key) {
-                seconds.insert(new_name.clone(), value);
-            }
-        }
-    }
-    true
-}
-
-/// Kerning between two glyphs, resolving group fallbacks in UFO
-/// precedence order: glyph-glyph, glyph-group, group-glyph,
-/// group-group.
-pub fn kern_value(font: &Font, left: &str, right: &str) -> f64 {
-    let lookup =
-        |a: &str, b: &str| -> Option<f64> { font.kerning.get(a).and_then(|m| m.get(b)).copied() };
-    let lg = kern_group(font, left, true);
-    let rg = kern_group(font, right, false);
-    lookup(left, right)
-        .or_else(|| rg.as_ref().and_then(|g| lookup(left, g.as_str())))
-        .or_else(|| lg.as_ref().and_then(|g| lookup(g.as_str(), right)))
-        .or_else(|| {
-            lg.as_ref()
-                .and_then(|l| rg.as_ref().and_then(|r| lookup(l.as_str(), r.as_str())))
-        })
-        .unwrap_or(0.0)
-}
-
-/// Set an exception-level (glyph-to-glyph) kern pair.
-pub fn set_kern_pair(font: &mut Font, left: &str, right: &str, value: f64) {
-    let (Ok(l), Ok(r)) = (norad::Name::new(left), norad::Name::new(right)) else {
-        return;
-    };
-    font.kerning.entry(l).or_default().insert(r, value);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::font_ops::*;
+    use crate::outline::component_ops::*;
+    use norad::Font;
 
     fn bare_glyph() -> Glyph {
         Glyph::new("test")

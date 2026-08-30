@@ -28,7 +28,7 @@
 use kurbo::Shape as _;
 use norad::{Font, Glyph};
 
-use crate::{outline::glyph_ops, outline::glyph_paths};
+use crate::outline::glyph_paths;
 
 /// One glyph's ink, and how much of its box that fills.
 #[derive(Clone, Debug, PartialEq)]
@@ -71,7 +71,7 @@ pub fn density(font: &Font, glyph: &Glyph, reference_height: f64) -> Option<Dens
     // composite empty.
     let mut resolved = glyph.clone();
     if !glyph.components.is_empty() {
-        resolved.contours = glyph_ops::resolved_component_contours(font, glyph);
+        resolved.contours = crate::outline::component_ops::resolved_component_contours(font, glyph);
         resolved.components.clear();
     }
     if resolved.contours.is_empty() {

@@ -18,9 +18,8 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use norad::Font;
-use runebender_core::{
-    analysis::optical, analysis::spacing, outline::embolden, outline::glyph_ops,
-};
+use runebender_core::document::font_ops;
+use runebender_core::{analysis::optical, analysis::spacing, outline::embolden};
 use serde_json::{Value, json};
 
 /// Exit codes, matching font-ml so a caller can branch on them.
@@ -220,7 +219,7 @@ fn measure(source: &Path, name: &str, json: bool) -> i32 {
     let advance = glyph.width;
     let contours = glyph.contours.len();
     let points: usize = glyph.contours.iter().map(|c| c.points.len()).sum();
-    let signature = glyph_ops::glyph_signature(glyph);
+    let signature = font_ops::glyph_signature(glyph);
     emit(
         json,
         json!({
@@ -374,7 +373,7 @@ fn bolden(
                     .default_layer()
                     .get_glyph(g.name().as_str())
                     .is_some_and(|h| {
-                        glyph_ops::glyph_signature(h) == glyph_ops::glyph_signature(g)
+                        font_ops::glyph_signature(h) == font_ops::glyph_signature(g)
                             && h.contours == g.contours
                     })
             })
@@ -457,7 +456,7 @@ fn bolden_check(
                     .default_layer()
                     .get_glyph(g.name().as_str())
                     .is_some_and(|h| {
-                        glyph_ops::glyph_signature(h) == glyph_ops::glyph_signature(g)
+                        font_ops::glyph_signature(h) == font_ops::glyph_signature(g)
                             && h.contours != g.contours
                     })
             })
@@ -627,8 +626,8 @@ fn check(a: &Path, b: &Path, limit: usize, json: bool) -> i32 {
         };
         compared += 1;
         let (sa, sb) = (
-            glyph_ops::glyph_signature(glyph),
-            glyph_ops::glyph_signature(other),
+            font_ops::glyph_signature(glyph),
+            font_ops::glyph_signature(other),
         );
         if sa.len() != sb.len() {
             findings.push(json!({
@@ -689,20 +688,14 @@ mod tests {
     fn a_point_count_difference_is_a_mismatch() {
         let a = glyph("a", &[4, 4]);
         let b = glyph("a", &[4, 5]);
-        assert_ne!(
-            glyph_ops::glyph_signature(&a),
-            glyph_ops::glyph_signature(&b)
-        );
+        assert_ne!(font_ops::glyph_signature(&a), font_ops::glyph_signature(&b));
     }
 
     #[test]
     fn the_same_shape_matches() {
         let a = glyph("a", &[4, 4]);
         let b = glyph("a", &[4, 4]);
-        assert_eq!(
-            glyph_ops::glyph_signature(&a),
-            glyph_ops::glyph_signature(&b)
-        );
+        assert_eq!(font_ops::glyph_signature(&a), font_ops::glyph_signature(&b));
     }
 
     /// Exit codes are the interface for a script, so they are pinned.

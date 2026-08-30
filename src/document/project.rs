@@ -553,7 +553,8 @@ impl Master {
         if glyph.components.is_empty() {
             return false;
         }
-        let resolved = ops::resolved_component_contours(&self.font, glyph);
+        let resolved =
+            crate::outline::component_ops::resolved_component_contours(&self.font, glyph);
         self.edit_glyph(glyph_index, |g| {
             g.contours.extend(resolved);
             g.components.clear();
@@ -1071,7 +1072,9 @@ impl Project {
     /// Structural signature used for interpolation compatibility:
     /// per contour, the ordered list of point types.
     pub fn glyph_signature(font: &Master, name: &str) -> Option<Vec<Vec<norad::PointType>>> {
-        font.font.get_glyph(name).map(ops::glyph_signature)
+        font.font
+            .get_glyph(name)
+            .map(crate::document::font_ops::glyph_signature)
     }
 
     /// Why a glyph does not interpolate: the first master pair whose
@@ -2169,11 +2172,14 @@ mod tests {
         // Group fallback resolves (VirtuaGrotesk has kern groups); the
         // exact value doesn't matter, just that lookup doesn't panic
         // and exceptions override.
-        let base = ops::kern_value(&model.font, "A", "V");
-        ops::set_kern_pair(&mut model.font, "A", "V", base - 14.0);
-        assert_eq!(ops::kern_value(&model.font, "A", "V"), base - 14.0);
+        let base = crate::document::font_ops::kern_value(&model.font, "A", "V");
+        crate::document::font_ops::set_kern_pair(&mut model.font, "A", "V", base - 14.0);
+        assert_eq!(
+            crate::document::font_ops::kern_value(&model.font, "A", "V"),
+            base - 14.0
+        );
         // Unrelated pair unaffected by the exception.
-        let _ = ops::kern_value(&model.font, "o", "o");
+        let _ = crate::document::font_ops::kern_value(&model.font, "o", "o");
     }
 
     #[test]

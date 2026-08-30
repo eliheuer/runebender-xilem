@@ -8,6 +8,7 @@
 //! The segment maths (cubic, quadratic, hyperbezier) is in `path`.
 
 pub mod cleanup;
+pub mod component_ops;
 pub mod convert;
 pub mod effects;
 pub mod embolden;

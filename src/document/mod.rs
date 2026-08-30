@@ -10,6 +10,7 @@
 
 pub mod composites;
 pub mod font_memory;
+pub mod font_ops;
 pub mod model;
 pub mod new_font;
 pub mod project;
