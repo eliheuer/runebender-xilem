@@ -70,3 +70,17 @@ jobs:
       - name: test
         working-directory: runebender-core
         run: cargo test
+
+  vet:
+    name: supply chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-vet
+      # Audits and exemptions live in supply-chain/. A new dependency
+      # fails here until it is vetted or exempted on purpose.
+      - name: cargo vet
+        run: cargo vet --locked
