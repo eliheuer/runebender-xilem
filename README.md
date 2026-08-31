@@ -3,14 +3,16 @@
 A font editor built on [Xilem](https://github.com/linebender/xilem) and
 the Linebender stack. It shares its editing engine,
 [runebender-core](https://github.com/eliheuer/runebender-core), with
-[runebender-gpui](https://github.com/eliheuer/runebender-gpui) and
-[runebender-web](https://github.com/eliheuer/runebender-web).
+[runebender-gpui](https://github.com/eliheuer/runebender-gpui), the
+main Runebender editor.
+
+This front-end is behind the GPUI one and a catch-up pass is
+planned; the GPUI build's `PARITY.md` is the feature bar.
 
 **This repository is one half of a controlled comparison.** The same
 editor, the same core, the same design, built twice: once on Xilem here,
 once on GPUI in runebender-gpui. The goal is to keep the two as close as
-a person can, so that what differs is the framework and not the app. The
-GPUI build's `PARITY.md` is the feature bar.
+a person can, so that what differs is the framework and not the app.
 
 It builds against **upstream Xilem**, pinned to a revision, and not
 against a fork. That is deliberate: a comparison is only worth something
@@ -67,25 +69,24 @@ search + category sidebar) and a glyph editor with these tools:
 - **Knife** — drag a line to cut contours.
 - **Measure** — shows segment/stem lengths and side bearings.
 
-### Keyboard (while the editor canvas has focus)
+### Keyboard
+
+Window-level shortcuts work regardless of focus; the canvas adds its
+own while it has focus. Path operations such as flip, rotate, and
+remove overlap live in the menu.
 
 | Key | Action |
 | --- | --- |
-| Arrows | nudge selection (Shift = ×10) |
-| Delete / Backspace | delete selected points |
-| Cmd/Ctrl+A | select all |
-| Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z | undo, redo |
+| v / p / b / u / o / e / m | tools: Select, Pen, HyperPen, Rect, Ellipse, Knife, Measure |
 | Cmd/Ctrl+S | save |
-| Escape | cancel the pen, or return to the overview |
-| h / v | flip horizontal / vertical |
-| r | rotate 90° |
-| ] | reverse contour direction |
-| o | remove overlap (union) |
-| d | decompose components |
-
-The single-letter operation keys (h/v/r/]/o/d) are temporary. They exist
-because xix does not yet have a window-level menu/shortcut layer, so
-these live on the editor's own key handler for now. See `PORT.md`.
+| Cmd/Ctrl+N | new font |
+| Cmd/Ctrl+C, Cmd/Ctrl+V | copy, paste contours |
+| Cmd/Ctrl+D | duplicate selection |
+| Escape | return to the overview |
+| Arrows | nudge selection (Shift = ×10), canvas only |
+| Delete / Backspace | delete selected points, canvas only |
+| Cmd/Ctrl+A | select all, canvas only |
+| Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z | undo, redo, canvas only |
 
 Click a glyph in the overview to select it, click again to open the
 editor. The toolbar's `‹ Overview` returns.
