@@ -89,9 +89,9 @@ the hyperbezier solver.
 
 | | |
 | --- | --- |
-| [runebender-gpui][gpui] | The current editor. Native and browser from one codebase. |
-| [runebender-xilem][xilem] | The same editor on Xilem, the Linebender stack. More experimental. |
-| [runebender-web][web] | Vello and Kurbo in WebAssembly, with a Vue interface. |
+| [runebender-gpui][gpui] | The main editor. Native and browser from one codebase. |
+| [runebender-xilem][xilem] | The same editor on Xilem, kept in step for a framework comparison. |
+| [runebender-web][web] | The old web editor. Deprecated in favour of runebender-gpui. |
 | [runebender-druid][druid] | The original, kept as project history. |
 
 ## License
