@@ -1969,7 +1969,7 @@ mod tests {
             .find(|p| p.contour == c && p.x == 0.0 && p.y == 100.0)
             .map(|p| (p.contour, p.index))
             .unwrap();
-        let sel: std::collections::HashSet<_> = [curve_end_index].into();
+        let sel: HashSet<_> = [curve_end_index].into();
         assert!(model.toggle_smooth(index, &sel));
 
         // Delete one off-curve: the curve segment becomes a line.
@@ -1979,7 +1979,7 @@ mod tests {
             .find(|p| p.contour == c && !p.on_curve)
             .map(|p| (p.contour, p.index))
             .unwrap();
-        let sel: std::collections::HashSet<_> = [off].into();
+        let sel: HashSet<_> = [off].into();
         assert!(model.delete_points(index, &sel));
         assert_eq!(count_points(&model), 4); // pure quad now
         let snapshot = model.snapshot_contours(index).unwrap();
@@ -1999,12 +1999,12 @@ mod tests {
             .find(|p| p.contour == c && p.x == 100.0 && p.y == 0.0)
             .map(|p| (p.contour, p.index))
             .unwrap();
-        let sel: std::collections::HashSet<_> = [corner].into();
+        let sel: HashSet<_> = [corner].into();
         assert!(model.delete_points(index, &sel));
         assert_eq!(count_points(&model), 3);
 
         // Delete everything: the contour disappears.
-        let all: std::collections::HashSet<_> = model.glyphs[index]
+        let all: HashSet<_> = model.glyphs[index]
             .points
             .iter()
             .filter(|p| p.contour == c)
@@ -2022,7 +2022,7 @@ mod tests {
             .iter()
             .position(|g| g.name.as_ref() == "o")
             .unwrap();
-        let none = std::collections::HashSet::new();
+        let none = HashSet::new();
         let before: Vec<(f64, f64)> = model.glyphs[index]
             .points
             .iter()

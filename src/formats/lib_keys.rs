@@ -365,7 +365,7 @@ mod tests {
             square(0.0, 0.0, 100.0, 100.0),
             square(60.0, 20.0, 140.0, 80.0),
         ];
-        let mut masks = std::collections::HashSet::new();
+        let mut masks = HashSet::new();
         masks.insert(1usize);
         write_masks(&mut glyph, &masks);
         assert_eq!(read_masks(&glyph), masks);

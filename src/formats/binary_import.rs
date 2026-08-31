@@ -3,6 +3,7 @@
 
 //! Import a compiled TTF or OTF as a UFO, through skrifa.
 
+use std::collections::HashSet;
 use std::path::Path;
 
 /// A pen that collects skrifa outline callbacks into UFO contours.
@@ -122,7 +123,7 @@ pub fn import_binary_font(path: &Path) -> Result<norad::Font, String> {
         .maxp()
         .map(|maxp| maxp.num_glyphs() as u32)
         .map_err(|e| format!("{e}"))?;
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = HashSet::new();
     for raw_gid in 0..count {
         let gid = skrifa::GlyphId::new(raw_gid);
         let mut name = names

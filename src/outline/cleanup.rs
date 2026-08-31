@@ -291,7 +291,7 @@ mod tests {
         );
         let mut glyph = norad::Glyph::new("extremes-test");
         glyph.contours = vec![contour];
-        let all = std::collections::HashSet::new();
+        let all = HashSet::new();
         assert!(add_extreme_points(&mut glyph, &all));
         let ons: Vec<(f64, f64)> = glyph.contours[0]
             .points
@@ -400,7 +400,7 @@ mod tests {
         );
         let mut glyph = norad::Glyph::new("fit-test");
         glyph.contours = vec![contour];
-        let all = std::collections::HashSet::new();
+        let all = HashSet::new();
         assert!(fit_curve_handles(&mut glyph, &all, 0.5));
         let pts = &glyph.contours[0].points;
         // First handle: from (0,0) toward (0,100), half way = (0,50).

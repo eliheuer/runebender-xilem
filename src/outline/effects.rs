@@ -464,7 +464,7 @@ mod tests {
         // Roughen: many short jittered segments replace the four.
         let mut r = norad::Glyph::new("roughen-test");
         r.contours = vec![square()];
-        let all = std::collections::HashSet::new();
+        let all = HashSet::new();
         assert!(roughen_glyph_contours(&mut r, &all, 10.0, 4.0, 4.0, 7));
         assert!(
             r.contours[0].points.len() >= 30,
@@ -540,7 +540,7 @@ mod tests {
         );
         let mut glyph = norad::Glyph::new("stroke-test");
         glyph.contours = vec![line];
-        let all = std::collections::HashSet::new();
+        let all = HashSet::new();
         assert!(expand_stroke_contours(&mut glyph, &all, 40.0));
         // The skeleton became a closed outline that spans the stroke:
         // 100 long plus round caps of radius 20 each side, 40 tall.
