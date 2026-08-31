@@ -1,3 +1,6 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 //! Curve-smoothness analysis and editing geometry, shared by all
 //! Runebender editors (web, xilem, gpui): curvature comb, per-node
 //! continuity, harmonize/balance/optimize.

@@ -1,5 +1,7 @@
 # runebender-core
 
+[![CI](https://github.com/eliheuer/runebender-core/actions/workflows/ci.yml/badge.svg)](https://github.com/eliheuer/runebender-core/actions/workflows/ci.yml)
+
 The editing engine behind the [Runebender][rb] font editor, with no
 interface attached.
 

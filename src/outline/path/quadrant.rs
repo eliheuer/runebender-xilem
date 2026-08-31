@@ -1,3 +1,6 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 // Ported from runebender-xilem/src/path/quadrant.rs (Apache-2.0).
 
 //! Quadrant selection for coordinate reference points.

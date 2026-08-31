@@ -1,3 +1,6 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 //! Live grid measurements for the on-canvas HUD: handle lengths, and the
 //! horizontal/vertical spans between facing straight edges.
 //!

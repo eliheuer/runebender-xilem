@@ -1,3 +1,6 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 //! Real OpenType shaping for the editor's text buffer.
 //!
 //! harfrust shapes a *compiled* font, and what we have is a UFO being

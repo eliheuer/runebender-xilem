@@ -1,3 +1,6 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 //! Text buffer behind the editor's Text tool.
 //!
 //! A `TextBuffer` holds a line of sorts, one `TextSort` per typed glyph

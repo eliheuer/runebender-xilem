@@ -1,3 +1,6 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 // Ported from runebender-xilem/src/path/point.rs (Apache-2.0).
 
 //! Point types for bezier paths: the atoms of editable outlines.

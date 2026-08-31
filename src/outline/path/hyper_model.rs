@@ -1,3 +1,6 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 // Ported from runebender-xilem/src/model/workspace.rs (Apache-2.0).
 //
 // Strips: anyhow/norad/file I/O, Arc<RwLock> wrappers, the

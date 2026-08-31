@@ -1,3 +1,6 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 //! Import Glyphs sources (.glyphs and .glyphspackage, Glyphs 2 or 3)
 //! by converting them to an in-memory UFO + designspace file set.
 //!

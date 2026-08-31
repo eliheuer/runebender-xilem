@@ -1,3 +1,6 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 // Ported from runebender-xilem/src/path/segment.rs (Apache-2.0).
 
 //! Path segments (lines and curves) for hit-testing and subdivision.

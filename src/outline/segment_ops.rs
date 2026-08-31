@@ -1,3 +1,6 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 // Ported from runebender-web/core/src/editor.rs segment operations
 // (Apache-2.0), reworked to address norad contours directly.
 

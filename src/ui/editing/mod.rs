@@ -1,3 +1,6 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 //! Editing state every front-end shares: selection, undo, and the
 //! viewport. Started as the toolkit-free subset of runebender-xilem's
 //! `editing/`.

@@ -1,3 +1,6 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 // Ported from runebender-web/core/src/tool.rs (Apache-2.0), which
 // ported the approach from runebender-xilem's knife tool.
 
