@@ -5,19 +5,21 @@
 //! The design system's power-of-two discipline is a means (model-friendly
 //! data), not the goal: curve continuity outranks popcount (see virtua-grotesk
 //! DESIGN.md, "Curve smoothness comes before popcount"). This module gives the
-//! editor the tools to see and enforce that — a Speedpunk-style curvature comb,
-//! per-node continuity (G0/G1/G2/G3), and Curvatura/SuperTool harmonize + Tunni
-//! balance operations.
+//! editor the tools to see and enforce that: a Speedpunk-style curvature comb,
+//! per-node continuity (G0/G1/G2/G3), and Curvatura/SuperTool harmonize plus
+//! Tunni balance operations.
 //!
-//! Pure design-space geometry (font units), no render deps — unit-tested on
-//! native `cargo test`. Formulas verified against Simon Cozens' SuperTool and
-//! Linus Romer's Curvatura.
+//! Pure design-space geometry (font units) with no render deps, so it
+//! unit-tests on native `cargo test`. Formulas verified against Simon Cozens'
+//! SuperTool and Linus Romer's Curvatura.
 
 use kurbo::{Point, Vec2};
 
 /// A cubic segment of an outline: on-curve `p0`/`p3`, off-curve handles
-/// `p1`/`p2`. A straight line is stored as a cubic with handles on the chord
-/// (`straight = true`, curvature 0).
+/// `p1`/`p2`.
+///
+/// A straight line is stored as a cubic with handles on the chord,
+/// `straight` set, and curvature 0.
 #[derive(Clone, Copy, Debug)]
 pub struct Cubic {
     /// Start on-curve point.
@@ -34,9 +36,11 @@ pub struct Cubic {
     pub start_smooth: bool,
 }
 
-/// Build the per-contour cubic segment lists from a norad glyph, for
-/// the comb/continuity analyses: lines become degenerate "straight"
-/// cubics, quads elevate, hyper contours run through the solver.
+/// Build the per-contour cubic segment lists from a norad glyph.
+///
+/// Lines become degenerate "straight" cubics, quads elevate, and
+/// hyper contours run through the solver. The comb and continuity
+/// analyses read these lists.
 pub fn cubics_from_norad(glyph: &norad::Glyph) -> Vec<Vec<Cubic>> {
     let mut out = Vec::new();
     for contour in &glyph.contours {
@@ -152,7 +156,7 @@ impl Cubic {
             .to_point()
     }
 
-    /// Signed curvature at `t` — κ = (r'×r'') / |r'|³.
+    /// Signed curvature at `t`: κ = (r'×r'') / |r'|³.
     pub fn curvature(&self, t: f64) -> f64 {
         if self.straight {
             return 0.0;
@@ -220,12 +224,14 @@ impl Cubic {
 pub enum GLevel {
     /// Intended corner (the node is not marked smooth).
     Corner,
-    /// A node marked smooth whose tangents don't line up — a kink (defect).
+    /// A node marked smooth whose tangents don't line up: a kink,
+    /// and a defect.
     Kink,
-    /// A line↔curve smooth join: G1 is the best achievable (curvature must
-    /// jump 0→κ). Intended and acceptable (e.g. a stem meeting a bowl).
+    /// A line↔curve smooth join: G1 is the best achievable, because
+    /// curvature must jump from 0 to κ. Intended and acceptable, as
+    /// when a stem meets a bowl.
     G1Line,
-    /// Tangent-continuous only, curve↔curve — a harmonize candidate.
+    /// Tangent-continuous only, curve↔curve: a harmonize candidate.
     G1,
     /// Curvature-continuous.
     G2,
@@ -333,11 +339,13 @@ pub struct CombSample {
     pub kappa: f64,
 }
 
-/// Build the curvature comb for a glyph: per curved segment, a strip of
-/// samples pushed out along the normal by `gain·|κ|·scale`. `scale` is a
-/// design-space factor (so the comb zooms with the outline); `gain` is the
-/// user multiplier. Straight segments are skipped (κ = 0). `signed` keeps the
-/// curvature sign so the comb flips side at inflections.
+/// Build the curvature comb for a glyph.
+///
+/// Each curved segment yields a strip of samples pushed out along the normal
+/// by `gain·|κ|·scale`. `scale` is a design-space factor, so the comb zooms
+/// with the outline. `gain` is the user multiplier. Straight segments have
+/// κ = 0 and are skipped. `signed` keeps the curvature sign, so the comb
+/// flips side at inflections.
 pub fn curvature_comb(
     contours: &[Vec<Cubic>],
     gain: f64,
@@ -380,7 +388,7 @@ pub fn curvature_comb(
     strips
 }
 
-/// Peak |κ| across all curved segments — for auto-scaling the comb so the
+/// Peak |κ| across all curved segments, for auto-scaling the comb so the
 /// tallest rib is a readable height.
 pub fn max_curvature(contours: &[Vec<Cubic>]) -> f64 {
     let mut m: f64 = 0.0;
@@ -409,11 +417,14 @@ fn line_intersect(a: Point, b: Point, c: Point, d: Point) -> Option<Point> {
     Some(a + r * t)
 }
 
-/// Harmonize a smooth on-curve `node`: given the incoming handles `a1`,`a2`
-/// (`a2` adjacent to the node) and outgoing handles `b1`,`b2` (`b1` adjacent),
-/// return the new positions of the two adjacent handles that make the join
-/// curvature-continuous (G2) while keeping the on-curve point fixed
-/// (SuperTool / Curvatura). `None` for degenerate configurations.
+/// Harmonize a smooth on-curve `node`.
+///
+/// The incoming handles are `a1` and `a2`, with `a2` adjacent to the node;
+/// the outgoing handles are `b1` and `b2`, with `b1` adjacent. The result is
+/// the new positions of the two adjacent handles that make the join
+/// curvature-continuous (G2) while the on-curve point stays fixed. This is
+/// what SuperTool and Curvatura do. Returns `None` for degenerate
+/// configurations.
 pub fn harmonize(
     a1: Point,
     a2: Point,
@@ -434,10 +445,12 @@ pub fn harmonize(
     Some((a2 + fixup, b1 + fixup))
 }
 
-/// Balance a cubic segment's handles (Tunni): move both handles to the same
-/// fractional distance toward the Tunni point (handle-line intersection),
-/// keeping their directions and the on-curve endpoints. Returns the new
-/// `(p1, p2)`. `None` at inflections / degenerate segments.
+/// Balance a cubic segment's handles.
+///
+/// The Tunni point is the intersection of the two handle lines. Both handles
+/// move to the same fractional distance toward it, keeping their directions
+/// and the on-curve endpoints. This is Tunni balancing. Returns the new
+/// `(p1, p2)`, or `None` at inflections and degenerate segments.
 pub fn balance(p0: Point, p1: Point, p2: Point, p3: Point) -> Option<(Point, Point)> {
     let s = line_intersect(p0, p1, p3, p2)?;
     let sd = (s - p0).hypot();
@@ -454,12 +467,13 @@ pub fn balance(p0: Point, p1: Point, p2: Point, p3: Point) -> Option<(Point, Poi
     Some((p0.lerp(s, avg), p3.lerp(s, avg)))
 }
 
-/// Popcount (Hamming weight) — number of powers of two a length is the sum of.
+/// Popcount (Hamming weight): the number of powers of two a length is the
+/// sum of.
 pub fn popcount(v: i64) -> u32 {
     (v.max(0) as u64).count_ones()
 }
 
-/// Round a point to the nearest even integer on both axes — the 2-unit
+/// Round a point to the nearest even integer on both axes: the 2-unit
 /// design grid Virtua's coordinates all live on.
 fn round_even(p: Point) -> Point {
     Point::new((p.x / 2.0).round() * 2.0, (p.y / 2.0).round() * 2.0)
@@ -500,7 +514,7 @@ pub fn curvature_end(_p0: Point, p1: Point, p2: Point, p3: Point) -> f64 {
     (2.0 / 3.0) * cross(h, p1 - p2) / (len * len * len)
 }
 
-/// Variance of curvature sampled along a cubic — 0 for a circular arc.
+/// Variance of curvature sampled along a cubic; 0 for a circular arc.
 fn curvature_variance(p0: Point, p1: Point, p2: Point, p3: Point) -> f64 {
     let c = Cubic {
         p0,
@@ -527,10 +541,12 @@ pub struct OptPoint {
     pub smooth: bool,
 }
 
-/// Optimize a closed cubic contour's handles: balance → harmonize → balance
-/// (continuity + even curvature), then snap each handle's length to the
-/// lowest-popcount even value that doesn't worsen the local curvature/G2
-/// beyond `tol`. On-curve points never move. Returns new positions.
+/// Optimize a closed cubic contour's handles.
+///
+/// The pass runs balance, harmonize, then balance again, for continuity and
+/// even curvature. Each handle's length then snaps to the lowest-popcount
+/// even value that does not worsen the local curvature or G2 beyond `tol`.
+/// On-curve points never move. Returns the new positions.
 pub fn optimize_contour(pts: &[OptPoint], tol: f64) -> Vec<Point> {
     let n = pts.len();
     let mut q: Vec<Point> = pts.iter().map(|x| x.p).collect();

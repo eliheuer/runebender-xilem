@@ -1,9 +1,11 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Build a norad [`Font`] from in-memory UFO files — for hosts with
-//! no filesystem (the web builds), where font data arrives as
-//! (path, bytes) pairs over fetch or embedded in the binary.
+//! Build a norad [`Font`] from in-memory UFO files.
+//!
+//! Hosts with no filesystem, such as the web builds, receive font
+//! data as `(path, bytes)` pairs over fetch or embedded in the
+//! binary. This module assembles a font from those pairs.
 //!
 //! This is a pragmatic subset of UFO loading: fontinfo, lib, groups,
 //! kerning, and the default layer's glyphs. Extra layers, images,
@@ -37,8 +39,9 @@ pub fn font_from_files<'a>(
     ufo_from_files(files).map(|u| u.font)
 }
 
-/// Like [`font_from_files`], keeping the glyph→file mapping for
-/// hosts that save individual glifs back.
+/// Assemble a font from UFO files and keep the glyph-to-file
+/// mapping, for hosts that save individual glifs back. Input is the
+/// same as [`font_from_files`].
 pub fn ufo_from_files<'a>(
     files: impl IntoIterator<Item = (&'a str, &'a [u8])>,
 ) -> Result<UfoFiles, String> {
@@ -79,8 +82,8 @@ pub fn ufo_from_files<'a>(
     Ok(UfoFiles { font, glif_paths })
 }
 
-/// Serialize one glyph to glif XML bytes (for hosts saving over
-/// HTTP instead of a filesystem).
+/// Serialize one glyph to glif XML bytes, for hosts saving over
+/// HTTP instead of a filesystem.
 pub fn glif_bytes(glyph: &Glyph) -> Result<Vec<u8>, String> {
     glyph.encode_xml().map_err(|e| format!("encode glif: {e}"))
 }

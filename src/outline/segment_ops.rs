@@ -138,15 +138,19 @@ fn off_point(p: Point) -> ContourPoint {
     ContourPoint::new(x, y, PointType::OffCurve, false, None, None)
 }
 
-/// Generated points land on the design grid, like every other point
-/// the editors create or move (see `point_ops`).
+/// Snap a point onto the design grid.
+///
+/// Generated points land on the grid like every other point the
+/// editors create or move; see `point_ops`.
 fn snapped(p: Point) -> (f64, f64) {
     use crate::outline::point_ops::snap_coord;
     (snap_coord(p.x), snap_coord(p.y))
 }
 
-/// Convert a line segment to a cubic with controls at 1/3 and 2/3
-/// (the web select tool's alt-click). Returns the control point ids.
+/// Convert a line segment to a cubic with controls at 1/3 and 2/3.
+///
+/// This is the web select tool's alt-click. Returns the control
+/// point ids.
 pub fn convert_line_to_curve(glyph: &mut Glyph, hit: &SegmentHit) -> Option<[PointId; 2]> {
     let PathSeg::Line(line) = hit.seg else {
         return None;
@@ -178,9 +182,10 @@ pub fn convert_line_to_curve(glyph: &mut Glyph, hit: &SegmentHit) -> Option<[Poi
     Some([(hit.contour, insert_index), (hit.contour, insert_index + 1)])
 }
 
-/// Insert an on-curve point on a segment at parameter `t`, splitting
-/// curves exactly (the web pen tool's click-on-segment). Returns the
-/// new point's id.
+/// Insert an on-curve point on a segment at parameter `t`.
+///
+/// Curves split exactly. This is the web pen tool's
+/// click-on-segment. Returns the new point's id.
 pub fn insert_point_on_segment(glyph: &mut Glyph, hit: &SegmentHit, t: f64) -> Option<PointId> {
     let t = t.clamp(0.0, 1.0);
     let contour = glyph.contours.get_mut(hit.contour)?;
@@ -252,9 +257,10 @@ pub fn insert_point_on_segment(glyph: &mut Glyph, hit: &SegmentHit, t: f64) -> O
     }
 }
 
-/// Delete the last drawn pen point of an open contour: the trailing
-/// on-curve and any off-curves that led to it. Returns the number of
-/// points remaining.
+/// Delete the last drawn pen point of an open contour.
+///
+/// The trailing on-curve point goes, along with any off-curves that
+/// led to it. Returns the number of points remaining.
 pub fn delete_last_pen_point(glyph: &mut Glyph, contour: usize) -> Option<usize> {
     let c = glyph.contours.get_mut(contour)?;
     if c.points.is_empty() {

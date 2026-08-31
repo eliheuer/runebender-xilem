@@ -3,59 +3,60 @@
 
 //! Immutable selection set for tracking which entities are selected.
 //!
-//! `Selection` wraps an `Arc<BTreeSet<EntityId>>` so it can be cheaply cloned
-//! for undo snapshots and shared across threads. Mutations produce a new set
-//! (copy-on-write via `Arc::make_mut`). The `BTreeSet` gives deterministic
-//! iteration order, which matters for multi-point operations like nudging.
+//! `Selection` wraps an `Arc<BTreeSet<EntityId>>` so it can be cheaply
+//! cloned for undo snapshots and shared across threads. Mutations
+//! clone the set and swap in a new `Arc`. The `BTreeSet` gives
+//! deterministic iteration order, which matters for multi-point
+//! operations like nudging.
 
 use crate::document::model::EntityId;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-/// A set of selected entities (points, paths, guides, etc.)
+/// A set of selected entities: points, paths, guides, components.
 ///
-/// Uses `Arc<BTreeSet>` for efficient cloning and ordered iteration.
+/// Uses an `Arc<BTreeSet>` for cheap cloning and ordered iteration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Selection {
     inner: Arc<BTreeSet<EntityId>>,
 }
 
 impl Selection {
-    /// Create a new empty selection
+    /// Create a new empty selection.
     pub fn new() -> Self {
         Self {
             inner: Arc::new(BTreeSet::new()),
         }
     }
 
-    /// Check if the selection is empty
+    /// Check whether the selection is empty.
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
-    /// Get the number of selected entities
+    /// The number of selected entities.
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
-    /// Check if an entity is selected
+    /// Check whether an entity is selected.
     pub fn contains(&self, id: &EntityId) -> bool {
         self.inner.contains(id)
     }
 
-    /// Iterate over selected entities
+    /// Iterate over the selected entities.
     pub fn iter(&self) -> impl Iterator<Item = &EntityId> {
         self.inner.iter()
     }
 
-    /// Add an entity to the selection
+    /// Add an entity to the selection.
     pub fn insert(&mut self, id: EntityId) {
         let mut set = (*self.inner).clone();
         set.insert(id);
         self.inner = Arc::new(set);
     }
 
-    /// Remove an entity from the selection
+    /// Remove an entity from the selection.
     pub fn remove(&mut self, id: &EntityId) {
         let mut set = (*self.inner).clone();
         set.remove(id);

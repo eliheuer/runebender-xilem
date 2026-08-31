@@ -7,8 +7,9 @@ use std::collections::HashSet;
 use std::path::Path;
 
 /// A pen that collects skrifa outline callbacks into UFO contours.
-/// Quadratics stay quadratic (offcurve + qcurve points), cubics stay
-/// cubic; every binary contour is closed.
+///
+/// Quadratics stay quadratic, as offcurve plus qcurve points, and
+/// cubics stay cubic. Every binary contour is closed.
 #[derive(Default)]
 pub struct BinaryImportPen {
     contours: Vec<norad::Contour>,
@@ -79,10 +80,11 @@ impl skrifa::outline::OutlinePen for BinaryImportPen {
     }
 }
 
-/// Open a compiled TTF or OTF as an editable in-memory UFO: names,
-/// metrics, encodings, and outlines (glyf quadratics kept as UFO
-/// qcurves, CFF cubics kept cubic). Kerning and features are not
-/// decompiled in this slice.
+/// Open a compiled TTF or OTF as an editable in-memory UFO.
+///
+/// Names, metrics, encodings, and outlines come across. `glyf`
+/// quadratics are kept as UFO qcurves, and CFF cubics are kept
+/// cubic. Kerning and features are not decompiled in this slice.
 pub fn import_binary_font(path: &Path) -> Result<norad::Font, String> {
     use skrifa::MetadataProvider as _;
     use skrifa::raw::TableProvider as _;

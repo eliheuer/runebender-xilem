@@ -22,9 +22,11 @@ pub type Support = HashMap<String, (f64, f64, f64)>;
 /// A normalized designspace location, axis tag → value.
 pub type Location = HashMap<String, f64>;
 
-/// How much a support contributes at `location` (fontTools'
-/// `supportScalar`, with no `extrapolate`/`ot` special cases — the
-/// editor never evaluates outside the designspace box).
+/// How much a support contributes at `location`.
+///
+/// This is fontTools' `supportScalar` without the `extrapolate` and
+/// `ot` special cases: the editor never evaluates outside the
+/// designspace box.
 pub fn support_scalar(location: &Location, support: &Support) -> f64 {
     let mut scalar = 1.0;
     for (axis, &(lower, peak, upper)) in support {
@@ -88,8 +90,8 @@ impl VariationModel {
             .collect()
     }
 
-    /// Turn per-master values into deltas (sorted order). `values` is
-    /// in the caller's original order; the result is in sorted order.
+    /// Turn per-master values into deltas. `values` is in the
+    /// caller's original order; the result is in sorted order.
     pub fn deltas(&self, values: &[Vec<f64>]) -> Vec<Vec<f64>> {
         let mut deltas: Vec<Vec<f64>> = Vec::with_capacity(values.len());
         for (i, &source) in self.sort_order.iter().enumerate() {
@@ -122,9 +124,11 @@ impl VariationModel {
     }
 }
 
-/// fontTools sorts masters by "how special" they are: on-axis masters
-/// first, then by number of axes involved, then by axis names and
-/// values. The order decides which master narrows which support.
+/// Sort masters by how special they are: on-axis masters first,
+/// then by number of axes involved, then by axis names and values.
+///
+/// The order decides which master narrows which support. This is
+/// the order fontTools uses.
 fn sort_locations(locations: &[Location]) -> Vec<usize> {
     let mut axis_points: HashMap<String, HashSet<u64>> = HashMap::new();
     for location in locations {
@@ -149,8 +153,8 @@ fn sort_locations(locations: &[Location]) -> Vec<usize> {
     order
 }
 
-/// fontTools' `getMasterLocationsSortKeyFunc`, flattened into a tuple
-/// of orderable parts.
+/// The master sort key, flattened into a tuple of orderable parts.
+/// This is fontTools' `getMasterLocationsSortKeyFunc`.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct SortKey {
     rank: usize,
@@ -190,9 +194,10 @@ fn key(location: &Location, axis_points: &HashMap<String, HashSet<u64>>) -> Sort
     }
 }
 
-/// fontTools' support computation: each master's tent starts as its
-/// own peak spanning the whole axis, then gets narrowed by every
-/// earlier master whose region it overlaps.
+/// Compute each master's support: its tent starts as its own peak
+/// spanning the whole axis, then gets narrowed by every earlier
+/// master whose region it overlaps. This is fontTools' support
+/// computation.
 fn compute_supports(locations: &[Location]) -> Vec<Support> {
     let mut supports: Vec<Support> = Vec::with_capacity(locations.len());
 

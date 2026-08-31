@@ -36,8 +36,8 @@ impl Segment {
     /// Returns `(t, distance_squared)`:
     /// - `t`: A value from 0.0 to 1.0 along the segment.
     /// - `distance_squared`: Squared distance from `point` to the
-    ///   nearest point on this segment. Squared (not actual) to avoid
-    ///   a sqrt — fine for comparisons and threshold checks.
+    ///   nearest point on this segment. Squared, not actual, to
+    ///   avoid a sqrt; fine for comparisons and threshold checks.
     pub fn nearest(&self, point: Point) -> (f64, f64) {
         match self {
             Segment::Line(line) => {

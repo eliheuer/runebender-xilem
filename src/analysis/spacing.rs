@@ -103,8 +103,11 @@ pub fn infer_step(sides: &[Sides]) -> Option<f64> {
     None
 }
 
+/// Tolerance for treating a value as on the grid.
+///
 /// Coordinates come from a file as decimals, so a value written as
-/// 32 can arrive a hair off it. Anything inside this is on the grid.
+/// 32 can arrive a hair off it. Anything inside this is on the
+/// grid.
 const EPSILON: f64 = 0.01;
 
 /// Signed distance from `value` to the nearest multiple of `step`.

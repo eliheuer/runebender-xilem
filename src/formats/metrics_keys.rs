@@ -3,11 +3,15 @@
 
 //! Glyphs-style metrics keys: sidebearings derived from another glyph.
 
-/// Metrics keys, the Glyphs spacing formulas, stored in the lib
-/// keys glyphsLib round-trips ("com.schriftgestaltung.Glyphs.
-/// glyph.leftMetricsKey" / rightMetricsKey). "=n" copies n's same
-/// sidebearing, "=|o" the opposite one, "=n+10" and "=n*1.1" add
-/// arithmetic, "=50" is a constant.
+/// Lib key for the left sidebearing formula.
+///
+/// Metrics keys are the Glyphs spacing formulas, stored in the lib
+/// keys glyphsLib round-trips:
+/// `com.schriftgestaltung.Glyphs.glyph.leftMetricsKey` and
+/// `rightMetricsKey`.
+///
+/// `=n` copies n's same sidebearing, and `=|o` copies o's opposite
+/// one. `=n+10` and `=n*1.1` add arithmetic. `=50` is a constant.
 pub const LEFT_METRICS_KEY: &str = "com.schriftgestaltung.Glyphs.glyph.leftMetricsKey";
 
 /// Lib key for the right sidebearing formula. See [`LEFT_METRICS_KEY`] for the syntax.

@@ -38,8 +38,11 @@ enum SliceItem {
     SingleCubic(SingleHitCubicPath),
 }
 
-/// Cut every closed path in `paths` along `line` and return the resulting paths.
-/// Paths the line misses come back unchanged; a single hit on two nested contours joins them.
+/// Cut every closed path in `paths` along `line` and return the
+/// resulting paths.
+///
+/// Paths the line misses come back unchanged. A single hit on two
+/// nested contours joins them.
 pub fn slice_paths(paths: &[Path], line: Line) -> Vec<Path> {
     let mut items = Vec::new();
     for path in paths {
@@ -1223,9 +1226,10 @@ mod tests {
 // ---- norad bridge ----
 
 /// Cut a norad glyph's contours along the line from `p0` to `p1`.
-/// Returns false when nothing was cut. Hyperbezier contours (the
-/// `com.runebender.hyperbezier` lib flag lives on points, carried by
-/// the workspace conversion) become explicit cubics when sliced.
+///
+/// Hyperbezier contours, detected through the workspace conversion
+/// by the shared identifier convention, become explicit cubics when
+/// sliced. Returns false when nothing was cut.
 pub fn knife_cut_glyph(glyph: &mut norad::Glyph, p0: Point, p1: Point) -> bool {
     let paths: Vec<Path> = glyph
         .contours

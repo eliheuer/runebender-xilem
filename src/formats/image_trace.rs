@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Image tracing through img2bez, the deterministic autotracer the
-//! web editor uses. Same crate, same defaults, so a trace here is
-//! byte-identical to the web editor, the CLI, and the blog demo.
-//! This adapter takes plain arguments (the web one takes host JSON)
-//! and returns a parsed norad glyph ready to merge into the font.
+//! web editor uses.
+//!
+//! Same crate, same defaults, so a trace here is byte-identical to
+//! the web editor, the CLI, and the blog demo. This adapter takes
+//! plain arguments, where the web one takes host JSON, and returns
+//! a parsed norad glyph ready to merge into the font.
 
 /// Where the traced outline lands in the em.
 #[derive(Clone, Copy, Debug)]
@@ -36,9 +38,11 @@ impl Default for TraceConfig {
     }
 }
 
-/// Trace an image into a glyph outline. Uses img2bez's `wild`
-/// profile (auto-detects clean renders vs soft scans) with library
-/// defaults, like the web editor's Autotrace.
+/// Trace an image into a glyph outline.
+///
+/// Uses img2bez's `wild` profile, which auto-detects clean renders
+/// vs soft scans, with library defaults. This is what the web
+/// editor's Autotrace runs.
 pub fn trace_image(image_bytes: &[u8], config: &TraceConfig) -> Result<norad::Glyph, String> {
     if image_bytes.is_empty() {
         return Err("image bytes are empty".to_string());

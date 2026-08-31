@@ -1,16 +1,16 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! File → New Font: a blank UFO set up the way Google Fonts expects,
-//! with the GF Latin Core glyph set as empty encoded glyphs. A port
-//! of runebender-web's newProject.ts, built through norad instead of
-//! hand-written plists.
+//! A blank UFO set up the way Google Fonts expects, with the GF Latin
+//! Core glyph set as empty encoded glyphs. This is File > New Font in
+//! the editor. A port of runebender-web's newProject.ts, built through
+//! norad instead of hand-written plists.
 
 use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-/// Vertical metrics, in font units (web newProject.ts).
+/// Units per em for a new font.
 pub const UPM: f64 = 1000.0;
 /// Default ascender for a new font, in font units.
 pub const ASCENDER: f64 = 800.0;
@@ -20,7 +20,8 @@ pub const DESCENDER: f64 = -200.0;
 pub const CAP_HEIGHT: f64 = 700.0;
 /// Default x-height for a new font, in font units.
 pub const X_HEIGHT: f64 = 500.0;
-/// Placeholder advance widths — a starting point, not a design.
+/// Placeholder advance width for new glyphs, in font units. A
+/// starting point, not a design.
 pub const DEFAULT_WIDTH: f64 = 600.0;
 /// Placeholder advance width of the space glyph, in font units.
 pub const SPACE_WIDTH: f64 = 260.0;
@@ -40,8 +41,8 @@ fn template() -> &'static [TemplateGlyph] {
     })
 }
 
-/// A new master: GF-shaped fontinfo plus the GF Latin Core glyph set
-/// as empty encoded glyphs.
+/// Build a new master with GF-shaped fontinfo and the GF Latin Core
+/// glyph set as empty encoded glyphs.
 pub fn new_font(family: &str, style: &str, weight_class: i32) -> norad::Font {
     let mut font = norad::Font::new();
     let info = &mut font.font_info;

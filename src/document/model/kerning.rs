@@ -1,36 +1,25 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Kerning lookup algorithm
+//! Kerning lookup with UFO group fallback.
 //!
-//! Implements the UFO spec kerning lookup precedence:
-//! 1. Glyph + glyph (highest priority)
-//! 2. Glyph + group
-//! 3. Group + glyph
-//! 4. Group + group (lowest priority)
-//! 5. Return 0.0 if no match
+//! Lookup follows the UFO spec precedence: glyph to glyph first,
+//! then glyph to group, then group to glyph, then group to group.
+//! With no match the value is zero.
 
 use std::collections::HashMap;
 
 /// Look up the kerning value between two glyphs.
 ///
-/// Returns the kerning adjustment value based on the UFO spec lookup precedence:
-/// 1. Direct glyph-to-glyph pair (highest priority)
-/// 2. Left glyph to right group pair
-/// 3. Left group to right glyph pair
-/// 4. Left group to right group pair (lowest priority)
-/// 5. No kerning (returns 0.0)
+/// Lookup follows the UFO spec precedence: the direct glyph pair
+/// first, then `left_glyph` against a group holding `right_glyph`,
+/// then a group holding `left_glyph` against `right_glyph`, then
+/// group against group. `left_group` and `right_group` are
+/// `public.kern1` and `public.kern2` hints tried before searching
+/// every group.
 ///
-/// # Arguments
-/// * `kerning_pairs` - The kerning data from the workspace
-/// * `groups` - The groups data from the workspace
-/// * `left_glyph` - Name of the left glyph
-/// * `left_group` - Optional left kerning group (public.kern1.*)
-/// * `right_glyph` - Name of the right glyph
-/// * `right_group` - Optional right kerning group (public.kern2.*)
-///
-/// # Returns
-/// The kerning value to apply (positive = wider, negative = tighter), or 0.0 if no kerning
+/// A positive value widens the pair; a negative value tightens it.
+/// Returns `0.0` when no pair matches.
 pub fn lookup_kerning(
     kerning_pairs: &HashMap<String, HashMap<String, f64>>,
     groups: &HashMap<String, Vec<String>>,
@@ -87,7 +76,7 @@ pub fn lookup_kerning(
     0.0
 }
 
-/// Look up a direct glyph-to-glyph kerning pair
+/// Look up a direct glyph-to-glyph kerning pair.
 fn lookup_pair(
     kerning_pairs: &HashMap<String, HashMap<String, f64>>,
     first: &str,
@@ -96,10 +85,11 @@ fn lookup_pair(
     kerning_pairs.get(first)?.get(second).copied()
 }
 
-/// Look up glyph-to-group or group-to-glyph kerning
+/// Look up glyph-to-group or group-to-glyph kerning.
 ///
-/// If `reverse` is false: looks up `first_glyph + group_containing_second_glyph`
-/// If `reverse` is true: looks up `group_containing_first_glyph + second_glyph`
+/// If `reverse` is false, the pair is `first_glyph` against a group
+/// holding `second_glyph`. If `reverse` is true, the group comes
+/// first. `second_group_hint` is tried before searching every group.
 fn lookup_glyph_to_group(
     kerning_pairs: &HashMap<String, HashMap<String, f64>>,
     groups: &HashMap<String, Vec<String>>,
@@ -142,7 +132,7 @@ fn lookup_glyph_to_group(
     None
 }
 
-/// Look up group-to-group kerning
+/// Look up group-to-group kerning.
 fn lookup_group_to_group(
     kerning_pairs: &HashMap<String, HashMap<String, f64>>,
     groups: &HashMap<String, Vec<String>>,

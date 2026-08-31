@@ -3,9 +3,11 @@
 
 //! Conversion between quadratic and cubic outlines.
 
-/// Rewrite quadratic segments as exact cubics: each offcurve+qcurve
-/// pair (P0, C, P1) becomes the identical cubic with controls at
-/// P0 + 2/3(C-P0) and P1 + 2/3(C-P1). Lossless.
+/// Rewrite quadratic segments as exact cubics.
+///
+/// Each offcurve+qcurve pair (P0, C, P1) becomes the identical
+/// cubic with controls at P0 + 2/3(C-P0) and P1 + 2/3(C-P1). The
+/// conversion is lossless.
 pub fn quads_to_cubics(glyph: &mut norad::Glyph) -> bool {
     use norad::PointType;
     let mut changed = false;
@@ -71,11 +73,13 @@ pub fn quads_to_cubics(glyph: &mut norad::Glyph) -> bool {
     changed
 }
 
-/// Approximate cubic segments with quadratics: each cubic splits in
-/// halves until one quad (control from the 3/4 rule) sits within
-/// `tolerance` of it, then the quads replace the cubic. The reverse
-/// of quads_to_cubics, lossy by nature — the same trade every
-/// cubic-to-TrueType compiler makes.
+/// Approximate cubic segments with quadratics.
+///
+/// Each cubic splits in halves until one quad, with its control
+/// from the 3/4 rule, sits within `tolerance` of it. The quads then
+/// replace the cubic. This is the reverse of `quads_to_cubics`, and
+/// it is lossy by nature: the same trade every cubic-to-TrueType
+/// compiler makes.
 pub fn cubics_to_quads(glyph: &mut norad::Glyph, tolerance: f64) -> bool {
     use kurbo::{CubicBez, ParamCurve as _, Point};
     use norad::PointType;

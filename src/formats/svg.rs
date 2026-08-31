@@ -7,9 +7,11 @@ use kurbo::{Affine, BezPath, PathEl};
 
 use crate::outline::glyph_ops::bezpath_to_contour;
 
-/// A standalone SVG document for one glyph: the outline in font
-/// units, y flipped into SVG space, the viewBox spanning the em
-/// (ascender down to descender) across the advance.
+/// A standalone SVG document for one glyph.
+///
+/// The outline is in font units with y flipped into SVG space. The
+/// viewBox spans the em, ascender down to descender, across the
+/// advance.
 pub fn glyph_svg(path: &BezPath, advance: f64, ascender: f64, descender: f64) -> String {
     let height = ascender - descender;
     format!(
@@ -27,11 +29,13 @@ pub fn glyph_svg(path: &BezPath, advance: f64, ascender: f64, descender: f64) ->
     )
 }
 
-/// Pull every path's `d` attribute out of an SVG document, parse
-/// with kurbo, flip to font coordinates (SVG runs y-down), and fit
-/// the whole drawing between `descender` and `ascender`. Fills,
-/// strokes, groups, and transforms are ignored: this is the
-/// Illustrator-outline paste, not a renderer.
+/// Pull every path's `d` attribute out of an SVG document into
+/// contours.
+///
+/// Paths parse with kurbo, flip to font coordinates because SVG
+/// runs y-down, and fit between `descender` and `ascender` as one
+/// drawing. Fills, strokes, groups, and transforms are ignored:
+/// this is the Illustrator-outline paste, not a renderer.
 pub fn svg_to_contours(
     svg_text: &str,
     ascender: f64,

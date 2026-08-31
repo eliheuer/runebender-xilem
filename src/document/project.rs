@@ -47,7 +47,8 @@ pub struct GlyphPoint {
     pub on_curve: bool,
     /// True when the on-curve point's handles are kept collinear.
     pub smooth: bool,
-    /// Point in a hyperbezier contour (drawn in its own color).
+    /// True for a point in a hyperbezier contour, which is drawn in
+    /// its own color.
     pub hyper: bool,
     /// Index of the contour that owns this point.
     pub contour: usize,
@@ -93,9 +94,8 @@ pub struct Master {
     pub glif_paths: HashMap<String, String>,
     /// Kerning changed since load/save.
     pub kerning_dirty: bool,
-    /// codepoint → index into `glyphs`, for the text preview.
-    /// glyph name → index into `glyphs` (text buffer sorts carry
-    /// names, including unencoded ligature glyphs from shaping).
+    /// glyph name → index into `glyphs`. Text buffer sorts carry
+    /// names, including unencoded ligature glyphs from shaping.
     pub name_map: HashMap<String, usize>,
     /// Path of the UFO on disk, or a virtual path for in-memory hosts.
     pub source_path: PathBuf,
@@ -112,8 +112,8 @@ pub struct Master {
     pub cap_height: Option<f64>,
     /// Paint-ready entries in glyph grid order.
     pub glyphs: Vec<GlyphEntry>,
-    /// Bumped when the glyph list itself changes (added, removed,
-    /// renamed), so caches keyed on the list can tell.
+    /// Bumped when the glyph list itself changes: a glyph added,
+    /// removed, or renamed. Caches keyed on the list use it to tell.
     pub revision: u64,
     /// True when anything changed since the last load or save.
     pub dirty: bool,
@@ -179,10 +179,12 @@ impl Master {
         Some(result)
     }
 
-    /// After any glyph edit: re-place anchor-locked components — the
-    /// edited glyph's own (its anchors may have moved; its own
-    /// anchors seed, the open-glyph behavior) and every composite
-    /// that places it, so accents follow their base live.
+    /// Re-place anchor-locked components after a glyph edit, so
+    /// accents follow their base live.
+    ///
+    /// The edited glyph's own components realign first, seeded by
+    /// its own anchors, the open-glyph behavior. Then every
+    /// composite that places the glyph realigns.
     pub fn realign_after_edit(&mut self, edited: &str) {
         use crate::document::composites as comp;
         let mut targets: Vec<(String, bool)> = vec![(edited.to_string(), true)];
@@ -212,8 +214,8 @@ impl Master {
         }
     }
 
-    /// Rebuild every cache from the norad font (glyph added or
-    /// removed); bookkeeping fields survive.
+    /// Rebuild every cache from the norad font, after a glyph is
+    /// added or removed; bookkeeping fields survive.
     pub fn refresh_from_font(&mut self) {
         let font = std::mem::replace(&mut self.font, norad::Font::new());
         let mut fresh = Self::from_font(font, self.source_path.clone());
@@ -258,8 +260,8 @@ impl Master {
         Ok(Self::from_font(font, path.to_path_buf()))
     }
 
-    /// Build the model from an already-assembled font (in-memory
-    /// hosts: web builds, embedded demo data).
+    /// Build the model from an already-assembled font, for in-memory
+    /// hosts: web builds and embedded demo data.
     pub fn from_font(font: norad::Font, source_path: PathBuf) -> Self {
         let info = &font.font_info;
         let units_per_em = info.units_per_em.map(|v| v.as_f64()).unwrap_or(1000.0);
@@ -472,14 +474,14 @@ impl Master {
         self.edit_glyph(glyph_index, |g| ops::close_contour(g, contour, controls));
     }
 
-    /// Delete an unfinished pen contour (single stray point).
+    /// Delete an unfinished pen contour: a single stray point.
     pub fn remove_contour_if_degenerate(&mut self, glyph_index: usize, contour: usize) {
         self.edit_glyph(glyph_index, |g| {
             ops::remove_contour_if_degenerate(g, contour)
         });
     }
 
-    /// Delete points (see `crate::outline::glyph_ops`).
+    /// Delete points. See `crate::outline::glyph_ops`.
     pub fn delete_points(
         &mut self,
         glyph_index: usize,
@@ -510,7 +512,7 @@ impl Master {
             .unwrap_or(false)
     }
 
-    /// Ink bounds of a glyph in design units, None when empty.
+    /// Ink bounds of a glyph in design units, `None` when empty.
     pub fn ink_bounds(&self, glyph_index: usize) -> Option<kurbo::Rect> {
         use kurbo::Shape;
         let path = &self.glyphs[glyph_index].path;
@@ -598,7 +600,7 @@ impl Master {
         self.rebuild_entry(glyph_index);
     }
 
-    /// Union all contours (remove overlap). Returns false when
+    /// Union all contours to remove overlap. Returns false when
     /// nothing changed.
     pub fn remove_overlap(&mut self, glyph_index: usize) -> bool {
         let name = self.glyphs[glyph_index].name.to_string();
@@ -664,19 +666,21 @@ pub struct Project {
     pub compat: HashMap<String, bool>,
     /// What fontc compiles on File > Export: the designspace the
     /// project was opened from, or the single UFO. `None` until the
-    /// project has a home on disk (File > New before Save As).
+    /// project has a home on disk, as after File > New but before
+    /// Save As.
     pub export_source: Option<PathBuf>,
     /// Named designspace instances: style name and normalized
     /// location, for the Instances rows under the axis sliders.
     pub instances: Vec<(Arc<str>, Location)>,
-    /// The loaded designspace document, kept so instance (and later
-    /// axis) edits can be written back. None for single-UFO projects.
+    /// The loaded designspace document, kept so instance edits, and
+    /// later axis edits, can be written back. `None` for single-UFO
+    /// projects.
     pub ds_doc: Option<norad::designspace::DesignSpaceDocument>,
     /// Instance edits not yet written to the designspace file.
     pub ds_dirty: bool,
     /// Sparse "brace" sources: per-glyph intermediate masters living
-    /// in a named layer of a master UFO at their own location
-    /// (designspace sources with a `layer` attribute).
+    /// in a named layer of a master UFO at their own location. In
+    /// the designspace these are sources with a `layer` attribute.
     pub brace: Vec<BraceSource>,
 }
 
@@ -684,7 +688,7 @@ pub struct Project {
 pub struct BraceSource {
     /// Index into `masters`: the UFO holding the layer.
     pub master: usize,
-    /// The UFO layer name (Glyphs writes "{500}").
+    /// The UFO layer name. Glyphs writes `{500}`.
     pub layer: String,
     /// Normalized location.
     pub location: Location,
@@ -1184,13 +1188,12 @@ impl Project {
         self.compat.insert(name.to_string(), ok);
     }
 
-    /// Interpolated outline + advance of a glyph at the current
-    /// location. None when at the default location, when masters are
-    /// point-incompatible, or when there is no model.
-    /// The glyph rebuilt from every source EXCEPT the active
-    /// master, evaluated at the active master's own location —
-    /// Glyphs' Re-Interpolate, for repairing one broken master from
-    /// the others. With one other source this is a straight copy.
+    /// Rebuild a glyph from every source except the active master,
+    /// evaluated at the active master's own location.
+    ///
+    /// This repairs one broken master from the others. With one
+    /// other source it is a straight copy. This is Re-Interpolate in
+    /// Glyphs.
     pub fn reinterpolated_from_others(&self, glyph_name: &str) -> Result<norad::Glyph, String> {
         let flatten = |glyph: &norad::Glyph| {
             let mut v = vec![glyph.width];
@@ -1268,8 +1271,8 @@ impl Project {
         ))
     }
 
-    /// The interpolation at the current location as a norad glyph
-    /// (point structure kept): the working form for the ghost, the
+    /// The interpolation at the current location as a norad glyph,
+    /// point structure kept: the working form for the ghost, the
     /// strip, and for freezing into a brace layer.
     pub fn interpolated_norad_glyph(&self, glyph_name: &str) -> Option<norad::Glyph> {
         if self.location.values().all(|v| v.abs() < 1e-9) {
@@ -1278,10 +1281,11 @@ impl Project {
         self.interpolated_at(glyph_name, &self.location)
     }
 
-    /// The interpolation at an arbitrary normalized location — the
-    /// default location included, where it returns the default
-    /// master's own coordinates (trajectory sampling needs the whole
-    /// axis, ends included).
+    /// The interpolation at an arbitrary normalized location.
+    ///
+    /// The default location is included, where it returns the
+    /// default master's own coordinates: trajectory sampling needs
+    /// the whole axis, ends included.
     pub fn interpolated_at(&self, glyph_name: &str, location: &Location) -> Option<norad::Glyph> {
         self.model.as_ref()?;
         let flatten = |glyph: &norad::Glyph| {
@@ -1404,9 +1408,12 @@ impl Project {
     }
 
     /// Sample every point's position at `steps + 1` equal stops
-    /// along the first axis (min to max), through the same per-glyph
-    /// model the ghost uses — brace layers bend the trajectories.
-    /// Outer index: point (flattened contour order); inner: stop.
+    /// along the first axis, min to max.
+    ///
+    /// Sampling goes through the same per-glyph model the ghost
+    /// uses, so brace layers bend the trajectories. The outer index
+    /// is the point, in flattened contour order; the inner is the
+    /// stop.
     pub fn trajectory_samples(
         &self,
         glyph_name: &str,
@@ -1450,9 +1457,10 @@ impl Project {
     }
 
     /// The glyph a designspace rule shows at the current preview
-    /// location, if any (bracket layers / shape switches). Rules
-    /// apply when every condition of any condition set holds; an
-    /// empty condition set always holds.
+    /// location, if any: bracket layers and shape switches.
+    ///
+    /// A rule applies when every condition of any condition set
+    /// holds; an empty condition set always holds.
     pub fn rule_substitute(&self, glyph_name: &str) -> Option<String> {
         let doc = self.ds_doc.as_ref()?;
         // Current location in design coordinates.

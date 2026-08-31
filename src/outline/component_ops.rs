@@ -78,8 +78,10 @@ pub fn delete_component(glyph: &mut Glyph, index: usize) -> bool {
     true
 }
 
-/// Replace one component with its resolved outline (point-exact,
-/// like decompose-all's resolved_component_contours).
+/// Replace one component with its resolved outline.
+///
+/// The outline is point-exact with what `resolved_component_contours`
+/// produces, so decomposing one component matches decomposing all.
 pub fn decompose_single_component(font: &Font, glyph: &mut Glyph, index: usize) -> bool {
     let Some(component) = glyph.components.get(index) else {
         return false;
@@ -97,8 +99,11 @@ pub fn decompose_single_component(font: &Font, glyph: &mut Glyph, index: usize) 
     true
 }
 
-/// Add a component placing `base`, anchor-locked so a mark lands on
-/// its anchor rather than at the origin (web addComponent).
+/// Add a component that places `base` in the glyph.
+///
+/// The placement is anchor-locked: a mark lands on its anchor
+/// rather than at the origin. This is `addComponent` in the web
+/// editor.
 pub fn add_component(font: &Font, glyph: &mut Glyph, base: &str) -> bool {
     if base.is_empty() || base == glyph.name().as_str() {
         return false;

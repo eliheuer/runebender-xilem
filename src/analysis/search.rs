@@ -3,9 +3,10 @@
 
 //! The glyph search query language: `w>600`, `cat:Mark`, `has:anchors`.
 
-/// One parsed search predicate (the Counterpunch dynamic-filter
-/// idea as search syntax): `w>600`, `cat:Mark`, `mark:red`,
+/// One parsed search predicate: `w>600`, `cat:Mark`, `mark:red`,
 /// `enc:no`, `comp:beh-ar`, `has:anchors`.
+///
+/// This is Counterpunch's dynamic-filter idea as search syntax.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SearchPred {
     /// Compare the advance width with a value: `w>600`, `w<600`, `w=600`.

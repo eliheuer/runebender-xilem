@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The glyph-grid sidebar's language and filter data, shared by all
-//! Runebender editors. A port of runebender-web's glyphSidebarData.ts
-//! (definitions) and the matching functions in Runebender.vue; the
-//! Google Fonts glyphsets come from data/gf-glyphsets.json, generated
-//! from google/fonts glyphsets by the web repo's script.
+//! Runebender editors.
+//!
+//! The Google Fonts glyphsets come from `data/gf-glyphsets.json`,
+//! generated from google/fonts glyphsets by the web repo's script. A
+//! port of runebender-web's glyphSidebarData.ts and the matching
+//! functions in Runebender.vue.
 
 use std::collections::HashSet;
 use std::sync::OnceLock;
@@ -52,7 +54,8 @@ pub struct GlyphTarget {
 }
 
 /// One row under a script: a set of glyphs matched by name list,
-/// target list, or codepoint ranges (web SidebarCharacterFilter).
+/// target list, or codepoint ranges. This is the web's
+/// `SidebarCharacterFilter`.
 pub struct CharacterFilter {
     /// Stable identifier for the filter.
     pub id: String,
@@ -77,8 +80,8 @@ pub struct LanguageGroup {
     /// Icon text shown next to the label.
     pub icon: String,
     /// What the group row itself selects: the script's own Unicode
-    /// blocks (the glyphsets carry Latin punctuation, so OR-ing the
-    /// sub-filters would drag half the Latin alphabet in).
+    /// blocks. The glyphsets carry Latin punctuation, so OR-ing the
+    /// sub-filters would drag half the Latin alphabet in.
     pub script_ranges: Vec<(u32, u32)>,
     /// Glyph-name suffix for forms with no codepoint (`beh-ar.init`).
     pub name_suffix: Option<String>,
@@ -86,14 +89,16 @@ pub struct LanguageGroup {
     pub filters: Vec<CharacterFilter>,
 }
 
-/// A row in the Filters section (web SidebarBuiltinFilter).
+/// A row in the Filters section. This is the web's
+/// `SidebarBuiltinFilter`.
 pub struct BuiltinFilter {
     /// Stable identifier for the filter.
     pub id: String,
     /// Label shown in the sidebar row.
     pub label: String,
-    /// None = a Runebender builtin (exporting, incompatible);
-    /// Some = a GF glyphset promoted into the Filters list.
+    /// `None` for a Runebender builtin such as exporting or
+    /// incompatible; `Some` for a GF glyphset promoted into the
+    /// Filters list.
     pub glyphset: Option<CharacterFilter>,
 }
 
@@ -331,7 +336,8 @@ fn gf_hebrew_subset_targets() -> Vec<GlyphTarget> {
     targets
 }
 
-/// The Languages section, built once (web SIDEBAR_LANGUAGE_GROUPS).
+/// The Languages section, built once. This is the web's
+/// `SIDEBAR_LANGUAGE_GROUPS`.
 pub fn language_groups() -> &'static [LanguageGroup] {
     static GROUPS: OnceLock<Vec<LanguageGroup>> = OnceLock::new();
     GROUPS.get_or_init(|| {
@@ -547,8 +553,8 @@ pub fn language_groups() -> &'static [LanguageGroup] {
     })
 }
 
-/// The Filters section (web SIDEBAR_FILTERS): two Runebender builtins
-/// plus the headline GF glyphsets.
+/// The Filters section: two Runebender builtins plus the headline GF
+/// glyphsets. This is the web's `SIDEBAR_FILTERS`.
 pub fn builtin_filters() -> &'static [BuiltinFilter] {
     static FILTERS: OnceLock<Vec<BuiltinFilter>> = OnceLock::new();
     FILTERS.get_or_init(|| {
@@ -584,8 +590,9 @@ pub fn builtin_filters() -> &'static [BuiltinFilter] {
 }
 
 /// The targets a filter still misses in a font: no glyph carries the
-/// target's name or codepoint (web missingTargetsForCharacterFilter).
-/// Only target-bearing filters can report missing glyphs.
+/// target's name or codepoint. Only target-bearing filters can
+/// report missing glyphs. This is the web's
+/// `missingTargetsForCharacterFilter`.
 pub fn missing_targets<'f>(
     glyphs: &[(String, Vec<u32>)],
     filter: &'f CharacterFilter,
@@ -607,8 +614,9 @@ pub fn missing_targets<'f>(
         .collect()
 }
 
-/// Does a glyph (name plus codepoints) belong to a character filter?
-/// The web's glyphMatchesCharacterFilter.
+/// Report whether a glyph, by name or codepoint, belongs to a
+/// character filter. This is the web's
+/// `glyphMatchesCharacterFilter`.
 pub fn glyph_matches_character_filter(
     name: &str,
     codepoints: &[u32],
@@ -637,9 +645,11 @@ pub fn glyph_matches_character_filter(
     false
 }
 
-/// Does a glyph belong to a script group's own row? Matches the
-/// script's Unicode blocks plus the name suffix codepoint-less forms
-/// use; groups with neither fall back to any-sub-filter.
+/// Report whether a glyph belongs to a script group's own row.
+///
+/// The row matches the script's Unicode blocks plus the name suffix
+/// that codepoint-less forms use. Groups with neither fall back to
+/// matching any sub-filter.
 pub fn glyph_matches_language_group(name: &str, codepoints: &[u32], group: &LanguageGroup) -> bool {
     if !group.script_ranges.is_empty() || group.name_suffix.is_some() {
         if let Some(suffix) = &group.name_suffix {
@@ -661,8 +671,8 @@ pub fn glyph_matches_language_group(name: &str, codepoints: &[u32], group: &Lang
         .any(|filter| glyph_matches_character_filter(name, codepoints, filter))
 }
 
-/// The category rows' subfilters (web CATEGORY_GROUPS), keyed by the
-/// category name used in `crate::analysis::category`.
+/// The category rows' subfilters, keyed by the category name used in
+/// `crate::analysis::category`. This is the web's `CATEGORY_GROUPS`.
 pub fn category_subfilters(category: &str) -> &'static [(&'static str, &'static str)] {
     match category {
         "Letter" => &[
@@ -691,8 +701,9 @@ pub fn category_subfilters(category: &str) -> &'static [(&'static str, &'static 
     }
 }
 
-/// Category subfilters (web glyphMatchesCategorySubfilter). `category`
-/// must already match; this refines within it.
+/// Report whether a glyph matches a category subfilter. `category`
+/// must already match; this refines within it. This is the web's
+/// `glyphMatchesCategorySubfilter`.
 pub fn glyph_matches_subfilter(name: &str, codepoints: &[u32], subfilter: &str) -> bool {
     let lower = name.to_lowercase();
     let first = codepoints.first().and_then(|&cp| char::from_u32(cp));

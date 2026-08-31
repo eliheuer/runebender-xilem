@@ -1,7 +1,7 @@
 // Ported from runebender-xilem/src/path/cubic.rs (Apache-2.0).
 
-//! Cubic bezier path representation (the default curve type for UFO
-//! fonts).
+//! Cubic bezier path representation, the default curve type for
+//! UFO fonts.
 //!
 //! A `CubicPath` stores one contour as a sequence of on-curve and
 //! off-curve points. `to_bezpath()` walks the points and emits `kurbo`

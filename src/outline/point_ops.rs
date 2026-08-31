@@ -24,7 +24,9 @@ use norad::{ContourPoint, Glyph, PointType};
 
 use crate::outline::glyph_ops::PointId;
 
-/// The design grid every moved point snaps to (web DESIGN_GRID_SPACING).
+/// The design grid every moved point snaps to.
+///
+/// This is `DESIGN_GRID_SPACING` in the web editor.
 pub const DESIGN_GRID_SPACING: f64 = 2.0;
 
 /// Snap one coordinate to the design grid.
@@ -65,7 +67,9 @@ fn contour_is_closed(points: &[ContourPoint]) -> bool {
 }
 
 /// The opposite handle mirrored through `anchor`, keeping its own
-/// length (web `mirrored_smooth_handle`).
+/// length.
+///
+/// This is `mirrored_smooth_handle` in the web editor.
 fn mirrored_smooth_handle(
     moved: kurbo::Point,
     anchor: kurbo::Point,
@@ -83,10 +87,12 @@ fn mirrored_smooth_handle(
     Some(snap_pt(anchor - (v / len) * opposite_len))
 }
 
-/// The dragged handle projected onto the tangent through an on-curve
-/// neighbour (web `projected_smooth_handle`). Only axis-aligned
-/// tangents snap: snapping a diagonal would pull the handle off the
-/// line the projection just put it on.
+/// The dragged handle projected onto the tangent through an
+/// on-curve neighbour.
+///
+/// Only axis-aligned tangents snap: snapping a diagonal would pull
+/// the handle off the line the projection just put it on. This is
+/// `projected_smooth_handle` in the web editor.
 fn projected_smooth_handle(
     moved: kurbo::Point,
     anchor: kurbo::Point,
@@ -109,7 +115,9 @@ fn projected_smooth_handle(
 }
 
 /// Handle updates a moved off-curve point forces on its smooth
-/// neighbours (web `append_smooth_handle_updates`).
+/// neighbours.
+///
+/// This is `append_smooth_handle_updates` in the web editor.
 fn smooth_handle_updates(
     points: &[ContourPoint],
     selected_here: &HashSet<usize>,
@@ -149,9 +157,11 @@ fn smooth_handle_updates(
     }
 }
 
-/// The indices this contour moves for a selection: the selected
-/// points, plus each selected on-curve point's adjacent handles
-/// unless `independent` (web `selected_and_adjacent_handle_indices`).
+/// The indices this contour moves for a selection.
+///
+/// These are the selected points, plus each selected on-curve
+/// point's adjacent handles unless `independent` is set. This is
+/// `selected_and_adjacent_handle_indices` in the web editor.
 fn move_indices(
     points: &[ContourPoint],
     selected_here: &HashSet<usize>,
@@ -308,7 +318,7 @@ mod tests {
     use norad::Contour;
 
     /// A closed contour: corner, handle, handle, smooth on-curve,
-    /// handle, handle — enough shape to test tangents.
+    /// handle, handle. Enough shape to test tangents.
     fn curve_glyph() -> Glyph {
         let p = |x: f64, y: f64, typ: PointType, smooth: bool| {
             ContourPoint::new(x, y, typ, smooth, None, None)

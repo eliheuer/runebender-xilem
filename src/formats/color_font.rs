@@ -7,13 +7,16 @@
 //! fontmake or fontc reads the same data. Fontra edits the same keys.
 
 /// The explicit color-layers key, fontTools buildCOLR's input.
-/// Once present, ufo2ft skips its own layer exploding — so writing
+///
+/// Once present, ufo2ft skips its own layer exploding, so writing
 /// any v1 entry means exploding every color glyph ourselves.
 pub const COLOR_LAYERS_EXPLICIT_KEY: &str = "com.github.googlei18n.ufo2ft.colorLayers";
 
-/// A COLRv1 linear-gradient paint dict in fontTools' unbuilt form:
-/// two palette stops, running from `p0` to `p1` (x2/y2 is the
-/// required rotation vector, perpendicular to the gradient).
+/// A COLRv1 linear-gradient paint dict in fontTools' unbuilt form.
+///
+/// The gradient holds two palette stops and runs from `p0` to `p1`.
+/// `x2`/`y2` is the required rotation vector, perpendicular to the
+/// gradient.
 pub fn linear_gradient_paint(
     stop0: usize,
     stop1: usize,
@@ -50,10 +53,11 @@ pub fn linear_gradient_paint(
     plist::Value::Dictionary(paint)
 }
 
-/// A PaintGlyph layer wrapping a child paint (Format 10), and the
-/// solid child (Format 2) — the shapes verified through ufo2ft's
-/// buildCOLR: the glyph's root is PaintColrLayers (Format 1) with
-/// these as Layers.
+/// A PaintGlyph layer (Format 10) wrapping a child paint.
+///
+/// Together with the solid child (Format 2), these are the shapes
+/// verified through ufo2ft's buildCOLR: the glyph's root is
+/// PaintColrLayers (Format 1) with these as Layers.
 pub fn paint_glyph_layer(glyph: &str, child: plist::Value) -> plist::Value {
     let mut dict = plist::Dictionary::new();
     dict.insert("Format".into(), plist::Value::Integer(10u64.into()));

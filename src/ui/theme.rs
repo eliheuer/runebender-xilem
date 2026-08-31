@@ -69,8 +69,9 @@ pub mod grid {
 
 /// Glyph outline tokens for the editor and preview.
 pub mod path {
-    /// Outline stroke color used in edit mode (the glyph is stroked,
-    /// not filled, while editing — see runebender-xilem path::STROKE).
+    /// Outline stroke color used in edit mode. The glyph is stroked,
+    /// not filled, while editing. This is `path::STROKE` in
+    /// runebender-xilem.
     pub const STROKE: super::ColorRgba = super::base::L;
     /// Fill color of the glyph when not editing.
     pub const FILL: super::ColorRgba = super::base::F;

@@ -10,14 +10,14 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// A unique identifier for an entity (point, path, guide, component)
+/// A unique identifier for a point, path, guide, or component.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityId(u64);
 
 static ENTITY_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 impl EntityId {
-    /// Create a new unique entity ID
+    /// Create a new unique entity ID.
     pub fn next() -> Self {
         Self(ENTITY_COUNTER.fetch_add(1, Ordering::Relaxed))
     }

@@ -7,8 +7,11 @@
 use kurbo::{Affine, BezPath, Point};
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 
-/// Build a `BezPath` for a glyph, with components resolved recursively through `font`.
-/// Component transforms apply in full; a missing base glyph contributes nothing.
+/// Build a `BezPath` for a glyph, with components resolved
+/// recursively through `font`.
+///
+/// Component transforms apply in full. A missing base glyph
+/// contributes nothing.
 pub fn glyph_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
     let mut path = BezPath::new();
     for contour in &glyph.contours {
@@ -52,18 +55,22 @@ pub fn component_affine(t: &norad::AffineTransform) -> Affine {
     ])
 }
 
-/// Smart-component metadata: axes live on the part glyph under the
-/// glyphsLib key, per-component values on the using glyph, and pole
-/// layers are marked with `com.runebender.partSelection`
-/// ({axis: 1 bottom, 2 top}); an unmarked default glyph acts as the
-/// bottom pole.
+/// Where smart-component metadata lives.
+///
+/// Axes sit on the part glyph under the glyphsLib key, and
+/// per-component values sit on the using glyph. Pole layers are
+/// marked with `com.runebender.partSelection`, where an axis value
+/// of 1 means the bottom pole and 2 the top. An unmarked default
+/// glyph acts as the bottom pole.
 const SMART_AXES_KEY: &str = "com.schriftgestaltung.Glyphs.smartComponentAxes";
 const SMART_VALUES_KEY: &str = "com.schriftgestaltung.Glyphs.componentsSmartComponentValues";
 const PART_SELECTION_KEY: &str = "com.runebender.partSelection";
 
 /// The value the using glyph sets for `component_index`'s first
-/// smart axis, if any: {axis: value} in a list aligned with the
-/// component order.
+/// smart axis, if any.
+///
+/// Values are stored as `{axis: value}` dicts in a list aligned
+/// with the component order.
 fn smart_value_for(glyph: &Glyph, component_index: usize, axis: &str) -> Option<f64> {
     glyph
         .lib
@@ -78,16 +85,21 @@ fn smart_value_for(glyph: &Glyph, component_index: usize, axis: &str) -> Option<
         })
 }
 
-/// Interpolated contours for a smart part at the given axis
-/// values. Each smart axis has a bottom pole (the default glyph,
-/// or a layer marked {axis: 1}) and a top pole (a layer marked
-/// {axis: 2}); a layer marked 2 on several axes is a corner pole.
-/// The blend is the standard corner-delta (variation) model:
-/// default + sum over pole layers of (product of the normalized
-/// values on that layer's top axes) x its inclusion-exclusion
-/// delta — for one axis, plain linear interpolation; for two
-/// axes with all corners, bilinear. Point-compatible layers
-/// only; anything else falls back to the default outline.
+/// Interpolated contours for a smart part at the given axis values.
+///
+/// Each smart axis has a bottom pole and a top pole. The bottom
+/// pole is the default glyph, or a layer marked `{axis: 1}`. The
+/// top pole is a layer marked `{axis: 2}`. A layer marked 2 on
+/// several axes is a corner pole.
+///
+/// The blend is the standard corner-delta (variation) model: the
+/// default plus, per pole layer, its inclusion-exclusion delta
+/// scaled by the product of the normalized values on that layer's
+/// top axes. For one axis that is plain linear interpolation; for
+/// two axes with all corners, bilinear.
+///
+/// Only point-compatible layers take part. Anything else falls
+/// back to the default outline.
 fn smart_contours(
     base: &Glyph,
     font: &Font,

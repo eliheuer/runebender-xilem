@@ -105,7 +105,7 @@ impl Quadrant {
         }
     }
 
-    /// Opposite corner — useful during transforms.
+    /// Opposite corner, useful during transforms.
     pub fn inverse(&self) -> Self {
         match self {
             Quadrant::TopLeft => Quadrant::BottomRight,

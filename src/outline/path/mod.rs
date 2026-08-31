@@ -1,7 +1,7 @@
 // Path representation & geometry. Ported from
 // runebender-xilem/src/path/.
 
-//! Path abstraction for glyph outlines — the editable representation.
+//! Path abstraction for glyph outlines: the editable representation.
 //!
 //! The `Path` enum wraps three curve types: `Cubic` (standard UFO
 //! beziers), `Quadratic` (TrueType-style), and `Hyper` (hyperbezier

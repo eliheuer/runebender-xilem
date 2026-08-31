@@ -1,12 +1,13 @@
 //! Live grid measurements for the on-canvas HUD: handle lengths, and the
-//! horizontal/vertical spans between facing straight edges. The span pass
-//! yields stem widths AND counters from the same logic — a counter is just
-//! the gap between two facing near-vertical inner edges — so the designer
-//! sees every measurement that matters while drawing, on Virtua Grotesk's
-//! power-of-two grid.
+//! horizontal/vertical spans between facing straight edges.
+//!
+//! The span pass yields stem widths and counters from the same logic,
+//! because a counter is just the gap between two facing near-vertical inner
+//! edges. The designer sees every measurement that matters while drawing,
+//! on Virtua Grotesk's power-of-two grid.
 //!
 //! Everything here is design-space geometry (font units). The renderer maps
-//! it to the screen and draws ticks + labels; popcount/tier styling reads
+//! it to the screen and draws ticks and labels; popcount/tier styling reads
 //! off the length. Kept ungated and free of render deps so it unit-tests on
 //! native `cargo test`.
 
@@ -28,9 +29,10 @@ pub enum MeasureKind {
     Vertical,
 }
 
-/// One measurement in design space. `a`/`b` are the endpoints of the span
-/// (for a Handle, `a` is the on-curve anchor); `length` is the rounded
-/// design-unit distance to label.
+/// One measurement in design space.
+///
+/// `a` and `b` are the endpoints of the span; for a `Handle`, `a` is the
+/// on-curve anchor. `length` is the rounded design-unit distance to label.
 #[derive(Clone, Copy, Debug)]
 pub struct Measurement {
     /// First endpoint of the span, in design units.
@@ -43,14 +45,15 @@ pub struct Measurement {
     pub kind: MeasureKind,
 }
 
-/// Ignore spans, segments, and handles shorter than this (noise / coincident
-/// points / near-tangent scan crossings).
+/// Ignore spans, segments, and handles shorter than this: noise, coincident
+/// points, or near-tangent scan crossings.
 const MIN_LEN: f64 = 8.0;
-/// A straight segment counts as axis-aligned when its off-axis drift is within
-/// this many units (Virtua's stems and bars are dead straight).
+/// A straight segment counts as axis-aligned when its off-axis drift is
+/// within this many units. Virtua's stems and bars are dead straight.
 const AXIS_TOL: f64 = 3.0;
-/// Two facing edges must overlap on the perpendicular axis by at least this to
-/// be measuring the same span (a real stem/counter, not a glancing pair).
+/// Two facing edges must overlap on the perpendicular axis by at least this
+/// to be measuring the same span: a real stem or counter, not a glancing
+/// pair.
 const MIN_OVERLAP: f64 = 24.0;
 
 /// A straight axis-aligned outline edge, captured for facing-span detection.
@@ -64,10 +67,12 @@ struct Edge {
 }
 
 /// Compute every live measurement for a glyph's contours: handle lengths,
-/// straight segment lengths, and stem/counter/thickness spans. Spans come from
-/// two general passes — facing straight edges (each edge to its nearest facing
-/// edge that overlaps it: stems, counters, bars, including split walls like the
-/// H's), and a center scan line kept only for curve-bounded gaps (the `o`).
+/// straight segment lengths, and stem/counter/thickness spans.
+///
+/// Spans come from two general passes. The facing-edge pass measures each
+/// straight edge to its nearest facing edge that overlaps it: stems,
+/// counters, bars, including split walls like the H's. The center scan line
+/// is kept only for curve-bounded gaps, like the `o`.
 pub fn glyph_measurements(paths: &[Path]) -> Vec<Measurement> {
     let mut out = Vec::new();
     let mut verticals: Vec<Edge> = Vec::new();
@@ -144,10 +149,12 @@ pub fn glyph_measurements(paths: &[Path]) -> Vec<Measurement> {
     out
 }
 
-/// For each edge, measure the gap to the nearest facing edge (larger position)
-/// whose perpendicular extent overlaps it. Measuring per-edge (rather than only
-/// x-adjacent pairs) means split walls — like the H's inner stems, cut by the
-/// crossbar — still pair up into their upper and lower counters.
+/// For each edge, measure the gap to the nearest facing edge at a larger
+/// position whose perpendicular extent overlaps it.
+///
+/// Measuring per edge, rather than only x-adjacent pairs, means split walls
+/// still pair up into their upper and lower counters. The H's inner stems,
+/// cut by the crossbar, are the case in point.
 fn facing_gaps(edges: &[Edge], kind: MeasureKind, out: &mut Vec<Measurement>) {
     for (i, e) in edges.iter().enumerate() {
         let mut best: Option<&Edge> = None;
@@ -176,10 +183,12 @@ fn facing_gaps(edges: &[Edge], kind: MeasureKind, out: &mut Vec<Measurement>) {
     }
 }
 
-/// Cast a horizontal and a vertical line through the glyph's center and emit a
-/// span for each gap between crossings — but only where a crossing is on a
-/// curve. Straight-bounded gaps are already covered by `facing_gaps`, so this
-/// pass exists to measure all-curve outlines like the `o`.
+/// Cast a horizontal and a vertical line through the glyph's center and emit
+/// a span for each gap between crossings.
+///
+/// Only gaps where a crossing is on a curve are emitted. Straight-bounded
+/// gaps are already covered by `facing_gaps`, so this pass exists to measure
+/// all-curve outlines like the `o`.
 fn scan_spans(paths: &[Path], out: &mut Vec<Measurement>) {
     let mut bez = BezPath::new();
     for p in paths {
@@ -220,8 +229,10 @@ fn scan_spans(paths: &[Path], out: &mut Vec<Measurement>) {
     emit_scan(&mut ys, cx, MeasureKind::Vertical, out);
 }
 
-/// Sort crossings, merge near-duplicates (OR-ing their curved flag), and emit a
-/// span for each consecutive gap that touches at least one curve.
+/// Sort crossings, merge near-duplicates, and emit a span for each
+/// consecutive gap that touches at least one curve.
+///
+/// Merged near-duplicates OR their curved flags.
 fn emit_scan(
     coords: &mut [(f64, bool)],
     fixed: f64,
@@ -250,8 +261,9 @@ fn emit_scan(
     }
 }
 
-/// Push a span unless a near-identical one (same kind, endpoints within a few
-/// units) is already present.
+/// Push a span unless a near-identical one is already present.
+///
+/// Near-identical means the same kind with endpoints within a few units.
 fn push_span_dedup(out: &mut Vec<Measurement>, a: Point, b: Point, length: i64, kind: MeasureKind) {
     let dup = out
         .iter()
@@ -261,9 +273,10 @@ fn push_span_dedup(out: &mut Vec<Measurement>, a: Point, b: Point, length: i64, 
     }
 }
 
-/// A drawn outline piece (straight segment, curve, or handle line) tagged
-/// with the popcount that colors it, so the outline itself can echo the
-/// label colors and link each number to its geometry.
+/// A drawn outline piece tagged with the popcount that colors it.
+///
+/// A piece is a straight segment, a curve, or a handle line. The tag lets
+/// the outline echo the label colors and link each number to its geometry.
 #[derive(Clone)]
 pub struct ColoredStroke {
     /// The piece in design space.
@@ -276,8 +289,10 @@ pub struct ColoredStroke {
 }
 
 /// Break each contour into colorable pieces: straight segments and curves at
-/// the outline width, plus their handle lines thinner. A segment is colored by
-/// its own length; a curve by the worse popcount of its two handles.
+/// the outline width, plus their handle lines thinner.
+///
+/// A segment is colored by its own length. A curve is colored by the worse
+/// popcount of its two handles.
 pub fn colored_strokes(paths: &[Path]) -> Vec<ColoredStroke> {
     let mut out = Vec::new();
     for path in paths {
@@ -341,9 +356,11 @@ pub fn colored_strokes(paths: &[Path]) -> Vec<ColoredStroke> {
     out
 }
 
-/// Side-bearing geometry: the horizontal gaps between the advance margins
-/// (x=0 and x=advance) and the glyph's leftmost/rightmost points, plus where
-/// those extreme points and the glyph's vertical extent are, for drawing.
+/// Side-bearing geometry, for drawing.
+///
+/// The gaps run between the advance margins, at x = 0 and x = advance, and
+/// the glyph's leftmost and rightmost points. The extreme-point positions
+/// come along so the renderer can point at them.
 #[derive(Clone, Copy)]
 pub struct SideBearings {
     /// The glyph's advance width in design units.
@@ -362,8 +379,10 @@ pub struct SideBearings {
     pub y_right: f64,
 }
 
-/// Left/right side bearings and the extreme-point positions. `None` for an
-/// empty glyph. LSB = leftmost x (from origin); RSB = advance − rightmost x.
+/// Left/right side bearings and the extreme-point positions.
+///
+/// LSB is the leftmost x, measured from the origin. RSB is the advance minus
+/// the rightmost x. Returns `None` for an empty glyph.
 pub fn side_bearings(paths: &[Path], advance: f64) -> Option<SideBearings> {
     let mut bez = BezPath::new();
     for p in paths {
@@ -430,10 +449,11 @@ pub fn popcount(value: i64) -> u32 {
     (value.max(0) as u64).count_ones()
 }
 
-/// The label for a length: `"96 = 64+32"`, `"256 = 2^8"`. Pure powers get an
-/// exponent; sums list their powers high-to-low. Caret notation is used
-/// rather than Unicode superscripts because the embedded HUD font has no
-/// superscript glyphs (they render as tofu).
+/// The label for a length: `"96 = 64+32"`, `"256 = 2^8"`.
+///
+/// Pure powers get an exponent. Sums list their powers high-to-low. Caret
+/// notation is used rather than Unicode superscripts because the embedded
+/// HUD font has no superscript glyphs; they render as tofu.
 pub fn label(value: i64) -> String {
     if value <= 0 {
         return value.to_string();
@@ -451,11 +471,14 @@ pub fn label(value: i64) -> String {
     format!("{value} = {}", parts.join("+"))
 }
 
-/// The y-extent of a glyph's ink at one joining edge: outline
-/// points (components resolved) at or past x = 0 going left, or at
-/// or past x = advance going right — joining strokes overlap the
-/// edge on purpose (the anti-seam tongue), so the test is
-/// one-sided. None when nothing reaches the edge — for a form that
+/// The y-extent of a glyph's ink at one joining edge.
+///
+/// The extent covers outline points, with components resolved, at
+/// or past x = 0 going left, or at or past x = advance going right.
+/// The test is one-sided because joining strokes overlap the edge
+/// on purpose: the anti-seam tongue.
+///
+/// Returns `None` when nothing reaches the edge. For a form that
 /// should join, that is itself the defect.
 pub fn joining_band(
     outline: &BezPath,

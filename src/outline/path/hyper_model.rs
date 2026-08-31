@@ -5,7 +5,7 @@
 // UFO load/save will be provided by the JS host (via fetch / File API)
 // and round-tripped as serialized JSON across the wasm-bindgen boundary.
 
-//! Font data model — owned, single-threaded data structures.
+//! Font data model: owned, single-threaded data structures.
 //!
 //! These are the Xilem-era glyph types. They no longer hold the live
 //! font model, which is now `norad` based. Today they survive as the
@@ -41,8 +41,8 @@ pub struct Glyph {
     pub left_group: Option<String>,
     /// Right-edge kerning group (e.g., "public.kern1.O").
     pub right_group: Option<String>,
-    /// Mark color (UFO public.markColor), stored as "R,G,B,A" with 0–1
-    /// floats.
+    /// Mark color, stored as "R,G,B,A" with 0-1 floats. This is
+    /// the UFO `public.markColor` value.
     pub mark_color: Option<String>,
 }
 
@@ -62,7 +62,7 @@ pub struct ContourPoint {
     pub y: f64,
     /// How the point takes part in the path; see `PointType`.
     pub point_type: PointType,
-    /// UFO smooth attribute — tangent continuity.
+    /// UFO smooth attribute: tangent continuity.
     pub smooth: bool,
 }
 
@@ -229,8 +229,9 @@ impl Default for Workspace {
 // NORAD CONVERSION
 // ============================================================================
 
-/// Whether a norad contour is a hyperbezier (identifier convention
-/// shared by all Runebender editors).
+/// Whether a norad contour is a hyperbezier.
+///
+/// The identifier convention is shared by all Runebender editors.
 pub fn norad_contour_is_hyper(contour: &norad::Contour) -> bool {
     contour
         .identifier()
@@ -239,8 +240,10 @@ pub fn norad_contour_is_hyper(contour: &norad::Contour) -> bool {
 }
 
 impl Contour {
-    /// Convert from a norad contour. Hyperbezier contours (identifier
-    /// contains "hyper") map curve/move points to smooth hyper points
+    /// Convert from a norad contour.
+    ///
+    /// A hyperbezier contour, marked by an identifier containing
+    /// "hyper", maps curve and move points to smooth hyper points
     /// and line points to hyper corners.
     pub fn from_norad(contour: &norad::Contour) -> Self {
         let hyper = norad_contour_is_hyper(contour);

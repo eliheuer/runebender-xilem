@@ -14,10 +14,11 @@ use kurbo::BezPath;
 use crate::outline::glyph_ops::bezpath_to_contour;
 use crate::outline::glyph_paths::contour_to_bezpath;
 
-/// Contour indices marked as masks: shapes that cut away from the
-/// rest of the glyph. Live in a lib key; previews subtract them,
-/// Bake Masks makes the subtraction real (external compilers only
-/// see baked outlines).
+/// Glyph lib key for the contour indices marked as masks.
+///
+/// A mask is a shape that cuts away from the rest of the glyph.
+/// Previews subtract masks live. Bake Masks makes the subtraction
+/// real, because external compilers only see baked outlines.
 pub const MASKS_KEY: &str = "com.runebender.masks";
 
 /// Reads the mask contour indices from the glyph lib. Negative or non-integer entries are skipped.
@@ -55,9 +56,10 @@ pub fn write_masks(glyph: &mut norad::Glyph, masks: &HashSet<usize>) {
     );
 }
 
-/// Cut the mask contours out of the rest and drop them: the final
-/// outline every compiler understands. Returns false when the glyph
-/// has no masks or the boolean fails.
+/// Cut the mask contours out of the rest and drop them.
+///
+/// The result is the final outline every compiler understands.
+/// Returns false when the glyph has no masks or the boolean fails.
 pub fn bake_masks(glyph: &mut norad::Glyph) -> bool {
     let masks = read_masks(glyph);
     if masks.is_empty() || masks.len() >= glyph.contours.len() {
@@ -97,13 +99,16 @@ pub fn bake_masks(glyph: &mut norad::Glyph) -> bool {
     true
 }
 
-/// Saved sidebar filters: searches the user pinned, stored in the
-/// font lib as an array of {name, query} dicts. Glyphs calls these
-/// smart filters; ours reuse the search-field predicate language.
+/// Font lib key for the saved sidebar filters.
+///
+/// A saved filter is a search the user pinned, stored as an array
+/// of `{name, query}` dicts. Ours reuse the search-field predicate
+/// language. Glyphs calls these smart filters.
 pub const SAVED_FILTERS_KEY: &str = "com.runebender.savedFilters";
 
-/// UFO-standard glyph name -> production name mapping (consumed by
-/// ufo2ft/fontc at compile time).
+/// UFO-standard glyph name -> production name mapping.
+///
+/// ufo2ft and fontc consume it at compile time.
 pub const PSNAMES_KEY: &str = "public.postscriptNames";
 
 /// Looks up the production name for `glyph` in `public.postscriptNames`, if set.
@@ -252,11 +257,16 @@ pub fn write_annotations(glyph: &mut norad::Glyph, notes: &[Annotation]) {
         .insert(ANNOTATIONS_KEY.into(), plist::Value::Array(rows));
 }
 
-/// Per-node HOI intermediate points (the Glyphs "Intermediate
-/// Point": the node's interpolation path curves through it at the
-/// axis middle). Stored on the axis-min master's glyph, absolute
-/// design coordinates, keyed "contour,point". Source of truth for
-/// re-editing; the baked brace layers are what compilers consume.
+/// Glyph lib key for per-node HOI intermediate points.
+///
+/// An intermediate point makes the node's interpolation path curve
+/// through it at the axis middle. This is the "Intermediate Point"
+/// in Glyphs.
+///
+/// Points are stored on the axis-min master's glyph, in absolute
+/// design coordinates, keyed `"contour,point"`. The key is the
+/// source of truth for re-editing; compilers consume the baked
+/// brace layers.
 pub const HOI_INTERMEDIATE_KEY: &str = "com.runebender.hoiIntermediate";
 
 /// Reads HOI intermediate points from the glyph lib, keyed by `(contour, point)` index, as absolute design coordinates.

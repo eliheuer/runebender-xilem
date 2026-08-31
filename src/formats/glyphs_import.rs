@@ -2,17 +2,17 @@
 //! by converting them to an in-memory UFO + designspace file set.
 //!
 //! Stage 1 of Glyphs support: the editor's existing UFO/designspace
-//! load pipeline stays the single ingestion path; a .glyphs file is
-//! translated into the same shape (per-master UFOs and, for
-//! multi-master fonts, a designspace) before it ever reaches the
-//! loader. Read-only: nothing here writes .glyphs back.
+//! load pipeline stays the single ingestion path. A .glyphs file is
+//! translated into the same shape before it ever reaches the
+//! loader: per-master UFOs and, for multi-master fonts, a
+//! designspace. Read-only: nothing here writes .glyphs back.
 //!
 //! Scope: outlines, components (position/rotation/scale), anchors,
 //! widths, unicodes, per-master vertical metrics, kerning + kerning
 //! groups. Skipped for now: brace/bracket layers, smart components,
 //! OpenType features, color labels, hints. Conversion choices follow
-//! glyphsLib where a convention exists (closed-contour node rotation,
-//! kern-group naming, italic-angle sign).
+//! glyphsLib where a convention exists: closed-contour node
+//! rotation, kern-group naming, italic-angle sign.
 
 use std::collections::{BTreeMap, HashSet};
 
@@ -385,8 +385,10 @@ fn is_smooth(node_type: NodeType) -> bool {
     )
 }
 
-/// Kerning class names: Glyphs `@MMK_L_x` / `@MMK_R_x` become UFO
-/// `public.kern1.x` / `public.kern2.x`; plain names pass through.
+/// Convert a kerning class name.
+///
+/// Glyphs `@MMK_L_x` / `@MMK_R_x` become UFO `public.kern1.x` /
+/// `public.kern2.x`. Plain names pass through.
 fn kern_name(raw: &str, first_side: bool) -> String {
     if let Some(rest) = raw.strip_prefix("@MMK_L_") {
         return format!("public.kern1.{rest}");

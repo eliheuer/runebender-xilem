@@ -65,10 +65,13 @@ pub fn set_points(glyph: &mut Glyph, updates: &PointUpdates) {
     }
 }
 
-/// Transform the selected points (all points when the selection is
-/// empty) about the center of their bounding box. `transform` is
-/// applied in a coordinate frame centered on that box, so flips and
-/// rotations stay in place. Returns false if the glyph has no points.
+/// Transform the selected points about the center of their
+/// bounding box.
+///
+/// If the selection is empty, every point is transformed.
+/// `transform` is applied in a coordinate frame centered on the
+/// box, so flips and rotations stay in place. Returns false if the
+/// glyph has no points.
 pub fn transform_selection(
     glyph: &mut Glyph,
     selected: &HashSet<PointId>,
@@ -104,10 +107,13 @@ pub fn transform_selection(
     true
 }
 
-/// Reverse the direction of every contour that has a selected point
-/// (all contours when the selection is empty). Round-trips through
-/// kurbo's `reverse_subpaths`, the same conversion remove-overlap
-/// uses, so coordinates round to integers.
+/// Reverse the direction of every contour that has a selected
+/// point.
+///
+/// If the selection is empty, every contour is reversed. The glyph
+/// round-trips through kurbo's `reverse_subpaths`, the same
+/// conversion remove-overlap uses, so coordinates round to
+/// integers.
 pub fn reverse_contours(glyph: &mut Glyph, selected: &HashSet<PointId>) -> bool {
     let mut changed = false;
     for c in 0..glyph.contours.len() {
@@ -131,9 +137,11 @@ pub fn reverse_contours(glyph: &mut Glyph, selected: &HashSet<PointId>) -> bool 
     changed
 }
 
-/// After moving one off-curve handle, keep its sibling handle
-/// collinear through the shared smooth on-curve point (length
-/// preserved). No-op when the shared point is a corner.
+/// Keep the sibling of a moved off-curve handle collinear through
+/// their shared smooth on-curve point.
+///
+/// The sibling keeps its own length; only its direction changes.
+/// When the shared point is a corner, nothing moves.
 pub fn constrain_smooth_neighbor(glyph: &mut Glyph, contour: usize, index: usize) {
     let Some(c) = glyph.contours.get_mut(contour) else {
         return;
@@ -179,10 +187,12 @@ pub fn constrain_smooth_neighbor(glyph: &mut Glyph, contour: usize, index: usize
     c.points[sib].y = new_sib.y.round();
 }
 
-/// Delete the given points. Selected on-curve points vanish with
-/// their incoming controls (neighbors reconnect); selected off-curve
-/// points turn their segment into a line. Contours left without
-/// segments are removed. Returns true if anything changed.
+/// Delete the given points.
+///
+/// A selected on-curve point vanishes with its incoming controls,
+/// and its neighbors reconnect. A selected off-curve point turns
+/// its segment into a line. Contours left without segments are
+/// removed. Returns true if anything changed.
 pub fn delete_points(glyph: &mut Glyph, selected: &HashSet<PointId>) -> bool {
     if selected.is_empty() {
         return false;
@@ -330,9 +340,12 @@ pub fn start_contour(glyph: &mut Glyph, x: f64, y: f64) -> usize {
 
 // ---- hyperbezier pen ----
 
-/// Start a hyperbezier contour (identifier convention: the contour's
-/// identifier contains "hyperbezier"; points are all on-curve, with
-/// curve = smooth and line = corner; the spline solver draws it).
+/// Start a hyperbezier contour at (x, y).
+///
+/// A hyperbezier contour is marked by its identifier, which
+/// contains "hyperbezier". Its points are all on-curve: `curve`
+/// means smooth, `line` means corner, and the spline solver draws
+/// it. Returns the new contour's index.
 pub fn start_hyper_contour(glyph: &mut Glyph, x: f64, y: f64) -> usize {
     let point = ContourPoint::new(x, y, PointType::Move, false, None, None);
     glyph.contours.push(Contour::new(
@@ -356,8 +369,9 @@ pub fn append_hyper_point(glyph: &mut Glyph, contour: usize, x: f64, y: f64, cor
         .push(ContourPoint::new(x, y, typ, !corner, None, None));
 }
 
-/// Close an open hyperbezier contour: the Move start becomes a
-/// smooth hyper point.
+/// Close an open hyperbezier contour.
+///
+/// The `Move` start becomes a smooth hyper point.
 pub fn close_hyper_contour(glyph: &mut Glyph, contour: usize) {
     let Some(c) = glyph.contours.get_mut(contour) else {
         return;
@@ -380,8 +394,10 @@ pub fn contour_is_hyper(glyph: &Glyph, contour: usize) -> bool {
         .unwrap_or(false)
 }
 
-/// Append a segment to an open contour (pen tool). Pass the two
-/// off-curve controls for a curve segment, or none for a line.
+/// Append a segment to an open contour.
+///
+/// Pass the two off-curve controls for a curve segment, or none for
+/// a line. This is what the pen tool draws with.
 pub fn append_segment(
     glyph: &mut Glyph,
     contour: usize,
@@ -406,8 +422,10 @@ pub fn append_segment(
         .push(ContourPoint::new(x, y, typ, smooth, None, None));
 }
 
-/// Close an open contour: the Move start point becomes the final
-/// segment's target. `controls` curves the closing segment.
+/// Close an open contour.
+///
+/// The `Move` start point becomes the final segment's target.
+/// `controls` curves the closing segment.
 pub fn close_contour(
     glyph: &mut Glyph,
     contour: usize,
@@ -494,9 +512,11 @@ pub fn add_shape_contour(glyph: &mut Glyph, rect: kurbo::Rect, ellipse: bool) {
 // REMOVE OVERLAP
 // ============================================================================
 
-/// Union all contours via linesweeper; smooth flags are restored on
-/// points that kept their positions. Returns the new contours, or
-/// None when the input is empty or the operation fails.
+/// Union all contours via linesweeper.
+///
+/// Smooth flags are restored on points that kept their positions.
+/// Returns the new contours, or `None` when the input is empty or
+/// the operation fails.
 pub fn remove_overlap(glyph: &Glyph) -> Option<Vec<Contour>> {
     if glyph.contours.is_empty() {
         return None;
@@ -525,11 +545,12 @@ pub fn remove_overlap(glyph: &Glyph) -> Option<Vec<Contour>> {
     (!new_contours.is_empty()).then_some(new_contours)
 }
 
-/// Apply a boolean operation across the glyph's contours, like the
-/// web editor: union merges everything; subtract/intersect/exclude
-/// use the first contour as the left operand and the rest combined
-/// as the right. Original smooth flags survive on points that keep
-/// their positions.
+/// Apply a boolean operation across the glyph's contours.
+///
+/// Union merges everything. Subtract, intersect, and exclude use
+/// the first contour as the left operand and the rest combined as
+/// the right. Original smooth flags survive on points that keep
+/// their positions. This matches the web editor.
 pub fn boolean_contours(glyph: &Glyph, op: linesweeper::BinaryOp) -> Option<Vec<Contour>> {
     if glyph.contours.len() < 2 {
         return None;
@@ -574,8 +595,9 @@ pub fn boolean_contours(glyph: &Glyph, op: linesweeper::BinaryOp) -> Option<Vec<
     (!contours.is_empty()).then_some(contours)
 }
 
-/// Make the given on-curve point a closed contour's start point (the
-/// contour context menu's "set start point").
+/// Make the given on-curve point a closed contour's start point.
+///
+/// This is "set start point" in the contour context menu.
 pub fn set_contour_start(glyph: &mut Glyph, contour: usize, point: usize) -> bool {
     let Some(c) = glyph.contours.get_mut(contour) else {
         return false;
@@ -591,8 +613,9 @@ pub fn set_contour_start(glyph: &mut Glyph, contour: usize, point: usize) -> boo
     true
 }
 
-/// Convert one closed BezPath contour into a norad contour. Points
-/// found in `smooth_at` keep their smooth flag.
+/// Convert one closed `BezPath` contour into a norad contour.
+///
+/// Points found in `smooth_at` keep their smooth flag.
 pub fn bezpath_to_contour(
     path: &BezPath,
     smooth_at: &HashMap<(i64, i64), bool>,
@@ -688,9 +711,10 @@ pub enum CurveOp {
     Optimize(f64),
 }
 
-/// Apply a curve-quality operation to the selected points, or to the
-/// whole glyph when the selection is empty. Only closed contours
-/// participate. Returns true if anything moved.
+/// Apply a curve-quality operation to the selected points.
+///
+/// If the selection is empty, the whole glyph is in scope. Only
+/// closed contours participate. Returns true if anything moved.
 pub fn curve_op(glyph: &mut Glyph, selected: &HashSet<PointId>, op: CurveOp) -> bool {
     use crate::analysis::curve::{OptPoint, balance, harmonize, optimize_contour};
     let all = selected.is_empty();
@@ -786,8 +810,10 @@ pub fn curve_op(glyph: &mut Glyph, selected: &HashSet<PointId>, op: CurveOp) -> 
 // METRICS AND ANCHORS
 // ============================================================================
 
-/// Shift all of a glyph's ink horizontally (LSB edits). Component
-/// references shift via their transform offset.
+/// Shift all of a glyph's ink horizontally.
+///
+/// Component references shift via their transform offset. This is
+/// the move an LSB edit applies.
 pub fn shift_ink(glyph: &mut Glyph, dx: f64) {
     for contour in glyph.contours.iter_mut() {
         for p in contour.points.iter_mut() {
@@ -803,9 +829,11 @@ pub fn shift_ink(glyph: &mut Glyph, dx: f64) {
 // KERNING
 // ============================================================================
 
-/// Convert hyperbezier contours to plain cubics through the solver
-/// (web convertHyperToCubic): the selected ones, or every hyper
-/// contour when the selection is empty.
+/// Convert hyperbezier contours to plain cubics through the solver.
+///
+/// If the selection is empty, every hyper contour converts.
+/// Otherwise, only the selected ones do. This is
+/// `convertHyperToCubic` in the web editor.
 pub fn convert_hyper_to_cubic(glyph: &mut Glyph, selected: &HashSet<(usize, usize)>) -> bool {
     let mut changed = false;
     for (ci, contour) in glyph.contours.iter_mut().enumerate() {
@@ -891,10 +919,13 @@ fn wrap(i: isize, len: usize) -> usize {
     i.rem_euclid(len as isize) as usize
 }
 
-/// The size and handle ratio existing rounded corners in this glyph
-/// use (web infer_round_corner_profile): sampled from every
-/// on-off-off-on run whose straight neighbors intersect, median with
-/// the classic defaults as fallback.
+/// The size and handle ratio the glyph's existing rounded corners
+/// use.
+///
+/// The profile is sampled from every on-off-off-on run whose
+/// straight neighbors intersect. The median wins, with the classic
+/// defaults as fallback. This is `infer_round_corner_profile` in
+/// the web editor.
 fn infer_round_profile(glyph: &Glyph) -> (f64, f64) {
     let mut offsets = Vec::new();
     let mut ratios = Vec::new();
@@ -956,9 +987,11 @@ fn infer_round_profile(glyph: &Glyph) -> (f64, f64) {
     )
 }
 
-/// Round the selected line-line corners into cubic fillets sized to
-/// match the glyph's existing rounding (web round_selected_corners).
-/// Returns the new selection: the fillets' on-curve points.
+/// Round the selected line-line corners into cubic fillets.
+///
+/// Fillets are sized to match the glyph's existing rounding. This
+/// is `round_selected_corners` in the web editor. Returns the new
+/// selection: the fillets' on-curve points.
 pub fn round_selected_corners(
     glyph: &mut Glyph,
     selected: &HashSet<(usize, usize)>,
@@ -1071,9 +1104,10 @@ pub fn round_selected_corners(
     changed.then_some(next_selection)
 }
 
-/// Duplicate every contour containing a selected point, offset by
-/// (20, 20) like the web editor, returning the new selection (every
-/// point of the clones).
+/// Duplicate every contour containing a selected point.
+///
+/// Clones are offset by (20, 20), like the web editor's duplicate.
+/// Returns the new selection: every point of the clones.
 pub fn duplicate_selection(
     glyph: &mut Glyph,
     selected: &HashSet<(usize, usize)>,

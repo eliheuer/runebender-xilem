@@ -75,7 +75,7 @@ impl TextBuffer {
     /// Lines are split into runs first. A line mixing Latin and Arabic
     /// has to be shaped a run at a time: handed the whole line, the
     /// shaper takes its script from the first character, and the Arabic
-    /// features — including the lam-alef ligature — never run.
+    /// features, including the lam-alef ligature, never run.
     pub(super) fn shape_with_font(&mut self) -> bool {
         let Some(font) = self.shaping_font() else {
             return false;
@@ -204,7 +204,7 @@ impl TextBuffer {
         self.apply_shape_updates(updates)
     }
 
-    /// Shape when any line in the buffer reads RTL — a Latin line next
+    /// Shape when any line in the buffer reads RTL: a Latin line next
     /// to an Arabic one must not stop the Arabic from joining.
     ///
     /// With a shaping font the direction gate does not apply: the font's

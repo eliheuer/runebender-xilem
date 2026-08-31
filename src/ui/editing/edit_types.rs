@@ -1,37 +1,37 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Edit types for undo grouping
+//! Edit types for undo grouping.
 
-/// Type of edit being performed
+/// The type of edit being performed.
 ///
-/// Used to group consecutive edits of the same type into a single undo
+/// Consecutive edits of the same type are grouped into a single undo
 /// action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum EditType {
-    /// Normal edit (creates new undo group)
+    /// A normal edit. Creates a new undo group.
     Normal,
 
-    /// Drag operation in progress (updates current undo group)
+    /// A drag in progress. Updates the current undo group.
     Drag,
 
-    /// Drag operation completed (creates undo group if not already in
-    /// one)
+    /// A completed drag. Creates an undo group when not already in
+    /// one.
     DragUp,
 
-    /// Nudge up (combines with other Up nudges)
+    /// A nudge up. Combines with other up nudges.
     NudgeUp,
 
-    /// Nudge down (combines with other Down nudges)
+    /// A nudge down. Combines with other down nudges.
     NudgeDown,
 
-    /// Nudge left (combines with other Left nudges)
+    /// A nudge left. Combines with other left nudges.
     NudgeLeft,
 
-    /// Nudge right (combines with other Right nudges)
+    /// A nudge right. Combines with other right nudges.
     NudgeRight,
 
-    /// Transform operation (flip, rotate, scale, etc.)
+    /// A transform: flip, rotate, scale, or the like.
     Transform,
 }

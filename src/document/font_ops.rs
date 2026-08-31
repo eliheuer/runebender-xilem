@@ -25,7 +25,7 @@ pub fn kern_value(font: &Font, left: &str, right: &str) -> f64 {
         .unwrap_or(0.0)
 }
 
-/// Set an exception-level (glyph-to-glyph) kern pair.
+/// Set a glyph-to-glyph kern pair, the exception level.
 pub fn set_kern_pair(font: &mut Font, left: &str, right: &str, value: f64) {
     let (Ok(l), Ok(r)) = (norad::Name::new(left), norad::Name::new(right)) else {
         return;
@@ -33,8 +33,10 @@ pub fn set_kern_pair(font: &mut Font, left: &str, right: &str, value: f64) {
     font.kerning.entry(l).or_default().insert(r, value);
 }
 
-/// The kern group ("public.kern1." / "public.kern2." prefix)
-/// containing a glyph, if any.
+/// The kern group containing a glyph, if any.
+///
+/// Group names carry the `public.kern1.` prefix on the first side
+/// and `public.kern2.` on the second.
 pub fn kern_group(font: &Font, glyph: &str, first_side: bool) -> Option<norad::Name> {
     let prefix = if first_side {
         "public.kern1."
@@ -49,10 +51,12 @@ pub fn kern_group(font: &Font, glyph: &str, first_side: bool) -> Option<norad::N
         .map(|(name, _)| name.clone())
 }
 
-/// Put a glyph into a kerning group (groups.plist), replacing any
-/// membership on that side. `group` is the bare name ("A" becomes
-/// public.kern1.A); empty removes the membership. Returns true when
-/// anything changed.
+/// Put a glyph into a kerning group, replacing any membership on
+/// that side.
+///
+/// Groups live in `groups.plist`. `group` is the bare name: `"A"`
+/// becomes `public.kern1.A`. An empty name removes the membership.
+/// Returns true when anything changed.
 pub fn set_kern_group(font: &mut Font, glyph: &str, first_side: bool, group: &str) -> bool {
     let prefix = if first_side {
         "public.kern1."
@@ -100,8 +104,12 @@ pub fn set_kern_group(font: &mut Font, glyph: &str, first_side: bool, group: &st
     changed
 }
 
-/// Set a glyph's (first) codepoint from text: "0041", "U+0041", or
-/// "0x41"; empty clears. Returns false when the text does not parse.
+/// Set a glyph's codepoint from text: `"0041"`, `"U+0041"`, or
+/// `"0x41"`.
+///
+/// The parsed character replaces every codepoint the glyph had. An
+/// empty string clears them all. Returns false when the text does
+/// not parse.
 pub fn set_glyph_unicode(glyph: &mut Glyph, unicode: &str) -> bool {
     let trimmed = unicode.trim();
     if trimmed.is_empty() {

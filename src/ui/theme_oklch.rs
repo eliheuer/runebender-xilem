@@ -3,11 +3,12 @@
 
 //! The OKLCH theme system, shared by every Runebender editor.
 //!
-//! Colors are authored once in `themes/runebender.theme.json` (moved
-//! here from runebender-web, which now reads the same file) and
+//! Colors are authored once in `themes/runebender.theme.json` and
 //! resolved to sRGB with the exact conversion the web generator uses:
-//! Björn Ottosson's Oklab matrices plus chroma-reducing gamut mapping
-//! (a color outside sRGB keeps lightness and hue and loses chroma).
+//! Björn Ottosson's Oklab matrices plus chroma-reducing gamut
+//! mapping, where a color outside sRGB keeps lightness and hue and
+//! loses chroma. The file moved here from runebender-web, which now
+//! reads the same copy.
 
 use std::collections::HashMap;
 
@@ -192,7 +193,7 @@ pub struct Theme {
     /// Role colors by token name: points, handles, selection, and other editor roles.
     pub roles: HashMap<String, ColorRgba>,
     /// Glyph mark colours in palette order, drawn at this theme's
-    /// `markStep` (matches the web's `--rb-mark-{name}` variables).
+    /// `markStep`. Matches the web's `--rb-mark-{name}` variables.
     pub marks: Vec<(String, ColorRgba)>,
     /// Corner radii and stroke width for this theme.
     pub geometry: Geometry,
@@ -227,9 +228,11 @@ impl Theme {
 }
 
 /// The `public.markColor` value written for a label, as "r,g,b,a" 0–1
-/// floats. Frozen in the token file rather than derived, so neither a
-/// theme switch nor a change to the palette rewrites every mark in a
-/// font — matches the web's `ufoRgba` byte for byte.
+/// floats.
+///
+/// The value is frozen in the token file rather than derived, so
+/// neither a theme switch nor a change to the palette rewrites every
+/// mark in a font. Matches the web's `ufoRgba` byte for byte.
 pub fn ufo_rgba_for_label(label: &str) -> Option<String> {
     let file: TokenFile =
         serde_json::from_str(include_str!("../../themes/runebender.theme.json")).ok()?;
@@ -339,9 +342,11 @@ pub fn load_theme(theme_id: &str) -> Option<Theme> {
 
 // ---- glyph mark labels ----
 
-/// Set or clear a glyph's mark: writes `public.markColor` (the fixed
-/// palette colour other editors need) and `com.runebender.markLabel`
-/// (what the mark means) together, or removes both.
+/// Set or clear a glyph's mark.
+///
+/// Writes `public.markColor`, the fixed palette colour other editors
+/// need, and `com.runebender.markLabel`, what the mark means,
+/// together, or removes both.
 pub fn set_glyph_mark(glyph: &mut norad::Glyph, label: Option<&str>) {
     match label.and_then(ufo_rgba_for_label) {
         Some(rgba) => {
@@ -360,9 +365,10 @@ pub fn set_glyph_mark(glyph: &mut norad::Glyph, label: Option<&str>) {
     }
 }
 
-/// The mark-label lib key written beside `public.markColor` (see
-/// runebender-web's markColors.ts for the rationale: the colour is
-/// what other editors need, the label is what the mark means).
+/// The mark-label lib key written beside `public.markColor`.
+///
+/// The colour is what other editors need; the label is what the mark
+/// means. The rationale is in runebender-web's markColors.ts.
 pub const MARK_LABEL_KEY: &str = "com.runebender.markLabel";
 
 /// OKLCH hue angle of an sRGB colour, or `None` for near-grey.
@@ -382,7 +388,8 @@ fn hue_of(r: f64, g: f64, b: f64) -> Option<f64> {
 
 /// The mark label a glyph carries: `com.runebender.markLabel` when
 /// present, otherwise its `public.markColor` snapped to the nearest
-/// palette hue (display only — never written back).
+/// palette hue. The snapped label is display only and never written
+/// back.
 pub fn mark_label_for_glyph(glyph: &norad::Glyph, theme: &Theme) -> Option<String> {
     if let Some(plist::Value::String(label)) = glyph.lib.get(MARK_LABEL_KEY)
         && theme.mark(label).is_some()
@@ -558,14 +565,14 @@ mod tests {
 
 // ---- toolbar icons ----
 
-/// One toolbar icon: outline geometry from the shared icon UFO
-/// (assets/runebender-icons.ufo, via the web generator's JSON).
+/// One toolbar icon: outline geometry from the shared icon UFO,
+/// `assets/runebender-icons.ufo`, via the web generator's JSON.
 pub struct ToolbarIcon {
     /// Tight bounds of the outline in Y-down SVG space.
     pub view_box: kurbo::Rect,
     /// The icon outline in the same Y-down space as `view_box`.
     pub path: kurbo::BezPath,
-    /// Stroke instead of fill (open path icons).
+    /// Stroke instead of fill, for open-path icons.
     pub stroke: bool,
 }
 
@@ -703,7 +710,7 @@ mod mark_contrast {
     /// on, and that depends on the treatment. This is the test that was
     /// missing: Gray borrowed the Light theme's dim marks, whose
     /// lightness is tuned for a near-white canvas, and drew them as
-    /// tinted rules on a mid-grey panel. Yellow came out at 1.00 —
+    /// tinted rules on a mid-grey panel. Yellow came out at 1.00,
     /// the same luminance as the ground it sat on.
     #[test]
     fn every_mark_is_legible_on_every_theme() {

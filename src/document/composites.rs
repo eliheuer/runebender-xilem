@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Component anchor alignment: marks placed by `_top`/`top` anchor
-//! pairs follow their base, the Glyphs model. A port of the alignment
-//! code in runebender-web's editor.rs and wasm_api.rs.
+//! pairs follow their base. This is how Glyphs aligns components. A
+//! port of the alignment code in runebender-web's editor.rs and
+//! wasm_api.rs.
 //!
 //! A composite stores its components as fixed offsets, so alignment
-//! is not re-derived at render time — it is baked into the file, and
+//! is not re-derived at render time: it is baked into the file, and
 //! this module is what has to run over every glyph that places a base
 //! whose anchors just moved.
 
@@ -28,7 +29,10 @@ pub struct AlignInput {
     pub aligned: bool,
 }
 
-/// Is this component cut loose from its anchor (Glyphs lib key)?
+/// Report whether a component is cut loose from its anchor.
+///
+/// The check reads the Glyphs alignment lib key. Returns true when
+/// the key marks the component as not aligned.
 pub fn component_alignment_disabled(component: &Component) -> bool {
     component
         .lib()
@@ -39,9 +43,11 @@ pub fn component_alignment_disabled(component: &Component) -> bool {
         })
 }
 
-/// Lock a component to its anchor or cut it loose. Unlocking writes
-/// the Glyphs key and leaves it where it sits; locking removes the
-/// key (the caller realigns afterwards to snap it home).
+/// Lock a component to its anchor or cut it loose.
+///
+/// Cutting loose writes the Glyphs key and leaves the component
+/// where it sits. Locking removes the key; the caller realigns
+/// afterwards to snap it home.
 pub fn set_component_alignment_disabled(component: &mut Component, disabled: bool) {
     if disabled {
         let mut lib = component.lib().cloned().unwrap_or_default();
@@ -58,14 +64,16 @@ pub fn set_component_alignment_disabled(component: &mut Component, disabled: boo
     }
 }
 
-/// Re-place anchor-locked components against the anchors in front of
-/// them, returning each component's corrected offset. `seed` is the
-/// glyph's own anchors (the open-glyph editor offers them; the
-/// file-level pass over composites does not).
+/// Re-place anchor-locked components against the anchors in front
+/// of them.
 ///
-/// Anchors accumulate as we go: a component's outgoing anchors are
-/// offered to the components after it, which is how a second mark
-/// stacks on the first rather than landing back on the letter.
+/// `seed` is the glyph's own anchors. The open-glyph editor offers
+/// them; the file-level pass over composites does not.
+///
+/// Anchors accumulate as the walk goes: a component's outgoing
+/// anchors are offered to the components after it, which is how a
+/// second mark stacks on the first rather than landing back on the
+/// letter. Returns each component's corrected offset.
 pub fn realign_component_offsets(components: &[AlignInput], seed: &[(String, Point)]) -> Vec<Vec2> {
     let mut available: Vec<(&str, Point)> = seed
         .iter()
@@ -128,10 +136,11 @@ pub fn align_inputs(font: &Font, glyph: &Glyph) -> Vec<AlignInput> {
         .collect()
 }
 
-/// Realign one glyph's components in place. `seed_own_anchors` is
-/// true for the glyph open in an editor (its own anchors are offered
-/// to the components), false for the file-level pass. Returns true
-/// when any component moved.
+/// Realign one glyph's components in place.
+///
+/// `seed_own_anchors` is true for the glyph open in an editor, where
+/// its own anchors are offered to the components, and false for the
+/// file-level pass. Returns true when any component moved.
 pub fn realign_glyph(font: &Font, glyph: &mut Glyph, seed_own_anchors: bool) -> bool {
     if glyph.components.is_empty() {
         return false;

@@ -250,7 +250,7 @@ impl TextBuffer {
         groups
     }
 
-    /// Is there a line break between these two sorts?
+    /// Report whether a line break separates sorts `a` and `b`.
     pub(super) fn line_break_between(&self, a: usize, b: usize) -> bool {
         let (low, high) = if a <= b { (a, b) } else { (b, a) };
         self.sorts[low.min(self.sorts.len())..high.min(self.sorts.len())]
@@ -465,9 +465,9 @@ impl TextBuffer {
     }
 
     /// Where an RTL line begins: the widest line in the buffer, so
-    /// every RTL line ends up sharing the same right edge. (Xilem summed
-    /// the whole buffer, which is the same number for the single-line
-    /// case and too wide once lines stack.)
+    /// every RTL line ends up sharing the same right edge. Xilem
+    /// summed the whole buffer instead, which is too wide once lines
+    /// stack.
     pub(super) fn rtl_line_start_x(&self) -> f64 {
         let mut widest: f64 = 0.0;
         let mut line_start = 0;

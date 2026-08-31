@@ -3,25 +3,26 @@
 
 //! Viewport transformation between design space and screen space.
 //!
-//! Font coordinates use Y-up (origin at baseline); screen coordinates use
-//! Y-down (origin at top-left). `ViewPort` stores an offset and zoom level
-//! and provides `to_screen` / `to_design` conversions that handle the Y-flip,
-//! scaling, and translation. Used by `EditorWidget` to map pointer events
-//! into design coordinates and to position glyphs on screen. Shared
-//! by every Runebender editor.
+//! Font coordinates are Y-up with the origin at the baseline; screen
+//! coordinates are Y-down with the origin at the top left. `ViewPort`
+//! stores an offset and a zoom level, and its `to_screen` and
+//! `screen_to_design` conversions handle the Y-flip, the scaling, and
+//! the translation. Front-ends use it to map pointer events into
+//! design coordinates and to position glyphs on screen. Shared by
+//! every Runebender editor.
 
-/// Viewport transformation between design space and screen space
+/// Viewport transformation between design space and screen space.
 #[derive(Debug, Clone)]
 pub struct ViewPort {
-    /// Scroll offset in screen space
+    /// Scroll offset in screen space.
     pub offset: kurbo::Vec2,
 
-    /// Zoom level (screen pixels per design unit)
+    /// Zoom level, in screen pixels per design unit.
     pub zoom: f64,
 }
 
 impl ViewPort {
-    /// Create a new viewport with default settings
+    /// Create a viewport with zoom `1.0` and no offset.
     pub fn new() -> Self {
         Self {
             offset: kurbo::Vec2::ZERO,
@@ -29,7 +30,7 @@ impl ViewPort {
         }
     }
 
-    /// Convert a point from design space to screen space
+    /// Convert a point from design space to screen space.
     pub fn to_screen(&self, point: kurbo::Point) -> kurbo::Point {
         // Design space: Y increases upward (font coordinates)
         // Screen space: Y increases downward (UI coordinates)
@@ -40,7 +41,7 @@ impl ViewPort {
         )
     }
 
-    /// Convert a point from screen space to design space
+    /// Convert a point from screen space to design space.
     pub fn screen_to_design(&self, point: kurbo::Point) -> kurbo::Point {
         kurbo::Point::new(
             (point.x - self.offset.x) / self.zoom,
@@ -48,8 +49,7 @@ impl ViewPort {
         )
     }
 
-    /// Get the affine transformation from design space to screen
-    /// space
+    /// The affine transformation from design space to screen space.
     pub fn affine(&self) -> kurbo::Affine {
         // Build transformation: scale, flip Y, translate
         kurbo::Affine::new([
@@ -70,9 +70,11 @@ impl Default for ViewPort {
 }
 
 impl ViewPort {
-    /// Fit the glyph box (advance × ascender..descender) into a
-    /// canvas, centered, with `fill` of the height used (0.62 leaves
-    /// comfortable margins).
+    /// Fit the glyph box into a canvas, centered.
+    ///
+    /// The box spans the advance width across and descender to
+    /// ascender up. `fill` is the fraction of the canvas height the
+    /// box uses; `0.62` leaves comfortable margins.
     pub fn fit_to_canvas(
         &mut self,
         canvas_width: f64,
@@ -91,8 +93,8 @@ impl ViewPort {
         );
     }
 
-    /// Zoom by `factor` keeping the design point under the given
-    /// screen position fixed.
+    /// Zoom by `factor`, keeping the design point under the given
+    /// screen position fixed. The new zoom is clamped to `min..=max`.
     pub fn zoom_about(&mut self, screen: kurbo::Point, factor: f64, min: f64, max: f64) {
         let anchor = self.screen_to_design(screen);
         self.zoom = (self.zoom * factor).clamp(min, max);

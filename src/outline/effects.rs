@@ -16,9 +16,13 @@ use crate::outline::glyph_ops::bezpath_to_contour;
 use crate::outline::glyph_paths::contour_to_bezpath;
 
 /// Replace targeted contours with the outline of a stroke of the
-/// given width (round joins and caps), the Make Stroke half of
-/// Glyphs' Offset Curve. An empty `selected` set targets every
-/// contour. Returns false when nothing changed.
+/// given width.
+///
+/// The stroke uses round joins and caps. This is the Make Stroke
+/// half of Offset Curve in Glyphs.
+///
+/// If `selected` is empty, every contour is targeted. Returns false
+/// when nothing changed.
 pub fn expand_stroke_contours(
     glyph: &mut norad::Glyph,
     selected: &HashSet<usize>,
@@ -69,11 +73,16 @@ pub fn expand_stroke_contours(
     any
 }
 
-/// Offset every contour outward (positive `delta`, bolder) or inward
-/// (negative, lighter): the whole glyph is unioned with — or cut by —
-/// a stroke band of width 2·delta around its own outline, which moves
-/// counters the opposite way automatically. The bolder/lighter half
-/// of Glyphs' Offset Curve. Returns false when nothing changed.
+/// Offset every contour outward or inward.
+///
+/// A positive `delta` moves the outline outward and reads bolder; a
+/// negative one moves it inward and reads lighter. The whole glyph
+/// is unioned with, or cut by, a stroke band of width 2·delta
+/// around its own outline. That moves counters the opposite way
+/// automatically. This is the bolder/lighter half of Offset Curve
+/// in Glyphs.
+///
+/// Returns false when nothing changed.
 pub fn offset_glyph_contours(glyph: &mut norad::Glyph, delta: f64) -> bool {
     if delta == 0.0 || glyph.contours.is_empty() {
         return false;
@@ -121,11 +130,13 @@ pub fn offset_glyph_contours(glyph: &mut norad::Glyph, delta: f64) -> bool {
     true
 }
 
-/// Extrude (Glyphs' filter): sweep the glyph along `angle` by
-/// `offset` units — the union of the shape, its translated copy,
-/// and a wall quad per segment — then cut the front face away
-/// unless `keep_front`. Angle 0 extrudes right; 30 is the Glyphs
-/// default's downward-right shadow.
+/// Sweep the glyph along `angle` by `offset` units.
+///
+/// The sweep is the union of the shape, its translated copy, and a
+/// wall quad per segment. Unless `keep_front` is set, the front
+/// face is then cut away. Angle 0 extrudes right; 30 gives the
+/// downward-right shadow of the Glyphs default. This is the Extrude
+/// filter in Glyphs.
 pub fn extrude_glyph_contours(
     glyph: &mut norad::Glyph,
     offset: f64,
@@ -219,10 +230,13 @@ pub fn extrude_glyph_contours(
     true
 }
 
-/// Roughen (Glyphs' filter): flatten each targeted contour into
-/// straight segments of roughly `segment_length`, then jitter every
-/// point by up to ±h/±v. `seed` varies run to run so Apply twice
-/// gives a different rough.
+/// Flatten each targeted contour into straight segments and jitter
+/// the points.
+///
+/// Segments are roughly `segment_length` long. Every point moves by
+/// up to ±`h` horizontally and ±`v` vertically. `seed` varies run
+/// to run, so applying twice gives a different rough. This is the
+/// Roughen filter in Glyphs.
 pub fn roughen_glyph_contours(
     glyph: &mut norad::Glyph,
     selected: &HashSet<usize>,
@@ -276,13 +290,17 @@ pub fn roughen_glyph_contours(
     changed
 }
 
-/// Apply a corner glyph to one on-curve node: the corner's open
-/// path, drawn around its origin, is mapped into the node's frame —
-/// corner-space x runs back along the incoming segment, y forward
-/// along the outgoing one (Glyphs' fit, which shears the corner to
-/// unequal angles) — and spliced in place of the node. Both
-/// neighbors must be on-curve (line corners) in this first slice.
-/// The result is a plain outline: pipelines see baked points.
+/// Apply a corner glyph to one on-curve node.
+///
+/// The corner's open path, drawn around its origin, is mapped into
+/// the node's frame and spliced in place of the node. Corner-space
+/// x runs back along the incoming segment, and y runs forward along
+/// the outgoing one. This is the fit Glyphs uses, which shears the
+/// corner to unequal angles.
+///
+/// Both neighbors must be on-curve, so this first slice handles
+/// line corners only. The result is a plain outline: pipelines see
+/// baked points.
 pub fn apply_corner_at(
     glyph: &mut norad::Glyph,
     corner: &norad::Glyph,

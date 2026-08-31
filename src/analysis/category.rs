@@ -58,9 +58,10 @@ impl GlyphCategory {
         ]
     }
 
-    /// Map a Unicode codepoint to a `GlyphCategory`. Glyphs without
-    /// a codepoint (e.g. `.notdef`) should be assigned `Other` by
-    /// the caller — this fn doesn't see that case.
+    /// Map a Unicode codepoint to a `GlyphCategory`.
+    ///
+    /// Glyphs without a codepoint, such as `.notdef`, never reach
+    /// this function. The caller should assign them `Other`.
     pub fn from_codepoint(c: char) -> GlyphCategory {
         match get_general_category(c) {
             GeneralCategory::UppercaseLetter

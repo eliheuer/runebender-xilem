@@ -3,7 +3,7 @@
 //! harfrust shapes a *compiled* font, and what we have is a UFO being
 //! edited. So we build a font on the fly that has everything shaping
 //! needs and nothing it doesn't: a cmap, advances, and the layout tables
-//! compiled from the source's own features.fea by fea-rs. No outlines —
+//! compiled from the source's own features.fea by fea-rs. No outlines:
 //! the editor draws those itself from the live paths, and shaping never
 //! looks at them.
 //!
@@ -107,9 +107,11 @@ impl SourceResolver for InMemoryFea {
 const FEA_ROOT: &str = "features.fea";
 
 impl ShapingFont {
-    /// Compile a font for shaping. Fails if the feature file does not
-    /// compile — which it will, halfway through an edit, so callers are
-    /// expected to keep working with whatever they had.
+    /// Compile a font for shaping.
+    ///
+    /// Fails when the feature file does not compile. That happens
+    /// halfway through any edit, so callers are expected to keep
+    /// working with whatever they had.
     pub fn build(source: &ShapingSource) -> Result<Self, String> {
         if source.glyphs.is_empty() {
             return Err("no glyphs to shape with".into());
@@ -220,7 +222,7 @@ impl ShapingFont {
     /// Shape with explicit script and language overrides on top of
     /// the feature list. `script` is an ISO 15924 tag ("arab",
     /// "latn"); `language` a BCP 47 tag ("ur", "sd"). Either may be
-    /// None to keep the direction-derived default. Language-specific
+    /// `None` to keep the direction-derived default. Language-specific
     /// OpenType rules (languagesystem arab URD) only fire when the
     /// language is set here.
     pub fn shape_with_options(

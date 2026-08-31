@@ -1,6 +1,6 @@
 // Ported from runebender-xilem/src/path/point.rs (Apache-2.0).
 
-//! Point types for bezier paths — the atoms of editable outlines.
+//! Point types for bezier paths: the atoms of editable outlines.
 //!
 //! `PathPoint` pairs a `kurbo::Point` position with a `PointType`
 //! (on-curve smooth/corner, or off-curve handle) and a unique

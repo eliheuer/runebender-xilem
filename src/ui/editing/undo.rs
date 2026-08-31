@@ -1,7 +1,7 @@
 // Copyright 2025 the Runebender Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Undo/redo system for edit operations
+//! Undo and redo stacks for edit operations.
 
 use std::collections::VecDeque;
 
@@ -9,30 +9,30 @@ use std::collections::VecDeque;
 // CONSTANTS
 // ============================================================================
 
-/// Maximum number of undo states to keep
+/// Maximum number of undo states to keep.
 const MAX_UNDO_HISTORY: usize = 128;
 
 // ============================================================================
 // UNDO STATE MANAGER
 // ============================================================================
 
-/// Undo/redo state manager
+/// Undo and redo stacks over externally managed state.
 ///
-/// Stores a history of states using a deque. The current state is not
-/// stored in the history - it's managed externally. The undo stack
-/// contains previous states, and the redo stack contains future states.
+/// The current state is not stored in the history; the caller owns
+/// it. The undo stack holds previous states and the redo stack holds
+/// future states.
 #[derive(Debug, Clone)]
 pub struct UndoState<T> {
-    /// Stack of previous states (can undo to these)
+    /// Previous states; undo returns these.
     undo_stack: VecDeque<T>,
 
-    /// Stack of future states (can redo to these)
+    /// Future states; redo returns these.
     redo_stack: VecDeque<T>,
 }
 
 #[allow(dead_code)]
 impl<T: Clone> UndoState<T> {
-    /// Create a new empty undo state
+    /// Create a new empty undo state.
     pub fn new() -> Self {
         Self {
             undo_stack: VecDeque::with_capacity(MAX_UNDO_HISTORY),
@@ -40,10 +40,10 @@ impl<T: Clone> UndoState<T> {
         }
     }
 
-    /// Add a new undo group
+    /// Add a new undo group.
     ///
     /// Pushes the given state onto the undo stack and clears the redo
-    /// stack. If the undo stack is full, removes the oldest entry.
+    /// stack. If the undo stack is full, the oldest entry is removed.
     pub fn add_undo_group(&mut self, state: T) {
         // Adding a new undo group clears the redo stack
         self.redo_stack.clear();
@@ -57,10 +57,11 @@ impl<T: Clone> UndoState<T> {
         }
     }
 
-    /// Update the most recent undo state without creating a new undo group
+    /// Update the most recent undo state without creating a new undo
+    /// group.
     ///
-    /// This is useful for grouping rapid edits of the same type (e.g.,
-    /// dragging) into a single undo operation. If there's no current undo
+    /// Grouping rapid edits of the same type, such as dragging, into
+    /// a single undo operation uses this. If there is no current undo
     /// state, this does nothing.
     pub fn update_current_undo(&mut self, state: T) {
         if let Some(last) = self.undo_stack.back_mut() {
@@ -68,62 +69,50 @@ impl<T: Clone> UndoState<T> {
         }
     }
 
-    /// Undo to the previous state
+    /// Undo to the previous state.
     ///
-    /// Returns the previous state if available, moving the current state
-    /// onto the redo stack. The caller is responsible for applying this
-    /// state.
-    ///
-    /// # Arguments
-    /// * `current` - The current state to push onto the redo stack
-    ///
-    /// # Returns
-    /// The previous state, or None if there's nothing to undo
+    /// `current` is pushed onto the redo stack, and the caller
+    /// applies the returned state itself. Returns the previous
+    /// state, or `None` when there is nothing to undo.
     pub fn undo(&mut self, current: T) -> Option<T> {
         let previous = self.undo_stack.pop_back()?;
         self.redo_stack.push_back(current);
         Some(previous)
     }
 
-    /// Redo to the next state
+    /// Redo to the next state.
     ///
-    /// Returns the next state if available, moving the current state back
-    /// onto the undo stack. The caller is responsible for applying this
-    /// state.
-    ///
-    /// # Arguments
-    /// * `current` - The current state to push back onto the undo stack
-    ///
-    /// # Returns
-    /// The next state, or None if there's nothing to redo
+    /// `current` is pushed back onto the undo stack, and the caller
+    /// applies the returned state itself. Returns the next state, or
+    /// `None` when there is nothing to redo.
     pub fn redo(&mut self, current: T) -> Option<T> {
         let next = self.redo_stack.pop_back()?;
         self.undo_stack.push_back(current);
         Some(next)
     }
 
-    /// Check if undo is available
+    /// Check whether undo is available.
     pub fn can_undo(&self) -> bool {
         !self.undo_stack.is_empty()
     }
 
-    /// Check if redo is available
+    /// Check whether redo is available.
     pub fn can_redo(&self) -> bool {
         !self.redo_stack.is_empty()
     }
 
-    /// Clear all undo/redo history
+    /// Clear all undo and redo history.
     pub fn clear(&mut self) {
         self.undo_stack.clear();
         self.redo_stack.clear();
     }
 
-    /// Get the number of states in the undo stack
+    /// The number of states in the undo stack.
     pub fn undo_depth(&self) -> usize {
         self.undo_stack.len()
     }
 
-    /// Get the number of states in the redo stack
+    /// The number of states in the redo stack.
     pub fn redo_depth(&self) -> usize {
         self.redo_stack.len()
     }

@@ -5,8 +5,9 @@
 
 use super::*;
 
-/// Typing after a seeded active sort must lay out to the right
-/// of it, active index stable (regression for a GPUI overlap).
+/// Typing after a seeded active sort must lay out to the right of
+/// it, with the active index stable. Regression test for a GPUI
+/// overlap.
 #[test]
 fn typing_after_active_sort_lays_out_beside_it() {
     let path = crate::testing::fonts::regular_ufo();
@@ -41,8 +42,8 @@ fn typing_after_active_sort_lays_out_beside_it() {
     assert!(s_item.x > a_item.x);
 }
 
-/// The native constructors must agree with the norad-level
-/// kerning resolution the editors already use (glyph_ops).
+/// The native constructors must agree with the norad-level kerning
+/// resolution the editors already use in `glyph_ops`.
 #[test]
 fn from_font_builds_working_models() {
     let path = crate::testing::fonts::regular_ufo();

@@ -2,17 +2,20 @@
 //!
 //! A `TextBuffer` holds a line of sorts, one `TextSort` per typed glyph
 //! or line break, plus a cursor and an optional active sort that the
-//! glyph editor opens. Each line reads left to right or right to left,
-//! either pinned by the toolbar or detected from its first strong
-//! character, and the Unicode Bidirectional Algorithm splits a line
-//! into visual runs so Latin inside Arabic keeps its own order. Sorts
-//! are shaped through the font's own `features.fea` when it compiles,
-//! and through the built-in Arabic joining rules in the `shaping`
-//! module otherwise. Kerning comes from a `TextKerningModel` that
-//! resolves pairs through UFO `kern1` and `kern2` groups, and a manual
-//! kerning drag writes a direct pair value back into that model. The
-//! `layout` and `hit_test` methods place every sort in font units and
-//! map a point back to a cursor position or a sort, which is what the
+//! glyph editor opens.
+//!
+//! Each line reads left to right or right to left, either pinned by
+//! the toolbar or detected from its first strong character. The
+//! Unicode Bidirectional Algorithm splits a line into visual runs so
+//! Latin inside Arabic keeps its own order. Sorts are shaped through
+//! the font's own `features.fea` when it compiles, and through the
+//! built-in Arabic joining rules in the `shaping` module otherwise.
+//!
+//! Kerning comes from a `TextKerningModel` that resolves pairs
+//! through UFO `kern1` and `kern2` groups, and a manual kerning drag
+//! writes a direct pair value back into that model. The `layout` and
+//! `hit_test` methods place every sort in font units and map a point
+//! back to a cursor position or a sort, which is what the
 //! `runebender` CLI and runebender-gpui draw and click on.
 
 use crate::{document::model::kerning::lookup_kerning as lookup_xilem_kerning, text::joining};
@@ -31,9 +34,10 @@ mod kerning;
 mod layout;
 mod shaping;
 
-/// The direction a character forces on its line, if any. Neutrals
-/// (digits, punctuation, spaces) return `None` so they never decide a
-/// line's direction on their own.
+/// The direction a character forces on its line, if any.
+///
+/// Neutrals, such as digits, punctuation, and spaces, return `None`
+/// so they never decide a line's direction on their own.
 pub fn strong_direction(char: char) -> Option<TextDirection> {
     let code = char as u32;
     let rtl = matches!(code,
@@ -251,8 +255,9 @@ impl TextGlyphInventory {
 }
 
 impl TextKerningModel {
-    /// Every stored pair (first key, second key, value) — group names
-    /// included — for hosts syncing buffer kerning back into a font.
+    /// Every stored pair as first key, second key, and value, group
+    /// names included, for hosts syncing buffer kerning back into a
+    /// font.
     pub fn pairs(&self) -> &HashMap<String, HashMap<String, f64>> {
         &self.kerning
     }
@@ -331,10 +336,10 @@ impl TextSort {
         }
     }
 
-    /// True when shaping folded this character into a ligature drawn by
-    /// an earlier sort — the alef of lam-alef. It keeps its place in the
-    /// buffer so editing and the cursor still see the character, but it
-    /// draws nothing and takes no width.
+    /// True when shaping folded this character into a ligature drawn
+    /// by an earlier sort, like the alef of lam-alef. It keeps its
+    /// place in the buffer so editing and the cursor still see the
+    /// character, but it draws nothing and takes no width.
     pub fn is_absorbed(&self) -> bool {
         self.absorbed
     }
@@ -575,11 +580,11 @@ impl TextBuffer {
     /// Replace everything *except* the outlines, which are maintained one
     /// glyph at a time as edits land.
     ///
-    /// The wholesale replace re-sends every outline in the font on every
-    /// edit. That is slow — a few MB of JSON — but worse, it hands back the
-    /// outlines as the sender last knew them, undoing anything updated since.
-    /// Mid-nudge that reads as a flash: the composite snaps to its old shape
-    /// and forward again.
+    /// The wholesale replace re-sends every outline in the font on
+    /// every edit. That is slow, a few MB of JSON, and worse: it hands
+    /// back the outlines as the sender last knew them, undoing
+    /// anything updated since. Mid-nudge that reads as a flash: the
+    /// composite snaps to its old shape and forward again.
     pub fn set_glyph_metrics(&mut self, mut inventory: TextGlyphInventory) {
         std::mem::swap(&mut inventory.outlines, &mut self.glyph_inventory.outlines);
         self.glyph_inventory = inventory;
@@ -736,9 +741,9 @@ impl TextBuffer {
         }
     }
 
-    /// Move the caret to the line above or below, keeping it as close as
-    /// possible to the x it is at now — the way arrow keys work in any
-    /// text editor. False when there is no line that way.
+    /// Move the caret to the line above or below, keeping it as close
+    /// as possible to the x it is at now, the way arrow keys work in
+    /// any text editor. Returns false when there is no line that way.
     pub fn move_cursor_vertically(&mut self, delta: i32, line_height: f64) -> bool {
         let current_line = self.line_number_for_sort(self.cursor);
         let target = current_line as i64 + delta as i64;
