@@ -4,13 +4,16 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.96"
 license = "Apache-2.0 OR MIT"
-description = "A font editor built on Xilem and the Linebender stack."
+description = "The Runebender font editor on Xilem, mirroring runebender-gpui for a framework comparison"
 repository = "https://github.com/eliheuer/runebender-xilem"
 publish = false
 
 [[bin]]
 name = "runebender-xilem"
 path = "src/main.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
 
 [dependencies]
 # Upstream Xilem, pinned. This editor builds on the real thing, so that

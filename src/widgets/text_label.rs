@@ -1,4 +1,4 @@
-// Copyright 2026 the Runebender Xix Authors
+// Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! A small helper to draw a shaped text label into a scene, reusing

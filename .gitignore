@@ -1,6 +1,11 @@
 /target
-/screenshots/*.png
-!/screenshots/.keep
+.DS_Store
+.idea/
+.vscode/
 
 # Agent worktrees
 .claude/worktrees/
+
+# Headless render output
+/screenshots/*.png
+!/screenshots/.keep
