@@ -2,15 +2,18 @@
 
 [![CI](https://github.com/eliheuer/runebender-core/actions/workflows/ci.yml/badge.svg)](https://github.com/eliheuer/runebender-core/actions/workflows/ci.yml)
 
-The font library behind the [Runebender][rb] font editor: everything
-the editor knows how to do to a font, with no interface attached.
+This is the core of the [Runebender](https://runebender.org) font
+editing system. It exists without a front-end so that we can have
+multiple GUIs, primarily
+[Runebender-GPUI](https://github.com/eliheuer/runebender-gpui) and
+[Runebender-Xilem](https://github.com/eliheuer/runebender-xilem).
+Runebender-Core can also be used as a headless CLI tool by agents or
+in bash scripts.
 
 Point edits, segment surgery, overlap removal, components and anchors,
 kerning with group fallback, curvature analysis, shaping, measurement,
-interpolation. The editors share it. Each owns its window, its
-input, and its drawing, and calls this crate for the rest. It also
-ships `runebender`, a command-line tool, so the same code runs in a
-script, a build, or an agent's hands with no window at all.
+interpolation. Each front-end owns its window, its input, and its
+drawing, and calls this crate for the rest.
 
 One rule decides what belongs: **if an edit changes a font, it goes
 here.** The test is not whether the code is about drawing. It is
@@ -63,7 +66,8 @@ Four rules make them safe to run across a library:
   changed, so an agent can read the result rather than parse a table.
 
 Exit codes are 0 ok, 1 findings, 2 usage, 4 failed, matching
-[font-ml][fml] so the two are driven the same way.
+[font-ml](https://github.com/eliheuer/font-ml), so the two are driven
+the same way.
 
 Across a library, with a check first and the work in parallel:
 
@@ -83,8 +87,9 @@ build, or an agent cannot use.
 ## Layout
 
 Directories group the modules by what they do to a font, and each
-`mod.rs` says what belongs in it. `src/lib.rs` carries the map; the long form, with the conventions and the CI gate, is at
-[runebender.org/docs/code-layout.html][layout].
+`mod.rs` says what belongs in it. `src/lib.rs` carries the map. The
+long form, with the conventions and the CI gate, is the
+[code layout page](https://runebender.org/docs/code-layout.html).
 
 ```
 src/
@@ -111,13 +116,15 @@ CI runs `cargo fmt --check`, `cargo clippy --all-targets` and
 `cargo doc` with warnings denied, and the tests on Linux and macOS
 and at the minimum Rust. `unsafe` is forbidden in the manifest.
 
-The tests load Virtua Grotesk from its own repository, [virtua-grotesk][vg], cloned
-beside this repository or named by `RUNEBENDER_TEST_FONTS`.
+The tests load Virtua Grotesk from
+[its own repository](https://github.com/eliheuer/virtua-grotesk),
+cloned beside this one or named by `RUNEBENDER_TEST_FONTS`.
 
 ## The format is the model
 
-Sources are edited as UFO through [norad][norad], rather than read into
-a private model and written back. Nothing is lost in translation, and
+Sources are edited as UFO through
+[norad](https://github.com/linebender/norad), rather than read into a
+private model and written back. Nothing is lost in translation, and
 another tool can read the sources mid-session. The cost is that the
 file's shape is the editor's shape, awkward parts of UFO included.
 
@@ -137,21 +144,11 @@ the hyperbezier solver.
 
 | | |
 | --- | --- |
-| [runebender-gpui][gpui] | The main editor. Native and browser from one codebase. |
-| [runebender-xilem][xilem] | The same editor on Xilem, kept in step for a framework comparison. |
-| [runebender-web][web] | The old web editor. Deprecated in favour of runebender-gpui. |
-| [runebender-druid][druid] | The original, kept as project history. |
+| [runebender-gpui](https://github.com/eliheuer/runebender-gpui) | The main editor. Native and browser from one codebase. |
+| [runebender-xilem](https://github.com/eliheuer/runebender-xilem) | The same editor on Xilem, kept in step for a framework comparison. |
+| [runebender-web](https://github.com/eliheuer/runebender-web) | The old web editor. Deprecated in favour of runebender-gpui. |
+| [runebender-druid](https://github.com/linebender/runebender) | The original, kept as project history. |
 
 ## License
 
 Apache-2.0 OR MIT, the Linebender convention.
-
-[rb]: https://runebender.org
-[gpui]: https://github.com/eliheuer/runebender-gpui
-[xilem]: https://github.com/eliheuer/runebender-xilem
-[web]: https://github.com/eliheuer/runebender-web
-[druid]: https://github.com/linebender/runebender
-[norad]: https://github.com/linebender/norad
-[fml]: https://github.com/eliheuer/font-ml
-[vg]: https://github.com/eliheuer/virtua-grotesk
-[layout]: https://runebender.org/docs/code-layout.html
