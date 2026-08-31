@@ -12,12 +12,19 @@ use kurbo::BezPath;
 
 use crate::outline::glyph_paths::contour_to_bezpath;
 
-/// Set curve handles to a fraction of their maximum: 100% puts each
-/// handle at the intersection of the segment's end tangents (the
-/// longest the curve can be without a kink), Glyphs' Fit Curve
-/// scale. Applies to segments with a selected point, or the whole
-/// glyph when the selection is empty. Tangent directions are kept;
-/// only lengths change. Returns true if anything moved.
+/// Scale each curve segment's handles to a fraction of their
+/// maximum length.
+///
+/// A handle's maximum is the distance from its on-curve point to
+/// the intersection of the segment's two end tangents. At 100%,
+/// both handles reach that intersection, which is the longest the
+/// curve can be without a kink. This is the scale that Fit Curve
+/// uses in Glyphs.
+///
+/// Handle directions do not change; only lengths do. If the
+/// selection is empty, every segment is in scope. Otherwise, only
+/// segments with a selected point are. Returns true when any
+/// handle moved.
 pub fn fit_curve_handles(
     glyph: &mut norad::Glyph,
     selected: &HashSet<(usize, usize)>,
@@ -95,10 +102,13 @@ pub fn fit_curve_handles(
     changed
 }
 
-/// Insert on-curve points at every curve extremum (horizontal and
-/// vertical tangents), Glyphs' Add Extremes. Targets segments with a
-/// selected point, or the whole glyph when the selection is empty.
-/// Returns true if any point was added.
+/// Insert an on-curve point at every curve extremum.
+///
+/// An extremum is a point where the curve's tangent is exactly
+/// horizontal or vertical. This is what Add Extremes does in
+/// Glyphs. If the selection is empty, every segment is in scope.
+/// Otherwise, only segments with a selected point are. Returns
+/// true when any point was added.
 pub fn add_extreme_points(glyph: &mut norad::Glyph, selected: &HashSet<(usize, usize)>) -> bool {
     use kurbo::ParamCurveExtrema as _;
     let mut changed = false;
@@ -137,9 +147,13 @@ pub fn add_extreme_points(glyph: &mut norad::Glyph, selected: &HashSet<(usize, u
     changed
 }
 
-/// Open a closed contour at an on-curve point (it becomes the new
-/// start, typed Move), or close an open contour again (the Move
-/// start becomes a Line). Glyphs' opening and closing paths.
+/// Open a closed contour at a point, or close an open contour.
+///
+/// If the contour is closed, the on-curve point at `(ci, pi)`
+/// becomes the new start, typed `Move`. If the contour is open,
+/// the `Move` start becomes a `Line` and `pi` is ignored. This is
+/// how Glyphs opens and closes paths. Returns true when the
+/// contour changed.
 pub fn toggle_contour_open(glyph: &mut norad::Glyph, ci: usize, pi: usize) -> bool {
     use norad::PointType;
     let Some(contour) = glyph.contours.get_mut(ci) else {
@@ -168,11 +182,14 @@ pub fn toggle_contour_open(glyph: &mut norad::Glyph, ci: usize, pi: usize) -> bo
     true
 }
 
-/// Path > Tidy up Paths: drop on-curve points that duplicate the
-/// previous on-curve point (zero-length line segments), including
-/// the closing wrap of a closed contour. Conservative on purpose —
-/// curve simplification is Simplify's job, not Tidy's. Returns how
-/// many points were removed.
+/// Remove zero-length line segments.
+///
+/// A zero-length segment is an on-curve point that duplicates the
+/// on-curve point before it. The check includes the closing
+/// segment of a closed contour. The operation is conservative on
+/// purpose: simplifying curves is Simplify's job, not Tidy's. This
+/// is Path > Tidy up Paths in Glyphs. Returns the number of points
+/// removed.
 pub fn tidy_contours(glyph: &mut norad::Glyph) -> usize {
     use norad::PointType;
     let mut removed = 0usize;
@@ -216,11 +233,14 @@ pub fn tidy_contours(glyph: &mut norad::Glyph) -> usize {
     removed
 }
 
-/// Path > Correct Path Direction: outer contours counter-clockwise,
-/// holes clockwise (the PostScript/UFO cubic convention, and what
-/// remove-overlap expects). Depth = how many other contours contain
-/// the contour's first on-curve point; even is outer. Returns how
-/// many contours were reversed.
+/// Rewind contours so outers run counterclockwise and holes run
+/// clockwise.
+///
+/// This is the PostScript and UFO convention for cubic outlines,
+/// and the winding that remove overlap expects. A contour counts
+/// as a hole when an odd number of other contours contain its
+/// first on-curve point. This is Path > Correct Path Direction in
+/// Glyphs. Returns the number of contours reversed.
 pub fn correct_path_directions(glyph: &mut norad::Glyph) -> usize {
     use kurbo::Shape as _;
     let paths: Vec<BezPath> = glyph.contours.iter().map(contour_to_bezpath).collect();
@@ -253,8 +273,10 @@ pub fn correct_path_directions(glyph: &mut norad::Glyph) -> usize {
     flipped
 }
 
-/// Path > Round Coordinates: every point onto the integer grid.
-/// Returns how many points moved.
+/// Round every point to the integer grid.
+///
+/// This is Path > Round Coordinates in Glyphs. Returns the number
+/// of points that moved.
 pub fn round_glyph_coordinates(glyph: &mut norad::Glyph) -> usize {
     let mut moved = 0usize;
     for contour in glyph.contours.iter_mut() {
