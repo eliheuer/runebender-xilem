@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 license = "Apache-2.0 OR MIT"
-description = "The editing engine behind the Runebender font editor, with no interface attached"
+description = "The font library behind the Runebender font editor, with a command-line tool"
 repository = "https://github.com/eliheuer/runebender-core"
 
 [[bin]]
 name = "runebender"
-path = "src/bin/runebender.rs"
+path = "src/bin/runebender/main.rs"
 
 [lints.rust]
 unsafe_code = "forbid"

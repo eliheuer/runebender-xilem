@@ -1,15 +1,16 @@
-# runebender-core
+# Runebender Core
 
 [![CI](https://github.com/eliheuer/runebender-core/actions/workflows/ci.yml/badge.svg)](https://github.com/eliheuer/runebender-core/actions/workflows/ci.yml)
 
-The editing engine behind the [Runebender][rb] font editor, with no
-interface attached.
+The font library behind the [Runebender][rb] font editor: everything
+the editor knows how to do to a font, with no interface attached.
 
-Every operation that changes a font lives here: point edits, segment
-surgery, overlap removal, components and anchors, kerning with group
-fallback, curvature analysis, shaping, measurement, interpolation.
-The front-ends own their window, input and drawing, and call this
-crate for the rest.
+Point edits, segment surgery, overlap removal, components and anchors,
+kerning with group fallback, curvature analysis, shaping, measurement,
+interpolation. The editors share it. Each owns its window, its
+input, and its drawing, and calls this crate for the rest. It also
+ships `runebender`, a command-line tool, so the same code runs in a
+script, a build, or an agent's hands with no window at all.
 
 One rule decides what belongs: **if an edit changes a font, it goes
 here.** The test is not whether the code is about drawing. It is
@@ -24,14 +25,58 @@ front-end is a new interface rather than a second editor.
 
 ```sh
 cargo install --git https://github.com/eliheuer/runebender-core
+```
 
+Reading commands answer one question about a source and print it:
+
+```sh
 runebender info Font.ufo
+runebender glyphs Font.ufo
 runebender measure Font.ufo --glyph eight
+runebender spacing Font.ufo
 runebender check --a Light.ufo --b Bold.ufo
 ```
 
-Every command takes `--json`. Exit codes are 0 ok, 1 findings, 2 usage,
-4 failed, matching [font-ml][fml] so the two are driven the same way.
+Editing commands run an operation the editor runs from a menu, and
+save what changed:
+
+```sh
+runebender clean Family.designspace
+runebender overlap sources/*.ufo --glyphs cent,euro
+runebender offset Font.ufo --by -4
+runebender convert Font.ufo --to quad
+runebender realign Family.designspace
+runebender rename Family.designspace --from uni0041 --to A
+runebender kern Font.ufo --left A --right V --set -80
+```
+
+Four rules make them safe to run across a library:
+
+- **A designspace stands for its sources.** One path names a whole
+  family, and a source two masters share is opened once.
+- **`--dry-run` writes nothing and exits 1 when there is work
+  waiting.** Nothing means exit 0, so a script can tell the two apart.
+- **A source is written only when it changed.** An operation that
+  finds nothing to do leaves the bytes alone, so a sweep does not
+  churn a repository.
+- **`--json` on every command**, with the names of the glyphs that
+  changed, so an agent can read the result rather than parse a table.
+
+Exit codes are 0 ok, 1 findings, 2 usage, 4 failed, matching
+[font-ml][fml] so the two are driven the same way.
+
+Across a library, with a check first and the work in parallel:
+
+```sh
+# What would change, family by family, without touching anything.
+for ds in ~/fonts/*/sources/*.designspace; do
+  runebender clean --dry-run --json "$ds"
+done | jq -s 'map(select(.edits > 0)) | .[].sources[].source'
+
+# Then do it, eight at a time.
+ls ~/fonts/*/sources/*.designspace | xargs -P 8 -n 1 runebender clean
+```
+
 An operation you can only reach by opening a window is one a script, a
 build, or an agent cannot use.
 
@@ -56,7 +101,8 @@ src/
 │                joining (Arabic rules), buffer (the Text tool)
 ├── ui/          theme, theme_oklch, sidebar, editing/
 ├── testing/     fonts.rs, where the tests find Virtua Grotesk
-└── bin/runebender.rs the command line
+└── bin/runebender/ the command line: read.rs reports, edit.rs
+                 writes, sources.rs expands a designspace
 ```
 
 ## Checks

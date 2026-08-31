@@ -1,175 +1,21 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Font operations from a shell.
+//! The commands that read a font and report.
 //!
-//! The editor and this command run the same code: everything here is a
-//! thin shell over `runebender_core`, which is where the work lives.
-//! That is the point. An operation you can only reach by opening a
-//! window is one a script, a build, or an agent cannot use.
-//!
-//! Conventions match `font-ml`, so the two are driven the same way:
-//! `--json` on every command, and exit codes that separate a usage
-//! mistake from a real failure.
-//!
-//! Read-only by default. Commands that write a font say so.
+//! Nothing here writes. Each one loads a source, answers one
+//! question, and prints it as text or as JSON.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use clap::{Parser, Subcommand};
 use norad::Font;
 use runebender_core::document::font_ops;
 use runebender_core::{analysis::optical, analysis::spacing, outline::embolden};
 use serde_json::{Value, json};
 
-/// Exit codes, matching font-ml so a caller can branch on them.
-mod exit {
-    /// Ran, and the answer is yes or the work is done.
-    pub const OK: i32 = 0;
-    /// Ran, and the answer is no. Reserved for checks.
-    pub const FINDINGS: i32 = 1;
-    /// The command was wrong: bad path, unknown glyph, missing flag.
-    pub const USAGE: i32 = 2;
-    /// The command was right and the work failed.
-    pub const FAILED: i32 = 4;
-}
+use crate::shell::{emit, exit, fail, open};
 
-#[derive(Parser)]
-#[command(
-    name = "runebender",
-    about = "Font operations from a shell",
-    long_about = "Font operations from a shell.\n\nThe same code the \
-                  Runebender editor runs. Every command takes --json.\n\n\
-                  Exit codes: 0 ok, 1 findings, 2 usage, 4 failed."
-)]
-struct Cli {
-    /// Machine-readable output.
-    #[arg(long, global = true)]
-    json: bool,
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// What a source holds: glyphs, masters, unicodes.
-    Info {
-        /// A .ufo directory.
-        source: PathBuf,
-    },
-    /// Measure one glyph: contours, points, advance, sidebearings.
-    Measure {
-        /// A .ufo directory.
-        source: PathBuf,
-        /// Glyph name.
-        #[arg(long)]
-        glyph: String,
-    },
-    /// Find glyphs that read darker or lighter than the rest.
-    Color {
-        /// A .ufo directory.
-        source: PathBuf,
-        /// How far off the group's median counts, as a fraction.
-        #[arg(long, default_value = "0.15")]
-        tolerance: f64,
-    },
-    /// Learn how much weight a heavier master adds, from glyphs drawn
-    /// in both, and report what it would do to the rest.
-    Bolden {
-        /// The lighter master.
-        #[arg(long)]
-        from: PathBuf,
-        /// The heavier master, part-drawn.
-        #[arg(long)]
-        to: PathBuf,
-        /// Glyphs to learn from. Defaults to n,o,H,O.
-        #[arg(long, value_delimiter = ',')]
-        references: Option<Vec<String>>,
-        /// Glyphs to report on. Defaults to every one still identical
-        /// in both masters, which is the work not yet done.
-        #[arg(long, value_delimiter = ',')]
-        glyphs: Option<Vec<String>>,
-        /// Stop after this many.
-        #[arg(long, default_value = "40")]
-        limit: usize,
-        /// Score the learned offset against glyphs drawn in both
-        /// masters instead of listing what is undrawn.
-        #[arg(long)]
-        check: bool,
-    },
-    /// Find sidebearings off the grid the family is drawn on.
-    Spacing {
-        /// A .ufo directory.
-        source: PathBuf,
-        /// Grid step in units. Inferred from the font when not given.
-        #[arg(long)]
-        step: Option<f64>,
-    },
-    /// Compare two masters for interpolation compatibility.
-    Check {
-        /// The lighter master.
-        #[arg(long)]
-        a: PathBuf,
-        /// The heavier master.
-        #[arg(long)]
-        b: PathBuf,
-        /// Stop after this many mismatches.
-        #[arg(long, default_value = "20")]
-        limit: usize,
-    },
-}
-
-fn main() -> std::process::ExitCode {
-    let cli = Cli::parse();
-    let code = match &cli.command {
-        Command::Info { source } => info(source, cli.json),
-        Command::Measure { source, glyph } => measure(source, glyph, cli.json),
-        Command::Color { source, tolerance } => color(source, *tolerance, cli.json),
-        Command::Bolden {
-            from,
-            to,
-            references,
-            glyphs,
-            limit,
-            check,
-        } => bolden(
-            from,
-            to,
-            references.as_deref(),
-            glyphs.as_deref(),
-            *limit,
-            *check,
-            cli.json,
-        ),
-        Command::Spacing { source, step } => spacing_cmd(source, *step, cli.json),
-        Command::Check { a, b, limit } => check(a, b, *limit, cli.json),
-    };
-    std::process::ExitCode::from(code as u8)
-}
-
-fn fail(json: bool, code: i32, message: &str) -> i32 {
-    if json {
-        println!("{}", json!({ "ok": false, "error": message }));
-    } else {
-        eprintln!("{message}");
-    }
-    code
-}
-
-fn emit(json: bool, value: Value, plain: impl FnOnce()) -> i32 {
-    if json {
-        println!("{value}");
-    } else {
-        plain();
-    }
-    exit::OK
-}
-
-fn open(path: &Path, json: bool) -> Result<Font, i32> {
-    Font::load(path).map_err(|e| fail(json, exit::USAGE, &format!("{}: {e}", path.display())))
-}
-
-fn info(source: &Path, json: bool) -> i32 {
+pub(crate) fn info(source: &Path, json: bool) -> i32 {
     let font = match open(source, json) {
         Ok(f) => f,
         Err(code) => return code,
@@ -204,7 +50,29 @@ fn info(source: &Path, json: bool) -> i32 {
     )
 }
 
-fn measure(source: &Path, name: &str, json: bool) -> i32 {
+/// Every glyph name in a source, one per line.
+///
+/// The plain form is meant to be piped: `runebender glyphs Font.ufo |
+/// xargs -P 8 -I{} runebender measure Font.ufo --glyph {}`.
+pub(crate) fn glyphs(source: &Path, json: bool) -> i32 {
+    let font = match open(source, json) {
+        Ok(f) => f,
+        Err(code) => return code,
+    };
+    let mut names: Vec<String> = font
+        .default_layer()
+        .iter()
+        .map(|g| g.name().to_string())
+        .collect();
+    names.sort();
+    emit(json, json!({ "ok": true, "glyphs": names.clone() }), || {
+        for name in &names {
+            println!("{name}");
+        }
+    })
+}
+
+pub(crate) fn measure(source: &Path, name: &str, json: bool) -> i32 {
     let font = match open(source, json) {
         Ok(f) => f,
         Err(code) => return code,
@@ -243,7 +111,7 @@ fn measure(source: &Path, name: &str, json: bool) -> i32 {
 /// Glyphs are compared within their own case, because lowercase and
 /// uppercase fill their boxes differently and comparing across them
 /// would flag the whole alphabet.
-fn color(source: &Path, tolerance: f64, json: bool) -> i32 {
+pub(crate) fn color(source: &Path, tolerance: f64, json: bool) -> i32 {
     let font = match open(source, json) {
         Ok(f) => f,
         Err(code) => return code,
@@ -324,7 +192,7 @@ fn color(source: &Path, tolerance: f64, json: bool) -> i32 {
 /// Reports rather than writes. Seeing the offset and the list first is
 /// the difference between a tool you can trust with a font and one you
 /// run once and then undo.
-fn bolden(
+pub(crate) fn bolden(
     from: &Path,
     to: &Path,
     references: Option<&[String]>,
@@ -543,7 +411,7 @@ fn bolden_check(
 }
 
 /// Spacing against the family's own grid.
-fn spacing_cmd(source: &Path, step: Option<f64>, json: bool) -> i32 {
+pub(crate) fn spacing_cmd(source: &Path, step: Option<f64>, json: bool) -> i32 {
     let font = match open(source, json) {
         Ok(f) => f,
         Err(code) => return code,
@@ -611,7 +479,7 @@ fn spacing_cmd(source: &Path, step: Option<f64>, json: bool) -> i32 {
 
 /// Interpolation compatibility, the check that costs the most to get
 /// wrong: a mismatch here is invisible until the family stops building.
-fn check(a: &Path, b: &Path, limit: usize, json: bool) -> i32 {
+pub(crate) fn check(a: &Path, b: &Path, limit: usize, json: bool) -> i32 {
     let (fa, fb) = match (open(a, json), open(b, json)) {
         (Ok(x), Ok(y)) => (x, y),
         (Err(code), _) | (_, Err(code)) => return code,
@@ -696,24 +564,5 @@ mod tests {
         let a = glyph("a", &[4, 4]);
         let b = glyph("a", &[4, 4]);
         assert_eq!(font_ops::glyph_signature(&a), font_ops::glyph_signature(&b));
-    }
-
-    /// Exit codes are the interface for a script, so they are pinned.
-    /// A caller branching on 1 (findings) versus 2 (usage) is the whole
-    /// reason to separate them.
-    #[test]
-    fn exit_codes_are_distinct() {
-        let codes = [exit::OK, exit::FINDINGS, exit::USAGE, exit::FAILED];
-        let mut sorted = codes.to_vec();
-        sorted.sort_unstable();
-        sorted.dedup();
-        assert_eq!(sorted.len(), codes.len(), "exit codes must not collide");
-        assert_eq!(exit::OK, 0, "0 must mean success");
-    }
-
-    #[test]
-    fn the_cli_parses() {
-        use clap::CommandFactory;
-        Cli::command().debug_assert();
     }
 }

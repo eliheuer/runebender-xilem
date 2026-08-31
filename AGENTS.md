@@ -8,7 +8,7 @@ submit a change.
 
 ## What this is
 
-The editing engine behind the Runebender font editor, with no
+The font library behind the Runebender font editor, with no
 interface. One rule decides what belongs here: if an operation
 changes a font, or reads one to answer a question, it lives in this
 crate. The front-ends own the window, the input, and the drawing.
@@ -31,9 +31,24 @@ belongs in it. Read those six comments first.
 | `document/` | `Master`, `Project`, interpolation, composites, `model/` |
 | `text/` | `shape` (harfrust), `joining` (Arabic rules), `buffer` (the Text tool) |
 | `ui/` | themes, sidebar data, `editing/` (selection, undo, viewport) |
+| `bin/runebender/` | the command line: `read` reports, `edit` writes, `sources` expands a designspace |
 
 Paths follow the tree: `runebender_core::outline::glyph_ops`. There
 are no re-exports at the root except three types.
+
+## The command line
+
+`runebender` is a front-end held to the same rule as the editors: it
+parses arguments and prints, and calls the library for the work. A
+new command wraps a function that already exists. If the wrapper
+needs logic of its own, that logic belongs in the library.
+
+Editing commands share the `Edit` arguments and the `edit::run`
+driver, so every one of them takes any number of UFOs or
+designspaces, `--glyphs`, `--dry-run`, and `--out`. The driver writes
+a source only when the operation changed it, and a dry run exits 1
+when there is work waiting. Keep both: batch scripts and agents
+depend on them.
 
 ## Build and test
 
