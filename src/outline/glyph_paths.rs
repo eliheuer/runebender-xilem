@@ -1,5 +1,5 @@
 // Copyright 2026 the Runebender Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Norad glyph contours → kurbo `BezPath`, shared by all Runebender
 //! editors. Components resolve recursively through the font.

@@ -1,5 +1,5 @@
 // Copyright 2026 the Runebender Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! UFO `public.markColor` parsing and validation. The palette itself
 //! lives in the shared theme (`theme_oklch`), which also owns label

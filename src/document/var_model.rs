@@ -1,5 +1,5 @@
 // Copyright 2026 the Runebender Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Designspace interpolation: a port of fontTools' `VariationModel`
 //! (the same algorithm Fontra's `var-model.js` implements), plus the

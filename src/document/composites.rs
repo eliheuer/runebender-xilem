@@ -1,5 +1,5 @@
 // Copyright 2026 the Runebender Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Component anchor alignment: marks placed by `_top`/`top` anchor
 //! pairs follow their base. This is how Glyphs aligns components. A

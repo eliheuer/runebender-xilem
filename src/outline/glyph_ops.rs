@@ -1,5 +1,5 @@
 // Copyright 2026 the Runebender Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! UI-free editing operations on norad glyphs, shared by all
 //! Runebender editors. Everything here takes plain norad types; the

@@ -1,5 +1,5 @@
 // Copyright 2025 the Runebender Xilem Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Undo and redo stacks for edit operations.
 

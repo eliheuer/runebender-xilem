@@ -96,7 +96,7 @@ the hyperbezier solver.
 
 ## License
 
-Apache-2.0.
+Apache-2.0 OR MIT, the Linebender convention.
 
 [rb]: https://runebender.org
 [gpui]: https://github.com/eliheuer/runebender-gpui

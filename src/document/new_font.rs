@@ -1,5 +1,5 @@
 // Copyright 2026 the Runebender Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! A blank UFO set up the way Google Fonts expects, with the GF Latin
 //! Core glyph set as empty encoded glyphs. This is File > New Font in

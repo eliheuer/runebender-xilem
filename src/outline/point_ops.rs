@@ -1,5 +1,5 @@
 // Copyright 2026 the Runebender Authors
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Moving selected points, ported from the web editor's select-tool
 //! translate (`translate_and_snap_in_path_with_handles` and friends in
