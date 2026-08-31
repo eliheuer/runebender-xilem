@@ -3,7 +3,7 @@
 [![CI](https://github.com/eliheuer/runebender-xilem/actions/workflows/ci.yml/badge.svg)](https://github.com/eliheuer/runebender-xilem/actions/workflows/ci.yml)
 
 A font editor built on [Xilem](https://github.com/linebender/xilem) and
-the Linebender stack. It shares its editing engine,
+the Linebender stack. It shares its font library,
 [runebender-core](https://github.com/eliheuer/runebender-core), with
 [runebender-gpui](https://github.com/eliheuer/runebender-gpui), the
 main Runebender editor.
