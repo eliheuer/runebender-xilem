@@ -5,7 +5,3 @@
 
 # Agent worktrees
 .claude/worktrees/
-
-# Headless render output
-/screenshots/*.png
-!/screenshots/.keep
