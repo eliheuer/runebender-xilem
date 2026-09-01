@@ -741,7 +741,7 @@ impl Session {
 
     pub(crate) fn set_mark(&mut self, label: Option<&str>) {
         self.record(EditType::Normal);
-        runebender_core::ui::theme_oklch::set_glyph_mark(&mut self.glyph, label);
+        runebender_core::ui::theme::set_glyph_mark(&mut self.glyph, label);
     }
 
     /// The contours to copy: the ones holding a selected point, or every

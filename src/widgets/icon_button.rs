@@ -15,7 +15,7 @@ use masonry::core::{
 use masonry::imaging::Painter;
 use masonry::kurbo::{Affine, Axis, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-use runebender_core::ui::theme_oklch::toolbar_icons;
+use runebender_core::ui::theme::toolbar_icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
