@@ -32,10 +32,15 @@ use edit::Edit;
     name = "runebender-core",
     about = "Font operations from a shell",
     long_about = "Font operations from a shell.\n\nThe same code the \
-                  Runebender editor runs. Every command takes --json.\n\n\
-                  Editing commands take any number of UFOs or \
-                  designspaces, and --dry-run.\n\n\
-                  Exit codes: 0 ok, 1 findings, 2 usage, 4 failed."
+                  Runebender editor runs, without a window.\n\n\
+                  info, glyphs, color, spacing and bolden read a font \
+                  and report. The rest change a font and save it: they \
+                  take any number of UFOs or designspaces, a --glyphs \
+                  filter, and --dry-run, which writes nothing and \
+                  exits 1 when there is work waiting.\n\n\
+                  Every command takes --json. Exit codes: 0 ok, \
+                  1 findings, 2 usage, 4 failed.\n\n\
+                  `runebender-core help <command>` explains one."
 )]
 struct Cli {
     /// Machine-readable output.
@@ -56,14 +61,6 @@ enum Command {
     Glyphs {
         /// A .ufo directory.
         source: PathBuf,
-    },
-    /// Measure one glyph: contours, points, advance, sidebearings.
-    Measure {
-        /// A .ufo directory.
-        source: PathBuf,
-        /// Glyph name.
-        #[arg(long)]
-        glyph: String,
     },
     /// Find glyphs that read darker or lighter than the rest.
     Color {
@@ -104,18 +101,6 @@ enum Command {
         /// Grid step in units. Inferred from the font when not given.
         #[arg(long)]
         step: Option<f64>,
-    },
-    /// Compare two masters for interpolation compatibility.
-    Check {
-        /// The lighter master.
-        #[arg(long)]
-        a: PathBuf,
-        /// The heavier master.
-        #[arg(long)]
-        b: PathBuf,
-        /// Stop after this many mismatches.
-        #[arg(long, default_value = "20")]
-        limit: usize,
     },
     /// Tidy contours, correct directions, round coordinates.
     Clean {
@@ -213,7 +198,6 @@ fn main() -> std::process::ExitCode {
     let code = match &cli.command {
         Command::Info { source } => read::info(source, json),
         Command::Glyphs { source } => read::glyphs(source, json),
-        Command::Measure { source, glyph } => read::measure(source, glyph, json),
         Command::Color { source, tolerance } => read::color(source, *tolerance, json),
         Command::Bolden {
             from,
@@ -232,7 +216,6 @@ fn main() -> std::process::ExitCode {
             json,
         ),
         Command::Spacing { source, step } => read::spacing_cmd(source, *step, json),
-        Command::Check { a, b, limit } => read::check(a, b, *limit, json),
         Command::Clean {
             edit,
             tidy,

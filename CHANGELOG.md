@@ -21,6 +21,13 @@ and this section stays open.
 - `runebender-core glyphs`, which lists glyph names one per line for
   piping into `xargs`.
 
+### Removed
+
+- `measure` and `check`. `measure` reported what the editor shows and
+  fontTools prints in a line. `check` compared point signatures
+  across two masters, which `fonttools varLib.interpolatable` does
+  more thoroughly across a whole designspace.
+
 ### Changed
 
 - The command line is behind a `cli` feature, on by default. Editors

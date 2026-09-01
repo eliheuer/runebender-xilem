@@ -24,8 +24,8 @@ As a command:
 cargo install --git https://github.com/eliheuer/runebender-core
 
 runebender-core info Font.ufo
-runebender-core measure Font.ufo --glyph eight
-runebender-core check --a Light.ufo --b Bold.ufo
+runebender-core color Font.ufo
+runebender-core spacing Font.ufo
 ```
 
 Those read. These edit, and take any number of UFOs or designspaces:
