@@ -52,11 +52,11 @@ depend on them.
 
 ## The interface
 
-`DESIGN.md` is the shared design document for both editors: the token
-rule, the canvas and the chrome, the wording of interface text, and
-the mistakes worth knowing by name. Read it before changing anything
-a person looks at. The tokens themselves are
-`themes/runebender.theme.json` and `src/ui/theme.rs`.
+This crate holds the theme tokens every editor resolves:
+`themes/runebender.theme.json` and `src/ui/theme.rs`. How they are
+used, and what a good interface change looks like, is `DESIGN.md` in
+each editor. Adding a token here means giving it a value in all four
+themes.
 
 ## Features
 
