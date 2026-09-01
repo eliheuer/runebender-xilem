@@ -10,8 +10,8 @@ use std::path::Path;
 
 use norad::Font;
 use runebender_core::document::font_ops;
-use runebender_core::{analysis::optical, analysis::spacing, outline::embolden};
-use serde_json::{Value, json};
+use runebender_core::outline::embolden;
+use serde_json::json;
 
 use crate::shell::{emit, exit, fail, open};
 
@@ -70,82 +70,6 @@ pub(crate) fn glyphs(source: &Path, json: bool) -> i32 {
             println!("{name}");
         }
     })
-}
-
-pub(crate) fn color(source: &Path, tolerance: f64, json: bool) -> i32 {
-    let font = match open(source, json) {
-        Ok(f) => f,
-        Err(code) => return code,
-    };
-    let x_height = font.font_info.x_height.unwrap_or(0.0);
-    let cap_height = font.font_info.cap_height.unwrap_or(0.0);
-    if x_height <= 0.0 || cap_height <= 0.0 {
-        return fail(
-            json,
-            exit::USAGE,
-            "the source needs xHeight and capHeight in fontinfo",
-        );
-    }
-    let mut lower = Vec::new();
-    let mut upper = Vec::new();
-    for glyph in font.default_layer().iter() {
-        let Some(c) = glyph.codepoints.iter().next() else {
-            continue;
-        };
-        if c.is_lowercase() {
-            lower.push(glyph.name().to_string());
-        } else if c.is_uppercase() {
-            upper.push(glyph.name().to_string());
-        }
-    }
-    let mut found = optical::outliers(&font, &lower, x_height, tolerance, "lowercase");
-    found.extend(optical::outliers(
-        &font,
-        &upper,
-        cap_height,
-        tolerance,
-        "uppercase",
-    ));
-    let ok = found.is_empty();
-    if json {
-        let items: Vec<Value> = found
-            .iter()
-            .map(|o| {
-                json!({
-                    "glyph": o.glyph, "group": o.group,
-                    "ratio": (o.ratio * 1000.0).round() / 1000.0,
-                    "density": (o.density * 10000.0).round() / 10000.0,
-                    "median": (o.median * 10000.0).round() / 10000.0,
-                    "reads": if o.ratio > 1.0 { "darker" } else { "lighter" },
-                })
-            })
-            .collect();
-        println!(
-            "{}",
-            json!({
-                "ok": ok, "tolerance": tolerance,
-                "compared": lower.len() + upper.len(), "findings": items,
-            })
-        );
-    } else if ok {
-        println!(
-            "{} glyphs compared, none more than {:.0}% off",
-            lower.len() + upper.len(),
-            tolerance * 100.0
-        );
-    } else {
-        for o in &found {
-            let dir = if o.ratio > 1.0 { "darker" } else { "lighter" };
-            println!(
-                "{:<20} {:>6.1}% {dir} than the {} median",
-                o.glyph,
-                (o.ratio - 1.0).abs() * 100.0,
-                o.group
-            );
-        }
-        println!("{} of {} compared", found.len(), lower.len() + upper.len());
-    }
-    if ok { exit::OK } else { exit::FINDINGS }
 }
 
 /// What the reference glyphs say the heavier master should do.
@@ -369,71 +293,4 @@ fn bolden_check(
         );
     }
     exit::OK
-}
-
-/// Spacing against the family's own grid.
-pub(crate) fn spacing_cmd(source: &Path, step: Option<f64>, json: bool) -> i32 {
-    let font = match open(source, json) {
-        Ok(f) => f,
-        Err(code) => return code,
-    };
-    let sides = spacing::sidebearings(&font);
-    let Some(step) = step.or_else(|| spacing::infer_step(&sides)) else {
-        return fail(
-            json,
-            exit::USAGE,
-            "no grid step fits this spacing; pass --step to check against one",
-        );
-    };
-    let found = spacing::off_grid(&sides, step);
-    let ok = found.is_empty();
-    if json {
-        let items: Vec<Value> = found
-            .iter()
-            .map(|o| {
-                json!({
-                    "glyph": o.glyph, "side": o.side,
-                    "value": o.value, "offBy": o.off_by,
-                })
-            })
-            .collect();
-        println!(
-            "{}",
-            json!({
-                "ok": ok, "step": step, "glyphs": sides.len(), "findings": items,
-            })
-        );
-    } else if ok {
-        println!(
-            "{} glyphs on a {step:.0}-unit grid, none off it",
-            sides.len()
-        );
-    } else {
-        for o in &found {
-            println!(
-                "{:<22} {:<5} {:>7.1}  off by {:>+5.1}",
-                o.glyph, o.side, o.value, o.off_by
-            );
-        }
-        println!(
-            "{} of {} sidebearings off the {step:.0}-unit grid",
-            found.len(),
-            sides.len() * 2
-        );
-        // Findings that all sit exactly half a step out are not drift.
-        // They are a family using a finer grid than the one inferred.
-        let half = found
-            .iter()
-            .filter(|o| (o.off_by.abs() - step / 2.0).abs() < 0.01)
-            .count();
-        if half * 10 >= found.len() * 6 {
-            println!(
-                "{half} of them are exactly half a step out, so this family \
-                 may be drawn on {:.0}s: try --step {:.0}",
-                step / 2.0,
-                step / 2.0
-            );
-        }
-    }
-    if ok { exit::OK } else { exit::FINDINGS }
 }

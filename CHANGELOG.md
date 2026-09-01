@@ -27,6 +27,11 @@ and this section stays open.
   fontTools prints in a line. `check` compared point signatures
   across two masters, which `fonttools varLib.interpolatable` does
   more thoroughly across a whole designspace.
+- `color` and `spacing`, with `analysis::optical` and
+  `analysis::spacing`. Both produced lists a designer had to ignore:
+  `color` flagged glyphs drawn denser on purpose, and `spacing`
+  reported every sidebearing against a grid it inferred from a font
+  that has none.
 
 ### Changed
 

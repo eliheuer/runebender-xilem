@@ -19,8 +19,8 @@
 //! - [`outline`]: what changes a shape. Point and segment edits, the
 //!   knife, cleanup, effects, conversion, emboldening, and the
 //!   segment maths in `outline::path`.
-//! - [`analysis`]: what reads a font. Measurement, optical weight,
-//!   spacing, curvature, categories, search.
+//! - [`analysis`]: what reads a font. Measurement, curvature,
+//!   categories, search.
 //! - [`formats`]: lib keys, and every format besides UFO.
 //! - [`document`]: the open font and its family. `Master`, `Project`,
 //!   interpolation, composites, in-memory fonts.

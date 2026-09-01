@@ -33,8 +33,7 @@ use edit::Edit;
     about = "Font operations from a shell",
     long_about = "Font operations from a shell.\n\nThe same code the \
                   Runebender editor runs, without a window.\n\n\
-                  info, glyphs, color, spacing and bolden read a font \
-                  and report. The rest change a font and save it: they \
+                  info, glyphs and bolden read a font and report. The rest change a font and save it: they \
                   take any number of UFOs or designspaces, a --glyphs \
                   filter, and --dry-run, which writes nothing and \
                   exits 1 when there is work waiting.\n\n\
@@ -62,14 +61,6 @@ enum Command {
         /// A .ufo directory.
         source: PathBuf,
     },
-    /// Find glyphs that read darker or lighter than the rest.
-    Color {
-        /// A .ufo directory.
-        source: PathBuf,
-        /// How far off the group's median counts, as a fraction.
-        #[arg(long, default_value = "0.15")]
-        tolerance: f64,
-    },
     /// Learn how much weight a heavier master adds, from glyphs drawn
     /// in both, and report what it would do to the rest.
     Bolden {
@@ -93,14 +84,6 @@ enum Command {
         /// masters instead of listing what is undrawn.
         #[arg(long)]
         check: bool,
-    },
-    /// Find sidebearings off the grid the family is drawn on.
-    Spacing {
-        /// A .ufo directory.
-        source: PathBuf,
-        /// Grid step in units. Inferred from the font when not given.
-        #[arg(long)]
-        step: Option<f64>,
     },
     /// Tidy contours, correct directions, round coordinates.
     Clean {
@@ -198,7 +181,6 @@ fn main() -> std::process::ExitCode {
     let code = match &cli.command {
         Command::Info { source } => read::info(source, json),
         Command::Glyphs { source } => read::glyphs(source, json),
-        Command::Color { source, tolerance } => read::color(source, *tolerance, json),
         Command::Bolden {
             from,
             to,
@@ -215,7 +197,6 @@ fn main() -> std::process::ExitCode {
             *check,
             json,
         ),
-        Command::Spacing { source, step } => read::spacing_cmd(source, *step, json),
         Command::Clean {
             edit,
             tidy,
