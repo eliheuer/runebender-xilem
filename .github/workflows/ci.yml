@@ -86,3 +86,18 @@ jobs:
       # fails here until it is vetted or exempted on purpose.
       - name: cargo vet
         run: cargo vet --locked
+
+  advisories:
+    name: security advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2
+      # RustSec advisories against anything in the lock file. Unlike
+      # the rest of CI this can go red without a change of ours, when
+      # an advisory is published; that is the point of it.
+      - name: cargo deny check advisories
+        run: cargo deny --locked check advisories

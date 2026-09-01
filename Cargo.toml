@@ -87,7 +87,7 @@ skrifa = "0.44"
 # The web editor's autotracer, pinned to git like runebender-web.
 img2bez = { git = "https://github.com/eliheuer/img2bez", rev = "23073ca08ecdac61ad0e838bfae49a590bc2c7cc", default-features = false }
 plist = { version = "1.4", features = ["serde"] }
-quick-xml = { version = "0.38", features = ["serialize"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
 # Structured metadata shared over serde_json between core and UI hosts.
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.151"
