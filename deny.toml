@@ -1,0 +1,21 @@
+# Security advisories. cargo-vet, in supply-chain/, reviews where a
+# dependency came from; this asks whether anyone has published a
+# vulnerability against it. Neither replaces the other.
+#
+# A vulnerability fails the build. Unmaintained crates are reported
+# only for what this repository depends on directly: the rest sit
+# under crates we do not control, so failing on them would mean a red
+# build nobody here can turn green.
+#
+# To silence one deliberately, add its id below with a line saying
+# why and what would let it go.
+
+[advisories]
+unmaintained = "workspace"
+ignore = [
+  # quick-xml 0.38 reaches us through norad, which pins it. Our own
+  # dependency is on 0.41, which is fixed. Remove these when norad
+  # releases against 0.41 or later.
+  "RUSTSEC-2026-0194",
+  "RUSTSEC-2026-0195",
+]

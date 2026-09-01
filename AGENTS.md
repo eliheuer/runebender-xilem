@@ -133,7 +133,11 @@ The tokens themselves are `view/theme.rs` and `view/design.rs`.
 ## Supply chain and releases
 
 Dependencies are vetted with cargo-vet; `supply-chain/` holds the
-audits and exemptions, and CI runs `cargo vet --locked`. When you
+audits and exemptions, and CI runs `cargo vet --locked`. CI also runs
+`cargo deny check advisories`, which is the other half: vet says
+where a crate came from, deny says whether anyone has published a
+vulnerability against it. `deny.toml` holds the ignore list, one
+entry per advisory with the reason and what would let it go. When you
 add or bump a dependency, run `cargo vet` and record the result on
 purpose. Releases do not exist yet; `RELEASING.md` is the checklist
 for the first one, and user-visible changes go under `Unreleased`
