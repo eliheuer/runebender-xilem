@@ -2,13 +2,14 @@
 
 [![CI](https://github.com/eliheuer/runebender-xilem/actions/workflows/ci.yml/badge.svg)](https://github.com/eliheuer/runebender-xilem/actions/workflows/ci.yml)
 
-The [Runebender](https://runebender.org) font editor built on
-[Xilem](https://github.com/linebender/xilem), against upstream rather
-than a fork. It shares
-[runebender-core](https://github.com/eliheuer/runebender-core) with
+An alternative [Runebender](https://runebender.org) frontend GUI,
+built on [Xilem](https://github.com/linebender/xilem). Everything
+else is in
+[Runebender-Core](https://github.com/eliheuer/runebender-core).
+
+This one is behind
 [Runebender-GPUI](https://github.com/eliheuer/runebender-gpui), the
-main editor: the same editor built twice, so that what differs is the
-framework. This one is behind the GPUI build.
+primary frontend.
 
 ## Use
 
