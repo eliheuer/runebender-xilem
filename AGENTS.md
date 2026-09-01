@@ -19,7 +19,7 @@ making does font work with no Xilem in it, it belongs in core.
 
 It builds against upstream Xilem pinned to a revision, not a fork.
 Where Xilem has no answer for something the editor needs, the answer
-lives here in application code, and `XILEM-GAPS.md` records it.
+lives here in application code, and `docs/XILEM-GAPS.md` records it.
 
 ## Layout
 
