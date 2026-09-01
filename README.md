@@ -112,9 +112,21 @@ src/
 
 ## Checks
 
-CI runs `cargo fmt --check`, `cargo clippy --all-targets` and
-`cargo doc` with warnings denied, and the tests on Linux and macOS
-and at the minimum Rust. `unsafe` is forbidden in the manifest.
+The badge at the top is the result of these, on `main`:
+
+- `cargo fmt --check`, so formatting is never a review topic.
+- `cargo clippy --all-targets`, warnings denied. Tests and the
+  binary are linted too, not just the library.
+- `cargo doc --no-deps`, warnings denied. With `missing_docs` in the
+  manifest, a public item without a doc comment fails the build, and
+  so does a broken intra-doc link.
+- `cargo test` on Linux and macOS, and again at the minimum Rust in
+  `Cargo.toml`, so a newer language feature cannot slip in unnoticed.
+- `cargo vet --locked`, so a new dependency fails until it is
+  audited or exempted on purpose.
+
+`unsafe` is forbidden in the manifest, which is the compiler's job
+rather than CI's.
 
 The tests load Virtua Grotesk from
 [its own repository](https://github.com/eliheuer/virtua-grotesk),
