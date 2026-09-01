@@ -272,7 +272,7 @@ mod platform {
     /// Not yet: muda's menu bar needs a GTK window on Linux and an HWND
     /// on Windows, and Xilem hands out neither. Those platforms want an
     /// in-window menu bar on Masonry's layer system instead.
-    pub(super) fn install() {}
+    pub(crate) fn install() {}
 
     /// No menu ids exist off macOS, so nothing matches.
     pub(super) fn action_for(_id: &muda::MenuId) -> Option<AppAction> {
