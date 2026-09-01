@@ -23,7 +23,7 @@ masonry = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a
 # Pinned, like every other git dependency here. A floating branch makes
 # `cargo install --git` need --locked and makes two checkouts of the same
 # source possible if anything else names it by bare URL.
-runebender-core = { git = "https://github.com/eliheuer/runebender-core", rev = "403d51b4b4ab5e335843d11d7fd4d669be68cee0" }
+runebender-core = { git = "https://github.com/eliheuer/runebender-core", rev = "403d51b4b4ab5e335843d11d7fd4d669be68cee0", default-features = false }
 norad = "0.18"
 kurbo = "0.13"
 linesweeper = "0.4"
@@ -35,12 +35,13 @@ muda = "0.19"
 notify = "8"
 # Headless rendering, for review screenshots and for agents to see their
 # own output. Upstream Xilem has no such path, so this is app-side.
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "1", features = ["rt", "time"] }
 # The headless renderer. masonry_testing would be less code, but it
 # builds its RenderRoot with system fonts turned off, so screenshots of
 # anything outside the default font come out blank. See src/screenshot.rs.
 imaging_vello_cpu = "0.0.1"
-image = "0.25"
+# Writing the screenshot. PNG is the only format it needs.
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [dev-dependencies]
 # Still the right tool for widget tests, where a fixed font and no system
