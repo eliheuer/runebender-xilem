@@ -77,9 +77,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # Pinned: the store is written by whichever version formats it,
+      # and an older cargo-vet rejects a newer one's formatting.
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-vet
+          tool: cargo-vet@0.10.2
       # Audits and exemptions live in supply-chain/. A new dependency
       # fails here until it is vetted or exempted on purpose.
       - name: cargo vet
