@@ -72,6 +72,12 @@ the libraries winit and Vello link against.
 CI's stable can be newer than yours. If clippy passes locally and
 fails there, run it under the toolchain CI reports.
 
+## The interface
+
+`DESIGN.md` says how to change what a person looks at: the shared
+rules live in runebender-core, and this repository's file covers what
+is specific to the framework. The tokens are view/theme.rs and view/design.rs.
+
 ## Conventions
 
 - Call `theme::` accessors instead of naming a colour, and the
