@@ -29,7 +29,13 @@ use crate::{Tool, Workspace};
 /// Workspace-level actions a shortcut or a menu item can fire.
 // Some variants are only constructed by the menu table, which the
 // native menu bar reads, and that exists on macOS.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(
+    not(target_os = "macos"),
+    allow(
+        dead_code,
+        reason = "the menu table is read by the native menu bar, which is macOS only"
+    )
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AppAction {
     Save,
