@@ -87,7 +87,7 @@ fails there, run it under the toolchain CI reports.
   go in a `.cargo/config.toml` above the repositories.
 - Edition 2024. Line width 100.
 
-## Supply chain and releases
+## Supply chain
 
 Dependencies are vetted with cargo-vet; `supply-chain/` holds the
 audits and exemptions, and CI runs `cargo vet --locked`. CI also runs
@@ -96,9 +96,29 @@ where a crate came from, deny says whether anyone has published a
 vulnerability against it. `deny.toml` holds the ignore list, one
 entry per advisory with the reason and what would let it go. When you
 add or bump a dependency, run `cargo vet` and record the result on
-purpose. Releases do not exist yet; `RELEASING.md` is the checklist
-for the first one, and user-visible changes go under `Unreleased`
-in `CHANGELOG.md`.
+purpose.
+
+## Releases
+
+User-visible changes go under `Unreleased` in `CHANGELOG.md` as they
+land. No release exists yet. When the first one is cut:
+
+1. CI green on `main`.
+2. `cargo vet` and `cargo deny check advisories` clean.
+3. Move the `Unreleased` notes in `CHANGELOG.md` under the new
+   version heading, with the date.
+4. Bump `version` in `Cargo.toml`. Both editors pin this crate by git
+   revision, so bump their pins in the same session.
+5. Tag `vX.Y.Z`, push the tag, and make a GitHub release from it with
+   the changelog section as the body.
+
+Semantic Versioning from the first release; before 1.0, a breaking
+change bumps the minor version.
+
+Publishing to crates.io is not possible yet: `img2bez` and `spline`
+are git dependencies and crates.io rejects those. Until both are
+published or replaced, a release is a git tag and consumers install
+with `cargo install --git` at the tag.
 
 ## Git
 
