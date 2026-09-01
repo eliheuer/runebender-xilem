@@ -130,7 +130,7 @@ The tokens themselves are `view/theme.rs` and `view/design.rs`.
 - Core is pinned by git revision in `Cargo.toml`. Bump it when core
   changes.
 
-## Supply chain and releases
+## Supply chain
 
 Dependencies are vetted with cargo-vet; `supply-chain/` holds the
 audits and exemptions, and CI runs `cargo vet --locked`. CI also runs
@@ -139,9 +139,29 @@ where a crate came from, deny says whether anyone has published a
 vulnerability against it. `deny.toml` holds the ignore list, one
 entry per advisory with the reason and what would let it go. When you
 add or bump a dependency, run `cargo vet` and record the result on
-purpose. Releases do not exist yet; `RELEASING.md` is the checklist
-for the first one, and user-visible changes go under `Unreleased`
-in `CHANGELOG.md`.
+purpose.
+
+## Releases
+
+User-visible changes go under `Unreleased` in `CHANGELOG.md` as they
+land. No release exists yet. When the first one is cut:
+
+1. CI green on `main`.
+2. `cargo vet` and `cargo deny check advisories` clean.
+3. Pin `runebender-core` to that crate's release tag, not a loose
+   revision.
+4. Move the `Unreleased` notes in `CHANGELOG.md` under the new
+   version heading, with the date.
+5. Bump `version` in `Cargo.toml`, tag `vX.Y.Z`, and push the tag.
+6. Make a GitHub release from the tag with the changelog section as
+   the body.
+
+Semantic Versioning from the first release; before 1.0, a breaking
+change bumps the minor version.
+
+Xilem is a pinned git dependency, so this crate cannot be published
+to crates.io. A release is a git tag, and users install with
+`cargo install --git ... --tag vX.Y.Z`.
 
 ## Git
 

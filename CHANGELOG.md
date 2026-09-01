@@ -7,6 +7,5 @@ releases begin.
 
 ## [Unreleased]
 
-No releases yet. The first release is planned and `RELEASING.md`
-describes how it will be cut. Until then, `main` is the only line
-and this section stays open.
+No releases yet. `AGENTS.md` has the checklist for the first one.
+Until then, `main` is the only line and this section stays open.
