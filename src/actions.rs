@@ -34,7 +34,13 @@ use crate::{Tool, Workspace};
 /// and the action both the menu and the keymap fire. They cannot drift,
 /// because there is one of them.
 // Only the native menu bar reads the table, and that exists on macOS.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(
+    not(target_os = "macos"),
+    allow(
+        dead_code,
+        reason = "the menu table is read by the native menu bar, which is macOS only"
+    )
+)]
 pub(crate) struct Entry {
     /// Which menu it belongs under.
     pub menu: &'static str,
@@ -47,7 +53,13 @@ pub(crate) struct Entry {
 }
 
 /// Every action the application exposes, in menu order.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(
+    not(target_os = "macos"),
+    allow(
+        dead_code,
+        reason = "the menu table is read by the native menu bar, which is macOS only"
+    )
+)]
 pub(crate) const ACTIONS: &[Entry] = &[
     Entry {
         menu: "File",
@@ -166,7 +178,13 @@ pub(crate) const ACTIONS: &[Entry] = &[
 ];
 
 /// The order menus appear in the bar.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(
+    not(target_os = "macos"),
+    allow(
+        dead_code,
+        reason = "the menu table is read by the native menu bar, which is macOS only"
+    )
+)]
 const MENUS: &[&str] = &["File", "Edit", "Glyph", "View", "Tools"];
 
 #[cfg(target_os = "macos")]
@@ -254,9 +272,10 @@ mod platform {
     /// Not yet: muda's menu bar needs a GTK window on Linux and an HWND
     /// on Windows, and Xilem hands out neither. Those platforms want an
     /// in-window menu bar on Masonry's layer system instead.
-    pub fn install() {}
+    pub(super) fn install() {}
 
-    pub fn action_for(_id: &muda::MenuId) -> Option<AppAction> {
+    /// No menu ids exist off macOS, so nothing matches.
+    pub(super) fn action_for(_id: &muda::MenuId) -> Option<AppAction> {
         None
     }
 }
