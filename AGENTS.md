@@ -107,15 +107,5 @@ in `CHANGELOG.md`.
 
 ## Consumers
 
-`runebender-gpui` pins this crate by git revision in its `Cargo.toml`.
-After pushing a change here, bump that pin. `runebender-xilem` pins
-an older revision and does not follow the current paths.
-
-## Working alongside other agents
-
-Claims for in-flight work live in `.agents/active/`, one file per
-task, from `.agents/active/_template.md`. Before a non-trivial task,
-pull `main`, read the claims, write yours, and push it at once. Work
-in a git worktree under `~/Temp/worktrees/`. Delete the claim when
-you finish. A claim untouched for a day is stale; ask before taking
-it over.
+Both editors pin this crate by git revision in their `Cargo.toml`.
+After pushing a change here, bump both pins.
