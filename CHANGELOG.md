@@ -23,5 +23,9 @@ and this section stays open.
 
 ### Changed
 
+- The command line is behind a `cli` feature, on by default. Editors
+  depending on this crate with `default-features = false` no longer
+  build clap.
+
 - The binary is a directory, `src/bin/runebender/`, split into
   reading commands, editing commands, and source expansion.

@@ -50,6 +50,14 @@ a source only when the operation changed it, and a dry run exits 1
 when there is work waiting. Keep both: batch scripts and agents
 depend on them.
 
+## Features
+
+One feature, `cli`, on by default, carrying the command line and its
+only dependency, clap. The editors depend on this crate with
+`default-features = false`, so nothing that opens a window builds
+clap. Keep it that way: a dependency that only the binary needs goes
+behind this feature.
+
 ## Build and test
 
 ```sh

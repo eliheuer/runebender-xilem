@@ -10,6 +10,15 @@ repository = "https://github.com/eliheuer/runebender-core"
 [[bin]]
 name = "runebender-core"
 path = "src/bin/runebender/main.rs"
+required-features = ["cli"]
+
+[features]
+# The command line. On by default, so `cargo install` builds it.
+# The editors depend on this crate with default-features = false,
+# which keeps clap and its tree out of their builds: nothing in the
+# library uses it.
+default = ["cli"]
+cli = ["dep:clap"]
 
 [lints.rust]
 unsafe_code = "forbid"
@@ -22,7 +31,7 @@ path = "src/lib.rs"
 [dependencies]
 glyphslib = "0.2.7"
 linesweeper = "0.4"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive"], optional = true }
 norad = "0.18"
 # Reads compiled TTF/OTF outlines for `binary_import`.
 skrifa = "0.44"
