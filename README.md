@@ -1,4 +1,4 @@
-# Runebender-Xilem
+# Runebender Xilem
 
 [![CI](https://github.com/eliheuer/runebender-xilem/actions/workflows/ci.yml/badge.svg)](https://github.com/eliheuer/runebender-xilem/actions/workflows/ci.yml)
 
