@@ -7,8 +7,8 @@
 //! resolved to sRGB with the exact conversion the web generator uses:
 //! Björn Ottosson's Oklab matrices plus chroma-reducing gamut
 //! mapping, where a color outside sRGB keeps lightness and hue and
-//! loses chroma. The file moved here from runebender-web, which now
-//! reads the same copy.
+//! loses chroma. The file came from runebender-web, which keeps its
+//! own copy; that editor is retired, so this one is the live copy.
 
 use std::collections::HashMap;
 
