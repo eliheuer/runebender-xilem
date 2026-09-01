@@ -74,9 +74,10 @@ fails there, run it under the toolchain CI reports.
 
 ## The interface
 
-`DESIGN.md` says how to change what a person looks at: the shared
-rules live in runebender-core, and this repository's file covers what
-is specific to the framework. The tokens are view/theme.rs and view/design.rs.
+`DESIGN.md` says how to change what a person looks at: the token
+rule, the canvas and the chrome, how interface text is worded, and
+the mistakes worth knowing by name. Read it before touching a view.
+The tokens themselves are `view/theme.rs` and `view/design.rs`.
 
 ## Conventions
 
