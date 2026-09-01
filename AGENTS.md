@@ -44,6 +44,47 @@ Where the two editors differ: GPUI builds its input widgets in
 there is no wiring step and `recipes.rs` holds the view functions
 that repeat. `design.rs` is the design system Xilem does not ship.
 
+## Porting between the two editors
+
+The same editor is built twice, on GPUI and on Xilem. A feature that
+lands in one should be cheap to carry to the other, so the two share
+a file layout: the same concern lives at the same path in both, and
+a change is a diff you can read side by side.
+
+Mirror where the concern is shared. Diverge where the framework
+forces it, and say so in the file's own module comment. Do not force
+a match that costs either editor clarity.
+
+| Concern | Both |
+|---|---|
+| `main()` and the module list | `main.rs` |
+| The `Workspace` struct | `workspace.rs` |
+| Actions, the menu bar, the keymap | `actions.rs` |
+| The event loop and the first frame | `launch.rs` |
+| What the window shows | `view/` |
+| What the user does | `edit/` |
+| The world outside the window | `platform/` |
+| Toolkit pieces the framework lacks | `widgets/` |
+| The glyph canvas and the grid | `view/canvas/` |
+| One file per panel region | `view/panels/` |
+| Files, and reloading one master | `platform/host.rs` |
+| Watching for other writers | `platform/watch.rs` |
+
+Where they differ on purpose:
+
+| GPUI | Xilem | Why |
+|---|---|---|
+| `wiring.rs` | `view/recipes.rs` | GPUI builds input widgets once and subscribes. Xilem rebuilds views from state every frame, so there is nothing to wire; what repeats becomes a recipe. |
+| GPUI's own scale | `view/design.rs` | GPUI ships `px_1`, `text_xs`, `rounded_md`. Xilem takes a number wherever a measurement goes, so the scale is application code. |
+| `view/blur.rs` | none | GPUI blurs box shadows and nothing else, so the preview's blur is rasterized on the CPU. Vello blurs what it is asked to. |
+| `RB_OPEN_GLYPH` | `--bin screenshot` | Two ways to see a frame without clicking. Xilem has a headless render path; GPUI opens on a named glyph instead. |
+| `widgets/` | `widgets/` | Same directory, different contents: each toolkit is missing different things. |
+
+When one editor gets ahead, the port is: read the file at the same
+path in the repository that has the feature, and write the same
+decomposition here. If it needs a new file, give it the name the
+other one uses, so the next port in the other direction is a diff.
+
 ## Build and test
 
 ```sh
