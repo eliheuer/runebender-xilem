@@ -6632,5 +6632,14 @@ dependencies = [
  "winnow 1.0.4",
 ]
 
+[[patch.unused]]
+name = "masonry"
+version = "0.4.0"
 
+[[patch.unused]]
+name = "masonry_testing"
+version = "0.4.0"
 
+[[patch.unused]]
+name = "xilem"
+version = "0.4.0"

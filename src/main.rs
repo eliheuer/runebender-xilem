@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Runebender on xix. A font editor: glyph grid, glyph editor, sidebar.
-//! See PORT.md for what each slice forced into the framework.
+//! See `docs/XILEM-GAPS.md` for what this build costs against the
+//! same editor on GPUI.
 
 mod actions;
 mod edit;

@@ -6,7 +6,7 @@
 Two builds of one font editor, sharing an engine (`runebender-core`) and
 a design: this one on upstream Xilem, and `runebender-gpui` on GPUI plus
 `gpui-component`. The GPUI build is at near-parity with the web editor
-and tracks it in its own `PARITY.md`. This file records what stands
+and tracks what it is missing in its own `docs/ROADMAP.md`. This file records what stands
 between this build and that one, and separates three different things
 that all feel the same while you are working:
 
@@ -16,7 +16,7 @@ that all feel the same while you are working:
    framework does not carry.
 3. **Just unfinished.** Application work, nobody's fault but ours.
 
-Audited 2026-08-26 against runebender-gpui's `PARITY.md`.
+Audited 2026-08-26 against runebender-gpui.
 
 ## 1. Blockers
 

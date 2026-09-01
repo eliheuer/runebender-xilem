@@ -18,7 +18,7 @@
 //! file only exists because the editor is a hand-written Masonry widget
 //! and can therefore reach `create_layer` directly. An application that
 //! stayed in view-land could not do this at all, which is the gap worth
-//! recording (XILEM-GAPS.md).
+//! recording (docs/XILEM-GAPS.md).
 
 use std::sync::Arc;
 
