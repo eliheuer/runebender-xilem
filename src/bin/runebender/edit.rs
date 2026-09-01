@@ -23,7 +23,7 @@ use crate::sources;
 /// The options every editing command takes.
 ///
 /// Sources come first so a shell glob reads naturally:
-/// `runebender clean sources/*.ufo`.
+/// `runebender-core clean sources/*.ufo`.
 #[derive(clap::Args, Clone)]
 pub(crate) struct Edit {
     /// UFO directories or designspace files. A designspace stands for

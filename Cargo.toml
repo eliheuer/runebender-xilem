@@ -8,7 +8,7 @@ description = "The font library behind the Runebender font editor, with a comman
 repository = "https://github.com/eliheuer/runebender-core"
 
 [[bin]]
-name = "runebender"
+name = "runebender-core"
 path = "src/bin/runebender/main.rs"
 
 [lints.rust]

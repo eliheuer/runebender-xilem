@@ -13,12 +13,12 @@ and this section stays open.
 
 ### Added
 
-- Editing commands in the `runebender` binary: `clean`, `overlap`,
+- Editing commands in the `runebender-core` binary: `clean`, `overlap`,
   `offset`, `convert`, `realign`, `rename`, `unicode`, and `kern`.
   They take any number of UFOs or designspaces, a `--glyphs` filter,
   and `--dry-run`, so a font library can be swept from a shell script
   or by an agent.
-- `runebender glyphs`, which lists glyph names one per line for
+- `runebender-core glyphs`, which lists glyph names one per line for
   piping into `xargs`.
 
 ### Changed

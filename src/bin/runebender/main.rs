@@ -29,7 +29,7 @@ use edit::Edit;
 
 #[derive(Parser)]
 #[command(
-    name = "runebender",
+    name = "runebender-core",
     about = "Font operations from a shell",
     long_about = "Font operations from a shell.\n\nThe same code the \
                   Runebender editor runs. Every command takes --json.\n\n\

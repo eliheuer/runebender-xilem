@@ -12,7 +12,7 @@ The font library behind the Runebender font editor, with no
 interface. One rule decides what belongs here: if an operation
 changes a font, or reads one to answer a question, it lives in this
 crate. The front-ends own the window, the input, and the drawing.
-The `runebender` binary in `src/bin` exposes the same operations on
+The `runebender-core` binary in `src/bin` exposes the same operations on
 the command line.
 
 The in-memory font is `norad::Font`. Functions take norad types or
@@ -38,7 +38,7 @@ are no re-exports at the root except three types.
 
 ## The command line
 
-`runebender` is a front-end held to the same rule as the editors: it
+`runebender-core` is a front-end held to the same rule as the editors: it
 parses arguments and prints, and calls the library for the work. A
 new command wraps a function that already exists. If the wrapper
 needs logic of its own, that logic belongs in the library.

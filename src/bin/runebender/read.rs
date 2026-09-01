@@ -52,8 +52,8 @@ pub(crate) fn info(source: &Path, json: bool) -> i32 {
 
 /// Every glyph name in a source, one per line.
 ///
-/// The plain form is meant to be piped: `runebender glyphs Font.ufo |
-/// xargs -P 8 -I{} runebender measure Font.ufo --glyph {}`.
+/// The plain form is meant to be piped: `runebender-core glyphs Font.ufo |
+/// xargs -P 8 -I{} runebender-core measure Font.ufo --glyph {}`.
 pub(crate) fn glyphs(source: &Path, json: bool) -> i32 {
     let font = match open(source, json) {
         Ok(f) => f,
