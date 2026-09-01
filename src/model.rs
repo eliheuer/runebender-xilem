@@ -11,7 +11,7 @@ use std::sync::Arc;
 use kurbo::{BezPath, Rect};
 use runebender_core::analysis::category::GlyphCategory;
 use runebender_core::outline::glyph_paths;
-use runebender_core::ui::theme_oklch::{load_theme, mark_label_for_glyph};
+use runebender_core::ui::theme::{load_theme, mark_label_for_glyph};
 
 /// Everything the grid and previews need for one glyph, without touching norad.
 #[derive(Clone)]

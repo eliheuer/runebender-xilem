@@ -230,7 +230,7 @@ impl Workspace {
             if let Some(entry) = self.font.glyphs.get(i)
                 && let Some(mut g) = self.font.font.get_glyph(&entry.name).cloned()
             {
-                runebender_core::ui::theme_oklch::set_glyph_mark(&mut g, label.as_deref());
+                runebender_core::ui::theme::set_glyph_mark(&mut g, label.as_deref());
                 self.font.replace_glyph(i, g);
             }
         }

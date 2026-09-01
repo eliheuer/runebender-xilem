@@ -7,8 +7,8 @@
 //! not hand-map named tokens into a palette; the framework's theme should
 //! carry them and the widgets should read them.
 
-use runebender_core::ui::theme::ColorRgba;
-use runebender_core::ui::theme_oklch::{Theme as CoreTheme, load_theme};
+use runebender_core::ui::color::ColorRgba;
+use runebender_core::ui::theme::{Theme as CoreTheme, load_theme};
 use std::collections::HashMap;
 use xilem::Color;
 
