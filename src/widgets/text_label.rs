@@ -26,7 +26,7 @@ thread_local! {
 
 /// Horizontal anchor for a drawn label.
 #[derive(Clone, Copy, PartialEq)]
-pub enum Anchor {
+pub(crate) enum Anchor {
     Start,
     Middle,
     End,
@@ -34,7 +34,7 @@ pub enum Anchor {
 
 /// Draw `text` at screen point `at`, `size` px, in `color`.
 /// `anchor` positions the text horizontally; it is vertically centered.
-pub fn draw(
+pub(crate) fn draw(
     painter: &mut masonry::imaging::Painter<'_>,
     at: Point,
     text: &str,

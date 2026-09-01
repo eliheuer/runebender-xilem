@@ -4,6 +4,7 @@
 //! The sidebar's filters and the grid selection.
 
 use crate::*;
+use runebender_core::outline::glyph_paths::round_units;
 
 impl Workspace {
     /// The cells that pass the current search + category filter. The two
@@ -47,7 +48,7 @@ impl Workspace {
         match self.sort {
             Sort::Name => {}
             Sort::Unicode => {
-                out.sort_by_key(|c| c.codepoint.map(|cp| cp as u32).unwrap_or(u32::MAX))
+                out.sort_by_key(|c| c.codepoint.map(|cp| cp as u32).unwrap_or(u32::MAX));
             }
         }
         Arc::new(out)
@@ -155,7 +156,7 @@ impl Workspace {
             if !m.remove(&index) {
                 m.insert(index);
             }
-            self.multi_selected = std::sync::Arc::new(m);
+            self.multi_selected = Arc::new(m);
         } else if shift {
             // Range from the current single selection to this index, in cell order.
             let cells = self.filtered_cells();
@@ -167,10 +168,10 @@ impl Workspace {
             if let (Some(a), Some(b)) = (a, b) {
                 let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
                 let m: HashSet<usize> = order[lo..=hi].iter().copied().collect();
-                self.multi_selected = std::sync::Arc::new(m);
+                self.multi_selected = Arc::new(m);
             }
         } else {
-            self.multi_selected = std::sync::Arc::new(HashSet::new());
+            self.multi_selected = Arc::new(HashSet::new());
         }
         self.selected = Some(index);
         // The overview panel edits the highlighted cell, so its boxes
@@ -183,7 +184,7 @@ impl Workspace {
                 .codepoint
                 .map(|c| format!("{:04X}", c as u32))
                 .unwrap_or_default();
-            self.advance_buf = format!("{}", entry.advance as i64);
+            self.advance_buf = format!("{}", round_units(entry.advance));
         }
     }
 }

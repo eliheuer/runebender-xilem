@@ -6,6 +6,8 @@ rust-version = "1.96"
 license = "Apache-2.0 OR MIT"
 description = "The Runebender font editor on Xilem, mirroring runebender-gpui for a framework comparison"
 repository = "https://github.com/eliheuer/runebender-xilem"
+keywords = ["font", "editor", "typography", "ufo", "xilem"]
+categories = ["graphics", "text-editors"]
 publish = false
 
 [[bin]]
@@ -14,6 +16,53 @@ path = "src/main.rs"
 
 [lints.rust]
 unsafe_code = "forbid"
+
+# LINEBENDER LINT SET - Cargo.toml - v8
+# See https://linebender.org/wiki/canonical-lints/
+keyword_idents_2024 = "forbid"
+non_ascii_idents = "forbid"
+non_local_definitions = "forbid"
+unsafe_op_in_unsafe_fn = "forbid"
+
+elided_lifetimes_in_paths = "warn"
+missing_debug_implementations = "warn"
+trivial_numeric_casts = "warn"
+unnameable_types = "warn"
+unreachable_pub = "warn"
+unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+too_many_arguments = "allow"
+
+allow_attributes_without_reason = "warn"
+cast_possible_truncation = "warn"
+cast_possible_wrap = "warn"
+collection_is_never_read = "warn"
+default_trait_access = "warn"
+dbg_macro = "warn"
+debug_assert_with_mut_call = "warn"
+doc_markdown = "warn"
+fn_to_numeric_cast_any = "warn"
+infinite_loop = "warn"
+large_stack_arrays = "warn"
+mismatching_type_param_order = "warn"
+missing_assert_message = "warn"
+missing_fields_in_debug = "warn"
+same_functions_in_if_condition = "warn"
+semicolon_if_nothing_returned = "warn"
+should_panic_without_expect = "warn"
+todo = "warn"
+unseparated_literal_suffix = "warn"
+use_self = "warn"
+
+cargo_common_metadata = "warn"
+negative_feature_names = "warn"
+redundant_feature_names = "warn"
+wildcard_dependencies = "warn"
+# END LINEBENDER LINT SET
 
 [dependencies]
 # Upstream Xilem, pinned. This editor builds on the real thing, so that

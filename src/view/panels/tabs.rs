@@ -161,7 +161,7 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             ),
             xrow(Region::Inline, tabs),
             tab_chip(pal, "+".into(), false, true, |app: &mut Workspace| {
-                app.new_tab()
+                app.new_tab();
             }),
         ),
     )
@@ -301,7 +301,7 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         |app: &mut Workspace| app.search_mode = (app.search_mode + 1) % 3,
                     ),
                     toggle("Aa".into(), app.search_case, |app: &mut Workspace| {
-                        app.search_case = !app.search_case
+                        app.search_case = !app.search_case;
                     }),
                 ),
             ),

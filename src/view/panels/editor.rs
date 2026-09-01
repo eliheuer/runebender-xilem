@@ -40,12 +40,12 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
                 .with_direction(app.text_dir)
         }),
         |app: &mut Workspace, ev| match ev {
-            crate::view::canvas::editor::EditorEvent::Selection(n) => {
+            canvas::editor::EditorEvent::Selection(n) => {
                 app.selected_points = n;
                 app.refresh_coord_bufs();
             }
-            crate::view::canvas::editor::EditorEvent::Edited => app.refresh_open_glyph(),
-            crate::view::canvas::editor::EditorEvent::EditGlyph(name) => {
+            canvas::editor::EditorEvent::Edited => app.refresh_open_glyph(),
+            canvas::editor::EditorEvent::EditGlyph(name) => {
                 if let Some(index) = app.font.index_of(&name) {
                     app.open_glyph(index);
                     // Stay in the text tool: the point is to edit the glyph

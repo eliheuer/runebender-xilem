@@ -31,7 +31,7 @@ use crate::{Tool, Workspace};
 // native menu bar reads, and that exists on macOS.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AppAction {
+pub(crate) enum AppAction {
     Save,
     Overview,
     Tool(Tool),
@@ -70,18 +70,18 @@ fn keymap(key: &Key, cmd: bool) -> Option<AppAction> {
     }
 }
 
-pub struct ShortcutHost {
+pub(crate) struct ShortcutHost {
     inner: WidgetPod<dyn Widget>,
 }
 
 impl ShortcutHost {
-    pub fn new(child: NewWidget<impl Widget + ?Sized>) -> Self {
+    pub(crate) fn new(child: NewWidget<impl Widget + ?Sized>) -> Self {
         Self {
             inner: child.erased().to_pod(),
         }
     }
 
-    pub fn child_mut<'t>(this: &'t mut WidgetMut<'_, Self>) -> WidgetMut<'t, dyn Widget> {
+    pub(crate) fn child_mut<'t>(this: &'t mut WidgetMut<'_, Self>) -> WidgetMut<'t, dyn Widget> {
         this.ctx.get_mut(&mut this.widget.inner)
     }
 }
@@ -157,11 +157,11 @@ impl Widget for ShortcutHost {
 // ---------------------------------------------------------------------------
 // View wrapper (single reactive child, following `sized_box`).
 
-pub struct ShortcutHostView<V> {
+pub(crate) struct ShortcutHostView<V> {
     inner: V,
 }
 
-pub fn shortcut_host<V: WidgetView<Workspace>>(inner: V) -> ShortcutHostView<V> {
+pub(crate) fn shortcut_host<V: WidgetView<Workspace>>(inner: V) -> ShortcutHostView<V> {
     ShortcutHostView { inner }
 }
 
@@ -226,7 +226,7 @@ where
 }
 
 // Keep FromDynWidget in scope for downcast().
-#[allow(unused_imports)]
+#[expect(unused_imports, reason = "the trait is used only on some platforms")]
 use FromDynWidget as _;
 
 #[cfg(test)]

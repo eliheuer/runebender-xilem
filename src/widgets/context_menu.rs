@@ -35,6 +35,7 @@ use masonry::layout::{LenReq, Length};
 use crate::view::canvas::editor::EditorWidget;
 use crate::view::theme::Palette;
 use crate::widgets::text_label::{self, Anchor};
+use runebender_core::outline::glyph_paths::round_units;
 
 /// Row height, and the menu's width. Fixed, because a context menu that
 /// resizes to its longest label is harder to aim at than one that does
@@ -48,7 +49,7 @@ const PAD: f64 = 4.0;
 /// The ops are the session ops the editor already exposes; `AddAnchor`
 /// is separate because it needs the position the menu was opened at.
 #[derive(Clone, Copy)]
-pub enum MenuAction {
+pub(crate) enum MenuAction {
     /// Run a session operation, and report whether the glyph changed.
     Op(fn(&mut crate::edit::session::Session) -> bool),
     /// Add an anchor where the menu was opened.
@@ -56,13 +57,13 @@ pub enum MenuAction {
 }
 
 /// One row.
-pub struct MenuRow {
+pub(crate) struct MenuRow {
     pub label: &'static str,
     pub action: MenuAction,
 }
 
 /// The context menu, as a layer.
-pub struct ContextMenu {
+pub(crate) struct ContextMenu {
     /// The editor that opened it, so the choice can be applied there.
     creator: WidgetId,
     rows: &'static [MenuRow],
@@ -74,7 +75,7 @@ pub struct ContextMenu {
 }
 
 impl ContextMenu {
-    pub fn new(
+    pub(crate) fn new(
         creator: WidgetId,
         rows: &'static [MenuRow],
         palette: Arc<Palette>,
@@ -96,7 +97,8 @@ impl ContextMenu {
             return None;
         }
         let index = ((point.y - PAD) / ROW).floor();
-        (index >= 0.0 && (index as usize) < self.rows.len()).then_some(index as usize)
+        let index = usize::try_from(round_units(index)).ok()?;
+        (index < self.rows.len()).then_some(index)
     }
 }
 

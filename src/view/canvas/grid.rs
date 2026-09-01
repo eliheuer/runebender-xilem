@@ -23,8 +23,10 @@ use xilem::{Color, Pod, ViewCtx};
 
 use crate::model::FontModel;
 use crate::view::design::Radius;
+use crate::view::render::px32;
 use crate::view::theme::Palette;
 use crate::widgets::text_label::{self, Anchor};
+use runebender_core::outline::glyph_paths::round_units;
 
 const GAP: f64 = 8.0;
 const PAD: f64 = 12.0;
@@ -61,7 +63,7 @@ fn pack_spans(spans: &[(usize, usize)], cols: usize) -> Vec<Vec<(usize, usize)>>
     let cols = cols.max(1);
     let mut rows: Vec<Vec<(usize, usize)>> = Vec::new();
     let mut row: Vec<(usize, usize)> = Vec::new();
-    let mut used = 0usize;
+    let mut used = 0_usize;
     for &(item, span) in spans {
         let span = span.clamp(1, cols);
         if used + span > cols && !row.is_empty() {
@@ -89,18 +91,18 @@ fn pack_spans(spans: &[(usize, usize)], cols: usize) -> Vec<Vec<(usize, usize)>>
 
 /// One drawable cell: what the grid needs without touching the font model.
 #[derive(Clone)]
-pub struct Cell {
+pub(crate) struct Cell {
     pub index: usize,
     pub name: Arc<str>,
     pub codepoint: Option<char>,
-    pub outline: Arc<masonry::kurbo::BezPath>,
+    pub outline: Arc<kurbo::BezPath>,
     pub advance: f64,
     pub mark: Option<Color>,
 }
 
 /// The vertical metrics the cell preview is scaled against.
 #[derive(Clone, Copy)]
-pub struct CellMetrics {
+pub(crate) struct CellMetrics {
     /// Target cell edge length in px.
     pub cell: f64,
     pub ascender: f64,
@@ -116,7 +118,7 @@ pub struct CellMetrics {
     pub detail: bool,
 }
 
-pub fn cells_of(font: &FontModel, palette: &Palette) -> Vec<Cell> {
+pub(crate) fn cells_of(font: &FontModel, palette: &Palette) -> Vec<Cell> {
     font.glyphs
         .iter()
         .enumerate()
@@ -133,7 +135,7 @@ pub fn cells_of(font: &FontModel, palette: &Palette) -> Vec<Cell> {
 
 /// What the grid reports upward.
 #[derive(Debug)]
-pub enum GridEvent {
+pub(crate) enum GridEvent {
     Selected {
         index: usize,
         cmd: bool,
@@ -142,19 +144,23 @@ pub enum GridEvent {
     Open(usize),
 }
 
-pub struct GridWidget {
+pub(crate) struct GridWidget {
     cells: Arc<Vec<Cell>>,
     metrics: CellMetrics,
     palette: Arc<Palette>,
     selected: Option<usize>,
-    multi: std::sync::Arc<std::collections::HashSet<usize>>,
+    multi: Arc<std::collections::HashSet<usize>>,
     scroll: f64,
     size: Size,
 }
 
 impl GridWidget {
     fn columns(&self) -> usize {
-        (((self.size.width - 2.0 * PAD + GAP) / (self.metrics.cell + GAP)).floor() as usize).max(1)
+        usize::try_from(round_units(
+            ((self.size.width - 2.0 * PAD + GAP) / (self.metrics.cell + GAP)).floor(),
+        ))
+        .unwrap_or(1)
+        .max(1)
     }
 
     fn cell_width(&self, span: usize) -> f64 {
@@ -196,8 +202,9 @@ impl GridWidget {
             return None;
         }
         let rows = self.packed();
-        let row = rows.get(r as usize)?;
-        let row_y = PAD + r as usize as f64 * pitch - self.scroll;
+        let row_index = usize::try_from(round_units(r)).ok()?;
+        let row = rows.get(row_index)?;
+        let row_y = PAD + r * pitch - self.scroll;
         if p.y > row_y + self.metrics.cell {
             return None;
         }
@@ -348,7 +355,7 @@ impl Widget for GridWidget {
                     painter,
                     Point::new(rect.x0 + 8.0, baseline(0.0)),
                     &cell.name,
-                    label_size as f32,
+                    px32(label_size),
                     name_color,
                     Anchor::Start,
                 );
@@ -359,7 +366,7 @@ impl Widget for GridWidget {
                         painter,
                         Point::new(rect.x0 + 8.0, baseline(1.0)),
                         &format!("U+{:04X}", cp as u32),
-                        label_size as f32,
+                        px32(label_size),
                         muted,
                         Anchor::Start,
                     );
@@ -376,7 +383,7 @@ impl Widget for GridWidget {
                         painter,
                         Point::new(rect.x0 + 8.0, baseline(2.0)),
                         &format!("{category} \u{00b7} {:.0}", cell.advance),
-                        label_size as f32,
+                        px32(label_size),
                         muted,
                         Anchor::Start,
                     );
@@ -483,21 +490,21 @@ fn fit_transform(cell: Rect, advance: f64, m: &CellMetrics) -> Affine {
 // ---------------------------------------------------------------------------
 // View wrapper.
 
-pub struct GridView<F> {
+pub(crate) struct GridView<F> {
     cells: Arc<Vec<Cell>>,
     metrics: CellMetrics,
     palette: Arc<Palette>,
     selected: Option<usize>,
-    multi: std::sync::Arc<std::collections::HashSet<usize>>,
+    multi: Arc<std::collections::HashSet<usize>>,
     on_event: F,
 }
 
-pub fn grid<F, Workspace: 'static>(
+pub(crate) fn grid<F, Workspace: 'static>(
     cells: Arc<Vec<Cell>>,
     metrics: CellMetrics,
     palette: Arc<Palette>,
     selected: Option<usize>,
-    multi: std::sync::Arc<std::collections::HashSet<usize>>,
+    multi: Arc<std::collections::HashSet<usize>>,
     on_event: F,
 ) -> GridView<F>
 where

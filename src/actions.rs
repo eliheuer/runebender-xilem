@@ -35,7 +35,7 @@ use crate::{Tool, Workspace};
 /// because there is one of them.
 // Only the native menu bar reads the table, and that exists on macOS.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub struct Entry {
+pub(crate) struct Entry {
     /// Which menu it belongs under.
     pub menu: &'static str,
     /// The item's title.
@@ -48,7 +48,7 @@ pub struct Entry {
 
 /// Every action the application exposes, in menu order.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub const ACTIONS: &[Entry] = &[
+pub(crate) const ACTIONS: &[Entry] = &[
     Entry {
         menu: "File",
         title: "New Font",
@@ -195,7 +195,7 @@ mod platform {
     ///
     /// Must run on the main thread, which is where the view function
     /// runs, and does nothing on later calls.
-    pub fn install() {
+    pub(crate) fn install() {
         if IDS.get().is_some() {
             return;
         }
@@ -231,7 +231,7 @@ mod platform {
     }
 
     /// The action a menu id fires, if it is one of ours.
-    pub fn action_for(id: &MenuId) -> Option<AppAction> {
+    pub(super) fn action_for(id: &MenuId) -> Option<AppAction> {
         let ids = IDS.get()?;
         // ACTIONS and IDS are built together, in menu order.
         let mut index = 0;
@@ -261,7 +261,7 @@ mod platform {
     }
 }
 
-pub use platform::install;
+pub(crate) use platform::install;
 
 /// Runs `view`, and alongside it drains muda's global menu channel and
 /// posts each click back into the application.
@@ -269,7 +269,7 @@ pub use platform::install;
 /// Menu events do not travel through winit's event loop, so without this
 /// they never reach the widget tree at all. The pump produces no widget,
 /// which is why it is forked alongside the tree rather than placed in it.
-pub fn with_menu_events<V: xilem::WidgetView<Workspace>>(
+pub(crate) fn with_menu_events<V: xilem::WidgetView<Workspace>>(
     view: V,
 ) -> impl xilem::WidgetView<Workspace> + use<V> {
     use xilem::core::fork;

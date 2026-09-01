@@ -76,8 +76,8 @@ impl Workspace {
                 // Picking Measure turns on what the tool is for, keeping
                 // whatever curve analyses were already showing.
                 if t == Tool::Measure && !self.view.measures() {
-                    let measuring = crate::view::canvas::editor::ViewOptions::measuring();
-                    self.view = crate::view::canvas::editor::ViewOptions {
+                    let measuring = canvas::editor::ViewOptions::measuring();
+                    self.view = canvas::editor::ViewOptions {
                         comb: self.view.comb,
                         continuity: self.view.continuity,
                         ..measuring
