@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use kurbo::{Affine, BezPath, PathEl};
 
 use crate::outline::glyph_ops::bezpath_to_contour;
-use crate::outline::glyph_paths::contour_to_bezpath;
+use crate::outline::glyph_paths::{contour_to_bezpath, point_key, round_units};
 
 /// Replace targeted contours with the outline of a stroke of the
 /// given width.
@@ -115,7 +115,7 @@ pub fn offset_glyph_contours(glyph: &mut norad::Glyph, delta: f64) -> bool {
         .iter()
         .flat_map(|c| c.points.iter())
         .filter(|p| p.typ != norad::PointType::OffCurve)
-        .map(|p| ((p.x.round() as i64, p.y.round() as i64), p.smooth))
+        .map(|p| (point_key(p.x, p.y), p.smooth))
         .collect();
     let mut contours: Vec<norad::Contour> = Vec::new();
     for contour in result.contours() {
@@ -256,7 +256,7 @@ pub fn roughen_glyph_contours(
         state = state
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let unit = (state >> 11) as f64 / (1u64 << 53) as f64;
+        let unit = (state >> 11) as f64 / (1_u64 << 53) as f64;
         (unit * 2.0 - 1.0) * amount
     };
     let mut changed = false;
@@ -268,7 +268,8 @@ pub fn roughen_glyph_contours(
         let mut points: Vec<norad::ContourPoint> = Vec::new();
         for seg in path.segments() {
             let len = seg.arclen(0.5);
-            let steps = (len / segment_length).ceil().max(1.0) as usize;
+            let steps =
+                usize::try_from(round_units((len / segment_length).ceil().max(1.0))).unwrap_or(1);
             for step in 0..steps {
                 let t = step as f64 / steps as f64;
                 let p = seg.eval(t);
@@ -476,8 +477,8 @@ mod tests {
         g.contours = vec![square()];
         assert!(extrude_glyph_contours(&mut g, 40.0, 30.0, false));
         let (min, max) = bbox(&g);
-        assert!((max.0 - (100.0 + 40.0 * (30f64).to_radians().cos())).abs() <= 2.0);
-        assert!((min.1 - (-40.0 * (30f64).to_radians().sin())).abs() <= 2.0);
+        assert!((max.0 - (100.0 + 40.0 * (30_f64).to_radians().cos())).abs() <= 2.0);
+        assert!((min.1 - (-40.0 * (30_f64).to_radians().sin())).abs() <= 2.0);
 
         // Roughen: many short jittered segments replace the four.
         let mut r = norad::Glyph::new("roughen-test");

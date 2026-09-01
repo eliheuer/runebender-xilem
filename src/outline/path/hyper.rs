@@ -166,7 +166,7 @@ impl HyperPath {
             }
         }
 
-        CubicPath::new(super::point_list::PathPoints::from_vec(points), self.closed)
+        CubicPath::new(PathPoints::from_vec(points), self.closed)
     }
 
     /// Add a new on-curve point to the path. All points are smooth by

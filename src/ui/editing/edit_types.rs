@@ -8,7 +8,6 @@
 /// Consecutive edits of the same type are grouped into a single undo
 /// action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum EditType {
     /// A normal edit. Creates a new undo group.
     Normal,

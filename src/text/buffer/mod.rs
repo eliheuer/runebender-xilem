@@ -749,14 +749,20 @@ impl TextBuffer {
     /// any text editor. Returns false when there is no line that way.
     pub fn move_cursor_vertically(&mut self, delta: i32, line_height: f64) -> bool {
         let current_line = self.line_number_for_sort(self.cursor);
-        let target = current_line as i64 + delta as i64;
-        if target < 0 || target as usize >= self.line_count() {
+        let Ok(current) = i64::try_from(current_line) else {
+            return false;
+        };
+        let target = current + i64::from(delta);
+        let Ok(target) = usize::try_from(target) else {
+            return false;
+        };
+        if target >= self.line_count() {
             return false;
         }
         let line_height = line_height.max(1.0);
         let layout = self.layout(line_height);
         let x = layout.cursor_x;
-        let (line_start, line_end) = self.line_range_for_number(target as usize);
+        let (line_start, line_end) = self.line_range_for_number(target);
         self.cursor = self.nearest_cursor_for_line(x, line_start, line_end, &layout);
         true
     }

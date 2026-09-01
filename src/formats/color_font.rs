@@ -12,7 +12,7 @@
 /// any v1 entry means exploding every color glyph ourselves.
 pub const COLOR_LAYERS_EXPLICIT_KEY: &str = "com.github.googlei18n.ufo2ft.colorLayers";
 
-/// A COLRv1 linear-gradient paint dict in fontTools' unbuilt form.
+/// A `COLRv1` linear-gradient paint dict in fontTools' unbuilt form.
 ///
 /// The gradient holds two palette stops and runs from `p0` to `p1`.
 /// `x2`/`y2` is the required rotation vector, perpendicular to the
@@ -41,7 +41,7 @@ pub fn linear_gradient_paint(
     color_line.insert("Extend".into(), plist::Value::String("pad".into()));
     let mut paint = plist::Dictionary::new();
     // PaintLinearGradient.
-    paint.insert("Format".into(), plist::Value::Integer(4u64.into()));
+    paint.insert("Format".into(), plist::Value::Integer(4_u64.into()));
     paint.insert("ColorLine".into(), plist::Value::Dictionary(color_line));
     paint.insert("x0".into(), plist::Value::Real(p0.0));
     paint.insert("y0".into(), plist::Value::Real(p0.1));
@@ -53,23 +53,23 @@ pub fn linear_gradient_paint(
     plist::Value::Dictionary(paint)
 }
 
-/// A PaintGlyph layer (Format 10) wrapping a child paint.
+/// A `PaintGlyph` layer (Format 10) wrapping a child paint.
 ///
 /// Together with the solid child (Format 2), these are the shapes
 /// verified through ufo2ft's buildCOLR: the glyph's root is
-/// PaintColrLayers (Format 1) with these as Layers.
+/// `PaintColrLayers` (Format 1) with these as Layers.
 pub fn paint_glyph_layer(glyph: &str, child: plist::Value) -> plist::Value {
     let mut dict = plist::Dictionary::new();
-    dict.insert("Format".into(), plist::Value::Integer(10u64.into()));
+    dict.insert("Format".into(), plist::Value::Integer(10_u64.into()));
     dict.insert("Glyph".into(), plist::Value::String(glyph.into()));
     dict.insert("Paint".into(), child);
     plist::Value::Dictionary(dict)
 }
 
-/// Builds a PaintSolid (Format 2) paint at full alpha for the given palette index.
+/// Builds a `PaintSolid` (Format 2) paint at full alpha for the given palette index.
 pub fn paint_solid(palette: usize) -> plist::Value {
     let mut dict = plist::Dictionary::new();
-    dict.insert("Format".into(), plist::Value::Integer(2u64.into()));
+    dict.insert("Format".into(), plist::Value::Integer(2_u64.into()));
     dict.insert(
         "PaletteIndex".into(),
         plist::Value::Integer((palette as u64).into()),
@@ -141,11 +141,12 @@ pub fn read_color_mapping(font: &norad::Font) -> Vec<(String, usize)> {
                 .filter_map(|row| {
                     let arr = row.as_array()?;
                     let layer = arr.first()?.as_string()?.to_string();
-                    let color = arr
-                        .get(1)?
-                        .as_signed_integer()
-                        .or_else(|| arr.get(1)?.as_real().map(|v| v as i64))?;
-                    Some((layer, color.max(0) as usize))
+                    let color = arr.get(1)?.as_signed_integer().or_else(|| {
+                        arr.get(1)?
+                            .as_real()
+                            .map(crate::outline::glyph_paths::round_units)
+                    })?;
+                    Some((layer, usize::try_from(color.max(0)).ok()?))
                 })
                 .collect()
         })
@@ -203,7 +204,7 @@ mod tests {
         let mut font = crate::document::new_font::new_font("Col", "Regular", 400);
         let palette = vec![[1.0, 0.2, 0.0, 1.0], [0.0, 0.4, 1.0, 0.5]];
         write_color_palette(&mut font, &palette);
-        let mapping = vec![("color.0".into(), 0usize), ("color.1".into(), 1)];
+        let mapping = vec![("color.0".into(), 0_usize), ("color.1".into(), 1)];
         write_color_mapping(&mut font, &mapping);
         // A layer glyph so the layers round-trip too.
         let glyph_name = font

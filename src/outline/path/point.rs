@@ -35,12 +35,12 @@ pub enum PointType {
 impl PointType {
     /// Returns `true` for `OnCurve` points.
     pub fn is_on_curve(&self) -> bool {
-        matches!(self, PointType::OnCurve { .. })
+        matches!(self, Self::OnCurve { .. })
     }
 
     /// Returns `true` for `OffCurve` handles.
     pub fn is_off_curve(&self) -> bool {
-        matches!(self, PointType::OffCurve { .. })
+        matches!(self, Self::OffCurve { .. })
     }
 }
 

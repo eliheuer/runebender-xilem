@@ -71,10 +71,10 @@ mod tests {
     /// A tiny black square on white, as an uncompressed 8x8 PNG made
     /// by the image crate img2bez already links.
     fn square_png() -> Vec<u8> {
-        let mut img = image::GrayImage::from_pixel(8, 8, image::Luma([255u8]));
+        let mut img = image::GrayImage::from_pixel(8, 8, image::Luma([255_u8]));
         for y in 2..6 {
             for x in 2..6 {
-                img.put_pixel(x, y, image::Luma([0u8]));
+                img.put_pixel(x, y, image::Luma([0_u8]));
             }
         }
         let mut out = Vec::new();

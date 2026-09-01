@@ -30,7 +30,6 @@ pub struct UndoState<T> {
     redo_stack: VecDeque<T>,
 }
 
-#[allow(dead_code)]
 impl<T: Clone> UndoState<T> {
     /// Create a new empty undo state.
     pub fn new() -> Self {
@@ -182,7 +181,7 @@ mod tests {
 
         // Add more than MAX_UNDO_HISTORY states
         for i in 0..(MAX_UNDO_HISTORY + 10) {
-            undo.add_undo_group(i as i32);
+            undo.add_undo_group(i32::try_from(i).expect("the loop bound is small"));
         }
 
         // Should be limited to MAX_UNDO_HISTORY
@@ -190,7 +189,10 @@ mod tests {
 
         // Oldest entries should be removed
         let prev = undo.undo(999);
-        assert_eq!(prev, Some((MAX_UNDO_HISTORY + 9) as i32));
+        assert_eq!(
+            prev,
+            Some(i32::try_from(MAX_UNDO_HISTORY + 9).expect("the bound is small"))
+        );
     }
 
     #[test]

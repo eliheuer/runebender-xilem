@@ -21,6 +21,7 @@ pub fn designspace_from_str(xml: &str) -> Result<DesignSpaceDocument, String> {
     quick_xml::de::from_str(xml).map_err(|e| format!("designspace: {e}"))
 }
 
+#[derive(Debug)]
 /// A font assembled from memory plus the bookkeeping a host needs
 /// to write changes back: which file each glyph came from.
 pub struct UfoFiles {

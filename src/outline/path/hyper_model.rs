@@ -111,7 +111,6 @@ impl Component {
     }
 }
 
-#[allow(dead_code)]
 impl Glyph {
     /// Calculate the left side bearing (LSB). This is the distance
     /// from x=0 to the leftmost point in the glyph.
@@ -250,7 +249,7 @@ impl Contour {
     /// and line points to hyper corners.
     pub fn from_norad(contour: &norad::Contour) -> Self {
         let hyper = norad_contour_is_hyper(contour);
-        Contour {
+        Self {
             points: contour
                 .points
                 .iter()

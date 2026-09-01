@@ -14,8 +14,8 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-/// One Google Fonts glyphset (GF_Latin_Core, …).
-#[derive(Deserialize)]
+/// One Google Fonts glyphset (`GF_Latin_Core`, …).
+#[derive(Debug, Deserialize)]
 pub struct GfGlyphset {
     /// Glyphset identifier, such as `GF_Latin_Core`.
     pub id: String,
@@ -45,7 +45,7 @@ pub fn gf_glyphsets() -> &'static [GfGlyphset] {
 
 /// A glyph a filter expects: name plus codepoint, so a differently
 /// named glyph still counts when its codepoint matches.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GlyphTarget {
     /// Expected glyph name.
     pub name: String,
@@ -53,6 +53,7 @@ pub struct GlyphTarget {
     pub unicode: u32,
 }
 
+#[derive(Debug)]
 /// One row under a script: a set of glyphs matched by name list,
 /// target list, or codepoint ranges. This is the web's
 /// `SidebarCharacterFilter`.
@@ -71,6 +72,7 @@ pub struct CharacterFilter {
     pub expected_count: Option<usize>,
 }
 
+#[derive(Debug)]
 /// A script group in the Languages section.
 pub struct LanguageGroup {
     /// Stable identifier for the group.
@@ -89,6 +91,7 @@ pub struct LanguageGroup {
     pub filters: Vec<CharacterFilter>,
 }
 
+#[derive(Debug)]
 /// A row in the Filters section. This is the web's
 /// `SidebarBuiltinFilter`.
 pub struct BuiltinFilter {

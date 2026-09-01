@@ -7,6 +7,31 @@
 use kurbo::{Affine, BezPath, Point};
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 
+/// Round a design-space value to whole units.
+///
+/// Coordinates in a font, and the distances between them, are a few
+/// thousand units, so nothing here can leave `i64`. NaN rounds to
+/// zero rather than to an arbitrary integer.
+pub fn round_units(value: f64) -> i64 {
+    if value.is_nan() {
+        return 0;
+    }
+    let clamped = value.round().clamp(i64::MIN as f64, i64::MAX as f64);
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "clamped to the range of i64 on the line above"
+    )]
+    {
+        clamped as i64
+    }
+}
+
+/// The integer key a point is found by when a rebuilt contour looks
+/// up the flags of the point it came from.
+pub fn point_key(x: f64, y: f64) -> (i64, i64) {
+    (round_units(x), round_units(y))
+}
+
 /// Build a `BezPath` for a glyph, with components resolved
 /// recursively through `font`.
 ///
@@ -30,8 +55,8 @@ pub fn contours_to_bezpath(glyph: &Glyph) -> BezPath {
     path
 }
 
-/// One contour as a BezPath.
-pub fn contour_to_bezpath(contour: &norad::Contour) -> BezPath {
+/// One contour as a `BezPath`.
+pub fn contour_to_bezpath(contour: &Contour) -> BezPath {
     let mut path = BezPath::new();
     append_contour(&mut path, contour);
     path
@@ -104,7 +129,7 @@ fn smart_contours(
     base: &Glyph,
     font: &Font,
     values: &std::collections::BTreeMap<String, f64>,
-) -> Option<Vec<norad::Contour>> {
+) -> Option<Vec<Contour>> {
     use std::collections::BTreeMap;
     use std::collections::BTreeSet;
     let axes = base.lib.get(SMART_AXES_KEY)?.as_array()?;
@@ -204,7 +229,7 @@ fn smart_contours(
     }
     // Reassemble along the default glyph's structure.
     let mut out = Vec::with_capacity(base.contours.len());
-    let mut cursor = 0usize;
+    let mut cursor = 0_usize;
     for contour in &base.contours {
         let points = contour
             .points
@@ -212,10 +237,10 @@ fn smart_contours(
             .map(|p| {
                 let (x, y) = coords[cursor];
                 cursor += 1;
-                norad::ContourPoint::new(x, y, p.typ, p.smooth, None, None)
+                ContourPoint::new(x, y, p.typ, p.smooth, None, None)
             })
             .collect();
-        out.push(norad::Contour::new(points, None));
+        out.push(Contour::new(points, None));
     }
     Some(out)
 }
@@ -377,9 +402,9 @@ mod smart_component_tests {
                 None,
             )
         };
-        let mut font = norad::Font::default();
+        let mut font = Font::default();
         // The part: narrow default (bottom pole), wide top-pole layer.
-        let mut part = norad::Glyph::new("_part.bar");
+        let mut part = Glyph::new("_part.bar");
         part.contours = vec![square(200.0)];
         let mut axes = plist::Dictionary::new();
         axes.insert("name".into(), plist::Value::String("Width".into()));
@@ -390,10 +415,10 @@ mod smart_component_tests {
             plist::Value::Array(vec![plist::Value::Dictionary(axes)]),
         );
         font.default_layer_mut().insert_glyph(part);
-        let mut wide = norad::Glyph::new("_part.bar");
+        let mut wide = Glyph::new("_part.bar");
         wide.contours = vec![square(500.0)];
         let mut pole = plist::Dictionary::new();
-        pole.insert("Width".into(), plist::Value::Integer(2u64.into()));
+        pole.insert("Width".into(), plist::Value::Integer(2_u64.into()));
         wide.lib.insert(
             "com.runebender.partSelection".into(),
             plist::Value::Dictionary(pole),
@@ -403,7 +428,7 @@ mod smart_component_tests {
             .unwrap()
             .insert_glyph(wide);
         // The user glyph places the part at Width 50.
-        let mut user = norad::Glyph::new("smartdemo");
+        let mut user = Glyph::new("smartdemo");
         user.components.push(norad::Component::new(
             norad::Name::new("_part.bar").unwrap(),
             norad::AffineTransform::default(),
@@ -456,15 +481,15 @@ mod smart_component_tests {
         let pole = |tops: &[&str]| {
             let mut d = plist::Dictionary::new();
             for name in tops {
-                d.insert((*name).into(), plist::Value::Integer(2u64.into()));
+                d.insert((*name).into(), plist::Value::Integer(2_u64.into()));
             }
             plist::Value::Dictionary(d)
         };
-        let mut font = norad::Font::default();
+        let mut font = Font::default();
         // Default 100x100; Width top 400x100; Height top 100x300;
         // corner 500x350 (more than additive, so the corner delta
         // is what proves bilinear).
-        let mut part = norad::Glyph::new("_part.box");
+        let mut part = Glyph::new("_part.box");
         part.contours = vec![rect(100.0, 100.0)];
         part.lib.insert(
             "com.schriftgestaltung.Glyphs.smartComponentAxes".into(),
@@ -476,7 +501,7 @@ mod smart_component_tests {
             ("box.h", 100.0, 300.0, vec!["Height"]),
             ("box.wh", 500.0, 350.0, vec!["Width", "Height"]),
         ] {
-            let mut g = norad::Glyph::new("_part.box");
+            let mut g = Glyph::new("_part.box");
             g.contours = vec![rect(w, h)];
             g.lib
                 .insert("com.runebender.partSelection".into(), pole(&tops));
@@ -485,7 +510,7 @@ mod smart_component_tests {
                 .unwrap()
                 .insert_glyph(g);
         }
-        let mut user = norad::Glyph::new("boxdemo");
+        let mut user = Glyph::new("boxdemo");
         user.components.push(norad::Component::new(
             norad::Name::new("_part.box").unwrap(),
             norad::AffineTransform::default(),

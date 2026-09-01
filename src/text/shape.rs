@@ -24,6 +24,8 @@ use fea_rs::{
     parse::{SourceLoadError, SourceResolver},
 };
 use harfrust::{Direction, FontRef, ShaperData, UnicodeBuffer, script};
+
+use crate::outline::glyph_paths::round_units;
 use write_fonts::{
     FontBuilder,
     tables::{
@@ -120,6 +122,10 @@ impl ShapingFont {
             return Err("no glyphs to shape with".into());
         }
         let upem = source.units_per_em;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the range check above keeps it inside u16"
+        )]
         let upem_u16 = if (16.0..=16384.0).contains(&upem) {
             upem as u16
         } else {
@@ -159,7 +165,8 @@ impl ShapingFont {
             .glyphs
             .iter()
             .map(|glyph| LongMetric {
-                advance: glyph.advance.round().clamp(0.0, u16::MAX as f64) as u16,
+                advance: u16::try_from(round_units(glyph.advance.clamp(0.0, f64::from(u16::MAX))))
+                    .unwrap_or(u16::MAX),
                 side_bearing: 0,
             })
             .collect();
@@ -181,7 +188,8 @@ impl ShapingFont {
             .enumerate()
             .flat_map(|(gid, glyph)| {
                 glyph.unicodes.iter().filter_map(move |cp| {
-                    char::from_u32(*cp).map(|ch| (ch, GlyphId::new(gid as u32)))
+                    let gid = u32::try_from(gid).ok()?;
+                    char::from_u32(*cp).map(|ch| (ch, GlyphId::new(gid)))
                 })
             })
             .collect();
@@ -288,7 +296,7 @@ impl ShapingFont {
             .iter()
             .zip(positions.iter())
             .map(|(info, pos)| ShapedGlyph {
-                glyph_id: info.glyph_id as u16,
+                glyph_id: u16::try_from(info.glyph_id).unwrap_or(0),
                 cluster: info.cluster,
                 x_advance: pos.x_advance as f64,
                 x_offset: pos.x_offset as f64,

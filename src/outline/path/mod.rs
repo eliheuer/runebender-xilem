@@ -49,18 +49,18 @@ impl Path {
     /// Renders this path as a new `kurbo::BezPath`.
     pub fn to_bezpath(&self) -> BezPath {
         match self {
-            Path::Cubic(cubic) => cubic.to_bezpath(),
-            Path::Quadratic(quadratic) => quadratic.to_bezpath(),
-            Path::Hyper(hyper) => hyper.to_bezpath(),
+            Self::Cubic(cubic) => cubic.to_bezpath(),
+            Self::Quadratic(quadratic) => quadratic.to_bezpath(),
+            Self::Hyper(hyper) => hyper.to_bezpath(),
         }
     }
 
     /// Appends this path's elements to an existing `BezPath` without clearing it.
     pub fn append_to_bezpath(&self, path: &mut BezPath) {
         match self {
-            Path::Cubic(cubic) => cubic.append_to_bezpath(path),
-            Path::Quadratic(quadratic) => quadratic.append_to_bezpath(path),
-            Path::Hyper(hyper) => hyper.append_to_bezpath(path),
+            Self::Cubic(cubic) => cubic.append_to_bezpath(path),
+            Self::Quadratic(quadratic) => quadratic.append_to_bezpath(path),
+            Self::Hyper(hyper) => hyper.append_to_bezpath(path),
         }
     }
 
@@ -74,7 +74,7 @@ impl Path {
         });
 
         if has_hyper {
-            return Path::Hyper(HyperPath::from_contour(contour));
+            return Self::Hyper(HyperPath::from_contour(contour));
         }
 
         let has_qcurve = contour
@@ -83,27 +83,27 @@ impl Path {
             .any(|pt| matches!(pt.point_type, workspace::PointType::QCurve));
 
         if has_qcurve {
-            Path::Quadratic(QuadraticPath::from_contour(contour))
+            Self::Quadratic(QuadraticPath::from_contour(contour))
         } else {
-            Path::Cubic(CubicPath::from_contour(contour))
+            Self::Cubic(CubicPath::from_contour(contour))
         }
     }
 
     /// Returns the path's editable points, whatever the curve type.
     pub fn points(&self) -> &PathPoints {
         match self {
-            Path::Cubic(cubic) => cubic.points(),
-            Path::Quadratic(quadratic) => quadratic.points(),
-            Path::Hyper(hyper) => hyper.points(),
+            Self::Cubic(cubic) => cubic.points(),
+            Self::Quadratic(quadratic) => quadratic.points(),
+            Self::Hyper(hyper) => hyper.points(),
         }
     }
 
     /// Converts back to the `workspace::Contour` form used for saving and conversion.
     pub fn to_contour(&self) -> workspace::Contour {
         match self {
-            Path::Cubic(cubic) => cubic.to_contour(),
-            Path::Quadratic(quadratic) => quadratic.to_contour(),
-            Path::Hyper(hyper) => hyper.to_contour(),
+            Self::Cubic(cubic) => cubic.to_contour(),
+            Self::Quadratic(quadratic) => quadratic.to_contour(),
+            Self::Hyper(hyper) => hyper.to_contour(),
         }
     }
 }

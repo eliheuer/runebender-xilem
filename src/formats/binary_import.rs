@@ -10,7 +10,7 @@ use std::path::Path;
 ///
 /// Quadratics stay quadratic, as offcurve plus qcurve points, and
 /// cubics stay cubic. Every binary contour is closed.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct BinaryImportPen {
     contours: Vec<norad::Contour>,
     current: Vec<norad::ContourPoint>,

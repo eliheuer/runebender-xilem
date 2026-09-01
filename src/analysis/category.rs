@@ -36,28 +36,28 @@ impl GlyphCategory {
     /// Returns the label shown in the sidebar for this category.
     pub fn display_name(&self) -> &'static str {
         match self {
-            GlyphCategory::All => "All",
-            GlyphCategory::Letter => "Letter",
-            GlyphCategory::Number => "Number",
-            GlyphCategory::Punctuation => "Punctuation",
-            GlyphCategory::Symbol => "Symbol",
-            GlyphCategory::Mark => "Mark",
-            GlyphCategory::Separator => "Separator",
-            GlyphCategory::Other => "Other",
+            Self::All => "All",
+            Self::Letter => "Letter",
+            Self::Number => "Number",
+            Self::Punctuation => "Punctuation",
+            Self::Symbol => "Symbol",
+            Self::Mark => "Mark",
+            Self::Separator => "Separator",
+            Self::Other => "Other",
         }
     }
 
     /// Returns every category in sidebar display order, starting with `All`.
-    pub fn all_categories() -> &'static [GlyphCategory] {
+    pub fn all_categories() -> &'static [Self] {
         &[
-            GlyphCategory::All,
-            GlyphCategory::Letter,
-            GlyphCategory::Number,
-            GlyphCategory::Punctuation,
-            GlyphCategory::Symbol,
-            GlyphCategory::Mark,
-            GlyphCategory::Separator,
-            GlyphCategory::Other,
+            Self::All,
+            Self::Letter,
+            Self::Number,
+            Self::Punctuation,
+            Self::Symbol,
+            Self::Mark,
+            Self::Separator,
+            Self::Other,
         ]
     }
 
@@ -65,17 +65,17 @@ impl GlyphCategory {
     ///
     /// Glyphs without a codepoint, such as `.notdef`, never reach
     /// this function. The caller should assign them `Other`.
-    pub fn from_codepoint(c: char) -> GlyphCategory {
+    pub fn from_codepoint(c: char) -> Self {
         match get_general_category(c) {
             GeneralCategory::UppercaseLetter
             | GeneralCategory::LowercaseLetter
             | GeneralCategory::TitlecaseLetter
             | GeneralCategory::ModifierLetter
-            | GeneralCategory::OtherLetter => GlyphCategory::Letter,
+            | GeneralCategory::OtherLetter => Self::Letter,
 
             GeneralCategory::DecimalNumber
             | GeneralCategory::LetterNumber
-            | GeneralCategory::OtherNumber => GlyphCategory::Number,
+            | GeneralCategory::OtherNumber => Self::Number,
 
             GeneralCategory::ConnectorPunctuation
             | GeneralCategory::DashPunctuation
@@ -83,22 +83,22 @@ impl GlyphCategory {
             | GeneralCategory::ClosePunctuation
             | GeneralCategory::InitialPunctuation
             | GeneralCategory::FinalPunctuation
-            | GeneralCategory::OtherPunctuation => GlyphCategory::Punctuation,
+            | GeneralCategory::OtherPunctuation => Self::Punctuation,
 
             GeneralCategory::MathSymbol
             | GeneralCategory::CurrencySymbol
             | GeneralCategory::ModifierSymbol
-            | GeneralCategory::OtherSymbol => GlyphCategory::Symbol,
+            | GeneralCategory::OtherSymbol => Self::Symbol,
 
             GeneralCategory::NonspacingMark
             | GeneralCategory::SpacingMark
-            | GeneralCategory::EnclosingMark => GlyphCategory::Mark,
+            | GeneralCategory::EnclosingMark => Self::Mark,
 
             GeneralCategory::SpaceSeparator
             | GeneralCategory::LineSeparator
-            | GeneralCategory::ParagraphSeparator => GlyphCategory::Separator,
+            | GeneralCategory::ParagraphSeparator => Self::Separator,
 
-            _ => GlyphCategory::Other,
+            _ => Self::Other,
         }
     }
 }

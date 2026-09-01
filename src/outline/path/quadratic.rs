@@ -13,11 +13,10 @@ use kurbo::BezPath;
 
 /// A single contour represented as a quadratic bezier path.
 ///
-/// Corresponds to a UFO contour with QCurve points. Points are stored
+/// Corresponds to a UFO contour with `QCurve` points. Points are stored
 /// in order, with the convention that for closed paths, the first point
 /// (index 0) is conceptually the last point in the cyclic sequence.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct QuadraticPath {
     /// The on-curve and off-curve points in contour order.
     pub points: PathPoints,
@@ -27,7 +26,6 @@ pub struct QuadraticPath {
     pub id: EntityId,
 }
 
-#[allow(dead_code)]
 impl QuadraticPath {
     /// Creates a path from existing points and assigns it a fresh `EntityId`.
     pub fn new(points: PathPoints, closed: bool) -> Self {
@@ -83,7 +81,7 @@ impl QuadraticPath {
         }
     }
 
-    /// Convert from a workspace contour (assumes QCurve points).
+    /// Convert from a workspace contour (assumes `QCurve` points).
     pub fn from_contour(contour: &workspace::Contour) -> Self {
         if contour.points.is_empty() {
             return Self::empty();
@@ -224,7 +222,6 @@ impl QuadraticPath {
     }
 }
 
-#[allow(dead_code)]
 struct SegmentIterator {
     points: Vec<PathPoint>,
     closed: bool,
@@ -236,7 +233,7 @@ struct SegmentIterator {
 }
 
 impl SegmentIterator {
-    fn new(points: &super::point_list::PathPoints, closed: bool) -> Self {
+    fn new(points: &PathPoints, closed: bool) -> Self {
         let points_vec: Vec<PathPoint> = points.iter().cloned().collect();
 
         let (start_idx, start_pt) = points_vec

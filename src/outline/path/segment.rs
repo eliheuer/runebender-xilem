@@ -43,17 +43,17 @@ impl Segment {
     ///   avoid a sqrt; fine for comparisons and threshold checks.
     pub fn nearest(&self, point: Point) -> (f64, f64) {
         match self {
-            Segment::Line(line) => {
+            Self::Line(line) => {
                 let t = line_nearest_param(*line, point);
                 let nearest_pt = line.eval(t);
                 let dist_sq = (nearest_pt - point).hypot2();
                 (t, dist_sq)
             }
-            Segment::Quadratic(quad) => {
+            Self::Quadratic(quad) => {
                 let result = quad.nearest(point, 1e-6);
                 (result.t, result.distance_sq)
             }
-            Segment::Cubic(cubic) => {
+            Self::Cubic(cubic) => {
                 let result = cubic.nearest(point, 1e-6);
                 (result.t, result.distance_sq)
             }
@@ -63,9 +63,9 @@ impl Segment {
     /// Evaluate the segment at parameter t (0.0 to 1.0).
     pub fn eval(&self, t: f64) -> Point {
         match self {
-            Segment::Line(line) => line.eval(t),
-            Segment::Quadratic(quad) => quad.eval(t),
-            Segment::Cubic(cubic) => cubic.eval(t),
+            Self::Line(line) => line.eval(t),
+            Self::Quadratic(quad) => quad.eval(t),
+            Self::Cubic(cubic) => cubic.eval(t),
         }
     }
 

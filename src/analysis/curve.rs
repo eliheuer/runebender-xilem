@@ -14,8 +14,9 @@
 //!
 //! Pure design-space geometry (font units) with no render deps, so it
 //! unit-tests on native `cargo test`. Formulas verified against Simon Cozens'
-//! SuperTool and Linus Romer's Curvatura.
+//! `SuperTool` and Linus Romer's Curvatura.
 
+use crate::outline::glyph_paths::round_units;
 use kurbo::{Point, Vec2};
 
 /// A cubic segment of an outline: on-curve `p0`/`p3`, off-curve handles
@@ -426,7 +427,7 @@ fn line_intersect(a: Point, b: Point, c: Point, d: Point) -> Option<Point> {
 /// the outgoing handles are `b1` and `b2`, with `b1` adjacent. The result is
 /// the new positions of the two adjacent handles that make the join
 /// curvature-continuous (G2) while the on-curve point stays fixed. This is
-/// what SuperTool and Curvatura do. Returns `None` for degenerate
+/// what `SuperTool` and Curvatura do. Returns `None` for degenerate
 /// configurations.
 pub fn harmonize(
     a1: Point,
@@ -483,7 +484,7 @@ fn round_even(p: Point) -> Point {
 }
 
 fn round_even_scalar(v: f64) -> i64 {
-    ((v / 2.0).round() * 2.0) as i64
+    round_units((v / 2.0).round() * 2.0)
 }
 
 /// Even integers within `w` of `center` (center should already be even).
@@ -534,7 +535,7 @@ fn curvature_variance(p0: Point, p1: Point, p2: Point, p3: Point) -> f64 {
 }
 
 /// One point for the optimizer.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct OptPoint {
     /// Position in design space.
     pub p: Point,
@@ -604,8 +605,8 @@ fn snap_all(q: &mut [Point], on: &[bool], n: usize, tol: f64) {
         // length is free to snap. Diagonal handles snap on both axes.
         let lock_x = d.x.abs() < 0.5; // vertical handle → x pinned
         let lock_y = d.y.abs() < 0.5; // horizontal handle → y pinned
-        let ax = anchor.x.round() as i64;
-        let ay = anchor.y.round() as i64;
+        let ax = round_units(anchor.x);
+        let ay = round_units(anchor.y);
         let base_x = if lock_x {
             ax
         } else {
@@ -779,8 +780,8 @@ mod tests {
         // Every off-curve handle lands on the 2-unit grid (even coords).
         for (i, op) in pts.iter().enumerate() {
             if !op.on {
-                assert_eq!(out[i].x as i64 % 2, 0, "x off-grid: {}", out[i].x);
-                assert_eq!(out[i].y as i64 % 2, 0, "y off-grid: {}", out[i].y);
+                assert_eq!(round_units(out[i].x) % 2, 0, "x off-grid: {}", out[i].x);
+                assert_eq!(round_units(out[i].y) % 2, 0, "y off-grid: {}", out[i].y);
             }
         }
         // Handles stay near the circle's control length (didn't blow up).

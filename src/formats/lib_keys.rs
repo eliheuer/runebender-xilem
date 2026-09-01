@@ -30,8 +30,7 @@ pub fn read_masks(glyph: &norad::Glyph) -> HashSet<usize> {
         .map(|rows| {
             rows.iter()
                 .filter_map(|v| v.as_signed_integer())
-                .filter(|&i| i >= 0)
-                .map(|i| i as usize)
+                .filter_map(|i| usize::try_from(i).ok())
                 .collect()
         })
         .unwrap_or_default()
@@ -376,7 +375,7 @@ mod tests {
             square(60.0, 20.0, 140.0, 80.0),
         ];
         let mut masks = HashSet::new();
-        masks.insert(1usize);
+        masks.insert(1_usize);
         write_masks(&mut glyph, &masks);
         assert_eq!(read_masks(&glyph), masks);
         assert!(bake_masks(&mut glyph));
@@ -433,7 +432,7 @@ mod tests {
     fn hoi_intermediates_roundtrip_the_lib_key() {
         let mut glyph = norad::Glyph::new("hoi-store");
         let mut map = std::collections::HashMap::new();
-        map.insert((0usize, 3usize), (166.0, 73.0));
+        map.insert((0_usize, 3_usize), (166.0, 73.0));
         map.insert((2, 0), (-12.0, 400.0));
         write_hoi_intermediates(&mut glyph, &map);
         assert_eq!(read_hoi_intermediates(&glyph), map);

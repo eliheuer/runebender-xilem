@@ -19,11 +19,11 @@ use serde_json::json;
 /// Exit codes, matching font-ml so a caller can branch on them.
 mod exit {
     /// Ran, and the answer is yes or the work is done.
-    pub const OK: i32 = 0;
+    pub(crate) const OK: i32 = 0;
     /// The command was wrong: bad path, unknown glyph, missing flag.
-    pub const USAGE: i32 = 2;
+    pub(crate) const USAGE: i32 = 2;
     /// The command was right and the work failed.
-    pub const FAILED: i32 = 4;
+    pub(crate) const FAILED: i32 = 4;
 }
 
 /// Reports an error on stderr, or as JSON on stdout, and returns the
@@ -108,7 +108,7 @@ fn main() -> std::process::ExitCode {
             json,
         ),
     };
-    std::process::ExitCode::from(code as u8)
+    std::process::ExitCode::from(u8::try_from(code).unwrap_or(1))
 }
 
 /// What the reference glyphs say the heavier master should do.
@@ -262,7 +262,7 @@ fn bolden_check(
             .collect()
     };
     let mut rows = Vec::new();
-    let (mut sum_dx, mut sum_dy, mut n) = (0.0, 0.0, 0usize);
+    let (mut sum_dx, mut sum_dy, mut n) = (0.0, 0.0, 0_usize);
     for name in names.iter().take(limit) {
         let (Some(l), Some(h)) = (
             light.default_layer().get_glyph(name.as_str()),
@@ -294,7 +294,7 @@ fn bolden_check(
     let (mx, my) = (sum_dx / n as f64, sum_dy / n as f64);
     let mut offset_total = 0.0;
     let mut base_total = 0.0;
-    let mut wins = 0usize;
+    let mut wins = 0_usize;
     let mut per = Vec::new();
     for (name, err, a, b) in &rows {
         let base = a

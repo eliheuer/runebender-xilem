@@ -70,6 +70,10 @@ pub fn oklch_to_rgb(l: f64, c: f64, h: f64) -> ColorRgba {
         chroma = low;
     }
     let rgb = oklch_to_linear(l, chroma, h);
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "clamped to 0..=255 before the cast"
+    )]
     let to_byte = |v: f64| (linear_to_srgb(v).clamp(0.0, 1.0) * 255.0).round() as u8;
     ColorRgba::rgb(to_byte(rgb[0]), to_byte(rgb[1]), to_byte(rgb[2]))
 }
@@ -184,6 +188,7 @@ impl Default for Geometry {
     }
 }
 
+#[derive(Debug)]
 /// One resolved theme: every surface, text, and role token as sRGB.
 pub struct Theme {
     /// Surface colors by token name, such as backgrounds and panels.
@@ -565,6 +570,7 @@ mod tests {
 
 // ---- toolbar icons ----
 
+#[derive(Debug)]
 /// One toolbar icon: outline geometry from the shared icon UFO,
 /// `assets/runebender-icons.ufo`, via the web generator's JSON.
 pub struct ToolbarIcon {

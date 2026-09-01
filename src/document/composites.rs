@@ -4,7 +4,7 @@
 //! Component anchor alignment: marks placed by `_top`/`top` anchor
 //! pairs follow their base. This is how Glyphs aligns components. A
 //! port of the alignment code in runebender-web's editor.rs and
-//! wasm_api.rs.
+//! `wasm_api.rs`.
 //!
 //! A composite stores its components as fixed offsets, so alignment
 //! is not re-derived at render time: it is baked into the file, and
@@ -17,6 +17,7 @@ use norad::{Component, Font, Glyph};
 /// The Glyphs lib key that opts a component out of anchor alignment.
 const ALIGNMENT_KEY: &str = "com.glyphsapp.component.alignment";
 
+#[derive(Debug)]
 /// One component's contribution to anchor alignment: the anchors its
 /// base glyph carries (in the base's own coordinates), where the
 /// component currently sits, and whether it is still anchor-locked.
@@ -294,7 +295,7 @@ mod tests {
 
     #[test]
     fn fixture_agrave_realign_is_a_fixpoint() {
-        let font = norad::Font::load(crate::testing::fonts::regular_ufo()).expect("fixture font");
+        let font = Font::load(crate::testing::fonts::regular_ufo()).expect("fixture font");
         let mut agrave = font.get_glyph("Agrave").expect("Agrave").clone();
         // A well-formed source is already aligned: realigning must
         // not move anything.

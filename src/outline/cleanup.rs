@@ -192,7 +192,7 @@ pub fn toggle_contour_open(glyph: &mut norad::Glyph, ci: usize, pi: usize) -> bo
 /// removed.
 pub fn tidy_contours(glyph: &mut norad::Glyph) -> usize {
     use norad::PointType;
-    let mut removed = 0usize;
+    let mut removed = 0_usize;
     for contour in glyph.contours.iter_mut() {
         let closed = contour
             .points
@@ -245,7 +245,7 @@ pub fn correct_path_directions(glyph: &mut norad::Glyph) -> usize {
     use kurbo::Shape as _;
     let paths: Vec<BezPath> = glyph.contours.iter().map(contour_to_bezpath).collect();
     let mut flip: HashSet<(usize, usize)> = HashSet::new();
-    let mut flipped = 0usize;
+    let mut flipped = 0_usize;
     for (ci, contour) in glyph.contours.iter().enumerate() {
         let Some(probe) = contour
             .points
@@ -278,7 +278,7 @@ pub fn correct_path_directions(glyph: &mut norad::Glyph) -> usize {
 /// This is Path > Round Coordinates in Glyphs. Returns the number
 /// of points that moved.
 pub fn round_glyph_coordinates(glyph: &mut norad::Glyph) -> usize {
-    let mut moved = 0usize;
+    let mut moved = 0_usize;
     for contour in glyph.contours.iter_mut() {
         for p in contour.points.iter_mut() {
             let (rx, ry) = (p.x.round(), p.y.round());
@@ -368,8 +368,8 @@ mod tests {
         assert_eq!(round_glyph_coordinates(&mut glyph), 1);
         assert_eq!(correct_path_directions(&mut glyph), 2);
         use kurbo::Shape as _;
-        let outer = crate::outline::glyph_paths::contour_to_bezpath(&glyph.contours[0]);
-        let hole = crate::outline::glyph_paths::contour_to_bezpath(&glyph.contours[1]);
+        let outer = contour_to_bezpath(&glyph.contours[0]);
+        let hole = contour_to_bezpath(&glyph.contours[1]);
         assert!(outer.area() > 0.0, "outer counter-clockwise");
         assert!(hole.area() < 0.0, "hole clockwise");
         // Running again changes nothing.

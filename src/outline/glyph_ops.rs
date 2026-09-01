@@ -14,6 +14,8 @@ use kurbo::BezPath;
 use norad::{Contour, ContourPoint, Glyph, PointType};
 
 use crate::outline::glyph_paths;
+use crate::outline::glyph_paths::point_key;
+use crate::outline::point_ops::{step_index, wrap_index};
 
 /// A point address: (contour index, point index).
 pub type PointId = (usize, usize);
@@ -21,7 +23,7 @@ pub type PointId = (usize, usize);
 pub type PointUpdates = [(PointId, (f64, f64))];
 
 /// One undo step: a glyph's full editable state.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GlyphSnapshot {
     /// Every contour of the glyph, with its points.
     pub contours: Vec<Contour>,
@@ -126,7 +128,7 @@ pub fn reverse_contours(glyph: &mut Glyph, selected: &HashSet<PointId>) -> bool 
             .points
             .iter()
             .filter(|p| p.typ != PointType::OffCurve)
-            .map(|p| ((p.x.round() as i64, p.y.round() as i64), p.smooth))
+            .map(|p| (point_key(p.x, p.y), p.smooth))
             .collect();
         let path = glyph_paths::contour_to_bezpath(&glyph.contours[c]).reverse_subpaths();
         if let Some(reversed) = bezpath_to_contour(&path, &smooth_at) {
@@ -151,16 +153,7 @@ pub fn constrain_smooth_neighbor(glyph: &mut Glyph, contour: usize, index: usize
         return;
     }
     let closed = c.points.first().is_none_or(|p| p.typ != PointType::Move);
-    let step = |i: usize, d: isize| -> Option<usize> {
-        let j = i as isize + d;
-        if closed {
-            Some(((j % n as isize + n as isize) % n as isize) as usize)
-        } else if (0..n as isize).contains(&j) {
-            Some(j as usize)
-        } else {
-            None
-        }
-    };
+    let step = |i: usize, d: isize| step_index(i, n, closed, d);
     let is_off = |p: &ContourPoint| p.typ == PointType::OffCurve;
     if !is_off(&c.points[index]) {
         return;
@@ -198,7 +191,7 @@ pub fn delete_points(glyph: &mut Glyph, selected: &HashSet<PointId>) -> bool {
         return false;
     }
     let mut changed = false;
-    let mut contour_index = 0usize;
+    let mut contour_index = 0_usize;
     glyph.contours.retain_mut(|contour| {
         let ci = contour_index;
         contour_index += 1;
@@ -534,7 +527,7 @@ pub fn remove_overlap(glyph: &Glyph) -> Option<Vec<Contour>> {
         .iter()
         .flat_map(|c| c.points.iter())
         .filter(|p| p.typ != PointType::OffCurve)
-        .map(|p| ((p.x.round() as i64, p.y.round() as i64), p.smooth))
+        .map(|p| (point_key(p.x, p.y), p.smooth))
         .collect();
     let mut new_contours: Vec<Contour> = Vec::new();
     for contour in result.contours() {
@@ -584,7 +577,7 @@ pub fn boolean_contours(glyph: &Glyph, op: linesweeper::BinaryOp) -> Option<Vec<
         .iter()
         .flat_map(|c| c.points.iter())
         .filter(|p| p.typ != PointType::OffCurve)
-        .map(|p| ((p.x.round() as i64, p.y.round() as i64), p.smooth))
+        .map(|p| (point_key(p.x, p.y), p.smooth))
         .collect();
     let mut contours: Vec<Contour> = Vec::new();
     for contour in result.contours() {
@@ -623,12 +616,7 @@ pub fn bezpath_to_contour(
     use kurbo::PathEl;
     let mut points: Vec<ContourPoint> = Vec::new();
     let mut start: Option<kurbo::Point> = None;
-    let smooth = |x: f64, y: f64| {
-        smooth_at
-            .get(&(x.round() as i64, y.round() as i64))
-            .copied()
-            .unwrap_or(false)
-    };
+    let smooth = |x: f64, y: f64| smooth_at.get(&point_key(x, y)).copied().unwrap_or(false);
     let on = |x: f64, y: f64, curve: bool, smooth: bool| {
         ContourPoint::new(
             x.round(),
@@ -701,7 +689,7 @@ pub fn bezpath_to_contour(
 // ============================================================================
 
 /// A curve-quality operation from [`crate::analysis::curve`].
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum CurveOp {
     /// Move control handles so curvature matches across each on-curve point.
     Harmonize,
@@ -915,10 +903,6 @@ fn contour_is_on(contour: &Contour, i: usize) -> bool {
     contour.points[i].typ != PointType::OffCurve
 }
 
-fn wrap(i: isize, len: usize) -> usize {
-    i.rem_euclid(len as isize) as usize
-}
-
 /// The size and handle ratio the glyph's existing rounded corners
 /// use.
 ///
@@ -939,12 +923,12 @@ fn infer_round_profile(glyph: &Glyph) -> (f64, f64) {
         }
         for start in 0..n {
             let idx = [
-                wrap(start as isize - 1, n),
+                wrap_index(start, n, -1),
                 start,
-                wrap(start as isize + 1, n),
-                wrap(start as isize + 2, n),
-                wrap(start as isize + 3, n),
-                wrap(start as isize + 4, n),
+                wrap_index(start, n, 1),
+                wrap_index(start, n, 2),
+                wrap_index(start, n, 3),
+                wrap_index(start, n, 4),
             ];
             let mut seen = idx;
             seen.sort_unstable();
@@ -1022,8 +1006,8 @@ pub fn round_selected_corners(
                 && (closed || (pi > 0 && pi + 1 < n));
             let rounded = is_corner
                 .then(|| {
-                    let prev = wrap(pi as isize - 1, n);
-                    let next = wrap(pi as isize + 1, n);
+                    let prev = wrap_index(pi, n, -1);
+                    let next = wrap_index(pi, n, 1);
                     if !contour_is_on(contour, prev) || !contour_is_on(contour, next) {
                         return None;
                     }
@@ -1132,11 +1116,11 @@ pub fn duplicate_selection(
     for source in sources {
         // Fresh points and no identifiers: identifiers must stay
         // unique within a glif, so clones cannot carry them.
-        let points: Vec<norad::ContourPoint> = glyph.contours[source]
+        let points: Vec<ContourPoint> = glyph.contours[source]
             .points
             .iter()
             .map(|p| {
-                norad::ContourPoint::new(
+                ContourPoint::new(
                     p.x + 20.0,
                     p.y + 20.0,
                     p.typ,
@@ -1150,7 +1134,7 @@ pub fn duplicate_selection(
         for pi in 0..points.len() {
             new_selection.insert((new_index, pi));
         }
-        glyph.contours.push(norad::Contour::new(points, None));
+        glyph.contours.push(Contour::new(points, None));
     }
     Some(new_selection)
 }
@@ -1208,10 +1192,7 @@ mod tests {
         }
         // 180° maps each corner to the opposite one; compare as sets.
         let round = |v: Vec<(f64, f64)>| {
-            let mut v: Vec<(i64, i64)> = v
-                .into_iter()
-                .map(|(x, y)| (x.round() as i64, y.round() as i64))
-                .collect();
+            let mut v: Vec<(i64, i64)> = v.into_iter().map(|(x, y)| point_key(x, y)).collect();
             v.sort();
             v
         };
@@ -1353,7 +1334,7 @@ mod tests {
         // The fillet's on-curves sit 32 units along each edge and are
         // smooth; the two handles between them are off-curve.
         let pts = &g.contours[0].points;
-        let ons: Vec<&norad::ContourPoint> = pts
+        let ons: Vec<&ContourPoint> = pts
             .iter()
             .filter(|p| p.typ != PointType::OffCurve && p.smooth)
             .collect();
@@ -1433,7 +1414,7 @@ mod tests {
         let mut agrave = Glyph::new("Agrave");
         agrave.components.push(norad::Component::new(
             norad::Name::new("A").unwrap(),
-            Default::default(),
+            norad::AffineTransform::default(),
             None,
         ));
         font.default_layer_mut().insert_glyph(agrave);
@@ -1511,7 +1492,7 @@ mod tests {
 
         // The solver renders real curves: the bezpath must contain
         // curve elements even though the contour has no off-curves.
-        let path = crate::outline::glyph_paths::contours_to_bezpath(&g);
+        let path = glyph_paths::contours_to_bezpath(&g);
         let curves = path
             .elements()
             .iter()
@@ -1630,7 +1611,7 @@ mod tests {
         let out = &g.contours[c].points[outgoing];
         let cross = (100.0 - 60.0) * (out.y - 100.0) - (100.0 - 80.0) * (out.x - 100.0);
         assert!(cross.abs() <= 60.0, "not collinear: {cross}");
-        let len = ((out.x - 100.0f64).powi(2) + (out.y - 100.0f64).powi(2)).sqrt();
+        let len = ((out.x - 100.0_f64).powi(2) + (out.y - 100.0_f64).powi(2)).sqrt();
         assert!((len - 40.0).abs() < 2.0, "length changed: {len}");
     }
 

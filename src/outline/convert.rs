@@ -38,7 +38,10 @@ pub fn quads_to_cubics(glyph: &mut norad::Glyph) -> bool {
             }
             // Replace the emitted offcurve with the two cubic ones.
             let popped = points.pop();
-            debug_assert!(popped.is_some_and(|q| q.typ == PointType::OffCurve));
+            debug_assert!(
+                popped.is_some_and(|q| q.typ == PointType::OffCurve),
+                "the point just emitted is the quadratic's off-curve"
+            );
             let c1 = (
                 p0.x + (c.x - p0.x) * 2.0 / 3.0,
                 p0.y + (c.y - p0.y) * 2.0 / 3.0,

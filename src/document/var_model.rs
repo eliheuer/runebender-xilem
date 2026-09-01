@@ -55,6 +55,7 @@ pub fn support_scalar(location: &Location, support: &Support) -> f64 {
     scalar
 }
 
+#[derive(Debug)]
 /// The interpolation model for one set of master locations.
 pub struct VariationModel {
     /// Master order after sorting, as indices into the input list.
@@ -188,7 +189,7 @@ fn key(location: &Location, axis_points: &HashMap<String, HashSet<u64>>) -> Sort
         axis_names: used.iter().map(|(axis, _)| (*axis).clone()).collect(),
         signs: used
             .iter()
-            .map(|(_, v)| if *v < 0.0 { -1i8 } else { 1i8 })
+            .map(|(_, v)| if *v < 0.0 { -1_i8 } else { 1_i8 })
             .collect(),
         magnitudes: used.iter().map(|(_, v)| v.abs().to_bits()).collect(),
     }

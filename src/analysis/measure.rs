@@ -16,6 +16,7 @@
 
 use kurbo::{BezPath, Line, ParamCurve, PathEl, PathSeg, Point, Shape};
 
+use crate::outline::glyph_paths::round_units;
 use crate::outline::path::Path;
 
 /// What a single measurement describes.
@@ -108,7 +109,7 @@ pub fn glyph_measurements(paths: &[Path]) -> Vec<Measurement> {
                         out.push(Measurement {
                             a: anchor.point,
                             b: cur.point,
-                            length: len.round() as i64,
+                            length: round_units(len),
                             kind: MeasureKind::Handle,
                         });
                     }
@@ -124,7 +125,7 @@ pub fn glyph_measurements(paths: &[Path]) -> Vec<Measurement> {
                     out.push(Measurement {
                         a,
                         b,
-                        length: seg_len.round() as i64,
+                        length: round_units(seg_len),
                         kind: MeasureKind::Segment,
                     });
                 }
@@ -181,7 +182,7 @@ fn facing_gaps(edges: &[Edge], kind: MeasureKind, out: &mut Vec<Measurement>) {
                 MeasureKind::Vertical => (Point::new(mid, e.pos), Point::new(mid, f.pos)),
                 _ => unreachable!(),
             };
-            push_span_dedup(out, a, b, gap.round() as i64, kind);
+            push_span_dedup(out, a, b, round_units(gap), kind);
         }
     }
 }
@@ -260,7 +261,7 @@ fn emit_scan(
             MeasureKind::Vertical => (Point::new(fixed, w[0].0), Point::new(fixed, w[1].0)),
             _ => unreachable!(),
         };
-        push_span_dedup(out, a, b, gap.round() as i64, kind);
+        push_span_dedup(out, a, b, round_units(gap), kind);
     }
 }
 
@@ -280,7 +281,7 @@ fn push_span_dedup(out: &mut Vec<Measurement>, a: Point, b: Point, length: i64, 
 ///
 /// A piece is a straight segment, a curve, or a handle line. The tag lets
 /// the outline echo the label colors and link each number to its geometry.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ColoredStroke {
     /// The piece in design space.
     pub path: BezPath,
@@ -327,8 +328,8 @@ pub fn colored_strokes(paths: &[Path]) -> Vec<ColoredStroke> {
                     let mut bp = BezPath::new();
                     bp.move_to(pa);
                     bp.quad_to(cp, pb);
-                    let pc = popcount((cp - pa).hypot().round() as i64)
-                        .max(popcount((cp - pb).hypot().round() as i64));
+                    let pc = popcount(round_units((cp - pa).hypot()))
+                        .max(popcount(round_units((cp - pb).hypot())));
                     out.push(ColoredStroke {
                         path: bp,
                         popcount: pc,
@@ -342,8 +343,8 @@ pub fn colored_strokes(paths: &[Path]) -> Vec<ColoredStroke> {
                     let mut bp = BezPath::new();
                     bp.move_to(pa);
                     bp.curve_to(cp1, cp2, pb);
-                    let pc = popcount((cp1 - pa).hypot().round() as i64)
-                        .max(popcount((cp2 - pb).hypot().round() as i64));
+                    let pc = popcount(round_units((cp1 - pa).hypot()))
+                        .max(popcount(round_units((cp2 - pb).hypot())));
                     out.push(ColoredStroke {
                         path: bp,
                         popcount: pc,
@@ -364,7 +365,7 @@ pub fn colored_strokes(paths: &[Path]) -> Vec<ColoredStroke> {
 /// The gaps run between the advance margins, at x = 0 and x = advance, and
 /// the glyph's leftmost and rightmost points. The extreme-point positions
 /// come along so the renderer can point at them.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct SideBearings {
     /// The glyph's advance width in design units.
     pub advance: f64,
@@ -421,8 +422,8 @@ pub fn side_bearings(paths: &[Path], advance: f64) -> Option<SideBearings> {
 
     Some(SideBearings {
         advance,
-        lsb: min_x.round() as i64,
-        rsb: (advance - max_x).round() as i64,
+        lsb: round_units(min_x),
+        rsb: round_units(advance - max_x),
         min_x,
         max_x,
         y_left,
@@ -441,7 +442,7 @@ fn push_line(out: &mut Vec<ColoredStroke>, p0: Point, p1: Point, wide: bool) {
     bp.line_to(p1);
     out.push(ColoredStroke {
         path: bp,
-        popcount: popcount(len.round() as i64),
+        popcount: popcount(round_units(len)),
         wide,
     });
 }
@@ -467,8 +468,8 @@ pub fn label(value: i64) -> String {
     }
     let mut parts = Vec::new();
     for bit in (0..64).rev() {
-        if v & (1u64 << bit) != 0 {
-            parts.push((1u64 << bit).to_string());
+        if v & (1_u64 << bit) != 0 {
+            parts.push((1_u64 << bit).to_string());
         }
     }
     format!("{value} = {}", parts.join("+"))
@@ -490,7 +491,7 @@ pub fn joining_band(
     tolerance: f64,
 ) -> Option<(f64, f64)> {
     let mut band: Option<(f64, f64)> = None;
-    let mut visit = |p: kurbo::Point| {
+    let mut visit = |p: Point| {
         let reaches = if left {
             p.x <= tolerance
         } else {

@@ -35,35 +35,34 @@ pub enum Quadrant {
     BottomRight,
 }
 
-#[allow(dead_code)]
 impl Quadrant {
     /// Point within a screen-space rect (y increases downward).
     pub fn point_in_rect(&self, rect: Rect) -> Point {
         match self {
-            Quadrant::TopLeft => Point::new(rect.min_x(), rect.min_y()),
-            Quadrant::Top => Point::new(rect.center().x, rect.min_y()),
-            Quadrant::TopRight => Point::new(rect.max_x(), rect.min_y()),
-            Quadrant::Left => Point::new(rect.min_x(), rect.center().y),
-            Quadrant::Center => rect.center(),
-            Quadrant::Right => Point::new(rect.max_x(), rect.center().y),
-            Quadrant::BottomLeft => Point::new(rect.min_x(), rect.max_y()),
-            Quadrant::Bottom => Point::new(rect.center().x, rect.max_y()),
-            Quadrant::BottomRight => Point::new(rect.max_x(), rect.max_y()),
+            Self::TopLeft => Point::new(rect.min_x(), rect.min_y()),
+            Self::Top => Point::new(rect.center().x, rect.min_y()),
+            Self::TopRight => Point::new(rect.max_x(), rect.min_y()),
+            Self::Left => Point::new(rect.min_x(), rect.center().y),
+            Self::Center => rect.center(),
+            Self::Right => Point::new(rect.max_x(), rect.center().y),
+            Self::BottomLeft => Point::new(rect.min_x(), rect.max_y()),
+            Self::Bottom => Point::new(rect.center().x, rect.max_y()),
+            Self::BottomRight => Point::new(rect.max_x(), rect.max_y()),
         }
     }
 
     /// Point within a design-space rect (y increases upward).
     pub fn point_in_dspace_rect(&self, rect: Rect) -> Point {
         match self {
-            Quadrant::TopLeft => Point::new(rect.min_x(), rect.max_y()),
-            Quadrant::Top => Point::new(rect.center().x, rect.max_y()),
-            Quadrant::TopRight => Point::new(rect.max_x(), rect.max_y()),
-            Quadrant::Left => Point::new(rect.min_x(), rect.center().y),
-            Quadrant::Center => rect.center(),
-            Quadrant::Right => Point::new(rect.max_x(), rect.center().y),
-            Quadrant::BottomLeft => Point::new(rect.min_x(), rect.min_y()),
-            Quadrant::Bottom => Point::new(rect.center().x, rect.min_y()),
-            Quadrant::BottomRight => Point::new(rect.max_x(), rect.min_y()),
+            Self::TopLeft => Point::new(rect.min_x(), rect.max_y()),
+            Self::Top => Point::new(rect.center().x, rect.max_y()),
+            Self::TopRight => Point::new(rect.max_x(), rect.max_y()),
+            Self::Left => Point::new(rect.min_x(), rect.center().y),
+            Self::Center => rect.center(),
+            Self::Right => Point::new(rect.max_x(), rect.center().y),
+            Self::BottomLeft => Point::new(rect.min_x(), rect.min_y()),
+            Self::Bottom => Point::new(rect.center().x, rect.min_y()),
+            Self::BottomRight => Point::new(rect.max_x(), rect.min_y()),
         }
     }
 
@@ -95,31 +94,31 @@ impl Quadrant {
         };
 
         match (x_zone, y_zone) {
-            (0, 0) => Quadrant::TopLeft,
-            (1, 0) => Quadrant::Top,
-            (2, 0) => Quadrant::TopRight,
-            (0, 1) => Quadrant::Left,
-            (1, 1) => Quadrant::Center,
-            (2, 1) => Quadrant::Right,
-            (0, 2) => Quadrant::BottomLeft,
-            (1, 2) => Quadrant::Bottom,
-            (2, 2) => Quadrant::BottomRight,
-            _ => Quadrant::Center,
+            (0, 0) => Self::TopLeft,
+            (1, 0) => Self::Top,
+            (2, 0) => Self::TopRight,
+            (0, 1) => Self::Left,
+            (1, 1) => Self::Center,
+            (2, 1) => Self::Right,
+            (0, 2) => Self::BottomLeft,
+            (1, 2) => Self::Bottom,
+            (2, 2) => Self::BottomRight,
+            _ => Self::Center,
         }
     }
 
     /// Opposite corner, useful during transforms.
     pub fn inverse(&self) -> Self {
         match self {
-            Quadrant::TopLeft => Quadrant::BottomRight,
-            Quadrant::Top => Quadrant::Bottom,
-            Quadrant::TopRight => Quadrant::BottomLeft,
-            Quadrant::Left => Quadrant::Right,
-            Quadrant::Center => Quadrant::Center,
-            Quadrant::Right => Quadrant::Left,
-            Quadrant::BottomLeft => Quadrant::TopRight,
-            Quadrant::Bottom => Quadrant::Top,
-            Quadrant::BottomRight => Quadrant::TopLeft,
+            Self::TopLeft => Self::BottomRight,
+            Self::Top => Self::Bottom,
+            Self::TopRight => Self::BottomLeft,
+            Self::Left => Self::Right,
+            Self::Center => Self::Center,
+            Self::Right => Self::Left,
+            Self::BottomLeft => Self::TopRight,
+            Self::Bottom => Self::Top,
+            Self::BottomRight => Self::TopLeft,
         }
     }
 }

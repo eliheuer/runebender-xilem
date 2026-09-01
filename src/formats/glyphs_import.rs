@@ -24,7 +24,7 @@ use glyphslib::common::NodeType;
 use glyphslib::glyphs3::{Glyphs3, MetricType, Shape};
 use serde::Serialize;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 /// One generated file of the converted UFO or designspace set.
 pub struct ConvertedFile {
     /// Path relative to the output root, for example `Family-Regular.ufo/glyphs/A_.glif`.
@@ -33,7 +33,7 @@ pub struct ConvertedFile {
     pub text: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 /// The output of converting a Glyphs source: files to load plus warnings.
 pub struct ConversionResult {
     /// The family name from the Glyphs source.
@@ -538,7 +538,7 @@ fn fmt_f32(v: f32) -> String {
 
 fn fmt_f64(v: f64) -> String {
     if v.fract() == 0.0 && v.abs() < 1e15 {
-        format!("{}", v as i64)
+        format!("{}", crate::outline::glyph_paths::round_units(v))
     } else {
         format!("{v}")
     }

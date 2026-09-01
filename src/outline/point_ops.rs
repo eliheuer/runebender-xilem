@@ -46,19 +46,33 @@ fn pos(p: &ContourPoint) -> kurbo::Point {
     kurbo::Point::new(p.x, p.y)
 }
 
-/// Neighbour index in a contour, respecting open contours.
-fn step(index: usize, len: usize, closed: bool, d: isize) -> Option<usize> {
+/// The index `d` places from `index` around a contour of `len`
+/// points.
+///
+/// A closed contour wraps. An open one stops at either end and
+/// returns `None` past it.
+pub(crate) fn step_index(index: usize, len: usize, closed: bool, d: isize) -> Option<usize> {
     if len == 0 {
         return None;
     }
-    let j = index as isize + d;
-    if closed {
-        Some(((j % len as isize + len as isize) % len as isize) as usize)
-    } else if (0..len as isize).contains(&j) {
-        Some(j as usize)
+    let offset = d.unsigned_abs();
+    if d >= 0 {
+        let j = index.checked_add(offset)?;
+        if closed {
+            Some(j % len)
+        } else {
+            (j < len).then_some(j)
+        }
+    } else if closed {
+        Some((index + len - offset % len) % len)
     } else {
-        None
+        index.checked_sub(offset)
     }
+}
+
+/// `step_index` on a contour known to be closed and non-empty.
+pub(crate) fn wrap_index(index: usize, len: usize, d: isize) -> usize {
+    step_index(index, len, true, d).unwrap_or(0)
 }
 
 /// A closed contour is one that does not open with a `move` point.
@@ -126,14 +140,14 @@ fn smooth_handle_updates(
     updates: &mut Vec<(usize, kurbo::Point)>,
 ) {
     let len = points.len();
-    for d in [-1isize, 1] {
-        let Some(on_index) = step(index, len, closed, d) else {
+    for d in [-1_isize, 1] {
+        let Some(on_index) = step_index(index, len, closed, d) else {
             continue;
         };
         if is_off(&points[on_index]) || !points[on_index].smooth {
             continue;
         }
-        let Some(opposite) = step(on_index, len, closed, d) else {
+        let Some(opposite) = step_index(on_index, len, closed, d) else {
             continue;
         };
         if selected_here.contains(&opposite) {
@@ -182,8 +196,8 @@ fn move_indices(
         if independent || is_off(&points[index]) {
             continue;
         }
-        for d in [-1isize, 1] {
-            if let Some(nb) = step(index, points.len(), closed, d)
+        for d in [-1_isize, 1] {
+            if let Some(nb) = step_index(index, points.len(), closed, d)
                 && is_off(&points[nb])
             {
                 push(&mut out, nb);
