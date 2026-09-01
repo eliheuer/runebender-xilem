@@ -15,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};
 use runebender_core::outline::glyph_ops::{self, GlyphSnapshot, PointId};
 use runebender_core::outline::glyph_paths;
+use runebender_core::outline::glyph_paths::round_units;
 use runebender_core::outline::point_ops;
 use runebender_core::ui::editing::edit_types::EditType;
 use runebender_core::ui::editing::undo::UndoState;
@@ -22,14 +23,14 @@ use runebender_core::ui::editing::viewport::ViewPort;
 
 /// Boolean operation kinds, mapped to `linesweeper::BinaryOp` internally.
 #[derive(Clone, Copy)]
-pub enum BoolOp {
+pub(crate) enum BoolOp {
     Subtract,
     Intersect,
     Exclude,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Metrics {
+pub(crate) struct Metrics {
     pub upm: f64,
     pub ascender: f64,
     pub descender: f64,
@@ -38,7 +39,7 @@ pub struct Metrics {
 }
 
 impl Metrics {
-    pub fn of(font: &norad::Font) -> Self {
+    pub(crate) fn of(font: &norad::Font) -> Self {
         let info = &font.font_info;
         let upm = info.units_per_em.map(|u| u.as_f64()).unwrap_or(1000.0);
         Self {
@@ -53,7 +54,7 @@ impl Metrics {
 
 /// One point, as the editor sees it.
 #[derive(Clone, Copy, Debug)]
-pub struct PointView {
+pub(crate) struct PointView {
     pub id: PointId,
     pub point: Point,
     pub on_curve: bool,
@@ -62,7 +63,7 @@ pub struct PointView {
 }
 
 #[derive(Clone)]
-pub struct Session {
+pub(crate) struct Session {
     pub glyph_name: String,
     pub glyph: norad::Glyph,
     /// Components, resolved against the font at session creation.
@@ -94,7 +95,7 @@ struct PenPt {
 }
 
 impl Session {
-    pub fn new(font: &norad::Font, name: &str) -> Option<Self> {
+    pub(crate) fn new(font: &norad::Font, name: &str) -> Option<Self> {
         let glyph = font.get_glyph(name)?.clone();
         let components = glyph_paths::components_to_bezpath(&glyph, font);
         let component_contours = resolve_components(font, &glyph);
@@ -116,17 +117,17 @@ impl Session {
         })
     }
 
-    pub fn advance(&self) -> f64 {
+    pub(crate) fn advance(&self) -> f64 {
         self.glyph.width
     }
 
-    pub fn set_unicode(&mut self, u: &str) -> bool {
+    pub(crate) fn set_unicode(&mut self, u: &str) -> bool {
         self.record(EditType::Normal);
         runebender_core::document::font_ops::set_glyph_unicode(&mut self.glyph, u)
     }
 
     /// Shift all points and anchors horizontally (left-sidebearing drag).
-    pub fn shift_glyph(&mut self, dx: f64) {
+    pub(crate) fn shift_glyph(&mut self, dx: f64) {
         self.record(EditType::Drag);
         for contour in &mut self.glyph.contours {
             for p in &mut contour.points {
@@ -139,24 +140,24 @@ impl Session {
         self.glyph.width = (self.glyph.width + dx).max(0.0);
     }
 
-    pub fn set_advance(&mut self, w: f64) {
+    pub(crate) fn set_advance(&mut self, w: f64) {
         self.record(EditType::Normal);
         self.glyph.width = w.max(0.0);
     }
 
-    pub fn outline_arc(&self) -> std::sync::Arc<BezPath> {
-        std::sync::Arc::new(self.outline())
+    pub(crate) fn outline_arc(&self) -> Arc<BezPath> {
+        Arc::new(self.outline())
     }
 
-    pub fn components_arc(&self) -> std::sync::Arc<BezPath> {
-        std::sync::Arc::new(self.components.clone())
+    pub(crate) fn components_arc(&self) -> Arc<BezPath> {
+        Arc::new(self.components.clone())
     }
 
-    pub fn outline(&self) -> BezPath {
+    pub(crate) fn outline(&self) -> BezPath {
         glyph_paths::contours_to_bezpath(&self.glyph)
     }
 
-    pub fn points(&self) -> Vec<PointView> {
+    pub(crate) fn points(&self) -> Vec<PointView> {
         let mut out = Vec::new();
         for (ci, contour) in self.glyph.contours.iter().enumerate() {
             for (pi, p) in contour.points.iter().enumerate() {
@@ -173,14 +174,14 @@ impl Session {
         out
     }
 
-    pub fn point_count(&self) -> usize {
+    pub(crate) fn point_count(&self) -> usize {
         self.glyph.contours.iter().map(|c| c.points.len()).sum()
     }
 
     // ---- edits ----
 
     /// Record the state before an edit.
-    pub fn record(&mut self, edit: EditType) {
+    pub(crate) fn record(&mut self, edit: EditType) {
         let snapshot = glyph_ops::snapshot(&self.glyph);
         match edit {
             EditType::Drag => {
@@ -194,7 +195,7 @@ impl Session {
         }
     }
 
-    pub fn undo(&mut self) -> bool {
+    pub(crate) fn undo(&mut self) -> bool {
         let current = glyph_ops::snapshot(&self.glyph);
         match self.undo.undo(current) {
             Some(prev) => {
@@ -206,7 +207,7 @@ impl Session {
         }
     }
 
-    pub fn redo(&mut self) -> bool {
+    pub(crate) fn redo(&mut self) -> bool {
         let current = glyph_ops::snapshot(&self.glyph);
         match self.undo.redo(current) {
             Some(next) => {
@@ -228,7 +229,7 @@ impl Session {
         });
     }
 
-    pub fn begin_point_drag(&mut self) {
+    pub(crate) fn begin_point_drag(&mut self) {
         self.record(EditType::Drag);
         self.drag_originals = self
             .points()
@@ -239,7 +240,7 @@ impl Session {
     }
 
     /// Move the selection to `total` design units from where the drag began.
-    pub fn drag_points_to(&mut self, total: (f64, f64)) -> bool {
+    pub(crate) fn drag_points_to(&mut self, total: (f64, f64)) -> bool {
         point_ops::translate_points(
             &mut self.glyph,
             &self.selection,
@@ -249,12 +250,12 @@ impl Session {
         )
     }
 
-    pub fn end_point_drag(&mut self) {
+    pub(crate) fn end_point_drag(&mut self) {
         self.record(EditType::DragUp);
         self.drag_originals.clear();
     }
 
-    pub fn nudge(&mut self, dx: f64, dy: f64) -> bool {
+    pub(crate) fn nudge(&mut self, dx: f64, dy: f64) -> bool {
         if self.selection.is_empty() {
             return false;
         }
@@ -274,7 +275,7 @@ impl Session {
         )
     }
 
-    pub fn delete_selected(&mut self) -> bool {
+    pub(crate) fn delete_selected(&mut self) -> bool {
         if self.selection.is_empty() {
             return false;
         }
@@ -285,11 +286,11 @@ impl Session {
     }
 
     /// The first point of the pen buffer, in design space.
-    pub fn pen_first_point(&self) -> Option<Point> {
+    pub(crate) fn pen_first_point(&self) -> Option<Point> {
         self.pen.first().map(|p| p.point)
     }
 
-    pub fn pen_is_active(&self) -> bool {
+    pub(crate) fn pen_is_active(&self) -> bool {
         !self.pen.is_empty()
     }
 
@@ -327,7 +328,7 @@ impl Session {
     }
 
     /// Place a corner on-curve point (a plain click).
-    pub fn pen_corner(&mut self, x: f64, y: f64) {
+    pub(crate) fn pen_corner(&mut self, x: f64, y: f64) {
         if self.pen.is_empty() {
             self.record(EditType::Normal);
         }
@@ -341,7 +342,7 @@ impl Session {
 
     /// Begin a smooth point with symmetric handles at `origin`; the outgoing
     /// handle starts at `to`.
-    pub fn pen_smooth_begin(&mut self, origin: Point, to: Point) {
+    pub(crate) fn pen_smooth_begin(&mut self, origin: Point, to: Point) {
         if self.pen.is_empty() {
             self.record(EditType::Normal);
         }
@@ -364,7 +365,7 @@ impl Session {
     }
 
     /// Update the handles of the smooth point currently being dragged.
-    pub fn pen_smooth_drag(&mut self, origin: Point, to: Point) {
+    pub(crate) fn pen_smooth_drag(&mut self, origin: Point, to: Point) {
         let n = self.pen.len();
         if n < 3 {
             return;
@@ -375,7 +376,7 @@ impl Session {
     }
 
     /// Close the active contour.
-    pub fn pen_close(&mut self) {
+    pub(crate) fn pen_close(&mut self) {
         if let Some(c) = self.active_contour.take()
             && let Some(contour) = self.glyph.contours.get_mut(c)
             && contour.points.first().map(|p| p.typ) == Some(norad::PointType::Move)
@@ -405,7 +406,7 @@ impl Session {
     }
 
     /// End the current pen path without closing (Escape / tool switch).
-    pub fn pen_cancel(&mut self) {
+    pub(crate) fn pen_cancel(&mut self) {
         self.active_contour = None;
         self.pen.clear();
     }
@@ -413,7 +414,7 @@ impl Session {
     // ---- hyperbezier pen: on-curve points only, curve solved by the spline ----
 
     /// Add a hyperbezier on-curve point (smooth), starting a contour if idle.
-    pub fn hyper_add(&mut self, x: f64, y: f64, corner: bool) {
+    pub(crate) fn hyper_add(&mut self, x: f64, y: f64, corner: bool) {
         if self.active_contour.is_none() {
             self.record(EditType::Normal);
             let c = glyph_ops::start_hyper_contour(&mut self.glyph, x, y);
@@ -426,25 +427,25 @@ impl Session {
         }
     }
 
-    pub fn hyper_close(&mut self) {
+    pub(crate) fn hyper_close(&mut self) {
         if let Some(c) = self.active_contour.take() {
             self.record(EditType::Normal);
             glyph_ops::close_hyper_contour(&mut self.glyph, c);
         }
     }
 
-    pub fn first_contour_point(&self) -> Option<Point> {
+    pub(crate) fn first_contour_point(&self) -> Option<Point> {
         let c = self.active_contour?;
         let p = self.glyph.contours.get(c)?.points.first()?;
         Some(Point::new(p.x, p.y))
     }
 
-    pub fn hyper_is_active(&self) -> bool {
+    pub(crate) fn hyper_is_active(&self) -> bool {
         self.active_contour.is_some() && self.pen.is_empty()
     }
 
     /// Add a closed rectangle contour.
-    pub fn add_rect(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
+    pub(crate) fn add_rect(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
         let (lx, rx) = (x0.min(x1), x0.max(x1));
         let (by, ty) = (y0.min(y1), y0.max(y1));
         if (rx - lx).abs() < 1.0 || (ty - by).abs() < 1.0 {
@@ -463,7 +464,7 @@ impl Session {
     }
 
     /// Add a closed ellipse contour (four cubic segments).
-    pub fn add_ellipse(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
+    pub(crate) fn add_ellipse(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
         let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
         let (rx, ry) = ((x1 - x0).abs() / 2.0, (y1 - y0).abs() / 2.0);
         if rx < 1.0 || ry < 1.0 {
@@ -494,40 +495,40 @@ impl Session {
 
     /// Apply an affine to the selection (or the whole glyph if none),
     /// centered on the target bounding box.
-    pub fn transform(&mut self, affine: kurbo::Affine) -> bool {
+    pub(crate) fn transform(&mut self, affine: kurbo::Affine) -> bool {
         self.record(EditType::Normal);
         glyph_ops::transform_selection(&mut self.glyph, &self.selection, affine)
     }
 
-    pub fn flip_horizontal(&mut self) -> bool {
+    pub(crate) fn flip_horizontal(&mut self) -> bool {
         self.transform(kurbo::Affine::new([-1.0, 0.0, 0.0, 1.0, 0.0, 0.0]))
     }
 
-    pub fn flip_vertical(&mut self) -> bool {
+    pub(crate) fn flip_vertical(&mut self) -> bool {
         self.transform(kurbo::Affine::new([1.0, 0.0, 0.0, -1.0, 0.0, 0.0]))
     }
 
-    pub fn rotate_90(&mut self) -> bool {
+    pub(crate) fn rotate_90(&mut self) -> bool {
         self.transform(kurbo::Affine::new([0.0, 1.0, -1.0, 0.0, 0.0, 0.0]))
     }
 
-    pub fn reverse(&mut self) -> bool {
+    pub(crate) fn reverse(&mut self) -> bool {
         self.record(EditType::Normal);
         glyph_ops::reverse_contours(&mut self.glyph, &self.selection)
     }
 
-    pub fn decompose(&mut self) -> bool {
+    pub(crate) fn decompose(&mut self) -> bool {
         if self.glyph.components.is_empty() || self.component_contours.is_empty() {
             return false;
         }
         self.record(EditType::Normal);
         self.glyph.contours.append(&mut self.component_contours);
         self.glyph.components.clear();
-        self.components = kurbo::BezPath::new();
+        self.components = BezPath::new();
         true
     }
 
-    pub fn boolean(&mut self, op: BoolOp) -> bool {
+    pub(crate) fn boolean(&mut self, op: BoolOp) -> bool {
         let op = match op {
             BoolOp::Subtract => linesweeper::BinaryOp::Difference,
             BoolOp::Intersect => linesweeper::BinaryOp::Intersection,
@@ -543,7 +544,7 @@ impl Session {
         }
     }
 
-    pub fn remove_overlap(&mut self) -> bool {
+    pub(crate) fn remove_overlap(&mut self) -> bool {
         if let Some(contours) = glyph_ops::remove_overlap(&self.glyph) {
             self.record(EditType::Normal);
             self.glyph.contours = contours;
@@ -555,12 +556,12 @@ impl Session {
     }
 
     /// Points where a knife line from p0 to p1 crosses the outline.
-    pub fn knife_hits(&self, p0: Point, p1: Point) -> Vec<Point> {
+    pub(crate) fn knife_hits(&self, p0: Point, p1: Point) -> Vec<Point> {
         runebender_core::outline::knife::knife_hit_points(&self.glyph, p0, p1)
     }
 
     /// Cut the outline along the line p0..p1.
-    pub fn knife_cut(&mut self, p0: Point, p1: Point) -> bool {
+    pub(crate) fn knife_cut(&mut self, p0: Point, p1: Point) -> bool {
         self.record(EditType::Normal);
         let changed = runebender_core::outline::knife::knife_cut_glyph(&mut self.glyph, p0, p1);
         if !changed {
@@ -571,7 +572,7 @@ impl Session {
     }
 
     /// The glyph's contours as core `Path`s (for measurement/analysis).
-    pub fn paths(&self) -> Vec<runebender_core::outline::path::Path> {
+    pub(crate) fn paths(&self) -> Vec<runebender_core::outline::path::Path> {
         self.glyph
             .contours
             .iter()
@@ -583,16 +584,16 @@ impl Session {
             .collect()
     }
 
-    pub fn measurements(&self) -> Vec<runebender_core::analysis::measure::Measurement> {
+    pub(crate) fn measurements(&self) -> Vec<runebender_core::analysis::measure::Measurement> {
         runebender_core::analysis::measure::glyph_measurements(&self.paths())
     }
 
-    pub fn side_bearings(&self) -> Option<runebender_core::analysis::measure::SideBearings> {
+    pub(crate) fn side_bearings(&self) -> Option<runebender_core::analysis::measure::SideBearings> {
         runebender_core::analysis::measure::side_bearings(&self.paths(), self.advance())
     }
 
     /// Bounding box of the selected points in design space, if any.
-    pub fn selection_bounds(&self) -> Option<Rect> {
+    pub(crate) fn selection_bounds(&self) -> Option<Rect> {
         let mut min = (f64::INFINITY, f64::INFINITY);
         let mut max = (f64::NEG_INFINITY, f64::NEG_INFINITY);
         for (ci, contour) in self.glyph.contours.iter().enumerate() {
@@ -611,7 +612,7 @@ impl Session {
     }
 
     /// Make the first selected on-curve point the start of its contour.
-    pub fn set_start(&mut self) -> bool {
+    pub(crate) fn set_start(&mut self) -> bool {
         let Some(&(ci, pi)) = self.selection.iter().min() else {
             return false;
         };
@@ -624,7 +625,7 @@ impl Session {
     }
 
     /// Round the selected corner points (fillet).
-    pub fn round_corners(&mut self) -> bool {
+    pub(crate) fn round_corners(&mut self) -> bool {
         self.record(EditType::Normal);
         match glyph_ops::round_selected_corners(&mut self.glyph, &self.selection) {
             Some(next) => {
@@ -635,7 +636,7 @@ impl Session {
         }
     }
 
-    pub fn harmonize(&mut self) -> bool {
+    pub(crate) fn harmonize(&mut self) -> bool {
         self.record(EditType::Normal);
         glyph_ops::curve_op(
             &mut self.glyph,
@@ -644,7 +645,7 @@ impl Session {
         )
     }
 
-    pub fn balance(&mut self) -> bool {
+    pub(crate) fn balance(&mut self) -> bool {
         self.record(EditType::Normal);
         glyph_ops::curve_op(
             &mut self.glyph,
@@ -653,7 +654,7 @@ impl Session {
         )
     }
 
-    pub fn optimize(&mut self) -> bool {
+    pub(crate) fn optimize(&mut self) -> bool {
         self.record(EditType::Normal);
         glyph_ops::curve_op(
             &mut self.glyph,
@@ -662,7 +663,7 @@ impl Session {
         )
     }
 
-    pub fn duplicate(&mut self) -> bool {
+    pub(crate) fn duplicate(&mut self) -> bool {
         self.record(EditType::Normal);
         match glyph_ops::duplicate_selection(&mut self.glyph, &self.selection) {
             Some(next) => {
@@ -674,7 +675,7 @@ impl Session {
     }
 
     /// Index of the anchor near `p` (design space), if within `tol`.
-    pub fn anchor_at(&self, p: Point, tol: f64) -> Option<usize> {
+    pub(crate) fn anchor_at(&self, p: Point, tol: f64) -> Option<usize> {
         self.glyph
             .anchors
             .iter()
@@ -688,7 +689,7 @@ impl Session {
             .map(|(i, _)| i)
     }
 
-    pub fn add_anchor(&mut self, x: f64, y: f64) {
+    pub(crate) fn add_anchor(&mut self, x: f64, y: f64) {
         self.record(EditType::Normal);
         let n = self.glyph.anchors.len();
         let name = norad::Name::new(&format!("anchor.{n}")).ok();
@@ -698,14 +699,14 @@ impl Session {
         self.selected_anchor = Some(n);
     }
 
-    pub fn move_anchor(&mut self, idx: usize, x: f64, y: f64) {
+    pub(crate) fn move_anchor(&mut self, idx: usize, x: f64, y: f64) {
         if let Some(a) = self.glyph.anchors.get_mut(idx) {
             a.x = x;
             a.y = y;
         }
     }
 
-    pub fn delete_selected_anchor(&mut self) -> bool {
+    pub(crate) fn delete_selected_anchor(&mut self) -> bool {
         let Some(idx) = self.selected_anchor.take() else {
             return false;
         };
@@ -719,18 +720,18 @@ impl Session {
     }
 
     /// Continuity of every on-curve node: corner, kink, G1, G2, G3.
-    pub fn continuity(&self) -> Vec<runebender_core::analysis::curve::NodeContinuity> {
+    pub(crate) fn continuity(&self) -> Vec<runebender_core::analysis::curve::NodeContinuity> {
         let cubics = runebender_core::analysis::curve::cubics_from_norad(&self.glyph);
         runebender_core::analysis::curve::node_continuity(&cubics)
     }
 
     /// The outline split into strokes colored by segment length, the web
     /// editor's colorize mode.
-    pub fn colored_strokes(&self) -> Vec<runebender_core::analysis::measure::ColoredStroke> {
+    pub(crate) fn colored_strokes(&self) -> Vec<runebender_core::analysis::measure::ColoredStroke> {
         runebender_core::analysis::measure::colored_strokes(&self.paths())
     }
 
-    pub fn curvature_comb(&self) -> Vec<Vec<(Point, Point)>> {
+    pub(crate) fn curvature_comb(&self) -> Vec<Vec<(Point, Point)>> {
         let cubics = runebender_core::analysis::curve::cubics_from_norad(&self.glyph);
         runebender_core::analysis::curve::curvature_comb(&cubics, 1.0, 4000.0, false, 12)
             .into_iter()
@@ -738,7 +739,7 @@ impl Session {
             .collect()
     }
 
-    pub fn set_mark(&mut self, label: Option<&str>) {
+    pub(crate) fn set_mark(&mut self, label: Option<&str>) {
         self.record(EditType::Normal);
         runebender_core::ui::theme_oklch::set_glyph_mark(&mut self.glyph, label);
     }
@@ -746,7 +747,7 @@ impl Session {
     /// The contours to copy: the ones holding a selected point, or every
     /// contour when nothing is selected. This is the web editor's rule,
     /// and the GPUI build's.
-    pub fn contours_for_copy(&self) -> Vec<norad::Contour> {
+    pub(crate) fn contours_for_copy(&self) -> Vec<norad::Contour> {
         if self.selection.is_empty() {
             return self.glyph.contours.clone();
         }
@@ -761,7 +762,7 @@ impl Session {
 
     /// Replace every contour, keeping the advance. Used by the swap with
     /// the background layer, which is an edit like any other.
-    pub fn set_contours(&mut self, contours: Vec<norad::Contour>) -> bool {
+    pub(crate) fn set_contours(&mut self, contours: Vec<norad::Contour>) -> bool {
         self.record(EditType::Normal);
         self.glyph.contours = contours;
         self.selection.clear();
@@ -769,7 +770,7 @@ impl Session {
     }
 
     /// Append contours to the glyph, and select the points they brought.
-    pub fn paste_contours(&mut self, contours: &[norad::Contour]) -> bool {
+    pub(crate) fn paste_contours(&mut self, contours: &[norad::Contour]) -> bool {
         if contours.is_empty() {
             return false;
         }
@@ -785,7 +786,7 @@ impl Session {
         true
     }
 
-    pub fn select_all(&mut self) {
+    pub(crate) fn select_all(&mut self) {
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }
 }
@@ -894,7 +895,7 @@ impl Workspace {
         if let Some(entry) = self.font.glyphs.get(index)
             && let Some(session) = Session::new(&self.font.font, &entry.name)
         {
-            self.advance_buf = format!("{}", session.advance() as i64);
+            self.advance_buf = format!("{}", round_units(session.advance()));
             let (l, r) = metric_bufs(&session);
             self.lsb_buf = l;
             self.rsb_buf = r;
@@ -959,7 +960,7 @@ impl Workspace {
     }
 
     /// The current axis location as a name->value map (user units).
-    pub(crate) fn axis_location(&self) -> std::collections::HashMap<String, f64> {
+    pub(crate) fn axis_location(&self) -> HashMap<String, f64> {
         self.font
             .axes
             .iter()
@@ -987,7 +988,7 @@ impl Workspace {
     /// The interpolated instance outline at the current axis location, shown as
     /// a read-only overlay. `None` on a master (the editable outline is enough)
     /// or when the glyph is not interpolatable.
-    pub(crate) fn interp_preview(&self) -> Option<Arc<masonry::kurbo::BezPath>> {
+    pub(crate) fn interp_preview(&self) -> Option<Arc<BezPath>> {
         if self.on_active_master() {
             return None;
         }

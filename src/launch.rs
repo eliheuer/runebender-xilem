@@ -25,7 +25,7 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
             c
         };
         app.selected_points = n;
-        app.session = std::sync::Arc::new(sess);
+        app.session = Arc::new(sess);
         app.refresh_coord_bufs();
     }
     // Headless: render one frame and exit. No window, no event loop.

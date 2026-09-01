@@ -4,6 +4,7 @@
 //! The info panel: which sections show for the grid and for a glyph.
 
 use crate::*;
+use runebender_core::outline::glyph_paths::round_units;
 
 pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
@@ -11,7 +12,7 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     let (_name, _adv, pts, _cp) = match app.mode {
         Mode::Editor(_) => (
             app.session.glyph_name.clone(),
-            format!("{}", app.session.advance() as i64),
+            format!("{}", round_units(app.session.advance())),
             format!("{}", app.session.point_count()),
             String::new(),
         ),
@@ -19,7 +20,7 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             let g = app.selected.and_then(|i| app.font.glyphs.get(i));
             (
                 g.map(|g| g.name.clone()).unwrap_or_default(),
-                g.map(|g| format!("{}", g.advance as i64))
+                g.map(|g| format!("{}", round_units(g.advance)))
                     .unwrap_or_default(),
                 String::new(),
                 g.and_then(|g| g.codepoint)
@@ -45,11 +46,11 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 )
                 .flex(1.0),
                 recipes::field(pal, "LSB", app.lsb_buf.clone(), |app: &mut Workspace, v| {
-                    app.set_lsb_from_buf(v)
+                    app.set_lsb_from_buf(v);
                 })
                 .flex(1.0),
                 recipes::field(pal, "RSB", app.rsb_buf.clone(), |app: &mut Workspace, v| {
-                    app.set_rsb_from_buf(v)
+                    app.set_rsb_from_buf(v);
                 })
                 .flex(1.0),
             ),

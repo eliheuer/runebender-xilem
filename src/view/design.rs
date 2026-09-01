@@ -26,7 +26,11 @@ use xilem::style::Style;
 use xilem::view::{Flex, FlexSequence, Prop, flex_col, flex_row};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Space {
+#[expect(
+    dead_code,
+    reason = "the scale is a closed vocabulary: a size nothing uses yet is still part of it"
+)]
+pub(crate) enum Space {
     /// No space.
     None,
     /// 2 px. Inside a control, between an icon and its label.
@@ -46,7 +50,7 @@ pub enum Space {
 
 impl Space {
     /// The step, in logical pixels.
-    pub const fn px(self) -> f64 {
+    pub(crate) const fn px(self) -> f64 {
         match self {
             Self::None => 0.0,
             Self::Xs => 2.0,
@@ -59,7 +63,7 @@ impl Space {
     }
 
     /// The step as a [`Length`].
-    pub const fn length(self) -> Length {
+    pub(crate) const fn length(self) -> Length {
         match Length::try_px(self.px()) {
             Some(length) => length,
             None => Length::ZERO,
@@ -76,7 +80,11 @@ impl Space {
 /// Heights are what make a panel read as tidy or ragged, and they are the
 /// first thing an author invents a number for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ControlSize {
+#[expect(
+    dead_code,
+    reason = "the scale is a closed vocabulary: a size nothing uses yet is still part of it"
+)]
+pub(crate) enum ControlSize {
     /// 10 px. A dot in a picker, a status light.
     Dot,
     /// 16 px. A color swatch or a chip.
@@ -96,7 +104,7 @@ pub enum ControlSize {
 
 impl ControlSize {
     /// The height, in logical pixels.
-    pub const fn px(self) -> f64 {
+    pub(crate) const fn px(self) -> f64 {
         match self {
             Self::Dot => 10.0,
             Self::Swatch => 16.0,
@@ -109,7 +117,7 @@ impl ControlSize {
     }
 
     /// The height as a [`Length`].
-    pub const fn length(self) -> Length {
+    pub(crate) const fn length(self) -> Length {
         match Length::try_px(self.px()) {
             Some(length) => length,
             None => Length::ZERO,
@@ -122,7 +130,11 @@ impl ControlSize {
 /// A border is either there or emphasized. Three values is already
 /// generous, and it keeps 1.5 px hairlines from appearing.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Stroke {
+#[expect(
+    dead_code,
+    reason = "the scale is a closed vocabulary: a size nothing uses yet is still part of it"
+)]
+pub(crate) enum Stroke {
     /// No border.
     None,
     /// 1 px. The default border.
@@ -134,7 +146,7 @@ pub enum Stroke {
 
 impl Stroke {
     /// The width, in logical pixels.
-    pub const fn px(self) -> f64 {
+    pub(crate) const fn px(self) -> f64 {
         match self {
             Self::None => 0.0,
             Self::Hairline => 1.0,
@@ -143,7 +155,7 @@ impl Stroke {
     }
 
     /// The width as a [`Length`].
-    pub const fn length(self) -> Length {
+    pub(crate) const fn length(self) -> Length {
         match Length::try_px(self.px()) {
             Some(length) => length,
             None => Length::ZERO,
@@ -159,7 +171,11 @@ impl From<Stroke> for Length {
 
 /// The corner scale.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Radius {
+#[expect(
+    dead_code,
+    reason = "the scale is a closed vocabulary: a size nothing uses yet is still part of it"
+)]
+pub(crate) enum Radius {
     /// Square corners.
     None,
     /// 4 px. Rows, fields, small controls. The default.
@@ -177,7 +193,7 @@ pub enum Radius {
 
 impl Radius {
     /// The radius, in logical pixels.
-    pub const fn px(self) -> f64 {
+    pub(crate) const fn px(self) -> f64 {
         match self {
             Self::None => 0.0,
             Self::Sm => 4.0,
@@ -189,7 +205,7 @@ impl Radius {
     }
 
     /// The radius as a [`Length`].
-    pub const fn length(self) -> Length {
+    pub(crate) const fn length(self) -> Length {
         match Length::try_px(self.px()) {
             Some(length) => length,
             None => Length::ZERO,
@@ -199,7 +215,11 @@ impl Radius {
 
 /// The type scale. Two sizes carry most of an interface.
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
-pub enum TextSize {
+#[expect(
+    dead_code,
+    reason = "the scale is a closed vocabulary: a size nothing uses yet is still part of it"
+)]
+pub(crate) enum TextSize {
     /// 11 px. Section headers, counts, hints.
     Caption,
     /// 12 px. Rows, labels, fields. The default.
@@ -215,7 +235,7 @@ pub enum TextSize {
 
 impl TextSize {
     /// The size, in logical pixels.
-    pub const fn px(self) -> f32 {
+    pub(crate) const fn px(self) -> f32 {
         match self {
             Self::Caption => 11.0,
             Self::Body => 12.0,
@@ -262,7 +282,7 @@ impl From<TextSize> for f32 {
     }
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Region {
+pub(crate) enum Region {
     /// A panel, sidebar, or inspector. The default for a pane of content.
     #[default]
     Panel,
@@ -282,7 +302,7 @@ pub enum Region {
 
 impl Region {
     /// The space between children of this region.
-    pub const fn gap(self) -> Space {
+    pub(crate) const fn gap(self) -> Space {
         match self {
             Self::Panel => Space::Lg,
             Self::Section => Space::Md,
@@ -300,7 +320,7 @@ impl Region {
     /// inline run) has no inset: its parent already provided one, and a
     /// second one doubles the margin. This is the rule that removes the
     /// margin conversation.
-    pub const fn inset(self) -> Space {
+    pub(crate) const fn inset(self) -> Space {
         match self {
             Self::Panel => Space::Lg,
             Self::Section => Space::None,
@@ -328,11 +348,14 @@ impl From<Space> for Gap {
 /// What [`column()`] and [`row()`] return: a flex container with its gap and
 /// inset already set from its [`Region`]. Named rather than hidden behind
 /// `impl WidgetView` so the result stays styleable.
-pub type RegionStack<Seq, State, Action> =
+pub(crate) type RegionStack<Seq, State, Action> =
     Prop<Padding, Prop<Gap, Flex<Seq, State, Action>, State, Action>, State, Action>;
 
 /// A vertical container whose spacing comes from its [`Region`].
-pub fn column<State, Action, Seq>(region: Region, children: Seq) -> RegionStack<Seq, State, Action>
+pub(crate) fn column<State, Action, Seq>(
+    region: Region,
+    children: Seq,
+) -> RegionStack<Seq, State, Action>
 where
     State: 'static,
     Action: 'static,
@@ -342,7 +365,10 @@ where
 }
 
 /// A horizontal container whose spacing comes from its [`Region`].
-pub fn row<State, Action, Seq>(region: Region, children: Seq) -> RegionStack<Seq, State, Action>
+pub(crate) fn row<State, Action, Seq>(
+    region: Region,
+    children: Seq,
+) -> RegionStack<Seq, State, Action>
 where
     State: 'static,
     Action: 'static,

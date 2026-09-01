@@ -55,7 +55,7 @@ impl RawProxy for NoProxy {
 /// rebuild below downcasts the root back to it. Wrapping the
 /// application's root view in a `sized_box` is enough, and that is what
 /// the caller does.
-pub fn render_to<V, F>(mut app: Workspace, logic: F, size: (u32, u32), path: &str)
+pub(crate) fn render_to<V, F>(mut app: Workspace, logic: F, size: (u32, u32), path: &str)
 where
     V: WidgetView<Workspace>,
     V::Widget: Sized,

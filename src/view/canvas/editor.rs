@@ -121,7 +121,7 @@ impl EditorWidget {
 
 /// What the editor reports upward.
 #[derive(Debug)]
-pub enum EditorEvent {
+pub(crate) enum EditorEvent {
     /// The glyph changed; the app should refresh its cached preview.
     Edited,
     /// Selection changed; carries how many points are selected.
@@ -166,13 +166,13 @@ enum Drag {
     },
 }
 
-pub struct EditorWidget {
+pub(crate) struct EditorWidget {
     session: Session,
     palette: Arc<Palette>,
     tool: Tool,
-    ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
+    ghosts: Arc<Vec<kurbo::BezPath>>,
     /// Read-only interpolated instance overlay at the current axis location.
-    interp: Option<Arc<masonry::kurbo::BezPath>>,
+    interp: Option<Arc<kurbo::BezPath>>,
     /// Background layer and reference glyph, drawn under everything.
     underlay: Underlay,
     /// The text tool's buffer, present only while that tool is in hand.
@@ -199,7 +199,7 @@ pub struct EditorWidget {
 
 /// Which number in the metrics panel is being typed into.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum MetricField {
+pub(crate) enum MetricField {
     Lsb,
     Width,
     Rsb,
@@ -551,7 +551,7 @@ impl EditorWidget {
         let zoom = ((self.size.width * 0.9) / width).min((self.size.height * 0.8) / design_height);
         self.session.viewport.zoom = zoom.max(0.001);
         let center_y = (m.ascender + m.descender) / 2.0;
-        self.session.viewport.offset = masonry::kurbo::Vec2::new(
+        self.session.viewport.offset = kurbo::Vec2::new(
             (self.size.width - width * self.session.viewport.zoom) / 2.0,
             self.size.height / 2.0 + center_y * self.session.viewport.zoom,
         );
@@ -808,12 +808,12 @@ impl Widget for EditorWidget {
                     anchor_color
                 };
                 let r = if selected { 6.5 } else { 5.0 };
-                let diamond = masonry::kurbo::BezPath::from_vec(vec![
-                    masonry::kurbo::PathEl::MoveTo(Point::new(p.x, p.y - r)),
-                    masonry::kurbo::PathEl::LineTo(Point::new(p.x + r, p.y)),
-                    masonry::kurbo::PathEl::LineTo(Point::new(p.x, p.y + r)),
-                    masonry::kurbo::PathEl::LineTo(Point::new(p.x - r, p.y)),
-                    masonry::kurbo::PathEl::ClosePath,
+                let diamond = kurbo::BezPath::from_vec(vec![
+                    kurbo::PathEl::MoveTo(Point::new(p.x, p.y - r)),
+                    kurbo::PathEl::LineTo(Point::new(p.x + r, p.y)),
+                    kurbo::PathEl::LineTo(Point::new(p.x, p.y + r)),
+                    kurbo::PathEl::LineTo(Point::new(p.x - r, p.y)),
+                    kurbo::PathEl::ClosePath,
                 ]);
                 painter
                     .stroke(&diamond, &Stroke::new(1.5), anchor_color)
@@ -992,7 +992,7 @@ impl Widget for EditorWidget {
                 Tool::Ellipse => {
                     let c = ((p0.x + p1.x) / 2.0, (p0.y + p1.y) / 2.0);
                     let rr = ((p1.x - p0.x).abs() / 2.0, (p1.y - p0.y).abs() / 2.0);
-                    let e = masonry::kurbo::Ellipse::new(c, rr, 0.0);
+                    let e = kurbo::Ellipse::new(c, rr, 0.0);
                     painter.stroke(e, &Stroke::new(1.0), accent).draw();
                 }
                 _ => {
@@ -1474,10 +1474,7 @@ impl Widget for EditorWidget {
 
 // ---------------------------------------------------------------------------
 /// Cheap equality for the interpolation overlay: same Arc, or both absent.
-fn interp_eq(
-    a: &Option<Arc<masonry::kurbo::BezPath>>,
-    b: &Option<Arc<masonry::kurbo::BezPath>>,
-) -> bool {
+fn interp_eq(a: &Option<Arc<kurbo::BezPath>>, b: &Option<Arc<kurbo::BezPath>>) -> bool {
     match (a, b) {
         (Some(x), Some(y)) => Arc::ptr_eq(x, y),
         (None, None) => true,
@@ -1487,13 +1484,13 @@ fn interp_eq(
 
 // View wrapper.
 
-pub struct EditorView<F> {
+pub(crate) struct EditorView<F> {
     session: Arc<Session>,
     palette: Arc<Palette>,
     tool: Tool,
     view: ViewOptions,
-    ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
-    interp: Option<Arc<masonry::kurbo::BezPath>>,
+    ghosts: Arc<Vec<kurbo::BezPath>>,
+    interp: Option<Arc<kurbo::BezPath>>,
     underlay: Underlay,
     text: Option<crate::edit::text_tool::TextInputs>,
     on_event: F,
@@ -1501,14 +1498,17 @@ pub struct EditorView<F> {
 
 // The editor takes every input it draws from as its own argument, so the
 // call site reads as a list of what the view depends on.
-#[allow(clippy::too_many_arguments)]
-pub fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one argument per layer this paint pass draws"
+)]
+pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
     session: Arc<Session>,
     palette: Arc<Palette>,
     tool: Tool,
     view: ViewOptions,
-    ghosts: Arc<Vec<masonry::kurbo::BezPath>>,
-    interp: Option<Arc<masonry::kurbo::BezPath>>,
+    ghosts: Arc<Vec<kurbo::BezPath>>,
+    interp: Option<Arc<kurbo::BezPath>>,
     underlay: Underlay,
     text: Option<crate::edit::text_tool::TextInputs>,
     on_event: F,
@@ -1533,7 +1533,7 @@ pub fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
 /// them read from `runebender-core`, so the three editors agree about
 /// what a kink or a stem is.
 #[derive(Clone, Copy, Default, PartialEq)]
-pub struct ViewOptions {
+pub(crate) struct ViewOptions {
     /// The curvature comb.
     pub comb: bool,
     /// A dot per on-curve node, colored by continuity level.
@@ -1552,7 +1552,7 @@ pub struct ViewOptions {
 
 impl ViewOptions {
     /// What the Measure tool turns on when it is picked.
-    pub fn measuring() -> Self {
+    pub(crate) fn measuring() -> Self {
         Self {
             handles: true,
             segments: true,
@@ -1563,7 +1563,7 @@ impl ViewOptions {
     }
 
     /// Whether anything in the measure group is on.
-    pub fn measures(self) -> bool {
+    pub(crate) fn measures(self) -> bool {
         self.colorize || self.handles || self.segments || self.bearings
     }
 
@@ -1581,11 +1581,11 @@ impl ViewOptions {
 /// reference glyph. Both are read-only and quiet on purpose; they are
 /// there to trace against, not to compete with the drawing.
 #[derive(Clone, Default, PartialEq)]
-pub struct Underlay {
+pub(crate) struct Underlay {
     /// The glyph's contours in the UFO's background layer.
-    pub background: Option<Arc<masonry::kurbo::BezPath>>,
+    pub background: Option<Arc<kurbo::BezPath>>,
     /// Another glyph, shown behind this one.
-    pub reference: Option<Arc<masonry::kurbo::BezPath>>,
+    pub reference: Option<Arc<kurbo::BezPath>>,
 }
 
 impl<F> ViewMarker for EditorView<F> {}
@@ -1738,7 +1738,7 @@ mod tests {
     fn widget() -> EditorWidget {
         EditorWidget {
             session: session(),
-            palette: Arc::new(crate::view::theme::Palette::load("dark")),
+            palette: Arc::new(Palette::load("dark")),
             tool: Tool::Select,
             ghosts: Arc::new(Vec::new()),
             interp: None,

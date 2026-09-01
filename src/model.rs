@@ -15,19 +15,19 @@ use runebender_core::ui::theme_oklch::{load_theme, mark_label_for_glyph};
 
 /// Everything the grid and previews need for one glyph, without touching norad.
 #[derive(Clone)]
-pub struct Axis {
+pub(crate) struct Axis {
     pub name: String,
     pub tag: String,
     pub min: f64,
     pub default: f64,
     pub max: f64,
-    /// avar-style piecewise map, (user_input, design_output) pairs. Empty = identity.
+    /// avar-style piecewise map, (`user_input`, `design_output`) pairs. Empty = identity.
     pub map: Vec<(f64, f64)>,
 }
 
 impl Axis {
     /// Map a user-coordinate value to design coordinates via the piecewise map.
-    pub fn user_to_design(&self, v: f64) -> f64 {
+    pub(crate) fn user_to_design(&self, v: f64) -> f64 {
         if self.map.len() < 2 {
             return v;
         }
@@ -55,7 +55,7 @@ impl Axis {
 
     /// Inverse of `user_to_design`: map a design-coordinate value back to
     /// user coordinates via the piecewise map. Identity when unmapped.
-    pub fn design_to_user(&self, v: f64) -> f64 {
+    pub(crate) fn design_to_user(&self, v: f64) -> f64 {
         if self.map.len() < 2 {
             return v;
         }
@@ -83,7 +83,7 @@ impl Axis {
     }
 }
 
-pub struct GlyphEntry {
+pub(crate) struct GlyphEntry {
     pub name: String,
     pub codepoint: Option<char>,
     pub advance: f64,
@@ -95,7 +95,7 @@ pub struct GlyphEntry {
     pub category: GlyphCategory,
 }
 
-pub struct FontModel {
+pub(crate) struct FontModel {
     pub font: Rc<norad::Font>,
     pub source: PathBuf,
     pub glyphs: Vec<GlyphEntry>,
@@ -114,7 +114,7 @@ pub struct FontModel {
 }
 
 impl FontModel {
-    pub fn open(path: &FsPath) -> Result<Self, String> {
+    pub(crate) fn open(path: &FsPath) -> Result<Self, String> {
         if path
             .extension()
             .is_some_and(|e| e == "glyphs" || e == "glyphspackage")
@@ -296,7 +296,7 @@ impl FontModel {
     }
 
     /// Switch the active master, saving the current in-memory edits back to it.
-    pub fn set_active(&mut self, index: usize) {
+    pub(crate) fn set_active(&mut self, index: usize) {
         if index >= self.masters.len() || index == self.active {
             return;
         }
@@ -317,7 +317,7 @@ impl FontModel {
         self.active = index;
     }
 
-    pub fn from_font(font: norad::Font, source: PathBuf) -> Self {
+    pub(crate) fn from_font(font: norad::Font, source: PathBuf) -> Self {
         let (upm, ascender, descender, x_height, cap_height) = {
             let info = &font.font_info;
             let upm = info.units_per_em.map(|u| u.as_f64()).unwrap_or(1000.0);
@@ -377,7 +377,7 @@ impl FontModel {
         }
     }
 
-    pub fn index_of(&self, name: &str) -> Option<usize> {
+    pub(crate) fn index_of(&self, name: &str) -> Option<usize> {
         self.glyphs.iter().position(|g| g.name == name)
     }
 
@@ -388,7 +388,12 @@ impl FontModel {
     /// Encoded when a codepoint is given, or when the name is a single
     /// character. A glyph that exists in one master and not another is a
     /// designspace that does not build, so this writes all of them.
-    pub fn add_glyph(&mut self, name: &str, default_advance: f64, unicode: Option<u32>) -> bool {
+    pub(crate) fn add_glyph(
+        &mut self,
+        name: &str,
+        default_advance: f64,
+        unicode: Option<u32>,
+    ) -> bool {
         let name = name.trim();
         if name.is_empty() || self.font.get_glyph(name).is_some() {
             return false;
@@ -425,7 +430,7 @@ impl FontModel {
 
     /// Add every glyph in `targets` that the font does not have yet, and
     /// report how many were added.
-    pub fn add_missing(&mut self, targets: &[(String, Option<u32>)]) -> usize {
+    pub(crate) fn add_missing(&mut self, targets: &[(String, Option<u32>)]) -> usize {
         let advance = (self.units_per_em * 0.5).round();
         let mut added = 0;
         for (name, unicode) in targets {
@@ -443,7 +448,7 @@ impl FontModel {
     /// either side. This applies that to all the masters, because a
     /// designspace whose sources disagree about a glyph name does not
     /// build.
-    pub fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
+    pub(crate) fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
         let renamed = Rc::get_mut(&mut self.font)
             .map(|font| runebender_core::document::font_ops::rename_glyph(font, old, new))
             .unwrap_or(false);
@@ -460,7 +465,7 @@ impl FontModel {
         true
     }
 
-    pub fn save(&mut self) -> Result<(), String> {
+    pub(crate) fn save(&mut self) -> Result<(), String> {
         // Flush the active master's edits back into the masters list, then
         // save every master to its UFO.
         if self.active < self.masters.len() {
@@ -475,7 +480,7 @@ impl FontModel {
 
     /// The given master's axis location in USER coordinates, one per axis,
     /// mapping its stored design-coord location back through the axis map.
-    pub fn master_axis_values(&self, index: usize) -> Vec<f64> {
+    pub(crate) fn master_axis_values(&self, index: usize) -> Vec<f64> {
         let loc = self.master_locations.get(index);
         self.axes
             .iter()
@@ -490,7 +495,7 @@ impl FontModel {
     /// the interpolated outline (design space) or None if incompatible.
     /// Composite glyphs interpolate both their component offsets and, through
     /// recursion, each component's base outline.
-    pub fn interpolate_outline(
+    pub(crate) fn interpolate_outline(
         &self,
         glyph_name: &str,
         location: &std::collections::HashMap<String, f64>,
@@ -566,7 +571,7 @@ impl FontModel {
         let out = model.interpolate(&vectors, target);
         // Rebuild on the active master's structure as a template.
         let mut g = glyphs.get(self.active).copied()?.clone();
-        let mut i = 1usize; // skip width
+        let mut i = 1_usize; // skip width
         for c in &mut g.contours {
             for p in &mut c.points {
                 p.x = out[i];
@@ -599,16 +604,16 @@ impl FontModel {
 
     /// Outline and advance of `glyph_name` in master `index`, for the
     /// layer thumbnails in the inspector.
-    pub fn master_glyph(&self, index: usize, glyph_name: &str) -> Option<(BezPath, f64)> {
+    pub(crate) fn master_glyph(&self, index: usize, glyph_name: &str) -> Option<(BezPath, f64)> {
         let font = self.masters.get(index)?;
         let glyph = font.get_glyph(glyph_name)?;
         Some((glyph_paths::glyph_to_bezpath(glyph, font), glyph.width))
     }
 
     /// Short display names for the masters: the common family prefix is
-    /// dropped, so "Bricolage Grotesque 96pt ExtraBold" reads as
-    /// "96pt ExtraBold" in a narrow inspector.
-    pub fn short_master_names(&self) -> Vec<String> {
+    /// dropped, so "Bricolage Grotesque 96pt `ExtraBold`" reads as
+    /// "96pt `ExtraBold`" in a narrow inspector.
+    pub(crate) fn short_master_names(&self) -> Vec<String> {
         let names = &self.master_names;
         if names.len() < 2 {
             return names.clone();
@@ -642,7 +647,7 @@ impl FontModel {
 
     /// Outlines of `glyph_name` in the masters listed in `which`, for the
     /// ghost overlay. The inspector's Layers section owns that set.
-    pub fn reference_outlines(
+    pub(crate) fn reference_outlines(
         &self,
         glyph_name: &str,
         which: &std::collections::HashSet<usize>,
@@ -660,8 +665,11 @@ impl FontModel {
 
     /// Outlines of `glyph_name` in every master except the active one,
     /// for the ghost overlay.
-    #[allow(dead_code)]
-    pub fn ghost_outlines(&self, glyph_name: &str) -> Vec<BezPath> {
+    #[expect(
+        dead_code,
+        reason = "the ghost overlay is on the parity list; the data path is ready"
+    )]
+    pub(crate) fn ghost_outlines(&self, glyph_name: &str) -> Vec<BezPath> {
         self.masters
             .iter()
             .enumerate()
@@ -689,7 +697,7 @@ impl FontModel {
     }
 
     /// The glyph's outline in the background layer, as a path.
-    pub fn background_outline(&self, glyph: &str) -> Option<BezPath> {
+    pub(crate) fn background_outline(&self, glyph: &str) -> Option<BezPath> {
         let layer = Self::background_layer(&self.font)?;
         let background = self.font.layers.get(&layer)?.get_glyph(glyph)?;
         Some(glyph_paths::glyph_to_bezpath(background, &self.font))
@@ -697,7 +705,12 @@ impl FontModel {
 
     /// Copy contours into the glyph's background layer, creating the
     /// layer the first time.
-    pub fn send_to_background(&mut self, glyph: &str, contours: Vec<norad::Contour>, width: f64) {
+    pub(crate) fn send_to_background(
+        &mut self,
+        glyph: &str,
+        contours: Vec<norad::Contour>,
+        width: f64,
+    ) {
         let Some(font) = Rc::get_mut(&mut self.font) else {
             return;
         };
@@ -711,14 +724,14 @@ impl FontModel {
     }
 
     /// The contours held in the background layer for this glyph.
-    pub fn background_contours(&self, glyph: &str) -> Option<Vec<norad::Contour>> {
+    pub(crate) fn background_contours(&self, glyph: &str) -> Option<Vec<norad::Contour>> {
         let layer = Self::background_layer(&self.font)?;
         let background = self.font.layers.get(&layer)?.get_glyph(glyph)?;
         Some(background.contours.clone())
     }
 
     /// Empty the glyph's background layer.
-    pub fn clear_background(&mut self, glyph: &str) {
+    pub(crate) fn clear_background(&mut self, glyph: &str) {
         let Some(layer) = Self::background_layer(&self.font) else {
             return;
         };
@@ -730,7 +743,7 @@ impl FontModel {
     }
 
     /// Another glyph's outline, for the reference underlay.
-    pub fn glyph_outline(&self, glyph: &str) -> Option<Arc<BezPath>> {
+    pub(crate) fn glyph_outline(&self, glyph: &str) -> Option<Arc<BezPath>> {
         let index = self.index_of(glyph)?;
         Some(self.glyphs[index].outline.clone())
     }
@@ -738,7 +751,7 @@ impl FontModel {
     /// The kerning group this glyph belongs to on one side, if any.
     ///
     /// `first_side` is the left side in left-to-right text: `public.kern1`.
-    pub fn kern_group(&self, glyph: &str, first_side: bool) -> String {
+    pub(crate) fn kern_group(&self, glyph: &str, first_side: bool) -> String {
         runebender_core::document::font_ops::kern_group(&self.font, glyph, first_side)
             .map(|name| name.to_string())
             .unwrap_or_default()
@@ -749,7 +762,7 @@ impl FontModel {
     /// Kerning groups are font-wide, and a designspace's masters have to
     /// agree about them or the kerning will not interpolate, so this
     /// writes all of them rather than only the active one.
-    pub fn set_kern_group(&mut self, glyph: &str, first_side: bool, group: &str) -> bool {
+    pub(crate) fn set_kern_group(&mut self, glyph: &str, first_side: bool, group: &str) -> bool {
         let mut changed = false;
         if let Some(font) = Rc::get_mut(&mut self.font) {
             changed |=
@@ -766,7 +779,7 @@ impl FontModel {
     /// A glyph is skipped when its lib says so, which is how both Glyphs
     /// and the UFO spec record it. The GPUI build shows this count at
     /// the head of its filter list.
-    pub fn exporting_count(&self) -> usize {
+    pub(crate) fn exporting_count(&self) -> usize {
         self.glyphs
             .iter()
             .filter(|entry| {
@@ -785,7 +798,7 @@ impl FontModel {
     /// contours in the same order with the same number of points. This
     /// counts the ones that do not, which is the number a designer wants
     /// to see before a build, not after it.
-    pub fn incompatible_count(&self) -> usize {
+    pub(crate) fn incompatible_count(&self) -> usize {
         if self.masters.len() < 2 {
             return 0;
         }
@@ -816,7 +829,7 @@ impl FontModel {
     /// read here rather than edited: writing them back means a form per
     /// master and a rule about which values are per-master, which the
     /// editor does not have yet.
-    pub fn info_rows(&self) -> Vec<(&'static str, String)> {
+    pub(crate) fn info_rows(&self) -> Vec<(&'static str, String)> {
         let info = &self.font.font_info;
         let text = |value: &Option<String>| value.clone().unwrap_or_default();
         let number = |value: Option<f64>| value.map(|v| format!("{v:.0}")).unwrap_or_default();
@@ -861,7 +874,7 @@ impl FontModel {
     /// The overview panel edits the selected cell directly, so this works
     /// from an index rather than from a session. Only the active master
     /// changes: an advance is a per-master measurement.
-    pub fn set_glyph_advance(&mut self, index: usize, width: f64) -> bool {
+    pub(crate) fn set_glyph_advance(&mut self, index: usize, width: f64) -> bool {
         let Some(entry) = self.glyphs.get(index) else {
             return false;
         };
@@ -881,7 +894,7 @@ impl FontModel {
     /// Unlike the advance, a codepoint is not a per-master measurement.
     /// Masters that disagree about which character a glyph encodes
     /// produce a family that does not build.
-    pub fn set_glyph_unicode(&mut self, index: usize, text: &str) -> bool {
+    pub(crate) fn set_glyph_unicode(&mut self, index: usize, text: &str) -> bool {
         let Some(entry) = self.glyphs.get(index) else {
             return false;
         };
@@ -918,7 +931,7 @@ impl FontModel {
     }
 
     /// Replace the glyph at `index` (in the font and the cache) after an edit.
-    pub fn replace_glyph(&mut self, index: usize, glyph: norad::Glyph) {
+    pub(crate) fn replace_glyph(&mut self, index: usize, glyph: norad::Glyph) {
         let Some(entry) = self.glyphs.get_mut(index) else {
             return;
         };

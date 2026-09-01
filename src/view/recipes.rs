@@ -11,7 +11,7 @@
 //! are candidates for the framework's parts list. Each graduates when a
 //! second application needs the same one.
 
-pub use crate::view::design::{ControlSize, Radius, Region, Space, Stroke, TextSize};
+pub(crate) use crate::view::design::{ControlSize, Radius, Region, Space, Stroke, TextSize};
 use crate::view::design::{column, row};
 use masonry::layout::Dim;
 use masonry::properties::Dimensions;
@@ -27,7 +27,7 @@ use crate::view::theme::Palette;
 /// The GPUI build's sidebar groups fold, which matters once a font has
 /// four filter groups and a language list: without folding the sidebar
 /// is a single scroll of rows with no shape.
-pub fn section_toggle<F>(
+pub(crate) fn section_toggle<F>(
     pal: &Palette,
     text: &'static str,
     open: bool,
@@ -62,7 +62,7 @@ where
 }
 
 /// A read-only label/value row: name left, value right, one row tall.
-pub fn kv(pal: &Palette, name: String, value: String) -> impl WidgetView<Workspace> + use<> {
+pub(crate) fn kv(pal: &Palette, name: String, value: String) -> impl WidgetView<Workspace> + use<> {
     let (muted, text) = (pal.text_muted, pal.text);
     sized_box(row(
         Region::Inline,
@@ -78,7 +78,7 @@ pub fn kv(pal: &Palette, name: String, value: String) -> impl WidgetView<Workspa
 }
 
 /// A labeled text field: caption over a control-height input.
-pub fn field<F>(
+pub(crate) fn field<F>(
     pal: &Palette,
     name: &'static str,
     value: String,
@@ -113,7 +113,7 @@ where
 /// name. Xilem's `text_input` has `on_enter` for exactly this, and the
 /// plain [`field`] above does not use it, which is how the editor ended
 /// up with a Name box that could be typed in but never applied.
-pub fn field_enter<F, G>(
+pub(crate) fn field_enter<F, G>(
     pal: &Palette,
     name: &'static str,
     value: String,
@@ -146,7 +146,7 @@ where
 
 /// A list row: label left, trailing text right, accent outline when active.
 /// This is the sidebar row, the layer row, and any future tree row.
-pub fn list_row<F: Fn(&mut Workspace) + Send + Sync + 'static>(
+pub(crate) fn list_row<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
     text: String,
     trailing: String,
@@ -197,7 +197,7 @@ pub fn list_row<F: Fn(&mut Workspace) + Send + Sync + 'static>(
 /// and inside one string the bidi algorithm moves it to the other end,
 /// so "icon then name" renders as "name then icon". A separate box is
 /// also how the GPUI build lays it out.
-pub fn list_row_with_icon<F: Fn(&mut Workspace) + Send + Sync + 'static>(
+pub(crate) fn list_row_with_icon<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
     icon: String,
     text: String,
@@ -253,7 +253,7 @@ pub fn list_row_with_icon<F: Fn(&mut Workspace) + Send + Sync + 'static>(
 /// one writes. The row's width is `Auto` plus `flex`, not `Stretch`,
 /// because a stretched child in a flex row claims the whole width and
 /// pushes the button off the edge.
-pub fn list_row_with_action<F, G>(
+pub(crate) fn list_row_with_action<F, G>(
     pal: &Palette,
     text: String,
     trailing: String,
@@ -308,7 +308,7 @@ where
 }
 
 /// A square toggle: the small A / Aa / eye controls beside a field.
-pub fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
+pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
     text: String,
     active: bool,
@@ -318,7 +318,7 @@ pub fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
 }
 
 /// A square toggle at a chosen size.
-pub fn toggle_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
+pub(crate) fn toggle_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
     text: String,
     active: bool,
@@ -346,7 +346,7 @@ pub fn toggle_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
 }
 
 /// A labeled push button at control height.
-pub fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
+pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
     text: String,
     on_click: F,

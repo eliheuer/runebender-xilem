@@ -4,6 +4,7 @@
 //! Files: opening a project, reloading it when the sources change, saving, and a new font.
 
 use crate::*;
+use runebender_core::outline::glyph_paths::round_units;
 
 impl Workspace {
     pub(crate) fn open(path: &FsPath) -> Result<Self, String> {
@@ -57,7 +58,7 @@ impl Workspace {
         let reference_buf = std::env::var("RUNEBENDER_REFERENCE").unwrap_or_default();
         let show_background = std::env::var("RUNEBENDER_BACKGROUND").is_ok();
         // RUNEBENDER_VIEW=comb,continuity,colorize,handles,segments,bearings
-        let mut view = crate::view::canvas::editor::ViewOptions::default();
+        let mut view = canvas::editor::ViewOptions::default();
         if let Ok(spec) = std::env::var("RUNEBENDER_VIEW") {
             for name in spec.split(',').map(str::trim) {
                 match name {
@@ -104,7 +105,7 @@ impl Workspace {
             cells,
             mode,
             selected: Some(open.unwrap_or(first)),
-            multi_selected: std::sync::Arc::new(std::collections::HashSet::new()),
+            multi_selected: Arc::new(std::collections::HashSet::new()),
             filter: String::new(),
             detail: false,
             rail: Rail::Glyphs,
@@ -118,7 +119,7 @@ impl Workspace {
                 _ => GlyphCategory::All,
             }),
             sort: Sort::Name,
-            advance_buf: format!("{}", session.advance() as i64),
+            advance_buf: format!("{}", round_units(session.advance())),
             lsb_buf: metric_bufs(&session).0,
             rsb_buf: metric_bufs(&session).1,
             kern1_buf: kern1,
@@ -178,7 +179,7 @@ impl Workspace {
         }
         let source = self.font.source.clone();
         let open = self.session.glyph_name.clone();
-        match Workspace::open(&source) {
+        match Self::open(&source) {
             Ok(mut fresh) => {
                 fresh.theme_id = self.theme_id;
                 fresh.palette = self.palette.clone();
@@ -222,7 +223,7 @@ impl Workspace {
             self.note = format!("could not write {}: {e}", path.display());
             return;
         }
-        match Workspace::open(&path) {
+        match Self::open(&path) {
             Ok(mut fresh) => {
                 fresh.theme_id = self.theme_id;
                 fresh.palette = self.palette.clone();

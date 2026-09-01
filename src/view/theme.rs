@@ -17,7 +17,7 @@ fn color(c: ColorRgba) -> Color {
 }
 
 /// A resolved palette: named surfaces, text, roles, and mark colors.
-pub struct Palette {
+pub(crate) struct Palette {
     pub app: Color,
     pub panel: Color,
     pub control: Color,
@@ -32,7 +32,7 @@ pub struct Palette {
 }
 
 impl Palette {
-    pub fn load(theme_id: &str) -> Self {
+    pub(crate) fn load(theme_id: &str) -> Self {
         let t = load_theme(theme_id).expect("theme file present");
         Self::from_theme(&t)
     }
@@ -61,16 +61,16 @@ impl Palette {
         }
     }
 
-    pub fn field(&self) -> Color {
+    pub(crate) fn field(&self) -> Color {
         self.field
     }
 
-    pub fn role(&self, name: &str) -> Color {
+    pub(crate) fn role(&self, name: &str) -> Color {
         self.roles.get(name).copied().unwrap_or(Color::WHITE)
     }
 
     /// Theme mark labels with their colors, in theme order.
-    pub fn mark_list(&self) -> Vec<(String, Color)> {
+    pub(crate) fn mark_list(&self) -> Vec<(String, Color)> {
         self.mark_order
             .iter()
             .filter_map(|k| self.marks.get(k).map(|c| (k.clone(), *c)))
@@ -81,7 +81,7 @@ impl Palette {
     /// editor: one power of two is structural (green), two an elegant
     /// sum (yellow), three acceptable (orange), four or more a flagged
     /// correction (red).
-    pub fn popcount(&self, count: u32) -> Color {
+    pub(crate) fn popcount(&self, count: u32) -> Color {
         match count {
             0 | 1 => Color::from_rgb8(0x17, 0xb8, 0x70),
             2 => Color::from_rgb8(0xff, 0xdb, 0x33),
@@ -90,7 +90,7 @@ impl Palette {
         }
     }
 
-    pub fn mark(&self, label: &str) -> Option<Color> {
+    pub(crate) fn mark(&self, label: &str) -> Option<Color> {
         self.marks.get(label).copied()
     }
 }

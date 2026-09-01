@@ -29,7 +29,7 @@ use crate::model::FontModel;
 /// builds the buffer on the other side. The buffer then lives where the
 /// editing happens, which is where it wanted to live anyway.
 #[derive(Clone, PartialEq)]
-pub struct TextInputs {
+pub(crate) struct TextInputs {
     inventory: TextGlyphInventory,
     kerning: TextKerningModel,
     outlines: Arc<Vec<(String, Arc<BezPath>)>>,
@@ -47,7 +47,7 @@ pub struct TextInputs {
 
 impl TextInputs {
     /// Read a master: glyph advances, kerning, outlines, metrics.
-    pub fn new(font: &FontModel) -> Self {
+    pub(crate) fn new(font: &FontModel) -> Self {
         Self {
             inventory: TextGlyphInventory::from_font(&font.font),
             kerning: TextKerningModel::from_font(&font.font),
@@ -66,21 +66,21 @@ impl TextInputs {
     }
 
     /// Set the writing direction, or clear it back to automatic.
-    pub fn with_direction(mut self, direction: Option<TextDirection>) -> Self {
+    pub(crate) fn with_direction(mut self, direction: Option<TextDirection>) -> Self {
         self.direction = direction;
         self
     }
 
     /// Start the buffer with some text. `RUNEBENDER_TEXT` uses this, so
     /// a headless render can show a shaped line without typing.
-    pub fn with_text(mut self, text: &str) -> Self {
+    pub(crate) fn with_text(mut self, text: &str) -> Self {
         self.initial = text.to_string();
         self
     }
 }
 
 /// The buffer plus everything the editor needs to draw it.
-pub struct TextState {
+pub(crate) struct TextState {
     pub buffer: TextBuffer,
     /// Line height in design units, from the master's metrics.
     pub line_height: f64,
@@ -94,7 +94,7 @@ pub struct TextState {
 
 impl TextState {
     /// A buffer wired to a master.
-    pub fn new(inputs: &TextInputs) -> Self {
+    pub(crate) fn new(inputs: &TextInputs) -> Self {
         let mut buffer = TextBuffer::new();
         buffer.set_glyph_inventory(inputs.inventory.clone());
         buffer.set_kerning_model(inputs.kerning.clone());
@@ -118,7 +118,7 @@ impl TextState {
     /// Re-read the master, keeping what has been typed. Switching master
     /// or editing a glyph changes advances and outlines, and a text line
     /// that does not follow is showing yesterday's spacing.
-    pub fn refresh(&mut self, inputs: &TextInputs) {
+    pub(crate) fn refresh(&mut self, inputs: &TextInputs) {
         self.buffer.set_glyph_inventory(inputs.inventory.clone());
         self.buffer.set_kerning_model(inputs.kerning.clone());
         let direction_changed = match inputs.direction {
@@ -152,7 +152,7 @@ impl TextState {
 
     /// Type a character. Returns false when the font has no glyph for it,
     /// which is worth knowing rather than silently swallowing.
-    pub fn insert(&mut self, character: char) -> bool {
+    pub(crate) fn insert(&mut self, character: char) -> bool {
         let inserted = self.buffer.insert_character(character);
         if inserted {
             self.buffer.shape_arabic_if_rtl();
@@ -165,7 +165,7 @@ impl TextState {
     /// Absorbed sorts (a character folded into a ligature drawn by an
     /// earlier sort) contribute nothing, which is what `is_absorbed` is
     /// for.
-    pub fn placed(&self) -> Vec<PlacedSort> {
+    pub(crate) fn placed(&self) -> Vec<PlacedSort> {
         let layout = self.buffer.layout(self.line_height);
         let active = self.buffer.active_sort();
         layout
@@ -190,13 +190,13 @@ impl TextState {
     }
 
     /// Where the caret sits, in design space.
-    pub fn caret(&self) -> Point {
+    pub(crate) fn caret(&self) -> Point {
         let layout = self.buffer.layout(self.line_height);
         Point::new(layout.cursor_x, layout.cursor_y)
     }
 
     /// A click: put the caret there, and report the sort under it.
-    pub fn click(&mut self, at: Point) -> Option<usize> {
+    pub(crate) fn click(&mut self, at: Point) -> Option<usize> {
         let hit = self
             .buffer
             .hit_test(at.x, at.y, self.line_height, self.ascender, self.descender);
@@ -206,7 +206,7 @@ impl TextState {
     }
 
     /// Make a sort the one being edited, and report its glyph.
-    pub fn activate(&mut self, index: usize) -> Option<String> {
+    pub(crate) fn activate(&mut self, index: usize) -> Option<String> {
         self.buffer.activate_sort(index).then(|| {
             self.buffer
                 .sort(index)
@@ -217,7 +217,7 @@ impl TextState {
 }
 
 /// One sort, ready to draw.
-pub struct PlacedSort {
+pub(crate) struct PlacedSort {
     pub path: BezPath,
     pub origin: Point,
     pub advance: f64,

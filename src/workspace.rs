@@ -12,7 +12,7 @@ pub(crate) enum Sort {
 }
 
 /// The active sidebar selection: a category chip, a language group, or a
-/// builtin/GF-coverage filter (mirrors runebender-gpui's SidebarFilter).
+/// builtin/GF-coverage filter (mirrors runebender-gpui's `SidebarFilter`).
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Sel {
     Category(GlyphCategory),
@@ -41,7 +41,7 @@ pub(crate) struct Workspace {
     pub(crate) cells: Arc<Vec<Cell>>,
     pub(crate) mode: Mode,
     pub(crate) selected: Option<usize>,
-    pub(crate) multi_selected: std::sync::Arc<std::collections::HashSet<usize>>,
+    pub(crate) multi_selected: Arc<std::collections::HashSet<usize>>,
     pub(crate) filter: String,
     /// The grid's Detail view: cells carry their category and advance.
     pub(crate) detail: bool,
@@ -72,8 +72,8 @@ pub(crate) struct Workspace {
     pub(crate) modified: bool,
     pub(crate) note: String,
     /// Which analysis overlays the editor draws.
-    pub(crate) view: crate::view::canvas::editor::ViewOptions,
-    /// What the text tool starts with, from RUNEBENDER_TEXT.
+    pub(crate) view: canvas::editor::ViewOptions,
+    /// What the text tool starts with, from `RUNEBENDER_TEXT`.
     pub(crate) initial_text: String,
     /// Grid cell size, driven by the bottom bar's zoom.
     pub(crate) cell_size: f64,

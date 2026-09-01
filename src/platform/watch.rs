@@ -20,10 +20,10 @@ use crate::Workspace;
 
 /// Sent when the sources on disk have changed and settled.
 #[derive(Debug)]
-pub struct SourcesChanged;
+pub(crate) struct SourcesChanged;
 
 /// Runs `view`, and alongside it watches the font's sources.
-pub fn with_watch<V: xilem::WidgetView<Workspace>>(
+pub(crate) fn with_watch<V: xilem::WidgetView<Workspace>>(
     view: V,
     paths: Vec<PathBuf>,
 ) -> impl xilem::WidgetView<Workspace> + use<V> {

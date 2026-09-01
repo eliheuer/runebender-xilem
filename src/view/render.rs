@@ -5,6 +5,24 @@
 
 use crate::*;
 
+/// A kurbo value as the `f32` a Vello text size or stroke width
+/// takes.
+///
+/// The editor's geometry is `f64`, because that is what kurbo and a
+/// font's own coordinates are. The few places that hand a number to
+/// a text layout want `f32`, so the conversion is here rather than
+/// at each call: `f32` holds about seven digits, far below a pixel
+/// at any size the interface uses.
+pub(crate) fn px32(value: f64) -> f32 {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a text size or stroke width, far inside f32"
+    )]
+    {
+        value as f32
+    }
+}
+
 pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::Either;
     let pal = &app.palette;
@@ -60,7 +78,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
 
     // The menu bar is built on the main thread, which is here, and only
     // once. Xilem owns the event loop and offers no startup hook.
-    crate::actions::install();
+    actions::install();
     // Boxed on purpose, and not for tidiness. Every wrapper here adds a
     // layer to a monomorphized view type that is already enormous, and
     // with the watcher wrapped around the menu pump around the shortcut
@@ -89,7 +107,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     )
     .boxed();
     watch::with_watch(
-        crate::actions::with_menu_events(root),
+        actions::with_menu_events(root),
         app.font.master_paths.clone(),
     )
 }

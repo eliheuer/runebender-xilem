@@ -22,9 +22,9 @@ use xilem::{Color, Pod, ViewCtx};
 const TILE: f64 = 24.0;
 
 #[derive(Debug)]
-pub struct IconClicked;
+pub(crate) struct IconClicked;
 
-pub struct IconWidget {
+pub(crate) struct IconWidget {
     icon: &'static str,
     active: bool,
     fg: Color,
@@ -136,7 +136,7 @@ impl Widget for IconWidget {
     }
 }
 
-pub struct IconView<F> {
+pub(crate) struct IconView<F> {
     icon: &'static str,
     active: bool,
     fg: Color,
@@ -146,8 +146,7 @@ pub struct IconView<F> {
     on_click: F,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn icon_button<State: 'static, F: Fn(&mut State) + 'static>(
+pub(crate) fn icon_button<State: 'static, F: Fn(&mut State) + 'static>(
     icon: &'static str,
     active: bool,
     fg: Color,

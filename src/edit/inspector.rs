@@ -4,13 +4,14 @@
 //! The info panel's fields, and what typing in them does to the font.
 
 use crate::*;
+use runebender_core::outline::glyph_paths::round_units;
 
 impl Workspace {
     /// What sits under the drawing: the background layer if it is turned
     /// on, and the reference glyph if one is named.
-    pub(crate) fn underlay(&self) -> crate::view::canvas::editor::Underlay {
+    pub(crate) fn underlay(&self) -> canvas::editor::Underlay {
         if !matches!(self.mode, Mode::Editor(_)) {
-            return crate::view::canvas::editor::Underlay::default();
+            return canvas::editor::Underlay::default();
         }
         let background = self
             .show_background
@@ -23,7 +24,7 @@ impl Workspace {
                 .then(|| self.font.glyph_outline(name))
                 .flatten()
         };
-        crate::view::canvas::editor::Underlay {
+        canvas::editor::Underlay {
             background,
             reference,
         }
@@ -31,7 +32,7 @@ impl Workspace {
 
     /// Recompute the LSB/RSB/advance text buffers from the current session.
     /// The selection's reference point, at the picked corner.
-    pub(crate) fn coord_point(&self) -> Option<masonry::kurbo::Point> {
+    pub(crate) fn coord_point(&self) -> Option<kurbo::Point> {
         let bounds = self.session.selection_bounds()?;
         Some(self.coord_quadrant.point_in_dspace_rect(bounds))
     }
@@ -40,8 +41,8 @@ impl Workspace {
     pub(crate) fn refresh_coord_bufs(&mut self) {
         match self.coord_point() {
             Some(p) => {
-                self.coord_x_buf = format!("{}", p.x as i64);
-                self.coord_y_buf = format!("{}", p.y as i64);
+                self.coord_x_buf = format!("{}", round_units(p.x));
+                self.coord_y_buf = format!("{}", round_units(p.y));
             }
             None => {
                 self.coord_x_buf.clear();
@@ -73,7 +74,7 @@ impl Workspace {
     }
 
     pub(crate) fn refresh_metric_bufs(&mut self) {
-        self.advance_buf = format!("{}", self.session.advance() as i64);
+        self.advance_buf = format!("{}", round_units(self.session.advance()));
         let (l, r) = metric_bufs(&self.session);
         self.lsb_buf = l;
         self.rsb_buf = r;
@@ -106,7 +107,7 @@ impl Workspace {
                 sess.shift_glyph(t - sb.min_x);
                 self.session = Arc::new(sess);
                 self.refresh_open_glyph();
-                self.advance_buf = format!("{}", self.session.advance() as i64);
+                self.advance_buf = format!("{}", round_units(self.session.advance()));
                 if let Some(sb2) = self.session.side_bearings() {
                     self.rsb_buf = format!("{}", sb2.rsb);
                 }
@@ -124,7 +125,7 @@ impl Workspace {
                 sess.set_advance(sb.max_x + t);
                 self.session = Arc::new(sess);
                 self.refresh_open_glyph();
-                self.advance_buf = format!("{}", self.session.advance() as i64);
+                self.advance_buf = format!("{}", round_units(self.session.advance()));
             }
         }
     }

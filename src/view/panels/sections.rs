@@ -154,7 +154,7 @@ pub(crate) fn axes_section(app: &Workspace) -> Option<impl WidgetView<Workspace>
                         ),
                     ),
                     slider(ax.min, ax.max, value, move |app: &mut Workspace, v| {
-                        app.set_axis(i, v)
+                        app.set_axis(i, v);
                     })
                     .width(Length::px(214.0)),
                 ),
@@ -561,13 +561,13 @@ pub(crate) fn background_section(app: &Workspace) -> impl WidgetView<Workspace> 
                             },
                         ),
                         recipes::action(pal, "Send".into(), |app: &mut Workspace| {
-                            app.send_to_background()
+                            app.send_to_background();
                         }),
                         recipes::action(pal, "Swap".into(), |app: &mut Workspace| {
-                            app.swap_background()
+                            app.swap_background();
                         }),
                         recipes::action(pal, "Clear".into(), |app: &mut Workspace| {
-                            app.clear_background()
+                            app.clear_background();
                         }),
                     ),
                 )
