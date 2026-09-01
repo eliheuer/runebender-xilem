@@ -14,7 +14,7 @@ and this section stays open.
 ### Added
 
 - Editing commands in the `runebender-core` binary: `clean`, `overlap`,
-  `offset`, `convert`, `realign`, `rename`, `unicode`, and `kern`.
+  `offset`, `convert`, `realign`, `rename`, and `unicode`.
   They take any number of UFOs or designspaces, a `--glyphs` filter,
   and `--dry-run`, so a font library can be swept from a shell script
   or by an agent.
@@ -27,6 +27,9 @@ and this section stays open.
   fontTools prints in a line. `check` compared point signatures
   across two masters, which `fonttools varLib.interpolatable` does
   more thoroughly across a whole designspace.
+- `kern`. Writing a pair created a glyph-to-glyph exception over the
+  group kerning the value came from, and wrote an explicit zero where
+  the editor removes the pair.
 - `color` and `spacing`, with `analysis::optical` and
   `analysis::spacing`. Both produced lists a designer had to ignore:
   `color` flagged glyphs drawn denser on purpose, and `spacing`

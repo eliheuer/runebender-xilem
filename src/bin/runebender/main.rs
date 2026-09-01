@@ -159,20 +159,6 @@ enum Command {
         #[arg(long)]
         to: String,
     },
-    /// Read or write one kerning pair.
-    Kern {
-        #[command(flatten)]
-        edit: Edit,
-        /// Left glyph.
-        #[arg(long)]
-        left: String,
-        /// Right glyph.
-        #[arg(long)]
-        right: String,
-        /// The value to write. Without it the pair is read.
-        #[arg(long, allow_negative_numbers = true)]
-        set: Option<f64>,
-    },
 }
 
 fn main() -> std::process::ExitCode {
@@ -214,12 +200,6 @@ fn main() -> std::process::ExitCode {
         Command::Realign { edit, seed_anchors } => edit::realign(edit, json, *seed_anchors),
         Command::Rename { edit, from, to } => edit::rename(edit, json, from, to),
         Command::Unicode { edit, glyph, to } => edit::unicode(edit, json, glyph, to),
-        Command::Kern {
-            edit,
-            left,
-            right,
-            set,
-        } => edit::kern(edit, json, left, right, *set),
     };
     std::process::ExitCode::from(code as u8)
 }

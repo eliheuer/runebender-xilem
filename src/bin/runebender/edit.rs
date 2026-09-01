@@ -346,47 +346,6 @@ pub(crate) fn unicode(args: &Edit, json: bool, glyph: &str, to: &str) -> i32 {
     code
 }
 
-/// Read or write one kerning pair.
-///
-/// The pair is the glyph names, and the value follows the same group
-/// fallback the editor shows, so a script sees what a designer sees.
-pub(crate) fn kern(args: &Edit, json: bool, left: &str, right: &str, set: Option<f64>) -> i32 {
-    let Some(value) = set else {
-        let mut code = exit::OK;
-        for path in match sources::expand_all(&args.sources) {
-            Ok(v) => v,
-            Err(e) => return fail(json, exit::USAGE, &e),
-        } {
-            let font = match open(&path, json) {
-                Ok(f) => f,
-                Err(c) => return c,
-            };
-            let value = font_ops::kern_value(&font, left, right);
-            if json {
-                println!(
-                    "{}",
-                    json!({ "ok": true, "source": path.display().to_string(),
-                            "left": left, "right": right, "value": value })
-                );
-            } else {
-                println!("{}  {left} {right}  {value}", path.display());
-            }
-            code = exit::OK;
-        }
-        return code;
-    };
-    run(args, json, |font, _| {
-        if (font_ops::kern_value(font, left, right) - value).abs() < f64::EPSILON {
-            return Tally::default();
-        }
-        font_ops::set_kern_pair(font, left, right, value);
-        Tally {
-            names: Vec::new(),
-            edits: 1,
-        }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
