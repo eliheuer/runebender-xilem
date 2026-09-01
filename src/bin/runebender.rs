@@ -14,7 +14,7 @@ use clap::{Parser, Subcommand};
 use norad::Font;
 use runebender_core::document::font_ops;
 use runebender_core::outline::embolden;
-use serde_json::{Value, json};
+use serde_json::json;
 
 /// Exit codes, matching font-ml so a caller can branch on them.
 mod exit {
@@ -35,16 +35,6 @@ fn fail(json: bool, code: i32, message: &str) -> i32 {
         eprintln!("{message}");
     }
     code
-}
-
-/// Prints the JSON form, or runs `plain` for the human form.
-fn emit(json: bool, value: Value, plain: impl FnOnce()) -> i32 {
-    if json {
-        println!("{value}");
-    } else {
-        plain();
-    }
-    exit::OK
 }
 
 /// Loads one UFO, reporting a bad path as a usage error.
@@ -71,11 +61,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// What a source holds: glyphs, masters, unicodes.
-    Info {
-        /// A .ufo directory.
-        source: PathBuf,
-    },
     /// Learn how much weight a heavier master adds, from glyphs drawn
     /// in both, and report what it would do to the rest.
     Bolden {
@@ -106,7 +91,6 @@ fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
     let json = cli.json;
     let code = match &cli.command {
-        Command::Info { source } => info(source, json),
         Command::Bolden {
             from,
             to,
@@ -125,41 +109,6 @@ fn main() -> std::process::ExitCode {
         ),
     };
     std::process::ExitCode::from(code as u8)
-}
-
-fn info(source: &Path, json: bool) -> i32 {
-    let font = match open(source, json) {
-        Ok(f) => f,
-        Err(code) => return code,
-    };
-    let glyphs = font.default_layer().len();
-    let encoded = font
-        .default_layer()
-        .iter()
-        .filter(|g| !g.codepoints.is_empty())
-        .count();
-    let composites = font
-        .default_layer()
-        .iter()
-        .filter(|g| !g.components.is_empty())
-        .count();
-    let family = font.font_info.family_name.clone().unwrap_or_default();
-    let style = font.font_info.style_name.clone().unwrap_or_default();
-    let upm = font.font_info.units_per_em.map(|v| *v).unwrap_or(0.0);
-    emit(
-        json,
-        json!({
-            "ok": true, "family": family, "style": style, "unitsPerEm": upm,
-            "glyphs": glyphs, "encoded": encoded, "composites": composites,
-            "layers": font.layers.len(),
-        }),
-        || {
-            println!("{family} {style}");
-            println!("  units per em  {upm}");
-            println!("  glyphs        {glyphs} ({encoded} encoded, {composites} composite)");
-            println!("  layers        {}", font.layers.len());
-        },
-    )
 }
 
 /// What the reference glyphs say the heavier master should do.

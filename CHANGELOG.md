@@ -13,6 +13,9 @@ and this section stays open.
 
 ### Removed
 
+- `info`. It counted glyphs, layers and codepoints, which is not a
+  question worth a command.
+
 - `measure` and `check`. `measure` reported what the editor shows and
   fontTools prints in a line. `check` compared point signatures across
   two masters, which `fonttools varLib.interpolatable` does more
