@@ -17,7 +17,8 @@ cargo install --git https://github.com/eliheuer/runebender-xilem
 runebender-xilem path/to/Font.designspace
 ```
 
-The manual is at [runebender.org](https://runebender.org/docs/).
+The user manual and documentation is available at
+[runebender.org](https://runebender.org/docs/).
 
 ## License
 
