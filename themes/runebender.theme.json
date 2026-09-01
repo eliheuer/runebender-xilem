@@ -163,6 +163,8 @@
       "markStep": "base",
       "roles": {
         "gridSelected": "neutral.81",
+        "designGridFine": "neutral.28",
+        "designGridCoarse": "neutral.34",
         "accent": "green.base",
         "warning": "yellow.base",
         "danger": "red.base",
@@ -221,6 +223,8 @@
       "markStep": "base",
       "roles": {
         "gridSelected": "neutral.76",
+        "designGridFine": "neutral.24",
+        "designGridCoarse": "neutral.30",
         "accent": "green.base",
         "warning": "yellow.base",
         "danger": "red.base",
@@ -279,6 +283,8 @@
       "markStep": "deep",
       "roles": {
         "gridSelected": "neutral.31",
+        "designGridFine": "neutral.86",
+        "designGridCoarse": "neutral.80",
         "accent": "green.dim",
         "warning": "orange.dim",
         "danger": "red.dim",
@@ -341,6 +347,8 @@
       },
       "roles": {
         "gridSelected": "neutral.23",
+        "designGridFine": "neutral.46",
+        "designGridCoarse": "neutral.52",
         "accent": "green.deep",
         "warning": "orange.deep",
         "danger": "red.deep",

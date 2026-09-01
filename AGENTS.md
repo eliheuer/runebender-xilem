@@ -30,7 +30,7 @@ belongs in it. Read those six comments first.
 | `formats/` | lib keys, and every format besides UFO |
 | `document/` | `Master`, `Project`, interpolation, composites, `model/` |
 | `text/` | `shape` (harfrust), `joining` (Arabic rules), `buffer` (the Text tool) |
-| `ui/` | themes, sidebar data, `editing/` (selection, undo, viewport) |
+| `ui/` | `color` (the one colour type), `theme` (the OKLCH resolver), sidebar data, `editing/` (selection, undo, viewport) |
 | `bin/runebender.rs` | the command line |
 
 Paths follow the tree: `runebender_core::outline::glyph_ops`. There

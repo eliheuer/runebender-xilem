@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! UFO `public.markColor` parsing and validation. The palette itself
-//! lives in the shared theme (`theme_oklch`), which also owns label
+//! lives in the shared theme (`ui::theme`), which also owns label
 //! reading, hue-snapping, and writing.
 
 #[derive(Clone, Copy, Debug, PartialEq)]

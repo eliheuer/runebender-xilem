@@ -23,16 +23,16 @@ use crate::document::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
 use crate::formats::lib_keys::{hoi_quad_at, read_hoi_intermediates};
 use crate::outline::glyph_ops::{self as ops, CurveOp, GlyphSnapshot};
-use crate::ui::theme_oklch::{self, Theme};
+use crate::ui::theme::{self, Theme};
 
 /// The mark label a glyph carries. Labels are palette names shared by
 /// every theme, so snapping against the default theme is enough here;
 /// the front-end maps a label to the current theme's colour.
 fn mark_label(glyph: &norad::Glyph) -> Option<String> {
     static DEFAULT: OnceLock<Theme> = OnceLock::new();
-    let theme = DEFAULT
-        .get_or_init(|| theme_oklch::load_theme("gray").expect("the built-in gray theme loads"));
-    theme_oklch::mark_label_for_glyph(glyph, theme)
+    let theme =
+        DEFAULT.get_or_init(|| theme::load_theme("gray").expect("the built-in gray theme loads"));
+    theme::mark_label_for_glyph(glyph, theme)
 }
 
 /// One control point of a contour, in font units, with its identity
