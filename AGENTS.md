@@ -31,32 +31,10 @@ belongs in it. Read those six comments first.
 | `document/` | `Master`, `Project`, interpolation, composites, `model/` |
 | `text/` | `shape` (harfrust), `joining` (Arabic rules), `buffer` (the Text tool) |
 | `ui/` | themes, sidebar data, `editing/` (selection, undo, viewport) |
-| `bin/runebender/` | the command line: `read` reports, `edit` writes, `sources` expands a designspace |
+| `bin/runebender.rs` | the command line |
 
 Paths follow the tree: `runebender_core::outline::glyph_ops`. There
 are no re-exports at the root except three types.
-
-## The command line
-
-`runebender-core` is a front-end held to the same rule as the editors: it
-parses arguments and prints, and calls the library for the work. A
-new command wraps a function that already exists. If the wrapper
-needs logic of its own, that logic belongs in the library.
-
-Editing commands share the `Edit` arguments and the `edit::run`
-driver, so every one of them takes any number of UFOs or
-designspaces, `--glyphs`, `--dry-run`, and `--out`. The driver writes
-a source only when the operation changed it, and a dry run exits 1
-when there is work waiting. Keep both: batch scripts and agents
-depend on them.
-
-## The interface
-
-This crate holds the theme tokens every editor resolves:
-`themes/runebender.theme.json` and `src/ui/theme.rs`. How they are
-used, and what a good interface change looks like, is `DESIGN.md` in
-each editor. Adding a token here means giving it a value in all four
-themes.
 
 ## Features
 

@@ -1,21 +1,133 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The commands that read a font and report.
+//! Font operations from a shell.
 //!
-//! Nothing here writes. Each one loads a source, answers one
-//! question, and prints it as text or as JSON.
+//! A thin shell over `runebender_core`, which is where the work
+//! lives. Conventions match `font-ml`, so the two are driven the same
+//! way: `--json` on every command, and exit codes that separate a
+//! usage mistake from a real failure.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use clap::{Parser, Subcommand};
 use norad::Font;
 use runebender_core::document::font_ops;
 use runebender_core::outline::embolden;
-use serde_json::json;
+use serde_json::{Value, json};
 
-use crate::shell::{emit, exit, fail, open};
+/// Exit codes, matching font-ml so a caller can branch on them.
+mod exit {
+    /// Ran, and the answer is yes or the work is done.
+    pub const OK: i32 = 0;
+    /// The command was wrong: bad path, unknown glyph, missing flag.
+    pub const USAGE: i32 = 2;
+    /// The command was right and the work failed.
+    pub const FAILED: i32 = 4;
+}
 
-pub(crate) fn info(source: &Path, json: bool) -> i32 {
+/// Reports an error on stderr, or as JSON on stdout, and returns the
+/// code to exit with.
+fn fail(json: bool, code: i32, message: &str) -> i32 {
+    if json {
+        println!("{}", json!({ "ok": false, "error": message }));
+    } else {
+        eprintln!("{message}");
+    }
+    code
+}
+
+/// Prints the JSON form, or runs `plain` for the human form.
+fn emit(json: bool, value: Value, plain: impl FnOnce()) -> i32 {
+    if json {
+        println!("{value}");
+    } else {
+        plain();
+    }
+    exit::OK
+}
+
+/// Loads one UFO, reporting a bad path as a usage error.
+fn open(path: &Path, json: bool) -> Result<Font, i32> {
+    Font::load(path).map_err(|e| fail(json, exit::USAGE, &format!("{}: {e}", path.display())))
+}
+
+#[derive(Parser)]
+#[command(
+    name = "runebender-core",
+    about = "Font operations from a shell",
+    long_about = "Font operations from a shell.\n\nThe same code the \
+                  Runebender editor runs, without a window.\n\n\
+                  Every command takes --json. Exit codes: 0 ok, \
+                  2 usage, 4 failed."
+)]
+struct Cli {
+    /// Machine-readable output.
+    #[arg(long, global = true)]
+    json: bool,
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// What a source holds: glyphs, masters, unicodes.
+    Info {
+        /// A .ufo directory.
+        source: PathBuf,
+    },
+    /// Learn how much weight a heavier master adds, from glyphs drawn
+    /// in both, and report what it would do to the rest.
+    Bolden {
+        /// The lighter master.
+        #[arg(long)]
+        from: PathBuf,
+        /// The heavier master, part-drawn.
+        #[arg(long)]
+        to: PathBuf,
+        /// Glyphs to learn from. Defaults to n,o,H,O.
+        #[arg(long, value_delimiter = ',')]
+        references: Option<Vec<String>>,
+        /// Glyphs to report on. Defaults to every one still identical
+        /// in both masters, which is the work not yet done.
+        #[arg(long, value_delimiter = ',')]
+        glyphs: Option<Vec<String>>,
+        /// Stop after this many.
+        #[arg(long, default_value = "40")]
+        limit: usize,
+        /// Score the learned offset against glyphs drawn in both
+        /// masters instead of listing what is undrawn.
+        #[arg(long)]
+        check: bool,
+    },
+}
+
+fn main() -> std::process::ExitCode {
+    let cli = Cli::parse();
+    let json = cli.json;
+    let code = match &cli.command {
+        Command::Info { source } => info(source, json),
+        Command::Bolden {
+            from,
+            to,
+            references,
+            glyphs,
+            limit,
+            check,
+        } => bolden(
+            from,
+            to,
+            references.as_deref(),
+            glyphs.as_deref(),
+            *limit,
+            *check,
+            json,
+        ),
+    };
+    std::process::ExitCode::from(code as u8)
+}
+
+fn info(source: &Path, json: bool) -> i32 {
     let font = match open(source, json) {
         Ok(f) => f,
         Err(code) => return code,
@@ -50,34 +162,12 @@ pub(crate) fn info(source: &Path, json: bool) -> i32 {
     )
 }
 
-/// Every glyph name in a source, one per line.
-///
-/// The plain form is meant to be piped: `runebender-core glyphs Font.ufo |
-/// xargs -P 8 -I{} runebender-core measure Font.ufo --glyph {}`.
-pub(crate) fn glyphs(source: &Path, json: bool) -> i32 {
-    let font = match open(source, json) {
-        Ok(f) => f,
-        Err(code) => return code,
-    };
-    let mut names: Vec<String> = font
-        .default_layer()
-        .iter()
-        .map(|g| g.name().to_string())
-        .collect();
-    names.sort();
-    emit(json, json!({ "ok": true, "glyphs": names.clone() }), || {
-        for name in &names {
-            println!("{name}");
-        }
-    })
-}
-
 /// What the reference glyphs say the heavier master should do.
 ///
 /// Reports rather than writes. Seeing the offset and the list first is
 /// the difference between a tool you can trust with a font and one you
 /// run once and then undo.
-pub(crate) fn bolden(
+fn bolden(
     from: &Path,
     to: &Path,
     references: Option<&[String]>,
@@ -293,4 +383,26 @@ fn bolden_check(
         );
     }
     exit::OK
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Exit codes are the interface for a script, so they are pinned.
+    #[test]
+    fn exit_codes_are_distinct() {
+        let codes = [exit::OK, exit::USAGE, exit::FAILED];
+        let mut sorted = codes.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), codes.len(), "exit codes must not collide");
+        assert_eq!(exit::OK, 0, "0 must mean success");
+    }
+
+    #[test]
+    fn the_cli_parses() {
+        use clap::CommandFactory;
+        Cli::command().debug_assert();
+    }
 }

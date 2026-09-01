@@ -15,7 +15,7 @@ runebender-core = { git = "https://github.com/eliheuer/runebender-core" }
 As a command line tool: 
 ```sh
 cargo install --git https://github.com/eliheuer/runebender-core
-runebender-core clean Family.designspace
+runebender-core info Font.ufo
 ```
 ## License
 Apache-2.0 OR MIT

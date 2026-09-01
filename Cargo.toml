@@ -9,7 +9,7 @@ repository = "https://github.com/eliheuer/runebender-core"
 
 [[bin]]
 name = "runebender-core"
-path = "src/bin/runebender/main.rs"
+path = "src/bin/runebender.rs"
 required-features = ["cli"]
 
 [features]
