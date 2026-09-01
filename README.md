@@ -18,23 +18,18 @@ As a library, in `Cargo.toml`:
 runebender-core = { git = "https://github.com/eliheuer/runebender-core" }
 ```
 
-As a command:
+As a command, for the edits worth doing to many files at once:
 
 ```sh
 cargo install --git https://github.com/eliheuer/runebender-core
 
-runebender-core info Font.ufo
-runebender-core color Font.ufo
-runebender-core spacing Font.ufo
-```
-
-Those read. These edit, and take any number of UFOs or designspaces:
-
-```sh
 runebender-core clean Family.designspace
 runebender-core overlap Font.ufo --glyphs cent,euro
 runebender-core kern Font.ufo --left A --right V --set -80
 ```
+
+Each takes any number of UFOs or designspaces, so one line reaches a
+whole family.
 
 `--dry-run` writes nothing and exits 1 when there is work waiting.
 `--json` is on every command. `runebender-core --help` lists the
