@@ -50,6 +50,14 @@ a source only when the operation changed it, and a dry run exits 1
 when there is work waiting. Keep both: batch scripts and agents
 depend on them.
 
+## The interface
+
+`DESIGN.md` is the shared design document for both editors: the token
+rule, the canvas and the chrome, the wording of interface text, and
+the mistakes worth knowing by name. Read it before changing anything
+a person looks at. The tokens themselves are
+`themes/runebender.theme.json` and `src/ui/theme.rs`.
+
 ## Features
 
 One feature, `cli`, on by default, carrying the command line and its
