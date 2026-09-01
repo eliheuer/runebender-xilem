@@ -1,2 +1,4 @@
+# Pin stable, as runebender-gpui does, so both editors are built the
+# same way. Nothing here needs nightly.
 [toolchain]
 channel = "stable"
