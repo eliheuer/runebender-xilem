@@ -374,7 +374,9 @@ fn append_contour(path: &mut BezPath, contour: &Contour) {
                             let mid = a.midpoint(b);
                             path.quad_to(a, mid);
                         }
-                        path.quad_to(*off_curves.last().unwrap(), target);
+                        if let Some(last) = off_curves.last() {
+                            path.quad_to(*last, target);
+                        }
                     }
                 }
                 off_curves.clear();

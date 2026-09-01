@@ -211,7 +211,10 @@ impl HyperPath {
 
         let mut points_iter = self.points.iter();
 
-        let first_point = points_iter.next().unwrap().point;
+        let Some(first) = points_iter.next() else {
+            return;
+        };
+        let first_point = first.point;
         spec.move_to(to_spline_point(first_point));
 
         for pt in points_iter {

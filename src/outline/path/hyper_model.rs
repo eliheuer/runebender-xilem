@@ -132,7 +132,7 @@ impl Glyph {
             .iter()
             .flat_map(|c| c.points.iter())
             .map(|p| p.x)
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .min_by(f64::total_cmp)
     }
 
     fn bounding_box_max_x(&self) -> Option<f64> {
@@ -140,7 +140,7 @@ impl Glyph {
             .iter()
             .flat_map(|c| c.points.iter())
             .map(|p| p.x)
-            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .max_by(f64::total_cmp)
     }
 }
 

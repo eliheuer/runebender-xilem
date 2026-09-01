@@ -644,7 +644,7 @@ fn snap_all(q: &mut [Point], on: &[bool], n: usize, tol: f64) {
             let pb = popcount((b.0 - ax).abs()) + popcount((b.1 - ay).abs());
             let da = (a.0 as f64 - smooth_pos.x).hypot(a.1 as f64 - smooth_pos.y);
             let db = (b.0 as f64 - smooth_pos.x).hypot(b.1 as f64 - smooth_pos.y);
-            pa.cmp(&pb).then(da.partial_cmp(&db).unwrap())
+            pa.cmp(&pb).then(da.total_cmp(&db))
         });
         let mut best = Point::new(base_x as f64, base_y as f64);
         for (x, y) in cands {

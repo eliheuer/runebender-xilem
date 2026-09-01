@@ -219,7 +219,9 @@ pub fn tidy_contours(glyph: &mut norad::Glyph) -> usize {
         // the same zero-length segment, wrapped.
         if closed && contour.points.len() > 2 {
             let first = contour.points[0].clone();
-            let last = contour.points.last().unwrap().clone();
+            let Some(last) = contour.points.last().cloned() else {
+                continue;
+            };
             if last.typ == PointType::Line
                 && first.typ != PointType::OffCurve
                 && (last.x - first.x).abs() < 0.01

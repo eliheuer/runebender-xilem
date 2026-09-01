@@ -358,10 +358,11 @@ pub fn set_glyph_mark(glyph: &mut norad::Glyph, label: Option<&str>) {
             glyph
                 .lib
                 .insert("public.markColor".into(), plist::Value::String(rgba));
-            glyph.lib.insert(
-                MARK_LABEL_KEY.into(),
-                plist::Value::String(label.unwrap().into()),
-            );
+            if let Some(label) = label {
+                glyph
+                    .lib
+                    .insert(MARK_LABEL_KEY.into(), plist::Value::String(label.into()));
+            }
         }
         None => {
             glyph.lib.remove("public.markColor");
@@ -436,7 +437,7 @@ pub fn label_for_rgba(rgba: &str, theme: &Theme) -> Option<String> {
     }
     // Neighbouring palette hues are ~40° apart; anything further than
     // half that from every one has no name in this palette.
-    (best_distance <= 30.0).then(|| best.unwrap().to_string())
+    best.filter(|_| best_distance <= 30.0).map(str::to_string)
 }
 
 #[cfg(test)]

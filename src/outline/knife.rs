@@ -1329,7 +1329,7 @@ pub fn knife_hit_points(glyph: &norad::Glyph, p0: Point, p1: Point) -> Vec<Point
             }
         }
     }
-    ts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    ts.sort_by(f64::total_cmp);
     ts.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
     ts.into_iter().map(|t| line.eval(t)).collect()
 }
