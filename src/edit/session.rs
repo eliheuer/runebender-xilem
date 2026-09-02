@@ -13,12 +13,12 @@ use crate::*;
 use std::collections::{HashMap, HashSet};
 
 use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};
-use runebender_core::outline::glyph_ops::{self, GlyphSnapshot, PointId};
+use runebender_core::document::history::EditHistory;
+use runebender_core::outline::glyph_ops::{self, PointId};
 use runebender_core::outline::glyph_paths;
 use runebender_core::outline::glyph_paths::round_units;
 use runebender_core::outline::point_ops;
 use runebender_core::ui::editing::edit_types::EditType;
-use runebender_core::ui::editing::undo::UndoState;
 use runebender_core::ui::editing::viewport::ViewPort;
 
 /// Boolean operation kinds, mapped to `linesweeper::BinaryOp` internally.
@@ -74,7 +74,9 @@ pub(crate) struct Session {
     pub selection: HashSet<PointId>,
     pub viewport: ViewPort,
     pub fitted: bool,
-    undo: UndoState<GlyphSnapshot>,
+    /// Core's undo pile for this glyph. The session records into it
+    /// and asks it to undo; it holds no snapshots of its own.
+    history: EditHistory,
     drag_originals: HashMap<PointId, (f64, f64)>,
     in_drag: bool,
     /// The contour the pen is currently extending, if any.
@@ -108,7 +110,7 @@ impl Session {
             selection: HashSet::new(),
             viewport: ViewPort::new(),
             fitted: false,
-            undo: UndoState::new(),
+            history: EditHistory::new(),
             drag_originals: HashMap::new(),
             in_drag: false,
             active_contour: None,
@@ -182,40 +184,33 @@ impl Session {
 
     /// Record the state before an edit.
     pub(crate) fn record(&mut self, edit: EditType) {
-        let snapshot = glyph_ops::snapshot(&self.glyph);
         match edit {
             EditType::Drag => {
                 if !self.in_drag {
-                    self.undo.add_undo_group(snapshot);
+                    self.history.record(&self.glyph_name, &self.glyph);
                     self.in_drag = true;
                 }
             }
             EditType::DragUp => self.in_drag = false,
-            _ => self.undo.add_undo_group(snapshot),
+            _ => self.history.record(&self.glyph_name, &self.glyph),
         }
     }
 
     pub(crate) fn undo(&mut self) -> bool {
-        let current = glyph_ops::snapshot(&self.glyph);
-        match self.undo.undo(current) {
-            Some(prev) => {
-                glyph_ops::restore(&mut self.glyph, prev);
-                self.prune_selection();
-                true
-            }
-            None => false,
+        if self.history.undo(&self.glyph_name, &mut self.glyph) {
+            self.prune_selection();
+            true
+        } else {
+            false
         }
     }
 
     pub(crate) fn redo(&mut self) -> bool {
-        let current = glyph_ops::snapshot(&self.glyph);
-        match self.undo.redo(current) {
-            Some(next) => {
-                glyph_ops::restore(&mut self.glyph, next);
-                self.prune_selection();
-                true
-            }
-            None => false,
+        if self.history.redo(&self.glyph_name, &mut self.glyph) {
+            self.prune_selection();
+            true
+        } else {
+            false
         }
     }
 
@@ -566,7 +561,7 @@ impl Session {
         let changed = runebender_core::outline::knife::knife_cut_glyph(&mut self.glyph, p0, p1);
         if !changed {
             // Nothing cut; drop the empty undo group we just pushed.
-            let _ = self.undo.undo(glyph_ops::snapshot(&self.glyph));
+            self.history.discard_last(&self.glyph_name);
         }
         changed
     }

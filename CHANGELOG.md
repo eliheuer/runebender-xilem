@@ -9,3 +9,9 @@ releases begin.
 
 No releases yet. `AGENTS.md` has the checklist for the first one.
 Until then, `main` is the only line and this section stays open.
+
+### Changed
+
+- Undo lives in core. `Session` holds an `EditHistory` from
+  `runebender_core::document::history` instead of its own `UndoState`,
+  and records, undoes, and discards through it.
