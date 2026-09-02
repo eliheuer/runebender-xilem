@@ -35,6 +35,9 @@ Until then, `main` is the only line and this section stays open.
 
 - Themes: Midnight is gone. Dark, Gray (the default), and Light
   remain, so the token system settles on three before more are added.
+- Every theme fills its glyph-grid marks the way Gray does, with a
+  keyline and a dark ink: Dark at the bright step, Light at the base
+  step. The grid keeps one character across themes.
 - Two new role tokens in every theme: `outlineFill`, the mid tone
   under the glyph in the editing view, and `metricsLine`, a quiet
   neutral rule for baseline, x-height, and the em box, which used to

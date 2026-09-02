@@ -474,11 +474,13 @@ mod tests {
     /// The swatches drawn in the Colors panel.
     #[test]
     fn resolves_mark_swatches() {
+        // Dark fills its marks at the bright step, so dark ink reads
+        // on every one of them.
         let dark = load_theme("dark").expect("dark theme");
-        assert_eq!(hex(dark.mark("red").unwrap()), "#d55249");
-        assert_eq!(hex(dark.mark("orange").unwrap()), "#e2763f");
-        assert_eq!(hex(dark.mark("yellow").unwrap()), "#dec352");
-        assert_eq!(hex(dark.mark("green").unwrap()), "#57b174");
+        assert_eq!(hex(dark.mark("red").unwrap()), "#f5867b");
+        assert_eq!(hex(dark.mark("orange").unwrap()), "#ffa980");
+        assert_eq!(hex(dark.mark("yellow").unwrap()), "#fde895");
+        assert_eq!(hex(dark.mark("green").unwrap()), "#94d6a6");
         assert_eq!(dark.marks.len(), 7);
         assert!(dark.mark("chartreuse").is_none());
     }
@@ -767,11 +769,15 @@ mod mark_contrast {
         }
     }
 
+    /// Every theme fills its marks the same way, so the grid does not
+    /// change character with the theme.
     #[test]
-    fn border_themes_need_no_fill_tokens() {
-        for id in ["dark", "light"] {
+    fn every_theme_fills_its_marks() {
+        for id in ["dark", "light", "gray"] {
             let theme = load_theme(id).expect("theme");
-            assert_eq!(theme.mark_style, MarkStyle::Border, "{id}");
+            assert_eq!(theme.mark_style, MarkStyle::Fill, "{id}");
+            assert!(theme.mark_ink.is_some(), "{id} names the ink on a mark");
+            assert!(theme.mark_outline.is_some(), "{id} names the keyline");
         }
     }
 }

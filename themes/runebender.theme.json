@@ -160,7 +160,10 @@
         "overlay": "neutral.96",
         "glyph": "neutral.60"
       },
-      "markStep": "base",
+      "markStep": "bright",
+      "markStyle": "fill",
+      "markOutline": "neutral.15",
+      "markInk": "neutral.15",
       "roles": {
         "gridSelected": "neutral.81",
         "designGridFine": "neutral.28",
@@ -222,7 +225,10 @@
         "overlay": "neutral.18",
         "glyph": "neutral.31"
       },
-      "markStep": "deep",
+      "markStep": "base",
+      "markStyle": "fill",
+      "markOutline": "neutral.31",
+      "markInk": "neutral.15",
       "roles": {
         "gridSelected": "neutral.31",
         "designGridFine": "neutral.86",
