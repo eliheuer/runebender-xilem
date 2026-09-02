@@ -169,6 +169,8 @@
       "markInk": "neutral.15",
       "roles": {
         "gridSelected": "neutral.81",
+        "cellSelectedFill": "neutral.26",
+        "cellSelectedInk": "neutral.81",
         "designGridFine": "neutral.28",
         "designGridCoarse": "neutral.34",
         "accent": "green.base",
@@ -235,6 +237,8 @@
       "markInk": "neutral.15",
       "roles": {
         "gridSelected": "neutral.31",
+        "cellSelectedFill": "neutral.31",
+        "cellSelectedInk": "neutral.99",
         "designGridFine": "neutral.86",
         "designGridCoarse": "neutral.80",
         "accent": "green.dim",
@@ -302,6 +306,8 @@
       },
       "roles": {
         "gridSelected": "neutral.23",
+        "cellSelectedFill": "neutral.23",
+        "cellSelectedInk": "neutral.96",
         "designGridFine": "neutral.46",
         "designGridCoarse": "neutral.52",
         "accent": "green.deep",

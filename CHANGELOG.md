@@ -38,6 +38,8 @@ Until then, `main` is the only line and this section stays open.
 - Every theme fills its glyph-grid marks the way Gray does, with a
   keyline and a dark ink: Dark at the bright step, Light at the base
   step. The grid keeps one character across themes.
+- `cellSelectedFill` and `cellSelectedInk` role tokens: how a
+  selected glyph-grid cell is drawn. Gray and Light invert, Dark lifts.
 - A `fieldOutline` surface token in every theme: the quiet rule
   around a text field.
 - Two new role tokens in every theme: `outlineFill`, the mid tone
