@@ -151,7 +151,7 @@
         "buttonHover": "neutral.26",
         "field": "neutral.17",
         "outline": "neutral.37",
-        "fieldOutline": "neutral.26",
+        "fieldOutline": "neutral.23",
         "divider": "neutral.26",
         "canvas": "neutral.15"
       },
@@ -217,7 +217,7 @@
         "buttonHover": "neutral.91",
         "field": "neutral.94",
         "outline": "neutral.71",
-        "fieldOutline": "neutral.86",
+        "fieldOutline": "neutral.89",
         "divider": "neutral.81",
         "canvas": "neutral.96"
       },
@@ -288,7 +288,7 @@
         "buttonHover": "neutral.81",
         "field": "neutral.74",
         "outline": "neutral.23",
-        "fieldOutline": "neutral.60",
+        "fieldOutline": "neutral.68",
         "divider": "neutral.23",
         "canvas": "neutral.81"
       },
