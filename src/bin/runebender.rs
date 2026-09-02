@@ -565,8 +565,10 @@ fn find_font_ml(tool: Option<&Path>) -> Option<PathBuf> {
 ///
 /// font-ml is a separate program on purpose: it carries the model
 /// runtime, and this crate does not. The seam is the UFO on disk and
-/// the JSON font-ml prints. Its exit codes are passed through, so a
-/// caller that branches on them sees the same answers either way.
+/// the JSON font-ml prints: the task runs with `--write`, so what it
+/// predicts lands in the UFO as a proposal layer and nothing touches
+/// the foreground. Its exit codes are passed through, so a caller
+/// that branches on them sees the same answers either way.
 fn propose(
     task: &str,
     source: &Path,
@@ -599,7 +601,7 @@ fn propose(
     for g in glyphs.into_iter().flatten() {
         cmd.arg("--glyph").arg(g);
     }
-    cmd.args(rest).arg("--json");
+    cmd.args(rest).arg("--write").arg("--json");
     let output = match cmd.output() {
         Ok(o) => o,
         Err(e) => {

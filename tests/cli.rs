@@ -196,6 +196,7 @@ fn propose_runs_the_tool_and_reports_what_it_left() {
     std::fs::write(
         &tool,
         "#!/bin/sh\n\
+         case \"$*\" in *--write*) ;; *) echo '{\"error\":\"no --write\"}'; exit 4;; esac\n\
          echo '{\"ok\":true,\"glyph\":\"H\"}'\n\
          exit 0\n",
     )
