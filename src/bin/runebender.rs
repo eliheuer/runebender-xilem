@@ -13,7 +13,10 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 use norad::Font;
 use runebender_core::document::font_ops;
+use runebender_core::document::project::Master;
+use runebender_core::document::proposal;
 use runebender_core::outline::embolden;
+use runebender_core::outline::glyph_paths;
 use serde_json::json;
 
 /// Exit codes, matching font-ml so a caller can branch on them.
@@ -22,6 +25,8 @@ mod exit {
     pub(crate) const OK: i32 = 0;
     /// The command was wrong: bad path, unknown glyph, missing flag.
     pub(crate) const USAGE: i32 = 2;
+    /// The command was right and the tool it needs is not built yet.
+    pub(crate) const NOT_BUILT: i32 = 3;
     /// The command was right and the work failed.
     pub(crate) const FAILED: i32 = 4;
 }
@@ -61,6 +66,57 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// What a font is: names, metrics, counts, and any proposals
+    /// waiting in it.
+    Info {
+        /// The UFO.
+        source: PathBuf,
+        /// List every glyph with its codepoints.
+        #[arg(long)]
+        glyphs: bool,
+    },
+    /// Draw a proof sheet as SVG, with metrics per glyph.
+    Proof {
+        /// The UFO.
+        source: PathBuf,
+        /// Where to write the SVG. Defaults to proof.svg next to the UFO.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Glyphs to draw. Defaults to every drawn glyph.
+        #[arg(long, value_delimiter = ',')]
+        glyphs: Option<Vec<String>>,
+        /// Glyphs per row.
+        #[arg(long, default_value = "10")]
+        columns: usize,
+    },
+    /// Proposals: edits offered by a tool, waiting in the UFO as
+    /// `com.runebender.proposal.<task>` layers.
+    Proposal {
+        #[command(subcommand)]
+        action: ProposalAction,
+    },
+    /// Run a font-ml task over the UFO. font-ml is its own program; it
+    /// writes what it proposes into the UFO as a proposal layer, and
+    /// this reports what arrived.
+    Propose {
+        /// The task, as `font-ml tasks` lists it.
+        task: String,
+        /// The UFO.
+        source: PathBuf,
+        /// A model directory to pass along.
+        #[arg(long)]
+        model: Option<PathBuf>,
+        /// Glyphs to pass along. Defaults to the task's own choice.
+        #[arg(long, value_delimiter = ',')]
+        glyphs: Option<Vec<String>>,
+        /// The font-ml binary. Defaults to `$RUNEBENDER_FONT_ML`, then
+        /// `font-ml` on PATH.
+        #[arg(long)]
+        tool: Option<PathBuf>,
+        /// Anything after `--` goes to font-ml as it is.
+        #[arg(last = true)]
+        rest: Vec<String>,
+    },
     /// Learn how much weight a heavier master adds, from glyphs drawn
     /// in both, and report what it would do to the rest.
     Bolden {
@@ -87,10 +143,75 @@ enum Command {
     },
 }
 
+#[derive(Subcommand)]
+enum ProposalAction {
+    /// Every proposal in the UFO, with what it changes.
+    List {
+        /// The UFO.
+        source: PathBuf,
+    },
+    /// Copy a proposal over the foreground and save. Each glyph is
+    /// one undo step in an editor that has the font open.
+    Install {
+        /// The UFO.
+        source: PathBuf,
+        /// The task whose proposal to install.
+        #[arg(long)]
+        task: String,
+        /// Only these glyphs. Defaults to every glyph proposed.
+        #[arg(long, value_delimiter = ',')]
+        glyphs: Option<Vec<String>>,
+        /// Install a glyph even when it changes point structure.
+        #[arg(long)]
+        any_structure: bool,
+    },
+    /// Drop a proposal and save.
+    Discard {
+        /// The UFO.
+        source: PathBuf,
+        /// The task whose proposal to drop.
+        #[arg(long)]
+        task: String,
+    },
+}
+
 fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
     let json = cli.json;
     let code = match &cli.command {
+        Command::Info { source, glyphs } => info(source, *glyphs, json),
+        Command::Proof {
+            source,
+            out,
+            glyphs,
+            columns,
+        } => proof(source, out.as_deref(), glyphs.as_deref(), *columns, json),
+        Command::Proposal { action } => match action {
+            ProposalAction::List { source } => proposal_list(source, json),
+            ProposalAction::Install {
+                source,
+                task,
+                glyphs,
+                any_structure,
+            } => proposal_install(source, task, glyphs.as_deref(), !*any_structure, json),
+            ProposalAction::Discard { source, task } => proposal_discard(source, task, json),
+        },
+        Command::Propose {
+            task,
+            source,
+            model,
+            glyphs,
+            tool,
+            rest,
+        } => propose(
+            task,
+            source,
+            model.as_deref(),
+            glyphs.as_deref(),
+            tool.as_deref(),
+            rest,
+            json,
+        ),
         Command::Bolden {
             from,
             to,
@@ -109,6 +230,423 @@ fn main() -> std::process::ExitCode {
         ),
     };
     std::process::ExitCode::from(u8::try_from(code).unwrap_or(1))
+}
+
+/// Loads one UFO as a `Master`, reporting a bad path as a usage error.
+fn open_master(path: &Path, json: bool) -> Result<Master, i32> {
+    Master::load(path).map_err(|e| fail(json, exit::USAGE, &format!("{}: {e}", path.display())))
+}
+
+/// Saves a master, reporting a write failure as such.
+fn save_master(master: &mut Master, json: bool) -> Result<(), i32> {
+    master.save().map_err(|e| {
+        fail(
+            json,
+            exit::FAILED,
+            &format!("{}: {e}", master.source_path.display()),
+        )
+    })
+}
+
+fn codepoints(glyph: &norad::Glyph) -> Vec<String> {
+    glyph
+        .codepoints
+        .iter()
+        .map(|c| format!("U+{:04X}", u32::from(c)))
+        .collect()
+}
+
+/// What a font is, for a person or a program about to work on it.
+fn info(source: &Path, list_glyphs: bool, json: bool) -> i32 {
+    let master = match open_master(source, json) {
+        Ok(m) => m,
+        Err(code) => return code,
+    };
+    let font = &master.font;
+    let drawn = font
+        .default_layer()
+        .iter()
+        .filter(|g| !g.contours.is_empty() || !g.components.is_empty())
+        .count();
+    let proposals = proposal::list(font);
+    let layers: Vec<String> = font.layers.names().map(|n| n.to_string()).collect();
+    if json {
+        let mut out = json!({
+            "ok": true,
+            "source": source,
+            "family": font.font_info.family_name,
+            "style": font.font_info.style_name,
+            "unitsPerEm": master.units_per_em,
+            "ascender": master.ascender,
+            "descender": master.descender,
+            "xHeight": master.x_height,
+            "capHeight": master.cap_height,
+            "glyphs": font.default_layer().len(),
+            "drawn": drawn,
+            "layers": layers,
+            "kerningPairs": font.kerning.values().map(|v| v.len()).sum::<usize>(),
+            "proposals": proposals,
+        });
+        if list_glyphs {
+            out["glyphList"] = font
+                .default_layer()
+                .iter()
+                .map(|g| json!({ "name": g.name(), "codepoints": codepoints(g) }))
+                .collect();
+        }
+        println!("{out}");
+    } else {
+        println!(
+            "{} {}",
+            font.font_info
+                .family_name
+                .as_deref()
+                .unwrap_or("(no family)"),
+            font.font_info.style_name.as_deref().unwrap_or("")
+        );
+        println!(
+            "{} upm, ascender {}, descender {}",
+            master.units_per_em, master.ascender, master.descender
+        );
+        println!(
+            "{} glyphs, {drawn} drawn, layers: {}",
+            font.default_layer().len(),
+            layers.join(", ")
+        );
+        for p in &proposals {
+            println!(
+                "proposal {}: {} glyphs ({} compatible, {} not, {} missing)",
+                p.task,
+                p.glyphs.len(),
+                p.compatible.len(),
+                p.incompatible.len(),
+                p.missing.len()
+            );
+        }
+        if list_glyphs {
+            for g in font.default_layer().iter() {
+                println!("  {:<24} {}", g.name(), codepoints(g).join(" "));
+            }
+        }
+    }
+    exit::OK
+}
+
+/// A proof sheet: every glyph in a grid with its metric lines, as
+/// SVG, and the numbers a reviewer wants next to it.
+fn proof(
+    source: &Path,
+    out: Option<&Path>,
+    glyphs: Option<&[String]>,
+    columns: usize,
+    json: bool,
+) -> i32 {
+    let master = match open_master(source, json) {
+        Ok(m) => m,
+        Err(code) => return code,
+    };
+    let font = &master.font;
+    let names: Vec<String> = match glyphs {
+        Some(list) => list.to_vec(),
+        None => master
+            .glyphs
+            .iter()
+            .filter(|g| !g.path.is_empty())
+            .map(|g| g.name.to_string())
+            .collect(),
+    };
+    if names.is_empty() {
+        return fail(json, exit::USAGE, "no glyph to draw");
+    }
+    let columns = columns.clamp(1, names.len());
+    let upm = master.units_per_em;
+    let cell_w = upm * 1.2;
+    let cell_h = upm * 1.4;
+    let rows = names.len().div_ceil(columns);
+    let mut svg = String::new();
+    svg.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" \
+         viewBox=\"0 0 {} {}\">\n<rect width=\"100%\" height=\"100%\" fill=\"white\"/>\n",
+        (cell_w * columns as f64 / 4.0).round(),
+        (cell_h * rows as f64 / 4.0).round(),
+        cell_w * columns as f64,
+        cell_h * rows as f64
+    ));
+    let mut metrics = Vec::new();
+    for (i, name) in names.iter().enumerate() {
+        let Some(glyph) = font.get_glyph(name.as_str()) else {
+            return fail(json, exit::USAGE, &format!("no glyph named {name}"));
+        };
+        let path = glyph_paths::glyph_to_bezpath(glyph, font);
+        let col = (i % columns) as f64;
+        let row = (i / columns) as f64;
+        let x0 = col * cell_w + upm * 0.1;
+        let baseline = row * cell_h + upm * 1.05;
+        let line = |y: f64, color: &str| {
+            format!(
+                "<line x1=\"{x0:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
+                 stroke=\"{color}\" stroke-width=\"2\"/>\n",
+                baseline - y,
+                x0 + glyph.width,
+                baseline - y
+            )
+        };
+        svg.push_str(&line(0.0, "#999"));
+        svg.push_str(&line(master.ascender, "#ccc"));
+        svg.push_str(&line(master.descender, "#ccc"));
+        if let Some(x) = master.x_height {
+            svg.push_str(&line(x, "#bbb"));
+        }
+        if let Some(c) = master.cap_height {
+            svg.push_str(&line(c, "#bbb"));
+        }
+        svg.push_str(&format!(
+            "<path transform=\"translate({x0:.1} {baseline:.1}) scale(1 -1)\" d=\"{}\" fill=\"black\"/>\n",
+            path.to_svg()
+        ));
+        use kurbo::Shape as _;
+        let bounds = path.bounding_box();
+        let drawn = !path.is_empty();
+        metrics.push(json!({
+            "glyph": name,
+            "advance": glyph.width,
+            "lsb": if drawn { Some(bounds.x0.round()) } else { None },
+            "rsb": if drawn { Some((glyph.width - bounds.x1).round()) } else { None },
+            "bounds": if drawn { Some([bounds.x0, bounds.y0, bounds.x1, bounds.y1]) } else { None },
+            "points": glyph.contours.iter().map(|c| c.points.len()).sum::<usize>(),
+            "contours": glyph.contours.len(),
+            "components": glyph.components.len(),
+        }));
+    }
+    svg.push_str("</svg>\n");
+    let out = out.map_or_else(
+        || {
+            source
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join("proof.svg")
+        },
+        Path::to_path_buf,
+    );
+    if let Err(e) = std::fs::write(&out, svg) {
+        return fail(json, exit::FAILED, &format!("{}: {e}", out.display()));
+    }
+    if json {
+        println!("{}", json!({ "ok": true, "svg": out, "glyphs": metrics }));
+    } else {
+        println!("{} glyphs → {}", names.len(), out.display());
+        for m in &metrics {
+            println!(
+                "  {:<24} advance {:>5}  lsb {:>5}  rsb {:>5}",
+                m["glyph"].as_str().unwrap_or(""),
+                m["advance"],
+                m["lsb"],
+                m["rsb"]
+            );
+        }
+    }
+    exit::OK
+}
+
+fn proposal_list(source: &Path, json: bool) -> i32 {
+    let font = match open(source, json) {
+        Ok(f) => f,
+        Err(code) => return code,
+    };
+    let list = proposal::list(&font);
+    if json {
+        println!("{}", json!({ "ok": true, "proposals": list }));
+    } else if list.is_empty() {
+        println!("no proposals");
+    } else {
+        for p in &list {
+            println!(
+                "{}: {} glyphs, {} compatible, {} change structure, {} missing",
+                p.task,
+                p.glyphs.len(),
+                p.compatible.len(),
+                p.incompatible.len(),
+                p.missing.len()
+            );
+            for (name, why) in &p.incompatible {
+                println!("  {name}: {why}");
+            }
+        }
+    }
+    exit::OK
+}
+
+fn proposal_install(
+    source: &Path,
+    task: &str,
+    glyphs: Option<&[String]>,
+    keep_structure: bool,
+    json: bool,
+) -> i32 {
+    let mut master = match open_master(source, json) {
+        Ok(m) => m,
+        Err(code) => return code,
+    };
+    let done = match master.install_proposal(task, glyphs, keep_structure) {
+        Ok(done) => done,
+        Err(e) => {
+            if json {
+                println!("{}", json!({ "ok": false, "error": e }));
+            } else {
+                eprintln!("{e}");
+            }
+            return exit::USAGE;
+        }
+    };
+    if let Err(code) = save_master(&mut master, json) {
+        return code;
+    }
+    if json {
+        println!("{}", json!({ "ok": true, "installed": done }));
+    } else {
+        println!(
+            "{}: installed {} glyphs, skipped {}",
+            done.task,
+            done.installed.len(),
+            done.skipped.len()
+        );
+        for (name, why) in &done.skipped {
+            println!("  {name}: {why}");
+        }
+    }
+    exit::OK
+}
+
+fn proposal_discard(source: &Path, task: &str, json: bool) -> i32 {
+    let mut master = match open_master(source, json) {
+        Ok(m) => m,
+        Err(code) => return code,
+    };
+    let count = match master.discard_proposal(task) {
+        Ok(n) => n,
+        Err(e) => {
+            if json {
+                println!("{}", json!({ "ok": false, "error": e }));
+            } else {
+                eprintln!("{e}");
+            }
+            return exit::USAGE;
+        }
+    };
+    if let Err(code) = save_master(&mut master, json) {
+        return code;
+    }
+    if json {
+        println!(
+            "{}",
+            json!({ "ok": true, "task": task, "discarded": count })
+        );
+    } else {
+        println!("{task}: dropped {count} proposed glyphs");
+    }
+    exit::OK
+}
+
+/// Where font-ml is: the flag, then `$RUNEBENDER_FONT_ML`, then PATH.
+fn find_font_ml(tool: Option<&Path>) -> Option<PathBuf> {
+    if let Some(t) = tool {
+        return Some(t.to_path_buf());
+    }
+    if let Some(t) = std::env::var_os("RUNEBENDER_FONT_ML").filter(|t| !t.is_empty()) {
+        return Some(PathBuf::from(t));
+    }
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|dir| dir.join("font-ml"))
+        .find(|candidate| candidate.is_file())
+}
+
+/// Runs a font-ml task and reports the proposal it left behind.
+///
+/// font-ml is a separate program on purpose: it carries the model
+/// runtime, and this crate does not. The seam is the UFO on disk and
+/// the JSON font-ml prints. Its exit codes are passed through, so a
+/// caller that branches on them sees the same answers either way.
+fn propose(
+    task: &str,
+    source: &Path,
+    model: Option<&Path>,
+    glyphs: Option<&[String]>,
+    tool: Option<&Path>,
+    rest: &[String],
+    json: bool,
+) -> i32 {
+    if !source.is_dir() {
+        return fail(
+            json,
+            exit::USAGE,
+            &format!("{}: not a UFO directory", source.display()),
+        );
+    }
+    let Some(font_ml) = find_font_ml(tool) else {
+        return fail(
+            json,
+            exit::NOT_BUILT,
+            "font-ml is not installed: set RUNEBENDER_FONT_ML, pass --tool, or put \
+             font-ml on PATH (cargo install --git https://github.com/eliheuer/font-ml)",
+        );
+    };
+    let mut cmd = std::process::Command::new(&font_ml);
+    cmd.arg("run").arg(task).arg("--source").arg(source);
+    if let Some(m) = model {
+        cmd.arg("--model").arg(m);
+    }
+    for g in glyphs.into_iter().flatten() {
+        cmd.arg("--glyph").arg(g);
+    }
+    cmd.args(rest).arg("--json");
+    let output = match cmd.output() {
+        Ok(o) => o,
+        Err(e) => {
+            return fail(
+                json,
+                exit::FAILED,
+                &format!("could not run {}: {e}", font_ml.display()),
+            );
+        }
+    };
+    let code = output.status.code().unwrap_or(exit::FAILED);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let tool_report: serde_json::Value = stdout
+        .lines()
+        .rev()
+        .find_map(|line| serde_json::from_str(line).ok())
+        .unwrap_or_else(|| json!({ "raw": stdout.trim() }));
+    let arrived = Font::load(source)
+        .ok()
+        .and_then(|f| proposal::find(&f, task).ok());
+    if json {
+        println!(
+            "{}",
+            json!({
+                "ok": code == exit::OK,
+                "tool": font_ml,
+                "exit": code,
+                "report": tool_report,
+                "proposal": arrived,
+            })
+        );
+    } else {
+        print!("{stdout}");
+        if code != exit::OK {
+            eprint!("{}", String::from_utf8_lossy(&output.stderr));
+        }
+        match arrived {
+            Some(p) => println!(
+                "proposal {}: {} glyphs waiting ({} compatible)",
+                p.task,
+                p.glyphs.len(),
+                p.compatible.len()
+            ),
+            None => println!("no proposal layer written for {task}"),
+        }
+    }
+    code
 }
 
 /// What the reference glyphs say the heavier master should do.
@@ -341,7 +879,7 @@ mod tests {
     /// Exit codes are the interface for a script, so they are pinned.
     #[test]
     fn exit_codes_are_distinct() {
-        let codes = [exit::OK, exit::USAGE, exit::FAILED];
+        let codes = [exit::OK, exit::USAGE, exit::NOT_BUILT, exit::FAILED];
         let mut sorted = codes.to_vec();
         sorted.sort_unstable();
         sorted.dedup();

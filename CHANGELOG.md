@@ -22,6 +22,14 @@ Until then, `main` is the only line and this section stays open.
   undo step per glyph, skipping any that break point structure when
   asked, and `discard_proposal` drops the layer. Result and error
   types derive serde and a JSON Schema (`schemars`).
+- The command line grows the agent surface: `info` (names, metrics,
+  counts, proposals waiting), `proof` (an SVG sheet with metric lines,
+  and lsb/rsb/bounds per glyph as JSON), `proposal list|install|discard`,
+  and `propose <task>`, which runs `font-ml` as a separate process and
+  reports the proposal layer it left. font-ml is found through
+  `--tool`, `$RUNEBENDER_FONT_ML`, or PATH; a missing tool exits 3,
+  matching font-ml's own "not built" code. `tests/cli.rs` drives the
+  binary end to end.
 
 ### Removed
 
