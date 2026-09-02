@@ -94,7 +94,7 @@ pub(crate) struct Workspace {
     pub(crate) reference_buf: String,
     /// Current axis location in user units, one per designspace axis.
     pub(crate) axis_values: Vec<f64>,
-    /// Active OKLCH theme id (dark | midnight | gray | light).
+    /// Active OKLCH theme id (dark | gray | light).
     pub(crate) theme_id: &'static str,
     /// Reference corner for the Coordinates fields (the 9-point picker).
     pub(crate) coord_quadrant: runebender_core::outline::path::Quadrant,

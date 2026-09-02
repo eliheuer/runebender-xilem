@@ -802,7 +802,7 @@ fn resolve_components(font: &norad::Font, glyph: &norad::Glyph) -> Vec<norad::Co
 
 impl Workspace {
     /// The OKLCH themes in menu order (matches runebender-gpui).
-    pub(crate) const THEMES: [&'static str; 4] = ["dark", "midnight", "gray", "light"];
+    pub(crate) const THEMES: [&'static str; 3] = ["dark", "gray", "light"];
 
     /// Write the live session back into its tab, so switching away from
     /// it does not lose the edit, the selection, or the undo stack.

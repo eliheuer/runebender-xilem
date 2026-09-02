@@ -12,6 +12,7 @@ Until then, `main` is the only line and this section stays open.
 
 ### Changed
 
+- Themes: Midnight removed, Gray is the default. Dark, Gray, Light.
 - Undo lives in core. `Session` holds an `EditHistory` from
   `runebender_core::document::history` instead of its own `UndoState`,
   and records, undoes, and discards through it.

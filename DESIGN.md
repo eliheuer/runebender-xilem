@@ -31,14 +31,14 @@ what it is for (`point.smooth.fill`), not what it looks like
 
 Colour is authored in OKLCH. Lightness and chroma mean the same
 thing at every hue there, so a set of colours reads as one family
-rather than a pile. Four themes ship: Dark, Midnight, Gray (the
-default), and Light.
+rather than a pile. Three themes ship: Dark, Gray (the default), and
+Light. More come once the token system is settled.
 
 - A token is named after its job. `metrics.baseline`, not `red_line`.
 - Hue carries meaning on the canvas: a corner point and a smooth
   point are told apart by shape and colour together, never by colour
   alone.
-- Every new token gets a value in all four themes. A theme that
+- Every new token gets a value in all three themes. A theme that
   falls back is a theme that looks broken in one place.
 - Check a change in Gray and in Light. Dark hides low contrast.
 
