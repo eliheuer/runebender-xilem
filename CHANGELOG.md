@@ -31,6 +31,15 @@ Until then, `main` is the only line and this section stays open.
   matching font-ml's own "not built" code. `tests/cli.rs` drives the
   binary end to end.
 
+### Changed
+
+- Themes: Midnight is gone. Dark, Gray (the default), and Light
+  remain, so the token system settles on three before more are added.
+- Two new role tokens in every theme: `outlineFill`, the mid tone
+  under the glyph in the editing view, and `metricsLine`, a quiet
+  neutral rule for baseline, x-height, and the em box, which used to
+  borrow the accent hue.
+
 ### Removed
 
 - `info`. It counted glyphs, layers and codepoints, which is not a

@@ -647,7 +647,7 @@ mod geometry_tests {
 
     #[test]
     fn every_theme_resolves_geometry() {
-        for id in ["dark", "midnight", "light", "gray"] {
+        for id in ["dark", "light", "gray"] {
             let theme = load_theme(id).expect("theme in the token file");
             assert!(theme.geometry.stroke > 0.0, "{id} stroke");
             assert!(theme.geometry.radius >= 0.0, "{id} radius");
@@ -722,7 +722,7 @@ mod mark_contrast {
     #[test]
     fn every_mark_is_legible_on_every_theme() {
         const FLOOR: f64 = 3.0;
-        for id in ["dark", "midnight", "light", "gray"] {
+        for id in ["dark", "light", "gray"] {
             let theme = load_theme(id).expect("theme");
             for (name, mark) in &theme.marks {
                 match theme.mark_style {
@@ -769,7 +769,7 @@ mod mark_contrast {
 
     #[test]
     fn border_themes_need_no_fill_tokens() {
-        for id in ["dark", "midnight", "light"] {
+        for id in ["dark", "light"] {
             let theme = load_theme(id).expect("theme");
             assert_eq!(theme.mark_style, MarkStyle::Border, "{id}");
         }
@@ -803,7 +803,7 @@ mod ui_contrast {
     /// editor chrome is prose: it is labels, tiles and marks.
     const FLOOR: f64 = 3.0;
 
-    const THEMES: [&str; 4] = ["dark", "midnight", "gray", "light"];
+    const THEMES: [&str; 3] = ["dark", "gray", "light"];
     const SURFACES: [&str; 6] = ["app", "panel", "control", "button", "field", "canvas"];
     /// The text tokens the editor actually draws with. `muted` and
     /// `subdued` are in the file for other front-ends and are not
