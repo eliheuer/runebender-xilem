@@ -10,10 +10,9 @@ impl Workspace {
     pub(crate) fn open(path: &FsPath) -> Result<Self, String> {
         let font = FontModel::open(path)?;
         let theme_id: &'static str = match std::env::var("RUNEBENDER_THEME").ok().as_deref() {
-            Some("midnight") => "midnight",
-            Some("gray") => "gray",
+            Some("dark") => "dark",
             Some("light") => "light",
-            _ => "dark",
+            _ => "gray",
         };
         let palette = Arc::new(Palette::load(theme_id));
         let cells = Arc::new(cells_of(&font, &palette));
