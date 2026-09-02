@@ -130,6 +130,32 @@ appears on hover in a place a click was heading.
 everything around it is worse than a plain one. Consistency is what
 lets a person stop looking.
 
+## Reference
+
+The Gray theme's visual reference is Ableton Live, the session and
+arrangement views. Named here so a change can be checked against
+something, not so the editor copies it. What the reference does that
+the Gray theme is after:
+
+- A mid grey ground everywhere, with the content carrying the colour.
+  Clips and tracks are flat, saturated swatches with dark ink on them,
+  which is what the glyph grid's mark cells already are.
+- Rules, not tints, draw the layout. One-pixel lines a step darker
+  than the ground separate panels and rows. Nothing has a shadow.
+- Selection is ink, not hue: the chosen thing goes dark with light
+  text.
+- Controls are small, dense, and all on one height. A field is a
+  pale slab with a value in it; a button is the same slab with a verb.
+- Small tab strips switch what a region shows: a row of icon tabs at
+  the top of a device or clip panel, on the panel's own ground,
+  with the active tab filled. A candidate for the left panel's
+  Glyphs/Shapes/Axes/Local AI tabs and for the header's Font and
+  session tabs. Not built yet.
+
+Colours are not to be copied from the reference; the token file
+decides them. The reference settles questions of weight, density,
+and where a line goes.
+
 ## Where the tokens are
 
 | What | Where |
