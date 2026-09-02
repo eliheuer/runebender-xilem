@@ -21,6 +21,23 @@ It builds against upstream Xilem pinned to a revision, not a fork.
 Where Xilem has no answer for something the editor needs, the answer
 lives here in application code, and `docs/XILEM-GAPS.md` records it.
 
+## Which shell is which
+
+runebender-gpui is the current shell. This one is the long-term
+target. The rule that keeps the switch cheap is:
+
+- No local-AI or task logic lives in a shell. Models, proposals, undo,
+  and the task list live in runebender-core and in font-ml.
+- font-ml is a separate binary. A shell runs it as a subprocess and
+  reads JSON back. It never links font-ml or candle.
+- A proposal from a model is a UFO layer named
+  `com.runebender.proposal.<task>`. The shell shows it and asks core to
+  install or discard it. It does not interpret it.
+- The shell renders state from core. If a feature needs new state,
+  add the state to core first.
+- Until the switch, this shell gets parity only for the shared-state
+  seam (core's undo and proposals), not for every GPUI feature.
+
 ## Layout
 
 The layout mirrors runebender-gpui file for file where the two
