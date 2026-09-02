@@ -91,6 +91,9 @@ quick-xml = { version = "0.41", features = ["serialize"] }
 # Structured metadata shared over serde_json between core and UI hosts.
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.151"
+# JSON Schema for every result type a tool or agent reads back, so the
+# contract is published, not guessed.
+schemars = "1.2"
 
 # Unicode general-category lookup, used by `category::GlyphCategory`.
 # Same crate as runebender-xilem, just hoisted here so both editors

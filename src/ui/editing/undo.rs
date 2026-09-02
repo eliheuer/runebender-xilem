@@ -90,6 +90,13 @@ impl<T: Clone> UndoState<T> {
         Some(next)
     }
 
+    /// Drop the most recent undo group without applying it, for an
+    /// edit that changed nothing. Returns false when the stack is
+    /// empty.
+    pub fn discard_last(&mut self) -> bool {
+        self.undo_stack.pop_back().is_some()
+    }
+
     /// Check whether undo is available.
     pub fn can_undo(&self) -> bool {
         !self.undo_stack.is_empty()

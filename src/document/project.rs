@@ -19,6 +19,8 @@ use std::sync::{Arc, OnceLock};
 
 use kurbo::BezPath;
 
+use crate::document::history::EditHistory;
+use crate::document::proposal::{self, Installed, ProposalError};
 use crate::document::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
 use crate::formats::lib_keys::{hoi_quad_at, read_hoi_intermediates};
@@ -119,6 +121,9 @@ pub struct Master {
     pub revision: u64,
     /// True when anything changed since the last load or save.
     pub dirty: bool,
+    /// The undo pile, one stack per glyph. Shells push and pop here
+    /// and hold no snapshots of their own.
+    pub history: EditHistory,
 }
 
 /// Collects a glyph's anchors as `(name, x, y)`. An unnamed anchor gets an empty name.
@@ -228,6 +233,7 @@ impl Master {
         fresh.kerning_dirty = self.kerning_dirty;
         fresh.modified_glyphs = std::mem::take(&mut self.modified_glyphs);
         fresh.glif_paths = std::mem::take(&mut self.glif_paths);
+        fresh.history = std::mem::take(&mut self.history);
         *self = fresh;
     }
 
@@ -252,6 +258,7 @@ impl Master {
         }
         self.dirty = true;
         self.modified_glyphs.remove(name);
+        self.history.clear_glyph(name);
         self.refresh_from_font();
         true
     }
@@ -332,6 +339,7 @@ impl Master {
             glyphs,
             revision: 0,
             dirty: false,
+            history: EditHistory::new(),
         }
     }
 
@@ -383,6 +391,151 @@ impl Master {
     /// Replace a glyph's editable state (undo/redo) and rebuild caches.
     pub fn restore_contours(&mut self, glyph_index: usize, snapshot: GlyphSnapshot) {
         self.edit_glyph(glyph_index, |g| ops::restore(g, snapshot));
+    }
+
+    // ---- the undo pile ----
+
+    fn glyph_name(&self, glyph_index: usize) -> Option<String> {
+        self.glyphs.get(glyph_index).map(|g| g.name.to_string())
+    }
+
+    /// Records the glyph's state as a new undo step. Call before an
+    /// edit. Does nothing for an index out of range.
+    pub fn record_undo(&mut self, glyph_index: usize) {
+        let Some(name) = self.glyph_name(glyph_index) else {
+            return;
+        };
+        if let Some(glyph) = self.font.get_glyph(name.as_str()) {
+            self.history.record(&name, glyph);
+        }
+    }
+
+    /// Folds the glyph's current state into the latest undo step,
+    /// for the moves inside one drag.
+    pub fn amend_undo(&mut self, glyph_index: usize) {
+        let Some(name) = self.glyph_name(glyph_index) else {
+            return;
+        };
+        if let Some(glyph) = self.font.get_glyph(name.as_str()) {
+            self.history.amend(&name, glyph);
+        }
+    }
+
+    /// Drops the latest undo step, for an edit that changed nothing.
+    pub fn discard_last_undo(&mut self, glyph_index: usize) -> bool {
+        self.glyph_name(glyph_index)
+            .is_some_and(|name| self.history.discard_last(&name))
+    }
+
+    /// Undoes the glyph's latest step and rebuilds its caches.
+    pub fn undo(&mut self, glyph_index: usize) -> bool {
+        let Some(name) = self.glyph_name(glyph_index) else {
+            return false;
+        };
+        let mut history = std::mem::take(&mut self.history);
+        let done = self
+            .edit_glyph(glyph_index, |g| history.undo(&name, g))
+            .unwrap_or(false);
+        self.history = history;
+        done
+    }
+
+    /// Redoes the glyph's latest undone step and rebuilds its caches.
+    pub fn redo(&mut self, glyph_index: usize) -> bool {
+        let Some(name) = self.glyph_name(glyph_index) else {
+            return false;
+        };
+        let mut history = std::mem::take(&mut self.history);
+        let done = self
+            .edit_glyph(glyph_index, |g| history.redo(&name, g))
+            .unwrap_or(false);
+        self.history = history;
+        done
+    }
+
+    /// Whether the glyph has a step to undo.
+    pub fn can_undo(&self, glyph_index: usize) -> bool {
+        self.glyph_name(glyph_index)
+            .is_some_and(|name| self.history.can_undo(&name))
+    }
+
+    /// Whether the glyph has a step to redo.
+    pub fn can_redo(&self, glyph_index: usize) -> bool {
+        self.glyph_name(glyph_index)
+            .is_some_and(|name| self.history.can_redo(&name))
+    }
+
+    // ---- proposals ----
+
+    /// Installs a task's proposal: each proposed glyph replaces its
+    /// foreground glyph as one undo step, and leaves the proposal
+    /// layer. `only` limits the install to those glyphs. With
+    /// `keep_structure`, a glyph whose point structure differs is
+    /// skipped and stays proposed. A glyph the foreground lacks is
+    /// always skipped. The layer goes when it is empty.
+    pub fn install_proposal(
+        &mut self,
+        task: &str,
+        only: Option<&[String]>,
+        keep_structure: bool,
+    ) -> Result<Installed, ProposalError> {
+        let summary = proposal::find(&self.font, task)?;
+        let wanted = |name: &str| only.is_none_or(|list| list.iter().any(|n| n == name));
+        let mut installed = Vec::new();
+        let mut skipped = Vec::new();
+        for name in summary.glyphs.iter().filter(|n| wanted(n)) {
+            let Some(&index) = self.name_map.get(name) else {
+                skipped.push((name.clone(), "not in the font".to_string()));
+                continue;
+            };
+            let layer_name = proposal::layer_name(task);
+            let Some(proposed) = self
+                .font
+                .layers
+                .get(&layer_name)
+                .and_then(|l| l.get_glyph(name))
+                .cloned()
+            else {
+                continue;
+            };
+            if let Some((_, why)) = summary
+                .incompatible
+                .iter()
+                .find(|(n, _)| keep_structure && n == name)
+            {
+                skipped.push((name.clone(), why.clone()));
+                continue;
+            }
+            self.record_undo(index);
+            self.edit_glyph(index, |g| proposal::apply(g, &proposed));
+            if let Some(layer) = self.font.layers.get_mut(&layer_name) {
+                layer.remove_glyph(name);
+            }
+            installed.push(name.clone());
+        }
+        let layer_name = proposal::layer_name(task);
+        let layer_removed = self
+            .font
+            .layers
+            .get(&layer_name)
+            .is_some_and(|l| l.is_empty())
+            && self.font.layers.remove(&layer_name).is_some();
+        if !installed.is_empty() || layer_removed {
+            self.dirty = true;
+        }
+        Ok(Installed {
+            task: task.to_string(),
+            installed,
+            skipped,
+            layer_removed,
+        })
+    }
+
+    /// Drops a task's proposal without installing it.
+    pub fn discard_proposal(&mut self, task: &str) -> Result<usize, ProposalError> {
+        let count = proposal::discard(&mut self.font, task)?;
+        self.dirty = true;
+        Ok(count)
     }
 
     /// Moves an anchor to `(x, y)`. Ignores an out-of-range anchor index.
@@ -1569,6 +1722,47 @@ mod tests {
         project.ds_dirty = true;
         project.refresh_instances_from_doc();
         assert_eq!(project.instances.len(), before - 1);
+    }
+
+    #[test]
+    fn a_proposal_installs_one_undo_step_per_glyph() {
+        use crate::document::proposal;
+        let mut master = Master::load(&fonts::regular_ufo()).expect("fixture");
+        let h = master.name_map["H"];
+        let o = master.name_map["O"];
+        let before_h = master.snapshot_contours(h).expect("H is drawn");
+        let mut moved = master.font.get_glyph("H").expect("H").clone();
+        for c in &mut moved.contours {
+            for p in &mut c.points {
+                p.x += 20.0;
+            }
+        }
+        moved.width += 40.0;
+        let mut broken = master.font.get_glyph("O").expect("O").clone();
+        broken.contours.pop();
+        proposal::write(&mut master.font, "bolden", [moved, broken]).expect("written");
+
+        let done = master
+            .install_proposal("bolden", None, true)
+            .expect("the proposal exists");
+        assert_eq!(done.installed, ["H"]);
+        assert_eq!(
+            done.skipped.len(),
+            1,
+            "O breaks structure and stays proposed"
+        );
+        assert!(!done.layer_removed);
+        assert_eq!(master.glyphs[h].advance, before_h.width + 40.0);
+        assert!(master.can_undo(h));
+        assert!(!master.can_undo(o));
+
+        assert!(master.undo(h));
+        assert_eq!(master.glyphs[h].advance, before_h.width);
+        assert!(master.redo(h));
+        assert_eq!(master.glyphs[h].advance, before_h.width + 40.0);
+
+        assert_eq!(master.discard_proposal("bolden").expect("present"), 1);
+        assert!(proposal::list(&master.font).is_empty());
     }
 
     #[test]

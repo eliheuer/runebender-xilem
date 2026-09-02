@@ -10,6 +10,19 @@ releases begin.
 No releases yet. `AGENTS.md` has the checklist for the first one.
 Until then, `main` is the only line and this section stays open.
 
+### Added
+
+- `document::history`: the one undo pile. `Master` owns an
+  `EditHistory`, one stack per glyph name, with `record_undo`,
+  `amend_undo`, `discard_last_undo`, `undo`, and `redo`. Shells push
+  and pop here and hold no snapshots of their own.
+- `document::proposal`: an edit offered but not made. A tool writes
+  glyphs into a UFO layer named `com.runebender.proposal.<task>`;
+  `Master::install_proposal` copies them over the foreground as one
+  undo step per glyph, skipping any that break point structure when
+  asked, and `discard_proposal` drops the layer. Result and error
+  types derive serde and a JSON Schema (`schemars`).
+
 ### Removed
 
 - `info`. It counted glyphs, layers and codepoints, which is not a
