@@ -38,6 +38,8 @@ Until then, `main` is the only line and this section stays open.
 - Every theme fills its glyph-grid marks the way Gray does, with a
   keyline and a dark ink: Dark at the bright step, Light at the base
   step. The grid keeps one character across themes.
+- A `fieldOutline` surface token in every theme: the quiet rule
+  around a text field.
 - Two new role tokens in every theme: `outlineFill`, the mid tone
   under the glyph in the editing view, and `metricsLine`, a quiet
   neutral rule for baseline, x-height, and the em box, which used to
