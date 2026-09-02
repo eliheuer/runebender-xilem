@@ -459,6 +459,12 @@ impl Master {
             .is_some_and(|name| self.history.can_undo(&name))
     }
 
+    /// How many steps the glyph can undo.
+    pub fn undo_depth(&self, glyph_index: usize) -> usize {
+        self.glyph_name(glyph_index)
+            .map_or(0, |name| self.history.undo_depth(&name))
+    }
+
     /// Whether the glyph has a step to redo.
     pub fn can_redo(&self, glyph_index: usize) -> bool {
         self.glyph_name(glyph_index)
