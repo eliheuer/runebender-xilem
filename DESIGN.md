@@ -38,6 +38,10 @@ Light. More come once the token system is settled.
 - Hue carries meaning on the canvas: a corner point and a smooth
   point are told apart by shape and colour together, never by colour
   alone.
+- A selected control in the chrome is inverted, ink on the panel's
+  fill, never tinted. A hue that reads on one theme is invisible on
+  another and to some eyes on all of them. The accent is for meaning
+  (a better score, a live run), not for "this one is picked".
 - Every new token gets a value in all three themes. A theme that
   falls back is a theme that looks broken in one place.
 - Check a change in Gray and in Light. Dark hides low contrast.
