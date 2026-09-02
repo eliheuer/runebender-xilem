@@ -561,6 +561,30 @@ fn find_font_ml(tool: Option<&Path>) -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
+/// What font-ml says it can do: each task name with whether it is
+/// built. None when the tool does not answer, in which case the run
+/// itself will say.
+fn known_tasks(font_ml: &Path) -> Option<Vec<(String, bool)>> {
+    let output = std::process::Command::new(font_ml)
+        .arg("tasks")
+        .arg("--json")
+        .output()
+        .ok()?;
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    let tasks = value.get("tasks")?.as_array()?;
+    Some(
+        tasks
+            .iter()
+            .filter_map(|t| {
+                Some((
+                    t.get("name")?.as_str()?.to_string(),
+                    t.get("implemented")?.as_bool().unwrap_or(false),
+                ))
+            })
+            .collect(),
+    )
+}
+
 /// Runs a font-ml task and reports the proposal it left behind.
 ///
 /// font-ml is a separate program on purpose: it carries the model
@@ -593,6 +617,25 @@ fn propose(
              font-ml on PATH (cargo install --git https://github.com/eliheuer/font-ml)",
         );
     };
+    // The tool says what it can do; ask it before asking it to do
+    // something, so an unknown task is a usage error with the list.
+    if let Some(known) = known_tasks(&font_ml) {
+        if !known.iter().any(|(name, _)| name == task) {
+            let names: Vec<&str> = known.iter().map(|(n, _)| n.as_str()).collect();
+            return fail(
+                json,
+                exit::USAGE,
+                &format!("unknown task {task}; font-ml knows: {}", names.join(", ")),
+            );
+        }
+        if known.iter().any(|(name, built)| name == task && !built) {
+            return fail(
+                json,
+                exit::NOT_BUILT,
+                &format!("{task} is a task font-ml names but has not built yet"),
+            );
+        }
+    }
     let mut cmd = std::process::Command::new(&font_ml);
     cmd.arg("run").arg(task).arg("--source").arg(source);
     if let Some(m) = model {

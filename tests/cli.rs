@@ -196,6 +196,7 @@ fn propose_runs_the_tool_and_reports_what_it_left() {
     std::fs::write(
         &tool,
         "#!/bin/sh\n\
+         case \"$1\" in tasks) echo '{\"tasks\":[{\"name\":\"bolden\",\"implemented\":true},{\"name\":\"kerning\",\"implemented\":false}]}'; exit 0;; esac\n\
          case \"$*\" in *--write*) ;; *) echo '{\"error\":\"no --write\"}'; exit 4;; esac\n\
          echo '{\"ok\":true,\"glyph\":\"H\"}'\n\
          exit 0\n",
@@ -225,4 +226,25 @@ fn propose_runs_the_tool_and_reports_what_it_left() {
     assert_eq!(out["report"]["glyph"], "H");
     assert_eq!(out["proposal"]["task"], "bolden");
     assert_eq!(out["proposal"]["glyphs"], serde_json::json!(["H"]));
+
+    // A task the tool names but has not built is code 3; one it does
+    // not name is a usage error that lists what it knows.
+    let tool_arg = tool.to_str().expect("utf8");
+    let (code, out) = run(&[
+        "propose",
+        "kerning",
+        ufo.to_str().expect("utf8"),
+        "--tool",
+        tool_arg,
+    ]);
+    assert_eq!(code, 3, "{out}");
+    let (code, out) = run(&[
+        "propose",
+        "hint",
+        ufo.to_str().expect("utf8"),
+        "--tool",
+        tool_arg,
+    ]);
+    assert_eq!(code, 2, "{out}");
+    assert!(out["error"].as_str().expect("message").contains("bolden"));
 }
