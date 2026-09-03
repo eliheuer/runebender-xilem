@@ -214,6 +214,69 @@ pub fn write(
     find(font, task)
 }
 
+/// Installs a task's proposal into the foreground of `font`: each
+/// proposed glyph the foreground has is copied over it and removed
+/// from the layer. `only` limits it to those glyphs. With
+/// `keep_structure`, a glyph whose point structure differs is skipped
+/// and stays proposed. `before` is called with each glyph's name and
+/// its foreground as it stands just before it changes, which is where
+/// a caller records an undo step.
+/// The layer goes when it is empty.
+///
+/// This is the whole install; `Master::install_proposal` wraps it
+/// with the master's undo pile and cache.
+pub fn install(
+    font: &mut Font,
+    task: &str,
+    only: Option<&[String]>,
+    keep_structure: bool,
+    before: &mut dyn FnMut(&str, &Glyph),
+) -> Result<Installed, ProposalError> {
+    let summary = find(font, task)?;
+    let wanted = |name: &str| only.is_none_or(|list| list.iter().any(|n| n == name));
+    let layer_name = layer_name(task);
+    let mut installed = Vec::new();
+    let mut skipped = Vec::new();
+    for name in summary.glyphs.iter().filter(|n| wanted(n)) {
+        if font.get_glyph(name.as_str()).is_none() {
+            skipped.push((name.clone(), "not in the font".to_string()));
+            continue;
+        }
+        let Some(proposed) = font
+            .layers
+            .get(&layer_name)
+            .and_then(|l| l.get_glyph(name.as_str()))
+            .cloned()
+        else {
+            continue;
+        };
+        if let Some((_, why)) = summary
+            .incompatible
+            .iter()
+            .find(|(n, _)| keep_structure && n == name)
+        {
+            skipped.push((name.clone(), why.clone()));
+            continue;
+        }
+        if let Some(foreground) = font.get_glyph_mut(name.as_str()) {
+            before(name, foreground);
+            apply(foreground, &proposed);
+        }
+        if let Some(layer) = font.layers.get_mut(&layer_name) {
+            layer.remove_glyph(name.as_str());
+        }
+        installed.push(name.clone());
+    }
+    let layer_removed = font.layers.get(&layer_name).is_some_and(|l| l.is_empty())
+        && font.layers.remove(&layer_name).is_some();
+    Ok(Installed {
+        task: task.to_string(),
+        installed,
+        skipped,
+        layer_removed,
+    })
+}
+
 /// Removes the task's proposal layer. Returns how many glyphs it held.
 pub fn discard(font: &mut Font, task: &str) -> Result<usize, ProposalError> {
     font.layers
@@ -319,5 +382,48 @@ mod tests {
         let json = serde_json::to_value(&e).expect("serializes");
         assert_eq!(json["kind"], "no_proposal");
         assert_eq!(json["task"], "bolden");
+    }
+
+    #[test]
+    fn install_copies_the_proposal_and_reports_each_glyph_first() {
+        let mut font = Font::new();
+        let mut a = Glyph::new("A");
+        a.width = 500.0;
+        let mut b = Glyph::new("B");
+        b.width = 500.0;
+        font.default_layer_mut().insert_glyph(a);
+        font.default_layer_mut().insert_glyph(b);
+        let mut pa = Glyph::new("A");
+        pa.width = 580.0;
+        let mut pb = Glyph::new("B");
+        pb.width = 580.0;
+        write(&mut font, "bolden", vec![pa, pb]).unwrap();
+        let mut seen = Vec::new();
+        let done = install(
+            &mut font,
+            "bolden",
+            Some(&["A".to_string()]),
+            true,
+            &mut |name, glyph| {
+                seen.push((name.to_string(), glyph.width));
+            },
+        )
+        .unwrap();
+        assert_eq!(done.installed, vec!["A".to_string()]);
+        assert_eq!(
+            seen,
+            vec![("A".to_string(), 500.0)],
+            "the foreground before the change"
+        );
+        assert_eq!(font.get_glyph("A").unwrap().width, 580.0);
+        assert_eq!(
+            font.get_glyph("B").unwrap().width,
+            500.0,
+            "B stays proposed"
+        );
+        assert!(!done.layer_removed);
+        let rest = install(&mut font, "bolden", None, true, &mut |_, _| {}).unwrap();
+        assert_eq!(rest.installed, vec!["B".to_string()]);
+        assert!(rest.layer_removed);
     }
 }

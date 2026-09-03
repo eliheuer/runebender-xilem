@@ -485,56 +485,29 @@ impl Master {
         only: Option<&[String]>,
         keep_structure: bool,
     ) -> Result<Installed, ProposalError> {
-        let summary = proposal::find(&self.font, task)?;
-        let wanted = |name: &str| only.is_none_or(|list| list.iter().any(|n| n == name));
-        let mut installed = Vec::new();
-        let mut skipped = Vec::new();
-        for name in summary.glyphs.iter().filter(|n| wanted(n)) {
-            let Some(&index) = self.name_map.get(name) else {
-                skipped.push((name.clone(), "not in the font".to_string()));
-                continue;
+        // Core's install does the work; this master records an undo
+        // step for each glyph first and rebuilds its cache after.
+        let name_map = self.name_map.clone();
+        let mut touched: Vec<usize> = Vec::new();
+        let done = {
+            let history = &mut self.history;
+            let mut before = |name: &str, glyph: &norad::Glyph| {
+                if let Some(&index) = name_map.get(name) {
+                    history.record(name, glyph);
+                    touched.push(index);
+                }
             };
-            let layer_name = proposal::layer_name(task);
-            let Some(proposed) = self
-                .font
-                .layers
-                .get(&layer_name)
-                .and_then(|l| l.get_glyph(name))
-                .cloned()
-            else {
-                continue;
-            };
-            if let Some((_, why)) = summary
-                .incompatible
-                .iter()
-                .find(|(n, _)| keep_structure && n == name)
-            {
-                skipped.push((name.clone(), why.clone()));
-                continue;
-            }
-            self.record_undo(index);
-            self.edit_glyph(index, |g| proposal::apply(g, &proposed));
-            if let Some(layer) = self.font.layers.get_mut(&layer_name) {
-                layer.remove_glyph(name);
-            }
-            installed.push(name.clone());
+            proposal::install(&mut self.font, task, only, keep_structure, &mut before)?
+        };
+        for index in touched {
+            self.rebuild_entry(index);
+            self.modified_glyphs
+                .insert(self.glyphs[index].name.to_string());
         }
-        let layer_name = proposal::layer_name(task);
-        let layer_removed = self
-            .font
-            .layers
-            .get(&layer_name)
-            .is_some_and(|l| l.is_empty())
-            && self.font.layers.remove(&layer_name).is_some();
-        if !installed.is_empty() || layer_removed {
+        if !done.installed.is_empty() || done.layer_removed {
             self.dirty = true;
         }
-        Ok(Installed {
-            task: task.to_string(),
-            installed,
-            skipped,
-            layer_removed,
-        })
+        Ok(done)
     }
 
     /// Drops a task's proposal without installing it.
