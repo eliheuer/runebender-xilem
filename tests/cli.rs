@@ -435,3 +435,92 @@ fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
     let proof = nodes.iter().find(|n| n["id"] == 2).expect("proof node");
     assert_eq!(proof["status"], "ran", "{out}");
 }
+
+/// Drives the MCP server over its stdio: one JSON-RPC message per
+/// line in, one per line out.
+fn mcp_session(font: &Path, tool: &Path, requests: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    use std::io::{BufRead as _, BufReader, Write as _};
+    let mut child = Command::new(env!("CARGO_BIN_EXE_runebender-core"))
+        .arg("mcp")
+        .arg("--font")
+        .arg(font)
+        .arg("--tool")
+        .arg(tool)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("the server starts");
+    let mut stdin = child.stdin.take().expect("stdin");
+    let stdout = child.stdout.take().expect("stdout");
+    let mut lines = BufReader::new(stdout).lines();
+    let mut replies = Vec::new();
+    for request in requests {
+        writeln!(stdin, "{request}").expect("write");
+        stdin.flush().expect("flush");
+        // A notification (no id) gets no reply.
+        if request.get("id").is_some() {
+            let line = lines.next().expect("a reply").expect("a line");
+            replies.push(serde_json::from_str(&line).expect("json"));
+        }
+    }
+    drop(stdin);
+    let _ = child.wait();
+    replies
+}
+
+#[test]
+fn mcp_lists_the_agent_tools_and_calls_them() {
+    let (dir, ufo) = scratch_ufo();
+    let tool = stand_in_font_ml(dir.path());
+    let replies = mcp_session(
+        &ufo,
+        &tool,
+        &[
+            serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": { "protocolVersion": "2024-11-05", "capabilities": {},
+                            "clientInfo": { "name": "test", "version": "0" } } }),
+            serde_json::json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+            serde_json::json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
+            serde_json::json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                "params": { "name": "font_info", "arguments": {} } }),
+            serde_json::json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                "params": { "name": "propose",
+                            "arguments": { "task": "bolden", "model": "/nowhere", "glyphs": ["H"] } } }),
+            serde_json::json!({ "jsonrpc": "2.0", "id": 5, "method": "nothing/here" }),
+        ],
+    );
+    assert_eq!(replies.len(), 5);
+    let init = &replies[0]["result"];
+    assert_eq!(init["protocolVersion"], "2024-11-05");
+    assert_eq!(init["serverInfo"]["name"], "runebender-core");
+    assert!(
+        init["instructions"]
+            .as_str()
+            .expect("text")
+            .contains("No tool edits the font")
+    );
+
+    let tools = replies[1]["result"]["tools"].as_array().expect("tools");
+    let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+    assert!(names.contains(&"font_info") && names.contains(&"propose"));
+    assert!(
+        !names.iter().any(|n| n.contains("install")),
+        "install is not a tool"
+    );
+    assert!(tools[0]["inputSchema"]["type"] == "object");
+
+    // font_info: the result is the info JSON as text.
+    let info = &replies[2]["result"];
+    assert_eq!(info["isError"], false);
+    let text = info["content"][0]["text"].as_str().expect("text");
+    let parsed: serde_json::Value = serde_json::from_str(text).expect("json in text");
+    assert_eq!(parsed["family"], "Virtua Grotesk");
+
+    // propose through the stand-in, which exits 4: reported, not crashed.
+    let propose = &replies[3]["result"];
+    assert_eq!(propose["isError"], true, "{propose}");
+
+    // An unknown method is a JSON-RPC error, not a dropped line.
+    assert_eq!(replies[4]["error"]["code"], -32601);
+}

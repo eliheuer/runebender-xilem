@@ -12,6 +12,9 @@ Until then, `main` is the only line and this section stays open.
 
 ### Added
 
+- `runebender-core mcp --font <designspace>`: an MCP server over stdio
+  with the agent tool list, one to one. No tool edits the font.
+
 - `document::history`: the one undo pile. `Master` owns an
   `EditHistory`, one stack per glyph name, with `record_undo`,
   `amend_undo`, `discard_last_undo`, `undo`, and `redo`. Shells push

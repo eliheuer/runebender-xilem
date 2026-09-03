@@ -9,6 +9,8 @@ multiple GUIs, primarily
 [Runebender-Xilem](https://github.com/eliheuer/runebender-xilem).
 Runebender-Core can also be used as a headless CLI tool by agents or
 in bash scripts.
+`runebender-core mcp --font <designspace>` serves the same tools to an
+MCP client such as Claude Code; nothing in it edits the font.
 
 ## Use
 

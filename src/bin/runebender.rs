@@ -103,6 +103,17 @@ enum Command {
         #[command(subcommand)]
         action: AgentAction,
     },
+    /// An MCP server over stdio: the same tool list as `agent`, for
+    /// a chat client that speaks the Model Context Protocol. Nothing
+    /// in it edits the foreground; every change is a proposal.
+    Mcp {
+        /// The designspace or UFO the client works on.
+        #[arg(long)]
+        font: PathBuf,
+        /// The font-ml binary, for propose.
+        #[arg(long)]
+        tool: Option<PathBuf>,
+    },
     /// Nodes: a workflow of tools as boxes and wires, in a
     /// `<name>.nodes.json` file.
     Nodes {
@@ -298,6 +309,7 @@ fn main() -> std::process::ExitCode {
                 tool,
             } => agent_call(name, font, args, tool.as_deref()),
         },
+        Command::Mcp { font, tool } => mcp_serve(font, tool.as_deref()),
         Command::Nodes { action } => match action {
             NodesAction::Check { file, tool } => nodes_check(file, tool.as_deref(), json),
             NodesAction::Types { tool } => nodes_types(tool.as_deref(), json),
@@ -1040,17 +1052,35 @@ fn agent_call(name: &str, font: &Path, args: &str, tool: Option<&Path>) -> i32 {
             return exit::USAGE;
         }
     };
+    let result = agent_call_value(name, font, &args, tool);
+    let ok = result.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
+    println!(
+        "{}",
+        json!(agent::ToolResult {
+            name: name.to_string(),
+            ok,
+            result
+        })
+    );
+    if ok { exit::OK } else { exit::FAILED }
+}
+
+/// Runs one tool call and returns what it gave back, as JSON with an
+/// `ok` field. Every tool is a command of this binary, run through it.
+fn agent_call_value(
+    name: &str,
+    font: &Path,
+    args: &serde_json::Value,
+    tool: Option<&Path>,
+) -> serde_json::Value {
     let source = match font_master(font) {
         Ok(s) => s,
-        Err(e) => {
-            println!("{}", json!({ "ok": false, "error": e }));
-            return exit::USAGE;
-        }
+        Err(e) => return json!({ "ok": false, "error": e }),
     };
     let src = source.display().to_string();
-    let glyphs = agent::glyph_list(&args);
+    let glyphs = agent::glyph_list(args);
     let text = |key: &str| args.get(key).and_then(|v| v.as_str()).map(str::to_string);
-    let result = match name {
+    match name {
         "font_info" => self_json(&["--json".into(), "info".into(), src]),
         "read_glyph" => match text("glyph") {
             Some(g) => read_glyph(&source, &g),
@@ -1134,17 +1164,103 @@ fn agent_call(name: &str, font: &Path, args: &str, tool: Option<&Path>) -> i32 {
         },
         "docs" => docs_search(&text("query").unwrap_or_default()),
         other => json!({ "ok": false, "error": format!("no tool named {other}") }),
+    }
+}
+
+/// The MCP server: JSON-RPC 2.0 over stdio, one message per line,
+/// the way the protocol's stdio transport works. Handles what a
+/// client needs to list and call tools; everything else answers
+/// "method not found". The tool list is `agent::tools()` one to one,
+/// so a client sees exactly what the chat pane and the command line
+/// see, and no tool writes the foreground.
+fn mcp_serve(font: &Path, tool: Option<&Path>) -> i32 {
+    use std::io::{BufRead as _, Write as _};
+    if !font.exists() {
+        eprintln!("{}: not found", font.display());
+        return exit::USAGE;
+    }
+    let stdin = std::io::stdin();
+    let mut out = std::io::stdout().lock();
+    let mut reply = |value: serde_json::Value| {
+        let _ = writeln!(out, "{value}");
+        let _ = out.flush();
     };
-    let ok = result.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
-    println!(
-        "{}",
-        json!(agent::ToolResult {
-            name: name.to_string(),
-            ok,
-            result
-        })
-    );
-    if ok { exit::OK } else { exit::FAILED }
+    for line in stdin.lock().lines() {
+        let Ok(line) = line else { break };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let message: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(e) => {
+                reply(json!({ "jsonrpc": "2.0", "id": null,
+                    "error": { "code": -32700, "message": format!("parse error: {e}") } }));
+                continue;
+            }
+        };
+        let id = message.get("id").cloned();
+        let method = message.get("method").and_then(|m| m.as_str()).unwrap_or("");
+        let params = message.get("params").cloned().unwrap_or(json!({}));
+        // A notification has no id and gets no reply.
+        let Some(id) = id else { continue };
+        let result = match method {
+            "initialize" => {
+                let version = params
+                    .get("protocolVersion")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("2024-11-05");
+                Ok(json!({
+                    "protocolVersion": version,
+                    "capabilities": { "tools": {} },
+                    "serverInfo": {
+                        "name": "runebender-core",
+                        "version": env!("CARGO_PKG_VERSION"),
+                    },
+                    "instructions": mcp_instructions(font),
+                }))
+            }
+            "ping" => Ok(json!({})),
+            "tools/list" => Ok(json!({
+                "tools": agent::tools().iter().map(|t| json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "inputSchema": t.parameters,
+                })).collect::<Vec<_>>()
+            })),
+            "tools/call" => {
+                let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                let args = params.get("arguments").cloned().unwrap_or(json!({}));
+                let value = agent_call_value(name, font, &args, tool);
+                let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
+                Ok(json!({
+                    "content": [{ "type": "text", "text": value.to_string() }],
+                    "isError": !ok,
+                }))
+            }
+            "resources/list" => Ok(json!({ "resources": [] })),
+            "prompts/list" => Ok(json!({ "prompts": [] })),
+            other => {
+                Err(json!({ "code": -32601, "message": format!("method not found: {other}") }))
+            }
+        };
+        reply(match result {
+            Ok(r) => json!({ "jsonrpc": "2.0", "id": id, "result": r }),
+            Err(e) => json!({ "jsonrpc": "2.0", "id": id, "error": e }),
+        });
+    }
+    exit::OK
+}
+
+/// What a client is told at `initialize`: the rule of the tool list.
+fn mcp_instructions(font: &Path) -> String {
+    format!(
+        "Runebender font editor, working on {}. The tools read the font, render \
+         proofs, run local models, and propose changes. No tool edits the font: a \
+         proposal is a UFO layer the person installs or discards in the editor, \
+         one glyph at a time. Call font_info first, and read a glyph before you \
+         talk about its shape.",
+        font.display()
+    )
 }
 
 fn find_font_ml(tool: Option<&Path>) -> Option<PathBuf> {
