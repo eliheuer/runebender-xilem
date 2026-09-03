@@ -49,9 +49,15 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 Region::Inline,
                 (
                     label(title).text_size(TextSize::Body.px()).color(pal.text),
+                    // Quiet when saved, the warning colour when not,
+                    // which is the GPUI build's header.
                     label(status.to_string())
                         .text_size(TextSize::Body.px())
-                        .color(pal.role("warning")),
+                        .color(if app.modified {
+                            pal.role("warning")
+                        } else {
+                            pal.text_muted
+                        }),
                 ),
             ))
             // In the overview this takes the leftover space. In the
@@ -121,8 +127,8 @@ pub(crate) fn direction_chips(app: &Workspace) -> impl WidgetView<Workspace> + u
 pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let fg = pal.text_muted;
-    let fg_active = pal.role("accent");
-    let active_bg = pal.role("gridSelected").with_alpha(0.25);
+    let fg_active = pal.selected_ink();
+    let active_bg = pal.selected_bg();
     let hover_bg = pal.control;
     let tile = move |icon: &'static str, tool: Tool| {
         icon_button(

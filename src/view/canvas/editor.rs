@@ -417,7 +417,7 @@ impl EditorWidget {
                         }
                     };
                     let border = if focused {
-                        pal.role("accent")
+                        pal.text
                     } else {
                         pal.role("gridBorder")
                     };
@@ -439,7 +439,7 @@ impl EditorWidget {
                         // field drawn by hand.
                         let caret =
                             Rect::new(rect.x1 - 4.0, rect.y0 + 3.0, rect.x1 - 3.0, rect.y1 - 3.0);
-                        painter.fill(caret, pal.role("accent")).draw();
+                        painter.fill(caret, pal.role("textCursor")).draw();
                     }
                 }
             }
@@ -637,7 +637,7 @@ impl Widget for EditorWidget {
                             * Point::new(sort.origin.x + sort.advance, m.ascender + sort.origin.y),
                     );
                     painter
-                        .stroke(box_, &Stroke::new(1.0), pal.role("accent").with_alpha(0.6))
+                        .stroke(box_, &Stroke::new(1.0), pal.role("metricQuiet"))
                         .draw();
                 }
             }
@@ -650,7 +650,7 @@ impl Widget for EditorWidget {
                 .stroke(
                     Line::new(top, bottom),
                     &Stroke::new(1.5),
-                    pal.role("accent"),
+                    pal.role("textCursor"),
                 )
                 .draw();
             return;
@@ -694,8 +694,8 @@ impl Widget for EditorWidget {
         // are in the GPUI build and the web editor. Drawn quiet they
         // read as chrome; drawn in the accent they read as the frame the
         // drawing is measured against, which is what they are.
-        let quiet = pal.role("accent").with_alpha(0.55);
-        let frame = pal.role("accent").with_alpha(0.85);
+        let quiet = pal.metrics_line().with_alpha(0.55);
+        let frame = pal.metrics_line();
         let x0 = (affine * Point::new(-10_000.0, 0.0)).x;
         let x1 = (affine * Point::new(10_000.0, 0.0)).x;
         for y in [0.0, m.x_height, m.cap_height, m.ascender, m.descender] {
@@ -798,7 +798,7 @@ impl Widget for EditorWidget {
             }
 
             // Anchors: a small diamond at each, in the accent color.
-            let anchor_color = pal.role("accent");
+            let anchor_color = pal.text;
             for (ai, anchor) in self.session.glyph.anchors.iter().enumerate() {
                 let p = affine * Point::new(anchor.x, anchor.y);
                 let selected = self.session.selected_anchor == Some(ai);
@@ -839,7 +839,7 @@ impl Widget for EditorWidget {
         // Curvature comb: a strip pushed out along the normal of every
         // curved segment, so the shape of the curvature is visible.
         if self.view.comb && self.interp.is_none() {
-            let comb = pal.role("accent").with_alpha(0.7);
+            let comb = pal.text_muted.with_alpha(0.7);
             for strip in self.session.curvature_comb() {
                 let mut previous: Option<Point> = None;
                 for (on, outer) in strip {
@@ -909,7 +909,7 @@ impl Widget for EditorWidget {
                 let b = affine * m.b;
                 let color = match m.kind {
                     MeasureKind::Handle => pal.role("pointOffcurve"),
-                    MeasureKind::Segment => pal.role("accent"),
+                    MeasureKind::Segment => pal.tool_feedback(),
                     _ => pal.role("selection"),
                 };
                 painter
@@ -977,7 +977,7 @@ impl Widget for EditorWidget {
         if let Drag::Shape { start, current } = &self.drag {
             let p0 = affine * *start;
             let p1 = affine * *current;
-            let accent = pal.role("accent");
+            let accent = pal.tool_feedback();
             match self.tool {
                 Tool::Knife => {
                     let danger = pal.role("danger");

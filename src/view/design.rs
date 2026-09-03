@@ -109,7 +109,7 @@ impl ControlSize {
             Self::Dot => 10.0,
             Self::Swatch => 16.0,
             Self::Icon => 20.0,
-            Self::Row => 22.0,
+            Self::Row => 21.0,
             Self::Control => 28.0,
             Self::Large => 36.0,
             Self::Touch => 44.0,
@@ -237,9 +237,11 @@ impl TextSize {
     /// The size, in logical pixels.
     pub(crate) const fn px(self) -> f32 {
         match self {
-            Self::Caption => 11.0,
-            Self::Body => 12.0,
-            Self::Title => 14.0,
+            // One size, the GPUI build's 13px, whatever the role: the
+            // scale is kept as names so a role can move later, but a
+            // window with three sizes in its chrome reads as three
+            // windows.
+            Self::Caption | Self::Body | Self::Title => 13.0,
             Self::Heading => 18.0,
             Self::Display => 24.0,
         }

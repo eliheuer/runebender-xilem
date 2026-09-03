@@ -6,6 +6,7 @@
 
 pub(crate) mod commands;
 pub(crate) mod inspector;
+pub(crate) mod local_ai;
 pub(crate) mod nodes;
 pub(crate) mod session;
 pub(crate) mod sidebar;

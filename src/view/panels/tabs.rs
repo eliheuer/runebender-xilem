@@ -12,6 +12,8 @@ use crate::*;
 pub(crate) enum Rail {
     Glyphs,
     Axes,
+    /// Local models: the same panel the GPUI build keeps on this rail.
+    LocalAi,
 }
 
 pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -36,11 +38,16 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         (
             xrow(
                 Region::Inline,
-                (tab("Glyphs", Rail::Glyphs), tab("Axes", Rail::Axes)),
+                (
+                    tab("Glyphs", Rail::Glyphs),
+                    tab("Axes", Rail::Axes),
+                    tab("Local AI", Rail::LocalAi),
+                ),
             ),
             (app.rail == Rail::Axes)
                 .then(|| axes_section(app))
                 .flatten(),
+            (app.rail == Rail::LocalAi).then(|| local_ai_panel(app)),
             (app.rail == Rail::Glyphs).then(|| {
                 text_input(app.filter.clone(), |app: &mut Workspace, v| app.filter = v)
                     .placeholder("Search")
@@ -87,10 +94,12 @@ pub(crate) fn tab_chip<F>(
 where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    let (fg, border) = if active {
-        (pal.role("accent"), pal.role("accent"))
+    // Selection is inversion: an active tab is a filled block of ink
+    // with the panel colour for its label, the GPUI build's rule.
+    let (fg, border, bg) = if active {
+        (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
     } else {
-        (pal.text_muted, pal.role("gridBorder"))
+        (pal.text_muted, pal.outline, pal.panel)
     };
     let width = if fixed_width {
         Dim::from(ControlSize::Row)
@@ -102,7 +111,7 @@ where
             label(text).text_size(TextSize::Body.px()).color(fg),
             move |app: &mut Workspace| on_click(app),
         )
-        .background_color(pal.panel)
+        .background_color(bg)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
         .corner_radius(Radius::Sm.length())
@@ -335,7 +344,7 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         format!("+ New {}", app.filter.trim()),
                         |app: &mut Workspace| app.new_glyph(),
                     )
-                    .background_color(pal.role("accent"))
+                    .background_color(pal.button)
                 })
             },
             // Constrained horizontally, or the rows lay out at their
