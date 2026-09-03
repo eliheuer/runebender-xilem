@@ -40,8 +40,10 @@ Light. More come once the token system is settled.
   alone.
 - A selected control in the chrome is inverted, ink on the panel's
   fill, never tinted. A hue that reads on one theme is invisible on
-  another and to some eyes on all of them. The accent is for meaning
-  (a better score, a live run), not for "this one is picked".
+  another and to some eyes on all of them. Nothing in the chrome or
+  in the canvas's tool feedback uses the accent hue at all: value and
+  weight say what is active. The warning hue is the one colour with a
+  job, and its job is "something is wrong".
 - Every new token gets a value in all three themes. A theme that
   falls back is a theme that looks broken in one place.
 - Check a change in Gray and in Light. Dark hides low contrast.
