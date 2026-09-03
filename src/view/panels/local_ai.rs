@@ -44,6 +44,21 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
         ))
     });
     let summary = app.ai.summary.clone().map(plain);
+    // Strength, because a model can be right about direction and
+    // short on distance. The GPUI build's slider row.
+    let strength = app.ai.strength;
+    let strength_row = app.ai.dir.is_some().then(|| {
+        xrow(
+            Region::Inline,
+            (
+                muted(format!("Strength {strength:.2}\u{00d7}")),
+                slider(0.0, 3.0, strength, |app: &mut Workspace, v| {
+                    app.ai.strength = (v * 20.0).round() / 20.0;
+                })
+                .width(Length::px(96.0)),
+            ),
+        )
+    });
 
     // One row per task font-ml says it runs.
     let tasks: Vec<_> = app
@@ -184,6 +199,7 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
             xcolumn(Region::List, models),
             no_models,
             summary,
+            strength_row,
             muted("Tasks".into()),
             xcolumn(Region::List, tasks),
             no_tool,

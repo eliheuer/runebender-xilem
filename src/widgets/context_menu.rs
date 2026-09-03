@@ -33,6 +33,7 @@ use masonry::kurbo::{Axis, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 
 use crate::view::canvas::editor::EditorWidget;
+use crate::view::canvas::nodes::NodesWidget;
 use crate::view::theme::Palette;
 use crate::widgets::text_label::{self, Anchor};
 use runebender_core::outline::glyph_paths::round_units;
@@ -48,25 +49,39 @@ const PAD: f64 = 4.0;
 ///
 /// The ops are the session ops the editor already exposes; `AddAnchor`
 /// is separate because it needs the position the menu was opened at.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) enum MenuAction {
     /// Run a session operation, and report whether the glyph changed.
     Op(fn(&mut crate::edit::session::Session) -> bool),
     /// Add an anchor where the menu was opened.
     AddAnchor,
+    /// Add a node of this type where the menu was opened, on the
+    /// nodes canvas.
+    AddNode(String),
 }
 
 /// One row.
+#[derive(Clone)]
 pub(crate) struct MenuRow {
-    pub label: &'static str,
+    pub label: std::borrow::Cow<'static, str>,
     pub action: MenuAction,
+}
+
+/// Which canvas opened the menu, so the choice goes back to it. A
+/// layer is not a child of its creator, so it reaches back with a
+/// downcast, and the downcast has to know the type.
+#[derive(Clone, Copy)]
+pub(crate) enum MenuTarget {
+    Editor,
+    Nodes,
 }
 
 /// The context menu, as a layer.
 pub(crate) struct ContextMenu {
-    /// The editor that opened it, so the choice can be applied there.
+    /// The canvas that opened it, so the choice can be applied there.
     creator: WidgetId,
-    rows: &'static [MenuRow],
+    target: MenuTarget,
+    rows: Vec<MenuRow>,
     palette: Arc<Palette>,
     /// Where it was opened, in design space, for `AddAnchor`.
     at: Point,
@@ -77,12 +92,14 @@ pub(crate) struct ContextMenu {
 impl ContextMenu {
     pub(crate) fn new(
         creator: WidgetId,
-        rows: &'static [MenuRow],
+        target: MenuTarget,
+        rows: Vec<MenuRow>,
         palette: Arc<Palette>,
         at: Point,
     ) -> Self {
         Self {
             creator,
+            target,
             rows,
             palette,
             at,
@@ -155,8 +172,8 @@ impl Widget for ContextMenu {
             text_label::draw(
                 painter,
                 Point::new(10.0, top + ROW / 2.0 + 4.0),
-                row.label,
-                12.0,
+                &row.label,
+                13.0,
                 pal.text,
                 Anchor::Start,
             );
@@ -186,7 +203,7 @@ impl Widget for ContextMenu {
                 let Some(index) = self.row_at(ctx.local_position(state.position)) else {
                     return;
                 };
-                let action = self.rows[index].action;
+                let action = self.rows[index].action.clone();
                 let at = self.at;
                 let self_id = ctx.widget_id();
                 // The choice is applied on the editor that opened this,
@@ -194,11 +211,18 @@ impl Widget for ContextMenu {
                 // own selector menu does the same thing for the same
                 // reason: a layer is not a child of its creator, so it
                 // cannot submit an action that reaches it.
-                ctx.mutate_later(self.creator, move |mut editor| {
-                    let mut editor = editor.downcast::<EditorWidget>();
-                    EditorWidget::apply_menu_choice(&mut editor, action, at);
-                    editor.ctx.remove_layer(self_id);
-                });
+                match self.target {
+                    MenuTarget::Editor => ctx.mutate_later(self.creator, move |mut editor| {
+                        let mut editor = editor.downcast::<EditorWidget>();
+                        EditorWidget::apply_menu_choice(&mut editor, action, at);
+                        editor.ctx.remove_layer(self_id);
+                    }),
+                    MenuTarget::Nodes => ctx.mutate_later(self.creator, move |mut nodes| {
+                        let mut nodes = nodes.downcast::<NodesWidget>();
+                        NodesWidget::apply_menu_choice(&mut nodes, action, at);
+                        nodes.ctx.remove_layer(self_id);
+                    }),
+                }
                 ctx.set_handled();
             }
             _ => {}
@@ -242,11 +266,18 @@ impl Layer for ContextMenu {
         };
         if dismiss {
             let self_id = ctx.widget_id();
-            ctx.mutate_later(self.creator, move |mut editor| {
-                let mut editor = editor.downcast::<EditorWidget>();
-                EditorWidget::forget_menu(&mut editor);
-                editor.ctx.remove_layer(self_id);
-            });
+            match self.target {
+                MenuTarget::Editor => ctx.mutate_later(self.creator, move |mut editor| {
+                    let mut editor = editor.downcast::<EditorWidget>();
+                    EditorWidget::forget_menu(&mut editor);
+                    editor.ctx.remove_layer(self_id);
+                }),
+                MenuTarget::Nodes => ctx.mutate_later(self.creator, move |mut nodes| {
+                    let mut nodes = nodes.downcast::<NodesWidget>();
+                    NodesWidget::forget_menu(&mut nodes);
+                    nodes.ctx.remove_layer(self_id);
+                }),
+            }
         }
     }
 }

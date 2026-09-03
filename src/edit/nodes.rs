@@ -272,28 +272,6 @@ impl Workspace {
         state.graph = Arc::new(graph);
     }
 
-    /// Adds a node of `type_name` on the first free row below the
-    /// others, on the grid.
-    pub(crate) fn nodes_add(&mut self, type_name: &str) {
-        let Some(state) = self.nodes.graph.as_ref() else {
-            return;
-        };
-        use runebender_core::ui::nodes::{GRID, layout};
-        let bottom = layout(&state.graph, &state.registry)
-            .iter()
-            .map(|b| b.rect.y1)
-            .fold(0.0_f64, f64::max);
-        let mut graph = (*state.graph).clone();
-        let y = if bottom > 0.0 {
-            bottom + GRID
-        } else {
-            GRID * 2.0
-        };
-        let id = graph.add(type_name, [crate::px32(GRID * 2.0), crate::px32(y)]);
-        self.nodes.selected = Some(id);
-        self.nodes_changed(graph);
-    }
-
     /// Types a value into a node's input and re-checks the file.
     pub(crate) fn nodes_set_value(&mut self, id: u32, input: &str, value: serde_json::Value) {
         let Some(state) = self.nodes.graph.as_ref() else {

@@ -24,7 +24,7 @@ use crate::Tool;
 use crate::Workspace;
 use crate::edit::session::Session;
 use crate::view::theme::Palette;
-use crate::widgets::context_menu::{ContextMenu, MenuAction, MenuRow};
+use crate::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
 use crate::widgets::text_label::{self, Anchor};
 
 /// The metrics panel's geometry, shared by its painting and its boxes.
@@ -38,55 +38,55 @@ const HIT_RADIUS_PX: f64 = 8.0;
 /// The right-click menu's rows. Shared with the layer that draws them.
 const MENU_ITEMS: &[MenuRow] = &[
     MenuRow {
-        label: "Add Anchor",
+        label: std::borrow::Cow::Borrowed("Add Anchor"),
         action: MenuAction::AddAnchor,
     },
     MenuRow {
-        label: "Set Start Point",
+        label: std::borrow::Cow::Borrowed("Set Start Point"),
         action: MenuAction::Op(|s| s.set_start()),
     },
     MenuRow {
-        label: "Round Corners",
+        label: std::borrow::Cow::Borrowed("Round Corners"),
         action: MenuAction::Op(|s| s.round_corners()),
     },
     MenuRow {
-        label: "Reverse Contours",
+        label: std::borrow::Cow::Borrowed("Reverse Contours"),
         action: MenuAction::Op(|s| s.reverse()),
     },
     MenuRow {
-        label: "Remove Overlap",
+        label: std::borrow::Cow::Borrowed("Remove Overlap"),
         action: MenuAction::Op(|s| s.remove_overlap()),
     },
     MenuRow {
-        label: "Flip Horizontal",
+        label: std::borrow::Cow::Borrowed("Flip Horizontal"),
         action: MenuAction::Op(|s| s.flip_horizontal()),
     },
     MenuRow {
-        label: "Flip Vertical",
+        label: std::borrow::Cow::Borrowed("Flip Vertical"),
         action: MenuAction::Op(|s| s.flip_vertical()),
     },
     MenuRow {
-        label: "Rotate 90",
+        label: std::borrow::Cow::Borrowed("Rotate 90"),
         action: MenuAction::Op(|s| s.rotate_90()),
     },
     MenuRow {
-        label: "Duplicate",
+        label: std::borrow::Cow::Borrowed("Duplicate"),
         action: MenuAction::Op(|s| s.duplicate()),
     },
     MenuRow {
-        label: "Harmonize",
+        label: std::borrow::Cow::Borrowed("Harmonize"),
         action: MenuAction::Op(|s| s.harmonize()),
     },
     MenuRow {
-        label: "Balance",
+        label: std::borrow::Cow::Borrowed("Balance"),
         action: MenuAction::Op(|s| s.balance()),
     },
     MenuRow {
-        label: "Optimize",
+        label: std::borrow::Cow::Borrowed("Optimize"),
         action: MenuAction::Op(|s| s.optimize()),
     },
     MenuRow {
-        label: "Decompose",
+        label: std::borrow::Cow::Borrowed("Decompose"),
         action: MenuAction::Op(|s| s.decompose()),
     },
 ];
@@ -105,6 +105,8 @@ impl EditorWidget {
                 true
             }
             MenuAction::Op(op) => op(&mut this.widget.session),
+            // Not this canvas's menu.
+            MenuAction::AddNode(_) => false,
         };
         this.widget.menu = None;
         if changed {
@@ -1077,7 +1079,8 @@ impl Widget for EditorWidget {
                         let design = self.session.viewport.screen_to_design(at);
                         let menu = ContextMenu::new(
                             ctx.widget_id(),
-                            MENU_ITEMS,
+                            MenuTarget::Editor,
+                            MENU_ITEMS.to_vec(),
                             self.palette.clone(),
                             design,
                         );
