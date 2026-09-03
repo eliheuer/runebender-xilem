@@ -14,10 +14,10 @@ use clap::{Parser, Subcommand};
 use norad::Font;
 use runebender_core::document::font_ops;
 use runebender_core::document::nodes;
+use runebender_core::document::nodes_run;
 use runebender_core::document::project::Master;
 use runebender_core::document::proposal;
 use runebender_core::outline::embolden;
-use runebender_core::outline::glyph_paths;
 use serde_json::json;
 
 /// Exit codes, matching font-ml so a caller can branch on them.
@@ -167,6 +167,37 @@ enum NodesAction {
         #[arg(long)]
         tool: Option<PathBuf>,
     },
+    /// Run a file against a font: every node in order, skipping what
+    /// has not changed since the last run. Progress on stderr, one
+    /// JSON report on stdout with --json.
+    Run {
+        /// The `.nodes.json` file.
+        file: PathBuf,
+        /// The designspace or UFO the Font node stands for.
+        #[arg(long)]
+        font: PathBuf,
+        /// The master the Font node gives, by style name. The first
+        /// when not given.
+        #[arg(long)]
+        master: Option<String>,
+        /// The glyphs the Font node gives. Every drawn glyph when not
+        /// given.
+        #[arg(long, value_delimiter = ',')]
+        glyphs: Option<Vec<String>>,
+        /// The font-ml binary.
+        #[arg(long)]
+        tool: Option<PathBuf>,
+        /// Where models live. Defaults to `$RUNEBENDER_MODELS`, then
+        /// `~/.runebender/models`.
+        #[arg(long)]
+        models: Option<PathBuf>,
+        /// Run every node, cached or not.
+        #[arg(long)]
+        force: bool,
+        /// Keep no cache and read none.
+        #[arg(long)]
+        no_cache: bool,
+    },
     /// The JSON Schema for the file.
     Schema,
 }
@@ -227,6 +258,26 @@ fn main() -> std::process::ExitCode {
         Command::Nodes { action } => match action {
             NodesAction::Check { file, tool } => nodes_check(file, tool.as_deref(), json),
             NodesAction::Types { tool } => nodes_types(tool.as_deref(), json),
+            NodesAction::Run {
+                file,
+                font,
+                master,
+                glyphs,
+                tool,
+                models,
+                force,
+                no_cache,
+            } => nodes_run(
+                file,
+                font,
+                master.as_deref(),
+                glyphs.as_deref(),
+                tool.as_deref(),
+                models.as_deref(),
+                *force,
+                *no_cache,
+                json,
+            ),
             NodesAction::Schema => {
                 // One line, like every other JSON this prints, so a
                 // caller reads the last line and has it all.
@@ -383,7 +434,6 @@ fn proof(
         Ok(m) => m,
         Err(code) => return code,
     };
-    let font = &master.font;
     let names: Vec<String> = match glyphs {
         Some(list) => list.to_vec(),
         None => master
@@ -396,67 +446,11 @@ fn proof(
     if names.is_empty() {
         return fail(json, exit::USAGE, "no glyph to draw");
     }
-    let columns = columns.clamp(1, names.len());
-    let upm = master.units_per_em;
-    let cell_w = upm * 1.2;
-    let cell_h = upm * 1.4;
-    let rows = names.len().div_ceil(columns);
-    let mut svg = String::new();
-    svg.push_str(&format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" \
-         viewBox=\"0 0 {} {}\">\n<rect width=\"100%\" height=\"100%\" fill=\"white\"/>\n",
-        (cell_w * columns as f64 / 4.0).round(),
-        (cell_h * rows as f64 / 4.0).round(),
-        cell_w * columns as f64,
-        cell_h * rows as f64
-    ));
-    let mut metrics = Vec::new();
-    for (i, name) in names.iter().enumerate() {
-        let Some(glyph) = font.get_glyph(name.as_str()) else {
-            return fail(json, exit::USAGE, &format!("no glyph named {name}"));
-        };
-        let path = glyph_paths::glyph_to_bezpath(glyph, font);
-        let col = (i % columns) as f64;
-        let row = (i / columns) as f64;
-        let x0 = col * cell_w + upm * 0.1;
-        let baseline = row * cell_h + upm * 1.05;
-        let line = |y: f64, color: &str| {
-            format!(
-                "<line x1=\"{x0:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
-                 stroke=\"{color}\" stroke-width=\"2\"/>\n",
-                baseline - y,
-                x0 + glyph.width,
-                baseline - y
-            )
-        };
-        svg.push_str(&line(0.0, "#999"));
-        svg.push_str(&line(master.ascender, "#ccc"));
-        svg.push_str(&line(master.descender, "#ccc"));
-        if let Some(x) = master.x_height {
-            svg.push_str(&line(x, "#bbb"));
-        }
-        if let Some(c) = master.cap_height {
-            svg.push_str(&line(c, "#bbb"));
-        }
-        svg.push_str(&format!(
-            "<path transform=\"translate({x0:.1} {baseline:.1}) scale(1 -1)\" d=\"{}\" fill=\"black\"/>\n",
-            path.to_svg()
-        ));
-        use kurbo::Shape as _;
-        let bounds = path.bounding_box();
-        let drawn = !path.is_empty();
-        metrics.push(json!({
-            "glyph": name,
-            "advance": glyph.width,
-            "lsb": if drawn { Some(bounds.x0.round()) } else { None },
-            "rsb": if drawn { Some((glyph.width - bounds.x1).round()) } else { None },
-            "bounds": if drawn { Some([bounds.x0, bounds.y0, bounds.x1, bounds.y1]) } else { None },
-            "points": glyph.contours.iter().map(|c| c.points.len()).sum::<usize>(),
-            "contours": glyph.contours.len(),
-            "components": glyph.components.len(),
-        }));
-    }
-    svg.push_str("</svg>\n");
+    let sheet = match runebender_core::formats::svg::proof_sheet(&master, None, &names, columns) {
+        Ok(s) => s,
+        Err(e) => return fail(json, exit::USAGE, &e),
+    };
+    let (svg, metrics) = (sheet.svg, sheet.metrics);
     let out = out.map_or_else(
         || {
             source
@@ -688,6 +682,113 @@ fn nodes_check(file: &Path, tool: Option<&Path>, json: bool) -> i32 {
     } else {
         exit::USAGE
     }
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one argument per flag the command takes"
+)]
+fn nodes_run(
+    file: &Path,
+    font: &Path,
+    master: Option<&str>,
+    glyphs: Option<&[String]>,
+    tool: Option<&Path>,
+    models: Option<&Path>,
+    force: bool,
+    no_cache: bool,
+    json: bool,
+) -> i32 {
+    let graph = match nodes::NodeGraph::load(file) {
+        Ok(g) => g,
+        Err(e) => return fail(json, exit::USAGE, &e),
+    };
+    if !font.exists() {
+        return fail(json, exit::USAGE, &format!("{}: not found", font.display()));
+    }
+    let (registry, _) = node_registry(tool);
+    let problems = graph.validate(&registry);
+    if !problems.is_empty() {
+        let text: Vec<String> = problems.iter().map(ToString::to_string).collect();
+        return fail(
+            json,
+            exit::USAGE,
+            &format!("{} will not run:\n{}", file.display(), text.join("\n")),
+        );
+    }
+    let mut tools = std::collections::BTreeMap::new();
+    if let Some(font_ml) = find_font_ml(tool) {
+        tools.insert("font-ml".to_string(), font_ml);
+    }
+    let mut on_event = |event: nodes_run::Event| match event {
+        nodes_run::Event::Start {
+            id,
+            type_name,
+            index,
+            total,
+        } => eprintln!("node {index}/{total} {id} {type_name}"),
+        nodes_run::Event::Progress {
+            done, total, label, ..
+        } => eprintln!("progress {done}/{total} {label}"),
+        nodes_run::Event::End {
+            id,
+            status,
+            seconds,
+            error,
+        } => match error {
+            Some(e) => eprintln!("node {id} failed: {e}"),
+            None => eprintln!("node {id} {status:?} {seconds:.1}s"),
+        },
+    };
+    let mut ctx = nodes_run::RunContext {
+        font,
+        master,
+        glyphs: glyphs.map(<[String]>::to_vec).unwrap_or_default(),
+        tools,
+        models_dir: models
+            .map(Path::to_path_buf)
+            .or_else(nodes_run::default_models_dir),
+        force,
+        cache: (!no_cache).then(|| nodes_run::cache_path(file)),
+        on_event: &mut on_event,
+    };
+    let report = nodes_run::run(&graph, &registry, &mut ctx);
+    if json {
+        println!(
+            "{}",
+            json!({ "ok": report.ok, "file": file, "font": font, "nodes": report.nodes })
+        );
+    } else {
+        for n in &report.nodes {
+            let note = match n.status {
+                nodes_run::Status::Failed => n
+                    .report
+                    .get("error")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("failed")
+                    .to_string(),
+                _ => n
+                    .outputs
+                    .iter()
+                    .map(|(k, v)| match v {
+                        nodes_run::RunValue::Layer { name, .. } => format!("{k}={name}"),
+                        nodes_run::RunValue::Rows { rows } => format!("{k}={} rows", rows.len()),
+                        nodes_run::RunValue::Path { path } => format!("{k}={}", path.display()),
+                        _ => String::new(),
+                    })
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            };
+            println!(
+                "{:<3} {:<18} {:<8} {note}",
+                n.id,
+                n.type_name,
+                format!("{:?}", n.status).to_lowercase()
+            );
+        }
+    }
+    if report.ok { exit::OK } else { exit::FAILED }
 }
 
 fn find_font_ml(tool: Option<&Path>) -> Option<PathBuf> {

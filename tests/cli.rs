@@ -369,3 +369,66 @@ fn nodes_schema_and_types_print() {
     assert!(names.contains(&"core.source") && names.contains(&"core.install"));
     assert!(out["tool"].is_null());
 }
+
+#[test]
+fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
+    let (dir, ufo) = scratch_ufo();
+    let file = dir.path().join("proof.nodes.json");
+    let svg = dir.path().join("sheet.svg");
+    std::fs::write(
+        &file,
+        format!(
+            r#"{{
+  "version": 1,
+  "nodes": [
+    {{ "id": 1, "type": "core.source" }},
+    {{ "id": 2, "type": "core.proof", "values": {{ "out": "{}" }} }},
+    {{ "id": 3, "type": "core.note", "values": {{ "text": "H and O only" }} }}
+  ],
+  "links": [[1, "source", 2, "source"]]
+}}"#,
+            svg.display()
+        ),
+    )
+    .expect("write");
+    let args = [
+        "nodes",
+        "run",
+        file.to_str().expect("utf8"),
+        "--font",
+        ufo.to_str().expect("utf8"),
+        "--glyphs",
+        "H,O",
+        "--tool",
+        "/nowhere/font-ml",
+    ];
+    let (code, out) = run(&args);
+    assert_eq!(code, 0, "{out}");
+    assert_eq!(out["ok"], true);
+    let nodes = out["nodes"].as_array().expect("nodes");
+    assert_eq!(nodes.len(), 3);
+    assert!(nodes.iter().all(|n| n["status"] == "ran"), "{out}");
+    assert!(svg.is_file());
+    let text = std::fs::read_to_string(&svg).expect("svg");
+    assert!(text.matches("<path ").count() > 2, "every drawn glyph, not the selection");
+
+    // Nothing changed: the proof is skipped. The cache sits beside
+    // the file.
+    assert!(dir.path().join(".proof.nodes.json.cache").is_file());
+    let (code, out) = run(&args);
+    assert_eq!(code, 0, "{out}");
+    let nodes = out["nodes"].as_array().expect("nodes");
+    let proof = nodes.iter().find(|n| n["id"] == 2).expect("proof node");
+    assert_eq!(proof["status"], "skipped", "{out}");
+
+    // Edit a glyph in the font: the proof runs again.
+    let glif = ufo.join("glyphs").join("H_.glif");
+    let mut text = std::fs::read_to_string(&glif).expect("glif");
+    text = text.replacen("<point x=\"", "<point x=\"1", 1);
+    std::fs::write(&glif, text).expect("write glif");
+    let (code, out) = run(&args);
+    assert_eq!(code, 0, "{out}");
+    let nodes = out["nodes"].as_array().expect("nodes");
+    let proof = nodes.iter().find(|n| n["id"] == 2).expect("proof node");
+    assert_eq!(proof["status"], "ran", "{out}");
+}

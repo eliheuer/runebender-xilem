@@ -18,6 +18,7 @@ pub mod history;
 pub mod model;
 pub mod new_font;
 pub mod nodes;
+pub mod nodes_run;
 pub mod project;
 pub mod proposal;
 pub mod var_model;
