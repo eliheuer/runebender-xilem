@@ -74,6 +74,30 @@ pub(crate) const ACTIONS: &[Entry] = &[
         action: AppAction::Save,
     },
     Entry {
+        menu: "Nodes",
+        title: "Show Nodes",
+        accelerator: None,
+        action: AppAction::NodesTab,
+    },
+    Entry {
+        menu: "Nodes",
+        title: "New Nodes",
+        accelerator: None,
+        action: AppAction::NodesNew,
+    },
+    Entry {
+        menu: "Nodes",
+        title: "Save Nodes",
+        accelerator: None,
+        action: AppAction::NodesSave,
+    },
+    Entry {
+        menu: "Nodes",
+        title: "Run Nodes",
+        accelerator: None,
+        action: AppAction::NodesRun,
+    },
+    Entry {
         menu: "Edit",
         title: "Copy",
         accelerator: Some("CmdOrCtrl+C"),
@@ -185,7 +209,7 @@ pub(crate) const ACTIONS: &[Entry] = &[
         reason = "the menu table is read by the native menu bar, which is macOS only"
     )
 )]
-const MENUS: &[&str] = &["File", "Edit", "Glyph", "View", "Tools"];
+const MENUS: &[&str] = &["File", "Nodes", "Edit", "Glyph", "View", "Tools"];
 
 #[cfg(target_os = "macos")]
 mod platform {

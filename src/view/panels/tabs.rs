@@ -51,6 +51,10 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             (app.rail == Rail::Glyphs).then(|| {
                 text_input(app.filter.clone(), |app: &mut Workspace, v| app.filter = v)
                     .placeholder("Search")
+                    .background_color(pal.field())
+                    .border_color(pal.field_outline)
+                    .border_width(Stroke::Hairline.length())
+                    .corner_radius(Radius::Sm.length())
             }),
             // The grid scrolls itself, so no portal here: nesting the two
             // gave the rail a dead area below the third row.
@@ -305,8 +309,14 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             xrow(
                 Region::Inline,
                 (
+                    // A field, not a well: one step darker than the
+                    // panel with a quiet outline, as every field is.
                     text_input(app.filter.clone(), |app: &mut Workspace, v| app.filter = v)
                         .placeholder("Search")
+                        .background_color(pal.field())
+                        .border_color(pal.field_outline)
+                        .border_width(Stroke::Hairline.length())
+                        .corner_radius(Radius::Sm.length())
                         .flex(1.0),
                     toggle(
                         match app.search_mode {

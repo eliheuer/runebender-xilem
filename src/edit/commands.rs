@@ -98,6 +98,15 @@ impl Workspace {
             A::Duplicate => self.apply_op(|s| s.duplicate()),
             A::NewFont => self.new_font(),
             A::CycleTheme => self.cycle_theme(),
+            A::NodesTab => self.enter_nodes_mode(),
+            A::NodesNew => self.new_nodes_file(),
+            A::NodesSave => self.save_nodes_file(),
+            A::NodesRun => {
+                if self.nodes.graph.is_none() {
+                    self.enter_nodes_mode();
+                }
+                self.run_nodes();
+            }
             A::Copy => self.copy_contours(),
             A::Paste => self.paste_contours(),
         }
