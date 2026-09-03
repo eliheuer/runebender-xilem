@@ -455,14 +455,22 @@ fn value_of(kind: Kind, value: &Value, models_dir: Option<&Path>) -> Option<RunV
     })
 }
 
-/// A model name as a path: a path that exists as it is, else a
-/// directory under the models directory.
+/// A model or adapter name as a path: a path that exists as it is,
+/// else the first root that has a directory of that name, else under
+/// the first root.
 fn resolve_model(name: &str, models_dir: Option<&Path>) -> PathBuf {
     let direct = PathBuf::from(name);
     if direct.is_dir() {
         return direct;
     }
-    match models_dir {
+    let roots = model_roots(models_dir);
+    for root in &roots {
+        let candidate = root.join(name);
+        if candidate.is_dir() {
+            return candidate;
+        }
+    }
+    match roots.first() {
         Some(dir) => dir.join(name),
         None => direct,
     }
@@ -476,6 +484,74 @@ pub fn default_models_dir() -> Option<PathBuf> {
     }
     let home = std::env::var_os("HOME")?;
     Some(PathBuf::from(home).join(".runebender").join("models"))
+}
+
+/// Every directory models and adapters are looked for in: `first`
+/// (or the default directory), then each line of
+/// `~/.runebender/model_paths`, then each entry of
+/// `$RUNEBENDER_MODEL_PATHS`. The file is one path per line, `#`
+/// comments allowed, `~` expanded: the same job as `ComfyUI`'s
+/// `extra_model_paths.yaml`, in a form that needs no parser.
+pub fn model_roots(first: Option<&Path>) -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = Vec::new();
+    if let Some(dir) = first.map(Path::to_path_buf).or_else(default_models_dir) {
+        roots.push(dir);
+    }
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let expand = |line: &str| -> PathBuf {
+        match (line.strip_prefix("~/"), &home) {
+            (Some(rest), Some(h)) => h.join(rest),
+            _ => PathBuf::from(line),
+        }
+    };
+    if let Some(h) = &home
+        && let Ok(text) = std::fs::read_to_string(h.join(".runebender").join("model_paths"))
+    {
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            roots.push(expand(line));
+        }
+    }
+    if let Some(extra) = std::env::var_os("RUNEBENDER_MODEL_PATHS") {
+        roots.extend(std::env::split_paths(&extra));
+    }
+    roots.dedup();
+    roots
+}
+
+/// Every model directory (holding `config.json`) or adapter directory
+/// (holding `adapter.json`) under the roots, by name, sorted. A name
+/// found in two roots keeps the first.
+pub fn installed(first: Option<&Path>, adapters: bool) -> Vec<(String, PathBuf)> {
+    let marker = if adapters {
+        "adapter.json"
+    } else {
+        "config.json"
+    };
+    let mut found: Vec<(String, PathBuf)> = Vec::new();
+    for root in model_roots(first) {
+        let Ok(entries) = std::fs::read_dir(&root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.join(marker).is_file() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if found.iter().any(|(n, _)| n == name) {
+                continue;
+            }
+            found.push((name.to_string(), path));
+        }
+    }
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    found
 }
 
 /// Runs the graph. Validate first; this assumes the graph is sound
