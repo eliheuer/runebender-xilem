@@ -26,7 +26,7 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::document::nodes::{Kind, NodeGraph, NodeType, Registry};
+use crate::document::nodes::{Kind, NodeGraph, NodeType, Port, Registry};
 use crate::document::project::{Master, Project};
 use crate::document::proposal;
 
@@ -990,6 +990,12 @@ fn run_tool_node(
     for port in &node_type.inputs {
         let Some(value) = inputs.get(&port.name) else {
             continue;
+        };
+        // A port is `adapter_out`; its flag is `--adapter-out`, the
+        // way clap spells them.
+        let port = &Port {
+            name: port.name.replace('_', "-"),
+            ..port.clone()
         };
         match value {
             RunValue::Source { path } => {
