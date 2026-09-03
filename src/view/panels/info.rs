@@ -178,14 +178,17 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     (!app.collapsed.contains("Glyph")).then_some(overview_fields),
                 ),
             ),
+            // The GPUI build's order: Coordinates, Transformations,
+            // Curves, Background, Color, then Layers, in the editor;
+            // Font info, Layers and the preview over the grid.
             editing.then(|| coordinates_section(app)),
             editing.then(|| path_section(app)),
             editing.then(|| curves_section(app)),
-            editing.then(|| measure_section(app)),
             editing.then(|| background_section(app)),
             editing.then(|| mark_section(app)),
-            layers_section(app),
             (!editing).then(|| font_info_section(app)),
+            layers_section(app),
+            editing.then(|| measure_section(app)),
             (!editing).then(|| glyph_preview(app)).flatten(),
         ),
     )

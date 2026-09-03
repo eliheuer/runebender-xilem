@@ -108,15 +108,15 @@ pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspac
         (
             recipes::section_toggle(
                 pal,
-                "Layers",
-                !app.collapsed.contains("Layers"),
+                "Masters",
+                !app.collapsed.contains("Masters"),
                 move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Layers") {
-                        app.collapsed.insert("Layers");
+                    if !app.collapsed.remove("Masters") {
+                        app.collapsed.insert("Masters");
                     }
                 },
             ),
-            (!app.collapsed.contains("Layers")).then(|| xcolumn(Region::List, rows)),
+            (!app.collapsed.contains("Masters")).then(|| xcolumn(Region::List, rows)),
         ),
     ))
 }
@@ -638,15 +638,15 @@ pub(crate) fn font_info_section(app: &Workspace) -> impl WidgetView<Workspace> +
         (
             recipes::section_toggle(
                 pal,
-                "Font Info",
-                !app.collapsed.contains("Font Info"),
+                "Font info",
+                !app.collapsed.contains("Font info"),
                 move |app: &mut Workspace| {
-                    if !app.collapsed.remove("Font Info") {
-                        app.collapsed.insert("Font Info");
+                    if !app.collapsed.remove("Font info") {
+                        app.collapsed.insert("Font info");
                     }
                 },
             ),
-            (!app.collapsed.contains("Font Info")).then(|| xcolumn(Region::List, rows)),
+            (!app.collapsed.contains("Font info")).then(|| xcolumn(Region::List, rows)),
         ),
     )
 }

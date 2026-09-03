@@ -207,6 +207,7 @@ where
     V: WidgetView<Workspace> + 'static,
 {
     let open = !app.collapsed.contains(title);
+    let rule = app.palette.outline;
     xcolumn(
         Region::Section,
         (
@@ -216,12 +217,15 @@ where
                 }
             }),
             open.then(|| xcolumn(Region::List, rows)),
+            // The rule under a group, as the GPUI sidebar draws one.
+            sized_box(label(""))
+                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(1.0))))
+                .background_color(rule),
         ),
     )
 }
 
 pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use xilem::core::one_of::Either;
     let pal = &app.palette;
 
     let cats = [
@@ -276,28 +280,17 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             // the glyphs it is missing, named and encoded, to every
             // master. Selecting the row and filling it are different
             // buttons on purpose: one is navigation, one writes.
-            let missing = app.filter_missing(i);
+            // No plus in the row: the GPUI build's Filters rows are
+            // plain, and generating the missing glyphs is a command.
             let count = format!("{}/{}", app.filter_present(i), expected);
             let selected = app.sel == Sel::Filter(i);
-            Some(if missing > 0 {
-                Either::A(recipes::list_row_with_action(
-                    pal,
-                    b.label.clone(),
-                    count,
-                    selected,
-                    move |app: &mut Workspace| app.sel = Sel::Filter(i),
-                    "+".into(),
-                    move |app: &mut Workspace| app.generate_missing(i),
-                ))
-            } else {
-                Either::B(recipes::list_row(
-                    pal,
-                    b.label.clone(),
-                    count,
-                    selected,
-                    move |app: &mut Workspace| app.sel = Sel::Filter(i),
-                ))
-            })
+            Some(recipes::list_row(
+                pal,
+                b.label.clone(),
+                count,
+                selected,
+                move |app: &mut Workspace| app.sel = Sel::Filter(i),
+            ))
         })
         .collect();
 
@@ -336,20 +329,6 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         app.search_case = !app.search_case;
                     }),
                 ),
-            ),
-            recipes::action(
-                pal,
-                match app.sort {
-                    Sort::Name => "Sort: name",
-                    Sort::Unicode => "Sort: unicode",
-                }
-                .into(),
-                |app: &mut Workspace| {
-                    app.sort = match app.sort {
-                        Sort::Name => Sort::Unicode,
-                        Sort::Unicode => Sort::Name,
-                    };
-                },
             ),
             {
                 let fresh =

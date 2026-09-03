@@ -56,6 +56,11 @@ pub(crate) enum AppAction {
     NodesNew,
     NodesSave,
     NodesRun,
+    /// Add every glyph the selected coverage filter is missing.
+    GenerateMissing,
+    /// The grid's order, as the GPUI build's View menu has it.
+    SortByName,
+    SortByUnicode,
 }
 
 /// Resolve a key press the focused widget did not consume to an app action.

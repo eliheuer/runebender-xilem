@@ -117,6 +117,12 @@ pub(crate) const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "Glyph",
+        title: "Generate Missing Glyphs",
+        accelerator: None,
+        action: AppAction::GenerateMissing,
+    },
+    Entry {
+        menu: "Glyph",
         title: "Flip Horizontal",
         accelerator: None,
         action: AppAction::FlipHorizontal,
@@ -144,6 +150,18 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "Decompose",
         accelerator: None,
         action: AppAction::Decompose,
+    },
+    Entry {
+        menu: "View",
+        title: "Sort by Name",
+        accelerator: None,
+        action: AppAction::SortByName,
+    },
+    Entry {
+        menu: "View",
+        title: "Sort by Unicode",
+        accelerator: None,
+        action: AppAction::SortByUnicode,
     },
     Entry {
         menu: "View",

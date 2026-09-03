@@ -98,6 +98,19 @@ impl Workspace {
             A::Duplicate => self.apply_op(|s| s.duplicate()),
             A::NewFont => self.new_font(),
             A::CycleTheme => self.cycle_theme(),
+            A::GenerateMissing => match self.sel {
+                Sel::Filter(i) => {
+                    let missing = self.filter_missing(i);
+                    if missing == 0 {
+                        self.note = "nothing missing in this filter".into();
+                    } else {
+                        self.generate_missing(i);
+                    }
+                }
+                _ => self.note = "select a coverage filter in the sidebar first".into(),
+            },
+            A::SortByName => self.sort = Sort::Name,
+            A::SortByUnicode => self.sort = Sort::Unicode,
             A::NodesTab => self.enter_nodes_mode(),
             A::NodesNew => self.new_nodes_file(),
             A::NodesSave => self.save_nodes_file(),
