@@ -71,8 +71,10 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
             let all = task.takes_glyphs();
             let name_one = task.name.clone();
             let name_all = task.name.clone();
-            xrow(
-                Region::Inline,
+            // One chip per row: the rail is 220px and two chips side
+            // by side clip, which the GPUI panel avoids by wrapping.
+            xcolumn(
+                Region::List,
                 (
                     one.then(|| {
                         recipes::toggle(
@@ -207,7 +209,7 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
             xcolumn(Region::List, proposals),
             undo,
             muted("Nodes".into()),
-            xrow(Region::List, files),
+            xcolumn(Region::List, files),
         ),
     )
     .background_color(pal.panel)
