@@ -917,6 +917,7 @@ fn run_node(
                 "glyphs": n,
                 "model": mean("model"),
                 "unchanged": mean("unchanged"),
+                "shift": mean("shift"),
                 "wins": wins,
             });
             out.insert("rows".into(), RunValue::Rows { rows });
@@ -1179,10 +1180,12 @@ fn find_on_path(tool: &str) -> Option<PathBuf> {
 ///
 /// For every glyph in the layer that the other master also has, with
 /// the same point structure: the mean distance from each proposed
-/// point to the hand-drawn one (`model`), and the same for the
-/// foreground the proposal came from (`unchanged`), which is the
-/// score of doing nothing. `better` is whether the proposal moved
-/// closer.
+/// point to the hand-drawn one (`model`); the same for the foreground
+/// the proposal came from (`unchanged`), which is the score of doing
+/// nothing; and the same for the foreground moved by the font-wide
+/// mean offset between the two masters (`shift`), which is the
+/// cheapest thing that is not nothing and the bar a model has to
+/// clear. `better` is whether the proposal beat the shift.
 pub fn compare_layer(source: &Path, layer: &str, against: &Path) -> Result<Vec<Value>, String> {
     let font = norad::Font::load(source).map_err(|e| format!("{}: {e}", source.display()))?;
     let other = norad::Font::load(against).map_err(|e| format!("{}: {e}", against.display()))?;
@@ -1190,6 +1193,30 @@ pub fn compare_layer(source: &Path, layer: &str, against: &Path) -> Result<Vec<V
         .layers
         .get(layer)
         .ok_or_else(|| format!("{}: no layer named {layer}", source.display()))?;
+    // The mean offset from foreground to the other master, over every
+    // glyph drawn compatibly in both. A font-wide number, so it does
+    // not peek at the glyphs being scored more than at the rest.
+    let (mut sx, mut sy, mut n) = (0.0, 0.0, 0_usize);
+    for glyph in font.default_layer().iter() {
+        let Some(target) = other.get_glyph(glyph.name()) else {
+            continue;
+        };
+        if !proposal::compatible(glyph, target) {
+            continue;
+        }
+        for (ca, cb) in glyph.contours.iter().zip(&target.contours) {
+            for (pa, pb) in ca.points.iter().zip(&cb.points) {
+                sx += pb.x - pa.x;
+                sy += pb.y - pa.y;
+                n += 1;
+            }
+        }
+    }
+    let shift = if n == 0 {
+        (0.0, 0.0)
+    } else {
+        (sx / n as f64, sy / n as f64)
+    };
     let mut rows = Vec::new();
     for glyph in proposed.iter() {
         let name = glyph.name().as_str();
@@ -1202,29 +1229,31 @@ pub fn compare_layer(source: &Path, layer: &str, against: &Path) -> Result<Vec<V
             rows.push(json!({ "glyph": name, "why": "point structure differs" }));
             continue;
         }
-        let model = mean_distance(glyph, target);
-        let unchanged = before
-            .filter(|b| proposal::compatible(b, target))
-            .map(|b| mean_distance(b, target));
+        let model = mean_distance(glyph, target, (0.0, 0.0));
+        let before = before.filter(|b| proposal::compatible(b, target));
+        let unchanged = before.map(|b| mean_distance(b, target, (0.0, 0.0)));
+        let shifted = before.map(|b| mean_distance(b, target, shift));
         rows.push(json!({
             "glyph": name,
             "points": glyph.contours.iter().map(|c| c.points.len()).sum::<usize>(),
             "model": model,
             "unchanged": unchanged,
-            "better": unchanged.map(|u| model < u),
+            "shift": shifted,
+            "better": shifted.map(|s| model < s),
         }));
     }
     Ok(rows)
 }
 
 /// Mean distance between matching points of two structure-compatible
-/// glyphs.
-fn mean_distance(a: &norad::Glyph, b: &norad::Glyph) -> f64 {
+/// glyphs, with `a` moved by `offset` first.
+fn mean_distance(a: &norad::Glyph, b: &norad::Glyph, offset: (f64, f64)) -> f64 {
     let mut sum = 0.0;
     let mut n = 0_usize;
     for (ca, cb) in a.contours.iter().zip(&b.contours) {
         for (pa, pb) in ca.points.iter().zip(&cb.points) {
-            sum += ((pa.x - pb.x).powi(2) + (pa.y - pb.y).powi(2)).sqrt();
+            let (ax, ay) = (pa.x + offset.0, pa.y + offset.1);
+            sum += ((ax - pb.x).powi(2) + (ay - pb.y).powi(2)).sqrt();
             n += 1;
         }
     }
