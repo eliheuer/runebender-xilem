@@ -410,7 +410,10 @@ fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
     assert!(nodes.iter().all(|n| n["status"] == "ran"), "{out}");
     assert!(svg.is_file());
     let text = std::fs::read_to_string(&svg).expect("svg");
-    assert!(text.matches("<path ").count() > 2, "every drawn glyph, not the selection");
+    assert!(
+        text.matches("<path ").count() > 2,
+        "every drawn glyph, not the selection"
+    );
 
     // Nothing changed: the proof is skipped. The cache sits beside
     // the file.
