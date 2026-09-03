@@ -323,7 +323,7 @@ impl Widget for GridWidget {
                 // thresholds.
                 let (label_size, label_lines): (f64, usize) = if w < 48.0 {
                     (0.0, 0)
-                } else if w < 90.0 {
+                } else if w < 64.0 {
                     (13.0, 1)
                 } else {
                     let mut lines = if cell.codepoint.is_some() { 2 } else { 1 };
