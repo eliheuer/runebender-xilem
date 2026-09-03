@@ -945,9 +945,12 @@ fn docs_search(query: &str) -> serde_json::Value {
             if !matches!(ext, "md" | "txt" | "html" | "mdx") {
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(&path) else {
+            let Ok(mut text) = std::fs::read_to_string(&path) else {
                 continue;
             };
+            if ext == "html" {
+                text = strip_html(&text);
+            }
             files += 1;
             for para in text.split("\n\n") {
                 let lower = para.to_lowercase();
@@ -972,6 +975,57 @@ fn docs_search(query: &str) -> serde_json::Value {
         "passages": hits.iter().map(|(score, file, text)| json!({ "score": score, "file": file, "text": text })).collect::<Vec<_>>(),
         "note": if files == 0 { "No documentation found. Put .md or .txt files under ~/.runebender/docs or set RUNEBENDER_DOCS." } else { "" },
     })
+}
+
+/// HTML as text: tags dropped, block ends as paragraph breaks, the
+/// few entities a spec page uses decoded. Enough for a search hit to
+/// read as prose.
+fn strip_html(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut in_tag = false;
+    let mut tag = String::new();
+    let mut skip_depth = 0_usize;
+    for ch in html.chars() {
+        match ch {
+            '<' => {
+                in_tag = true;
+                tag.clear();
+            }
+            '>' if in_tag => {
+                in_tag = false;
+                let lower = tag.to_lowercase();
+                let name = lower
+                    .trim_start_matches('/')
+                    .split(|c: char| c.is_whitespace() || c == '/')
+                    .next()
+                    .unwrap_or("");
+                if matches!(name, "script" | "style" | "nav" | "header" | "footer") {
+                    if lower.starts_with('/') {
+                        skip_depth = skip_depth.saturating_sub(1);
+                    } else {
+                        skip_depth += 1;
+                    }
+                } else if matches!(
+                    name,
+                    "p" | "div" | "tr" | "li" | "h1" | "h2" | "h3" | "h4" | "pre" | "table" | "br"
+                ) && !lower.starts_with('/')
+                {
+                    out.push_str("\n\n");
+                } else if matches!(name, "td" | "th") && !lower.starts_with('/') {
+                    out.push(' ');
+                }
+            }
+            _ if in_tag => tag.push(ch),
+            _ if skip_depth > 0 => {}
+            _ => out.push(ch),
+        }
+    }
+    out.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ")
 }
 
 /// `agent call`: one tool, mapped onto the command it already is.
