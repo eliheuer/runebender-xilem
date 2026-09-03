@@ -62,9 +62,11 @@ the kind of mistake nobody can see but everybody feels.
 
 ## Type
 
-One typeface for the interface, at three or four sizes, and one of
-them is the default. Weight carries emphasis, not size. A label and
-its value are the same size; the label is dimmer.
+One typeface for the interface, at one size. Colour carries
+emphasis, not size: a label and its value are the same size, and the
+label is dimmer. Nothing in the chrome sets its own size; the cell
+captions in the grid use the same one, and a cell too narrow to hold
+a caption holds none.
 
 Numbers in the interface are what a designer reads all day. They are
 right-aligned when stacked, they keep a fixed number of decimals so
