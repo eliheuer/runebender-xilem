@@ -17,7 +17,7 @@ use masonry::layout::Dim;
 use masonry::properties::Dimensions;
 use xilem::WidgetView;
 use xilem::style::Style;
-use xilem::view::{FlexExt as _, FlexSpacer, button, label, sized_box, text_input};
+use xilem::view::{FlexSpacer, button, label, sized_box, text_input};
 
 use crate::Workspace;
 use crate::view::theme::Palette;
@@ -161,6 +161,10 @@ pub(crate) fn list_row<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
+    // A leaf row carries a bullet where the GPUI build's expandable
+    // rows carry a chevron; nothing here expands, so every row is a
+    // leaf.
+    let text = format!("\u{2022}  {text}");
     let (fg, border, bg) = if active {
         (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
     } else {
@@ -213,6 +217,7 @@ pub(crate) fn list_row_with_icon<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
+    let icon = format!("\u{2022}  {icon}");
     let (fg, border, bg) = if active {
         (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
     } else {
@@ -233,8 +238,9 @@ pub(crate) fn list_row_with_icon<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             row(
                 Region::Inline,
                 (
+                    // Wide enough for the bullet and a script letter.
                     sized_box(label(icon).text_size(TextSize::Body.px()).color(icon_color)).dims(
-                        Dimensions::fixed(ControlSize::Swatch.length(), ControlSize::Row.length()),
+                        Dimensions::fixed(ControlSize::Control.length(), ControlSize::Row.length()),
                     ),
                     label(text).text_size(TextSize::Body.px()).color(fg),
                     FlexSpacer::Flex(1.0),
@@ -253,66 +259,6 @@ pub(crate) fn list_row_with_icon<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         .corner_radius(Radius::Sm.length()),
     )
     .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
-}
-
-/// A list row with a small action button after it.
-///
-/// The row and the button are separate targets on purpose: one selects,
-/// one writes. The row's width is `Auto` plus `flex`, not `Stretch`,
-/// because a stretched child in a flex row claims the whole width and
-/// pushes the button off the edge.
-pub(crate) fn list_row_with_action<F, G>(
-    pal: &Palette,
-    text: String,
-    trailing: String,
-    active: bool,
-    on_click: F,
-    action: String,
-    on_action: G,
-) -> impl WidgetView<Workspace> + use<F, G>
-where
-    F: Fn(&mut Workspace) + Send + Sync + 'static,
-    G: Fn(&mut Workspace) + Send + Sync + 'static,
-{
-    let (fg, border, bg) = if active {
-        (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
-    } else {
-        (pal.text, xilem::Color::TRANSPARENT, pal.panel)
-    };
-    let trailing_color = if active {
-        pal.selected_ink()
-    } else {
-        pal.text_muted
-    };
-    row(
-        Region::List,
-        (
-            button(
-                row(
-                    Region::Inline,
-                    (
-                        label(text).text_size(TextSize::Body.px()).color(fg),
-                        FlexSpacer::Flex(1.0),
-                        label(trailing)
-                            .text_size(TextSize::Body.px())
-                            .color(trailing_color),
-                    ),
-                ),
-                move |app: &mut Workspace| on_click(app),
-            )
-            .background_color(bg)
-            .border_color(border)
-            .border_width(Stroke::Hairline.length())
-            .corner_radius(Radius::Sm.length())
-            .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Row)))
-            .flex(1.0),
-            // Icon-sized, not control-sized: a control-sized button here
-            // puts the row's intrinsic width past the sidebar and clips
-            // the button it was meant to add.
-            toggle_sized(pal, action, false, ControlSize::Icon, on_action),
-            FlexSpacer::Fixed(Space::Sm.length()),
-        ),
-    )
 }
 
 /// A toggle at control height that takes the width of its label: the

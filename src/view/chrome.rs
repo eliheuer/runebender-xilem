@@ -158,11 +158,64 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
     )
 }
 
+/// The marks bar at the foot of the sidebar: round swatches, the
+/// clear mark last, as the GPUI build draws it under its sidebar.
+pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    let swatch = |mark: Option<String>, color: xilem::Color| {
+        sized_box(
+            text_button("", move |app: &mut Workspace| app.set_mark(mark.clone()))
+                .background_color(color)
+                .border_color(pal.outline)
+                .border_width(Stroke::Hairline.length())
+                .padding(Space::None)
+                .corner_radius(Radius::Full.length()),
+        )
+        .dims(Dimensions::fixed(
+            ControlSize::Swatch.length(),
+            ControlSize::Swatch.length(),
+        ))
+    };
+    let marks: Vec<_> = app
+        .palette
+        .mark_list()
+        .into_iter()
+        .map(|(name, color)| swatch(Some(name), color))
+        .collect();
+    sized_box(
+        xrow(
+            Region::Toolbar,
+            (
+                xrow(Region::List, marks),
+                // Clears the mark, like the GPUI build's crossed swatch.
+                sized_box(
+                    text_button("\u{00d7}", |app: &mut Workspace| app.set_mark(None))
+                        .background_color(pal.panel)
+                        .border_color(pal.outline)
+                        .border_width(Stroke::Hairline.length())
+                        .padding(Space::None)
+                        .corner_radius(Radius::Full.length()),
+                )
+                .dims(Dimensions::fixed(
+                    ControlSize::Swatch.length(),
+                    ControlSize::Swatch.length(),
+                )),
+            ),
+        )
+        .background_color(pal.panel),
+    )
+    .dims(Dimensions::new(
+        Dim::Stretch,
+        Dim::from(ControlSize::Control),
+    ))
+}
+
+/// The bar under the middle column: add and remove glyph at the
+/// left, the count centred, the view boxes and the zoom at the right.
+/// The GPUI build's bottom bar, box for box.
 pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let text = match app.mode {
-        // No path here: it is in the title bar, and a long one ate the
-        // whole bar, pushing the zoom control off the end.
         Mode::Overview => format!(
             "{} selected \u{00b7} {}/{} glyphs",
             app.multi_selected.len(),
@@ -195,75 +248,39 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     } else {
         format!("{}   {}", text, app.note)
     };
-    // Bottom bar: mark swatches on the left, the status centred, and the
-    // zoom on the right, which is where the GPUI build puts them.
-    // Circular, because a mark is a dot in every font editor.
-    let swatch = |mark: Option<String>, color: xilem::Color| {
-        sized_box(
-            text_button("", move |app: &mut Workspace| app.set_mark(mark.clone()))
-                .background_color(color)
-                .padding(Space::None)
-                .corner_radius(Radius::Full.length()),
-        )
-        .dims(Dimensions::fixed(
-            ControlSize::Swatch.length(),
-            ControlSize::Swatch.length(),
-        ))
-    };
-    let marks: Vec<_> = app
-        .palette
-        .mark_list()
-        .into_iter()
-        .map(|(name, color)| swatch(Some(name), color))
-        .collect();
     let editing = matches!(app.mode, Mode::Editor(_));
+    // Small keylined boxes, the size of a swatch plus its padding.
+    let bar_box = |text: String, active: bool, f: fn(&mut Workspace)| {
+        recipes::toggle_sized(pal, text, active, ControlSize::Icon, f)
+    };
+    let zoom = app.session.viewport.zoom;
     xrow(
         Region::Toolbar,
         (
-            swatch(None, pal.control),
-            xrow(Region::List, marks),
-            // Clears the mark, like the GPUI build's crossed swatch.
-            recipes::toggle_sized(
-                pal,
-                "\u{00d7}".into(),
-                false,
-                ControlSize::Swatch,
-                |app: &mut Workspace| app.set_mark(None),
-            ),
-            FlexSpacer::Flex(1.0),
-            label(text)
-                .text_size(TextSize::Caption.px())
-                .color(pal.text_muted),
-            FlexSpacer::Flex(1.0),
-            // Grid, as the GPUI build has it. Its List view is not
-            // built here yet, and its Detail view is gone, so one chip
-            // stands where two will.
             (!editing).then(|| {
                 xrow(
                     Region::Inline,
-                    (tab_chip(
-                        pal,
-                        "Grid".into(),
-                        !app.detail,
-                        false,
-                        |app: &mut Workspace| {
-                            app.detail = false;
-                        },
-                    ),),
+                    (
+                        bar_box("+".into(), false, |app: &mut Workspace| app.new_glyph()),
+                        bar_box("\u{2212}".into(), false, |app: &mut Workspace| {
+                            app.note = "Remove glyph: not built in this shell yet".into();
+                        }),
+                    ),
                 )
             }),
-            // Cell size in the grid, zoom in the editor: one control in
-            // one place, whichever surface is showing. A slider, because
-            // that is what the GPUI build puts here.
+            FlexSpacer::Flex(1.0),
+            label(text)
+                .text_size(TextSize::Body.px())
+                .color(pal.text_muted),
+            FlexSpacer::Flex(1.0),
             editing.then(|| {
-                let zoom = app.session.viewport.zoom.clamp(0.05, 8.0);
                 xrow(
                     Region::Inline,
                     (
                         slider(0.05, 8.0, zoom, |app: &mut Workspace, v| app.zoom_to(v))
                             .width(Length::px(96.0)),
                         label(format!("{:.0}%", zoom * 100.0))
-                            .text_size(TextSize::Caption.px())
+                            .text_size(TextSize::Body.px())
                             .color(pal.text_muted),
                     ),
                 )
@@ -272,13 +289,18 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 xrow(
                     Region::Inline,
                     (
+                        // Grid, and List, which is not built here yet;
+                        // the box says so when pressed.
+                        bar_box("\u{229e}".into(), !app.detail, |app: &mut Workspace| {
+                            app.detail = false;
+                        }),
+                        bar_box("\u{2261}".into(), false, |app: &mut Workspace| {
+                            app.note = "List view: not built in this shell yet".into();
+                        }),
                         slider(48.0, 200.0, app.cell_size, |app: &mut Workspace, v| {
                             app.cell_size = v;
                         })
                         .width(Length::px(96.0)),
-                        label(format!("{:.0}", app.cell_size))
-                            .text_size(TextSize::Caption.px())
-                            .color(pal.text_muted),
                     ),
                 )
             }),

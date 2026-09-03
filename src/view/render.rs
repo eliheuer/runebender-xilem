@@ -46,7 +46,10 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
             .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(120.0))))
             .background_color(pal.panel)
     });
-    let middle = flex_col((body.flex(1.0), preview))
+    // The bottom bar belongs to the middle column, so the sidebar
+    // keeps the window's full height and its own marks bar, as in the
+    // GPUI build.
+    let middle = flex_col((body.flex(1.0), preview, status(app)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::None)
         .background_color(pal.app);
@@ -55,6 +58,11 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         Mode::Overview | Mode::Nodes => Either::A(sidebar(app)),
         Mode::Editor(_) => Either::B(editor_nav(app)),
     };
+    // The marks bar sits under the sidebar in both modes, as the GPUI
+    // build has it, not in the middle column's bar.
+    let left = flex_col((left.flex(1.0), marks_bar(app)))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(Space::None);
     let left_width = if app.left_collapsed { 0.0 } else { 220.0 };
 
     let columns = flex_row((
@@ -72,10 +80,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Space::None);
 
-    let left_and_middle = flex_col((columns.flex(1.0), status(app)))
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::None)
-        .background_color(pal.app);
+    let left_and_middle = columns;
 
     // The menu bar is built on the main thread, which is here, and only
     // once. Xilem owns the event loop and offers no startup hook.

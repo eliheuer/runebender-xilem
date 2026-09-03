@@ -144,7 +144,7 @@ impl Workspace {
             note: String::new(),
             view,
             initial_text: std::env::var("RUNEBENDER_TEXT").unwrap_or_default(),
-            cell_size: 88.0,
+            cell_size: 96.0,
             axis_values,
             theme_id,
             coord_quadrant: runebender_core::outline::path::Quadrant::Center,

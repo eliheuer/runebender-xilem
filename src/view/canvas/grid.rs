@@ -318,16 +318,19 @@ impl Widget for GridWidget {
                 // the GPUI build: under 34px wide a cell is a thumbnail
                 // with no text, under 90px it carries its name only, and
                 // above that the name and the codepoint.
-                let (label_size, label_lines): (f64, usize) = if w < 34.0 {
+                // One type size, the interface's: a cell too narrow to
+                // carry a name at it carries none. The GPUI build's
+                // thresholds.
+                let (label_size, label_lines): (f64, usize) = if w < 48.0 {
                     (0.0, 0)
                 } else if w < 90.0 {
-                    (10.0, 1)
+                    (13.0, 1)
                 } else {
                     let mut lines = if cell.codepoint.is_some() { 2 } else { 1 };
                     if self.metrics.detail {
                         lines += 1;
                     }
-                    (12.0, lines)
+                    (13.0, lines)
                 };
                 let line = (label_size * 1.25).ceil();
                 let block = if label_lines == 0 {
