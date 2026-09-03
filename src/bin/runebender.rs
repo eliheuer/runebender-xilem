@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 use norad::Font;
 use runebender_core::document::font_ops;
+use runebender_core::document::nodes;
 use runebender_core::document::project::Master;
 use runebender_core::document::proposal;
 use runebender_core::outline::embolden;
@@ -95,6 +96,12 @@ enum Command {
         #[command(subcommand)]
         action: ProposalAction,
     },
+    /// Nodes: a workflow of tools as boxes and wires, in a
+    /// `<name>.nodes.json` file.
+    Nodes {
+        #[command(subcommand)]
+        action: NodesAction,
+    },
     /// Run a font-ml task over the UFO. font-ml is its own program; it
     /// writes what it proposes into the UFO as a proposal layer, and
     /// this reports what arrived.
@@ -141,6 +148,27 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum NodesAction {
+    /// Read a file and report every problem. Exit 0 when it would run.
+    Check {
+        /// The `.nodes.json` file.
+        file: PathBuf,
+        /// The font-ml binary, for the tasks it declares. Defaults to
+        /// `$RUNEBENDER_FONT_ML`, then `font-ml` on PATH.
+        #[arg(long)]
+        tool: Option<PathBuf>,
+    },
+    /// Every node type: core's, plus what font-ml declares.
+    Types {
+        /// The font-ml binary.
+        #[arg(long)]
+        tool: Option<PathBuf>,
+    },
+    /// The JSON Schema for the file.
+    Schema,
 }
 
 #[derive(Subcommand)]
@@ -195,6 +223,16 @@ fn main() -> std::process::ExitCode {
                 any_structure,
             } => proposal_install(source, task, glyphs.as_deref(), !*any_structure, json),
             ProposalAction::Discard { source, task } => proposal_discard(source, task, json),
+        },
+        Command::Nodes { action } => match action {
+            NodesAction::Check { file, tool } => nodes_check(file, tool.as_deref(), json),
+            NodesAction::Types { tool } => nodes_types(tool.as_deref(), json),
+            NodesAction::Schema => {
+                // One line, like every other JSON this prints, so a
+                // caller reads the last line and has it all.
+                println!("{}", nodes::NodeGraph::schema());
+                exit::OK
+            }
         },
         Command::Propose {
             task,
@@ -548,6 +586,110 @@ fn proposal_discard(source: &Path, task: &str, json: bool) -> i32 {
 }
 
 /// Where font-ml is: the flag, then `$RUNEBENDER_FONT_ML`, then PATH.
+/// Every node type: core's, then font-ml's tasks when the tool
+/// answers. `tool` is Some(name) when it answered, so a caller can
+/// tell "not installed" from "declares nothing".
+fn node_registry(tool: Option<&Path>) -> (nodes::Registry, Option<String>) {
+    let mut registry = nodes::Registry::core();
+    let Some(font_ml) = find_font_ml(tool) else {
+        return (registry, None);
+    };
+    let Ok(output) = std::process::Command::new(&font_ml)
+        .arg("tasks")
+        .arg("--json")
+        .output()
+    else {
+        return (registry, None);
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
+        return (registry, None);
+    };
+    registry.add_tool("font-ml", &value);
+    (registry, Some(font_ml.display().to_string()))
+}
+
+fn nodes_types(tool: Option<&Path>, json: bool) -> i32 {
+    let (registry, font_ml) = node_registry(tool);
+    if json {
+        println!(
+            "{}",
+            json!({ "ok": true, "tool": font_ml, "types": registry.types })
+        );
+    } else {
+        for t in &registry.types {
+            let ins: Vec<String> = t
+                .inputs
+                .iter()
+                .map(|p| format!("{}:{}", p.name, p.kind))
+                .collect();
+            let outs: Vec<String> = t
+                .outputs
+                .iter()
+                .map(|p| format!("{}:{}", p.name, p.kind))
+                .collect();
+            println!(
+                "{:<18} {:<10} ({}) -> ({}){}",
+                t.name,
+                t.title,
+                ins.join(", "),
+                outs.join(", "),
+                if t.implemented { "" } else { "  [not built]" }
+            );
+        }
+        if font_ml.is_none() {
+            eprintln!("font-ml not found: only core types listed");
+        }
+    }
+    exit::OK
+}
+
+fn nodes_check(file: &Path, tool: Option<&Path>, json: bool) -> i32 {
+    let graph = match nodes::NodeGraph::load(file) {
+        Ok(g) => g,
+        Err(e) => return fail(json, exit::USAGE, &e),
+    };
+    let (registry, font_ml) = node_registry(tool);
+    let problems = graph.validate(&registry);
+    let order = graph.order().ok();
+    if json {
+        println!(
+            "{}",
+            json!({
+                "ok": problems.is_empty(),
+                "file": file,
+                "tool": font_ml,
+                "nodes": graph.nodes.len(),
+                "links": graph.links.len(),
+                "order": order,
+                "problems": problems,
+            })
+        );
+    } else {
+        for p in &problems {
+            eprintln!("{p}");
+        }
+        if problems.is_empty() {
+            let order: Vec<String> = order
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|id| graph.node(*id))
+                .map(|n| format!("{}:{}", n.id, n.type_name))
+                .collect();
+            println!(
+                "{} nodes, {} links, runs: {}",
+                graph.nodes.len(),
+                graph.links.len(),
+                order.join(" ")
+            );
+        }
+    }
+    if problems.is_empty() {
+        exit::OK
+    } else {
+        exit::USAGE
+    }
+}
+
 fn find_font_ml(tool: Option<&Path>) -> Option<PathBuf> {
     if let Some(t) = tool {
         return Some(t.to_path_buf());

@@ -248,3 +248,124 @@ fn propose_runs_the_tool_and_reports_what_it_left() {
     assert_eq!(code, 2, "{out}");
     assert!(out["error"].as_str().expect("message").contains("bolden"));
 }
+
+/// The demo workflow: font and model into bolden, then compare and
+/// install. Written here rather than read from runebender-demo, so
+/// the test needs nothing beside this checkout.
+fn demo_nodes(dir: &Path) -> PathBuf {
+    let file = dir.join("bolden.nodes.json");
+    std::fs::write(
+        &file,
+        r#"{
+  "version": 1,
+  "nodes": [
+    { "id": 1, "type": "core.source" },
+    { "id": 2, "type": "core.model", "values": { "name": "virtua-12m-bolden" } },
+    { "id": 3, "type": "font-ml.bolden" },
+    { "id": 4, "type": "core.master", "values": { "name": "Bold" } },
+    { "id": 5, "type": "core.compare" },
+    { "id": 6, "type": "core.install" }
+  ],
+  "links": [
+    [1, "source", 3, "source"],
+    [1, "glyphs", 3, "glyphs"],
+    [2, "model", 3, "model"],
+    [3, "layer", 5, "layer"],
+    [4, "source", 5, "against"],
+    [3, "layer", 6, "layer"]
+  ]
+}"#,
+    )
+    .expect("write");
+    file
+}
+
+/// A stand-in font-ml that declares bolden and nothing else.
+fn stand_in_font_ml(dir: &Path) -> PathBuf {
+    let tool = dir.join("font-ml");
+    std::fs::write(
+        &tool,
+        r#"#!/bin/sh
+if [ "$1" = "tasks" ]; then
+  echo '{"tasks":[{"name":"bolden","title":"Bolden","help":"","implemented":true,"inputs":[{"name":"source","kind":"source","required":true,"help":""},{"name":"model","kind":"model","required":true,"help":""},{"name":"glyph","kind":"glyphs","required":false,"help":""},{"name":"strength","kind":"number","required":false,"default":1.0,"help":""},{"name":"write","kind":"flag","required":false,"help":""}],"outputs":[{"name":"com.runebender.proposal.bolden","kind":"layer","help":""},{"name":"glyphs","kind":"rows","help":""}]}]}'
+  exit 0
+fi
+exit 4
+"#,
+    )
+    .expect("write");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
+    tool
+}
+
+#[test]
+fn nodes_check_accepts_the_demo_with_the_tool_present() {
+    let (dir, _ufo) = scratch_ufo();
+    let file = demo_nodes(dir.path());
+    let tool = stand_in_font_ml(dir.path());
+    let (code, out) = run(&[
+        "nodes",
+        "check",
+        file.to_str().expect("utf8"),
+        "--tool",
+        tool.to_str().expect("utf8"),
+    ]);
+    assert_eq!(code, 0, "{out}");
+    assert_eq!(out["ok"], true);
+    assert_eq!(out["nodes"], 6);
+    assert_eq!(out["problems"].as_array().expect("list").len(), 0);
+    let order = out["order"].as_array().expect("order");
+    let at = |id: u64| {
+        order
+            .iter()
+            .position(|v| v.as_u64() == Some(id))
+            .expect("in order")
+    };
+    assert!(at(3) > at(1) && at(3) > at(2) && at(5) > at(3) && at(6) > at(3));
+}
+
+#[test]
+fn nodes_check_names_a_missing_tool_and_a_bad_link() {
+    let (dir, _ufo) = scratch_ufo();
+    let file = demo_nodes(dir.path());
+    let mut text = std::fs::read_to_string(&file).expect("read");
+    text = text.replace(
+        r#"[1, "glyphs", 3, "glyphs"]"#,
+        r#"[1, "glyphs", 3, "model"]"#,
+    );
+    std::fs::write(&file, text).expect("write");
+    // A tool path that does not exist: font-ml.bolden is then unknown.
+    let (code, out) = run(&[
+        "nodes",
+        "check",
+        file.to_str().expect("utf8"),
+        "--tool",
+        "/nowhere/font-ml",
+    ]);
+    assert_eq!(code, 2);
+    assert_eq!(out["ok"], false);
+    let problems = out["problems"].as_array().expect("list");
+    assert!(problems.iter().any(|p| p["problem"] == "unknown_type"));
+    assert!(problems.iter().any(|p| p["problem"] == "double_input"));
+}
+
+#[test]
+fn nodes_schema_and_types_print() {
+    let (code, out) = run(&["nodes", "schema"]);
+    assert_eq!(code, 0);
+    assert!(out["properties"]["links"].is_object());
+    let (code, out) = run(&["nodes", "types", "--tool", "/nowhere/font-ml"]);
+    assert_eq!(code, 0);
+    let names: Vec<&str> = out["types"]
+        .as_array()
+        .expect("list")
+        .iter()
+        .filter_map(|t| t["name"].as_str())
+        .collect();
+    assert!(names.contains(&"core.source") && names.contains(&"core.install"));
+    assert!(out["tool"].is_null());
+}
