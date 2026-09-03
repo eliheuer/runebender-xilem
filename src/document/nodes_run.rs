@@ -1182,8 +1182,8 @@ fn find_on_path(tool: &str) -> Option<PathBuf> {
 /// the same point structure: the mean distance from each proposed
 /// point to the hand-drawn one (`model`); the same for the foreground
 /// the proposal came from (`unchanged`), which is the score of doing
-/// nothing; and the same for the foreground moved by the font-wide
-/// mean offset between the two masters (`shift`), which is the
+/// nothing; and the same for the foreground moved by the mean offset
+/// between the two masters over the glyphs that differ (`shift`), which is the
 /// cheapest thing that is not nothing and the bar a model has to
 /// clear. `better` is whether the proposal beat the shift.
 pub fn compare_layer(source: &Path, layer: &str, against: &Path) -> Result<Vec<Value>, String> {
@@ -1202,6 +1202,17 @@ pub fn compare_layer(source: &Path, layer: &str, against: &Path) -> Result<Vec<V
             continue;
         };
         if !proposal::compatible(glyph, target) {
+            continue;
+        }
+        // A glyph still identical in both masters is work not done,
+        // not a zero offset; it stays out of the mean.
+        let moved = glyph
+            .contours
+            .iter()
+            .zip(&target.contours)
+            .flat_map(|(ca, cb)| ca.points.iter().zip(&cb.points))
+            .any(|(pa, pb)| (pb.x - pa.x).abs() >= 8.0 || (pb.y - pa.y).abs() >= 8.0);
+        if !moved {
             continue;
         }
         for (ca, cb) in glyph.contours.iter().zip(&target.contours) {
