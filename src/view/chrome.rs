@@ -170,6 +170,19 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             app.session.point_count(),
             app.selected_points,
         ),
+        Mode::Nodes => app
+            .nodes
+            .graph
+            .as_ref()
+            .map(|g| {
+                format!(
+                    "{} \u{00b7} {} nodes \u{00b7} {} links",
+                    nodes::file_label(&g.path),
+                    g.graph.nodes.len(),
+                    g.graph.links.len()
+                )
+            })
+            .unwrap_or_default(),
     };
     let text = if app.note.is_empty() {
         text

@@ -155,9 +155,18 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             tab_chip(
                 pal,
                 "Font".into(),
-                !editing,
+                matches!(app.mode, Mode::Overview),
                 false,
                 |app: &mut Workspace| app.back_to_overview(),
+            ),
+            // Nodes sits beside Font: the workflow over the font, as
+            // boxes and wires.
+            tab_chip(
+                pal,
+                "Nodes".into(),
+                matches!(app.mode, Mode::Nodes),
+                false,
+                |app: &mut Workspace| app.enter_nodes_mode(),
             ),
             xrow(Region::Inline, tabs),
             tab_chip(pal, "+".into(), false, true, |app: &mut Workspace| {

@@ -107,6 +107,8 @@ pub(crate) struct Workspace {
     /// Masters drawn as ghost outlines under the active one. The Layers
     /// section toggles these, one per thumbnail click (gpui's eye).
     pub(crate) reference_layers: std::collections::HashSet<usize>,
+    /// The nodes file, the files beside the font, and a run.
+    pub(crate) nodes: nodes::NodesState,
 }
 
 /// Which surface is showing.
@@ -115,6 +117,8 @@ pub(crate) enum Mode {
     Overview,
     /// The editor, on the glyph at this index.
     Editor(usize),
+    /// The nodes canvas: the open `.nodes.json` as boxes and wires.
+    Nodes,
 }
 
 /// One editing tab: a parked session and the tool it was left on.

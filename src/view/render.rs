@@ -24,7 +24,7 @@ pub(crate) fn px32(value: f64) -> f32 {
 }
 
 pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use<> {
-    use xilem::core::one_of::Either;
+    use xilem::core::one_of::{Either, OneOf3};
     let pal = &app.palette;
 
     // Left column: category sidebar in overview only. In the editor the
@@ -37,8 +37,9 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     // that runs under the sidebar and the middle but not under the
     // inspector, which is full height.
     let body = match app.mode {
-        Mode::Overview => Either::A(overview(app)),
-        Mode::Editor(_) => Either::B(editor_pane(app)),
+        Mode::Overview => OneOf3::A(overview(app)),
+        Mode::Editor(_) => OneOf3::B(editor_pane(app)),
+        Mode::Nodes => OneOf3::C(nodes_pane(app)),
     };
     let preview = matches!(app.mode, Mode::Editor(_)).then(|| {
         sized_box(preview_strip(app))
@@ -51,7 +52,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         .background_color(pal.app);
 
     let left = match app.mode {
-        Mode::Overview => Either::A(sidebar(app)),
+        Mode::Overview | Mode::Nodes => Either::A(sidebar(app)),
         Mode::Editor(_) => Either::B(editor_nav(app)),
     };
     let left_width = if app.left_collapsed { 0.0 } else { 220.0 };
@@ -107,8 +108,52 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     )
     .boxed();
     watch::with_watch(
-        actions::with_menu_events(root),
+        nodes_pump(actions::with_menu_events(root), app.nodes.job.clone()),
         app.font.master_paths.clone(),
+    )
+}
+
+/// Runs `view`, and while a nodes run is going, a task that polls what
+/// the run thread has said and posts it back into the application.
+/// The same pump shape as the watcher and the menu, for the same
+/// reason: Xilem has no hook to drain a channel from a thread.
+fn nodes_pump<V: WidgetView<Workspace>>(
+    view: V,
+    job: Option<nodes::NodeJob>,
+) -> impl WidgetView<Workspace> + use<V> {
+    use xilem::core::{MessageProxy, fork};
+    use xilem::view::task_raw;
+    fork(
+        view,
+        job.map(|job| {
+            task_raw(
+                move |proxy: MessageProxy<nodes::NodesProgress>, _: &mut Workspace| {
+                    let job = job.clone();
+                    async move {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                            let pending = !job
+                                .events
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .is_empty();
+                            let done = job
+                                .finished
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .is_some();
+                            if (pending || done) && proxy.message(nodes::NodesProgress).is_err() {
+                                return;
+                            }
+                            if done {
+                                return;
+                            }
+                        }
+                    }
+                },
+                |app: &mut Workspace, _: nodes::NodesProgress| app.nodes_pump(),
+            )
+        }),
     )
 }
 

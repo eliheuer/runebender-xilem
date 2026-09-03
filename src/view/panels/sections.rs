@@ -18,7 +18,7 @@ pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspac
     let pal = &app.palette;
     let glyph_name = match app.mode {
         Mode::Editor(_) => Some(app.session.glyph_name.clone()),
-        Mode::Overview => app
+        Mode::Overview | Mode::Nodes => app
             .selected
             .and_then(|i| app.font.glyphs.get(i))
             .map(|g| g.name.clone()),
