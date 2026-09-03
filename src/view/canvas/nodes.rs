@@ -168,7 +168,9 @@ impl Widget for NodesWidget {
                 .stroke(
                     &(tf * rings),
                     &Stroke::new(1.0),
-                    pal.text_muted.with_alpha(0.35),
+                    // Mixed most of the way into the ground, as the
+                    // GPUI build draws it, so the grid stays behind.
+                    mix(pal.app, pal.outline, 0.4),
                 )
                 .draw();
         }
@@ -622,4 +624,15 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
             None => MessageResult::Stale,
         }
     }
+}
+
+/// `a` moved `t` of the way toward `b`, opaque.
+fn mix(a: Color, b: Color, t: f32) -> Color {
+    let (a, b) = (a.components, b.components);
+    Color::new([
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+        1.0,
+    ])
 }

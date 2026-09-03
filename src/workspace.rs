@@ -109,6 +109,8 @@ pub(crate) struct Workspace {
     pub(crate) reference_layers: std::collections::HashSet<usize>,
     /// The nodes file, the files beside the font, and a run.
     pub(crate) nodes: nodes::NodesState,
+    /// The Local AI panel: models, tasks, a run, proposals.
+    pub(crate) ai: local_ai::LocalAiState,
 }
 
 /// Which surface is showing.

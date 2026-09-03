@@ -33,10 +33,7 @@ pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspac
             let active = i == app.font.active;
             let shown = app.reference_layers.contains(&i);
             let (bg, fg) = if active {
-                (
-                    pal.role("gridSelected").with_alpha(0.22),
-                    pal.role("accent"),
-                )
+                (pal.selected_bg(), pal.selected_ink())
             } else {
                 (pal.panel, pal.text)
             };
@@ -191,8 +188,8 @@ pub(crate) fn path_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
     use icon_button::icon_button;
     let pal = &app.palette;
     let fg = pal.text_muted;
-    let fga = pal.role("accent");
-    let abg = pal.role("gridSelected").with_alpha(0.25);
+    let fga = pal.selected_ink();
+    let abg = pal.selected_bg();
     let hbg = pal.control;
     let op = move |icon: &'static str, f: fn(&mut Session) -> bool| {
         icon_button(
@@ -306,9 +303,9 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
     let dot = |q: Quadrant| {
         let active = app.coord_quadrant == q;
         let (bg, border) = if active {
-            (pal.role("accent"), pal.role("accent"))
+            (pal.text, pal.text)
         } else {
-            (pal.panel, pal.role("gridBorder").with_alpha(0.7))
+            (pal.panel, pal.outline)
         };
         sized_box(
             button(label(""), move |app: &mut Workspace| {

@@ -26,9 +26,17 @@ pub(crate) struct Palette {
     pub field: Color,
     pub text: Color,
     pub text_muted: Color,
+    /// The rule around a panel and a grid cell: the keyline.
+    pub outline: Color,
+    /// The rule around a text field, quieter than a panel's.
+    pub field_outline: Color,
     roles: HashMap<String, Color>,
     marks: HashMap<String, Color>,
     mark_order: Vec<String>,
+    /// The keyline a filled mark cell carries, when the theme names one.
+    pub mark_outline: Option<Color>,
+    /// The ink on a filled mark cell, when the theme names one.
+    pub mark_ink: Option<Color>,
 }
 
 impl Palette {
@@ -47,6 +55,8 @@ impl Palette {
             field: color(t.surface("field")),
             text: color(t.text("primary")),
             text_muted: color(t.text("muted")),
+            outline: color(t.surface("outline")),
+            field_outline: color(t.surface("fieldOutline")),
             roles: t
                 .roles
                 .iter()
@@ -58,11 +68,34 @@ impl Palette {
                 .map(|(k, v)| (k.clone(), color(*v)))
                 .collect(),
             mark_order: t.marks.iter().map(|(k, _)| k.clone()).collect(),
+            mark_outline: t.mark_outline.map(color),
+            mark_ink: t.mark_ink.map(color),
         }
     }
 
     pub(crate) fn field(&self) -> Color {
         self.field
+    }
+
+    /// Selection is inversion, never a hue: the fill of anything
+    /// selected or active is the ink.
+    pub(crate) fn selected_bg(&self) -> Color {
+        self.text
+    }
+
+    /// The ink on a selected fill: the panel colour.
+    pub(crate) fn selected_ink(&self) -> Color {
+        self.panel
+    }
+
+    /// Whatever a tool draws while the pointer is down: the ink.
+    pub(crate) fn tool_feedback(&self) -> Color {
+        self.text
+    }
+
+    /// The metrics lines: their own token, never the accent.
+    pub(crate) fn metrics_line(&self) -> Color {
+        self.role("metricsLine")
     }
 
     pub(crate) fn role(&self, name: &str) -> Color {

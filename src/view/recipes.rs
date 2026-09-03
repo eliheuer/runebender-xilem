@@ -96,6 +96,8 @@ where
             sized_box(
                 text_input(value, move |app: &mut Workspace, v| on_change(app, v))
                     .background_color(pal.field())
+                    .border_color(pal.field_outline)
+                    .border_width(Stroke::Hairline.length())
                     .corner_radius(Radius::Sm.length()),
             )
             .dims(Dimensions::new(
@@ -134,6 +136,8 @@ where
                 text_input(value, move |app: &mut Workspace, v| on_change(app, v))
                     .on_enter(move |app: &mut Workspace, v| on_enter(app, v))
                     .background_color(pal.field())
+                    .border_color(pal.field_outline)
+                    .border_width(Stroke::Hairline.length())
                     .corner_radius(Radius::Sm.length()),
             )
             .dims(Dimensions::new(
@@ -153,13 +157,13 @@ pub(crate) fn list_row<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    let (fg, border) = if active {
-        (pal.role("accent"), pal.role("accent"))
+    let (fg, border, bg) = if active {
+        (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
     } else {
-        (pal.text, xilem::Color::TRANSPARENT)
+        (pal.text, xilem::Color::TRANSPARENT, pal.panel)
     };
     let trailing_color = if active {
-        pal.role("accent")
+        pal.selected_ink()
     } else {
         pal.text_muted
     };
@@ -182,7 +186,7 @@ pub(crate) fn list_row<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             move |app: &mut Workspace| on_click(app),
         )
         .padding(Space::Sm)
-        .background_color(pal.panel)
+        .background_color(bg)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
         .corner_radius(Radius::Sm.length()),
@@ -205,18 +209,18 @@ pub(crate) fn list_row_with_icon<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    let (fg, border) = if active {
-        (pal.role("accent"), pal.role("accent"))
+    let (fg, border, bg) = if active {
+        (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
     } else {
-        (pal.text, xilem::Color::TRANSPARENT)
+        (pal.text, xilem::Color::TRANSPARENT, pal.panel)
     };
     let trailing_color = if active {
-        pal.role("accent")
+        pal.selected_ink()
     } else {
         pal.text_muted
     };
     let icon_color = if active {
-        pal.role("accent")
+        pal.selected_ink()
     } else {
         pal.text_muted
     };
@@ -239,7 +243,7 @@ pub(crate) fn list_row_with_icon<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             move |app: &mut Workspace| on_click(app),
         )
         .padding(Space::Sm)
-        .background_color(pal.panel)
+        .background_color(bg)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
         .corner_radius(Radius::Sm.length()),
@@ -266,13 +270,13 @@ where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
     G: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    let (fg, border) = if active {
-        (pal.role("accent"), pal.role("accent"))
+    let (fg, border, bg) = if active {
+        (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
     } else {
-        (pal.text, xilem::Color::TRANSPARENT)
+        (pal.text, xilem::Color::TRANSPARENT, pal.panel)
     };
     let trailing_color = if active {
-        pal.role("accent")
+        pal.selected_ink()
     } else {
         pal.text_muted
     };
@@ -292,7 +296,7 @@ where
                 ),
                 move |app: &mut Workspace| on_click(app),
             )
-            .background_color(pal.panel)
+            .background_color(bg)
             .border_color(border)
             .border_width(Stroke::Hairline.length())
             .corner_radius(Radius::Sm.length())
@@ -307,14 +311,31 @@ where
     )
 }
 
-/// A square toggle: the small A / Aa / eye controls beside a field.
+/// A toggle at control height that takes the width of its label: the
+/// GPUI build's `toggle`, inverted when active.
 pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
     text: String,
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    toggle_sized(pal, text, active, ControlSize::Control, on_click)
+    let (fg, border, bg) = if active {
+        (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
+    } else {
+        (pal.text, pal.outline, pal.panel)
+    };
+    sized_box(
+        button(
+            label(text).text_size(TextSize::Body.px()).color(fg),
+            move |app: &mut Workspace| on_click(app),
+        )
+        .padding(Space::Md)
+        .background_color(bg)
+        .border_color(border)
+        .border_width(Stroke::Hairline.length())
+        .corner_radius(Radius::Sm.length()),
+    )
+    .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
 }
 
 /// A square toggle at a chosen size.
@@ -325,10 +346,10 @@ pub(crate) fn toggle_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     size: ControlSize,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    let (fg, border) = if active {
-        (pal.role("accent"), pal.role("accent"))
+    let (fg, border, bg) = if active {
+        (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
     } else {
-        (pal.text_muted, pal.role("gridBorder").with_alpha(0.6))
+        (pal.text_muted, pal.outline, pal.panel)
     };
     sized_box(
         button(
@@ -337,7 +358,7 @@ pub(crate) fn toggle_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         )
         .padding(Space::None)
         .padding(Space::Sm)
-        .background_color(pal.panel)
+        .background_color(bg)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
         .corner_radius(Radius::Sm.length()),

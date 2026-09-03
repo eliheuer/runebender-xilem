@@ -154,8 +154,19 @@ impl Workspace {
             search_case: false,
             reference_layers: std::collections::HashSet::new(),
             nodes: nodes::NodesState::default(),
+            ai: local_ai::LocalAiState::default(),
         };
         app.init_nodes();
+        app.rescan_models();
+        app.refresh_proposals();
+        // Headless: RUNEBENDER_RAIL=ai starts the editor's rail on the
+        // Local AI panel, and RUNEBENDER_MODEL=<dir> chooses a model.
+        if std::env::var("RUNEBENDER_RAIL").as_deref() == Ok("ai") {
+            app.rail = Rail::LocalAi;
+        }
+        if let Some(dir) = std::env::var_os("RUNEBENDER_MODEL").filter(|d| !d.is_empty()) {
+            app.load_model(FsPath::new(&dir));
+        }
         // Headless overrides: RUNEBENDER_NODES=<file> opens a nodes
         // file, and RUNEBENDER_MODE=nodes starts on the canvas.
         if let Some(file) = std::env::var_os("RUNEBENDER_NODES").filter(|f| !f.is_empty()) {

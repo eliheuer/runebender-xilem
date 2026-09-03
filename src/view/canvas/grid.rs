@@ -261,8 +261,13 @@ impl Widget for GridWidget {
         let total = rows.len();
         self.scroll = self.scroll.clamp(0.0, self.max_scroll(total));
         let pitch = self.row_pitch();
-        let cell_border = pal.role("readonlyPoint");
+        // The GPUI build's cell rule: a marked cell is filled with its
+        // mark and keylined; its glyph and labels are drawn in the
+        // theme's mark ink. A selected cell inverts.
+        let cell_border = pal.outline;
         let glyph_fill = pal.text;
+        let mark_outline = pal.mark_outline.unwrap_or(cell_border);
+        let mark_ink = pal.mark_ink.unwrap_or(glyph_fill);
 
         for (r, row) in rows.iter().enumerate() {
             let y = PAD + r as f64 * pitch - self.scroll;
@@ -285,16 +290,25 @@ impl Widget for GridWidget {
                 // on every cell and changes only the colour.
                 let picked = selected || multi;
                 let bg = if picked {
-                    pal.role("gridSelected").with_alpha(0.18)
+                    pal.role("cellSelectedFill")
                 } else {
-                    pal.panel
+                    cell.mark.unwrap_or(pal.panel)
                 };
-                let radius = Radius::Md.px();
+                let ink = if picked {
+                    pal.role("cellSelectedInk")
+                } else if cell.mark.is_some() {
+                    mark_ink
+                } else {
+                    glyph_fill
+                };
+                let radius = Radius::Sm.px();
                 painter.fill(rect.to_rounded_rect(radius), bg).draw();
                 let border = if picked {
-                    pal.role("gridSelected")
+                    pal.role("cellSelectedFill")
+                } else if cell.mark.is_some() {
+                    mark_outline
                 } else {
-                    cell.mark.unwrap_or(cell_border)
+                    cell_border
                 };
                 painter
                     .stroke(rect.to_rounded_rect(radius), &Stroke::new(1.0), border)
@@ -332,22 +346,17 @@ impl Widget for GridWidget {
                     // Fill the glyph with its mark colour (gpui), so the grid
                     // reads by category; selected cells use the ring colour,
                     // unmarked glyphs the default glyph fill.
-                    let glyph_color = if picked {
-                        pal.role("gridSelected")
-                    } else {
-                        cell.mark.unwrap_or(glyph_fill)
-                    };
-                    painter.fill(&outline, glyph_color).draw();
+                    painter.fill(&outline, ink).draw();
                 }
                 if label_lines == 0 {
                     continue;
                 }
-                let muted = self.palette.text_muted;
-                let name_color = if picked {
-                    pal.role("gridSelected")
+                let muted = if picked || cell.mark.is_some() {
+                    ink
                 } else {
-                    cell.mark.unwrap_or(self.palette.text)
+                    self.palette.text_muted
                 };
+                let name_color = ink;
                 let top = rect.y1 - block + LABEL_TOP;
                 // Baseline inside its own line box, not the box edge.
                 let baseline = |n: f64| top + (line + LABEL_GAP) * n + line * 0.8;

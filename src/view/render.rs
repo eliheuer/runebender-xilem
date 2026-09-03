@@ -108,8 +108,45 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     )
     .boxed();
     watch::with_watch(
-        nodes_pump(actions::with_menu_events(root), app.nodes.job.clone()),
+        ai_pump(
+            nodes_pump(actions::with_menu_events(root), app.nodes.job.clone()),
+            app.ai.job.clone(),
+        ),
         app.font.master_paths.clone(),
+    )
+}
+
+/// The same pump for a font-ml run from the Local AI panel: while one
+/// is going, poll its progress and its result and post them back.
+fn ai_pump<V: WidgetView<Workspace>>(
+    view: V,
+    job: Option<local_ai::AiJob>,
+) -> impl WidgetView<Workspace> + use<V> {
+    use xilem::core::{MessageProxy, fork};
+    use xilem::view::task_raw;
+    fork(
+        view,
+        job.map(|job| {
+            task_raw(
+                move |proxy: MessageProxy<local_ai::AiProgress>, _: &mut Workspace| {
+                    let job = job.clone();
+                    async move {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                            let done = job
+                                .finished
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .is_some();
+                            if proxy.message(local_ai::AiProgress).is_err() || done {
+                                return;
+                            }
+                        }
+                    }
+                },
+                |app: &mut Workspace, _: local_ai::AiProgress| app.ai_pump(),
+            )
+        }),
     )
 }
 
