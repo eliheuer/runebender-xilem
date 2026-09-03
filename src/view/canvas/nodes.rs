@@ -18,9 +18,9 @@ use std::sync::Arc;
 use masonry::accesskit::{Node, Role};
 use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
-    AccessCtx, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx, PointerButton,
-    PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate, PropertiesMut,
-    PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Widget,
+    AccessCtx, ChildrenIds, EventCtx, LayerType, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
+    PointerButton, PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate,
+    PropertiesMut, PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Widget, WidgetId,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, BezPath, Line, Point, Rect, Shape as _, Size, Stroke};
@@ -36,6 +36,7 @@ use xilem::{Pod, ViewCtx};
 use crate::Workspace;
 use crate::edit::nodes::RowState;
 use crate::view::theme::Palette;
+use crate::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
 use crate::widgets::text_label::{self, Anchor};
 
 /// What the canvas tells the app.
@@ -89,9 +90,40 @@ pub(crate) struct NodesWidget {
     size: Size,
     selected: Option<u32>,
     drag: Option<Drag>,
+    /// The right-click menu's layer, while it is up.
+    menu: Option<WidgetId>,
 }
 
 impl NodesWidget {
+    /// A choice from the right-click menu: a node of that type lands
+    /// where the menu was opened, snapped to the grid.
+    pub(crate) fn apply_menu_choice(
+        this: &mut masonry::core::WidgetMut<'_, Self>,
+        action: MenuAction,
+        at: Point,
+    ) {
+        this.widget.menu = None;
+        if let MenuAction::AddNode(type_name) = action {
+            let id = this.widget.graph.add(
+                &type_name,
+                [crate::px32(nl::snap(at.x)), crate::px32(nl::snap(at.y))],
+            );
+            this.widget.selected = Some(id);
+            this.widget.relayout();
+            let graph = this.widget.graph.clone();
+            this.ctx
+                .submit_action::<NodesEvent>(NodesEvent::Changed(graph));
+            this.ctx
+                .submit_action::<NodesEvent>(NodesEvent::Selected(Some(id)));
+        }
+        this.ctx.request_render();
+    }
+
+    /// The menu closed without a choice.
+    pub(crate) fn forget_menu(this: &mut masonry::core::WidgetMut<'_, Self>) {
+        this.widget.menu = None;
+    }
+
     fn relayout(&mut self) {
         self.boxes = nl::layout(&self.graph, &self.registry);
     }
@@ -349,6 +381,39 @@ impl Widget for NodesWidget {
     ) {
         match event {
             PointerEvent::Down(PointerButtonEvent {
+                button: Some(PointerButton::Secondary),
+                state,
+                ..
+            }) => {
+                // The node types to add, as a layer rooted in window
+                // space, the way the editor's menu is.
+                if self.menu.is_none() {
+                    let local = ctx.local_position(state.position);
+                    let at = self.to_canvas(local);
+                    let rows: Vec<MenuRow> = self
+                        .registry
+                        .types
+                        .iter()
+                        .filter(|t| t.implemented)
+                        .map(|t| MenuRow {
+                            label: std::borrow::Cow::Owned(t.title.clone()),
+                            action: MenuAction::AddNode(t.name.clone()),
+                        })
+                        .collect();
+                    let menu = ContextMenu::new(
+                        ctx.widget_id(),
+                        MenuTarget::Nodes,
+                        rows,
+                        self.palette.clone(),
+                        at,
+                    );
+                    let menu = NewWidget::new(menu);
+                    self.menu = Some(menu.id());
+                    ctx.create_layer(LayerType::Other, menu, ctx.to_window(local));
+                }
+                ctx.set_handled();
+            }
+            PointerEvent::Down(PointerButtonEvent {
                 button: Some(PointerButton::Primary),
                 state,
                 ..
@@ -566,6 +631,7 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
             size: Size::ZERO,
             selected: self.selected,
             drag: None,
+            menu: None,
         };
         widget.relayout();
         (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())

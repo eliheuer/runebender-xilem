@@ -3,11 +3,11 @@
 
 //! The nodes pane: one row of buttons over the canvas.
 //!
-//! The files beside the font as chips, then New, Save and Run. Node
-//! types to add come as a second row, since this build has no layer
-//! view for a right-click menu in view-land (docs/XILEM-GAPS.md), and
-//! a selected Master, Model or Adapter node offers its choices in a
-//! third.
+//! The files beside the font as chips, then New, Open…, Save and Run,
+//! the GPUI build's row. Node types to add are on the canvas's
+//! right-click menu, a layer the canvas widget opens itself. A
+//! selected Master, Model or Adapter node offers its choices in a
+//! second row.
 
 use crate::edit::nodes::file_label;
 use crate::view::canvas::nodes::{NodesEvent, nodes_canvas};
@@ -63,6 +63,11 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             recipes::toggle(pal, "New".into(), false, |app: &mut Workspace| {
                 app.new_nodes_file();
             }),
+            recipes::toggle(pal, "Open\u{2026}".into(), false, |app: &mut Workspace| {
+                app.note = "Open\u{2026}: this shell has no file dialog yet; nodes files beside \
+                            the font are the tabs at the left"
+                    .into();
+            }),
             recipes::toggle(pal, "Save".into(), false, |app: &mut Workspace| {
                 app.save_nodes_file();
             }),
@@ -75,26 +80,6 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         ),
     )
     .background_color(pal.panel);
-    // One button per node type that runs.
-    let adds: Vec<_> = state
-        .registry
-        .types
-        .iter()
-        .filter(|t| t.implemented)
-        .map(|t| {
-            let name = t.name.clone();
-            tab_chip(
-                pal,
-                t.title.clone(),
-                false,
-                false,
-                move |app: &mut Workspace| {
-                    app.nodes_add(&name);
-                },
-            )
-        })
-        .collect();
-    let adds = xrow(Region::List, adds).background_color(pal.panel);
     let choices = nodes_choices(app);
     let problems: Vec<_> = state
         .problems
@@ -120,7 +105,6 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     Either::B(
         flex_col((
             strip,
-            adds,
             choices,
             xcolumn(Region::List, problems),
             sized_box(canvas)
