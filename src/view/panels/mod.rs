@@ -5,6 +5,7 @@
 
 pub(crate) mod editor;
 pub(crate) mod info;
+pub(crate) mod nodes;
 pub(crate) mod preview;
 pub(crate) mod sections;
 pub(crate) mod tabs;

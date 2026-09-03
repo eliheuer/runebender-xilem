@@ -98,7 +98,7 @@ impl Workspace {
             .codepoint
             .map(|c| format!("{:04X}", c as u32))
             .unwrap_or_default();
-        Ok(Self {
+        let mut app = Self {
             font,
             palette,
             cells,
@@ -153,7 +153,18 @@ impl Workspace {
             search_mode: 0,
             search_case: false,
             reference_layers: std::collections::HashSet::new(),
-        })
+            nodes: nodes::NodesState::default(),
+        };
+        app.init_nodes();
+        // Headless overrides: RUNEBENDER_NODES=<file> opens a nodes
+        // file, and RUNEBENDER_MODE=nodes starts on the canvas.
+        if let Some(file) = std::env::var_os("RUNEBENDER_NODES").filter(|f| !f.is_empty()) {
+            app.open_nodes_file(FsPath::new(&file));
+        }
+        if std::env::var("RUNEBENDER_MODE").as_deref() == Ok("nodes") {
+            app.enter_nodes_mode();
+        }
+        Ok(app)
     }
 
     pub(crate) fn save(&mut self) {

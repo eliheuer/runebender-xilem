@@ -65,9 +65,15 @@ impl Workspace {
     pub(crate) fn dispatch(&mut self, action: shortcuts::AppAction) {
         use shortcuts::AppAction as A;
         match action {
-            A::Save => self.save(),
+            A::Save => {
+                // On the nodes canvas, Save writes the graph file too.
+                if matches!(self.mode, Mode::Nodes) {
+                    self.save_nodes_file();
+                }
+                self.save();
+            }
             A::Overview => {
-                if matches!(self.mode, Mode::Editor(_)) {
+                if matches!(self.mode, Mode::Editor(_) | Mode::Nodes) {
                     self.back_to_overview();
                 }
             }

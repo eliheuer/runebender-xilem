@@ -5,3 +5,4 @@
 
 pub(crate) mod editor;
 pub(crate) mod grid;
+pub(crate) mod nodes;

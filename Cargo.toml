@@ -74,6 +74,8 @@ masonry = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a
 # source possible if anything else names it by bare URL.
 runebender-core = { git = "https://github.com/eliheuer/runebender-core", rev = "5f539698feea6e4100661c4f000fe6e22fce95cf", default-features = false }
 norad = "0.18"
+# Typed values in a nodes file, which core keeps as JSON.
+serde_json = "1"
 kurbo = "0.13"
 linesweeper = "0.4"
 winit = "0.30"
