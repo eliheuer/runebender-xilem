@@ -39,8 +39,17 @@ pub enum RunValue {
         /// Its path.
         path: PathBuf,
     },
-    /// A model directory.
+    /// A model directory, with any adapters applied over it, each at
+    /// a strength, in order.
     Model {
+        /// Its path.
+        path: PathBuf,
+        /// Adapters over it.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        adapters: Vec<(PathBuf, f64)>,
+    },
+    /// An adapter directory.
+    Adapter {
         /// Its path.
         path: PathBuf,
     },
@@ -89,6 +98,7 @@ impl RunValue {
         match self {
             Self::Source { .. } => Kind::Source,
             Self::Model { .. } => Kind::Model,
+            Self::Adapter { .. } => Kind::Adapter,
             Self::Glyphs { .. } => Kind::Glyphs,
             Self::Number { .. } => Kind::Number,
             Self::Flag { .. } => Kind::Flag,
@@ -124,7 +134,7 @@ impl RunValue {
                     hash_layer_files(&dir, glyphs, hasher);
                 }
             }
-            Self::Model { path } => {
+            Self::Model { path, adapters } => {
                 path.hash(hasher);
                 let manifest = std::fs::read_to_string(path.join("manifest.json"))
                     .ok()
@@ -133,6 +143,15 @@ impl RunValue {
                     Some(digest) => digest.hash(hasher),
                     None => hash_file(&path.join("weights.safetensors"), hasher),
                 }
+                for (dir, strength) in adapters {
+                    dir.hash(hasher);
+                    strength.to_bits().hash(hasher);
+                    hash_file(&dir.join("adapter.safetensors"), hasher);
+                }
+            }
+            Self::Adapter { path } => {
+                path.hash(hasher);
+                hash_file(&path.join("adapter.safetensors"), hasher);
             }
             Self::Glyphs { names } => names.hash(hasher),
             Self::Number { value } => value.to_bits().hash(hasher),
@@ -419,7 +438,11 @@ fn value_of(kind: Kind, value: &Value, models_dir: Option<&Path>) -> Option<RunV
         Kind::Source => RunValue::Source {
             path: PathBuf::from(value.as_str()?),
         },
-        Kind::Model | Kind::Adapter => RunValue::Model {
+        Kind::Model => RunValue::Model {
+            path: resolve_model(value.as_str()?, models_dir),
+            adapters: Vec::new(),
+        },
+        Kind::Adapter => RunValue::Adapter {
             path: resolve_model(value.as_str()?, models_dir),
         },
         Kind::Layer => return None,
@@ -636,9 +659,10 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
 fn outputs_still_there(outputs: &BTreeMap<String, RunValue>) -> bool {
     outputs.values().all(|v| match v {
         RunValue::Layer { source, name } => layer_dir(source, name).is_some_and(|d| d.is_dir()),
-        RunValue::Source { path } | RunValue::Model { path } | RunValue::Path { path } => {
-            path.exists()
-        }
+        RunValue::Source { path }
+        | RunValue::Model { path, .. }
+        | RunValue::Adapter { path }
+        | RunValue::Path { path } => path.exists(),
         _ => true,
     })
 }
@@ -715,17 +739,49 @@ fn run_node(
         }
         "core.model" => {
             let path = match inputs.get("name") {
-                Some(RunValue::Model { path }) => path.clone(),
+                Some(RunValue::Model { path, .. }) => path.clone(),
                 Some(RunValue::Text { value }) => resolve_model(value, ctx.models_dir.as_deref()),
                 _ => return Err("name is required".into()),
             };
             if !path.join("config.json").is_file() {
                 return Err(format!("{}: not a model directory", path.display()));
             }
-            out.insert("model".into(), RunValue::Model { path: path.clone() });
+            out.insert(
+                "model".into(),
+                RunValue::Model {
+                    path: path.clone(),
+                    adapters: Vec::new(),
+                },
+            );
             Ok((out, json!({ "model": path })))
         }
-        "core.adapter" => Err("adapters are not built yet".into()),
+        "core.adapter" => {
+            let (path, mut adapters) = match inputs.get("model") {
+                Some(RunValue::Model { path, adapters }) => (path.clone(), adapters.clone()),
+                _ => return Err("model is required".into()),
+            };
+            let dir = match inputs.get("name") {
+                Some(RunValue::Adapter { path }) => path.clone(),
+                Some(RunValue::Text { value }) => resolve_model(value, ctx.models_dir.as_deref()),
+                _ => return Err("name is required".into()),
+            };
+            if !dir.join("adapter.json").is_file() {
+                return Err(format!("{}: not an adapter directory", dir.display()));
+            }
+            let strength = match inputs.get("strength") {
+                Some(RunValue::Number { value }) => *value,
+                _ => 1.0,
+            };
+            adapters.push((dir.clone(), strength));
+            out.insert(
+                "model".into(),
+                RunValue::Model {
+                    path: path.clone(),
+                    adapters: adapters.clone(),
+                },
+            );
+            Ok((out, json!({ "model": path, "adapters": adapters })))
+        }
         "core.layer" => {
             let source = inputs.source("source").ok_or("source is required")?;
             let name = inputs.text("name").ok_or("name is required")?;
@@ -866,7 +922,14 @@ fn run_tool_node(
                 }
                 cmd.arg(format!("--{}", port.name)).arg(path);
             }
-            RunValue::Model { path } | RunValue::Path { path } => {
+            RunValue::Model { path, adapters } => {
+                cmd.arg(format!("--{}", port.name)).arg(path);
+                for (dir, strength) in adapters {
+                    cmd.arg("--adapter")
+                        .arg(format!("{}:{strength}", dir.display()));
+                }
+            }
+            RunValue::Adapter { path } | RunValue::Path { path } => {
                 cmd.arg(format!("--{}", port.name)).arg(path);
             }
             RunValue::Glyphs { names } => {
@@ -981,13 +1044,24 @@ fn run_tool_node(
                     );
                 }
             }
-            // A tool that writes a model (train) names the directory
-            // in its report under the port's name.
-            Kind::Model | Kind::Adapter => {
+            // A tool that writes a model or an adapter (train) names
+            // the directory in its report under the port's name.
+            Kind::Model => {
                 if let Some(p) = report.get(&port.name).and_then(Value::as_str) {
                     out.insert(
                         port.name.clone(),
                         RunValue::Model {
+                            path: PathBuf::from(p),
+                            adapters: Vec::new(),
+                        },
+                    );
+                }
+            }
+            Kind::Adapter => {
+                if let Some(p) = report.get(&port.name).and_then(Value::as_str) {
+                    out.insert(
+                        port.name.clone(),
+                        RunValue::Adapter {
                             path: PathBuf::from(p),
                         },
                     );
@@ -1099,7 +1173,7 @@ mod tests {
         assert!(value_of(Kind::Number, &json!("loud"), None).is_none());
         assert!(matches!(
             value_of(Kind::Model, &json!("m"), Some(Path::new("/models"))),
-            Some(RunValue::Model { path }) if path == Path::new("/models/m")
+            Some(RunValue::Model { path, .. }) if path == Path::new("/models/m")
         ));
     }
 

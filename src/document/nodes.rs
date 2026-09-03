@@ -237,10 +237,15 @@ pub fn core_types() -> Vec<NodeType> {
             help: "An adapter applied over a model, at a strength. Two in \
                    a row apply two."
                 .into(),
-            implemented: false,
+            implemented: true,
             inputs: vec![
                 Port::input("model", Kind::Model, true, "The model to patch."),
-                Port::input("name", Kind::Text, true, "The adapter directory."),
+                Port::input(
+                    "name",
+                    Kind::Adapter,
+                    true,
+                    "The adapter directory, or a wire from one.",
+                ),
                 Port::input("strength", Kind::Number, false, "How much of it.")
                     .with_default(Value::from(1.0)),
             ],
