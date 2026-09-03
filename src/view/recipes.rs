@@ -95,6 +95,8 @@ where
                 .color(pal.text_muted),
             sized_box(
                 text_input(value, move |app: &mut Workspace, v| on_change(app, v))
+                    .text_color(pal.text)
+                    .placeholder_color(pal.text_muted)
                     .background_color(pal.field())
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())
@@ -135,6 +137,8 @@ where
             sized_box(
                 text_input(value, move |app: &mut Workspace, v| on_change(app, v))
                     .on_enter(move |app: &mut Workspace, v| on_enter(app, v))
+                    .text_color(pal.text)
+                    .placeholder_color(pal.text_muted)
                     .background_color(pal.field())
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())

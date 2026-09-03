@@ -51,6 +51,8 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             (app.rail == Rail::Glyphs).then(|| {
                 text_input(app.filter.clone(), |app: &mut Workspace, v| app.filter = v)
                     .placeholder("Search")
+                    .text_color(pal.text)
+                    .placeholder_color(pal.text_muted)
                     .background_color(pal.field())
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())
@@ -313,6 +315,8 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     // panel with a quiet outline, as every field is.
                     text_input(app.filter.clone(), |app: &mut Workspace, v| app.filter = v)
                         .placeholder("Search")
+                        .text_color(pal.text)
+                        .placeholder_color(pal.text_muted)
                         .background_color(pal.field())
                         .border_color(pal.field_outline)
                         .border_width(Stroke::Hairline.length())
@@ -333,28 +337,29 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     }),
                 ),
             ),
-            text_button(
+            recipes::action(
+                pal,
                 match app.sort {
                     Sort::Name => "Sort: name",
                     Sort::Unicode => "Sort: unicode",
-                },
+                }
+                .into(),
                 |app: &mut Workspace| {
                     app.sort = match app.sort {
                         Sort::Name => Sort::Unicode,
                         Sort::Unicode => Sort::Name,
                     };
                 },
-            )
-            .background_color(pal.button),
+            ),
             {
                 let fresh =
                     !app.filter.trim().is_empty() && app.font.index_of(app.filter.trim()).is_none();
                 fresh.then(|| {
-                    text_button(
+                    recipes::action(
+                        pal,
                         format!("+ New {}", app.filter.trim()),
                         |app: &mut Workspace| app.new_glyph(),
                     )
-                    .background_color(pal.button)
                 })
             },
             // Constrained horizontally, or the rows lay out at their
