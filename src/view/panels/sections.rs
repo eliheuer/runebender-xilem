@@ -278,7 +278,9 @@ pub(crate) fn tbtn(
     text: &'static str,
     f: fn(&mut Session) -> bool,
 ) -> impl WidgetView<Workspace> + use<> {
-    text_button(text, move |app: &mut Workspace| app.apply_op(f)).background_color(pal.button)
+    recipes::action(pal, text.into(), move |app: &mut Workspace| {
+        app.apply_op(f);
+    })
 }
 
 /// Coordinates: the 9-point reference picker beside the X/Y fields, with
