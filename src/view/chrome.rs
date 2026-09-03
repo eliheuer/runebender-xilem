@@ -235,32 +235,21 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 .text_size(TextSize::Caption.px())
                 .color(pal.text_muted),
             FlexSpacer::Flex(1.0),
-            // Grid or Detail, as the GPUI build has them. Its List and
-            // Forms views are not built here yet, and a control that
-            // does nothing is worse than one that is missing.
+            // Grid, as the GPUI build has it. Its List view is not
+            // built here yet, and its Detail view is gone, so one chip
+            // stands where two will.
             (!editing).then(|| {
                 xrow(
                     Region::Inline,
-                    (
-                        tab_chip(
-                            pal,
-                            "Grid".into(),
-                            !app.detail,
-                            false,
-                            |app: &mut Workspace| {
-                                app.detail = false;
-                            },
-                        ),
-                        tab_chip(
-                            pal,
-                            "Detail".into(),
-                            app.detail,
-                            false,
-                            |app: &mut Workspace| {
-                                app.detail = true;
-                            },
-                        ),
-                    ),
+                    (tab_chip(
+                        pal,
+                        "Grid".into(),
+                        !app.detail,
+                        false,
+                        |app: &mut Workspace| {
+                            app.detail = false;
+                        },
+                    ),),
                 )
             }),
             // Cell size in the grid, zoom in the editor: one control in

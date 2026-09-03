@@ -51,6 +51,11 @@ pub(crate) enum AppAction {
     Paste,
     NewFont,
     CycleTheme,
+    /// The Nodes menu: the canvas, a new file, save it, run it.
+    NodesTab,
+    NodesNew,
+    NodesSave,
+    NodesRun,
 }
 
 /// Resolve a key press the focused widget did not consume to an app action.
