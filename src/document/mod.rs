@@ -11,6 +11,7 @@
 //! edit the designer can install or discard. `nodes` is a workflow
 //! of those tools as boxes and wires.
 
+pub mod agent;
 pub mod composites;
 pub mod font_memory;
 pub mod font_ops;

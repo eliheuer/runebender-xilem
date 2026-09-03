@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use norad::Font;
+use runebender_core::document::agent;
 use runebender_core::document::font_ops;
 use runebender_core::document::nodes;
 use runebender_core::document::nodes_run;
@@ -96,6 +97,12 @@ enum Command {
         #[command(subcommand)]
         action: ProposalAction,
     },
+    /// The harness a language model works the font through: the
+    /// prompt, the tool list, and one call at a time.
+    Agent {
+        #[command(subcommand)]
+        action: AgentAction,
+    },
     /// Nodes: a workflow of tools as boxes and wires, in a
     /// `<name>.nodes.json` file.
     Nodes {
@@ -147,6 +154,26 @@ enum Command {
         /// masters instead of listing what is undrawn.
         #[arg(long)]
         check: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum AgentAction {
+    /// The system prompt and every tool, as JSON.
+    Tools,
+    /// Run one tool call and print its result as JSON.
+    Call {
+        /// The tool name.
+        name: String,
+        /// The designspace or UFO the model is working on.
+        #[arg(long)]
+        font: PathBuf,
+        /// The arguments, as a JSON object.
+        #[arg(long, default_value = "{}")]
+        args: String,
+        /// The font-ml binary, for propose.
+        #[arg(long)]
+        tool: Option<PathBuf>,
     },
 }
 
@@ -254,6 +281,22 @@ fn main() -> std::process::ExitCode {
                 any_structure,
             } => proposal_install(source, task, glyphs.as_deref(), !*any_structure, json),
             ProposalAction::Discard { source, task } => proposal_discard(source, task, json),
+        },
+        Command::Agent { action } => match action {
+            AgentAction::Tools => {
+                let tools = agent::tools();
+                println!(
+                    "{}",
+                    json!({ "ok": true, "prompt": agent::system_prompt(&tools), "tools": tools })
+                );
+                exit::OK
+            }
+            AgentAction::Call {
+                name,
+                font,
+                args,
+                tool,
+            } => agent_call(name, font, args, tool.as_deref()),
         },
         Command::Nodes { action } => match action {
             NodesAction::Check { file, tool } => nodes_check(file, tool.as_deref(), json),
@@ -789,6 +832,265 @@ fn nodes_run(
         }
     }
     if report.ok { exit::OK } else { exit::FAILED }
+}
+
+/// The UFO a font path stands for: the UFO itself, or the first
+/// master of a designspace.
+fn font_master(font: &Path) -> Result<PathBuf, String> {
+    if font.extension().is_some_and(|x| x == "ufo") {
+        return Ok(font.to_path_buf());
+    }
+    let project = runebender_core::document::project::Project::load(font)?;
+    project
+        .masters
+        .first()
+        .map(|m| m.source_path.clone())
+        .ok_or_else(|| "the family has no master".to_string())
+}
+
+/// Runs this same binary with `args` and returns the last JSON line
+/// it printed. Every tool is a command the binary already has, so the
+/// model's reach is exactly the command line's.
+fn self_json(args: &[String]) -> serde_json::Value {
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("runebender-core"));
+    let output = std::process::Command::new(exe).args(args).output();
+    match output {
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            stdout
+                .lines()
+                .rev()
+                .find_map(|l| serde_json::from_str(l).ok())
+                .unwrap_or_else(
+                    || json!({ "ok": false, "error": String::from_utf8_lossy(&o.stderr).trim() }),
+                )
+        }
+        Err(e) => json!({ "ok": false, "error": e.to_string() }),
+    }
+}
+
+/// One glyph as the model reads it.
+fn read_glyph(source: &Path, name: &str) -> serde_json::Value {
+    let font = match Font::load(source) {
+        Ok(f) => f,
+        Err(e) => return json!({ "ok": false, "error": e.to_string() }),
+    };
+    let Some(glyph) = font.get_glyph(name) else {
+        return json!({ "ok": false, "error": format!("no glyph named {name}") });
+    };
+    let contours: Vec<serde_json::Value> = glyph
+        .contours
+        .iter()
+        .map(|c| {
+            json!(
+                c.points
+                    .iter()
+                    .map(|p| json!({
+                        "x": p.x, "y": p.y,
+                        "type": format!("{:?}", p.typ).to_lowercase(),
+                        "smooth": p.smooth,
+                    }))
+                    .collect::<Vec<_>>()
+            )
+        })
+        .collect();
+    json!({
+        "ok": true,
+        "glyph": name,
+        "advance": glyph.width,
+        "unicodes": glyph.codepoints.iter().map(|c| format!("U+{:04X}", c as u32)).collect::<Vec<_>>(),
+        "contours": contours,
+        "components": glyph.components.iter().map(|c| c.base.to_string()).collect::<Vec<_>>(),
+        "anchors": glyph.anchors.iter().map(|a| json!({ "name": a.name.as_ref().map(|n| n.to_string()), "x": a.x, "y": a.y })).collect::<Vec<_>>(),
+    })
+}
+
+/// Searches the documentation folders for passages that match.
+///
+/// Roots: `$RUNEBENDER_DOCS` (colon-separated) and
+/// `~/.runebender/docs`. Every `.md`, `.txt` and `.html` file is split
+/// into paragraphs; a paragraph scores one per query word it holds,
+/// and the top five come back with their file. Plain and offline: a
+/// model that reads the spec beats one that remembers it.
+fn docs_search(query: &str) -> serde_json::Value {
+    let words: Vec<String> = query
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() > 2)
+        .map(str::to_lowercase)
+        .collect();
+    if words.is_empty() {
+        return json!({ "ok": false, "error": "give a few words to look for" });
+    }
+    let mut roots: Vec<PathBuf> = Vec::new();
+    if let Some(extra) = std::env::var_os("RUNEBENDER_DOCS") {
+        roots.extend(std::env::split_paths(&extra));
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        roots.push(PathBuf::from(home).join(".runebender").join("docs"));
+    }
+    let mut hits: Vec<(usize, String, String)> = Vec::new();
+    let mut stack: Vec<PathBuf> = roots.iter().filter(|r| r.is_dir()).cloned().collect();
+    let mut files = 0;
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if !matches!(ext, "md" | "txt" | "html" | "mdx") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            files += 1;
+            for para in text.split("\n\n") {
+                let lower = para.to_lowercase();
+                let score = words.iter().filter(|w| lower.contains(w.as_str())).count();
+                if score > 0 {
+                    let snippet: String = para.chars().take(600).collect();
+                    hits.push((
+                        score,
+                        path.display().to_string(),
+                        snippet.trim().to_string(),
+                    ));
+                }
+            }
+        }
+    }
+    hits.sort_by_key(|h| std::cmp::Reverse(h.0));
+    hits.truncate(5);
+    json!({
+        "ok": true,
+        "files_searched": files,
+        "roots": roots,
+        "passages": hits.iter().map(|(score, file, text)| json!({ "score": score, "file": file, "text": text })).collect::<Vec<_>>(),
+        "note": if files == 0 { "No documentation found. Put .md or .txt files under ~/.runebender/docs or set RUNEBENDER_DOCS." } else { "" },
+    })
+}
+
+/// `agent call`: one tool, mapped onto the command it already is.
+fn agent_call(name: &str, font: &Path, args: &str, tool: Option<&Path>) -> i32 {
+    let args: serde_json::Value = match serde_json::from_str(args) {
+        Ok(v) => v,
+        Err(e) => {
+            println!(
+                "{}",
+                json!({ "ok": false, "error": format!("arguments: {e}") })
+            );
+            return exit::USAGE;
+        }
+    };
+    let source = match font_master(font) {
+        Ok(s) => s,
+        Err(e) => {
+            println!("{}", json!({ "ok": false, "error": e }));
+            return exit::USAGE;
+        }
+    };
+    let src = source.display().to_string();
+    let glyphs = agent::glyph_list(&args);
+    let text = |key: &str| args.get(key).and_then(|v| v.as_str()).map(str::to_string);
+    let result = match name {
+        "font_info" => self_json(&["--json".into(), "info".into(), src]),
+        "read_glyph" => match text("glyph") {
+            Some(g) => read_glyph(&source, &g),
+            None => json!({ "ok": false, "error": "glyph is required" }),
+        },
+        "proof" => {
+            let out =
+                std::env::temp_dir().join(format!("runebender-proof-{}.svg", std::process::id()));
+            let mut a = vec![
+                "--json".to_string(),
+                "proof".into(),
+                src,
+                "--out".into(),
+                out.display().to_string(),
+            ];
+            if !glyphs.is_empty() {
+                a.push("--glyphs".into());
+                a.push(glyphs.join(","));
+            }
+            self_json(&a)
+        }
+        "propose" => match (text("task"), text("model")) {
+            (Some(task), Some(model)) => {
+                let model_dir = nodes_run::installed(None, false)
+                    .into_iter()
+                    .find(|(n, _)| *n == model)
+                    .map(|(_, p)| p)
+                    .unwrap_or_else(|| PathBuf::from(&model));
+                let mut a = vec![
+                    "--json".to_string(),
+                    "propose".into(),
+                    task,
+                    src,
+                    "--model".into(),
+                    model_dir.display().to_string(),
+                ];
+                if !glyphs.is_empty() {
+                    a.push("--glyphs".into());
+                    a.push(glyphs.join(","));
+                }
+                if let Some(t) = tool {
+                    a.push("--tool".into());
+                    a.push(t.display().to_string());
+                }
+                self_json(&a)
+            }
+            _ => json!({ "ok": false, "error": "task and model are required" }),
+        },
+        "nodes_run" => match text("file") {
+            Some(file) => {
+                let mut a = vec![
+                    "--json".to_string(),
+                    "nodes".into(),
+                    "run".into(),
+                    file,
+                    "--font".into(),
+                    font.display().to_string(),
+                ];
+                if !glyphs.is_empty() {
+                    a.push("--glyphs".into());
+                    a.push(glyphs.join(","));
+                }
+                if let Some(t) = tool {
+                    a.push("--tool".into());
+                    a.push(t.display().to_string());
+                }
+                self_json(&a)
+            }
+            None => json!({ "ok": false, "error": "file is required" }),
+        },
+        "proposal_list" => self_json(&["--json".into(), "proposal".into(), "list".into(), src]),
+        "proposal_discard" => match text("task") {
+            Some(task) => self_json(&[
+                "--json".into(),
+                "proposal".into(),
+                "discard".into(),
+                src,
+                task,
+            ]),
+            None => json!({ "ok": false, "error": "task is required" }),
+        },
+        "docs" => docs_search(&text("query").unwrap_or_default()),
+        other => json!({ "ok": false, "error": format!("no tool named {other}") }),
+    };
+    let ok = result.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
+    println!(
+        "{}",
+        json!(agent::ToolResult {
+            name: name.to_string(),
+            ok,
+            result
+        })
+    );
+    if ok { exit::OK } else { exit::FAILED }
 }
 
 fn find_font_ml(tool: Option<&Path>) -> Option<PathBuf> {
