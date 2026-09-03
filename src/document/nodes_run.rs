@@ -522,6 +522,41 @@ pub fn model_roots(first: Option<&Path>) -> Vec<PathBuf> {
     roots
 }
 
+/// Every chat model directory under the roots: one holding a `.gguf`
+/// and a `tokenizer.json`. Same rules as [`installed`].
+pub fn installed_chat_models(first: Option<&Path>) -> Vec<(String, PathBuf)> {
+    let mut found: Vec<(String, PathBuf)> = Vec::new();
+    for root in model_roots(first) {
+        let Ok(entries) = std::fs::read_dir(&root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.join("tokenizer.json").is_file() {
+                continue;
+            }
+            let has_gguf = std::fs::read_dir(&path)
+                .map(|d| {
+                    d.flatten()
+                        .any(|e| e.path().extension().is_some_and(|x| x == "gguf"))
+                })
+                .unwrap_or(false);
+            if !has_gguf {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if found.iter().any(|(n, _)| n == name) {
+                continue;
+            }
+            found.push((name.to_string(), path));
+        }
+    }
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    found
+}
+
 /// Every model directory (holding `config.json`) or adapter directory
 /// (holding `adapter.json`) under the roots, by name, sorted. A name
 /// found in two roots keeps the first.
