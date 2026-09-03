@@ -981,6 +981,18 @@ fn run_tool_node(
                     );
                 }
             }
+            // A tool that writes a model (train) names the directory
+            // in its report under the port's name.
+            Kind::Model | Kind::Adapter => {
+                if let Some(p) = report.get(&port.name).and_then(Value::as_str) {
+                    out.insert(
+                        port.name.clone(),
+                        RunValue::Model {
+                            path: PathBuf::from(p),
+                        },
+                    );
+                }
+            }
             _ => {}
         }
     }
