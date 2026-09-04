@@ -1879,6 +1879,10 @@ criteria = "safe-to-deploy"
 version = "1.0.24"
 criteria = "safe-to-deploy"
 
+[[exemptions.unicode-normalization]]
+version = "0.1.25"
+criteria = "safe-to-deploy"
+
 [[exemptions.unicode-properties]]
 version = "0.1.4"
 criteria = "safe-to-deploy"
