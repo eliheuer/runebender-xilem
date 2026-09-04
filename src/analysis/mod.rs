@@ -9,5 +9,6 @@
 
 pub mod category;
 pub mod curve;
+pub mod dimensions;
 pub mod measure;
 pub mod search;
