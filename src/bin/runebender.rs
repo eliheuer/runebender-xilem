@@ -127,6 +127,18 @@ enum Command {
         #[arg(long)]
         write: bool,
     },
+    /// Write `mark` and `mkmk` features from the font's anchors, the
+    /// ones the editor shapes with, so a compiled font positions marks
+    /// the same way.
+    Features {
+        /// The UFO.
+        source: PathBuf,
+        /// Write `features.generated.fea` into the UFO and add its
+        /// include line to `features.fea`. Without this, print the
+        /// text.
+        #[arg(long)]
+        write: bool,
+    },
     /// Nodes: a workflow of tools as boxes and wires, in a
     /// `<name>.nodes.json` file.
     Nodes {
@@ -328,6 +340,7 @@ fn main() -> std::process::ExitCode {
             glyphs,
             write,
         } => compose_cmd(source, glyphs.as_deref(), *write, json),
+        Command::Features { source, write } => features_cmd(source, *write, json),
         Command::Nodes { action } => match action {
             NodesAction::Check { file, tool } => nodes_check(file, tool.as_deref(), json),
             NodesAction::Types { tool } => nodes_types(tool.as_deref(), json),
@@ -654,6 +667,65 @@ fn proposal_discard(source: &Path, task: &str, json: bool) -> i32 {
 
 /// Where font-ml is: the flag, then `$RUNEBENDER_FONT_ML`, then PATH.
 /// `compose`: derive, report, and with --write leave the proposal.
+/// `features`: the mark features the anchors imply, printed or
+/// written beside `features.fea` with an include line.
+fn features_cmd(source: &Path, write: bool, json: bool) -> i32 {
+    use runebender_core::text::features;
+    let font = match open(source, json) {
+        Ok(f) => f,
+        Err(code) => return code,
+    };
+    let generated = features::generate(&font);
+    let own_mark = features::defines_mark_features(&font.features);
+    let written = if write {
+        match features::write(source, &generated, true) {
+            Ok((path, included)) => Some((path, included)),
+            Err(e) => return fail(json, exit::FAILED, &e),
+        }
+    } else {
+        None
+    };
+    if json {
+        println!(
+            "{}",
+            json!({
+                "ok": true,
+                "classes": generated.classes,
+                "marks": generated.marks,
+                "bases": generated.bases,
+                "stacked": generated.stacked,
+                "empty": generated.is_empty(),
+                "features_fea_defines_mark": own_mark,
+                "written": written.as_ref().map(|(p, _)| p),
+                "included": written.as_ref().map(|(_, i)| *i),
+                "fea": if write { serde_json::Value::Null } else { json!(generated.fea) },
+            })
+        );
+    } else {
+        match &written {
+            Some((path, included)) => {
+                println!(
+                    "{}: {} classes, {} marks, {} bases, {} stacked; include line {}",
+                    path.display(),
+                    generated.classes.len(),
+                    generated.marks,
+                    generated.bases,
+                    generated.stacked,
+                    if *included {
+                        "present"
+                    } else if own_mark {
+                        "not added: features.fea defines mark features"
+                    } else {
+                        "not added"
+                    }
+                );
+            }
+            None => print!("{}", generated.fea),
+        }
+    }
+    exit::OK
+}
+
 fn compose_cmd(source: &Path, glyphs: Option<&[String]>, write: bool, json: bool) -> i32 {
     let mut font = match open(source, json) {
         Ok(f) => f,

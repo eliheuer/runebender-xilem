@@ -104,10 +104,13 @@ impl TextBuffer {
                     // run the glyph placed just before this one is the
                     // logically *following* one, so the pair is reversed.
                     x += kern_between(self, previous, glyph_name, run.rtl);
+                    // A mark is drawn where shaping put it, off the pen;
+                    // the pen itself moves by the advance only.
+                    let (dx, dy) = self.shaped_offset(index);
                     items.push(TextLayoutItem {
                         index,
-                        x,
-                        y,
+                        x: x + dx,
+                        y: y + dy,
                         advance_width,
                     });
                     x += advance_width;

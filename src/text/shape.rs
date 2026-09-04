@@ -249,6 +249,11 @@ impl ShapingFont {
         let shaper = data.shaper(&font).build();
 
         let mut buffer = UnicodeBuffer::new();
+        // One cluster per character: a mark keeps its own cluster
+        // instead of merging into its base's, so the buffer can hand
+        // it back to the sort that typed it, with its position. A
+        // ligature still reports its first character's cluster.
+        buffer.set_cluster_level(harfrust::BufferClusterLevel::MonotoneCharacters);
         buffer.push_str(text);
         buffer.set_direction(if right_to_left {
             Direction::RightToLeft

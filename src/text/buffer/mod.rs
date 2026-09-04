@@ -247,7 +247,9 @@ impl TextGlyphInventory {
             unicode,
             widths,
             outlines: HashMap::new(),
-            features: font.features.clone(),
+            // The file plus the mark features its anchors imply, so a
+            // mark typed after a base lands where the built font puts it.
+            features: crate::text::features::with_generated(font),
             units_per_em: font
                 .font_info
                 .units_per_em
@@ -361,6 +363,25 @@ impl TextSort {
 #[derive(Debug, Default)]
 struct ShapingFontCache(RefCell<Option<Option<Rc<ShapingFont>>>>);
 
+/// Where shaping put each glyph relative to its pen position, by sort
+/// index: a mark's offset onto its base's anchor. Derived from the
+/// sorts and the font, so it is skipped by `PartialEq` and starts
+/// empty on clone, like the shaping font.
+#[derive(Debug, Default)]
+struct ShapedOffsets(HashMap<usize, (f64, f64)>);
+
+impl Clone for ShapedOffsets {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl PartialEq for ShapedOffsets {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
 impl Clone for ShapingFontCache {
     fn clone(&self) -> Self {
         Self::default()
@@ -447,6 +468,8 @@ pub struct TextBuffer {
     /// `Clone` starts empty: two buffers with the same text are equal
     /// whether or not either has compiled its font yet.
     shaping_font: ShapingFontCache,
+    /// The positioning shaping gave each sort, applied by `layout`.
+    shaped_offsets: ShapedOffsets,
     /// Bidi runs per stretch of text. Derived from the sorts, so it is
     /// skipped by `PartialEq` and starts empty on clone.
     bidi_runs: BidiRunCache,
@@ -468,12 +491,24 @@ impl Default for TextBuffer {
             script_override: None,
             language_override: None,
             shaping_font: ShapingFontCache::default(),
+            shaped_offsets: ShapedOffsets::default(),
             bidi_runs: BidiRunCache::default(),
         }
     }
 }
 
 impl TextBuffer {
+    /// Where shaping moved a sort from its pen position, in font units:
+    /// a mark's offset onto its base. Zero for anything shaping did not
+    /// move. `layout` already applies it.
+    pub fn shaped_offset(&self, index: usize) -> (f64, f64) {
+        self.shaped_offsets
+            .0
+            .get(&index)
+            .copied()
+            .unwrap_or((0.0, 0.0))
+    }
+
     /// Make an empty buffer with no glyphs, no kerning, and per-line direction detection on.
     pub fn new() -> Self {
         Self::default()

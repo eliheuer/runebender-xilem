@@ -14,6 +14,12 @@ MCP client such as Claude Code; nothing in it edits the font.
 `runebender-core compose <ufo> --write` derives precomposed glyphs from
 their base and marks through anchors, as a proposal.
 
+`runebender-core features <ufo> --write` writes the `mark` and `mkmk`
+features the font's anchors imply to `features.generated.fea` in the
+UFO and includes it from `features.fea`, so a compiled font positions
+marks the way the editor's preview does. Without `--write` it prints
+them.
+
 ## Use
 
 As a library, in `Cargo.toml`:

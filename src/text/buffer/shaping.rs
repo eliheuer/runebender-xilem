@@ -78,10 +78,12 @@ impl TextBuffer {
     /// features, including the lam-alef ligature, never run.
     pub(super) fn shape_with_font(&mut self) -> bool {
         let Some(font) = self.shaping_font() else {
+            self.shaped_offsets.0.clear();
             return false;
         };
 
         let mut updates: Vec<(usize, String, f64)> = Vec::new();
+        let mut offsets: Vec<(usize, (f64, f64))> = Vec::new();
         let mut absorbed: Vec<bool> = vec![false; self.sorts.len()];
 
         for line in 0..self.line_count() {
@@ -123,6 +125,7 @@ impl TextBuffer {
                         self.script_override.as_deref(),
                         self.language_override.as_deref(),
                     ) else {
+                        self.shaped_offsets.0.clear();
                         return false;
                     };
 
@@ -138,6 +141,9 @@ impl TextBuffer {
                             continue;
                         };
                         updates.push((sort_index, name.to_string(), glyph.x_advance));
+                        // Positioning: a mark sits on its base's anchor
+                        // by an offset from the pen, which layout adds.
+                        offsets.push((sort_index, (glyph.x_offset, glyph.y_offset)));
                         for (offset, covered) in covered.iter_mut().enumerate() {
                             if sort_for_offset[offset] == sort_index {
                                 *covered = true;
@@ -163,7 +169,13 @@ impl TextBuffer {
         }
 
         let changed = self.apply_shape_updates(updates);
-        let mut absorbed_changed = false;
+        let new_offsets: HashMap<usize, (f64, f64)> = offsets
+            .into_iter()
+            .filter(|(_, (x, y))| *x != 0.0 || *y != 0.0)
+            .collect();
+        let offsets_changed = new_offsets != self.shaped_offsets.0;
+        self.shaped_offsets.0 = new_offsets;
+        let mut absorbed_changed = offsets_changed;
         for (index, sort) in self.sorts.iter_mut().enumerate() {
             let want = absorbed.get(index).copied().unwrap_or(false);
             if sort.absorbed != want {
@@ -183,6 +195,8 @@ impl TextBuffer {
         if self.shape_with_font() {
             return true;
         }
+        // The joining table places nothing; marks sit on the pen.
+        self.shaped_offsets.0.clear();
         let chars = self.glyph_chars();
         let mut updates = Vec::new();
 

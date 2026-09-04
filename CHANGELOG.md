@@ -11,6 +11,12 @@ No releases yet. `AGENTS.md` has the checklist for the first one.
 Until then, `main` is the only line and this section stays open.
 
 ### Added
+- `runebender-core features [--write]`: `mark` and `mkmk` features
+  written from anchors, one lookup per anchor name, with mark classes
+  and filtering sets; composites without anchors take their
+  components' anchors. The editor shapes with them, so a mark typed
+  after a base sits on its anchor, and the text buffer lays out the
+  offsets shaping gives. Node `core.features`.
 
 - `runebender-core mcp --font <designspace>`: an MCP server over stdio
   with the agent tool list, one to one. No tool edits the font.

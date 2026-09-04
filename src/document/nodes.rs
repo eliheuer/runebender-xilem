@@ -265,6 +265,17 @@ pub fn core_types() -> Vec<NodeType> {
             outputs: vec![Port::output("layer", Kind::Layer, "That layer.")],
         },
         NodeType {
+            name: "core.features".into(),
+            title: "Mark features".into(),
+            help: "Write mark and mkmk features from the master's anchors \
+                   beside its features.fea, with an include line, so the \
+                   compiled font positions marks the way the editor does."
+                .into(),
+            implemented: true,
+            inputs: vec![Port::input("source", Kind::Source, true, "The master.")],
+            outputs: vec![Port::output("path", Kind::Path, "The generated file.")],
+        },
+        NodeType {
             name: "core.compose".into(),
             title: "Compose".into(),
             help: "Derive precomposed glyphs from their base and marks through \
