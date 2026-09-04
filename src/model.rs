@@ -136,23 +136,6 @@ impl FontModel {
         Ok(Self::from_project(project))
     }
 
-    /// A single-master model from a font in memory, for tests and demos.
-    pub(crate) fn from_font(font: norad::Font, source: PathBuf) -> Self {
-        let master = Master::from_font(font, source);
-        let name: Arc<str> = master
-            .font
-            .font_info
-            .style_name
-            .clone()
-            .unwrap_or_else(|| "Regular".into())
-            .into();
-        let mut project = Project::new_font(PathBuf::new());
-        project.masters = vec![master];
-        project.master_names = vec![name];
-        project.compute_compat();
-        Self::from_project(project)
-    }
-
     pub(crate) fn from_project(project: Project) -> Self {
         let axes = project
             .ds_doc
@@ -204,7 +187,7 @@ impl FontModel {
     }
 
     /// Refresh one shell entry from the master's, after an edit.
-    fn refresh_entry(&mut self, index: usize) {
+    pub(crate) fn refresh_entry(&mut self, index: usize) {
         if let Some(entry) = self.master().glyphs.get(index) {
             let fresh = GlyphEntry::from_core(entry);
             if let Some(slot) = self.glyphs.get_mut(index) {
@@ -254,16 +237,6 @@ impl FontModel {
 
     pub(crate) fn descender(&self) -> f64 {
         self.master().descender
-    }
-
-    pub(crate) fn x_height(&self) -> f64 {
-        let master = self.master();
-        master.x_height.unwrap_or(master.units_per_em * 0.5)
-    }
-
-    pub(crate) fn cap_height(&self) -> f64 {
-        let master = self.master();
-        master.cap_height.unwrap_or(master.units_per_em * 0.7)
     }
 
     pub(crate) fn master_names(&self) -> Vec<String> {

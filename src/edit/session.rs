@@ -13,7 +13,6 @@ use crate::*;
 use std::collections::{HashMap, HashSet};
 
 use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};
-use runebender_core::document::history::EditHistory;
 use runebender_core::outline::glyph_ops::{self, PointId};
 use runebender_core::outline::glyph_paths;
 use runebender_core::outline::glyph_paths::round_units;
@@ -74,9 +73,10 @@ pub(crate) struct Session {
     pub selection: HashSet<PointId>,
     pub viewport: ViewPort,
     pub fitted: bool,
-    /// Core's undo pile for this glyph. The session records into it
-    /// and asks it to undo; it holds no snapshots of its own.
-    history: EditHistory,
+    /// Undo steps taken since the app last pulled this session: the
+    /// pile itself is the master's, in core. The app drains these on
+    /// every sync.
+    pub(crate) pending: Vec<HistoryOp>,
     drag_originals: HashMap<PointId, (f64, f64)>,
     in_drag: bool,
     /// The contour the pen is currently extending, if any.
@@ -86,6 +86,15 @@ pub(crate) struct Session {
     pen: Vec<PenPt>,
     /// The currently selected anchor, if any.
     pub selected_anchor: Option<usize>,
+}
+
+/// An undo step the session took, for the master's pile.
+#[derive(Clone)]
+pub(crate) enum HistoryOp {
+    /// The glyph as it was before an edit.
+    Record(Box<norad::Glyph>),
+    /// The last step turned out empty; drop it.
+    DiscardLast,
 }
 
 /// One point in the pen's in-progress buffer.
@@ -110,7 +119,7 @@ impl Session {
             selection: HashSet::new(),
             viewport: ViewPort::new(),
             fitted: false,
-            history: EditHistory::new(),
+            pending: Vec::new(),
             drag_originals: HashMap::new(),
             in_drag: false,
             active_contour: None,
@@ -187,31 +196,26 @@ impl Session {
         match edit {
             EditType::Drag => {
                 if !self.in_drag {
-                    self.history.record(&self.glyph_name, &self.glyph);
+                    self.pending
+                        .push(HistoryOp::Record(Box::new(self.glyph.clone())));
                     self.in_drag = true;
                 }
             }
             EditType::DragUp => self.in_drag = false,
-            _ => self.history.record(&self.glyph_name, &self.glyph),
+            _ => self
+                .pending
+                .push(HistoryOp::Record(Box::new(self.glyph.clone()))),
         }
     }
 
-    pub(crate) fn undo(&mut self) -> bool {
-        if self.history.undo(&self.glyph_name, &mut self.glyph) {
-            self.prune_selection();
-            true
-        } else {
-            false
-        }
-    }
-
-    pub(crate) fn redo(&mut self) -> bool {
-        if self.history.redo(&self.glyph_name, &mut self.glyph) {
-            self.prune_selection();
-            true
-        } else {
-            false
-        }
+    /// Take the glyph as the master now has it, after an undo or a
+    /// redo there, keeping the selection where it still fits.
+    pub(crate) fn reload_glyph(&mut self, glyph: norad::Glyph) {
+        self.glyph = glyph;
+        self.pen.clear();
+        self.active_contour = None;
+        self.in_drag = false;
+        self.prune_selection();
     }
 
     fn prune_selection(&mut self) {
@@ -561,7 +565,11 @@ impl Session {
         let changed = runebender_core::outline::knife::knife_cut_glyph(&mut self.glyph, p0, p1);
         if !changed {
             // Nothing cut; drop the empty undo group we just pushed.
-            self.history.discard_last(&self.glyph_name);
+            if matches!(self.pending.last(), Some(HistoryOp::Record(_))) {
+                self.pending.pop();
+            } else {
+                self.pending.push(HistoryOp::DiscardLast);
+            }
         }
         changed
     }
@@ -919,13 +927,66 @@ impl Workspace {
     /// the model + grid cache so the overview preview matches.
     /// Replace the app's session with the island's live one (called on every
     /// editor event so save/preview see interactive edits).
-    pub(crate) fn sync_session_from(&mut self, session: &Session) {
+    pub(crate) fn sync_session_from(&mut self, session: &mut Session) {
+        let name = session.glyph_name.clone();
+        let master = self.font.master_mut();
+        for op in session.pending.drain(..) {
+            match op {
+                HistoryOp::Record(glyph) => master.history.record(&name, &glyph),
+                HistoryOp::DiscardLast => {
+                    master.history.discard_last(&name);
+                }
+            }
+        }
         self.session = Arc::new(session.clone());
         // Keep the panel's advance field in step after canvas edits
         // (sidebearing/advance drags). This path is never hit by typing in
         // the field, so it does not clobber input.
         self.refresh_metric_bufs();
         self.selected_points = self.session.selection.len();
+    }
+
+    /// Undo or redo the open glyph on the master's pile, then reload
+    /// the session from the master.
+    pub(crate) fn undo_open_glyph(&mut self, redo: bool) {
+        let Mode::Editor(index) = self.mode else {
+            return;
+        };
+        let master = self.font.master_mut();
+        let done = if redo {
+            master.redo(index)
+        } else {
+            master.undo(index)
+        };
+        if !done {
+            self.note = if redo {
+                "Nothing to redo"
+            } else {
+                "Nothing to undo"
+            }
+            .into();
+            return;
+        }
+        self.font.refresh_entry(index);
+        let Some(glyph) = self
+            .font
+            .font()
+            .get_glyph(&self.session.glyph_name)
+            .cloned()
+        else {
+            return;
+        };
+        let mut session = (*self.session).clone();
+        session.reload_glyph(glyph);
+        self.session = Arc::new(session);
+        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            tab.session = self.session.clone();
+        }
+        self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        self.refresh_metric_bufs();
+        self.selected_points = self.session.selection.len();
+        self.modified = true;
+        self.note.clear();
     }
 
     pub(crate) fn set_master(&mut self, index: usize) {
@@ -1039,6 +1100,48 @@ mod tests {
         }
         font.default_layer_mut().insert_glyph(glyph);
         Session::new(&font, "test").expect("glyph is there")
+    }
+
+    #[test]
+    fn edits_land_on_the_masters_pile_and_undo_from_it() {
+        use runebender_core::document::project::Master;
+        let mut session = two_squares();
+        let mut master = Master::from_font(
+            {
+                let mut font = norad::Font::new();
+                font.default_layer_mut().insert_glyph(session.glyph.clone());
+                font
+            },
+            std::path::PathBuf::new(),
+        );
+        let index = master.name_map["test"];
+        // Two point edits, two steps waiting for the app to pull them.
+        let x = |s: &Session| s.glyph.contours[0].points[0].x;
+        session.record(EditType::Normal);
+        session.glyph.contours[0].points[0].x = 50.0;
+        session.record(EditType::Normal);
+        session.glyph.contours[0].points[0].x = 75.0;
+        assert_eq!(session.pending.len(), 2);
+        // What the app does on sync: drain onto the master's pile and
+        // write the session's glyph through.
+        for op in session.pending.drain(..) {
+            if let HistoryOp::Record(glyph) = op {
+                master.history.record("test", &glyph);
+            }
+        }
+        let edited = session.glyph.clone();
+        master.edit_glyph(index, |g| *g = edited);
+        assert_eq!(master.undo_depth(index), 2);
+        assert!(master.undo(index));
+        let back = master.font.get_glyph("test").expect("still there").clone();
+        session.reload_glyph(back);
+        assert_eq!(x(&session), 50.0);
+        assert!(master.undo(index));
+        session.reload_glyph(master.font.get_glyph("test").expect("still there").clone());
+        assert_eq!(x(&session), 0.0);
+        assert!(master.redo(index));
+        session.reload_glyph(master.font.get_glyph("test").expect("still there").clone());
+        assert_eq!(x(&session), 50.0);
     }
 
     #[test]

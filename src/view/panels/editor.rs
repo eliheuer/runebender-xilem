@@ -49,6 +49,8 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
                 app.refresh_coord_bufs();
             }
             canvas::editor::EditorEvent::Edited => app.refresh_open_glyph(),
+            canvas::editor::EditorEvent::Undo => app.undo_open_glyph(false),
+            canvas::editor::EditorEvent::Redo => app.undo_open_glyph(true),
             canvas::editor::EditorEvent::EditGlyph(name) => {
                 if let Some(index) = app.font.index_of(&name) {
                     app.open_glyph(index);
