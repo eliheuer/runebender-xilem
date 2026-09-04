@@ -161,10 +161,44 @@ pub(crate) fn list_row<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    // A leaf row carries a bullet where the GPUI build's expandable
-    // rows carry a chevron; nothing here expands, so every row is a
-    // leaf.
-    let text = format!("\u{2022}  {text}");
+    list_row_marked(pal, Marker::Bullet, false, text, trailing, active, on_click)
+}
+
+/// What a sidebar row shows before its label: a chevron on a row that
+/// expands, a bullet on a leaf, as the GPUI sidebar has them.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Marker {
+    Bullet,
+    Closed,
+    Open,
+}
+
+impl Marker {
+    fn text(self) -> &'static str {
+        match self {
+            Self::Bullet => "\u{2022}",
+            Self::Closed => "\u{25b8}",
+            Self::Open => "\u{25be}",
+        }
+    }
+}
+
+/// A list row with a chosen marker, indented when it sits under
+/// another row.
+pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
+    pal: &Palette,
+    marker: Marker,
+    indent: bool,
+    text: String,
+    trailing: String,
+    active: bool,
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F> {
+    let text = if indent {
+        format!("      {}  {text}", marker.text())
+    } else {
+        format!("{}  {text}", marker.text())
+    };
     let (fg, border, bg) = if active {
         (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
     } else {
@@ -211,13 +245,14 @@ pub(crate) fn list_row<F: Fn(&mut Workspace) + Send + Sync + 'static>(
 /// also how the GPUI build lays it out.
 pub(crate) fn list_row_with_icon<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
+    marker: Marker,
     icon: String,
     text: String,
     trailing: String,
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    let icon = format!("\u{2022}  {icon}");
+    let icon = format!("{}  {icon}", marker.text());
     let (fg, border, bg) = if active {
         (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
     } else {

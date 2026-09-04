@@ -18,16 +18,17 @@ impl Workspace {
         };
         let by_name = self.search_mode != 2;
         let by_unicode = self.search_mode != 1;
+        let re = self.search_regex.then_some(self.search_re.as_ref()).flatten();
         let out: Vec<Cell> = self
             .cells
             .iter()
             .filter(|c| {
                 let cat_ok = self.cell_matches_sel(c.index);
                 let name_hit = by_name
-                    && if self.search_case {
-                        c.name.contains(&q)
-                    } else {
-                        c.name.to_lowercase().contains(&q)
+                    && match re {
+                        Some(re) => re.is_match(&c.name),
+                        None if self.search_case => c.name.contains(&q),
+                        None => c.name.to_lowercase().contains(&q),
                     };
                 let uni_hit = by_unicode
                     && c.codepoint
@@ -66,6 +67,21 @@ impl Workspace {
         match self.sel {
             Sel::Category(GlyphCategory::All) => true,
             Sel::Category(cat) => entry.category == cat,
+            Sel::Subfilter(cat, sub) => {
+                entry.category == cat
+                    && sb::glyph_matches_subfilter(&entry.name, &Self::entry_codepoints(entry), sub)
+            }
+            Sel::LanguageFilter(gi, fi) => sb::language_groups()
+                .get(gi)
+                .and_then(|g| g.filters.get(fi))
+                .map(|f| {
+                    sb::glyph_matches_character_filter(
+                        &entry.name,
+                        &Self::entry_codepoints(entry),
+                        f,
+                    )
+                })
+                .unwrap_or(false),
             Sel::Language(i) => sb::language_groups()
                 .get(i)
                 .map(|g| {
@@ -113,6 +129,54 @@ impl Workspace {
             .iter()
             .filter(|e| sb::glyph_matches_character_filter(&e.name, &Self::entry_codepoints(e), f))
             .count()
+    }
+
+    /// How many glyphs a category's subfilter holds.
+    pub(crate) fn subfilter_count(&self, cat: GlyphCategory, sub: &str) -> usize {
+        use runebender_core::ui::sidebar as sb;
+        self.font
+            .glyphs
+            .iter()
+            .filter(|e| {
+                e.category == cat
+                    && sb::glyph_matches_subfilter(&e.name, &Self::entry_codepoints(e), sub)
+            })
+            .count()
+    }
+
+    /// How many glyphs a language group's filter holds, and how many
+    /// it expects.
+    pub(crate) fn language_filter_count(&self, gi: usize, fi: usize) -> (usize, Option<usize>) {
+        use runebender_core::ui::sidebar as sb;
+        let Some(f) = sb::language_groups()
+            .get(gi)
+            .and_then(|g| g.filters.get(fi))
+        else {
+            return (0, None);
+        };
+        let present = self
+            .font
+            .glyphs
+            .iter()
+            .filter(|e| sb::glyph_matches_character_filter(&e.name, &Self::entry_codepoints(e), f))
+            .count();
+        (present, f.expected_count)
+    }
+
+    /// Compile the search as a regular expression, when that is on.
+    /// A pattern that does not parse leaves no expression, and the
+    /// search matches nothing until it does.
+    pub(crate) fn rebuild_search_regex(&mut self) {
+        self.search_re = if self.search_regex && !self.filter.is_empty() {
+            let pattern = if self.search_case {
+                self.filter.clone()
+            } else {
+                format!("(?i){}", self.filter)
+            };
+            regex::Regex::new(&pattern).ok()
+        } else {
+            None
+        };
     }
 
     pub(crate) fn category_count(&self, cat: GlyphCategory) -> usize {

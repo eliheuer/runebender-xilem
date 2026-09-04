@@ -232,6 +232,7 @@ where
 }
 
 pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    use xilem::core::one_of::Either;
     let pal = &app.palette;
 
     let cats = [
@@ -243,36 +244,108 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         GlyphCategory::Mark,
         GlyphCategory::Other,
     ];
-    let cat_rows: Vec<_> = cats
-        .into_iter()
-        .filter(|c| app.category_count(*c) > 0)
-        .map(|c| {
-            recipes::list_row(
-                pal,
-                c.display_name().to_string(),
-                format!("{}", app.category_count(c)),
-                app.sel == Sel::Category(c),
-                move |app: &mut Workspace| app.sel = Sel::Category(c),
-            )
-        })
-        .collect();
+    // Categories: a chevron on one with subfilters, a bullet on one
+    // without. Clicking a selected expandable row folds it, as the
+    // GPUI sidebar does; the rows under it are indented leaves.
+    let mut cat_rows: Vec<_> = Vec::new();
+    for c in cats.into_iter().filter(|c| app.category_count(*c) > 0) {
+        let subs = runebender_core::ui::sidebar::category_subfilters(c.display_name());
+        let key = c.display_name();
+        let open = app.expanded_categories.contains(key);
+        let selected =
+            app.sel == Sel::Category(c) || matches!(app.sel, Sel::Subfilter(cat, _) if cat == c);
+        let marker = if subs.is_empty() {
+            recipes::Marker::Bullet
+        } else if open {
+            recipes::Marker::Open
+        } else {
+            recipes::Marker::Closed
+        };
+        cat_rows.push(Either::A(recipes::list_row_marked(
+            pal,
+            marker,
+            false,
+            c.display_name().to_string(),
+            format!("{}", app.category_count(c)),
+            app.sel == Sel::Category(c),
+            move |app: &mut Workspace| {
+                if selected && !subs.is_empty() && !app.expanded_categories.remove(key) {
+                    app.expanded_categories.insert(key);
+                }
+                app.sel = Sel::Category(c);
+            },
+        )));
+        if open {
+            for (sub, sub_label) in subs {
+                cat_rows.push(Either::B(recipes::list_row_marked(
+                    pal,
+                    recipes::Marker::Bullet,
+                    true,
+                    (*sub_label).to_string(),
+                    format!("{}", app.subfilter_count(c, sub)),
+                    app.sel == Sel::Subfilter(c, sub),
+                    move |app: &mut Workspace| app.sel = Sel::Subfilter(c, sub),
+                )));
+            }
+        }
+    }
 
-    let lang_rows: Vec<_> = runebender_core::ui::sidebar::language_groups()
+    // Languages: script groups with their coverage sets under them.
+    let mut lang_rows: Vec<_> = Vec::new();
+    for (i, g) in runebender_core::ui::sidebar::language_groups()
         .iter()
         .enumerate()
-        // Every script, including the ones this font has nothing for.
-        // A zero is information: it says the coverage is not there.
-        .map(|(i, g)| {
-            recipes::list_row_with_icon(
-                pal,
-                g.icon.clone(),
-                g.label.clone(),
-                format!("{}", app.language_count(i)),
-                app.sel == Sel::Language(i),
-                move |app: &mut Workspace| app.sel = Sel::Language(i),
-            )
-        })
-        .collect();
+    {
+        let open = app.expanded_scripts.contains(&i);
+        let selected =
+            app.sel == Sel::Language(i) || matches!(app.sel, Sel::LanguageFilter(gi, _) if gi == i);
+        let marker = if g.filters.is_empty() {
+            recipes::Marker::Bullet
+        } else if open {
+            recipes::Marker::Open
+        } else {
+            recipes::Marker::Closed
+        };
+        let expandable = !g.filters.is_empty();
+        lang_rows.push(Either::A(recipes::list_row_with_icon(
+            pal,
+            marker,
+            g.icon.clone(),
+            g.label.clone(),
+            format!("{}", app.language_count(i)),
+            app.sel == Sel::Language(i),
+            move |app: &mut Workspace| {
+                if expandable {
+                    if selected {
+                        if !app.expanded_scripts.remove(&i) {
+                            app.expanded_scripts.insert(i);
+                        }
+                    } else {
+                        app.expanded_scripts.insert(i);
+                    }
+                }
+                app.sel = Sel::Language(i);
+            },
+        )));
+        if open {
+            for (fi, f) in g.filters.iter().enumerate() {
+                let (present, expected) = app.language_filter_count(i, fi);
+                let count = match expected {
+                    Some(e) => format!("{present}/{e}"),
+                    None => format!("{present}"),
+                };
+                lang_rows.push(Either::B(recipes::list_row_marked(
+                    pal,
+                    recipes::Marker::Bullet,
+                    true,
+                    f.label.clone(),
+                    count,
+                    app.sel == Sel::LanguageFilter(i, fi),
+                    move |app: &mut Workspace| app.sel = Sel::LanguageFilter(i, fi),
+                )));
+            }
+        }
+    }
 
     let filter_rows: Vec<_> = runebender_core::ui::sidebar::builtin_filters()
         .iter()
@@ -312,15 +385,18 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 (
                     // A field, not a well: one step darker than the
                     // panel with a quiet outline, as every field is.
-                    text_input(app.filter.clone(), |app: &mut Workspace, v| app.filter = v)
-                        .placeholder("Search")
-                        .text_color(pal.text)
-                        .placeholder_color(pal.text_muted)
-                        .background_color(pal.field())
-                        .border_color(pal.field_outline)
-                        .border_width(Stroke::Hairline.length())
-                        .corner_radius(Radius::Sm.length())
-                        .flex(1.0),
+                    text_input(app.filter.clone(), |app: &mut Workspace, v| {
+                        app.filter = v;
+                        app.rebuild_search_regex();
+                    })
+                    .placeholder("Search")
+                    .text_color(pal.text)
+                    .placeholder_color(pal.text_muted)
+                    .background_color(pal.field())
+                    .border_color(pal.field_outline)
+                    .border_width(Stroke::Hairline.length())
+                    .corner_radius(Radius::Sm.length())
+                    .flex(1.0),
                     toggle(
                         match app.search_mode {
                             1 => "N",
@@ -331,8 +407,13 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         app.search_mode != 0,
                         |app: &mut Workspace| app.search_mode = (app.search_mode + 1) % 3,
                     ),
+                    toggle(".*".into(), app.search_regex, |app: &mut Workspace| {
+                        app.search_regex = !app.search_regex;
+                        app.rebuild_search_regex();
+                    }),
                     toggle("Aa".into(), app.search_case, |app: &mut Workspace| {
                         app.search_case = !app.search_case;
+                        app.rebuild_search_regex();
                     }),
                 ),
             ),
