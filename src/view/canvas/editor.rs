@@ -801,12 +801,16 @@ impl Widget for EditorWidget {
                 let ring = Stroke::new(1.5);
                 if square {
                     let shape = Rect::new(sp.x - r, sp.y - r, sp.x + r, sp.y + r);
-                    painter.stroke(shape, &Stroke::new(3.0), halo).draw();
+                    if pal.point_halo {
+                        painter.stroke(shape, &Stroke::new(3.0), halo).draw();
+                    }
                     painter.fill(shape, interior).draw();
                     painter.stroke(shape, &ring, fill).draw();
                 } else {
                     let shape = Circle::new(sp, r);
-                    painter.stroke(shape, &Stroke::new(3.0), halo).draw();
+                    if pal.point_halo {
+                        painter.stroke(shape, &Stroke::new(3.0), halo).draw();
+                    }
                     painter.fill(shape, interior).draw();
                     painter.stroke(shape, &ring, fill).draw();
                 }
