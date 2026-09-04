@@ -289,13 +289,12 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 xrow(
                     Region::Inline,
                     (
-                        // Grid, and List, which is not built here yet;
-                        // the box says so when pressed.
-                        bar_box("\u{229e}".into(), !app.detail, |app: &mut Workspace| {
-                            app.detail = false;
+                        // Grid or List, the GPUI build's two views.
+                        bar_box("\u{229e}".into(), !app.list, |app: &mut Workspace| {
+                            app.list = false;
                         }),
-                        bar_box("\u{2261}".into(), false, |app: &mut Workspace| {
-                            app.note = "List view: not built in this shell yet".into();
+                        bar_box("\u{2261}".into(), app.list, |app: &mut Workspace| {
+                            app.list = true;
                         }),
                         slider(48.0, 200.0, app.cell_size, |app: &mut Workspace, v| {
                             app.cell_size = v;

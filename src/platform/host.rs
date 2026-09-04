@@ -107,10 +107,20 @@ impl Workspace {
             multi_selected: Arc::new(std::collections::HashSet::new()),
             filter: String::new(),
             detail: false,
+            list: std::env::var("RUNEBENDER_VIEW_MODE").as_deref() == Ok("list"),
             rail: Rail::Glyphs,
             text_dir: None,
             left_collapsed: false,
-            collapsed: std::collections::HashSet::new(),
+            // Headless frames can start with sections folded:
+            // `RUNEBENDER_COLLAPSED=Kerning,Groups`.
+            collapsed: std::env::var("RUNEBENDER_COLLAPSED")
+                .map(|s| {
+                    s.split(',')
+                        .filter(|t| !t.is_empty())
+                        .map(|t| &*Box::leak(t.to_string().into_boxed_str()))
+                        .collect()
+                })
+                .unwrap_or_default(),
             sel: Sel::Category(match start_cat.as_deref() {
                 Some("Number") => GlyphCategory::Number,
                 Some("Symbol") => GlyphCategory::Symbol,

@@ -548,26 +548,38 @@ pub(crate) fn background_section(app: &Workspace) -> impl WidgetView<Workspace> 
                 },
             ),
             (!app.collapsed.contains("Background")).then(|| {
-                xrow(
-                    Region::Inline,
+                // Two rows: four chips on one row are wider than the
+                // inspector and push every section past its edge.
+                xcolumn(
+                    Region::List,
                     (
-                        recipes::toggle(
-                            pal,
-                            "Show".into(),
-                            show && has_background,
-                            |app: &mut Workspace| {
-                                app.show_background = !app.show_background;
-                            },
+                        xrow(
+                            Region::Inline,
+                            (
+                                recipes::toggle(
+                                    pal,
+                                    "Show".into(),
+                                    show && has_background,
+                                    |app: &mut Workspace| {
+                                        app.show_background = !app.show_background;
+                                    },
+                                ),
+                                recipes::action(pal, "Send".into(), |app: &mut Workspace| {
+                                    app.send_to_background();
+                                }),
+                            ),
                         ),
-                        recipes::action(pal, "Send".into(), |app: &mut Workspace| {
-                            app.send_to_background();
-                        }),
-                        recipes::action(pal, "Swap".into(), |app: &mut Workspace| {
-                            app.swap_background();
-                        }),
-                        recipes::action(pal, "Clear".into(), |app: &mut Workspace| {
-                            app.clear_background();
-                        }),
+                        xrow(
+                            Region::Inline,
+                            (
+                                recipes::action(pal, "Swap".into(), |app: &mut Workspace| {
+                                    app.swap_background();
+                                }),
+                                recipes::action(pal, "Clear".into(), |app: &mut Workspace| {
+                                    app.clear_background();
+                                }),
+                            ),
+                        ),
                     ),
                 )
             }),

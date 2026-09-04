@@ -38,24 +38,32 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         xrow(
             Region::Form,
             (
-                recipes::field(
+                // Fixed widths: three flexed fields ask for more than the
+                // column has and push the whole inspector wide.
+                third(recipes::field(
                     pal,
                     "Width",
                     app.advance_buf.clone(),
                     |app: &mut Workspace, v| app.set_advance_from_buf(v),
-                )
-                .flex(1.0),
-                recipes::field(pal, "LSB", app.lsb_buf.clone(), |app: &mut Workspace, v| {
-                    app.set_lsb_from_buf(v);
-                })
-                .flex(1.0),
-                recipes::field(pal, "RSB", app.rsb_buf.clone(), |app: &mut Workspace, v| {
-                    app.set_rsb_from_buf(v);
-                })
-                .flex(1.0),
+                )),
+                third(recipes::field(
+                    pal,
+                    "LSB",
+                    app.lsb_buf.clone(),
+                    |app: &mut Workspace, v| app.set_lsb_from_buf(v),
+                )),
+                third(recipes::field(
+                    pal,
+                    "RSB",
+                    app.rsb_buf.clone(),
+                    |app: &mut Workspace, v| app.set_rsb_from_buf(v),
+                )),
             ),
         )
     });
+    fn third<V: WidgetView<Workspace> + 'static>(v: V) -> impl WidgetView<Workspace> + use<V> {
+        sized_box(v).dims(Dimensions::new(Dim::Fixed(Length::px(72.0)), Dim::Auto))
+    }
     let name_field = editing.then(|| {
         xcolumn(
             Region::Form,

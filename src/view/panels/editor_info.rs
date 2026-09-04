@@ -32,6 +32,39 @@ where
     )
 }
 
+/// Chips on as many rows as the inspector's width takes. Xilem has no
+/// wrapping row, so the rows are cut by an estimate of each chip's
+/// width at the one type size.
+fn chip_rows<F: Fn(&mut Workspace, &str) + Clone + Send + Sync + 'static>(
+    pal: &Palette,
+    names: &[String],
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F> {
+    const WIDTH: f64 = 224.0;
+    let width_of = |s: &str| 16.0 + 7.0 * s.chars().count() as f64;
+    let mut rows: Vec<Vec<_>> = vec![Vec::new()];
+    let mut used = 0.0;
+    for name in names {
+        let w = width_of(name);
+        if used + w > WIDTH && !rows.last().is_some_and(Vec::is_empty) {
+            rows.push(Vec::new());
+            used = 0.0;
+        }
+        used += w + Space::Xs.px();
+        let on_click = on_click.clone();
+        let owned = name.clone();
+        let chip = chip(pal, name.clone(), move |app: &mut Workspace| {
+            on_click(app, &owned);
+        });
+        rows.last_mut().expect("one row").push(chip);
+    }
+    let rows: Vec<_> = rows
+        .into_iter()
+        .map(|row| xrow(Region::List, row))
+        .collect();
+    xcolumn(Region::List, rows)
+}
+
 /// A small keylined chip, the GPUI build's `px_1` rounded box.
 fn chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
@@ -135,26 +168,28 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
             xrow(
                 Region::Inline,
                 (
-                    button(
-                        label(format!("{} \u{00b7} {}", short(first), short(second)))
-                            .text_size(TextSize::Body.px())
-                            .color(if exception {
-                                pal.role("warning")
-                            } else {
-                                pal.text
-                            }),
-                        // Loads the pair into the editor row, so
-                        // adjusting one is click, type, Enter.
-                        move |app: &mut Workspace| {
-                            app.kern_first_buf = f3.clone();
-                            app.kern_second_buf = s3.clone();
-                            app.kern_value_buf = format!("{v3}");
-                        },
+                    sized_box(
+                        button(
+                            label(format!("{} \u{00b7} {}", short(first), short(second)))
+                                .text_size(TextSize::Body.px())
+                                .color(if exception {
+                                    pal.role("warning")
+                                } else {
+                                    pal.text
+                                }),
+                            // Loads the pair into the editor row, so
+                            // adjusting one is click, type, Enter.
+                            move |app: &mut Workspace| {
+                                app.kern_first_buf = f3.clone();
+                                app.kern_second_buf = s3.clone();
+                                app.kern_value_buf = format!("{v3}");
+                            },
+                        )
+                        .background_color(pal.panel)
+                        .border_width(Stroke::None.length())
+                        .padding(Space::None),
                     )
-                    .background_color(pal.panel)
-                    .border_width(Stroke::None.length())
-                    .padding(Space::None)
-                    .flex(1.0),
+                    .dims(Dimensions::new(Dim::Fixed(Length::px(150.0)), Dim::Auto)),
                     label(format!("{value:.0}"))
                         .text_size(TextSize::Body.px())
                         .color(pal.text_muted),
@@ -165,33 +200,35 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
             )
         })
         .collect();
+    // Fixed widths: a field left to size to its content pushes the
+    // whole inspector past its column, as the Glyph section found.
+    fn narrow<V: WidgetView<Workspace> + 'static>(v: V) -> impl WidgetView<Workspace> + use<V> {
+        sized_box(v).dims(Dimensions::new(Dim::Fixed(Length::px(68.0)), Dim::Auto))
+    }
     let editor_row = xrow(
         Region::Inline,
         (
-            recipes::field_enter(
+            narrow(recipes::field_enter(
                 pal,
                 "",
                 app.kern_first_buf.clone(),
                 |app: &mut Workspace, v| app.kern_first_buf = v,
                 |app: &mut Workspace, _| app.set_kern_pair_from_bufs(),
-            )
-            .flex(1.0),
-            recipes::field_enter(
+            )),
+            narrow(recipes::field_enter(
                 pal,
                 "",
                 app.kern_second_buf.clone(),
                 |app: &mut Workspace, v| app.kern_second_buf = v,
                 |app: &mut Workspace, _| app.set_kern_pair_from_bufs(),
-            )
-            .flex(1.0),
-            recipes::field_enter(
+            )),
+            narrow(recipes::field_enter(
                 pal,
                 "",
                 app.kern_value_buf.clone(),
                 |app: &mut Workspace, v| app.kern_value_buf = v,
                 |app: &mut Workspace, _| app.set_kern_pair_from_bufs(),
-            )
-            .flex(1.0),
+            )),
         ),
     );
     section(
@@ -245,17 +282,10 @@ pub(crate) fn groups_section(app: &Workspace) -> impl WidgetView<Workspace> + us
         let full_owned = name.to_string();
         let short_owned = short.to_string();
         let side_first = side == "L";
-        let chips: Vec<_> = members
-            .iter()
-            .take(24)
-            .map(|member| {
-                let member_owned = member.to_string();
-                let full_for_chip = full_owned.clone();
-                chip(pal, member.to_string(), move |app: &mut Workspace| {
-                    app.remove_from_group(&full_for_chip, &member_owned);
-                })
-            })
-            .collect();
+        let names: Vec<String> = members.iter().take(24).map(|m| m.to_string()).collect();
+        let chips = chip_rows(pal, &names, move |app: &mut Workspace, member| {
+            app.remove_from_group(&full_owned, member);
+        });
         let more = (members.len() > 24).then(|| {
             label(format!("+{}", members.len() - 24))
                 .text_size(TextSize::Body.px())
@@ -275,7 +305,7 @@ pub(crate) fn groups_section(app: &Workspace) -> impl WidgetView<Workspace> + us
                         }),
                     ),
                 ),
-                xrow(Region::List, chips),
+                chips,
                 more,
             ),
         ));
@@ -367,21 +397,36 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                     ))
                     .text_size(TextSize::Body.px())
                     .color(pal.text),
-                    label(format!(
-                        "{} glyphs \u{00b7} {} missing \u{00b7} {} advance diffs \u{00b7} kerning {} vs {}{}",
-                        master.default_layer().len(),
-                        missing,
-                        advance_diffs,
-                        pair_count(master),
-                        pair_count(reference),
-                        if diffs.is_empty() {
-                            String::new()
-                        } else {
-                            format!(" \u{00b7} metrics differ: {}", diffs.join(", "))
-                        },
-                    ))
-                    .text_size(TextSize::Body.px())
-                    .color(pal.text_muted),
+                    // One fact a line: a label does not wrap, and one
+                    // long line would push the whole inspector wide.
+                    xcolumn(
+                        Region::List,
+                        [
+                            format!(
+                                "{} glyphs \u{00b7} {} missing",
+                                master.default_layer().len(),
+                                missing
+                            ),
+                            format!("{advance_diffs} advance diffs"),
+                            format!(
+                                "kerning {} vs {}",
+                                pair_count(master),
+                                pair_count(reference)
+                            ),
+                            if diffs.is_empty() {
+                                "metrics match".to_string()
+                            } else {
+                                format!("metrics differ: {}", diffs.join(", "))
+                            },
+                        ]
+                        .into_iter()
+                        .map(|line| {
+                            label(line)
+                                .text_size(TextSize::Body.px())
+                                .color(pal.text_muted)
+                        })
+                        .collect::<Vec<_>>(),
+                    ),
                 ),
             ))
         })
@@ -502,24 +547,18 @@ pub(crate) fn related_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     let rows: Vec<_> = groups
         .into_iter()
         .map(|(title, names)| {
-            let chips: Vec<_> = names
-                .into_iter()
-                .map(|related| {
-                    let target = app.font.index_of(&related);
-                    chip(pal, related, move |app: &mut Workspace| {
-                        if let Some(target) = target {
-                            app.open_glyph(target);
-                        }
-                    })
-                })
-                .collect();
+            let chips = chip_rows(pal, &names, |app: &mut Workspace, related| {
+                if let Some(target) = app.font.index_of(related) {
+                    app.open_glyph(target);
+                }
+            });
             xcolumn(
                 Region::List,
                 (
                     label(title)
                         .text_size(TextSize::Body.px())
                         .color(pal.text_muted),
-                    xrow(Region::List, chips),
+                    chips,
                 ),
             )
         })
