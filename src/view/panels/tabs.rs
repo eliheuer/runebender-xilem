@@ -22,26 +22,32 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         Mode::Editor(i) => Some(i),
         _ => None,
     };
-    let tab = |text: &'static str, which: Rail| {
-        tab_chip(
-            pal,
-            text.into(),
+    // Icon tiles, as the GPUI build's editor sidebar has them: the
+    // glyph grid, the axes (when the family has any), and Local AI.
+    // The active one inverts.
+    let tab = |icon: &'static str, which: Rail| {
+        icon_button(
+            icon,
             app.rail == which,
-            false,
+            pal.text_muted,
+            pal.selected_ink(),
+            pal.selected_bg(),
+            pal.control,
             move |app: &mut Workspace| {
                 app.rail = which;
             },
         )
     };
+    let has_axes = !app.font.axes.is_empty();
     xcolumn(
         Region::Panel,
         (
             xrow(
                 Region::Inline,
                 (
-                    tab("Glyphs", Rail::Glyphs),
-                    tab("Axes", Rail::Axes),
-                    tab("Local AI", Rail::LocalAi),
+                    tab("glyph-grid", Rail::Glyphs),
+                    has_axes.then(|| tab("measure", Rail::Axes)),
+                    tab("preview", Rail::LocalAi),
                 ),
             ),
             (app.rail == Rail::Axes)
