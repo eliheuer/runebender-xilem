@@ -1,20 +1,24 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The font model: a loaded font plus a denormalized per-glyph cache
-//! for painting (outline, ink box, advance, mark). One master for now.
+//! The font model: core's `Project` (one `Master` per source, each
+//! with its own undo pile), plus the denormalized per-glyph cache the
+//! grid paints from. The shell reads the active master through
+//! [`FontModel::font`] and writes through [`FontModel::font_mut`]; the
+//! masters, axes and locations are the project's.
 
 use std::path::{Path as FsPath, PathBuf};
-use std::rc::Rc;
 use std::sync::Arc;
 
 use kurbo::{BezPath, Rect};
 use runebender_core::analysis::category::GlyphCategory;
+use runebender_core::document::project::{Master, Project};
 use runebender_core::outline::glyph_paths;
-use runebender_core::ui::theme::{load_theme, mark_label_for_glyph};
 
-/// Everything the grid and previews need for one glyph, without touching norad.
-#[derive(Clone)]
+/// One designspace axis, in user coordinates with its map into design
+/// coordinates. Core's `AxisInfo` keeps only the design-space extents;
+/// the map is read off the designspace document here.
+#[derive(Clone, Debug)]
 pub(crate) struct Axis {
     pub name: String,
     pub tag: String,
@@ -82,307 +86,225 @@ impl Axis {
         v
     }
 }
-
+/// Everything the grid and previews need for one glyph, without touching norad.
+#[derive(Clone)]
 pub(crate) struct GlyphEntry {
     pub name: String,
     pub codepoint: Option<char>,
     pub advance: f64,
-    /// Full outline (contours plus resolved components), design space.
+    /// Full outline (contours plus resolved components), shared with core's entry.
     pub outline: Arc<BezPath>,
-    /// Ink bounding box of the outline (empty for blank glyphs).
+    /// Ink box of the outline (zero when empty).
     pub ink: Rect,
     pub mark: Option<String>,
     pub category: GlyphCategory,
 }
 
+impl GlyphEntry {
+    fn from_core(entry: &runebender_core::document::project::GlyphEntry) -> Self {
+        Self {
+            name: entry.name.to_string(),
+            codepoint: entry.codepoint,
+            advance: entry.advance,
+            outline: entry.path.clone(),
+            ink: if entry.path.elements().is_empty() {
+                Rect::ZERO
+            } else {
+                entry.ink
+            },
+            mark: entry.mark.as_deref().map(str::to_string),
+            category: entry
+                .codepoint
+                .map(GlyphCategory::from_codepoint)
+                .unwrap_or(GlyphCategory::Other),
+        }
+    }
+}
+
 pub(crate) struct FontModel {
-    pub font: Rc<norad::Font>,
-    pub source: PathBuf,
+    /// Core's project: the masters, the designspace, the undo piles.
+    pub project: Project,
+    /// The active master's glyphs, in core's order, so an index here
+    /// is an index into the master.
     pub glyphs: Vec<GlyphEntry>,
-    pub units_per_em: f64,
-    pub ascender: f64,
-    pub descender: f64,
-    pub x_height: f64,
-    pub cap_height: f64,
-    /// All masters (from a designspace); a single UFO has one.
-    masters: Vec<norad::Font>,
-    pub master_names: Vec<String>,
-    pub master_paths: Vec<PathBuf>,
-    pub active: usize,
     pub axes: Vec<Axis>,
-    pub master_locations: Vec<std::collections::HashMap<String, f64>>,
 }
 
 impl FontModel {
     pub(crate) fn open(path: &FsPath) -> Result<Self, String> {
-        if path
-            .extension()
-            .is_some_and(|e| e == "glyphs" || e == "glyphspackage")
-        {
-            let converted = Self::import_glyphs(path)?;
-            return Self::open(&converted);
-        }
-        if path.extension().is_some_and(|e| e == "designspace") {
-            let doc = norad::designspace::DesignSpaceDocument::load(path)
-                .map_err(|e| format!("{}: {e}", path.display()))?;
-            let dir = path.parent().unwrap_or(FsPath::new(".")).to_path_buf();
-            let mut masters = Vec::new();
-            let mut names = Vec::new();
-            let mut paths = Vec::new();
-            for src in &doc.sources {
-                let ufo_path = dir.join(&src.filename);
-                let font = norad::Font::load(&ufo_path)
-                    .map_err(|e| format!("{}: {e}", ufo_path.display()))?;
-                names.push(src.name.clone().unwrap_or_else(|| {
-                    font.font_info
-                        .style_name
-                        .clone()
-                        .unwrap_or_else(|| "master".into())
-                }));
-                paths.push(ufo_path);
-                masters.push(font);
-            }
-            if masters.is_empty() {
-                return Err("designspace has no sources".into());
-            }
-            let axes: Vec<Axis> = doc
-                .axes
-                .iter()
-                .map(|a| Axis {
-                    name: a.name.clone(),
-                    tag: a.tag.clone(),
-                    min: a.minimum.unwrap_or(a.default) as f64,
-                    default: a.default as f64,
-                    max: a.maximum.unwrap_or(a.default) as f64,
-                    map: a
-                        .map
-                        .as_ref()
-                        .map(|ms| {
-                            let mut v: Vec<(f64, f64)> = ms
-                                .iter()
-                                .map(|m| (m.input as f64, m.output as f64))
-                                .collect();
-                            v.sort_by(|a, b| {
-                                a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
-                            });
-                            v
-                        })
-                        .unwrap_or_default(),
-                })
-                .collect();
-            let master_locations: Vec<std::collections::HashMap<String, f64>> = doc
-                .sources
-                .iter()
-                .map(|src| {
-                    src.location
-                        .iter()
-                        .filter_map(|d| d.xvalue.map(|v| (d.name.clone(), v as f64)))
-                        .collect()
-                })
-                .collect();
-            let mut model = Self::from_masters(masters, names, paths, 0);
-            model.axes = axes;
-            model.master_locations = master_locations;
-            Ok(model)
-        } else {
-            let font = norad::Font::load(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            let name = font
-                .font_info
-                .style_name
-                .clone()
-                .unwrap_or_else(|| "Regular".into());
-            Ok(Self::from_masters(
-                vec![font],
-                vec![name],
-                vec![path.to_path_buf()],
-                0,
-            ))
-        }
+        let project = Project::load(path)?;
+        Ok(Self::from_project(project))
     }
 
-    /// Convert a `.glyphs` file to UFO sources beside it and return the
-    /// path to open: the designspace when the family has masters, and
-    /// the first UFO otherwise.
-    ///
-    /// The conversion is `runebender-core`'s, so a family imported here
-    /// and in the GPUI build produces the same sources.
-    fn import_glyphs(path: &FsPath) -> Result<PathBuf, String> {
-        let result = if path.is_dir() {
-            // A .glyphspackage is a directory of plists. Core takes the
-            // files as a map rather than a path, because the browser
-            // build has no filesystem to hand it.
-            let entries = Self::read_package(path)?;
-            runebender_core::formats::glyphs_import::glyphs_package_to_ufo_files(&entries)?
-        } else {
-            let text =
-                std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            runebender_core::formats::glyphs_import::glyphs_to_ufo_files(&text)?
+    /// A single-master model from a font in memory, for tests and demos.
+    pub(crate) fn from_font(font: norad::Font, source: PathBuf) -> Self {
+        let master = Master::from_font(font, source);
+        let name: Arc<str> = master
+            .font
+            .font_info
+            .style_name
+            .clone()
+            .unwrap_or_else(|| "Regular".into())
+            .into();
+        let mut project = Project::new_font(PathBuf::new());
+        project.masters = vec![master];
+        project.master_names = vec![name];
+        project.compute_compat();
+        Self::from_project(project)
+    }
+
+    pub(crate) fn from_project(project: Project) -> Self {
+        let axes = project
+            .ds_doc
+            .as_ref()
+            .map(|doc| {
+                doc.axes
+                    .iter()
+                    .map(|a| Axis {
+                        name: a.name.clone(),
+                        tag: a.tag.clone(),
+                        min: a.minimum.unwrap_or(a.default) as f64,
+                        default: a.default as f64,
+                        max: a.maximum.unwrap_or(a.default) as f64,
+                        map: a
+                            .map
+                            .as_ref()
+                            .map(|ms| {
+                                let mut v: Vec<(f64, f64)> = ms
+                                    .iter()
+                                    .map(|m| (m.input as f64, m.output as f64))
+                                    .collect();
+                                v.sort_by(|a, b| {
+                                    a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
+                                });
+                                v
+                            })
+                            .unwrap_or_default(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut model = Self {
+            project,
+            glyphs: Vec::new(),
+            axes,
         };
-        let stem = path
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "glyphs-import".into());
-        let out_dir = path
-            .parent()
-            .unwrap_or(FsPath::new("."))
-            .join(format!("{stem}-ufo"));
-        let mut designspace = None;
-        let mut first_ufo = None;
-        for file in &result.files {
-            let target = out_dir.join(&file.path);
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| format!("{e}"))?;
-            }
-            std::fs::write(&target, &file.text).map_err(|e| format!("{e}"))?;
-            if file.path.ends_with(".designspace") {
-                designspace = Some(target);
-            } else if first_ufo.is_none()
-                && let Some(ufo) = file.path.split('/').next()
-                && ufo.ends_with(".ufo")
-            {
-                first_ufo = Some(out_dir.join(ufo));
-            }
-        }
-        for warning in &result.warnings {
-            eprintln!("glyphs import: {warning}");
-        }
-        designspace
-            .or(first_ufo)
-            .ok_or_else(|| "glyphs import produced no sources".to_string())
-    }
-
-    /// Every text file in a `.glyphspackage`, keyed by its path relative
-    /// to the package root. Anything that is not UTF-8 is not source, so
-    /// it is skipped rather than failing the open.
-    fn read_package(root: &FsPath) -> Result<std::collections::HashMap<String, String>, String> {
-        fn walk(
-            dir: &FsPath,
-            root: &FsPath,
-            out: &mut std::collections::HashMap<String, String>,
-        ) -> Result<(), String> {
-            for entry in std::fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
-                let path = entry.map_err(|e| format!("{e}"))?.path();
-                if path.is_dir() {
-                    walk(&path, root, out)?;
-                } else if let Ok(text) = std::fs::read_to_string(&path) {
-                    let relative = path
-                        .strip_prefix(root)
-                        .map_err(|e| format!("{e}"))?
-                        .to_string_lossy()
-                        .replace('\\', "/");
-                    out.insert(relative, text);
-                }
-            }
-            Ok(())
-        }
-        let mut entries = std::collections::HashMap::new();
-        walk(root, root, &mut entries)?;
-        Ok(entries)
-    }
-
-    fn from_masters(
-        masters: Vec<norad::Font>,
-        master_names: Vec<String>,
-        master_paths: Vec<PathBuf>,
-        active: usize,
-    ) -> Self {
-        let source = master_paths[active].clone();
-        let mut model = Self::from_font(masters[active].clone(), source);
-        model.masters = masters;
-        model.master_names = master_names;
-        model.master_paths = master_paths;
-        model.active = active;
+        model.rebuild_cache();
         model
     }
 
-    /// Switch the active master, saving the current in-memory edits back to it.
-    pub(crate) fn set_active(&mut self, index: usize) {
-        if index >= self.masters.len() || index == self.active {
-            return;
-        }
-        // Preserve edits to the current master.
-        self.masters[self.active] = (*self.font).clone();
-        let rebuilt = Self::from_font(
-            self.masters[index].clone(),
-            self.master_paths[index].clone(),
-        );
-        self.font = rebuilt.font;
-        self.glyphs = rebuilt.glyphs;
-        self.units_per_em = rebuilt.units_per_em;
-        self.ascender = rebuilt.ascender;
-        self.descender = rebuilt.descender;
-        self.x_height = rebuilt.x_height;
-        self.cap_height = rebuilt.cap_height;
-        self.source = self.master_paths[index].clone();
-        self.active = index;
+    /// Rebuild every shell entry from the active master's cache.
+    pub(crate) fn rebuild_cache(&mut self) {
+        self.glyphs = self
+            .master()
+            .glyphs
+            .iter()
+            .map(GlyphEntry::from_core)
+            .collect();
     }
 
-    pub(crate) fn from_font(font: norad::Font, source: PathBuf) -> Self {
-        let (upm, ascender, descender, x_height, cap_height) = {
-            let info = &font.font_info;
-            let upm = info.units_per_em.map(|u| u.as_f64()).unwrap_or(1000.0);
-            (
-                upm,
-                info.ascender.unwrap_or(upm * 0.8),
-                info.descender.unwrap_or(-upm * 0.2),
-                info.x_height.unwrap_or(upm * 0.5),
-                info.cap_height.unwrap_or(upm * 0.7),
-            )
-        };
-        let theme = load_theme("dark");
-        let mut names: Vec<String> = font.iter_names().map(|n| n.to_string()).collect();
-        names.sort();
-        let glyphs = names
-            .iter()
-            .filter_map(|name| {
-                let glyph = font.get_glyph(name)?;
-                let outline = glyph_paths::glyph_to_bezpath(glyph, &font);
-                let ink = if outline.elements().is_empty() {
-                    Rect::ZERO
-                } else {
-                    outline.control_box()
-                };
-                let mark = theme.as_ref().and_then(|t| mark_label_for_glyph(glyph, t));
-                Some(GlyphEntry {
-                    name: name.clone(),
-                    codepoint: glyph.codepoints.iter().next(),
-                    advance: glyph.width,
-                    outline: Arc::new(outline),
-                    ink,
-                    mark,
-                    category: glyph
-                        .codepoints
-                        .iter()
-                        .next()
-                        .map(GlyphCategory::from_codepoint)
-                        .unwrap_or(GlyphCategory::Other),
-                })
-            })
-            .collect();
-        Self {
-            font: Rc::new(font),
-            source,
-            glyphs,
-            units_per_em: upm,
-            ascender,
-            descender,
-            x_height,
-            cap_height,
-            masters: Vec::new(),
-            master_names: Vec::new(),
-            master_paths: Vec::new(),
-            active: 0,
-            axes: Vec::new(),
-            master_locations: Vec::new(),
+    /// Refresh one shell entry from the master's, after an edit.
+    fn refresh_entry(&mut self, index: usize) {
+        if let Some(entry) = self.master().glyphs.get(index) {
+            let fresh = GlyphEntry::from_core(entry);
+            if let Some(slot) = self.glyphs.get_mut(index) {
+                *slot = fresh;
+            }
         }
+    }
+
+    // ---- the active master ----
+
+    pub(crate) fn master(&self) -> &Master {
+        self.project.active_font()
+    }
+
+    pub(crate) fn master_mut(&mut self) -> &mut Master {
+        self.project.active_font_mut()
+    }
+
+    /// The active master's font, to read.
+    pub(crate) fn font(&self) -> &norad::Font {
+        &self.master().font
+    }
+
+    /// The active master's font, to write. Marks the master dirty; a
+    /// caller that changes glyph outlines refreshes the cache after.
+    pub(crate) fn font_mut(&mut self) -> &mut norad::Font {
+        let master = self.master_mut();
+        master.dirty = true;
+        &mut master.font
+    }
+
+    pub(crate) fn source(&self) -> &FsPath {
+        &self.master().source_path
+    }
+
+    pub(crate) fn active(&self) -> usize {
+        self.project.active
+    }
+
+    pub(crate) fn units_per_em(&self) -> f64 {
+        self.master().units_per_em
+    }
+
+    pub(crate) fn ascender(&self) -> f64 {
+        self.master().ascender
+    }
+
+    pub(crate) fn descender(&self) -> f64 {
+        self.master().descender
+    }
+
+    pub(crate) fn x_height(&self) -> f64 {
+        let master = self.master();
+        master.x_height.unwrap_or(master.units_per_em * 0.5)
+    }
+
+    pub(crate) fn cap_height(&self) -> f64 {
+        let master = self.master();
+        master.cap_height.unwrap_or(master.units_per_em * 0.7)
+    }
+
+    pub(crate) fn master_names(&self) -> Vec<String> {
+        self.project
+            .master_names
+            .iter()
+            .map(|n| n.to_string())
+            .collect()
+    }
+
+    pub(crate) fn master_name(&self, index: usize) -> String {
+        self.project
+            .master_names
+            .get(index)
+            .map(|n| n.to_string())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn master_paths(&self) -> Vec<PathBuf> {
+        self.project
+            .masters
+            .iter()
+            .map(|m| m.source_path.clone())
+            .collect()
+    }
+
+    /// Switch the active master. Each master keeps its own edits, so
+    /// nothing is flushed; the cache is rebuilt for the new one.
+    pub(crate) fn set_active(&mut self, index: usize) {
+        if index >= self.project.masters.len() || index == self.project.active {
+            return;
+        }
+        self.project.active = index;
+        self.project.snap_location_to_master(index);
+        self.rebuild_cache();
     }
 
     pub(crate) fn index_of(&self, name: &str) -> Option<usize> {
-        self.glyphs.iter().position(|g| g.name == name)
+        self.master().name_map.get(name).copied()
     }
 
-    /// Create an empty glyph and refresh the cache. Returns false if the name
-    /// is empty or already exists.
     /// Add an empty glyph to every master.
     ///
     /// Encoded when a codepoint is given, or when the name is a single
@@ -395,43 +317,33 @@ impl FontModel {
         unicode: Option<u32>,
     ) -> bool {
         let name = name.trim();
-        if name.is_empty() || self.font.get_glyph(name).is_some() {
+        if name.is_empty() || self.font().get_glyph(name).is_some() {
             return false;
         }
-        let make = || {
-            let mut glyph = norad::Glyph::new(name);
-            glyph.width = default_advance;
-            let codepoint = unicode.and_then(char::from_u32).or_else(|| {
-                (name.chars().count() == 1)
-                    .then(|| name.chars().next())
-                    .flatten()
-            });
-            if let Some(c) = codepoint {
-                glyph.codepoints = norad::Codepoints::new([c]);
+        let codepoint = unicode.and_then(char::from_u32).or_else(|| {
+            (name.chars().count() == 1)
+                .then(|| name.chars().next())
+                .flatten()
+        });
+        for master in &mut self.project.masters {
+            if master.font.get_glyph(name).is_some() {
+                continue;
             }
-            glyph
-        };
-        let Some(font) = Rc::get_mut(&mut self.font) else {
-            return false;
-        };
-        font.default_layer_mut().insert_glyph(make());
-        for master in &mut self.masters {
-            if master.get_glyph(name).is_none() {
-                master.default_layer_mut().insert_glyph(make());
+            if let Some(index) = master.add_glyph(name, default_advance)
+                && let Some(c) = codepoint
+            {
+                master.edit_glyph(index, |g| g.codepoints = norad::Codepoints::new([c]));
             }
         }
-        // Rebuild the glyph cache only. Rebuilding the whole model here
-        // used to drop the masters, the axes and their locations, which
-        // quietly turned a designspace into a single-master font.
-        let rebuilt = Self::from_font((*self.font).clone(), self.source.clone());
-        self.glyphs = rebuilt.glyphs;
+        self.project.recheck_compat(name);
+        self.rebuild_cache();
         true
     }
 
     /// Add every glyph in `targets` that the font does not have yet, and
     /// report how many were added.
     pub(crate) fn add_missing(&mut self, targets: &[(String, Option<u32>)]) -> usize {
-        let advance = (self.units_per_em * 0.5).round();
+        let advance = (self.units_per_em() * 0.5).round();
         let mut added = 0;
         for (name, unicode) in targets {
             if self.add_glyph(name, advance, *unicode) {
@@ -449,31 +361,27 @@ impl FontModel {
     /// designspace whose sources disagree about a glyph name does not
     /// build.
     pub(crate) fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
-        let renamed = Rc::get_mut(&mut self.font)
-            .map(|font| runebender_core::document::font_ops::rename_glyph(font, old, new))
-            .unwrap_or(false);
-        if !renamed {
-            return false;
+        let mut renamed = false;
+        for master in &mut self.project.masters {
+            if runebender_core::document::font_ops::rename_glyph(&mut master.font, old, new) {
+                master.dirty = true;
+                master.history.clear_glyph(old);
+                master.refresh_from_font();
+                renamed = true;
+            }
         }
-        for master in &mut self.masters {
-            runebender_core::document::font_ops::rename_glyph(master, old, new);
+        if renamed {
+            self.rebuild_cache();
         }
-        // Only names changed, so the metrics stand; rebuild the glyph
-        // cache and keep everything that describes the family.
-        let rebuilt = Self::from_font((*self.font).clone(), self.source.clone());
-        self.glyphs = rebuilt.glyphs;
-        true
+        renamed
     }
 
+    /// Save every master to its UFO.
     pub(crate) fn save(&mut self) -> Result<(), String> {
-        // Flush the active master's edits back into the masters list, then
-        // save every master to its UFO.
-        if self.active < self.masters.len() {
-            self.masters[self.active] = (*self.font).clone();
-        }
-        for (font, path) in self.masters.iter().zip(self.master_paths.iter()) {
-            font.save(path)
-                .map_err(|e| format!("{}: {e}", path.display()))?;
+        for master in &mut self.project.masters {
+            master
+                .save()
+                .map_err(|e| format!("{}: {e}", master.source_path.display()))?;
         }
         Ok(())
     }
@@ -481,7 +389,7 @@ impl FontModel {
     /// The given master's axis location in USER coordinates, one per axis,
     /// mapping its stored design-coord location back through the axis map.
     pub(crate) fn master_axis_values(&self, index: usize) -> Vec<f64> {
-        let loc = self.master_locations.get(index);
+        let loc = self.project.master_locations.get(index);
         self.axes
             .iter()
             .map(|ax| match loc.and_then(|l| l.get(&ax.name)) {
@@ -500,7 +408,7 @@ impl FontModel {
         glyph_name: &str,
         location: &std::collections::HashMap<String, f64>,
     ) -> Option<BezPath> {
-        if self.masters.len() < 2 || self.axes.is_empty() {
+        if self.project.masters.len() < 2 || self.axes.is_empty() {
             return None;
         }
         // Normalized master locations and target, shared by every recursion.
@@ -525,7 +433,12 @@ impl FontModel {
                 (ax.name.clone(), ax.user_to_design(v))
             })
             .collect();
-        let locations: Vec<_> = self.master_locations.iter().map(&norm_design).collect();
+        let locations: Vec<_> = self
+            .project
+            .master_locations
+            .iter()
+            .map(&norm_design)
+            .collect();
         let target = norm_design(&target_design);
         self.interpolate_outline_depth(glyph_name, &locations, &target, 0)
     }
@@ -542,9 +455,10 @@ impl FontModel {
             return None;
         }
         let glyphs: Vec<&norad::Glyph> = self
+            .project
             .masters
             .iter()
-            .map(|f| f.get_glyph(glyph_name))
+            .map(|m| m.font.get_glyph(glyph_name))
             .collect::<Option<Vec<_>>>()?;
         // Value vector: width, then each contour point x/y, then each
         // component's x/y offset (matching runebender-web's interpolateGlif).
@@ -570,7 +484,7 @@ impl FontModel {
         let model = VariationModel::new(locations);
         let out = model.interpolate(&vectors, target);
         // Rebuild on the active master's structure as a template.
-        let mut g = glyphs.get(self.active).copied()?.clone();
+        let mut g = glyphs.get(self.project.active).copied()?.clone();
         let mut i = 1_usize; // skip width
         for c in &mut g.contours {
             for p in &mut c.points {
@@ -602,48 +516,41 @@ impl FontModel {
         Some(path)
     }
 
-    /// Outline and advance of `glyph_name` in master `index`, for the
-    /// layer thumbnails in the inspector.
     /// How many masters the family has.
     pub(crate) fn master_count(&self) -> usize {
-        self.masters.len()
+        self.project.masters.len()
     }
 
-    /// One master's font as loaded, or the live one for the active
-    /// master, since its edits have not been flushed back yet.
+    /// One master's font, the active one's edits included.
     pub(crate) fn master_font(&self, index: usize) -> Option<&norad::Font> {
-        if index == self.active {
-            Some(&self.font)
-        } else {
-            self.masters.get(index)
-        }
+        self.project.masters.get(index).map(|m| &m.font)
     }
 
-    /// Runs `f` over every master's font, the live one included, for
-    /// a write that has to land on all of them (groups, kerning).
+    /// Runs `f` over every master's font, for a write that has to land
+    /// on all of them (groups, kerning).
     pub(crate) fn for_each_master(&mut self, mut f: impl FnMut(&mut norad::Font)) {
-        let live = Rc::make_mut(&mut self.font);
-        f(live);
-        for (i, master) in self.masters.iter_mut().enumerate() {
-            if i != self.active {
-                f(master);
-            }
+        for master in &mut self.project.masters {
+            f(&mut master.font);
+            master.dirty = true;
         }
     }
 
     pub(crate) fn master_glyph(&self, index: usize, glyph_name: &str) -> Option<(BezPath, f64)> {
-        let font = self.masters.get(index)?;
-        let glyph = font.get_glyph(glyph_name)?;
-        Some((glyph_paths::glyph_to_bezpath(glyph, font), glyph.width))
+        let master = self.project.masters.get(index)?;
+        let glyph = master.font.get_glyph(glyph_name)?;
+        Some((
+            glyph_paths::glyph_to_bezpath(glyph, &master.font),
+            glyph.width,
+        ))
     }
 
     /// Short display names for the masters: the common family prefix is
     /// dropped, so "Bricolage Grotesque 96pt `ExtraBold`" reads as
     /// "96pt `ExtraBold`" in a narrow inspector.
     pub(crate) fn short_master_names(&self) -> Vec<String> {
-        let names = &self.master_names;
+        let names = self.master_names();
         if names.len() < 2 {
-            return names.clone();
+            return names;
         }
         // The longest common prefix, cut back to a word boundary.
         let first = names[0].as_str();
@@ -672,38 +579,23 @@ impl FontModel {
             .collect()
     }
 
-    /// Outlines of `glyph_name` in the masters listed in `which`, for the
+    /// Outlines of `glyph_name` in the chosen masters, for the
     /// ghost overlay. The inspector's Layers section owns that set.
     pub(crate) fn reference_outlines(
         &self,
         glyph_name: &str,
         which: &std::collections::HashSet<usize>,
     ) -> Vec<BezPath> {
-        self.masters
+        self.project
+            .masters
             .iter()
             .enumerate()
-            .filter(|(i, _)| which.contains(i) && *i != self.active)
-            .filter_map(|(_, font)| {
-                font.get_glyph(glyph_name)
-                    .map(|g| glyph_paths::glyph_to_bezpath(g, font))
-            })
-            .collect()
-    }
-
-    /// Outlines of `glyph_name` in every master except the active one,
-    /// for the ghost overlay.
-    #[expect(
-        dead_code,
-        reason = "the ghost overlay is on the parity list; the data path is ready"
-    )]
-    pub(crate) fn ghost_outlines(&self, glyph_name: &str) -> Vec<BezPath> {
-        self.masters
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| *i != self.active)
-            .filter_map(|(_, font)| {
-                font.get_glyph(glyph_name)
-                    .map(|g| glyph_paths::glyph_to_bezpath(g, font))
+            .filter(|(i, _)| which.contains(i) && *i != self.project.active)
+            .filter_map(|(_, master)| {
+                master
+                    .font
+                    .get_glyph(glyph_name)
+                    .map(|g| glyph_paths::glyph_to_bezpath(g, &master.font))
             })
             .collect()
     }
@@ -725,9 +617,10 @@ impl FontModel {
 
     /// The glyph's outline in the background layer, as a path.
     pub(crate) fn background_outline(&self, glyph: &str) -> Option<BezPath> {
-        let layer = Self::background_layer(&self.font)?;
-        let background = self.font.layers.get(&layer)?.get_glyph(glyph)?;
-        Some(glyph_paths::glyph_to_bezpath(background, &self.font))
+        let font = self.font();
+        let layer = Self::background_layer(font)?;
+        let background = font.layers.get(&layer)?.get_glyph(glyph)?;
+        Some(glyph_paths::glyph_to_bezpath(background, font))
     }
 
     /// Copy contours into the glyph's background layer, creating the
@@ -738,9 +631,7 @@ impl FontModel {
         contours: Vec<norad::Contour>,
         width: f64,
     ) {
-        let Some(font) = Rc::get_mut(&mut self.font) else {
-            return;
-        };
+        let font = self.font_mut();
         let Ok(layer) = font.layers.get_or_create_layer("public.background") else {
             return;
         };
@@ -752,19 +643,18 @@ impl FontModel {
 
     /// The contours held in the background layer for this glyph.
     pub(crate) fn background_contours(&self, glyph: &str) -> Option<Vec<norad::Contour>> {
-        let layer = Self::background_layer(&self.font)?;
-        let background = self.font.layers.get(&layer)?.get_glyph(glyph)?;
+        let font = self.font();
+        let layer = Self::background_layer(font)?;
+        let background = font.layers.get(&layer)?.get_glyph(glyph)?;
         Some(background.contours.clone())
     }
 
     /// Empty the glyph's background layer.
     pub(crate) fn clear_background(&mut self, glyph: &str) {
-        let Some(layer) = Self::background_layer(&self.font) else {
+        let Some(layer) = Self::background_layer(self.font()) else {
             return;
         };
-        if let Some(font) = Rc::get_mut(&mut self.font)
-            && let Some(layer) = font.layers.get_mut(&layer)
-        {
+        if let Some(layer) = self.font_mut().layers.get_mut(&layer) {
             layer.remove_glyph(glyph);
         }
     }
@@ -779,7 +669,7 @@ impl FontModel {
     ///
     /// `first_side` is the left side in left-to-right text: `public.kern1`.
     pub(crate) fn kern_group(&self, glyph: &str, first_side: bool) -> String {
-        runebender_core::document::font_ops::kern_group(&self.font, glyph, first_side)
+        runebender_core::document::font_ops::kern_group(self.font(), glyph, first_side)
             .map(|name| name.to_string())
             .unwrap_or_default()
     }
@@ -791,13 +681,10 @@ impl FontModel {
     /// writes all of them rather than only the active one.
     pub(crate) fn set_kern_group(&mut self, glyph: &str, first_side: bool, group: &str) -> bool {
         let mut changed = false;
-        if let Some(font) = Rc::get_mut(&mut self.font) {
+        self.for_each_master(|font| {
             changed |=
                 runebender_core::document::font_ops::set_kern_group(font, glyph, first_side, group);
-        }
-        for master in &mut self.masters {
-            runebender_core::document::font_ops::set_kern_group(master, glyph, first_side, group);
-        }
+        });
         changed
     }
 
@@ -807,11 +694,11 @@ impl FontModel {
     /// and the UFO spec record it. The GPUI build shows this count at
     /// the head of its filter list.
     pub(crate) fn exporting_count(&self) -> usize {
+        let font = self.font();
         self.glyphs
             .iter()
             .filter(|entry| {
-                self.font
-                    .get_glyph(&entry.name)
+                font.get_glyph(&entry.name)
                     .and_then(|glyph| glyph.lib.get("public.skipExport"))
                     .and_then(|value| value.as_boolean())
                     != Some(true)
@@ -819,33 +706,14 @@ impl FontModel {
             .count()
     }
 
-    /// How many glyphs the masters disagree about.
-    ///
-    /// Interpolation needs every master to draw a glyph with the same
-    /// contours in the same order with the same number of points. This
-    /// counts the ones that do not, which is the number a designer wants
-    /// to see before a build, not after it.
+    /// How many glyphs the masters disagree about, by core's check.
     pub(crate) fn incompatible_count(&self) -> usize {
-        if self.masters.len() < 2 {
+        if self.project.masters.len() < 2 {
             return 0;
         }
-        let shape = |font: &norad::Font, name: &str| {
-            font.get_glyph(name).map(|glyph| {
-                glyph
-                    .contours
-                    .iter()
-                    .map(|contour| contour.points.len())
-                    .collect::<Vec<_>>()
-            })
-        };
         self.glyphs
             .iter()
-            .filter(|entry| {
-                let first = shape(&self.masters[0], &entry.name);
-                self.masters[1..]
-                    .iter()
-                    .any(|master| shape(master, &entry.name) != first)
-            })
+            .filter(|entry| !self.project.check_compat(&entry.name))
             .count()
     }
 
@@ -857,7 +725,7 @@ impl FontModel {
     /// master and a rule about which values are per-master, which the
     /// editor does not have yet.
     pub(crate) fn info_rows(&self) -> Vec<(&'static str, String)> {
-        let info = &self.font.font_info;
+        let info = &self.font().font_info;
         let text = |value: &Option<String>| value.clone().unwrap_or_default();
         let number = |value: Option<f64>| value.map(|v| format!("{v:.0}")).unwrap_or_default();
         vec![
@@ -905,14 +773,11 @@ impl FontModel {
         let Some(entry) = self.glyphs.get(index) else {
             return false;
         };
-        let Some(mut glyph) = self.font.get_glyph(&entry.name).cloned() else {
-            return false;
-        };
-        if glyph.width == width {
+        if entry.advance == width {
             return false;
         }
-        glyph.width = width;
-        self.replace_glyph(index, glyph);
+        self.master_mut().set_advance(index, width);
+        self.refresh_entry(index);
         true
     }
 
@@ -940,16 +805,12 @@ impl FontModel {
                 None => return false,
             }
         };
-        let apply = |font: &mut norad::Font| {
-            if let Some(glyph) = font.get_glyph_mut(&name) {
-                glyph.codepoints = norad::Codepoints::new(codepoints.iter().copied());
+        for master in &mut self.project.masters {
+            if let Some(&i) = master.name_map.get(&name) {
+                master.edit_glyph(i, |g| {
+                    g.codepoints = norad::Codepoints::new(codepoints.iter().copied());
+                });
             }
-        };
-        if let Some(font) = Rc::get_mut(&mut self.font) {
-            apply(font);
-        }
-        for master in &mut self.masters {
-            apply(master);
         }
         if let Some(entry) = self.glyphs.get_mut(index) {
             entry.codepoint = codepoints.first().copied();
@@ -957,22 +818,15 @@ impl FontModel {
         true
     }
 
-    /// Replace the glyph at `index` (in the font and the cache) after an edit.
+    /// Replace the glyph at `index` in the active master after an edit,
+    /// and refresh its cache entry.
     pub(crate) fn replace_glyph(&mut self, index: usize, glyph: norad::Glyph) {
-        let Some(entry) = self.glyphs.get_mut(index) else {
+        if self.glyphs.get(index).is_none() {
             return;
-        };
-        // Update the font's copy so component references and saving stay correct.
-        if let Some(slot) = Rc::get_mut(&mut self.font).and_then(|f| f.get_glyph_mut(&entry.name)) {
-            *slot = glyph.clone();
         }
-        let outline = glyph_paths::glyph_to_bezpath(&glyph, &self.font);
-        entry.ink = if outline.elements().is_empty() {
-            Rect::ZERO
-        } else {
-            outline.control_box()
-        };
-        entry.advance = glyph.width;
-        entry.outline = Arc::new(outline);
+        self.master_mut().edit_glyph(index, |slot| *slot = glyph);
+        self.refresh_entry(index);
+        let name = self.glyphs[index].name.clone();
+        self.project.recheck_compat(&name);
     }
 }

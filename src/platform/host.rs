@@ -26,7 +26,7 @@ impl Workspace {
             })
             .ok_or_else(|| "font has no glyphs".to_string())?;
         let session =
-            Arc::new(Session::new(&font.font, &font.glyphs[first].name).ok_or("glyph missing")?);
+            Arc::new(Session::new(font.font(), &font.glyphs[first].name).ok_or("glyph missing")?);
         // For headless screenshots: optionally select all points.
         // (set later, after session is final)
 
@@ -40,7 +40,7 @@ impl Workspace {
         };
         let session = match open {
             Some(i) => Arc::new(
-                Session::new(&font.font, &font.glyphs[i].name)
+                Session::new(font.font(), &font.glyphs[i].name)
                     .unwrap_or_else(|| (*session).clone()),
             ),
             None => session,
@@ -50,7 +50,7 @@ impl Workspace {
         let mut axis_values: Vec<f64> = if font.axes.is_empty() {
             Vec::new()
         } else {
-            font.master_axis_values(font.active)
+            font.master_axis_values(font.active())
         };
         // Headless overrides, so a render can show a state that normally
         // takes clicks to reach. The GPUI build has the same idea.
@@ -203,7 +203,7 @@ impl Workspace {
         match self.font.save() {
             Ok(()) => {
                 self.modified = false;
-                self.note = format!("Saved {}", self.font.source.display());
+                self.note = format!("Saved {}", self.font.source().display());
             }
             Err(e) => self.note = format!("Save failed: {e}"),
         }
@@ -218,7 +218,7 @@ impl Workspace {
             self.note = "sources changed on disk; save or discard first".into();
             return;
         }
-        let source = self.font.source.clone();
+        let source = self.font.source().to_path_buf();
         let open = self.session.glyph_name.clone();
         match Self::open(&source) {
             Ok(mut fresh) => {
@@ -250,7 +250,7 @@ impl Workspace {
         let font = runebender_core::document::new_font::new_font("Untitled", "Regular", 400);
         let dir = self
             .font
-            .source
+            .source()
             .parent()
             .unwrap_or(FsPath::new("."))
             .to_path_buf();

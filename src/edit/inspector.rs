@@ -5,7 +5,6 @@
 
 use crate::*;
 use runebender_core::outline::glyph_paths::round_units;
-use std::rc::Rc;
 
 impl Workspace {
     /// What sits under the drawing: the background layer if it is turned
@@ -158,7 +157,7 @@ impl Workspace {
         // old one has to learn the new one or it points at nothing.
         for tab in &mut self.tabs {
             if tab.session.glyph_name == old
-                && let Some(session) = Session::new(&self.font.font, new)
+                && let Some(session) = Session::new(self.font.font(), new)
             {
                 tab.session = Arc::new(session);
             }
@@ -168,7 +167,7 @@ impl Workspace {
             self.selected = Some(i);
             if matches!(self.mode, Mode::Editor(_)) {
                 self.mode = Mode::Editor(i);
-                if let Some(sess) = Session::new(&self.font.font, new) {
+                if let Some(sess) = Session::new(self.font.font(), new) {
                     self.session = Arc::new(sess);
                 }
             }
@@ -229,7 +228,7 @@ impl Workspace {
         let indices: Vec<usize> = self.multi_selected.iter().copied().collect();
         for i in indices {
             if let Some(entry) = self.font.glyphs.get(i)
-                && let Some(mut g) = self.font.font.get_glyph(&entry.name).cloned()
+                && let Some(mut g) = self.font.font().get_glyph(&entry.name).cloned()
             {
                 runebender_core::ui::theme::set_glyph_mark(&mut g, label.as_deref());
                 self.font.replace_glyph(i, g);
@@ -297,7 +296,7 @@ impl Workspace {
             self.note = "a kerning pair needs two names".into();
             return;
         };
-        let font = Rc::make_mut(&mut self.font.font);
+        let font = self.font.font_mut();
         font.kerning.entry(f).or_default().insert(s, value);
         self.modified = true;
         self.note = format!("{first} \u{00b7} {second} = {value}");
@@ -368,12 +367,12 @@ impl Workspace {
     /// Replace the generated mark and mkmk lookups in the feature
     /// file with what core derives from the anchors now.
     pub(crate) fn generate_features(&mut self) {
-        let fea = runebender_core::text::features::with_generated(&self.font.font);
-        if fea == self.font.font.features {
+        let fea = runebender_core::text::features::with_generated(self.font.font());
+        if fea == self.font.font().features {
             self.features_status = Some("Nothing to generate from anchors".into());
             return;
         }
-        Rc::make_mut(&mut self.font.font).features = fea;
+        self.font.font_mut().features = fea;
         self.modified = true;
         self.features_status = Some("Generated mark and mkmk from anchors".into());
     }

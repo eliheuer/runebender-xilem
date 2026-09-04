@@ -96,7 +96,7 @@ pub(crate) fn dimensions_section(app: &Workspace) -> impl WidgetView<Workspace> 
     let rows: Vec<_> = REFERENCE_GLYPHS
         .iter()
         .filter_map(|name| {
-            let (stem, bar) = stem_and_bar(&app.font.font, name);
+            let (stem, bar) = stem_and_bar(app.font.font(), name);
             if stem.is_none() && bar.is_none() {
                 return None;
             }
@@ -135,7 +135,7 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     let filter = app.kern_filter_buf.trim().to_lowercase();
     let mut pairs: Vec<(String, String, f64)> = Vec::new();
     let mut hidden = 0_usize;
-    for (first, seconds) in app.font.font.kerning.iter() {
+    for (first, seconds) in app.font.font().kerning.iter() {
         for (second, value) in seconds.iter() {
             if !filter.is_empty()
                 && !first.as_str().to_lowercase().contains(&filter)
@@ -266,7 +266,7 @@ pub(crate) fn groups_section(app: &Workspace) -> impl WidgetView<Workspace> + us
     let pal = &app.palette;
     let mut rows: Vec<_> = Vec::new();
     let mut shown = 0_usize;
-    for (full, members) in app.font.font.groups.iter() {
+    for (full, members) in app.font.font().groups.iter() {
         let name = full.as_str();
         let (side, short) = if let Some(s) = name.strip_prefix("public.kern1.") {
             ("L", s)
@@ -354,8 +354,8 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
             ),
         );
     }
-    let active = app.font.active;
-    let reference = &app.font.font;
+    let active = app.font.active();
+    let reference = app.font.font();
     let pair_count = |f: &norad::Font| f.kerning.values().map(|s| s.len()).sum::<usize>();
     let metric = |f: &norad::Font, pick: Pick| pick(&f.font_info).unwrap_or(0.0);
     let rows: Vec<_> = (0..masters)
@@ -393,7 +393,8 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                 (
                     label(format!(
                         "{} vs {}",
-                        app.font.master_names[i], app.font.master_names[active]
+                        app.font.master_name(i),
+                        app.font.master_name(active)
                     ))
                     .text_size(TextSize::Body.px())
                     .color(pal.text),
@@ -456,10 +457,10 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
 /// until Xilem has a text area.
 pub(crate) fn features_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    let text = if app.font.font.features.trim().is_empty() {
+    let text = if app.font.font().features.trim().is_empty() {
         "No feature file".to_string()
     } else {
-        app.font.font.features.clone()
+        app.font.font().features.clone()
     };
     section(
         app,
@@ -505,7 +506,7 @@ pub(crate) fn related_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     let mut groups: Vec<(&'static str, Vec<String>)> = Vec::new();
     let components: Vec<String> = app
         .font
-        .font
+        .font()
         .get_glyph(name.as_str())
         .map(|g| g.components.iter().map(|c| c.base.to_string()).collect())
         .unwrap_or_default();
@@ -529,7 +530,7 @@ pub(crate) fn related_section(app: &Workspace) -> impl WidgetView<Workspace> + u
         .iter()
         .filter(|g| {
             app.font
-                .font
+                .font()
                 .get_glyph(g.name.as_str())
                 .is_some_and(|n| n.components.iter().any(|c| c.base.as_str() == name))
         })
