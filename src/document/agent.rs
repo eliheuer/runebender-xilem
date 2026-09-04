@@ -64,15 +64,21 @@ pub fn tools() -> Vec<Tool> {
     vec![
         Tool {
             name: "font_info".into(),
-            description: "The open font: family, style, metrics, glyph count, \
-                          proposals waiting. Call this first."
+            description: "Returns the open font's family and style names, units per \
+                          em, ascender, descender, x-height, cap height, the glyph \
+                          count, and the proposals waiting. Use it for any question \
+                          about the font as a whole, and call it before anything \
+                          else in a conversation."
                 .into(),
             parameters: params(json!({}), &[]),
         },
         Tool {
             name: "read_glyph".into(),
-            description: "One glyph's outline: advance, contours as points with \
-                          their types, components, anchors."
+            description: "Returns one glyph's numbers: advance width, left and right \
+                          sidebearings, bounds, point and contour counts, the contours \
+                          as points with their types, components, and anchors. Use it \
+                          for any question about a glyph's width, spacing, points, \
+                          shape, or anchors; the answer is in its result."
                 .into(),
             parameters: params(
                 json!({ "glyph": { "type": "string", "description": "The glyph name." } }),
@@ -81,8 +87,10 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "proof".into(),
-            description: "Write an SVG proof sheet of glyphs and return per-glyph \
-                          metrics: advance, sidebearings, bounds, point counts."
+            description: "Writes an SVG proof sheet of several glyphs and returns \
+                          per-glyph metrics: advance, sidebearings, bounds, point \
+                          counts. Use it to compare several glyphs at once or when the \
+                          person wants a proof to look at; for one glyph use read_glyph."
                 .into(),
             parameters: params(
                 json!({
@@ -94,9 +102,13 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "propose".into(),
-            description: "Run a local model task (for example bolden) over glyphs. \
-                          The result lands as a proposal layer the person can \
-                          install or discard; nothing in the font changes."
+            description: "Runs a local model task (for example bolden, which predicts \
+                          a heavier master) over glyphs with a model from the models \
+                          directory. Returns the proposal layer name and per-glyph \
+                          rows. Nothing in the font changes: the result waits as a \
+                          proposal layer, and the person installs or discards it in \
+                          the editor. Use it when asked to propose, predict, bolden, \
+                          or run a model."
                 .into(),
             parameters: params(
                 json!({
@@ -110,8 +122,10 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "nodes_run".into(),
-            description: "Run a saved node workflow file over the font. Steps whose \
-                          inputs have not changed are skipped."
+            description: "Runs a saved node workflow file (.nodes.json) over the font \
+                          and returns each node's status and report. Steps whose \
+                          inputs have not changed are skipped. Use it only when the \
+                          person names a workflow file."
                 .into(),
             parameters: params(
                 json!({
@@ -123,12 +137,16 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "proposal_list".into(),
-            description: "The proposals waiting in the font, by task, with glyph counts.".into(),
+            description: "Returns the proposals waiting in the font, by task, with \
+                          glyph counts. Use it when asked what is waiting or pending."
+                .into(),
             parameters: params(json!({}), &[]),
         },
         Tool {
             name: "proposal_discard".into(),
-            description: "Drop a waiting proposal without installing it.".into(),
+            description: "Drops a waiting proposal without installing it. Use it only \
+                          when the person asks to discard or remove a proposal."
+                .into(),
             parameters: params(
                 json!({ "task": { "type": "string", "description": "The task whose proposal to drop." } }),
                 &["task"],
@@ -136,9 +154,11 @@ pub fn tools() -> Vec<Tool> {
         },
         Tool {
             name: "docs".into(),
-            description: "Search the font engineering documentation on this machine \
-                          (UFO, designspace, fontc, Runebender) and return the \
-                          passages that match."
+            description: "Searches the font engineering documentation on this machine \
+                          (the UFO and designspace specs, fontc, Runebender) and \
+                          returns the passages that match. Use it for any question \
+                          about a format, a spec, an attribute, or a term, and quote \
+                          what it returns."
                 .into(),
             parameters: params(
                 json!({ "query": { "type": "string", "description": "Words to look for." } }),
@@ -158,13 +178,20 @@ pub fn system_prompt(tools: &[Tool]) -> String {
          and nothing leaves it.\n\n\
          Rules:\n\
          - You cannot edit the font. You read it, proof it, and propose changes \
-         with a tool. A proposal is a layer the person installs or discards; say \
-         so when you propose.\n\
-         - Call font_info before anything else, and read a glyph before you \
-         talk about its shape.\n\
-         - Be brief and concrete. Give numbers from the tools, not guesses. \
-         Glyph names are as the font has them (for example 'a', 'Aacute', \
-         'hah-ar').\n\
+         with a tool. A proposal is a layer the person installs or discards in the \
+         editor. After a propose call, name the proposal layer and say that the \
+         person installs it; never say it was installed and never offer to install.\n\
+         - Read before you answer. For any question about a glyph's width, advance, \
+         sidebearings, spacing, points, contours, anchors, or shape, call read_glyph \
+         on that glyph first and answer only with numbers from its result. Never \
+         answer a geometry question from font_info or from memory.\n\
+         - For any question about a format, a spec, an attribute, or a term (UFO, \
+         glif, designspace, fontc, OpenType), call docs first and quote what it \
+         returns.\n\
+         - Call font_info before anything else in a conversation.\n\
+         - Be brief and concrete. Give numbers from the tools, not guesses. Glyph \
+         names are as the font has them (for example 'a', 'Aacute', 'hah-ar'); \
+         a capital letter's glyph name is the letter itself ('H').\n\
          - When you do not know, say so.\n\n\
          Tools. To call one, write exactly one block like this and nothing after \
          it, then wait for the result:\n\
@@ -178,8 +205,69 @@ pub fn system_prompt(tools: &[Tool]) -> String {
             serde_json::to_string(&t.parameters["properties"]).unwrap_or_default()
         ));
     }
+    out.push_str(
+        "\nExample. Person: How wide is the n? You: <tool_call>\n\
+         {\"name\": \"read_glyph\", \"arguments\": {\"glyph\": \"n\"}}\n</tool_call>\n\
+         Result: {\"advance\": 596, \"lsb\": 72, \"rsb\": 24, ...}. You: The n is 596 \
+         units wide, with a left sidebearing of 72 and a right sidebearing of 24.\n",
+    );
     out
 }
+
+/// Whether a question is about a glyph's geometry, so the loop can
+/// insist on a read before an answer. Word-based and generous on
+/// purpose: a false positive costs one tool call, a miss costs a
+/// guessed number.
+pub fn asks_geometry(question: &str) -> bool {
+    let q = question.to_lowercase();
+    [
+        "wide",
+        "width",
+        "advance",
+        "sidebearing",
+        "side bearing",
+        "lsb",
+        "rsb",
+        "spacing",
+        "points",
+        "contour",
+        "anchor",
+        "shape",
+        "outline",
+        "bounds",
+        "how tall",
+        "height of",
+    ]
+    .iter()
+    .any(|w| q.contains(w))
+}
+
+/// Whether a question is about a format or a term, so the loop can
+/// fetch documentation before the model answers.
+pub fn asks_docs(question: &str) -> bool {
+    let q = question.to_lowercase();
+    [
+        "spec",
+        "ufo",
+        "glif",
+        "designspace",
+        "fontc",
+        "opentype",
+        "attribute",
+        "what does",
+        "what is a",
+        "what is the",
+        "mean",
+        "documentation",
+    ]
+    .iter()
+    .any(|w| q.contains(w))
+}
+
+/// The one-line nudge the loop sends when the model answered a
+/// geometry question without reading the glyph.
+pub const READ_FIRST_NUDGE: &str = "You answered without reading the glyph. Call read_glyph on it now and answer \
+     only from the result.";
 
 /// Every `<tool_call>` block in a reply, in order. A block that is not
 /// valid JSON is skipped.
@@ -267,5 +355,33 @@ mod tests {
             assert!(p.contains(&format!("- {}:", tool.name)));
         }
         assert!(p.contains("cannot edit"));
+    }
+
+    #[test]
+    fn the_prompt_carries_the_rules_and_the_example() {
+        let p = system_prompt(&tools());
+        assert!(p.contains("Read before you answer"));
+        assert!(p.contains("call docs first"));
+        assert!(p.contains("never say it was installed"));
+        assert!(p.contains("Example. Person: How wide is the n?"));
+        // The example calls the tool the rule names.
+        assert!(p.contains("\"name\": \"read_glyph\""));
+    }
+
+    #[test]
+    fn questions_are_sorted_by_what_they_need() {
+        assert!(asks_geometry(
+            "How wide is the H, and what are its sidebearings?"
+        ));
+        assert!(asks_geometry("how many points does the a have"));
+        assert!(!asks_geometry(
+            "What font is open and how many glyphs does it have?"
+        ));
+        assert!(asks_docs(
+            "What does the UFO spec say about the smooth attribute on a point?"
+        ));
+        assert!(!asks_docs(
+            "Propose a bolder H with the virtua-12m-bolden model"
+        ));
     }
 }

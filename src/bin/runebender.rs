@@ -20,6 +20,7 @@ use runebender_core::document::nodes_run;
 use runebender_core::document::project::Master;
 use runebender_core::document::proposal;
 use runebender_core::outline::embolden;
+use runebender_core::outline::glyph_paths;
 use serde_json::json;
 
 /// Exit codes, matching font-ml so a caller can branch on them.
@@ -1047,10 +1048,24 @@ fn read_glyph(source: &Path, name: &str) -> serde_json::Value {
             )
         })
         .collect();
+    // The numbers a question is usually about come first, computed
+    // the way `proof` computes them, so one tool answers width and
+    // spacing without a second call.
+    let path = glyph_paths::glyph_to_bezpath(glyph, &font);
+    let drawn = !path.is_empty();
+    let bounds = {
+        use kurbo::Shape as _;
+        path.bounding_box()
+    };
     json!({
         "ok": true,
         "glyph": name,
         "advance": glyph.width,
+        "lsb": if drawn { Some(bounds.x0.round()) } else { None },
+        "rsb": if drawn { Some((glyph.width - bounds.x1).round()) } else { None },
+        "bounds": if drawn { Some([bounds.x0, bounds.y0, bounds.x1, bounds.y1]) } else { None },
+        "points": glyph.contours.iter().map(|c| c.points.len()).sum::<usize>(),
+        "contour_count": glyph.contours.len(),
         "unicodes": glyph.codepoints.iter().map(|c| format!("U+{:04X}", c as u32)).collect::<Vec<_>>(),
         "contours": contours,
         "components": glyph.components.iter().map(|c| c.base.to_string()).collect::<Vec<_>>(),
@@ -1266,7 +1281,25 @@ fn agent_call_value(
                     a.push("--tool".into());
                     a.push(t.display().to_string());
                 }
-                self_json(&a)
+                // The per-point deltas are for a tool, not a model
+                // reading prose; without them the result is a few
+                // hundred characters instead of thousands.
+                let mut v = self_json(&a);
+                if let Some(rows) = v
+                    .get_mut("report")
+                    .and_then(|r| r.get_mut("glyphs"))
+                    .and_then(|g| g.as_array_mut())
+                {
+                    for row in rows {
+                        if let Some(o) = row.as_object_mut() {
+                            o.remove("deltas");
+                        }
+                    }
+                }
+                if let Some(r) = v.get_mut("report").and_then(|r| r.as_object_mut()) {
+                    r.remove("deltas");
+                }
+                v
             }
             _ => json!({ "ok": false, "error": "task and model are required" }),
         },
