@@ -307,10 +307,10 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             recipes::Marker::Closed
         };
         let expandable = !g.filters.is_empty();
-        lang_rows.push(Either::A(recipes::list_row_with_icon(
+        lang_rows.push(Either::A(recipes::list_row_marked(
             pal,
             marker,
-            g.icon.clone(),
+            false,
             g.label.clone(),
             format!("{}", app.language_count(i)),
             app.sel == Sel::Language(i),
@@ -440,7 +440,8 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 Region::Card,
                 (
                     sidebar_group(app, "Categories", cat_rows),
-                    (!lang_rows.is_empty()).then(|| sidebar_group(app, "Languages", lang_rows)),
+                    (!lang_rows.is_empty())
+                        .then(|| sidebar_group(app, "Global Scripts", lang_rows)),
                     (!filter_rows.is_empty()).then(|| sidebar_group(app, "Filters", filter_rows)),
                     // Two counts the GPUI build puts at the head of its filters:
                     // how much of the font exports, and how much of it the
