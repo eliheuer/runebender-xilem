@@ -159,6 +159,12 @@ impl Workspace {
             reference_layers: std::collections::HashSet::new(),
             nodes: nodes::NodesState::default(),
             ai: local_ai::LocalAiState::default(),
+            kern_filter_buf: String::new(),
+            kern_first_buf: String::new(),
+            kern_second_buf: String::new(),
+            kern_value_buf: String::new(),
+            group_name_buf: String::new(),
+            features_status: None,
         };
         app.init_nodes();
         app.rescan_models();

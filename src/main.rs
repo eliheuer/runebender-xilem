@@ -41,7 +41,9 @@ use view::canvas::editor::editor;
 use view::canvas::grid::{Cell, CellMetrics, GridEvent, cells_of, grid};
 use view::chrome::*;
 use view::design::{ControlSize, Radius, Region, Space, Stroke, TextSize};
-use view::panels::{editor::*, info::*, local_ai::*, nodes::*, preview::*, sections::*, tabs::*};
+use view::panels::{
+    editor::*, editor_info::*, info::*, local_ai::*, nodes::*, preview::*, sections::*, tabs::*,
+};
 use view::render::*;
 use view::theme::Palette;
 use view::*;

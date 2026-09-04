@@ -124,6 +124,16 @@ pub(crate) struct Workspace {
     pub(crate) nodes: nodes::NodesState,
     /// The Local AI panel: models, tasks, a run, proposals.
     pub(crate) ai: local_ai::LocalAiState,
+    /// The Kerning section's fields: filter, then the pair being
+    /// edited.
+    pub(crate) kern_filter_buf: String,
+    pub(crate) kern_first_buf: String,
+    pub(crate) kern_second_buf: String,
+    pub(crate) kern_value_buf: String,
+    /// The Groups section's name field.
+    pub(crate) group_name_buf: String,
+    /// What the Features section last did.
+    pub(crate) features_status: Option<String>,
 }
 
 /// Which surface is showing.

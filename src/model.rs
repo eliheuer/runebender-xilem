@@ -604,6 +604,33 @@ impl FontModel {
 
     /// Outline and advance of `glyph_name` in master `index`, for the
     /// layer thumbnails in the inspector.
+    /// How many masters the family has.
+    pub(crate) fn master_count(&self) -> usize {
+        self.masters.len()
+    }
+
+    /// One master's font as loaded, or the live one for the active
+    /// master, since its edits have not been flushed back yet.
+    pub(crate) fn master_font(&self, index: usize) -> Option<&norad::Font> {
+        if index == self.active {
+            Some(&self.font)
+        } else {
+            self.masters.get(index)
+        }
+    }
+
+    /// Runs `f` over every master's font, the live one included, for
+    /// a write that has to land on all of them (groups, kerning).
+    pub(crate) fn for_each_master(&mut self, mut f: impl FnMut(&mut norad::Font)) {
+        let live = Rc::make_mut(&mut self.font);
+        f(live);
+        for (i, master) in self.masters.iter_mut().enumerate() {
+            if i != self.active {
+                f(master);
+            }
+        }
+    }
+
     pub(crate) fn master_glyph(&self, index: usize, glyph_name: &str) -> Option<(BezPath, f64)> {
         let font = self.masters.get(index)?;
         let glyph = font.get_glyph(glyph_name)?;
