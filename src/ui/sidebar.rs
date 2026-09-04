@@ -73,13 +73,13 @@ pub struct CharacterFilter {
 }
 
 #[derive(Debug)]
-/// A script group in the Languages section.
+/// A script group in the Global Scripts section.
 pub struct LanguageGroup {
     /// Stable identifier for the group.
     pub id: String,
     /// Label shown on the group row.
     pub label: String,
-    /// Icon text shown next to the label.
+    /// Icon text for the group; the shells no longer draw it.
     pub icon: String,
     /// What the group row itself selects: the script's own Unicode
     /// blocks. The glyphsets carry Latin punctuation, so OR-ing the
@@ -339,7 +339,7 @@ fn gf_hebrew_subset_targets() -> Vec<GlyphTarget> {
     targets
 }
 
-/// The Languages section, built once. This is the web's
+/// The Global Scripts section, built once. This is the web's
 /// `SIDEBAR_LANGUAGE_GROUPS`.
 pub fn language_groups() -> &'static [LanguageGroup] {
     static GROUPS: OnceLock<Vec<LanguageGroup>> = OnceLock::new();
