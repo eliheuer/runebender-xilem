@@ -49,14 +49,14 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 Region::Inline,
                 (
                     label(title).text_size(TextSize::Body.px()).color(pal.text),
-                    // Quiet when saved, the warning colour when not,
-                    // which is the GPUI build's header.
+                    // Saved is the mark palette's green, not saved its
+                    // red: the same two colours the glyph grid uses.
                     label(status.to_string())
                         .text_size(TextSize::Body.px())
                         .color(if app.modified {
-                            pal.role("warning")
+                            pal.mark("red").unwrap_or_else(|| pal.role("warning"))
                         } else {
-                            pal.text_muted
+                            pal.mark("green").unwrap_or(pal.text_muted)
                         }),
                 ),
             ))
