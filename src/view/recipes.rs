@@ -236,66 +236,6 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
 }
 
-/// A list row with a leading icon.
-///
-/// The icon gets its own fixed-width column rather than being glued to
-/// the label. It has to: a script icon like `\u{0636}` is right to left,
-/// and inside one string the bidi algorithm moves it to the other end,
-/// so "icon then name" renders as "name then icon". A separate box is
-/// also how the GPUI build lays it out.
-pub(crate) fn list_row_with_icon<F: Fn(&mut Workspace) + Send + Sync + 'static>(
-    pal: &Palette,
-    marker: Marker,
-    icon: String,
-    text: String,
-    trailing: String,
-    active: bool,
-    on_click: F,
-) -> impl WidgetView<Workspace> + use<F> {
-    let icon = format!("{}  {icon}", marker.text());
-    let (fg, border, bg) = if active {
-        (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
-    } else {
-        (pal.text, xilem::Color::TRANSPARENT, pal.panel)
-    };
-    let trailing_color = if active {
-        pal.selected_ink()
-    } else {
-        pal.text_muted
-    };
-    let icon_color = if active {
-        pal.selected_ink()
-    } else {
-        pal.text_muted
-    };
-    sized_box(
-        button(
-            row(
-                Region::Inline,
-                (
-                    // Wide enough for the bullet and a script letter.
-                    sized_box(label(icon).text_size(TextSize::Body.px()).color(icon_color)).dims(
-                        Dimensions::fixed(ControlSize::Control.length(), ControlSize::Row.length()),
-                    ),
-                    label(text).text_size(TextSize::Body.px()).color(fg),
-                    FlexSpacer::Flex(1.0),
-                    label(trailing)
-                        .text_size(TextSize::Body.px())
-                        .color(trailing_color),
-                    FlexSpacer::Fixed(Space::Sm.length()),
-                ),
-            ),
-            move |app: &mut Workspace| on_click(app),
-        )
-        .padding(Space::Sm)
-        .background_color(bg)
-        .border_color(border)
-        .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::Sm.length()),
-    )
-    .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
-}
-
 /// A toggle at control height that takes the width of its label: the
 /// GPUI build's `toggle`, inverted when active.
 pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
