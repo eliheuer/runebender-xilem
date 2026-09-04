@@ -10,17 +10,14 @@
 //! seam: save first, run on a thread, pull the proposal layer into the
 //! open font, and hand it to core to install or discard.
 //!
-//! One thing differs from the GPUI build. That shell's font is core's
-//! `Master`, which carries the undo pile an install records into.
-//! This shell's font is still its own `model.rs`, so installs record
-//! into a pile held here, and "Undo install" in the panel takes them
-//! back one glyph at a time. When `model.rs` is replaced by `Master`
-//! the pile moves with it.
+//! As in the GPUI build, the font is core's `Master`, and an install
+//! records one undo step per glyph on its pile. "Undo install" in the
+//! panel takes the most recent one back; Cmd+Z over the open glyph
+//! does the same through the editor.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use runebender_core::document::history::EditHistory;
 use runebender_core::document::proposal::{self, ProposalSummary};
 
 use crate::{Mode, Session, Workspace, cells_of};
@@ -129,8 +126,6 @@ pub(crate) struct LocalAiState {
     pub(crate) job: Option<AiJob>,
     /// Proposals waiting in the active master, one per task.
     pub(crate) proposals: Vec<ProposalSummary>,
-    /// The undo pile for installs, keyed by glyph name.
-    pub(crate) installs: EditHistory,
     /// Glyphs installed, most recent last, so Undo install knows the
     /// order.
     pub(crate) installed_order: Vec<String>,
@@ -326,19 +321,18 @@ impl Workspace {
         Ok(summary)
     }
 
-    /// Install a waiting proposal: one undo step per glyph, into the
-    /// panel's pile.
+    /// Install a waiting proposal: one undo step per glyph, on the
+    /// master's pile.
     pub(crate) fn install_proposal(&mut self, task: &str, only: Option<Vec<String>>) {
-        let font = self.font.font_mut();
-        let installs = &mut self.ai.installs;
-        let order = &mut self.ai.installed_order;
-        let mut before = |name: &str, glyph: &norad::Glyph| {
-            installs.record(name, glyph);
-            order.push(name.to_string());
-        };
-        let result = proposal::install(font, task, only.as_deref(), true, &mut before);
+        let result = self
+            .font
+            .master_mut()
+            .install_proposal(task, only.as_deref(), true);
         match result {
             Ok(done) => {
+                self.ai
+                    .installed_order
+                    .extend(done.installed.iter().cloned());
                 self.after_font_change(&done.installed);
                 self.note = format!(
                     "Installed {} glyphs from {}{}. Undo install takes them back one at a time.",
@@ -362,11 +356,10 @@ impl Workspace {
             self.note = "Nothing installed to undo".into();
             return;
         };
-        let font = self.font.font_mut();
-        let Some(glyph) = font.get_glyph_mut(name.as_str()) else {
+        let Some(index) = self.font.index_of(&name) else {
             return;
         };
-        if self.ai.installs.undo(&name, glyph) {
+        if self.font.master_mut().undo(index) {
             self.after_font_change(std::slice::from_ref(&name));
             self.note = format!("Undid install of {name}");
         }
@@ -389,10 +382,8 @@ impl Workspace {
     /// open session when its glyph was one of them.
     fn after_font_change(&mut self, names: &[String]) {
         for name in names {
-            if let Some(index) = self.font.index_of(name)
-                && let Some(glyph) = self.font.font().get_glyph(name.as_str()).cloned()
-            {
-                self.font.replace_glyph(index, glyph);
+            if let Some(index) = self.font.index_of(name) {
+                self.font.refresh_entry(index);
             }
         }
         self.cells = Arc::new(cells_of(&self.font, &self.palette));
@@ -402,8 +393,8 @@ impl Workspace {
             && let Some(fresh) = Session::new(self.font.font(), &self.session.glyph_name)
         {
             // The open glyph was replaced under the session; start it
-            // again on the new outline. The install's own undo is in
-            // the panel's pile.
+            // again on the new outline. The install's own undo is on
+            // the master's pile, so Cmd+Z in the editor takes it back.
             let mut fresh = fresh;
             fresh.viewport = self.session.viewport.clone();
             fresh.fitted = self.session.fitted;

@@ -130,6 +130,10 @@ pub(crate) enum EditorEvent {
     Selection(usize),
     /// The text tool activated a sort: open that glyph for editing.
     EditGlyph(String),
+    /// Cmd+Z: the app undoes on the master's pile.
+    Undo,
+    /// Cmd+Shift+Z or Cmd+Y.
+    Redo,
 }
 
 enum Drag {
@@ -1444,10 +1448,14 @@ impl Widget for EditorWidget {
                 (false, true)
             }
             Key::Character(c) if cmd && !shift && c.eq_ignore_ascii_case("z") => {
-                (self.session.undo(), true)
+                ctx.submit_action::<EditorEvent>(EditorEvent::Undo);
+                ctx.set_handled();
+                return;
             }
             Key::Character(c) if cmd && (c == "y" || (shift && c.eq_ignore_ascii_case("z"))) => {
-                (self.session.redo(), true)
+                ctx.submit_action::<EditorEvent>(EditorEvent::Redo);
+                ctx.set_handled();
+                return;
             }
             _ => return,
         };
@@ -1703,7 +1711,7 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
                 // The island is the live source of truth while editing. Pull its
                 // session back into the app before the callback runs, so save and
                 // the grid preview see the edits (the widget edits its own clone).
-                app.sync_session_from(&element.widget.session);
+                app.sync_session_from(&mut element.widget.session);
                 (self.on_event)(app, *event);
                 MessageResult::Action(())
             }
