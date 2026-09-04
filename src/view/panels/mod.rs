@@ -4,6 +4,7 @@
 //! The panels either side of the canvas, one file per region.
 
 pub(crate) mod editor;
+pub(crate) mod editor_info;
 pub(crate) mod info;
 pub(crate) mod local_ai;
 pub(crate) mod nodes;

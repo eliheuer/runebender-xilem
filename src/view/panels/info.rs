@@ -181,12 +181,22 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             // The GPUI build's order: Coordinates, Transformations,
             // Curves, Background, Color, then Layers, in the editor;
             // Font info, Layers and the preview over the grid.
+            // The GPUI build's order. Editor: Coordinates,
+            // Transformations, Curves, Background, Color, Related,
+            // Masters. Overview: Font info, Dimensions, Kerning,
+            // Groups, Compare, Features, Masters, the preview.
             editing.then(|| coordinates_section(app)),
             editing.then(|| path_section(app)),
             editing.then(|| curves_section(app)),
             editing.then(|| background_section(app)),
             editing.then(|| mark_section(app)),
+            editing.then(|| related_section(app)),
             (!editing).then(|| font_info_section(app)),
+            (!editing).then(|| dimensions_section(app)),
+            (!editing).then(|| kerning_section(app)),
+            (!editing).then(|| groups_section(app)),
+            (!editing).then(|| compare_section(app)),
+            (!editing).then(|| features_section(app)),
             layers_section(app),
             editing.then(|| measure_section(app)),
             (!editing).then(|| glyph_preview(app)).flatten(),

@@ -5,6 +5,7 @@
 
 use crate::*;
 use runebender_core::outline::glyph_paths::round_units;
+use std::rc::Rc;
 
 impl Workspace {
     /// What sits under the drawing: the background layer if it is turned
@@ -245,5 +246,142 @@ impl Workspace {
             self.session = Arc::new(sess);
             self.refresh_open_glyph();
         }
+    }
+}
+
+impl Workspace {
+    /// The grid selection as names, the primary included.
+    fn selection_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .multi_selected
+            .iter()
+            .filter_map(|&i| self.font.glyphs.get(i).map(|g| g.name.clone()))
+            .collect();
+        if let Some(name) = self
+            .selected
+            .and_then(|i| self.font.glyphs.get(i))
+            .map(|g| g.name.clone())
+            && !names.contains(&name)
+        {
+            names.push(name);
+        }
+        names.sort();
+        names
+    }
+
+    /// Drop one kerning pair, on every master.
+    pub(crate) fn delete_kern_pair(&mut self, first: &str, second: &str) {
+        self.font.for_each_master(|font| {
+            let mut emptied = false;
+            if let Some(seconds) = font.kerning.get_mut(first) {
+                seconds.retain(|name, _| name.as_str() != second);
+                emptied = seconds.is_empty();
+            }
+            if emptied {
+                font.kerning.retain(|name, _| name.as_str() != first);
+            }
+        });
+        self.modified = true;
+    }
+
+    /// Set the pair in the Kerning section's editor row, on the
+    /// active master. Enter in any of its three fields.
+    pub(crate) fn set_kern_pair_from_bufs(&mut self) {
+        let first = self.kern_first_buf.trim().to_string();
+        let second = self.kern_second_buf.trim().to_string();
+        let Ok(value) = self.kern_value_buf.trim().parse::<f64>() else {
+            self.note = "kerning value is not a number".into();
+            return;
+        };
+        let (Ok(f), Ok(s)) = (norad::Name::new(&first), norad::Name::new(&second)) else {
+            self.note = "a kerning pair needs two names".into();
+            return;
+        };
+        let font = Rc::make_mut(&mut self.font.font);
+        font.kerning.entry(f).or_default().insert(s, value);
+        self.modified = true;
+        self.note = format!("{first} \u{00b7} {second} = {value}");
+    }
+
+    /// Add the grid selection to a kerning group, on every master.
+    pub(crate) fn add_selection_to_group(&mut self, first_side: bool, group: &str) {
+        let names = self.selection_names();
+        if names.is_empty() {
+            self.note = "Select glyphs in the grid first".into();
+            return;
+        }
+        let prefix = if first_side {
+            "public.kern1."
+        } else {
+            "public.kern2."
+        };
+        let Ok(group_name) = norad::Name::new(&format!("{prefix}{group}")) else {
+            return;
+        };
+        let mut added = 0_usize;
+        self.font.for_each_master(|font| {
+            let members = font.groups.entry(group_name.clone()).or_default();
+            for name in &names {
+                if let Ok(member) = norad::Name::new(name)
+                    && !members.contains(&member)
+                {
+                    members.push(member);
+                    added += 1;
+                }
+            }
+        });
+        self.modified = true;
+        self.note = format!("@{group}: {added} membership(s) added");
+    }
+
+    /// Drop one glyph from a kerning group, on every master. An
+    /// emptied group is removed.
+    pub(crate) fn remove_from_group(&mut self, full_group: &str, member: &str) {
+        self.font.for_each_master(|font| {
+            let mut emptied = false;
+            if let Some(members) = font.groups.get_mut(full_group) {
+                members.retain(|m| m.as_str() != member);
+                emptied = members.is_empty();
+            }
+            if emptied {
+                font.groups.retain(|k, _| k.as_str() != full_group);
+            }
+        });
+        self.modified = true;
+    }
+
+    /// A new left-side group from the Groups field, holding the grid
+    /// selection.
+    pub(crate) fn new_group_from_buf(&mut self) {
+        let group = self
+            .group_name_buf
+            .trim()
+            .trim_start_matches('@')
+            .to_string();
+        if group.is_empty() {
+            return;
+        }
+        self.add_selection_to_group(true, &group);
+        self.group_name_buf.clear();
+    }
+
+    /// Replace the generated mark and mkmk lookups in the feature
+    /// file with what core derives from the anchors now.
+    pub(crate) fn generate_features(&mut self) {
+        let fea = runebender_core::text::features::with_generated(&self.font.font);
+        if fea == self.font.font.features {
+            self.features_status = Some("Nothing to generate from anchors".into());
+            return;
+        }
+        Rc::make_mut(&mut self.font.font).features = fea;
+        self.modified = true;
+        self.features_status = Some("Generated mark and mkmk from anchors".into());
+    }
+
+    /// The feature file as it stands is what shaping reads; here that
+    /// means noting it, since the text is not edited in place yet.
+    pub(crate) fn apply_features(&mut self) {
+        self.features_status = Some("Applied".into());
+        self.modified = true;
     }
 }
