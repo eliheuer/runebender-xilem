@@ -86,6 +86,8 @@ where
         },
     );
 
+    root.register_fonts(xilem::Blob::new(Arc::new(crate::UI_FONT)));
+
     // One rebuild, so a view that fills its scene there is drawn. The
     // canvas view is the reason: it records nothing until rebuild.
     let again = logic(&mut app);
