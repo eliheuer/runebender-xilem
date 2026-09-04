@@ -26,7 +26,7 @@ use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
 use xilem::view::{
-    FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, label, portal, sized_box, slider,
+    FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, portal, sized_box, slider,
     text_button, text_input,
 };
 use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
@@ -50,6 +50,18 @@ use view::*;
 use widgets::icon_button::icon_button;
 use widgets::*;
 use workspace::*;
+
+/// The interface font that ships with the editor: Virtua Grotesk, the
+/// same family as the demo font. Registered at launch.
+pub(crate) const UI_FONT: &[u8] = include_bytes!("../assets/fonts/VirtuaGrotesk-Regular.ttf");
+/// Its family name, as the font's name table spells it.
+pub(crate) const UI_FONT_FAMILY: &str = "Virtua Grotesk";
+
+/// A label in the interface font. Every label goes through here so
+/// the family is set in one place.
+pub(crate) fn label(text: impl Into<masonry::core::ArcStr>) -> xilem::view::Label {
+    xilem::view::label(text).font(UI_FONT_FAMILY)
+}
 
 fn main() -> Result<(), EventLoopError> {
     run(EventLoop::with_user_event())

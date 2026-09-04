@@ -53,6 +53,7 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
     let window_options =
         WindowOptions::new("Runebender").with_initial_inner_size(LogicalSize::new(1100., 720.));
     Xilem::new_simple(app, app_logic, window_options)
+        .with_font(xilem::Blob::new(Arc::new(UI_FONT)))
         .with_default_properties(default_property_set())
         .with_default_base_color(background)
         .run_in(event_loop)
