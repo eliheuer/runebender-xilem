@@ -112,6 +112,10 @@ struct ThemeDef {
     mark_outline: Option<String>,
     #[serde(rename = "markInk")]
     mark_ink: Option<String>,
+    #[serde(rename = "pointStyle")]
+    point_style: Option<String>,
+    #[serde(rename = "pointOutline")]
+    point_outline: Option<String>,
     #[serde(default)]
     geometry: Option<GeometryDef>,
 }
@@ -148,6 +152,17 @@ struct TokenFile {
     /// contents, so they do not follow display tuning.
     #[serde(rename = "ufoMarkColors", default)]
     ufo_mark_colors: HashMap<String, String>,
+}
+
+/// How a theme draws a point.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PointStyle {
+    /// A dark interior with the kind's hue as a ring: the web
+    /// editor's recipe, for grounds far from mid lightness.
+    Ring,
+    /// The kind's hue as the fill, keyed with `pointOutline`: the
+    /// treatment the mark cells use, for a mid-grey ground.
+    Fill,
 }
 
 /// How a theme draws a glyph mark.
@@ -208,6 +223,10 @@ pub struct Theme {
     pub mark_outline: Option<ColorRgba>,
     /// Label colour drawn on top of a filled mark.
     pub mark_ink: Option<ColorRgba>,
+    /// How points are drawn.
+    pub point_style: PointStyle,
+    /// Keyline around a filled point.
+    pub point_outline: Option<ColorRgba>,
 }
 
 impl Theme {
@@ -333,11 +352,21 @@ pub fn load_theme(theme_id: &str) -> Option<Theme> {
         .mark_ink
         .as_deref()
         .and_then(|t| resolve_token(&file, t));
+    let point_style = match def.point_style.as_deref() {
+        Some("fill") => PointStyle::Fill,
+        _ => PointStyle::Ring,
+    };
+    let point_outline = def
+        .point_outline
+        .as_deref()
+        .and_then(|t| resolve_token(&file, t));
     Some(Theme {
         geometry,
         mark_style,
         mark_outline,
         mark_ink,
+        point_style,
+        point_outline,
         surfaces: resolve_map(&def.surfaces),
         text: resolve_map(&def.text),
         roles: resolve_map(&def.roles),
@@ -847,6 +876,15 @@ mod ui_contrast {
         for id in THEMES {
             let theme = load_theme(id).expect("theme");
             let canvas = theme.surface("canvas");
+            // A filled point keeps its edge with the keyline, so the
+            // keyline is what has to read; the hues carry meaning,
+            // not the edge.
+            if theme.point_style == PointStyle::Fill {
+                let outline = theme.point_outline.expect("a filled point names a keyline");
+                let ratio = contrast(outline, canvas);
+                assert!(ratio >= FLOOR, "{id}: pointOutline on canvas is {ratio:.2}");
+                continue;
+            }
             for role in POINTS {
                 let ratio = contrast(theme.role(role), canvas);
                 assert!(ratio >= FLOOR, "{id}: {role} on canvas is {ratio:.2}");
