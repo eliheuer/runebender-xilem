@@ -23,7 +23,7 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         String::new()
     } else {
         app.font
-            .source
+            .source()
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default()

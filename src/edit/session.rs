@@ -842,7 +842,7 @@ impl Workspace {
 
     /// A second tab on the glyph that is open, with its own session.
     pub(crate) fn new_tab(&mut self) {
-        let Some(session) = Session::new(&self.font.font, &self.session.glyph_name) else {
+        let Some(session) = Session::new(self.font.font(), &self.session.glyph_name) else {
             return;
         };
         self.park();
@@ -888,7 +888,7 @@ impl Workspace {
             }
         }
         if let Some(entry) = self.font.glyphs.get(index)
-            && let Some(session) = Session::new(&self.font.font, &entry.name)
+            && let Some(session) = Session::new(self.font.font(), &entry.name)
         {
             self.advance_buf = format!("{}", round_units(session.advance()));
             let (l, r) = metric_bufs(&session);
@@ -929,7 +929,7 @@ impl Workspace {
     }
 
     pub(crate) fn set_master(&mut self, index: usize) {
-        if index == self.font.active {
+        if index == self.font.active() {
             return;
         }
         self.font.set_active(index);
@@ -938,7 +938,7 @@ impl Workspace {
         // Reopen the current glyph in the new master, keeping the viewport.
         if let Mode::Editor(i) = self.mode {
             if let Some(entry) = self.font.glyphs.get(i) {
-                if let Some(sess) = Session::new(&self.font.font, &entry.name) {
+                if let Some(sess) = Session::new(self.font.font(), &entry.name) {
                     self.session = Arc::new(sess);
                 }
             } else if let Some(idx) = self
@@ -946,7 +946,7 @@ impl Workspace {
                 .and_then(|_| self.font.index_of(&self.session.glyph_name))
             {
                 self.mode = Mode::Editor(idx);
-                if let Some(sess) = Session::new(&self.font.font, &self.session.glyph_name.clone())
+                if let Some(sess) = Session::new(self.font.font(), &self.session.glyph_name.clone())
                 {
                     self.session = Arc::new(sess);
                 }
@@ -966,7 +966,7 @@ impl Workspace {
 
     /// True when the sliders sit exactly on the active master's location.
     pub(crate) fn on_active_master(&self) -> bool {
-        match self.font.master_locations.get(self.font.active) {
+        match self.font.project.master_locations.get(self.font.active()) {
             Some(m) => self.font.axes.iter().enumerate().all(|(i, a)| {
                 // axis_values are user coords; master locations are design coords.
                 let cur = a.user_to_design(self.axis_values.get(i).copied().unwrap_or(a.default));

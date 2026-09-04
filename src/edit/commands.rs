@@ -8,7 +8,7 @@ use crate::*;
 impl Workspace {
     pub(crate) fn new_glyph(&mut self) {
         let name = self.filter.trim().to_string();
-        let upm = self.font.units_per_em;
+        let upm = self.font.units_per_em();
         if self.font.add_glyph(&name, (upm * 0.5).round(), None) {
             self.cells = Arc::new(cells_of(&self.font, &self.palette));
             self.filter.clear();

@@ -50,7 +50,7 @@ pub(crate) fn glyph_preview(app: &Workspace) -> Option<impl WidgetView<Workspace
     let entry = app.selected.and_then(|i| app.font.glyphs.get(i))?;
     let outline = entry.outline.clone();
     let advance = entry.advance;
-    let (asc, desc) = (app.font.ascender, app.font.descender);
+    let (asc, desc) = (app.font.ascender(), app.font.descender());
     let fill = app.palette.text;
     let line = app.palette.role("gridBorder").with_alpha(0.5);
     Some(

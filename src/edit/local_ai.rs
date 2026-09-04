@@ -18,7 +18,6 @@
 //! the pile moves with it.
 
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use runebender_core::document::history::EditHistory;
@@ -297,7 +296,7 @@ impl Workspace {
 
     /// What the active master has waiting, from any task.
     pub(crate) fn refresh_proposals(&mut self) {
-        self.ai.proposals = proposal::list(&self.font.font)
+        self.ai.proposals = proposal::list(self.font.font())
             .into_iter()
             .filter(|p| !p.glyphs.is_empty())
             .collect();
@@ -320,7 +319,7 @@ impl Workspace {
         if glyphs.is_empty() {
             return Err(format!("font-ml left no {layer_name} layer"));
         }
-        let font = Rc::make_mut(&mut self.font.font);
+        let font = self.font.font_mut();
         font.layers.remove(&layer_name);
         let summary = proposal::write(font, task, glyphs).map_err(|e| e.to_string())?;
         self.modified = true;
@@ -330,7 +329,7 @@ impl Workspace {
     /// Install a waiting proposal: one undo step per glyph, into the
     /// panel's pile.
     pub(crate) fn install_proposal(&mut self, task: &str, only: Option<Vec<String>>) {
-        let font = Rc::make_mut(&mut self.font.font);
+        let font = self.font.font_mut();
         let installs = &mut self.ai.installs;
         let order = &mut self.ai.installed_order;
         let mut before = |name: &str, glyph: &norad::Glyph| {
@@ -363,7 +362,7 @@ impl Workspace {
             self.note = "Nothing installed to undo".into();
             return;
         };
-        let font = Rc::make_mut(&mut self.font.font);
+        let font = self.font.font_mut();
         let Some(glyph) = font.get_glyph_mut(name.as_str()) else {
             return;
         };
@@ -375,7 +374,7 @@ impl Workspace {
 
     /// Drop a waiting proposal without installing it.
     pub(crate) fn discard_proposal(&mut self, task: &str) {
-        let font = Rc::make_mut(&mut self.font.font);
+        let font = self.font.font_mut();
         match proposal::discard(font, task) {
             Ok(n) => {
                 self.modified = true;
@@ -391,7 +390,7 @@ impl Workspace {
     fn after_font_change(&mut self, names: &[String]) {
         for name in names {
             if let Some(index) = self.font.index_of(name)
-                && let Some(glyph) = self.font.font.get_glyph(name.as_str()).cloned()
+                && let Some(glyph) = self.font.font().get_glyph(name.as_str()).cloned()
             {
                 self.font.replace_glyph(index, glyph);
             }
@@ -400,7 +399,7 @@ impl Workspace {
         self.modified = true;
         if matches!(self.mode, Mode::Editor(_))
             && names.iter().any(|n| *n == self.session.glyph_name)
-            && let Some(fresh) = Session::new(&self.font.font, &self.session.glyph_name)
+            && let Some(fresh) = Session::new(self.font.font(), &self.session.glyph_name)
         {
             // The open glyph was replaced under the session; start it
             // again on the new outline. The install's own undo is in
@@ -436,7 +435,7 @@ impl Workspace {
         if self.modified {
             self.save();
         }
-        let source = self.font.source.clone();
+        let source = self.font.source().to_path_buf();
         if !source.is_dir() {
             self.note = "Save the font before running a model".into();
             return;
@@ -446,13 +445,13 @@ impl Workspace {
             return;
         }
         // The other master, where it says what weight it carries.
-        let reference = (self.font.master_paths.len() > 1).then(|| {
-            let other = if self.font.active == 0 {
-                self.font.master_paths.len() - 1
+        let reference = (self.font.master_paths().len() > 1).then(|| {
+            let other = if self.font.active() == 0 {
+                self.font.master_paths().len() - 1
             } else {
                 0
             };
-            self.font.master_paths[other].clone()
+            self.font.master_paths()[other].clone()
         });
         let strength = self.ai.strength;
         self.ai.busy = Some(match &glyph_name {
@@ -524,7 +523,7 @@ impl Workspace {
     /// What happens when font-ml comes back: the proposal layer is
     /// adopted from disk, and a single glyph is installed at once.
     fn task_finished(&mut self, task: &str, glyph: Option<usize>, report: &serde_json::Value) {
-        let source = self.font.source.clone();
+        let source = self.font.source().to_path_buf();
         let summary = match self.adopt_proposal_from_disk(task, &source) {
             Ok(s) => s,
             Err(e) => {

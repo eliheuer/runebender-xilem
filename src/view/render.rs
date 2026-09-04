@@ -117,7 +117,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
             nodes_pump(actions::with_menu_events(root), app.nodes.job.clone()),
             app.ai.job.clone(),
         ),
-        app.font.master_paths.clone(),
+        app.font.master_paths().clone(),
     )
 }
 
@@ -278,10 +278,10 @@ mod tab_tests {
         let mut app = app();
         let a = app.font.index_of("A").expect("A");
         app.open_glyph(a);
-        let masters = app.font.master_names.len();
+        let masters = app.font.master_names().len();
         app.name_buf = "Alpha".into();
         app.commit_rename();
-        assert_eq!(app.font.master_names.len(), masters);
+        assert_eq!(app.font.master_names().len(), masters);
         assert!(app.font.index_of("Alpha").is_some());
         assert!(app.font.index_of("A").is_none());
     }

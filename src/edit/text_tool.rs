@@ -49,17 +49,17 @@ impl TextInputs {
     /// Read a master: glyph advances, kerning, outlines, metrics.
     pub(crate) fn new(font: &FontModel) -> Self {
         Self {
-            inventory: TextGlyphInventory::from_font(&font.font),
-            kerning: TextKerningModel::from_font(&font.font),
+            inventory: TextGlyphInventory::from_font(font.font()),
+            kerning: TextKerningModel::from_font(font.font()),
             outlines: Arc::new(
                 font.glyphs
                     .iter()
                     .map(|glyph| (glyph.name.clone(), glyph.outline.clone()))
                     .collect(),
             ),
-            line_height: (font.units_per_em.max(font.ascender) - font.descender).max(1.0),
-            ascender: font.ascender,
-            descender: font.descender,
+            line_height: (font.units_per_em().max(font.ascender()) - font.descender()).max(1.0),
+            ascender: font.ascender(),
+            descender: font.descender(),
             initial: String::new(),
             direction: None,
         }

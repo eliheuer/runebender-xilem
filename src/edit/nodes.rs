@@ -134,7 +134,7 @@ impl Workspace {
     /// designspace, or of the one UFO.
     fn font_dir(&self) -> PathBuf {
         self.font
-            .source
+            .source()
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_default()
@@ -305,8 +305,8 @@ impl Workspace {
         if self.modified {
             self.save();
         }
-        let font = self.font.source.clone();
-        let master = self.font.master_names.get(self.font.active).cloned();
+        let font = self.font.source().to_path_buf();
+        let master = self.font.master_names().get(self.font.active()).cloned();
         let glyphs: Vec<String> = self
             .multi_selected
             .iter()

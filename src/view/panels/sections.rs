@@ -12,7 +12,7 @@ use crate::*;
 pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> {
     use masonry::imaging::Painter;
     use masonry::kurbo::{Affine, Size};
-    if app.font.master_names.len() < 2 {
+    if app.font.master_names().len() < 2 {
         return None;
     }
     let pal = &app.palette;
@@ -23,14 +23,14 @@ pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspac
             .and_then(|i| app.font.glyphs.get(i))
             .map(|g| g.name.clone()),
     };
-    let (asc, desc) = (app.font.ascender, app.font.descender);
+    let (asc, desc) = (app.font.ascender(), app.font.descender());
     let rows: Vec<_> = app
         .font
         .short_master_names()
         .into_iter()
         .enumerate()
         .map(|(i, name)| {
-            let active = i == app.font.active;
+            let active = i == app.font.active();
             let shown = app.reference_layers.contains(&i);
             let (bg, fg) = if active {
                 (pal.selected_bg(), pal.selected_ink())
