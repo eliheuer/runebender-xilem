@@ -16,7 +16,11 @@ pub(crate) enum Sort {
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Sel {
     Category(GlyphCategory),
+    /// A row under a category: the subfilter's id.
+    Subfilter(GlyphCategory, &'static str),
     Language(usize),
+    /// A row under a language group: the group and its filter index.
+    LanguageFilter(usize, usize),
     Filter(usize),
 }
 
@@ -59,6 +63,15 @@ pub(crate) struct Workspace {
     pub(crate) collapsed: std::collections::HashSet<&'static str>,
     pub(crate) sel: Sel,
     pub(crate) sort: Sort,
+    /// Categories whose subfilter rows are open, by display name,
+    /// since the category type carries no hash.
+    pub(crate) expanded_categories: std::collections::HashSet<&'static str>,
+    /// Language groups whose filter rows are open.
+    pub(crate) expanded_scripts: std::collections::HashSet<usize>,
+    /// Treat the search as a regular expression.
+    pub(crate) search_regex: bool,
+    /// The compiled search, when `search_regex` is on and it parses.
+    pub(crate) search_re: Option<regex::Regex>,
     // Editor session, when a glyph is open. This is the live one: the
     // active tab's copy is only written back when tabs change.
     pub(crate) session: Arc<Session>,
