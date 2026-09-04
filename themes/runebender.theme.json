@@ -314,7 +314,7 @@
         "designGridFine": "neutral.46",
         "designGridCoarse": "neutral.52",
         "accent": "green.deep",
-        "warning": "orange.deep",
+        "warning": "orange.base",
         "danger": "red.deep",
         "selection": "orange.base",
         "component": "purple.deep",

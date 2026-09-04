@@ -909,9 +909,23 @@ mod ui_contrast {
         for id in THEMES {
             let theme = load_theme(id).expect("theme");
             let panel = theme.surface("panel");
-            for role in ["accent", "danger", "warning"] {
+            for role in ["accent", "danger"] {
                 let ratio = contrast(theme.role(role), panel);
                 assert!(ratio >= FLOOR, "{id}: {role} on panel is {ratio:.2}");
+            }
+            // Warning text is the palette orange on a theme that
+            // fills its points, the same hue as the orange mark
+            // cells, by the same reasoning as selection below.
+            let warning = theme.role("warning");
+            if theme.point_style == PointStyle::Fill {
+                assert_eq!(
+                    Some(warning),
+                    theme.mark("orange"),
+                    "{id}: warning is the palette orange"
+                );
+            } else {
+                let ratio = contrast(warning, panel);
+                assert!(ratio >= FLOOR, "{id}: warning on panel is {ratio:.2}");
             }
             // Selection is drawn on the canvas: the marquee, the
             // transform box, the ring on a selected point. On a theme
