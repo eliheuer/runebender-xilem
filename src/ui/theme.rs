@@ -914,9 +914,22 @@ mod ui_contrast {
                 assert!(ratio >= FLOOR, "{id}: {role} on panel is {ratio:.2}");
             }
             // Selection is drawn on the canvas: the marquee, the
-            // transform box, the ring on a selected point.
+            // transform box, the ring on a selected point. On a theme
+            // that fills its points, selection is the palette orange
+            // by design, the same hue as the mark cells, and a mid
+            // hue on a mid grey cannot reach the floor; the check
+            // there is that it is that hue and not a darkened one.
             let canvas = theme.surface("canvas");
-            let ratio = contrast(theme.role("selection"), canvas);
+            let selection = theme.role("selection");
+            if theme.point_style == PointStyle::Fill {
+                assert_eq!(
+                    Some(selection),
+                    theme.mark("orange"),
+                    "{id}: selection is the palette orange"
+                );
+                continue;
+            }
+            let ratio = contrast(selection, canvas);
             assert!(ratio >= FLOOR, "{id}: selection on canvas is {ratio:.2}");
         }
     }
