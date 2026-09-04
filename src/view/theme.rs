@@ -41,6 +41,8 @@ pub(crate) struct Palette {
     pub points_filled: bool,
     /// The keyline around a filled point.
     pub point_outline: Option<Color>,
+    /// Points and anchors get a halo of the ground under them.
+    pub point_halo: bool,
 }
 
 impl Palette {
@@ -76,6 +78,7 @@ impl Palette {
             mark_ink: t.mark_ink.map(color),
             points_filled: t.point_style == runebender_core::ui::theme::PointStyle::Fill,
             point_outline: t.point_outline.map(color),
+            point_halo: t.point_halo,
         }
     }
 
