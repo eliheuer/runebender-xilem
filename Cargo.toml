@@ -72,7 +72,7 @@ masonry = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a
 # Pinned, like every other git dependency here. A floating branch makes
 # `cargo install --git` need --locked and makes two checkouts of the same
 # source possible if anything else names it by bare URL.
-runebender-core = { git = "https://github.com/eliheuer/runebender-core", rev = "e83b875482f85bd593b0ab7ce33277e57d4aa8c7", default-features = false }
+runebender-core = { git = "https://github.com/eliheuer/runebender-core", rev = "05841c9ba871d2bbb917bca474bdb8301db8f8b9", default-features = false }
 norad = "0.18"
 # Typed values in a nodes file, which core keeps as JSON.
 serde_json = "1"
