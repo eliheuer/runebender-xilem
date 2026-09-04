@@ -19,10 +19,9 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
     let has_components = interp.is_none() && !components.elements().is_empty();
     let m = app.session.metrics;
     let advance = app.session.advance();
-    // The preview is drawn in the status yellow, as the GPUI build draws
-    // it: the strip is a reading of the letter, not another copy of the
-    // canvas, and the colour is what tells you so at a glance.
-    let fill = app.palette.role("warning");
+    // The preview is type, so it takes the text colour, as the GPUI
+    // build draws it: ink on the panel, no hue.
+    let fill = app.palette.text;
     canvas(move |_app: &mut Workspace, _ctx, scene, size: Size| {
         let mut p = Painter::new(scene);
         // Fit the em box (advance wide, ascender..descender tall) into the strip.

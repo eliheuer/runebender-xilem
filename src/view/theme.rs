@@ -37,6 +37,10 @@ pub(crate) struct Palette {
     pub mark_outline: Option<Color>,
     /// The ink on a filled mark cell, when the theme names one.
     pub mark_ink: Option<Color>,
+    /// Points are hue-filled with a keyline, not dark with a hue ring.
+    pub points_filled: bool,
+    /// The keyline around a filled point.
+    pub point_outline: Option<Color>,
 }
 
 impl Palette {
@@ -70,6 +74,8 @@ impl Palette {
             mark_order: t.marks.iter().map(|(k, _)| k.clone()).collect(),
             mark_outline: t.mark_outline.map(color),
             mark_ink: t.mark_ink.map(color),
+            points_filled: t.point_style == runebender_core::ui::theme::PointStyle::Fill,
+            point_outline: t.point_outline.map(color),
         }
     }
 
@@ -100,6 +106,15 @@ impl Palette {
 
     pub(crate) fn role(&self, name: &str) -> Color {
         self.roles.get(name).copied().unwrap_or(Color::WHITE)
+    }
+
+    /// The ring around a selected point: its own role where the theme
+    /// names one, else the selection colour.
+    pub(crate) fn point_selected_ring(&self) -> Color {
+        self.roles
+            .get("pointSelectedRing")
+            .copied()
+            .unwrap_or_else(|| self.role("selection"))
     }
 
     /// Theme mark labels with their colors, in theme order.

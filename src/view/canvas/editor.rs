@@ -763,9 +763,7 @@ impl Widget for EditorWidget {
 
             for (id, sp, on_curve, smooth, start) in self.screen_points() {
                 let selected = self.session.selection.contains(&id);
-                let fill = if selected {
-                    pal.role("pointSelected")
-                } else if start {
+                let hue = if start {
                     pal.role("startNode")
                 } else if !on_curve {
                     pal.role("pointOffcurve")
@@ -773,6 +771,17 @@ impl Widget for EditorWidget {
                     pal.role("pointSmooth")
                 } else {
                     pal.role("pointCorner")
+                };
+                // The hue is the ring or the interior, by the theme's
+                // recipe: a ring on a dark interior where the ground
+                // is far from mid grey, a hue fill with one keyline
+                // where it is not (the mark cells' treatment).
+                let (fill, interior) = if selected {
+                    (pal.point_selected_ring(), pal.role("pointSelected"))
+                } else if pal.points_filled {
+                    (pal.point_outline.unwrap_or(pal.text), hue)
+                } else {
+                    (hue, pal.app)
                 };
                 // A point is a dark window with a coloured ring, which is
                 // the GPUI build's recipe and the web editor's before it: a
@@ -793,12 +802,12 @@ impl Widget for EditorWidget {
                 if square {
                     let shape = Rect::new(sp.x - r, sp.y - r, sp.x + r, sp.y + r);
                     painter.stroke(shape, &Stroke::new(3.0), halo).draw();
-                    painter.fill(shape, pal.app).draw();
+                    painter.fill(shape, interior).draw();
                     painter.stroke(shape, &ring, fill).draw();
                 } else {
                     let shape = Circle::new(sp, r);
                     painter.stroke(shape, &Stroke::new(3.0), halo).draw();
-                    painter.fill(shape, pal.app).draw();
+                    painter.fill(shape, interior).draw();
                     painter.stroke(shape, &ring, fill).draw();
                 }
             }

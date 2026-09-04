@@ -13,6 +13,13 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
         eprintln!("{e}");
         std::process::exit(1)
     });
+    // RUNEBENDER_GLYPH=<name> starts in the editor on that glyph, so
+    // a headless screenshot reaches edit mode without clicks.
+    if let Ok(name) = std::env::var("RUNEBENDER_GLYPH")
+        && let Some(index) = app.font.index_of(&name)
+    {
+        app.open_glyph(index);
+    }
     if std::env::var("RUNEBENDER_SELECTALL").is_ok() {
         let mut sess = (*app.session).clone();
         sess.select_all();
