@@ -116,6 +116,8 @@ struct ThemeDef {
     point_style: Option<String>,
     #[serde(rename = "pointOutline")]
     point_outline: Option<String>,
+    #[serde(rename = "pointHalo")]
+    point_halo: Option<bool>,
     #[serde(default)]
     geometry: Option<GeometryDef>,
 }
@@ -227,6 +229,10 @@ pub struct Theme {
     pub point_style: PointStyle,
     /// Keyline around a filled point.
     pub point_outline: Option<ColorRgba>,
+    /// Whether points and anchors get a halo of the ground under
+    /// them. A ring on a dark ground needs one to keep its edge over
+    /// the outline; a keylined fill on a mid grey does not.
+    pub point_halo: bool,
 }
 
 impl Theme {
@@ -367,6 +373,7 @@ pub fn load_theme(theme_id: &str) -> Option<Theme> {
         mark_ink,
         point_style,
         point_outline,
+        point_halo: def.point_halo.unwrap_or(true),
         surfaces: resolve_map(&def.surfaces),
         text: resolve_map(&def.text),
         roles: resolve_map(&def.roles),
@@ -902,10 +909,15 @@ mod ui_contrast {
         for id in THEMES {
             let theme = load_theme(id).expect("theme");
             let panel = theme.surface("panel");
-            for role in ["accent", "danger", "warning", "selection"] {
+            for role in ["accent", "danger", "warning"] {
                 let ratio = contrast(theme.role(role), panel);
                 assert!(ratio >= FLOOR, "{id}: {role} on panel is {ratio:.2}");
             }
+            // Selection is drawn on the canvas: the marquee, the
+            // transform box, the ring on a selected point.
+            let canvas = theme.surface("canvas");
+            let ratio = contrast(theme.role("selection"), canvas);
+            assert!(ratio >= FLOOR, "{id}: selection on canvas is {ratio:.2}");
         }
     }
 

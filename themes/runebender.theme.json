@@ -316,7 +316,7 @@
         "accent": "green.deep",
         "warning": "orange.deep",
         "danger": "red.deep",
-        "selection": "orange.deep",
+        "selection": "orange.base",
         "component": "purple.deep",
         "componentSelected": "pink.deep",
         "pointSmooth": "blue.base",
@@ -325,10 +325,10 @@
         "pointHyper": "teal.base",
         "pointSelected": "yellow.base",
         "pointInner": "neutral.23",
-        "startNode": "orange.deep",
-        "textCursor": "orange.deep",
+        "startNode": "orange.base",
+        "textCursor": "orange.base",
         "kernActive": "teal.deep",
-        "kernPrevious": "orange.deep",
+        "kernPrevious": "orange.base",
         "pathStroke": "neutral.23",
         "previewFill": "neutral.43",
         "background": "neutral.49",
@@ -351,7 +351,8 @@
       "markOutline": "neutral.23",
       "markInk": "neutral.15",
       "pointStyle": "fill",
-      "pointOutline": "neutral.23"
+      "pointOutline": "neutral.23",
+      "pointHalo": false
     }
   },
   "$comment_marks": [
