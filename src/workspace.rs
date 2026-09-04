@@ -49,6 +49,8 @@ pub(crate) struct Workspace {
     pub(crate) filter: String,
     /// The grid's Detail view: cells carry their category and advance.
     pub(crate) detail: bool,
+    /// The List view in place of the grid, from the bottom bar's box.
+    pub(crate) list: bool,
     /// Which tab the editor's left rail is showing.
     pub(crate) rail: Rail,
     /// Writing direction for the text tool, or `None` for automatic.

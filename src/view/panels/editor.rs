@@ -6,8 +6,12 @@
 use crate::*;
 
 pub(crate) fn overview(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    use xilem::core::one_of::Either;
+    if app.list {
+        return Either::A(canvas::list::glyph_list(app));
+    }
     let metrics = app.cell_metrics(app.cell_size);
-    grid(
+    Either::B(grid(
         app.filtered_cells(),
         metrics,
         app.palette.clone(),
@@ -17,7 +21,7 @@ pub(crate) fn overview(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             GridEvent::Selected { index, cmd, shift } => app.grid_select(index, cmd, shift),
             GridEvent::Open(i) => app.open_glyph(i),
         },
-    )
+    ))
 }
 
 pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> {

@@ -18,7 +18,10 @@ impl Workspace {
         };
         let by_name = self.search_mode != 2;
         let by_unicode = self.search_mode != 1;
-        let re = self.search_regex.then_some(self.search_re.as_ref()).flatten();
+        let re = self
+            .search_regex
+            .then_some(self.search_re.as_ref())
+            .flatten();
         let out: Vec<Cell> = self
             .cells
             .iter()
