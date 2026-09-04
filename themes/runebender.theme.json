@@ -215,7 +215,7 @@
       "surfaces": {
         "app": "neutral.91",
         "panel": "neutral.96",
-        "titlebar": "neutral.89",
+        "titlebar": "neutral.85",
         "control": "neutral.91",
         "button": "neutral.96",
         "buttonHover": "neutral.91",
@@ -289,7 +289,7 @@
       "surfaces": {
         "app": "neutral.71",
         "panel": "neutral.76",
-        "titlebar": "neutral.68",
+        "titlebar": "neutral.60",
         "control": "neutral.71",
         "button": "neutral.76",
         "buttonHover": "neutral.81",
