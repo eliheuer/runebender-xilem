@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 use norad::Font;
 use runebender_core::document::agent;
+use runebender_core::document::compose;
 use runebender_core::document::font_ops;
 use runebender_core::document::nodes;
 use runebender_core::document::nodes_run;
@@ -113,6 +114,18 @@ enum Command {
         /// The font-ml binary, for propose.
         #[arg(long)]
         tool: Option<PathBuf>,
+    },
+    /// Derive precomposed glyphs from their base and marks through
+    /// anchors, into the `com.runebender.proposal.compose` layer.
+    Compose {
+        /// The UFO.
+        source: PathBuf,
+        /// Which glyphs. Defaults to every glyph that has a recipe.
+        #[arg(long, value_delimiter = ',')]
+        glyphs: Option<Vec<String>>,
+        /// Write the proposal layer. Without this, only report.
+        #[arg(long)]
+        write: bool,
     },
     /// Nodes: a workflow of tools as boxes and wires, in a
     /// `<name>.nodes.json` file.
@@ -310,6 +323,11 @@ fn main() -> std::process::ExitCode {
             } => agent_call(name, font, args, tool.as_deref()),
         },
         Command::Mcp { font, tool } => mcp_serve(font, tool.as_deref()),
+        Command::Compose {
+            source,
+            glyphs,
+            write,
+        } => compose_cmd(source, glyphs.as_deref(), *write, json),
         Command::Nodes { action } => match action {
             NodesAction::Check { file, tool } => nodes_check(file, tool.as_deref(), json),
             NodesAction::Types { tool } => nodes_types(tool.as_deref(), json),
@@ -635,6 +653,57 @@ fn proposal_discard(source: &Path, task: &str, json: bool) -> i32 {
 }
 
 /// Where font-ml is: the flag, then `$RUNEBENDER_FONT_ML`, then PATH.
+/// `compose`: derive, report, and with --write leave the proposal.
+fn compose_cmd(source: &Path, glyphs: Option<&[String]>, write: bool, json: bool) -> i32 {
+    let mut font = match open(source, json) {
+        Ok(f) => f,
+        Err(code) => return code,
+    };
+    let report = compose::compose(&mut font, glyphs, write);
+    if write
+        && report.proposal.is_some()
+        && let Err(e) = font.save(source)
+    {
+        return fail(json, exit::FAILED, &format!("{}: {e}", source.display()));
+    }
+    if json {
+        println!(
+            "{}",
+            json!({
+                "ok": true,
+                "derived": report.derived,
+                "proposed": report.proposed(),
+                "skipped": report.skipped,
+                "proposal": report.proposal,
+            })
+        );
+    } else {
+        for d in &report.derived {
+            let parts: Vec<String> = d
+                .components
+                .iter()
+                .map(|(n, x, y)| format!("{n}@{x:.0},{y:.0}"))
+                .collect();
+            println!(
+                "{:<28} {:<10} {}{}",
+                d.glyph,
+                format!("{:?}", d.recipe.source).to_lowercase(),
+                parts.join(" + "),
+                if d.up_to_date { "  (up to date)" } else { "" }
+            );
+        }
+        for (g, why) in &report.skipped {
+            println!("{g:<28} skipped: {why}");
+        }
+        match &report.proposal {
+            Some(p) => println!("proposal {}: {} glyphs", p.task, p.glyphs.len()),
+            None if write => println!("nothing to propose"),
+            None => {}
+        }
+    }
+    exit::OK
+}
+
 /// Every node type: core's, then font-ml's tasks when the tool
 /// answers. `tool` is Some(name) when it answered, so a caller can
 /// tell "not installed" from "declares nothing".

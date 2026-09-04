@@ -524,3 +524,100 @@ fn mcp_lists_the_agent_tools_and_calls_them() {
     // An unknown method is a JSON-RPC error, not a dropped line.
     assert_eq!(replies[4]["error"]["code"], -32601);
 }
+
+#[test]
+fn compose_derives_marks_and_the_result_shapes() {
+    use runebender_core::text::shape::{ShapingFont, ShapingGlyph, ShapingSource};
+    let (_dir, ufo) = scratch_ufo();
+    let path = ufo.to_str().expect("utf8");
+    // Report first: a Latin accent and an Arabic hamza both derive
+    // from their decompositions; a positional form from its stem.
+    let (code, out) = run(&[
+        "compose",
+        path,
+        "--glyphs",
+        "Aacute,alefHamzaabove-ar,alefHamzaabove-ar.fina",
+    ]);
+    assert_eq!(code, 0, "{out}");
+    let derived = out["derived"].as_array().expect("derived");
+    assert_eq!(derived.len(), 3, "{out}");
+    let by_name = |n: &str| derived.iter().find(|d| d["glyph"] == n).expect(n).clone();
+    assert_eq!(by_name("Aacute")["recipe"]["base"], "A");
+    assert_eq!(by_name("alefHamzaabove-ar")["recipe"]["source"], "unicode");
+    assert_eq!(
+        by_name("alefHamzaabove-ar.fina")["recipe"]["source"],
+        "name"
+    );
+    assert_eq!(
+        by_name("alefHamzaabove-ar.fina")["recipe"]["base"],
+        "alef-ar.fina"
+    );
+    assert!(out["proposal"].is_null(), "no --write, no layer");
+
+    // Write the whole font's recipes and install them.
+    let (code, out) = run(&["compose", path, "--write"]);
+    assert_eq!(code, 0, "{out}");
+    let proposed = out["proposed"].as_array().expect("proposed").len();
+    assert!(proposed > 100, "{proposed} proposed");
+    assert!(out["skipped"].as_array().expect("skipped").len() < proposed / 2);
+    let (code, out) = run(&["proposal", "list", path]);
+    assert_eq!(code, 0);
+    assert!(out.to_string().contains("\"compose\""), "{out}");
+    let (code, out) = run(&[
+        "proposal",
+        "install",
+        path,
+        "--task",
+        "compose",
+        "--any-structure",
+    ]);
+    assert_eq!(code, 0, "{out}");
+
+    // The installed composites shape: U+0623 is the derived glyph, and
+    // in a word its final form, which was derived by name.
+    let font = norad::Font::load(&ufo).expect("loads");
+    let features = std::fs::read_to_string(ufo.join("features.fea")).expect("fea");
+    let order: Vec<String> = std::iter::once(".notdef".to_string())
+        .chain(
+            font.default_layer()
+                .iter()
+                .map(|g| g.name().to_string())
+                .filter(|n| n != ".notdef"),
+        )
+        .collect();
+    let glyphs = order
+        .iter()
+        .map(|name| {
+            let g = font.get_glyph(name.as_str());
+            ShapingGlyph {
+                name: name.clone(),
+                advance: g.map_or(0.0, |g| g.width),
+                unicodes: g
+                    .map(|g| g.codepoints.iter().map(|c| c as u32).collect())
+                    .unwrap_or_default(),
+            }
+        })
+        .collect();
+    let shaper = ShapingFont::build(&ShapingSource {
+        units_per_em: 1024.0,
+        glyphs,
+        features,
+    })
+    .expect("shaping font builds");
+    let names = |text: &str| -> Vec<String> {
+        shaper
+            .shape(text, true)
+            .expect("shapes")
+            .iter()
+            .map(|g| shaper.glyph_name(g.glyph_id).unwrap_or("?").to_string())
+            .collect()
+    };
+    assert_eq!(names("\u{0623}"), ["alefHamzaabove-ar"]);
+    let word = names("\u{0628}\u{0623}");
+    assert!(
+        word.contains(&"alefHamzaabove-ar.fina".to_string()),
+        "{word:?}"
+    );
+    let installed = font.get_glyph("alefHamzaabove-ar.fina").expect("installed");
+    assert_eq!(installed.components[0].base.as_str(), "alef-ar.fina");
+}

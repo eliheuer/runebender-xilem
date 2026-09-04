@@ -12,6 +12,7 @@
 //! of those tools as boxes and wires.
 
 pub mod agent;
+pub mod compose;
 pub mod composites;
 pub mod font_memory;
 pub mod font_ops;

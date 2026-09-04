@@ -265,6 +265,27 @@ pub fn core_types() -> Vec<NodeType> {
             outputs: vec![Port::output("layer", Kind::Layer, "That layer.")],
         },
         NodeType {
+            name: "core.compose".into(),
+            title: "Compose".into(),
+            help: "Derive precomposed glyphs from their base and marks through \
+                   anchors, as a proposal."
+                .into(),
+            implemented: true,
+            inputs: vec![
+                Port::input("source", Kind::Source, true, "The master."),
+                Port::input(
+                    "glyphs",
+                    Kind::Glyphs,
+                    false,
+                    "Only these; all with a recipe when empty.",
+                ),
+            ],
+            outputs: vec![
+                Port::output("layer", Kind::Layer, "The proposal layer."),
+                Port::output("rows", Kind::Rows, "What derived, and what could not."),
+            ],
+        },
+        NodeType {
             name: "core.install".into(),
             title: "Install".into(),
             help: "Copy a layer's glyphs over the foreground, one undo \

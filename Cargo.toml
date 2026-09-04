@@ -99,6 +99,9 @@ schemars = "1.2"
 # Same crate as runebender-xilem, just hoisted here so both editors
 # share the categorization.
 unicode-general-category = "0.6"
+# Canonical decompositions, so a precomposed glyph knows its base
+# and marks (`document::compose`).
+unicode-normalization = "0.1"
 # The text engine (text.rs): bidi runs, and real OpenType shaping of a
 # minimal font compiled on the fly from the UFO's own features.fea.
 unicode-bidi = { version = "0.3.18", default-features = false, features = ["hardcoded-data"] }

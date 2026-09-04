@@ -908,6 +908,48 @@ fn run_node(
             );
             Ok((out, json!({ "layer": name })))
         }
+        "core.compose" => {
+            let source = inputs.source("source").ok_or("source is required")?;
+            let only = inputs.glyphs("glyphs");
+            let mut font =
+                norad::Font::load(source).map_err(|e| format!("{}: {e}", source.display()))?;
+            let report = crate::document::compose::compose(
+                &mut font,
+                (!only.is_empty()).then_some(only.as_slice()),
+                true,
+            );
+            if report.proposal.is_some() {
+                font.save(source)
+                    .map_err(|e| format!("{}: {e}", source.display()))?;
+            }
+            let rows: Vec<Value> = report
+                .derived
+                .iter()
+                .map(|d| json!({ "glyph": d.glyph, "up_to_date": d.up_to_date, "components": d.components }))
+                .chain(
+                    report
+                        .skipped
+                        .iter()
+                        .map(|(g, why)| json!({ "glyph": g, "why": why })),
+                )
+                .collect();
+            out.insert(
+                "layer".into(),
+                RunValue::Layer {
+                    source: source.to_path_buf(),
+                    name: proposal::layer_name(crate::document::compose::TASK),
+                },
+            );
+            out.insert("rows".into(), RunValue::Rows { rows });
+            Ok((
+                out,
+                json!({
+                    "proposed": report.proposed().len(),
+                    "up_to_date": report.derived.iter().filter(|d| d.up_to_date).count(),
+                    "skipped": report.skipped.len(),
+                }),
+            ))
+        }
         "core.install" => {
             let (source, layer) = inputs.layer("layer").ok_or("layer is required")?;
             let task = proposal::task_of_layer(layer)

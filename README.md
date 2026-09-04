@@ -11,6 +11,8 @@ Runebender-Core can also be used as a headless CLI tool by agents or
 in bash scripts.
 `runebender-core mcp --font <designspace>` serves the same tools to an
 MCP client such as Claude Code; nothing in it edits the font.
+`runebender-core compose <ufo> --write` derives precomposed glyphs from
+their base and marks through anchors, as a proposal.
 
 ## Use
 
