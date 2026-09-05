@@ -301,11 +301,16 @@ GPUI reference: `src/edit/{local_ai,nodes,chat,experiments}.rs`,
 - [ ] **A04 / M** Live experiment cards and their renderer/state integration from core.
 - [ ] **A05 / V** Live editing endpoint and asynchronous job results cannot overwrite
   a different document/master after switches; integrate with the same history and caches.
+  Follow the [live document and undo contract](XILEM-SWITCH.md#live-document-and-undo-contract).
+  Split into reproductions, stable job targeting, save-failure handling and live
+  node application. Existing disk-install/reload behavior does not establish undo parity.
 
 ### Phase 6 — evidence for making Xilem primary
 
 - [ ] **Q01 / V** Differential workflow tests: same fixture + same actions -> equivalent
   norad document, selection and undo results. Normalize only irrelevant serialization differences.
+  Include the [state/undo regression scenarios](XILEM-SWITCH.md#regression-scenarios-and-implementation-order),
+  including non-outline data; core's current glyph snapshot is not a complete document snapshot.
 - [ ] **Q02 / R** Rendering corpus: high contour counts, a single huge outline, holes,
   self-intersections, overlapping components, open contours, cubic/quadratic/hyper
   curves, tiny and extreme zoom, transformed images, color layers and blur. Include

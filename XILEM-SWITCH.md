@@ -149,3 +149,76 @@ fallback; this brief does not itself change GPUI's maintenance instructions.
 Switch daily work once A, B and C pass. Retire GPUI only after remaining parity
 and platform obligations are explicitly resolved. A successful talk rehearsal
 and full daily-use readiness are separate evidence.
+
+## Live document and undo contract
+
+Research update, 2026-09-05. This section records source findings and a proposed
+contract for implementation. The scenarios below have not yet been reproduced
+in runtime tests. Recheck the code as parity work lands; do not treat this as a
+fixed API design or as completed implementation.
+
+### Findings
+
+| Finding | Source | Consequence to verify |
+| --- | --- | --- |
+| `AiJob` stores a glyph index; `task_finished` reads the current source and glyph list. | Xilem `src/edit/local_ai.rs`, `run_task` and `task_finished` | A master switch or inventory change during a run may redirect result adoption or selection. |
+| Both AI and node launch paths call `save()` and continue without an explicit success result. | Xilem `src/edit/local_ai.rs::run_task`, `src/edit/nodes.rs::run_nodes`, `src/platform/host.rs::save` | A failed save may let a task operate on stale disk input while the UI shows newer edits. |
+| `core.install` loads a separate `Master`, installs and saves; Xilem then reloads. | Core `src/document/nodes_run.rs`; Xilem `src/edit/nodes.rs::nodes_finished` | Undo history created on the temporary master is not transferred to the live editor. Reload is not an edit transaction. |
+| `GlyphSnapshot` contains contours, components, anchors and width. | Core `src/outline/glyph_ops.rs` | Unicode, lib data, layers, kerning and designspace state need explicit history coverage beyond this snapshot. |
+| Experiment application already validates baseline glyph/kerning revisions. | Core `src/document/experiments.rs::apply` | Reuse and generalize proven conflict checks where appropriate rather than inventing a separate AI mutation model. |
+
+### Proposed contract
+
+1. Core's live `Project` is the authority for the open document. A shell adapts
+   input and paints state; a background worker computes results against identified
+   input. The worker does not choose a destination from current UI selection.
+2. Capture job identity, document/session identity, stable master identity, glyph
+   names, input revisions and model/graph parameters at launch. A source path or
+   glyph index alone is insufficient across reopen, rename or master switches.
+3. Prepare an explicit input snapshot or require a successful save. Do not silently
+   continue with old disk data after save failure. The choice of snapshot storage
+   and the exact job identity types remain implementation decisions.
+4. Route foreground application of AI/node results through core on the live
+   document's owning thread. Validate the intended targets and input revisions;
+   a conflict leaves foreground data unchanged and produces an actionable result.
+   Unrelated edits should survive rather than invalidating every job globally.
+5. Distinguish proposal creation, explicit application and persistence. Graphs
+   may intentionally include install/save operations, but the UI and execution
+   must agree about those side effects. A desktop graph must not bypass live
+   history by loading and saving another copy of the open font.
+6. Specify undo scope per operation: glyph gesture, metadata change, kerning edit,
+   designspace change and multi-glyph application. Record before/after data for
+   everything changed, group the chosen operation coherently, and invalidate
+   outline/metrics/shaping/preview caches after apply, undo and redo.
+7. Preserve intentional CLI behavior through an execution adapter: headless jobs
+   can own a loaded document and save it, while desktop jobs use the live owner.
+   Share the operation semantics without forcing GUI threading into core.
+
+This does not require a new font model or a general event-sourcing framework.
+Start with the smallest core transaction boundary needed by one real node/AI
+workflow, then extend coverage deliberately. Whether batch undo coexists with
+per-glyph undo, and how intervening edits affect it, needs an explicit decision
+and tests before advertising a single “Undo install” operation.
+
+### Regression scenarios and implementation order
+
+- Launch on Regular, switch to Bold, then complete: the result remains associated
+  with Regular, with no application to Bold.
+- Launch, rename/delete/reorder the target glyph, then complete: no index-based
+  retargeting, accidental all-glyph install, or silent overwrite occurs.
+- Launch, close/reopen a document at the same path, then complete: session identity
+  prevents adoption into the replacement document without explicit resolution.
+- Edit a target while the job runs: conflict is reported without losing the edit.
+  Edit an unrelated glyph: it survives successful application to valid targets.
+- Fail the input save: no worker starts against stale input.
+- Apply a node result in the editor, undo, redo and save/reopen: foreground data
+  and caches agree; application does not rely on a reload to manufacture history.
+- Cancel or supersede a run, then receive a late completion: it cannot apply twice
+  or overwrite a newer result.
+- Exercise metadata, kerning/groups, feature source, layer and designspace edits:
+  each advertised undo operation restores every value it claims to restore.
+
+Implement focused reproductions first, then stable job targeting and save-failure
+handling, then the live node-application boundary and its history. Broader history
+coverage follows the actual font-editing workflows. Map these to A05 and Q01 in
+the parity checklist; keep UI-only parity work moving while this is resolved.
