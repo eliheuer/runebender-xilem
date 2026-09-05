@@ -106,6 +106,30 @@ struct PenPt {
 }
 
 impl Session {
+    /// Makes the inactive session held while the overview has no glyph to open.
+    ///
+    /// The editor only reads this session in [`Mode::Editor`]. Keeping an
+    /// inert session here avoids making every editor-facing view optional when
+    /// a valid UFO has no glyphs yet; opening the first glyph replaces it.
+    pub(crate) fn inactive(font: &norad::Font) -> Self {
+        Self {
+            glyph_name: String::new(),
+            glyph: norad::Glyph::new(".notdef"),
+            components: BezPath::new(),
+            component_contours: Vec::new(),
+            metrics: Metrics::of(font),
+            selection: HashSet::new(),
+            viewport: ViewPort::new(),
+            fitted: false,
+            pending: Vec::new(),
+            drag_originals: HashMap::new(),
+            in_drag: false,
+            active_contour: None,
+            pen: Vec::new(),
+            selected_anchor: None,
+        }
+    }
+
     pub(crate) fn new(font: &norad::Font, name: &str) -> Option<Self> {
         let glyph = font.get_glyph(name)?.clone();
         let components = glyph_paths::components_to_bezpath(&glyph, font);

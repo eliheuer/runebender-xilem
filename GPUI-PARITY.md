@@ -153,6 +153,13 @@ GPUI reference: `src/edit/commands/file.rs`, `src/platform/host.rs`,
 
 - [ ] **D01 / M** Launch without a positional font; offer New/Open with error recovery.
   Opening an empty UFO must not fail merely because it contains no glyphs.
+  - [x] **D01.a** Empty UFO overview and first glyph: a zero-glyph UFO now opens
+    in the overview with no selection or tab, and the existing New Glyph command
+    opens its first created glyph normally. Regression coverage:
+    `platform::host::tests::opens_an_empty_ufo_and_creates_its_first_glyph`
+    creates and loads a real empty UFO, then creates `A`; checked with
+    `cargo test opens_an_empty_ufo_and_creates_its_first_glyph` on 2026-09-05.
+    Launching without a path and the New/Open UI are still separate D01 work.
 - [ ] **D02 / M** Open dialog and supported import dispatch: UFO/designspace,
   `.glyphs`, `.glyphspackage`, and compiled-font import as supported by GPUI/core.
   Verify format conversion and destination semantics, not just extension acceptance.

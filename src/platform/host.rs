@@ -16,17 +16,24 @@ impl Workspace {
         };
         let palette = Arc::new(Palette::load(theme_id));
         let cells = Arc::new(cells_of(&font, &palette));
-        let first = font
-            .index_of("A")
-            .or_else(|| font.index_of("a"))
-            .or(if font.glyphs.is_empty() {
-                None
-            } else {
-                Some(0)
-            })
-            .ok_or_else(|| "font has no glyphs".to_string())?;
-        let session =
-            Arc::new(Session::new(font.font(), &font.glyphs[first].name).ok_or("glyph missing")?);
+        let first =
+            font.index_of("A")
+                .or_else(|| font.index_of("a"))
+                .or(if font.glyphs.is_empty() {
+                    None
+                } else {
+                    Some(0)
+                });
+        // An empty UFO is a valid document. The overview does not use an
+        // editor session, but the workspace keeps one ready for views that
+        // share its type; `new_glyph` replaces this inactive session before
+        // switching to editor mode.
+        let session = match first {
+            Some(index) => Arc::new(
+                Session::new(font.font(), &font.glyphs[index].name).ok_or("glyph missing")?,
+            ),
+            None => Arc::new(Session::inactive(font.font())),
+        };
         // For headless screenshots: optionally select all points.
         // (set later, after session is final)
 
@@ -88,14 +95,18 @@ impl Workspace {
         }
         // Seed the Name/Unicode fields from the glyph actually shown
         // (the opened one in editor mode, else the first).
-        let shown = open.unwrap_or(first);
-        let first_name = font.glyphs[shown].name.clone();
+        let shown = open.or(first);
+        let first_name = shown
+            .and_then(|index| font.glyphs.get(index))
+            .map(|glyph| glyph.name.clone())
+            .unwrap_or_default();
         let (kern1, kern2) = (
             font.kern_group(&first_name, true),
             font.kern_group(&first_name, false),
         );
-        let first_uni = font.glyphs[shown]
-            .codepoint
+        let first_uni = shown
+            .and_then(|index| font.glyphs.get(index))
+            .and_then(|glyph| glyph.codepoint)
             .map(|c| format!("{:04X}", c as u32))
             .unwrap_or_default();
         let mut app = Self {
@@ -103,7 +114,7 @@ impl Workspace {
             palette,
             cells,
             mode,
-            selected: Some(open.unwrap_or(first)),
+            selected: open.or(first),
             multi_selected: Arc::new(std::collections::HashSet::new()),
             filter: String::new(),
             detail: false,
@@ -148,10 +159,13 @@ impl Workspace {
             reference_buf,
             name_buf: first_name,
             unicode_buf: first_uni,
-            tabs: vec![Tab {
-                session: session.clone(),
-                tool: Tool::Select,
-            }],
+            tabs: first
+                .map(|_| Tab {
+                    session: session.clone(),
+                    tool: Tool::Select,
+                })
+                .into_iter()
+                .collect(),
             active_tab: 0,
             session,
             selected_points: 0,
@@ -283,5 +297,41 @@ impl Workspace {
             }
             Err(e) => self.note = e,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opens_an_empty_ufo_and_creates_its_first_glyph() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-empty-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        norad::Font::new()
+            .save(&path)
+            .expect("the empty UFO fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("an empty UFO opens");
+        assert!(matches!(workspace.mode, Mode::Overview));
+        assert!(workspace.font.glyphs.is_empty());
+        assert_eq!(workspace.selected, None);
+        assert!(workspace.tabs.is_empty());
+
+        workspace.filter = "A".into();
+        workspace.new_glyph();
+        assert_eq!(workspace.font.glyphs.len(), 1);
+        assert_eq!(workspace.font.glyphs[0].name, "A");
+        assert_eq!(workspace.session.glyph_name, "A");
+        assert!(matches!(workspace.mode, Mode::Editor(0)));
+        assert_eq!(workspace.tabs.len(), 1);
+
+        std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }
 }
