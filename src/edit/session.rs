@@ -137,6 +137,11 @@ impl Session {
         runebender_core::document::font_ops::set_glyph_unicode(&mut self.glyph, u)
     }
 
+    /// Whether a gesture currently owns the session's undo transaction.
+    pub(crate) fn gesture_in_progress(&self) -> bool {
+        self.in_drag
+    }
+
     /// Shift all points and anchors horizontally (left-sidebearing drag).
     pub(crate) fn shift_glyph(&mut self, dx: f64) {
         self.record(EditType::Drag);

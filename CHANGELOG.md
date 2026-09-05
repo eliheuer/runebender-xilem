@@ -12,6 +12,8 @@ Until then, `main` is the only line and this section stays open.
 
 ### Changed
 
+- Shared live experiment, kerning and drawing tools through MCP; refresh open sessions after application and preserve undo. Uses the core Designbot proof interface.
+
 - Core pin updated for revision-checked agent proposals. Installing a guarded
   proposal skips glyphs whose foreground changed after the proposal was made.
 
