@@ -173,17 +173,32 @@ impl AppState {
                 notice: None,
             };
         };
+        let mut app = Self {
+            workspace: None,
+            palette,
+            notice: None,
+        };
+        app.open_path(path);
+        app
+    }
+
+    /// Opens `path` as the current document without discarding a document when
+    /// core rejects the new source.
+    ///
+    /// Core owns format dispatch and conversion through [`Workspace::open`].
+    /// This application boundary only changes which workspace the window shows.
+    pub(crate) fn open_path(&mut self, path: &std::path::Path) -> bool {
         match Workspace::open(path) {
-            Ok(workspace) => Self {
-                palette: workspace.palette.clone(),
-                workspace: Some(workspace),
-                notice: None,
-            },
-            Err(error) => Self {
-                workspace: None,
-                palette,
-                notice: Some(error),
-            },
+            Ok(workspace) => {
+                self.palette = workspace.palette.clone();
+                self.workspace = Some(workspace);
+                self.notice = None;
+                true
+            }
+            Err(error) => {
+                self.notice = Some(error);
+                false
+            }
         }
     }
 
@@ -236,5 +251,42 @@ mod tests {
         let app = AppState::open(Some(&path));
         assert!(app.workspace.is_none());
         assert!(app.notice.is_some());
+    }
+
+    #[test]
+    fn failed_open_preserves_the_current_document() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-open-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        norad::Font::new()
+            .save(&path)
+            .expect("the empty UFO fixture saves");
+        let mut app = AppState::open(Some(&path));
+        let source = app
+            .workspace
+            .as_ref()
+            .expect("the fixture opens")
+            .font
+            .source()
+            .to_path_buf();
+
+        let missing = path.with_file_name("runebender-xilem-does-not-exist.ufo");
+        assert!(!app.open_path(&missing));
+        assert_eq!(
+            app.workspace
+                .as_ref()
+                .expect("the earlier document remains")
+                .font
+                .source(),
+            source,
+        );
+        assert!(app.notice.is_some());
+
+        std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }
 }

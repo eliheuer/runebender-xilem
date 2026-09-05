@@ -189,6 +189,13 @@ GPUI reference: `src/edit/commands/file.rs`, `src/platform/host.rs`,
 - [ ] **D02 / M** Open dialog and supported import dispatch: UFO/designspace,
   `.glyphs`, `.glyphspackage`, and compiled-font import as supported by GPUI/core.
   Verify format conversion and destination semantics, not just extension acceptance.
+  - [x] **D02.a** Transactional path-open boundary: `AppState::open_path` now
+    delegates source dispatch to core through `Workspace::open`, replaces the
+    visible workspace only after a successful load, and retains the existing
+    document with an error notice on failure. Regression coverage:
+    `workspace::tests::failed_open_preserves_the_current_document` (2026-09-05).
+    A platform picker that can choose both files and UFO/package directories is
+    still required before D02 can be completed.
 - [ ] **D03 / P** New font destination dialog, cancellation and replacement of the
   current document. Stop implicitly creating Untitled beside the source as the only workflow.
 - [ ] **D04 / M** Save As for UFO/designspace with correct master/resource paths;
