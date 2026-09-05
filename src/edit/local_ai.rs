@@ -380,7 +380,7 @@ impl Workspace {
 
     /// The font changed under the cache: rebuild the cells, and the
     /// open session when its glyph was one of them.
-    fn after_font_change(&mut self, names: &[String]) {
+    pub(crate) fn after_font_change(&mut self, names: &[String]) {
         for name in names {
             if let Some(index) = self.font.index_of(name) {
                 self.font.refresh_entry(index);
