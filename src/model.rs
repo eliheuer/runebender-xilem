@@ -223,6 +223,15 @@ impl FontModel {
         &self.master().source_path
     }
 
+    /// The source that defines the whole document: the designspace when this
+    /// is a multi-master project, otherwise the active UFO.
+    pub(crate) fn document_source(&self) -> &FsPath {
+        self.project
+            .export_source
+            .as_deref()
+            .unwrap_or_else(|| self.source())
+    }
+
     pub(crate) fn active(&self) -> usize {
         self.project.active
     }

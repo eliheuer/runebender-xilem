@@ -219,8 +219,7 @@ GPUI reference: `src/edit/commands/file.rs`, `src/platform/host.rs`,
     mode, detail mode, collapsed sidebar state, and search scope/case/regex state,
     rebuilding the compiled search expression. Regression coverage extends
     `platform::host::tests::opens_an_empty_ufo_and_creates_its_first_glyph`
-    through save and reload (2026-09-05). Tabs, selected master, viewport, and
-    text context remain separate D07 work.
+    through save and reload (2026-09-05).
   - [x] **D07.b** Tab and viewport restoration: an accepted reload rebuilds each
     tab's session from the fresh core font (discarding stale outlines and undo
     state) while retaining tab order, active tab, tool, viewport and fitted state.
@@ -228,6 +227,12 @@ GPUI reference: `src/edit/commands/file.rs`, `src/platform/host.rs`,
     opens `A` and `B`, gives each a distinct viewport, saves and reloads (2026-09-05).
     Point selection and text-tool context still need their own compatibility and
     undo-safety tests.
+  - [x] **D07.c** Designspace reload source and active master: reload now opens
+    core's project source rather than the active master's UFO, so it retains all
+    masters and restores the selected one. Regression coverage:
+    `platform::host::tests::reload_keeps_the_active_master_of_a_designspace`
+    creates two temporary UFOs plus a designspace and reloads from Bold
+    (2026-09-05). Point selection and text-tool context remain separate D07 work.
 - [ ] **D08 / M** Match GPUI config precedence and optional session journal. Reuse a
   shared parser/schema where appropriate; the journal is not autosave or replay.
 - [ ] **D09 / V** Test dirty-document New/Open/close/quit behavior against GPUI and

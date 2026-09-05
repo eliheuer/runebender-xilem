@@ -275,7 +275,7 @@ impl Workspace {
             })
             .collect();
         let was_editor = matches!(self.mode, Mode::Editor(_));
-        let source = self.font.source().to_path_buf();
+        let source = self.font.document_source().to_path_buf();
         let active_master = self.font.active();
         let list = self.list;
         let detail = self.detail;
@@ -482,6 +482,52 @@ mod tests {
         assert_eq!(workspace.session.viewport.zoom, 2.0);
 
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
+    }
+
+    #[test]
+    fn reload_keeps_the_active_master_of_a_designspace() {
+        let dir = std::env::temp_dir().join(format!(
+            "runebender-xilem-designspace-reload-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        std::fs::create_dir_all(&dir).expect("the fixture directory is created");
+        norad::Font::new()
+            .save(dir.join("Regular.ufo"))
+            .expect("the regular master saves");
+        norad::Font::new()
+            .save(dir.join("Bold.ufo"))
+            .expect("the bold master saves");
+        let designspace = dir.join("Test.designspace");
+        std::fs::write(
+            &designspace,
+            r#"<?xml version='1.0' encoding='UTF-8'?>
+<designspace format="4.0">
+  <axes><axis name="Weight" tag="wght" minimum="400" default="400" maximum="700"/></axes>
+  <sources>
+    <source familyname="Test" stylename="Regular" filename="Regular.ufo">
+      <location><dimension name="Weight" xvalue="400"/></location>
+    </source>
+    <source familyname="Test" stylename="Bold" filename="Bold.ufo">
+      <location><dimension name="Weight" xvalue="700"/></location>
+    </source>
+  </sources>
+</designspace>"#,
+        )
+        .expect("the designspace fixture saves");
+        let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
+        assert_eq!(workspace.font.master_names().len(), 2);
+        workspace.set_master(1);
+
+        workspace.reload_from_disk();
+
+        assert_eq!(workspace.font.master_names().len(), 2);
+        assert_eq!(workspace.font.active(), 1);
+        assert_eq!(workspace.font.master_name(1), "Bold");
+        std::fs::remove_dir_all(dir).expect("the designspace fixture is removed");
     }
 
     #[test]
