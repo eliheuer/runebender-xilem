@@ -249,6 +249,7 @@ impl Workspace {
         }
         let source = self.font.source().to_path_buf();
         let open = self.session.glyph_name.clone();
+        let active_master = self.font.active();
         let list = self.list;
         let detail = self.detail;
         let left_collapsed = self.left_collapsed;
@@ -257,6 +258,8 @@ impl Workspace {
         let search_regex = self.search_regex;
         match Self::open(&source) {
             Ok(mut fresh) => {
+                fresh.font.set_active(active_master);
+                fresh.axis_values = fresh.font.master_axis_values(fresh.font.active());
                 fresh.theme_id = self.theme_id;
                 fresh.palette = self.palette.clone();
                 fresh.sel = self.sel;
