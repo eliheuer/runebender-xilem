@@ -152,8 +152,6 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
         }
     }
     let total = pairs.len() + hidden;
-    let is_group =
-        |name: &str| name.starts_with("public.kern1.") || name.starts_with("public.kern2.");
     let short = |name: &str| {
         name.strip_prefix("public.kern1.")
             .or_else(|| name.strip_prefix("public.kern2."))
@@ -163,7 +161,6 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     let rows: Vec<_> = pairs
         .iter()
         .map(|(first, second, value)| {
-            let exception = !is_group(first) || !is_group(second);
             let (f2, s2) = (first.clone(), second.clone());
             let (f3, s3, v3) = (first.clone(), second.clone(), *value);
             xrow(
@@ -173,11 +170,9 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                         button(
                             label(format!("{} \u{00b7} {}", short(first), short(second)))
                                 .text_size(TextSize::Body.px())
-                                .color(if exception {
-                                    pal.role("warning")
-                                } else {
-                                    pal.text
-                                }),
+                                // No colour on an exception: the names say
+                                // which it is, as in the GPUI build.
+                                .color(pal.text),
                             // Loads the pair into the editor row, so
                             // adjusting one is click, type, Enter.
                             move |app: &mut Workspace| {
@@ -209,23 +204,23 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     let editor_row = xrow(
         Region::Inline,
         (
-            narrow(recipes::field_enter(
+            narrow(recipes::field_bare(
                 pal,
-                "",
+                "First",
                 app.kern_first_buf.clone(),
                 |app: &mut Workspace, v| app.kern_first_buf = v,
                 |app: &mut Workspace, _| app.set_kern_pair_from_bufs(),
             )),
-            narrow(recipes::field_enter(
+            narrow(recipes::field_bare(
                 pal,
-                "",
+                "Second",
                 app.kern_second_buf.clone(),
                 |app: &mut Workspace, v| app.kern_second_buf = v,
                 |app: &mut Workspace, _| app.set_kern_pair_from_bufs(),
             )),
-            narrow(recipes::field_enter(
+            narrow(recipes::field_bare(
                 pal,
-                "",
+                "Value",
                 app.kern_value_buf.clone(),
                 |app: &mut Workspace, v| app.kern_value_buf = v,
                 |app: &mut Workspace, _| app.set_kern_pair_from_bufs(),
@@ -238,13 +233,14 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
         xcolumn(
             Region::List,
             (
-                recipes::field(
+                recipes::field_bare(
                     pal,
-                    "",
+                    "Filter pairs",
                     app.kern_filter_buf.clone(),
                     |app: &mut Workspace, v| {
                         app.kern_filter_buf = v;
                     },
+                    |_: &mut Workspace, _| {},
                 ),
                 editor_row,
                 sized_box(portal(xcolumn(Region::List, rows)).prop(AutoHideScrollBar(true)))
