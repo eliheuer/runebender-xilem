@@ -196,6 +196,9 @@ impl AppState {
                 true
             }
             Err(error) => {
+                if let Some(workspace) = self.workspace.as_mut() {
+                    workspace.note = error.clone();
+                }
                 self.notice = Some(error);
                 false
             }
@@ -286,6 +289,13 @@ mod tests {
             source,
         );
         assert!(app.notice.is_some());
+        assert_eq!(
+            app.workspace
+                .as_ref()
+                .expect("the earlier document remains")
+                .note,
+            app.notice.as_deref().expect("the failure is retained"),
+        );
 
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }

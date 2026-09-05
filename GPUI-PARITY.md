@@ -196,6 +196,14 @@ GPUI reference: `src/edit/commands/file.rs`, `src/platform/host.rs`,
     `workspace::tests::failed_open_preserves_the_current_document` (2026-09-05).
     A platform picker that can choose both files and UFO/package directories is
     still required before D02 can be completed.
+  - [ ] **D02.b / R** Native picker decision: a trial with `rfd` supplied
+    separate file and folder pickers, which is necessary because UFO and Glyphs
+    packages are directories, but it added 13 locked packages and failed
+    `cargo vet --locked` as unvetted on 2026-09-05. It was not committed: do
+    not certify that graph without a human supply-chain review. Evaluate an
+    already-vetted platform integration or audit a bounded dependency graph;
+    then route its result through D02.a. Open from a loaded document and its
+    dirty-document policy remain separate D02/D09 work.
 - [ ] **D03 / P** New font destination dialog, cancellation and replacement of the
   current document. Stop implicitly creating Untitled beside the source as the only workflow.
 - [ ] **D04 / M** Save As for UFO/designspace with correct master/resource paths;
