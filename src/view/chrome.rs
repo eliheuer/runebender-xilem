@@ -49,30 +49,19 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 Region::Inline,
                 (
                     label(title).text_size(TextSize::Body.px()).color(pal.text),
-                    // Saved is a green tag, not saved a red one, drawn
-                    // the way the glyph grid draws a mark: filled and
-                    // keylined where the theme keylines its marks,
-                    // outlined in the hue where it does not. Coloured
-                    // text alone was hard to read on the title bar.
-                    {
-                        let hue = pal
-                            .mark(if app.modified { "red" } else { "green" })
-                            .unwrap_or(pal.text_muted);
-                        let (bg, border, ink) = match pal.mark_outline {
-                            Some(outline) => (hue, outline, pal.mark_ink.unwrap_or(pal.text)),
-                            None => (pal.panel, hue, hue),
-                        };
-                        sized_box(
-                            label(status.to_string())
-                                .text_size(TextSize::Body.px())
-                                .color(ink),
-                        )
-                        .padding(Space::Sm)
-                        .background_color(bg)
-                        .border_color(border)
-                        .border_width(Stroke::Hairline.length())
-                        .corner_radius(Radius::Sm.length())
-                    },
+                    // Saved is the mark palette's green, not saved its
+                    // red: the same two colours the glyph grid uses. The
+                    // GPUI build draws this as a keylined tag; here that
+                    // was five style wrappers on a label in the root
+                    // tuple, and rustc never finished the build. Until
+                    // the tag is a painted widget, it is coloured text.
+                    label(status.to_string())
+                        .text_size(TextSize::Body.px())
+                        .color(if app.modified {
+                            pal.mark("red").unwrap_or_else(|| pal.role("warning"))
+                        } else {
+                            pal.mark("green").unwrap_or(pal.text_muted)
+                        }),
                 ),
             ))
             // In the overview this takes the leftover space. In the
