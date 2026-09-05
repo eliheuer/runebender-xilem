@@ -232,6 +232,13 @@ GPUI reference: `src/edit/commands/file.rs`, `src/platform/host.rs`,
   shared parser/schema where appropriate; the journal is not autosave or replay.
 - [ ] **D09 / V** Test dirty-document New/Open/close/quit behavior against GPUI and
   explicitly resolve any data-loss behavior found in either shell before switching.
+  - [x] **D09.a** Dirty New safety: Xilem now retains the active workspace when
+    New Font is invoked with unsaved changes, reporting that the user must save or
+    discard first. This prevents the prior in-memory replacement loss while the
+    New destination/discard UI is still absent. Regression coverage:
+    `platform::host::tests::new_font_keeps_a_dirty_document_open` (2026-09-05).
+    GPUI currently also replaces its project directly, so a common confirmation
+    policy and Open/close/quit coverage remain separate D09 work.
 
 ### Phase 2 — commands, focus and shell controls
 

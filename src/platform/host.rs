@@ -346,6 +346,10 @@ impl Workspace {
     /// no file dialog here, so it lands next to the current source under
     /// the first Untitled name that is free.
     pub(crate) fn new_font(&mut self) {
+        if self.modified {
+            self.note = "Save or discard changes before creating a new font".into();
+            return;
+        }
         let font = runebender_core::document::new_font::new_font("Untitled", "Regular", 400);
         let dir = self
             .font
@@ -477,6 +481,34 @@ mod tests {
         assert_eq!(workspace.session.viewport.offset.y, 50.0);
         assert_eq!(workspace.session.viewport.zoom, 2.0);
 
+        std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
+    }
+
+    #[test]
+    fn new_font_keeps_a_dirty_document_open() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-new-dirty-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        norad::Font::new()
+            .save(&path)
+            .expect("the empty UFO fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let source = workspace.font.source().to_path_buf();
+        workspace.modified = true;
+
+        workspace.new_font();
+
+        assert_eq!(workspace.font.source(), source);
+        assert!(workspace.modified);
+        assert_eq!(
+            workspace.note,
+            "Save or discard changes before creating a new font"
+        );
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }
 
