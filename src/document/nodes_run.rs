@@ -765,6 +765,33 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
     }
 }
 
+/// Reject a workflow before execution if it contains foreground-writing or unknown nodes.
+/// Local `font-ml` tasks retain their proposal-writer contract; this is not a sandbox
+/// for an untrusted executable. Call before running agent-supplied workflows.
+pub fn validate_proposal_workflow(graph: &NodeGraph) -> Result<(), String> {
+    for node in &graph.nodes {
+        if !matches!(
+            node.type_name.as_str(),
+            "core.source"
+                | "core.master"
+                | "core.model"
+                | "core.adapter"
+                | "core.layer"
+                | "core.compose"
+                | "core.compare"
+                | "core.proof"
+                | "core.note"
+        ) && !node.type_name.starts_with("font-ml.")
+        {
+            return Err(format!(
+                "{} is not allowed in a proposal-only workflow",
+                node.type_name
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Whether a cached node's outputs still exist on disk, so a layer a
 /// designer discarded is not handed on as if it were there.
 fn outputs_still_there(outputs: &BTreeMap<String, RunValue>) -> bool {

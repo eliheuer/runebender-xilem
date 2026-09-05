@@ -61,14 +61,13 @@ fn params(props: Value, required: &[&str]) -> Value {
 
 /// Every tool, in the order a prompt lists them.
 pub fn tools() -> Vec<Tool> {
-    vec![
+    let mut tools = vec![
         Tool {
             name: "font_info".into(),
             description: "Returns the open font's family and style names, units per \
                           em, ascender, descender, x-height, cap height, the glyph \
-                          count, and the proposals waiting. Use it for any question \
-                          about the font as a whole, and call it before anything \
-                          else in a conversation."
+                          count, and the proposals waiting. Use it after project_info \
+                          with the selected master for questions about that master."
                 .into(),
             parameters: params(json!({}), &[]),
         },
@@ -105,7 +104,7 @@ pub fn tools() -> Vec<Tool> {
             description: "Runs a local model task (for example bolden, which predicts \
                           a heavier master) over glyphs with a model from the models \
                           directory. Returns the proposal layer name and per-glyph \
-                          rows. Nothing in the font changes: the result waits as a \
+                          rows. The foreground stays unchanged: the result waits as a \
                           proposal layer, and the person installs or discards it in \
                           the editor. Use it when asked to propose, predict, bolden, \
                           or run a model."
@@ -165,7 +164,28 @@ pub fn tools() -> Vec<Tool> {
                 &["query"],
             ),
         },
-    ]
+    ];
+    tools.insert(0, Tool {
+        name: "project_info".into(),
+        description: "List the project's masters and their indices. Call first; select a master explicitly for every font operation in a family.".into(),
+        parameters: params(json!({}), &[]),
+    });
+    tools.push(Tool {
+        name: "propose_edits".into(),
+        description: "Create a new proposal from exact glyph edits in font units. Read each foreground glyph first and supply its revision. Validates the entire batch before writing; does not install. Use a unique task name and explain the design intent in reason.".into(),
+        parameters: serde_json::to_value(schemars::schema_for!(crate::document::edit_batch::EditBatch)).expect("schema serializes"),
+    });
+    for tool in &mut tools {
+        if !matches!(tool.name.as_str(), "project_info" | "docs") {
+            tool.parameters["properties"]["master"] = json!({"type": "integer", "minimum": 0,
+                "description": "Master index from project_info. Required for multi-master projects."});
+        }
+        if matches!(tool.name.as_str(), "read_glyph" | "proof") {
+            tool.parameters["properties"]["layer"] = json!({"type": "string",
+                "description": "Optional UFO layer name, for example the proposal layer. Omit for foreground."});
+        }
+    }
+    tools
 }
 
 /// The system prompt, with the tools written into it in the form the
@@ -175,7 +195,7 @@ pub fn system_prompt(tools: &[Tool]) -> String {
     let mut out = String::from(
         "You are a font engineering assistant inside Runebender, an open-source \
          font editor. You work on the font the person has open, on their machine, \
-         and nothing leaves it.\n\n\
+         through the configured model provider. Local providers can run offline; remote providers receive the tool context sent by their host.\n\n\
          Rules:\n\
          - You cannot edit the font. You read it, proof it, and propose changes \
          with a tool. A proposal is a layer the person installs or discards in the \
@@ -188,7 +208,7 @@ pub fn system_prompt(tools: &[Tool]) -> String {
          - For any question about a format, a spec, an attribute, or a term (UFO, \
          glif, designspace, fontc, OpenType), call docs first and quote what it \
          returns.\n\
-         - Call font_info before anything else in a conversation.\n\
+         - Call project_info first, then font_info with the chosen master. Never guess which master the person means.\n\
          - Be brief and concrete. Give numbers from the tools, not guesses. Glyph \
          names are as the font has them (for example 'a', 'Aacute', 'hah-ar'); \
          a capital letter's glyph name is the letter itself ('H').\n\
@@ -202,7 +222,7 @@ pub fn system_prompt(tools: &[Tool]) -> String {
             "- {}: {} Arguments: {}\n",
             t.name,
             t.description,
-            serde_json::to_string(&t.parameters["properties"]).unwrap_or_default()
+            serde_json::to_string(&t.parameters).unwrap_or_default()
         ));
     }
     out.push_str(

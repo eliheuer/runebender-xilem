@@ -14,6 +14,7 @@
 pub mod agent;
 pub mod compose;
 pub mod composites;
+pub mod edit_batch;
 pub mod font_memory;
 pub mod font_ops;
 pub mod history;

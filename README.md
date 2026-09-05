@@ -10,7 +10,7 @@ multiple GUIs, primarily
 Runebender-Core can also be used as a headless CLI tool by agents or
 in bash scripts.
 `runebender-core mcp --font <designspace>` serves the same tools to an
-MCP client such as Claude Code; nothing in it edits the font.
+MCP client. It can inspect glyphs and create proposals; it cannot install them.
 `runebender-core compose <ufo> --write` derives precomposed glyphs from
 their base and marks through anchors, as a proposal.
 
@@ -19,6 +19,14 @@ features the font's anchors imply to `features.generated.fea` in the
 UFO and includes it from `features.fea`, so a compiled font positions
 marks the way the editor's preview does. Without `--write` it prints
 them.
+
+## AI-assisted type design
+
+[Architecture, research, and the working tool contract](docs/ai-type-design.md)
+explain the Counterpunch/Blender comparison and the local AI roadmap.
+Agents can select a master, read glyph revisions, submit exact batched edits with
+`propose_edits`, and proof the resulting layer. Python is an optional client;
+[the spacing example](examples/propose_spacing.py) uses only the CLI and standard library.
 
 ## Use
 

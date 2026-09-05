@@ -11,6 +11,17 @@ No releases yet. `AGENTS.md` has the checklist for the first one.
 Until then, `main` is the only line and this section stays open.
 
 ### Added
+
+- Revision-checked agent edit batches: `project_info`, explicit master indices,
+  `propose_edits` for width, point, translation, and anchor edits, and
+  `agent call --args-file` (including stdin). New proposals record design intent
+  and reject stale foreground glyphs at installation. Proposal creation writes
+  only the new layer and layer index.
+- Proposal-layer proofs through `proof --layer` and agent tools, including SVG
+  content, glyph labels, and component resolution against the proposal overlay.
+- AI type-design architecture and Counterpunch research, plus a thin Python client example.
+- Agent node workflows reject foreground-writing nodes before execution.
+
 - `runebender-core features [--write]`: `mark` and `mkmk` features
   written from anchors, one lookup per anchor name, with mark classes
   and filtering sets; composites without anchors take their
@@ -19,7 +30,7 @@ Until then, `main` is the only line and this section stays open.
   offsets shaping gives. Node `core.features`.
 
 - `runebender-core mcp --font <designspace>`: an MCP server over stdio
-  with the agent tool list, one to one. No tool edits the font.
+  with the agent tool list, one to one. Tools may write proposal layers; installation is separate.
 
 - `document::history`: the one undo pile. `Master` owns an
   `EditHistory`, one stack per glyph name, with `record_undo`,

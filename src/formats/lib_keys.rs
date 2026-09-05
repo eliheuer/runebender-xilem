@@ -14,6 +14,29 @@ use kurbo::BezPath;
 use crate::outline::glyph_ops::bezpath_to_contour;
 use crate::outline::glyph_paths::contour_to_bezpath;
 
+/// Proposal glyph lib key recording its foreground revision and design intent.
+pub const PROPOSAL_BASE_KEY: &str = "com.runebender.proposalBase";
+
+/// Read a proposal's base revision. `None` means a legacy, unguarded proposal.
+/// A malformed record returns an empty revision so installation fails closed.
+pub fn read_proposal_base(glyph: &norad::Glyph) -> Option<&str> {
+    glyph.lib.get(PROPOSAL_BASE_KEY).map(|value| {
+        value
+            .as_dictionary()
+            .and_then(|d| d.get("revision"))
+            .and_then(plist::Value::as_string)
+            .unwrap_or("")
+    })
+}
+
+/// Record the original glyph revision and the reason for a proposed edit.
+pub fn write_proposal_base(glyph: &mut norad::Glyph, revision: &str, reason: &str) {
+    let mut record = plist::Dictionary::new();
+    record.insert("revision".into(), revision.into());
+    record.insert("reason".into(), reason.into());
+    glyph.lib.insert(PROPOSAL_BASE_KEY.into(), record.into());
+}
+
 /// Glyph lib key for the contour indices marked as masks.
 ///
 /// A mask is a shape that cuts away from the rest of the glyph.

@@ -112,6 +112,7 @@ write-fonts = "0.44"
 # versions live side by side and hyper.rs converts between them.
 kurbo_09 = { package = "kurbo", version = "0.9.5" }
 spline = { git = "https://github.com/linebender/spline", rev = "83f46cbfebb1f5d6042059c867719c0010073d42" }
+sha2 = "0.10"
 
 # 2D geometry for the shared curve/measure modules. All consumers
 # (web, xilem, gpui) are on kurbo 0.13 now, so the old "kurbo-free

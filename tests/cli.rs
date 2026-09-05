@@ -621,3 +621,135 @@ fn compose_derives_marks_and_the_result_shapes() {
     let installed = font.get_glyph("alefHamzaabove-ar.fina").expect("installed");
     assert_eq!(installed.components[0].base.as_str(), "alef-ar.fina");
 }
+
+fn call_agent(font: &Path, name: &str, args: serde_json::Value) -> serde_json::Value {
+    run(&[
+        "agent",
+        "call",
+        name,
+        "--font",
+        font.to_str().unwrap(),
+        "--args",
+        &args.to_string(),
+    ])
+    .1
+}
+
+#[test]
+fn exact_edits_round_trip_without_rewriting_foreground() {
+    let (dir, ufo) = scratch_ufo();
+    let font = norad::Font::load(&ufo).unwrap();
+    let glif = ufo
+        .join(font.default_layer().path())
+        .join(font.default_layer().get_path("n").unwrap());
+    let before = std::fs::read(&glif).unwrap();
+    let read = call_agent(&ufo, "read_glyph", serde_json::json!({"glyph": "n"}));
+    assert_eq!(read["ok"], true, "{read}");
+    let width = read["result"]["advance"].as_f64().unwrap();
+    let batch = serde_json::json!({"task": "spacing-test", "reason": "Compare a wider right sidebearing",
+        "edits": [{"glyph": "n", "expected_revision": read["result"]["revision"],
+        "operations": [{"op": "set_width", "width": width + 12.0}]}]});
+    let result = call_agent(&ufo, "propose_edits", batch.clone());
+    assert_eq!(result["ok"], true, "{result}");
+    assert_eq!(std::fs::read(&glif).unwrap(), before);
+    let reloaded = norad::Font::load(&ufo).unwrap();
+    assert_eq!(reloaded.get_glyph("n").unwrap().width, width);
+    assert_eq!(
+        reloaded
+            .layers
+            .get("com.runebender.proposal.spacing-test")
+            .unwrap()
+            .get_glyph("n")
+            .unwrap()
+            .width,
+        width + 12.0
+    );
+    assert_eq!(call_agent(&ufo, "propose_edits", batch)["ok"], false);
+    let proof = call_agent(
+        &ufo,
+        "proof",
+        serde_json::json!({"glyphs": ["n"], "layer": "com.runebender.proposal.spacing-test"}),
+    );
+    assert_eq!(proof["ok"], true, "{proof}");
+    assert_eq!(proof["result"]["glyphs"][0]["advance"], width + 12.0);
+    assert!(
+        proof["result"]["svg_content"]
+            .as_str()
+            .unwrap()
+            .contains("<text")
+    );
+    let _ = std::fs::remove_file(proof["result"]["svg"].as_str().unwrap());
+    let svg = dir.path().join("proposal.svg");
+    assert_eq!(
+        run(&[
+            "proof",
+            ufo.to_str().unwrap(),
+            "--layer",
+            "com.runebender.proposal.spacing-test",
+            "--out",
+            svg.to_str().unwrap()
+        ])
+        .0,
+        0
+    );
+    let installed = run(&[
+        "proposal",
+        "install",
+        ufo.to_str().unwrap(),
+        "--task",
+        "spacing-test",
+    ]);
+    assert_eq!(
+        installed.1["installed"]["installed"],
+        serde_json::json!(["n"])
+    );
+}
+
+#[test]
+fn agent_rejects_foreground_workflows_and_malformed_scope() {
+    let (dir, ufo) = scratch_ufo();
+    let file = demo_nodes(dir.path());
+    let result = call_agent(&ufo, "nodes_run", serde_json::json!({"file": file}));
+    assert_eq!(result["ok"], false, "{result}");
+    assert!(
+        result["result"]["error"]
+            .as_str()
+            .unwrap()
+            .contains("proposal-only")
+    );
+    assert_eq!(
+        call_agent(&ufo, "proof", serde_json::json!({"glyphs": [42]}))["ok"],
+        false
+    );
+    assert_eq!(
+        call_agent(
+            &ufo,
+            "read_glyph",
+            serde_json::json!({"glyph": "n", "master": "bad"})
+        )["ok"],
+        false
+    );
+}
+
+#[test]
+fn family_requires_explicit_master_and_reports_sources() {
+    let (dir, ufo) = scratch_ufo();
+    let file = dir.path().join("Family.designspace");
+    let second = dir.path().join("Second.ufo");
+    copy_dir(&ufo, &second);
+    std::fs::write(&file, r#"<?xml version="1.0"?><designspace format="5.0"><axes><axis tag="wght" name="Weight" minimum="100" maximum="900" default="100"/></axes><sources><source filename="Virtua.ufo" name="one" stylename="One"><location><dimension name="Weight" xvalue="100"/></location></source><source filename="Second.ufo" name="two" stylename="Two"><location><dimension name="Weight" xvalue="900"/></location></source></sources></designspace>"#).unwrap();
+    let info = call_agent(&file, "project_info", serde_json::json!({}));
+    assert_eq!(info["result"]["masters"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        call_agent(&file, "read_glyph", serde_json::json!({"glyph": "n"}))["ok"],
+        false
+    );
+    let read = call_agent(
+        &file,
+        "read_glyph",
+        serde_json::json!({"glyph": "n", "master": 1}),
+    );
+    assert_eq!(read["ok"], true, "{read}");
+    assert_eq!(read["result"]["master"], 1);
+    assert_eq!(read["result"]["source"], second.to_str().unwrap());
+}

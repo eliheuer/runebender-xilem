@@ -117,7 +117,10 @@ pub fn proof_sheet(
     if names.is_empty() {
         return Err("no glyph to draw".into());
     }
-    let font = &master.font;
+    let preview = layer
+        .map(|name| crate::document::proposal::preview_font(&master.font, name))
+        .transpose()?;
+    let font = preview.as_ref().unwrap_or(&master.font);
     let layer = match layer {
         Some(l) => Some(
             font.layers
@@ -154,6 +157,11 @@ pub fn proof_sheet(
         let row = (i / columns) as f64;
         let x0 = col * cell_w + upm * 0.1;
         let baseline = row * cell_h + upm * 1.05;
+        let label = name
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+        svg.push_str(&format!("<text x=\"{x0}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"40\">{label}</text>\n", row * cell_h + 60.0));
         let line = |y: f64, color: &str| {
             format!(
                 "<line x1=\"{x0:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \

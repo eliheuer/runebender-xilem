@@ -140,6 +140,21 @@ pub fn compatible(foreground: &Glyph, proposed: &Glyph) -> bool {
     glyph_signature(foreground) == glyph_signature(proposed)
 }
 
+/// Clone a font with the named layer overlaid on the foreground for proof rendering.
+/// Components resolve against the same overlaid glyphs; missing layer glyphs fall back
+/// to foreground. Returns an error for an unknown layer and never changes the source.
+pub fn preview_font(font: &Font, layer: &str) -> Result<Font, String> {
+    let proposed = font
+        .layers
+        .get(layer)
+        .ok_or_else(|| format!("no layer named {layer}"))?;
+    let mut preview = font.clone();
+    for glyph in proposed.iter() {
+        preview.default_layer_mut().insert_glyph(glyph.clone());
+    }
+    Ok(preview)
+}
+
 /// Contour and point counts, for a message.
 fn describe(glyph: &Glyph) -> String {
     let points: usize = glyph.contours.iter().map(|c| c.points.len()).sum();
@@ -250,6 +265,18 @@ pub fn install(
         else {
             continue;
         };
+        if let Some(base) = crate::formats::lib_keys::read_proposal_base(&proposed) {
+            let current = font
+                .get_glyph(name.as_str())
+                .and_then(|g| crate::document::edit_batch::glyph_revision(g).ok());
+            if current.as_deref() != Some(base) {
+                skipped.push((
+                    name.clone(),
+                    "stale proposal: foreground changed; propose again".into(),
+                ));
+                continue;
+            }
+        }
         if let Some((_, why)) = summary
             .incompatible
             .iter()

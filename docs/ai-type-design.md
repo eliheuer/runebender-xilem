@@ -1,0 +1,175 @@
+# AI-assisted type design
+
+Runebender should be a local AI font application in its own right. Local inference,
+reusable workflows, direct editing, and external agents should share its font operations.
+ComfyUI is an architectural reference, not a service Runebender needs to connect to.
+GPT-6 Astra is an intended client; the editing contract must also work with local models,
+Python programs, and ordinary shell scripts.
+
+## Research and decision
+
+Reviewed 2026-09-05. Counterpunch source was inspected at
+[`1cc976ae88de2f7b95c823796b39040fede30188`](https://github.com/counterpunchspace/editor/tree/1cc976ae88de2f7b95c823796b39040fede30188).
+This was source inspection, not a runtime comparison or an agent benchmark.
+
+Counterpunch runs Python in the browser with Pyodide. Its `Font()` wrappers expose the
+live JavaScript font model. The assistant can execute Python, discover API documentation,
+read editor state, compile and inspect fonts, and author reusable scripts. See its
+[Python API](https://github.com/counterpunchspace/editor/blob/1cc976ae/API.md) and
+[assistant tool definitions](https://github.com/counterpunchspace/editor/blob/1cc976ae/webapp/js/assistant-config.ts).
+
+Its Python hooks snapshot the font, derive a change set after execution, and feed that
+change set into history and synchronization. Assistant execution is serialized and waits
+for committed updates. A script can make changes and then fail; the assistant reports
+partial commits explicitly. See
+[post-execution handling](https://github.com/counterpunchspace/editor/blob/1cc976ae/webapp/js/python-post-execution.ts)
+and [assistant execution](https://github.com/counterpunchspace/editor/blob/1cc976ae/webapp/js/ai-assistant.ts#L3036).
+
+The useful lesson is the complete loop: discover the API, inspect the actual document,
+compose operations, see the result, and recover. Python enables flexible loops and reusable
+programs. The difficult integration work is maintaining authoritative state and edit
+history across scripting and UI boundaries. Python does not require live object mutation.
+
+Blender exposes scripting and background rendering through its
+[command line](https://docs.blender.org/manual/en/5.1/advanced/command_line/arguments.html).
+[Astra's documented tools](https://developers.openai.com/api/docs/models/gpt-6-astra)
+include function calling and MCP. The inference that scriptability plus visual verification
+helps an agent is an engineering judgment; these sources do not establish why Astra succeeds
+on any particular Blender task or predict its type-design quality.
+
+ComfyUI's [local runtime API](https://docs.comfy.org/development/comfyui-server/comms_routes)
+provides model discovery, workflow submission, queues, progress, history, and interruption.
+Those are useful capabilities for Runebender to own. A node canvas alone is insufficient.
+
+## Architecture
+
+Keep font behavior in Rust over norad and kurbo. Frontends own the window and input.
+Inference workers own model runtimes and may be written in any language. A Python client
+can compose structured operations without embedding Python or duplicating geometry.
+
+The target is one document session with revisions, transactions, undo, proofs, and events.
+The editor, CLI, node workflows, and MCP should be adapters to that session. Standalone
+file operations remain useful for batch jobs. They must not pretend to represent unsaved
+editor state. Model jobs should consume a declared snapshot and return a proposal tied
+to it, not mutate the open document behind the editor.
+
+## Available first phase
+
+- `project_info` lists loaded master indices, names, and source paths. Agent operations on
+  multi-master projects require `master`; they never silently select the first source.
+- `read_glyph` returns points in contour order, component transforms, anchors, metrics, a
+  canonical GLIF SHA-256 revision, and the selected source and layer. Point indices are
+  zero-based and valid only for that revision.
+- `propose_edits` validates an entire batch on private glyph copies. Supported operations
+  are `set_width`, `set_point`, `translate`, and `set_anchor`. Translate moves outline
+  points, component offsets, and anchors together, keeping advance width unchanged.
+- A batch needs a unique task, a design reason, and each glyph's expected foreground
+  revision. Unknown fields, stale revisions, duplicate glyphs, invalid indices, nonfinite
+  values, negative advances, and empty/no-op edits fail. It creates a proposal, not an
+  installed edit. It preserves contour/point order; it does not guarantee smoothness,
+  optical quality, or family-wide interpolation quality.
+- Proposal creation writes only a new layer and `layercontents.plist`. It does not rewrite
+  foreground GLIFs. Its publication rechecks the layer index and edited glyphs. Cooperative
+  proposal writers use a lock. External applications do not share that lock: this is **not**
+  a filesystem transaction against concurrent editor saves. Coordinate saves until the
+  session service owns them. A crash can leave an unreferenced layer or lock requiring
+  inspection; do not remove another running writer's lock.
+- Installation through core rejects stale guarded glyphs even with `--any-structure`.
+  It retains the existing per-glyph install/undo semantics. A subset may install while
+  stale glyphs remain proposed. Legacy model proposals without revision metadata retain
+  their old behavior; they are not retroactively guarded.
+- `proof --layer NAME` and the `proof` agent tool render proposal layers. Components use
+  the proposal overlay, falling back to foreground bases. Agent proofs include SVG text,
+  a unique temporary path, and metrics. SVG is not a native MCP raster image; clients need
+  to display it in a browser or render it before claiming visual verification.
+- Agent workflow execution uses `--proposal-only`, rejecting install, feature-writing,
+  and unknown core nodes before execution. Trusted local `font-ml` programs still own
+  their proposal-writing contract; this flag is not an executable sandbox.
+- `agent call --args-file FILE` accepts large batches without shell quoting or argument
+  length problems. `--args-file -` reads JSON from stdin. The same tools are listed by MCP.
+
+## Working session
+
+Build and use this revision of the binary (`cargo build --locked`), or install it explicitly.
+An older binary on PATH will not have the new tools. For an MCP client, launch:
+
+```sh
+runebender-core mcp --font /absolute/path/Family.designspace
+```
+
+The host chooses Astra or a local language model; no provider SDK or API key belongs in
+core. Remote model providers receive whatever context their host sends. Local font files
+alone do not make a remote chat private or offline.
+
+Start with `project_info`, choose the intended master, then read the relevant foreground
+glyphs. Use `agent tools --json` for the published input schemas. For example:
+
+```sh
+runebender-core agent call project_info --font /absolute/path/Family.designspace
+runebender-core agent call read_glyph --font /absolute/path/Family.designspace \
+  --args '{"master":0,"glyph":"n"}'
+```
+
+Create a JSON file using the returned revision and measured width, not these placeholders:
+
+```json
+{
+  "master": 0,
+  "task": "n-spacing-01",
+  "reason": "Compare a 12-unit increase in the right sidebearing",
+  "edits": [{
+    "glyph": "n",
+    "expected_revision": "COPY THE FOREGROUND REVISION HERE",
+    "operations": [{"op": "set_width", "width": 600}]
+  }]
+}
+```
+
+```sh
+runebender-core agent call propose_edits --font /absolute/path/Family.designspace \
+  --args-file edits.json
+runebender-core agent call proof --font /absolute/path/Family.designspace \
+  --args '{"master":0,"glyphs":["n"],"layer":"com.runebender.proposal.n-spacing-01"}'
+```
+
+Compare foreground and proposal proofs at the same scale. Inspect text specimens before
+accepting spacing decisions; a cell proof alone is insufficient. Installation is a separate,
+authorized action in an editor using this core, or:
+
+```sh
+runebender-core --json proposal install /absolute/path/Master.ufo --task n-spacing-01
+```
+
+The CLI's in-memory undo history does not survive process exit. Use the editor's undo or
+versioned source backups for persistent recovery. Existing installation writes the UFO;
+coordinate other writers. The web editor can show on-disk updates through
+`runebender-serve /absolute/path/Family.designspace --open`; native proposal review and the
+web editor's draft UI are different interfaces, and this phase does not unify them.
+
+`examples/propose_spacing.py` demonstrates a Python client: it reads a glyph, calculates
+an advance, submits a proposal, and returns both proofs. Its default mode only prints the
+batch. Start on a copy of a font before using `--write` on working sources.
+
+## Next phases and acceptance criteria
+
+1. **Document session:** expose unsaved active master/layer/selection, revision-checked
+   transactions, rollback, and shared events. Verify that an edit arriving during a model
+   job is preserved and that cancelling a batch leaves no partial foreground edits.
+2. **Visual evaluation:** native raster MCP proof output, side-by-side and overlay proofs,
+   shaped text with kerning, size-controlled specimens, and explicit master interpolation.
+   Verify actual images and shaping results, not only coordinates or tool success.
+3. **Local runtime:** shared job IDs, queue, cancellation, model capabilities and hashes,
+   seeds/settings, run history, and reusable workflows. Cache every input actually read,
+   including font metadata, components, runtime version, and model configuration.
+4. **Broader editing:** kerning/group transactions, contour creation and deletion, reference
+   glyph constraints, and family-wide compatibility checks. Keep small typed tools and
+   batched/scripted composition available together.
+5. **Virtua Grotesk production:** agree coverage and release criteria, inventory unfinished
+   glyphs/masters, establish approved reference glyphs, then work in small design batches.
+   Review rhythm, spacing, curves, marks, and interpolation in real text. Preserve accepted
+   decisions and provenance. Compile and validate before calling the font finished.
+
+A passing CLI test proves a tool contract, not that Astra is a competent type designer.
+Evaluate the same bounded tasks with Astra and local models: correct master, grounded
+measurements, valid proposals, useful visual revision, honest completion reports, and
+reliable recovery. Do not auto-accept an aesthetic decision merely because validation passes.

@@ -92,6 +92,9 @@ enum Command {
         /// Glyphs per row.
         #[arg(long, default_value = "10")]
         columns: usize,
+        /// Optional UFO layer to proof.
+        #[arg(long)]
+        layer: Option<String>,
     },
     /// Proposals: edits offered by a tool, waiting in the UFO as
     /// `com.runebender.proposal.<task>` layers.
@@ -208,6 +211,9 @@ enum AgentAction {
         /// The arguments, as a JSON object.
         #[arg(long, default_value = "{}")]
         args: String,
+        /// Read arguments from a JSON file, or - for stdin.
+        #[arg(long, conflicts_with = "args")]
+        args_file: Option<PathBuf>,
         /// The font-ml binary, for propose.
         #[arg(long)]
         tool: Option<PathBuf>,
@@ -261,6 +267,9 @@ enum NodesAction {
         /// Keep no cache and read none.
         #[arg(long)]
         no_cache: bool,
+        /// Reject workflow nodes that can write foreground data.
+        #[arg(long)]
+        proposal_only: bool,
     },
     /// The JSON Schema for the file.
     Schema,
@@ -308,7 +317,15 @@ fn main() -> std::process::ExitCode {
             out,
             glyphs,
             columns,
-        } => proof(source, out.as_deref(), glyphs.as_deref(), *columns, json),
+            layer,
+        } => proof(
+            source,
+            out.as_deref(),
+            glyphs.as_deref(),
+            *columns,
+            layer.as_deref(),
+            json,
+        ),
         Command::Proposal { action } => match action {
             ProposalAction::List { source } => proposal_list(source, json),
             ProposalAction::Install {
@@ -332,8 +349,21 @@ fn main() -> std::process::ExitCode {
                 name,
                 font,
                 args,
+                args_file,
                 tool,
-            } => agent_call(name, font, args, tool.as_deref()),
+            } => {
+                let input = match args_file {
+                    Some(path) if path.as_os_str() == "-" => {
+                        std::io::read_to_string(std::io::stdin())
+                    }
+                    Some(path) => std::fs::read_to_string(path),
+                    None => Ok(args.clone()),
+                };
+                match input {
+                    Ok(input) => agent_call(name, font, &input, tool.as_deref()),
+                    Err(e) => fail(true, exit::USAGE, &e.to_string()),
+                }
+            }
         },
         Command::Mcp { font, tool } => mcp_serve(font, tool.as_deref()),
         Command::Compose {
@@ -354,6 +384,7 @@ fn main() -> std::process::ExitCode {
                 models,
                 force,
                 no_cache,
+                proposal_only,
             } => nodes_run(
                 file,
                 font,
@@ -363,6 +394,7 @@ fn main() -> std::process::ExitCode {
                 models.as_deref(),
                 *force,
                 *no_cache,
+                *proposal_only,
                 json,
             ),
             NodesAction::Schema => {
@@ -515,6 +547,7 @@ fn proof(
     out: Option<&Path>,
     glyphs: Option<&[String]>,
     columns: usize,
+    layer: Option<&str>,
     json: bool,
 ) -> i32 {
     let master = match open_master(source, json) {
@@ -523,6 +556,10 @@ fn proof(
     };
     let names: Vec<String> = match glyphs {
         Some(list) => list.to_vec(),
+        None if layer.is_some() => match master.font.layers.get(layer.unwrap_or_default()) {
+            Some(l) => l.iter().map(|g| g.name().to_string()).collect(),
+            None => return fail(json, exit::USAGE, "no such layer"),
+        },
         None => master
             .glyphs
             .iter()
@@ -533,7 +570,7 @@ fn proof(
     if names.is_empty() {
         return fail(json, exit::USAGE, "no glyph to draw");
     }
-    let sheet = match runebender_core::formats::svg::proof_sheet(&master, None, &names, columns) {
+    let sheet = match runebender_core::formats::svg::proof_sheet(&master, layer, &names, columns) {
         Ok(s) => s,
         Err(e) => return fail(json, exit::USAGE, &e),
     };
@@ -894,6 +931,7 @@ fn nodes_run(
     models: Option<&Path>,
     force: bool,
     no_cache: bool,
+    proposal_only: bool,
     json: bool,
 ) -> i32 {
     let graph = match nodes::NodeGraph::load(file) {
@@ -904,6 +942,9 @@ fn nodes_run(
         return fail(json, exit::USAGE, &format!("{}: not found", font.display()));
     }
     let (registry, _) = node_registry(tool);
+    if proposal_only && let Err(e) = nodes_run::validate_proposal_workflow(&graph) {
+        return fail(json, exit::USAGE, &e);
+    }
     let problems = graph.validate(&registry);
     if !problems.is_empty() {
         let text: Vec<String> = problems.iter().map(ToString::to_string).collect();
@@ -990,16 +1031,27 @@ fn nodes_run(
 
 /// The UFO a font path stands for: the UFO itself, or the first
 /// master of a designspace.
-fn font_master(font: &Path) -> Result<PathBuf, String> {
-    if font.extension().is_some_and(|x| x == "ufo") {
-        return Ok(font.to_path_buf());
-    }
+fn font_master(font: &Path, master: Option<usize>) -> Result<PathBuf, String> {
     let project = runebender_core::document::project::Project::load(font)?;
+    let index = match master {
+        Some(index) => index,
+        None if project.masters.len() == 1 => 0,
+        None => return Err("master is required for a family; call project_info first".into()),
+    };
     project
         .masters
-        .first()
+        .get(index)
         .map(|m| m.source_path.clone())
-        .ok_or_else(|| "the family has no master".to_string())
+        .ok_or_else(|| format!("no master at index {index}"))
+}
+
+fn project_info(font: &Path) -> serde_json::Value {
+    match runebender_core::document::project::Project::load(font) {
+        Ok(p) => json!({"ok": true, "project": font, "masters": p.masters.iter().enumerate()
+            .map(|(index, m)| json!({"index": index, "name": p.master_names[index].as_ref(), "source": m.source_path}))
+            .collect::<Vec<_>>()}),
+        Err(e) => json!({"ok": false, "error": e}),
+    }
 }
 
 /// Runs this same binary with `args` and returns the last JSON line
@@ -1024,12 +1076,19 @@ fn self_json(args: &[String]) -> serde_json::Value {
 }
 
 /// One glyph as the model reads it.
-fn read_glyph(source: &Path, name: &str) -> serde_json::Value {
+fn read_glyph(source: &Path, name: &str, layer: Option<&str>) -> serde_json::Value {
     let font = match Font::load(source) {
         Ok(f) => f,
         Err(e) => return json!({ "ok": false, "error": e.to_string() }),
     };
-    let Some(glyph) = font.get_glyph(name) else {
+    let selected = match layer {
+        Some(name) => match font.layers.get(name) {
+            Some(layer) => layer,
+            None => return json!({"ok": false, "error": format!("no layer named {name}")}),
+        },
+        None => font.default_layer(),
+    };
+    let Some(glyph) = selected.get_glyph(name) else {
         return json!({ "ok": false, "error": format!("no glyph named {name}") });
     };
     let contours: Vec<serde_json::Value> = glyph
@@ -1051,7 +1110,14 @@ fn read_glyph(source: &Path, name: &str) -> serde_json::Value {
     // The numbers a question is usually about come first, computed
     // the way `proof` computes them, so one tool answers width and
     // spacing without a second call.
-    let path = glyph_paths::glyph_to_bezpath(glyph, &font);
+    let preview = match layer
+        .map(|name| proposal::preview_font(&font, name))
+        .transpose()
+    {
+        Ok(preview) => preview,
+        Err(e) => return json!({"ok": false, "error": e}),
+    };
+    let path = glyph_paths::glyph_to_bezpath(glyph, preview.as_ref().unwrap_or(&font));
     let drawn = !path.is_empty();
     let bounds = {
         use kurbo::Shape as _;
@@ -1060,6 +1126,8 @@ fn read_glyph(source: &Path, name: &str) -> serde_json::Value {
     json!({
         "ok": true,
         "glyph": name,
+        "layer": selected.name(),
+        "revision": runebender_core::document::edit_batch::glyph_revision(glyph).ok(),
         "advance": glyph.width,
         "lsb": if drawn { Some(bounds.x0.round()) } else { None },
         "rsb": if drawn { Some((glyph.width - bounds.x1).round()) } else { None },
@@ -1069,6 +1137,7 @@ fn read_glyph(source: &Path, name: &str) -> serde_json::Value {
         "unicodes": glyph.codepoints.iter().map(|c| format!("U+{:04X}", c as u32)).collect::<Vec<_>>(),
         "contours": contours,
         "components": glyph.components.iter().map(|c| c.base.to_string()).collect::<Vec<_>>(),
+        "component_transforms": glyph.components.iter().map(|c| json!({"base": c.base, "transform": [c.transform.x_scale, c.transform.xy_scale, c.transform.yx_scale, c.transform.y_scale, c.transform.x_offset, c.transform.y_offset]})).collect::<Vec<_>>(),
         "anchors": glyph.anchors.iter().map(|a| json!({ "name": a.name.as_ref().map(|n| n.to_string()), "x": a.x, "y": a.y })).collect::<Vec<_>>(),
     })
 }
@@ -1229,22 +1298,68 @@ fn agent_call_value(
     args: &serde_json::Value,
     tool: Option<&Path>,
 ) -> serde_json::Value {
-    let source = match font_master(font) {
+    if !args.is_object() {
+        return json!({"ok": false, "error": "arguments must be an object"});
+    }
+    if name == "project_info" {
+        return project_info(font);
+    }
+    if name == "docs" {
+        return docs_search(args.get("query").and_then(|v| v.as_str()).unwrap_or(""));
+    }
+    let master = match args.get("master") {
+        None => None,
+        Some(value) => match value.as_u64().and_then(|v| usize::try_from(v).ok()) {
+            Some(index) => Some(index),
+            None => return json!({"ok": false, "error": "master must be a nonnegative integer"}),
+        },
+    };
+    if args.get("glyphs").is_some_and(|v| {
+        !v.as_array()
+            .is_some_and(|a| a.iter().all(|n| n.is_string()))
+    }) {
+        return json!({"ok": false, "error": "glyphs must be an array of names"});
+    }
+    if args.get("layer").is_some_and(|v| !v.is_string()) {
+        return json!({"ok": false, "error": "layer must be a string"});
+    }
+    let source = match font_master(font, master) {
         Ok(s) => s,
         Err(e) => return json!({ "ok": false, "error": e }),
     };
+    let mut result = agent_call_source(name, font, &source, args, tool);
+    if let Some(object) = result.as_object_mut() {
+        object.insert("source".into(), json!(source));
+        object.insert("master".into(), json!(master.unwrap_or(0)));
+    }
+    result
+}
+
+fn agent_call_source(
+    name: &str,
+    _font: &Path,
+    source: &Path,
+    args: &serde_json::Value,
+    tool: Option<&Path>,
+) -> serde_json::Value {
     let src = source.display().to_string();
     let glyphs = agent::glyph_list(args);
     let text = |key: &str| args.get(key).and_then(|v| v.as_str()).map(str::to_string);
     match name {
         "font_info" => self_json(&["--json".into(), "info".into(), src]),
         "read_glyph" => match text("glyph") {
-            Some(g) => read_glyph(&source, &g),
+            Some(g) => read_glyph(source, &g, args.get("layer").and_then(|v| v.as_str())),
             None => json!({ "ok": false, "error": "glyph is required" }),
         },
         "proof" => {
-            let out =
-                std::env::temp_dir().join(format!("runebender-proof-{}.svg", std::process::id()));
+            let out = std::env::temp_dir().join(format!(
+                "runebender-proof-{}-{}.svg",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            ));
             let mut a = vec![
                 "--json".to_string(),
                 "proof".into(),
@@ -1256,7 +1371,34 @@ fn agent_call_value(
                 a.push("--glyphs".into());
                 a.push(glyphs.join(","));
             }
-            self_json(&a)
+            if let Some(layer) = text("layer") {
+                a.extend(["--layer".into(), layer]);
+            }
+            let mut result = self_json(&a);
+            if result["ok"] == true
+                && let Some(path) = result["svg"].as_str()
+                && let Ok(svg) = std::fs::read_to_string(path)
+            {
+                result["svg_content"] = json!(svg);
+            }
+            result
+        }
+        "propose_edits" => {
+            let mut batch = args.clone();
+            batch
+                .as_object_mut()
+                .expect("object validated")
+                .remove("master");
+            match serde_json::from_value::<runebender_core::document::edit_batch::EditBatch>(batch)
+            {
+                Ok(batch) => {
+                    match runebender_core::document::edit_batch::save_proposal(source, &batch) {
+                        Ok(summary) => json!({"ok": true, "proposal": summary}),
+                        Err(e) => json!({"ok": false, "error": e}),
+                    }
+                }
+                Err(e) => json!({"ok": false, "error": e.to_string()}),
+            }
         }
         "propose" => match (text("task"), text("model")) {
             (Some(task), Some(model)) => {
@@ -1311,7 +1453,8 @@ fn agent_call_value(
                     "run".into(),
                     file,
                     "--font".into(),
-                    font.display().to_string(),
+                    source.display().to_string(),
+                    "--proposal-only".into(),
                 ];
                 if !glyphs.is_empty() {
                     a.push("--glyphs".into());
@@ -1332,6 +1475,7 @@ fn agent_call_value(
                 "proposal".into(),
                 "discard".into(),
                 src,
+                "--task".into(),
                 task,
             ]),
             None => json!({ "ok": false, "error": "task is required" }),
@@ -1431,7 +1575,7 @@ fn mcp_instructions(font: &Path) -> String {
         "Runebender font editor, working on {}. The tools read the font, render \
          proofs, run local models, and propose changes. No tool edits the font: a \
          proposal is a UFO layer the person installs or discards in the editor, \
-         one glyph at a time. Call font_info first, and read a glyph before you \
+         one glyph at a time. Call project_info first and choose an explicit master; read a glyph before you \
          talk about its shape.",
         font.display()
     )
