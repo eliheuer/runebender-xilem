@@ -639,10 +639,13 @@ pub(crate) fn mark_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
 /// holds when no glyph is picked.
 pub(crate) fn font_info_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
+    // The names and the design metrics; the export and hinting
+    // numbers go to Advanced below, as in the GPUI build.
     let rows: Vec<_> = app
         .font
         .info_rows()
         .into_iter()
+        .take(8)
         .map(|(name, value)| recipes::kv(pal, name.to_string(), value))
         .collect();
     xcolumn(
@@ -659,6 +662,35 @@ pub(crate) fn font_info_section(app: &Workspace) -> impl WidgetView<Workspace> +
                 },
             ),
             (!app.collapsed.contains("Font info")).then(|| xcolumn(Region::List, rows)),
+        ),
+    )
+}
+
+/// The typo, hhea and win metrics: real, but not an overview of the
+/// font, so the section starts collapsed.
+pub(crate) fn font_advanced_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    let rows: Vec<_> = app
+        .font
+        .info_rows()
+        .into_iter()
+        .skip(8)
+        .map(|(name, value)| recipes::kv(pal, name.to_string(), value))
+        .collect();
+    xcolumn(
+        Region::Section,
+        (
+            recipes::section_toggle(
+                pal,
+                "Advanced",
+                !app.collapsed.contains("Advanced"),
+                move |app: &mut Workspace| {
+                    if !app.collapsed.remove("Advanced") {
+                        app.collapsed.insert("Advanced");
+                    }
+                },
+            ),
+            (!app.collapsed.contains("Advanced")).then(|| xcolumn(Region::List, rows)),
         ),
     )
 }

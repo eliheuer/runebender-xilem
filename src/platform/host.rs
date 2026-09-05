@@ -113,14 +113,20 @@ impl Workspace {
             left_collapsed: false,
             // Headless frames can start with sections folded:
             // `RUNEBENDER_COLLAPSED=Kerning,Groups`.
-            collapsed: std::env::var("RUNEBENDER_COLLAPSED")
-                .map(|s| {
-                    s.split(',')
-                        .filter(|t| !t.is_empty())
-                        .map(|t| &*Box::leak(t.to_string().into_boxed_str()))
-                        .collect()
-                })
-                .unwrap_or_default(),
+            collapsed: {
+                let mut set: std::collections::HashSet<&'static str> =
+                    std::env::var("RUNEBENDER_COLLAPSED")
+                        .map(|s| {
+                            s.split(',')
+                                .filter(|t| !t.is_empty())
+                                .map(|t| &*Box::leak(t.to_string().into_boxed_str()))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                // The export metrics start folded, as in the GPUI build.
+                set.insert("Advanced");
+                set
+            },
             sel: Sel::Category(match start_cat.as_deref() {
                 Some("Number") => GlyphCategory::Number,
                 Some("Symbol") => GlyphCategory::Symbol,

@@ -107,7 +107,7 @@ impl ControlSize {
     pub(crate) const fn px(self) -> f64 {
         match self {
             Self::Dot => 10.0,
-            Self::Swatch => 16.0,
+            Self::Swatch => 24.0,
             Self::Icon => 20.0,
             Self::Row => 21.0,
             Self::Control => 28.0,
