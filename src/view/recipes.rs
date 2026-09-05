@@ -37,7 +37,9 @@ where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
     let muted = pal.text_muted;
-    let mark = if open { "\u{25bc}" } else { "\u{25b6}" };
+    // The small triangles, as the GPUI build paints them; the large
+    // ones read as buttons.
+    let mark = if open { "\u{25be}" } else { "\u{25b8}" };
     // A stretched row inside the button, because the stock button
     // centres its child and a section header has to sit at the left edge
     // with the rows it heads.
