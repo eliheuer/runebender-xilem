@@ -314,9 +314,9 @@
       "roles": {
         "gridSelected": "neutral.37",
         "cellSelectedFill": "neutral.37",
-        "cellSelectedInk": "neutral.96",
+        "cellSelectedInk": "neutral.76",
         "controlSelected": "neutral.37",
-        "controlSelectedInk": "neutral.96",
+        "controlSelectedInk": "neutral.76",
         "designGridFine": "neutral.46",
         "designGridCoarse": "neutral.52",
         "accent": "green.deep",
