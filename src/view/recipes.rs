@@ -77,6 +77,36 @@ pub(crate) fn kv(pal: &Palette, name: String, value: String) -> impl WidgetView<
     .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
 }
 
+/// A bare text field: no caption, a placeholder inside, control
+/// height. The kerning row in the GPUI build.
+pub(crate) fn field_bare<F, G>(
+    pal: &Palette,
+    placeholder: &'static str,
+    value: String,
+    on_change: F,
+    on_enter: G,
+) -> impl WidgetView<Workspace> + use<F, G>
+where
+    F: Fn(&mut Workspace, String) + Send + Sync + 'static,
+    G: Fn(&mut Workspace, String) + Send + Sync + 'static,
+{
+    sized_box(
+        text_input(value, move |app: &mut Workspace, v| on_change(app, v))
+            .on_enter(move |app: &mut Workspace, v| on_enter(app, v))
+            .placeholder(placeholder)
+            .text_color(pal.text)
+            .placeholder_color(pal.text_muted)
+            .background_color(pal.field())
+            .border_color(pal.field_outline)
+            .border_width(Stroke::Hairline.length())
+            .corner_radius(Radius::Sm.length()),
+    )
+    .dims(Dimensions::new(
+        Dim::Stretch,
+        Dim::from(ControlSize::Control),
+    ))
+}
+
 /// A labeled text field: caption over a control-height input.
 pub(crate) fn field<F>(
     pal: &Palette,
