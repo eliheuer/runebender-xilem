@@ -32,6 +32,12 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let bar = xrow(
         Region::Toolbar,
         (
+            // Room for the traffic lights, which sit where AppKit puts
+            // them: winit has no way to move them, so the header pads
+            // for the default place, the same 78px Zed pads on Tahoe.
+            cfg!(target_os = "macos").then(|| {
+                sized_box(label("")).dims(Dimensions::new(Dim::Fixed(Length::px(66.0)), Dim::Auto))
+            }),
             icon_button(
                 "glyph-grid",
                 !app.left_collapsed,
@@ -71,11 +77,10 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             // go under the intrinsic width of its text, and an
             // over-wide label pushes the tab strip off the window
             // instead of being cut.
-            .dims(Dimensions::new(
-                if editing { Dim::Auto } else { Dim::Stretch },
-                Dim::Auto,
-            ))
-            .flex(1.0),
+            .dims(Dimensions::new(Dim::Auto, Dim::Auto)),
+            // The empty middle of the bar moves the window and zooms
+            // it on a double click, as the system title bar would.
+            drag_region().flex(1.0),
             editing.then(|| direction_chips(app)),
             editing.then(|| header_tools(app)),
             tab_strip(app),

@@ -59,6 +59,18 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
     let background = app.palette.app;
     let window_options =
         WindowOptions::new("Runebender").with_initial_inner_size(LogicalSize::new(1100., 720.));
+    // On macOS the header row is the title bar, as in the GPUI build:
+    // the system bar goes transparent, the content runs up under the
+    // traffic lights, and the header pads to clear them. Dragging is
+    // the header's own drag region.
+    #[cfg(target_os = "macos")]
+    let window_options = {
+        use xilem::WindowOptionsExtMacOS as _;
+        window_options
+            .with_titlebar_transparent(true)
+            .with_fullsize_content_view(true)
+            .with_title_hidden(true)
+    };
     Xilem::new_simple(app, app_logic, window_options)
         .with_font(xilem::Blob::new(Arc::new(UI_FONT)))
         .with_default_properties(default_property_set())
