@@ -312,7 +312,7 @@
         "glyph": "neutral.23"
       },
       "roles": {
-        "gridSelected": "neutral.37",
+        "gridSelected": "neutral.23",
         "cellSelectedFill": "neutral.37",
         "cellSelectedInk": "neutral.76",
         "controlSelected": "neutral.37",
