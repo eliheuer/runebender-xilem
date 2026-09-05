@@ -152,6 +152,8 @@ pub(crate) struct GridWidget {
     multi: Arc<std::collections::HashSet<usize>>,
     scroll: f64,
     size: Size,
+    /// The pointer is over the grid, which is when the scroll thumb shows.
+    hovered: bool,
 }
 
 impl GridWidget {
@@ -403,8 +405,10 @@ impl Widget for GridWidget {
             }
         }
 
+        // The thumb shows while the pointer is over the grid, the way
+        // the portals' bars do now, and the GPUI grid has none at all.
         let max = self.max_scroll(total);
-        if max > 0.0 {
+        if max > 0.0 && self.hovered {
             let track_h = self.size.height;
             let thumb_h = (track_h * track_h / self.content_height(total)).max(24.0);
             let thumb_y = (self.scroll / max) * (track_h - thumb_h);
@@ -425,6 +429,14 @@ impl Widget for GridWidget {
         event: &PointerEvent,
     ) {
         match event {
+            PointerEvent::Enter(_) => {
+                self.hovered = true;
+                ctx.request_render();
+            }
+            PointerEvent::Leave(_) => {
+                self.hovered = false;
+                ctx.request_render();
+            }
             PointerEvent::Down(PointerButtonEvent {
                 button: Some(PointerButton::Primary),
                 state,
@@ -549,6 +561,7 @@ where
             multi: self.multi.clone(),
             scroll: 0.0,
             size: Size::ZERO,
+            hovered: false,
         };
         (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())
     }
