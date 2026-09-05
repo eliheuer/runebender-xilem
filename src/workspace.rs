@@ -40,6 +40,10 @@ pub(crate) enum Tool {
 }
 
 pub(crate) struct Workspace {
+    /// Identity of this particular in-memory document session. Reopening or
+    /// reloading the same path creates a new session, so background work can
+    /// never apply a result to a replacement document by accident.
+    pub(crate) document_id: u64,
     /// The live document's private agent endpoint, serviced on the UI thread.
     #[cfg(unix)]
     pub(crate) live: Option<runebender_core::document::live_socket::Server>,

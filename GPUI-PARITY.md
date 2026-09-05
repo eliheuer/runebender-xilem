@@ -342,6 +342,15 @@ GPUI reference: `src/edit/{local_ai,nodes,chat,experiments}.rs`,
     rejects a changed master/source or deleted target before adopting a proposal
     (2026-09-05). Document-session identity and revision conflict checks remain
     separate A05 work.
+  - [x] **A05.c** Replacement-session guard for AI and nodes: every
+    `Workspace::open` gets a process-local document identity, captured by both
+    background job types. A completed AI job now rejects the same source after
+    it has been reloaded, and a node `core.install` result skips its disk reload
+    after a document/master replacement. Regression coverage:
+    `edit::{local_ai,nodes}::tests::*replacement_document*` reload real empty UFOs
+    before finishing captured jobs; `cargo test --locked -- --test-threads=1` passed
+    all 27 tests on 2026-09-05. Per-glyph revision conflict checks and live node
+    application with core undo remain separate A05 work.
 
 ### Phase 6 — evidence for making Xilem primary
 

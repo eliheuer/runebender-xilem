@@ -106,6 +106,8 @@ pub(crate) struct AiJob {
     pub(crate) task: String,
     pub(crate) source: PathBuf,
     pub(crate) master_path: PathBuf,
+    /// The in-memory document session that launched the task.
+    pub(crate) document_id: u64,
     pub(crate) glyph: Option<String>,
 }
 
@@ -455,6 +457,7 @@ impl Workspace {
             task: task.to_string(),
             source: source.clone(),
             master_path: self.font.source().to_path_buf(),
+            document_id: self.document_id,
             glyph: glyph_name.clone(),
             ..AiJob::default()
         };
@@ -518,7 +521,10 @@ impl Workspace {
     /// What happens when font-ml comes back: the proposal layer is
     /// adopted from disk, and a single glyph is installed at once.
     fn task_finished(&mut self, job: &AiJob, report: &serde_json::Value) {
-        if self.font.source() != job.master_path || self.font.source() != job.source {
+        if self.document_id != job.document_id
+            || self.font.source() != job.master_path
+            || self.font.source() != job.source
+        {
             self.note = "font-ml result is stale after a document or master switch".into();
             return;
         }
@@ -580,5 +586,37 @@ mod tests {
         }))
         .unwrap();
         assert!(row.takes_glyphs() && row.takes_glyph());
+    }
+
+    #[test]
+    fn completed_task_does_not_apply_after_the_document_reloads() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-ai-session-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        norad::Font::new()
+            .save(&path)
+            .expect("the empty UFO fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let job = AiJob {
+            task: "bolden".into(),
+            source: path.clone(),
+            master_path: path.clone(),
+            document_id: workspace.document_id,
+            ..AiJob::default()
+        };
+
+        workspace.reload_from_disk();
+        workspace.task_finished(&job, &serde_json::json!({}));
+
+        assert_eq!(
+            workspace.note,
+            "font-ml result is stale after a document or master switch"
+        );
+        std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }
 }

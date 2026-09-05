@@ -5,6 +5,13 @@
 
 use crate::*;
 use runebender_core::outline::glyph_paths::round_units;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// The next identity for an in-memory document session.
+///
+/// This is deliberately process-local: background jobs only need to tell a
+/// replacement workspace from the one that launched them.
+static NEXT_DOCUMENT_ID: AtomicU64 = AtomicU64::new(1);
 
 impl Workspace {
     pub(crate) fn open(path: &FsPath) -> Result<Self, String> {
@@ -110,6 +117,7 @@ impl Workspace {
             .map(|c| format!("{:04X}", c as u32))
             .unwrap_or_default();
         let mut app = Self {
+            document_id: NEXT_DOCUMENT_ID.fetch_add(1, Ordering::Relaxed),
             font,
             palette,
             cells,
@@ -340,6 +348,7 @@ mod tests {
             .expect("the empty UFO fixture saves");
 
         let mut workspace = Workspace::open(&path).expect("an empty UFO opens");
+        let document_id = workspace.document_id;
         assert!(matches!(workspace.mode, Mode::Overview));
         assert!(workspace.font.glyphs.is_empty());
         assert_eq!(workspace.selected, None);
@@ -363,6 +372,7 @@ mod tests {
         workspace.filter = "A".into();
         workspace.rebuild_search_regex();
         workspace.reload_from_disk();
+        assert_ne!(workspace.document_id, document_id);
         assert!(workspace.list);
         assert!(workspace.detail);
         assert!(workspace.left_collapsed);

@@ -55,6 +55,9 @@ pub(crate) struct GraphState {
 pub(crate) struct NodeJob {
     pub(crate) events: Arc<Mutex<Vec<Event>>>,
     pub(crate) finished: Arc<Mutex<Option<RunReport>>>,
+    /// The active master and in-memory document session at launch.
+    pub(crate) master_path: PathBuf,
+    pub(crate) document_id: u64,
 }
 
 /// Everything nodes-related the app holds.
@@ -317,7 +320,11 @@ impl Workspace {
         if let Some(font_ml) = self.nodes.font_ml.clone() {
             tools.insert("font-ml".to_string(), font_ml);
         }
-        let job = NodeJob::default();
+        let job = NodeJob {
+            master_path: font.clone(),
+            document_id: self.document_id,
+            ..NodeJob::default()
+        };
         let events = job.events.clone();
         let finished = job.finished.clone();
         for row in rows.values_mut() {
@@ -400,14 +407,14 @@ impl Workspace {
             .unwrap_or_else(|e| e.into_inner())
             .take();
         if let Some(report) = report {
-            self.nodes_finished(&report);
+            self.nodes_finished(&job, &report);
             self.nodes.job = None;
         }
     }
 
     /// The run ended. Install changes the font on disk, so the font is
     /// re-read when one ran.
-    fn nodes_finished(&mut self, report: &RunReport) {
+    fn nodes_finished(&mut self, job: &NodeJob, report: &RunReport) {
         let installed = report
             .nodes
             .iter()
@@ -429,7 +436,8 @@ impl Workspace {
             }
             state.rows = Arc::new(rows);
         }
-        if installed {
+        if installed && self.document_id == job.document_id && self.font.source() == job.master_path
+        {
             self.reload_from_disk();
         }
         let failed = report
@@ -437,7 +445,11 @@ impl Workspace {
             .iter()
             .filter(|n| n.status == Status::Failed)
             .count();
-        self.note = if report.ok {
+        self.note = if installed
+            && (self.document_id != job.document_id || self.font.source() != job.master_path)
+        {
+            "Node result is stale after a document or master switch".into()
+        } else if report.ok {
             let ran = report
                 .nodes
                 .iter()
@@ -486,5 +498,52 @@ fn summary_line(n: &nodes_run::NodeResult) -> String {
         format!("{:.1}s", n.seconds)
     } else {
         parts.join(" \u{00b7} ")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn completed_install_does_not_reload_a_replacement_document() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-nodes-session-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        norad::Font::new()
+            .save(&path)
+            .expect("the empty UFO fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let job = NodeJob {
+            master_path: path.clone(),
+            document_id: workspace.document_id,
+            ..NodeJob::default()
+        };
+        let report = RunReport {
+            ok: true,
+            nodes: vec![nodes_run::NodeResult {
+                id: 1,
+                type_name: "core.install".into(),
+                status: Status::Ran,
+                hash: String::new(),
+                outputs: BTreeMap::new(),
+                report: serde_json::Value::Null,
+                seconds: 0.0,
+            }],
+        };
+
+        workspace.reload_from_disk();
+        workspace.nodes_finished(&job, &report);
+
+        assert_eq!(
+            workspace.note,
+            "Node result is stale after a document or master switch"
+        );
+        std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }
 }
