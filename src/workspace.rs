@@ -142,6 +142,60 @@ pub(crate) struct Workspace {
     pub(crate) features_status: Option<String>,
 }
 
+/// The window's document boundary.
+///
+/// A running editor has a [`Workspace`]; the window itself can also exist
+/// before a document has been opened, or after a command-line load fails.
+/// Keeping that distinction outside `Workspace` preserves the latter's
+/// invariant that every font-facing operation has a live core project.
+pub(crate) struct AppState {
+    /// The active font workspace, absent on the welcome screen.
+    pub(crate) workspace: Option<Workspace>,
+    /// Palette used before a document has supplied its workspace palette.
+    pub(crate) palette: Arc<Palette>,
+    /// A load failure to report on the welcome screen.
+    pub(crate) notice: Option<String>,
+}
+
+impl AppState {
+    /// Opens `path`, or makes the no-document state when no path was supplied.
+    pub(crate) fn open(path: Option<&std::path::Path>) -> Self {
+        let theme_id = match std::env::var("RUNEBENDER_THEME").ok().as_deref() {
+            Some("dark") => "dark",
+            Some("light") => "light",
+            _ => "gray",
+        };
+        let palette = Arc::new(Palette::load(theme_id));
+        let Some(path) = path else {
+            return Self {
+                workspace: None,
+                palette,
+                notice: None,
+            };
+        };
+        match Workspace::open(path) {
+            Ok(workspace) => Self {
+                palette: workspace.palette.clone(),
+                workspace: Some(workspace),
+                notice: None,
+            },
+            Err(error) => Self {
+                workspace: None,
+                palette,
+                notice: Some(error),
+            },
+        }
+    }
+
+    /// The base colour of whichever window state is active.
+    pub(crate) fn background(&self) -> xilem::Color {
+        self.workspace
+            .as_ref()
+            .map(|workspace| workspace.palette.app)
+            .unwrap_or(self.palette.app)
+    }
+}
+
 /// Which surface is showing.
 pub(crate) enum Mode {
     /// The glyph grid.
@@ -156,4 +210,31 @@ pub(crate) enum Mode {
 pub(crate) struct Tab {
     pub(crate) session: Arc<Session>,
     pub(crate) tool: Tool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_path_starts_without_a_document() {
+        let app = AppState::open(None);
+        assert!(app.workspace.is_none());
+        assert_eq!(app.notice, None);
+    }
+
+    #[test]
+    fn failed_path_keeps_the_window_open_with_an_error() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-missing-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let app = AppState::open(Some(&path));
+        assert!(app.workspace.is_none());
+        assert!(app.notice.is_some());
+    }
 }

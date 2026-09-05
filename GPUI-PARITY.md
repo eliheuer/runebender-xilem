@@ -166,7 +166,7 @@ GPUI reference: `src/edit/commands/file.rs`, `src/platform/host.rs`,
     creates and loads a real empty UFO, then creates `A`; checked with
     `cargo test opens_an_empty_ufo_and_creates_its_first_glyph` on 2026-09-05.
     Launching without a path and the New/Open UI are still separate D01 work.
-  - [ ] **D01.b / R** No-document launch boundary: GPUI launches with
+  - [x] **D01.b / R** No-document launch boundary: GPUI launches with
     `Workspace::project: Option<Project>` and renders File → Open when it is
     `None` (`runebender-gpui/src/{launch,workspace}.rs`). Xilem currently
     constructs `Workspace` only through `Workspace::open`, and its live
@@ -179,7 +179,13 @@ GPUI reference: `src/edit/commands/file.rs`, `src/platform/host.rs`,
     every existing workspace field optional, which has a much larger regression
     surface. Resolve this state boundary before implementing the welcome view or
     file dialogs; it is application architecture, not a demonstrated Linebender
-    API gap.
+    API gap. Implemented with Xilem's pinned `lens` adapter on 2026-09-05:
+    no path and a failed path keep the window in a no-document state, while a
+    loaded document continues through the existing workspace view. Regression
+    coverage: `workspace::tests::{no_path_starts_without_a_document,
+    failed_path_keeps_the_window_open_with_an_error}`; headless evidence:
+    `RUNEBENDER_SCREENSHOT=... cargo run --quiet` produced an 800×500
+    no-document frame. Open/New controls and file dialogs remain separate work.
 - [ ] **D02 / M** Open dialog and supported import dispatch: UFO/designspace,
   `.glyphs`, `.glyphspackage`, and compiled-font import as supported by GPUI/core.
   Verify format conversion and destination semantics, not just extension acceptance.

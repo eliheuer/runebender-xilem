@@ -5,6 +5,7 @@
 
 use crate::*;
 use masonry::properties::AutoHideScrollBar;
+use xilem::core::lens;
 
 /// A kurbo value as the `f32` a Vello text size or stroke width
 /// takes.
@@ -128,6 +129,48 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         ),
         app.font.master_paths().clone(),
     )
+}
+
+/// Builds either the document editor or the no-document welcome state.
+///
+/// `lens` is the pinned Xilem state adapter: the established editor view
+/// continues to receive a `Workspace`, while the application root owns the
+/// optional document boundary.
+pub(crate) fn root_logic(app: &mut AppState) -> impl WidgetView<AppState> + use<> {
+    use xilem::core::one_of::OneOf2;
+
+    match app.workspace.is_some() {
+        true => OneOf2::A(lens(app_logic, |app: &mut AppState| {
+            app.workspace
+                .as_mut()
+                .expect("the document branch has a workspace")
+        })),
+        false => OneOf2::B(welcome(app)),
+    }
+}
+
+/// A stable first frame for a window that has no document yet.
+fn welcome(app: &mut AppState) -> impl WidgetView<AppState> + use<> {
+    use xilem::view::MainAxisAlignment;
+
+    let palette = &app.palette;
+    let detail = app
+        .notice
+        .clone()
+        .unwrap_or_else(|| "Open a font to begin.".into());
+    sized_box(
+        flex_col((
+            label("No font open")
+                .text_size(TextSize::Heading.px())
+                .color(palette.text),
+            label(detail).color(palette.text_muted),
+        ))
+        .main_axis_alignment(MainAxisAlignment::Center)
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+        .gap(Space::Md),
+    )
+    .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
+    .background_color(palette.app)
 }
 
 /// The same pump for a font-ml run from the Local AI panel: while one

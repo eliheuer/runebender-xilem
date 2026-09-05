@@ -6,24 +6,22 @@
 use crate::*;
 
 pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
-    let path = std::env::args()
-        .nth(1)
-        .expect("usage: runebender-xilem <Font.ufo|Font.designspace>");
-    let mut app = Workspace::open(FsPath::new(&path)).unwrap_or_else(|e| {
-        eprintln!("{e}");
-        std::process::exit(1)
-    });
+    let path = std::env::args().nth(1);
+    let mut app = AppState::open(path.as_deref().map(FsPath::new));
     // RUNEBENDER_GLYPH=<name> starts in the editor on that glyph, so
     // a headless screenshot reaches edit mode without clicks.
     if let Ok(name) = std::env::var("RUNEBENDER_GLYPH")
-        && let Some(index) = app.font.index_of(&name)
+        && let Some(workspace) = app.workspace.as_mut()
+        && let Some(index) = workspace.font.index_of(&name)
     {
-        app.open_glyph(index);
+        workspace.open_glyph(index);
     }
-    if std::env::var("RUNEBENDER_SELECTALL").is_ok() {
-        let mut sess = (*app.session).clone();
+    if std::env::var("RUNEBENDER_SELECTALL").is_ok()
+        && let Some(workspace) = app.workspace.as_mut()
+    {
+        let mut sess = (*workspace.session).clone();
         sess.select_all();
-        app.selected_points = sess.selection_bounds().map(|_| 999).unwrap_or(0);
+        workspace.selected_points = sess.selection_bounds().map(|_| 999).unwrap_or(0);
         let n = {
             let mut c = 0;
             for co in &sess.glyph.contours {
@@ -31,9 +29,9 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
             }
             c
         };
-        app.selected_points = n;
-        app.session = Arc::new(sess);
-        app.refresh_coord_bufs();
+        workspace.selected_points = n;
+        workspace.session = Arc::new(sess);
+        workspace.refresh_coord_bufs();
     }
     // Headless: render one frame and exit. No window, no event loop.
     if let Ok(path) = std::env::var("RUNEBENDER_SCREENSHOT") {
@@ -48,15 +46,17 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
                 Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
             })
             .unwrap_or((1100, 720));
+        let background = app.background();
         screenshot::render_to(
             app,
-            |app: &mut Workspace| sized_box(app_logic(app)),
+            background,
+            |app: &mut AppState| sized_box(root_logic(app)),
             size,
             &path,
         );
         return Ok(());
     }
-    let background = app.palette.app;
+    let background = app.background();
     let window_options =
         WindowOptions::new("Runebender").with_initial_inner_size(LogicalSize::new(1100., 720.));
     // On macOS the header row is the title bar, as in the GPUI build:
@@ -71,7 +71,7 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
             .with_fullsize_content_view(true)
             .with_title_hidden(true)
     };
-    Xilem::new_simple(app, app_logic, window_options)
+    Xilem::new_simple(app, root_logic, window_options)
         .with_font(xilem::Blob::new(Arc::new(UI_FONT)))
         .with_default_properties(default_property_set())
         .with_default_base_color(background)
