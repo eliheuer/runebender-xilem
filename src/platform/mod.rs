@@ -6,3 +6,6 @@
 pub(crate) mod host;
 pub(crate) mod screenshot;
 pub(crate) mod watch;
+
+#[cfg(unix)]
+pub(crate) mod live;

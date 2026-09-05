@@ -746,7 +746,11 @@ impl Widget for EditorWidget {
                         }
                     }
                     painter
-                        .fill(&dots, pal.role("designGridCoarse").with_alpha(alpha as f32))
+                        .fill(
+                            &dots,
+                            pal.role("designGridCoarse")
+                                .with_alpha(crate::view::render::px32(alpha)),
+                        )
                         .draw();
                 };
                 let coarse = (8.0 * zoom * 0.2).clamp(1.5, 5.0);
