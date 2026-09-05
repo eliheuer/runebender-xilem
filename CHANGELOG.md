@@ -12,6 +12,9 @@ Until then, `main` is the only line and this section stays open.
 
 ### Changed
 
+- Core pin updated for revision-checked agent proposals. Installing a guarded
+  proposal skips glyphs whose foreground changed after the proposal was made.
+
 - Themes: Midnight removed, Gray is the default. Dark, Gray, Light.
 - Undo lives in core. `Session` holds an `EditHistory` from
   `runebender_core::document::history` instead of its own `UndoState`,

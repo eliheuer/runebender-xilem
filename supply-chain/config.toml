@@ -383,6 +383,11 @@ criteria = "safe-to-deploy"
 version = "0.23.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.cpufeatures]]
+version = "0.2.17"
+criteria = "safe-to-deploy"
+notes = "Transitive SHA-256 dependency for canonical glyph revisions. Explicit bootstrap exemption; not a completed source audit. Replace with imported or local audit coverage when available."
+
 [[exemptions.crc32fast]]
 version = "1.5.1"
 criteria = "safe-to-deploy"
@@ -402,6 +407,11 @@ criteria = "safe-to-deploy"
 [[exemptions.crossbeam-utils]]
 version = "0.8.22"
 criteria = "safe-to-deploy"
+
+[[exemptions.crypto-common]]
+version = "0.1.7"
+criteria = "safe-to-deploy"
+notes = "Transitive SHA-256 dependency for canonical glyph revisions. Explicit bootstrap exemption; not a completed source audit. Replace with imported or local audit coverage when available."
 
 [[exemptions.cursor-icon]]
 version = "1.2.0"
@@ -434,6 +444,11 @@ criteria = "safe-to-deploy"
 [[exemptions.defmt-parser]]
 version = "1.0.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.digest]]
+version = "0.10.7"
+criteria = "safe-to-deploy"
+notes = "Transitive SHA-256 dependency for canonical glyph revisions. Explicit bootstrap exemption; not a completed source audit. Replace with imported or local audit coverage when available."
 
 [[exemptions.dispatch]]
 version = "0.2.0"
@@ -634,6 +649,11 @@ criteria = "safe-to-deploy"
 [[exemptions.gdk-sys]]
 version = "0.18.2"
 criteria = "safe-to-deploy"
+
+[[exemptions.generic-array]]
+version = "0.14.7"
+criteria = "safe-to-deploy"
+notes = "Transitive SHA-256 dependency for canonical glyph revisions. Explicit bootstrap exemption; not a completed source audit. Replace with imported or local audit coverage when available."
 
 [[exemptions.gethostname]]
 version = "1.1.0"
@@ -1938,6 +1958,11 @@ criteria = "safe-to-deploy"
 [[exemptions.version_check]]
 version = "0.9.5"
 criteria = "safe-to-deploy"
+
+[[exemptions.version_check]]
+version = "0.9.5"
+criteria = "safe-to-deploy"
+notes = "Transitive SHA-256 dependency for canonical glyph revisions. Explicit bootstrap exemption; not a completed source audit. Replace with imported or local audit coverage when available."
 
 [[exemptions.walkdir]]
 version = "2.5.0"
