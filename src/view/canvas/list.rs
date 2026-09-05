@@ -7,6 +7,7 @@
 //! RSB, the two kerning groups, and the category.
 
 use crate::*;
+use masonry::properties::AutoHideScrollBar;
 
 /// Column widths, the GPUI build's.
 const W_UNI: f64 = 68.0;
@@ -133,6 +134,7 @@ pub(crate) fn glyph_list(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             header,
             portal(xcolumn(Region::List, rows))
                 .constrain_horizontal(true)
+                .prop(AutoHideScrollBar(true))
                 .flex(1.0),
         ),
     )

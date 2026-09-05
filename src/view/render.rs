@@ -4,6 +4,7 @@
 //! The render tree: how the workspace's state becomes a frame.
 
 use crate::*;
+use masonry::properties::AutoHideScrollBar;
 
 /// A kurbo value as the `f32` a Vello text size or stroke width
 /// takes.
@@ -99,9 +100,15 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
                 sized_box(left_and_middle)
                     .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
                     .flex(1.0),
-                sized_box(portal(info_panel(app)).constrain_horizontal(true))
-                    .dims(Dimensions::new(Dim::Fixed(Length::px(256.0)), Dim::Stretch))
-                    .background_color(pal.panel),
+                sized_box(
+                    portal(
+                        sized_box(info_panel(app)).dims(Dimensions::new(Dim::Stretch, Dim::Auto)),
+                    )
+                    .constrain_horizontal(true)
+                    .prop(AutoHideScrollBar(true)),
+                )
+                .dims(Dimensions::new(Dim::Fixed(Length::px(256.0)), Dim::Stretch))
+                .background_color(pal.panel),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)
             .gap(Space::None)

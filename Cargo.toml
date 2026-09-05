@@ -67,8 +67,8 @@ wildcard_dependencies = "warn"
 [dependencies]
 # Upstream Xilem, pinned. This editor builds on the real thing, so that
 # comparing it against runebender-gpui measures Xilem and not a fork.
-xilem = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a8c364f2ab109e2083121e144" }
-masonry = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a8c364f2ab109e2083121e144" }
+xilem = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
+masonry = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
 # Pinned, like every other git dependency here. A floating branch makes
 # `cargo install --git` need --locked and makes two checkouts of the same
 # source possible if anything else names it by bare URL.
@@ -98,7 +98,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 [dev-dependencies]
 # Still the right tool for widget tests, where a fixed font and no system
 # fonts is exactly what you want. Just not for screenshots of the app.
-masonry_testing = { git = "https://github.com/linebender/xilem", rev = "ce7b04d2ba2d9d7a8c364f2ab109e2083121e144" }
+masonry_testing = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
 
 [profile.release]
 lto = "thin"

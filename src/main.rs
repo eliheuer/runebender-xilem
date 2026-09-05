@@ -47,6 +47,7 @@ use view::panels::{
 use view::render::*;
 use view::theme::Palette;
 use view::*;
+use widgets::drag_region::drag_region;
 use widgets::icon_button::icon_button;
 use widgets::*;
 use workspace::*;

@@ -5,6 +5,7 @@
 //! categories, languages, and filters.
 
 use crate::*;
+use masonry::properties::AutoHideScrollBar;
 
 /// The editor rail's tabs. The GPUI build has four (Glyphs, Shapes,
 /// Axes, Chat); these are the two this editor has something to put in.
@@ -465,6 +466,7 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 ),
             ))
             .constrain_horizontal(true)
+            .prop(AutoHideScrollBar(true))
             .flex(1.0),
         ),
     )
