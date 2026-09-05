@@ -18,6 +18,9 @@ pub mod edit_batch;
 pub mod font_memory;
 pub mod font_ops;
 pub mod history;
+pub mod live;
+#[cfg(unix)]
+pub mod live_socket;
 pub mod model;
 pub mod new_font;
 pub mod nodes;

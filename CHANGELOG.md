@@ -12,6 +12,12 @@ Until then, `main` is the only line and this section stays open.
 
 ### Added
 
+- Native live-document agent tools over a private Unix socket, `sessions` discovery,
+  and CLI/MCP `--session` routing. Reads include unsaved changes; proposals remain
+  in memory for editor installation and undo.
+- Stable MCP `--live` mode with editor discovery and explicit connection, plus
+  project OMP configuration for existing chat sessions.
+
 - Revision-checked agent edit batches: `project_info`, explicit master indices,
   `propose_edits` for width, point, translation, and anchor edits, and
   `agent call --args-file` (including stdin). New proposals record design intent

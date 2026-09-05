@@ -20,7 +20,6 @@ use runebender_core::document::nodes_run;
 use runebender_core::document::project::Master;
 use runebender_core::document::proposal;
 use runebender_core::outline::embolden;
-use runebender_core::outline::glyph_paths;
 use serde_json::json;
 
 /// Exit codes, matching font-ml so a caller can branch on them.
@@ -70,6 +69,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// List local editor socket paths (a crashed editor may leave a stale entry).
+    Sessions,
     /// What a font is: names, metrics, counts, and any proposals
     /// waiting in it.
     Info {
@@ -113,8 +114,14 @@ enum Command {
     /// in it edits the foreground; every change is a proposal.
     Mcp {
         /// The designspace or UFO the client works on.
+        #[arg(long, required_unless_present_any = ["session", "live"], conflicts_with_all = ["session", "live"])]
+        font: Option<PathBuf>,
+        /// The live editor socket. Never reads or writes source files.
         #[arg(long)]
-        font: PathBuf,
+        session: Option<PathBuf>,
+        /// Discover and connect to editor sessions through tools, without changing client config.
+        #[arg(long, conflicts_with = "session")]
+        live: bool,
         /// The font-ml binary, for propose.
         #[arg(long)]
         tool: Option<PathBuf>,
@@ -206,8 +213,11 @@ enum AgentAction {
         /// The tool name.
         name: String,
         /// The designspace or UFO the model is working on.
+        #[arg(long, required_unless_present = "session", conflicts_with = "session")]
+        font: Option<PathBuf>,
+        /// The live editor socket. Never reads or writes source files.
         #[arg(long)]
-        font: PathBuf,
+        session: Option<PathBuf>,
         /// The arguments, as a JSON object.
         #[arg(long, default_value = "{}")]
         args: String,
@@ -338,7 +348,11 @@ fn main() -> std::process::ExitCode {
         },
         Command::Agent { action } => match action {
             AgentAction::Tools => {
-                let tools = agent::tools();
+                let tools = if std::env::var_os("RUNEBENDER_LIVE_SESSION").is_some() {
+                    runebender_core::document::live::tools()
+                } else {
+                    agent::tools()
+                };
                 println!(
                     "{}",
                     json!({ "ok": true, "prompt": agent::system_prompt(&tools), "tools": tools })
@@ -350,6 +364,7 @@ fn main() -> std::process::ExitCode {
                 font,
                 args,
                 args_file,
+                session,
                 tool,
             } => {
                 let input = match args_file {
@@ -360,12 +375,36 @@ fn main() -> std::process::ExitCode {
                     None => Ok(args.clone()),
                 };
                 match input {
-                    Ok(input) => agent_call(name, font, &input, tool.as_deref()),
+                    Ok(input) => agent_call(
+                        name,
+                        font.as_deref(),
+                        session.as_deref(),
+                        &input,
+                        tool.as_deref(),
+                    ),
                     Err(e) => fail(true, exit::USAGE, &e.to_string()),
                 }
             }
         },
-        Command::Mcp { font, tool } => mcp_serve(font, tool.as_deref()),
+        Command::Sessions => {
+            #[cfg(unix)]
+            println!(
+                "{}",
+                json!({"ok": true, "sessions": runebender_core::document::live_socket::sessions()})
+            );
+            #[cfg(not(unix))]
+            println!(
+                "{}",
+                json!({"ok": false, "error": "live sockets require Unix"})
+            );
+            exit::OK
+        }
+        Command::Mcp {
+            font,
+            session,
+            live,
+            tool,
+        } => mcp_serve(font.as_deref(), session.as_deref(), *live, tool.as_deref()),
         Command::Compose {
             source,
             glyphs,
@@ -1081,65 +1120,7 @@ fn read_glyph(source: &Path, name: &str, layer: Option<&str>) -> serde_json::Val
         Ok(f) => f,
         Err(e) => return json!({ "ok": false, "error": e.to_string() }),
     };
-    let selected = match layer {
-        Some(name) => match font.layers.get(name) {
-            Some(layer) => layer,
-            None => return json!({"ok": false, "error": format!("no layer named {name}")}),
-        },
-        None => font.default_layer(),
-    };
-    let Some(glyph) = selected.get_glyph(name) else {
-        return json!({ "ok": false, "error": format!("no glyph named {name}") });
-    };
-    let contours: Vec<serde_json::Value> = glyph
-        .contours
-        .iter()
-        .map(|c| {
-            json!(
-                c.points
-                    .iter()
-                    .map(|p| json!({
-                        "x": p.x, "y": p.y,
-                        "type": format!("{:?}", p.typ).to_lowercase(),
-                        "smooth": p.smooth,
-                    }))
-                    .collect::<Vec<_>>()
-            )
-        })
-        .collect();
-    // The numbers a question is usually about come first, computed
-    // the way `proof` computes them, so one tool answers width and
-    // spacing without a second call.
-    let preview = match layer
-        .map(|name| proposal::preview_font(&font, name))
-        .transpose()
-    {
-        Ok(preview) => preview,
-        Err(e) => return json!({"ok": false, "error": e}),
-    };
-    let path = glyph_paths::glyph_to_bezpath(glyph, preview.as_ref().unwrap_or(&font));
-    let drawn = !path.is_empty();
-    let bounds = {
-        use kurbo::Shape as _;
-        path.bounding_box()
-    };
-    json!({
-        "ok": true,
-        "glyph": name,
-        "layer": selected.name(),
-        "revision": runebender_core::document::edit_batch::glyph_revision(glyph).ok(),
-        "advance": glyph.width,
-        "lsb": if drawn { Some(bounds.x0.round()) } else { None },
-        "rsb": if drawn { Some((glyph.width - bounds.x1).round()) } else { None },
-        "bounds": if drawn { Some([bounds.x0, bounds.y0, bounds.x1, bounds.y1]) } else { None },
-        "points": glyph.contours.iter().map(|c| c.points.len()).sum::<usize>(),
-        "contour_count": glyph.contours.len(),
-        "unicodes": glyph.codepoints.iter().map(|c| format!("U+{:04X}", c as u32)).collect::<Vec<_>>(),
-        "contours": contours,
-        "components": glyph.components.iter().map(|c| c.base.to_string()).collect::<Vec<_>>(),
-        "component_transforms": glyph.components.iter().map(|c| json!({"base": c.base, "transform": [c.transform.x_scale, c.transform.xy_scale, c.transform.yx_scale, c.transform.y_scale, c.transform.x_offset, c.transform.y_offset]})).collect::<Vec<_>>(),
-        "anchors": glyph.anchors.iter().map(|a| json!({ "name": a.name.as_ref().map(|n| n.to_string()), "x": a.x, "y": a.y })).collect::<Vec<_>>(),
-    })
+    runebender_core::analysis::glyph::read_glyph(&font, name, layer)
 }
 
 /// Searches the documentation folders for passages that match.
@@ -1266,7 +1247,13 @@ fn strip_html(html: &str) -> String {
 }
 
 /// `agent call`: one tool, mapped onto the command it already is.
-fn agent_call(name: &str, font: &Path, args: &str, tool: Option<&Path>) -> i32 {
+fn agent_call(
+    name: &str,
+    font: Option<&Path>,
+    session: Option<&Path>,
+    args: &str,
+    tool: Option<&Path>,
+) -> i32 {
     let args: serde_json::Value = match serde_json::from_str(args) {
         Ok(v) => v,
         Err(e) => {
@@ -1277,7 +1264,7 @@ fn agent_call(name: &str, font: &Path, args: &str, tool: Option<&Path>) -> i32 {
             return exit::USAGE;
         }
     };
-    let result = agent_call_value(name, font, &args, tool);
+    let result = dispatch_call(name, font, session, &args, tool);
     let ok = result.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
     println!(
         "{}",
@@ -1288,6 +1275,34 @@ fn agent_call(name: &str, font: &Path, args: &str, tool: Option<&Path>) -> i32 {
         })
     );
     if ok { exit::OK } else { exit::FAILED }
+}
+
+/// Selects the explicitly requested transport; a failed live connection never uses disk.
+fn dispatch_call(
+    name: &str,
+    font: Option<&Path>,
+    session: Option<&Path>,
+    args: &serde_json::Value,
+    tool: Option<&Path>,
+) -> serde_json::Value {
+    let inherited = std::env::var_os("RUNEBENDER_LIVE_SESSION").map(PathBuf::from);
+    if let Some(session) = session.or(inherited.as_deref()) {
+        #[cfg(unix)]
+        return runebender_core::document::live_socket::call(
+            session,
+            &agent::ToolCall {
+                name: name.into(),
+                arguments: args.clone(),
+            },
+        )
+        .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
+        #[cfg(not(unix))]
+        return json!({"ok": false, "error": format!("live sockets unsupported: {}", session.display())});
+    }
+    match font {
+        Some(font) => agent_call_value(name, font, args, tool),
+        None => json!({"ok": false, "error": "font or session required"}),
+    }
 }
 
 /// Runs one tool call and returns what it gave back, as JSON with an
@@ -1491,12 +1506,14 @@ fn agent_call_source(
 /// "method not found". The tool list is `agent::tools()` one to one,
 /// so a client sees exactly what the chat pane and the command line
 /// see, and no tool writes the foreground.
-fn mcp_serve(font: &Path, tool: Option<&Path>) -> i32 {
+fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Option<&Path>) -> i32 {
     use std::io::{BufRead as _, Write as _};
-    if !font.exists() {
-        eprintln!("{}: not found", font.display());
+    if font.is_some_and(|font| !font.exists()) {
+        eprintln!("font not found");
         return exit::USAGE;
     }
+    let mut connected = session.map(Path::to_path_buf);
+    let live_mode = live || session.is_some();
     let stdin = std::io::stdin();
     let mut out = std::io::stdout().lock();
     let mut reply = |value: serde_json::Value| {
@@ -1534,21 +1551,26 @@ fn mcp_serve(font: &Path, tool: Option<&Path>) -> i32 {
                         "name": "runebender-core",
                         "version": env!("CARGO_PKG_VERSION"),
                     },
-                    "instructions": mcp_instructions(font),
+                    "instructions": if live_mode { "Live unsaved editor documents. Use editor_sessions then editor_connect if not connected. Verify the project and choose an explicit master. Read glyphs before proposing; only the designer installs proposals. Do not save font files. When multiple editors are open, choose the project the user requested. A closed endpoint never reconnects automatically.".into() } else { mcp_instructions(font.expect("font or session")) },
                 }))
             }
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({
-                "tools": agent::tools().iter().map(|t| json!({
+                "tools": mcp_tools(live_mode).iter().map(|t| json!({
                     "name": t.name,
                     "description": t.description,
                     "inputSchema": t.parameters,
+                    "annotations": {"readOnlyHint": matches!(t.name.as_str(), "project_info" | "font_info" | "read_glyph" | "editor_sessions" | "editor_connect" | "proposal_list") || (live_mode && t.name == "proof"), "openWorldHint": !live_mode},
                 })).collect::<Vec<_>>()
             })),
             "tools/call" => {
                 let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let args = params.get("arguments").cloned().unwrap_or(json!({}));
-                let value = agent_call_value(name, font, &args, tool);
+                let value = if live_mode {
+                    live_client_call(name, &args, &mut connected)
+                } else {
+                    dispatch_call(name, font, None, &args, tool)
+                };
                 let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
                 Ok(json!({
                     "content": [{ "type": "text", "text": value.to_string() }],
@@ -1567,6 +1589,58 @@ fn mcp_serve(font: &Path, tool: Option<&Path>) -> i32 {
         });
     }
     exit::OK
+}
+
+/// Live tools include explicit discovery and connection, so clients need one stable config.
+fn mcp_tools(live: bool) -> Vec<agent::Tool> {
+    if !live {
+        return agent::tools();
+    }
+    let mut tools = runebender_core::document::live::tools();
+    tools.push(agent::Tool { name: "editor_sessions".into(), description: "List local editor endpoint paths. Connect to inspect the project. Never assume a different window is the requested font.".into(), parameters: json!({"type":"object", "properties":{}}) });
+    tools.push(agent::Tool { name: "editor_connect".into(), description: "Connect this agent to a listed editor endpoint and return its live project/master information. Opening another font closes the old connection; reconnect explicitly.".into(), parameters: json!({"type":"object", "properties":{"session":{"type":"string"}}, "required":["session"]}) });
+    tools
+}
+
+/// Changes only this MCP client's chosen endpoint; all font work stays on the editor thread.
+fn live_client_call(
+    name: &str,
+    args: &serde_json::Value,
+    connected: &mut Option<PathBuf>,
+) -> serde_json::Value {
+    #[cfg(not(unix))]
+    {
+        let _ = (name, args, connected);
+        json!({"ok": false, "error":"live editors require Unix"})
+    }
+    #[cfg(unix)]
+    {
+        use runebender_core::document::live_socket;
+        if name == "editor_sessions" {
+            return json!({"ok":true, "sessions":live_socket::sessions(), "connected":connected});
+        }
+        if name == "editor_connect" {
+            let Some(path) = args
+                .get("session")
+                .and_then(|v| v.as_str())
+                .map(PathBuf::from)
+            else {
+                return json!({"ok":false, "error":"session path is required"});
+            };
+            if !live_socket::sessions().contains(&path) {
+                return json!({"ok":false, "error":"choose an endpoint returned by editor_sessions"});
+            }
+            let value = dispatch_call("project_info", None, Some(&path), &json!({}), None);
+            if value["ok"] == true {
+                *connected = Some(path);
+            }
+            return value;
+        }
+        match connected {
+            Some(path) => dispatch_call(name, None, Some(path), args, None),
+            None => json!({"ok":false, "error":"call editor_sessions, then editor_connect first"}),
+        }
+    }
 }
 
 /// What a client is told at `initialize`: the rule of the tool list.

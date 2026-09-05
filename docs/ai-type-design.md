@@ -150,10 +150,107 @@ web editor's draft UI are different interfaces, and this phase does not unify th
 an advance, submits a proposal, and returns both proofs. Its default mode only prints the
 batch. Start on a copy of a font before using `--write` on working sources.
 
+## Live native editor sessions
+
+The native GPUI and Xilem editors now create one private Unix socket per open document
+lifetime. Core handles calls on the UI thread against the editor's actual `Project`.
+Opening another document replaces the endpoint. There is no fallback from a failed live
+connection to files on disk. Windows and browser transports are not implemented.
+
+```sh
+runebender-core sessions
+runebender-core agent call project_info --session /absolute/path/session.sock
+runebender-core agent call read_glyph --session /absolute/path/session.sock \
+  --args '{"master":0,"glyph":"n"}'
+runebender-core mcp --session /absolute/path/session.sock
+```
+
+Use a path from `sessions`; call `project_info` to verify which project it represents.
+The list can include stale endpoints after a crash. Select a document explicitly instead
+of guessing the most recent window. Multiple agent clients can use the same endpoint;
+requests are serialized on the UI thread and conflicting proposals fail revision checks.
+
+Live tools support `project_info`, `font_info`, `read_glyph`, `proof`, `propose_edits`,
+`proposal_list`, and `proposal_discard`. Proofs require 1–256 explicit glyph names and
+return SVG content and metrics without writing a file. Disk-based model and node jobs
+are excluded from this tool list. Proposals remain unsaved in the document and are
+reviewed through the existing Local AI panel. Installation uses core's existing glyph
+undo history. A later manual edit makes an earlier proposal stale at installation.
+
+The socket lives in a directory created with mode 0700. Local processes running as the
+same user can access it; this is not a sandbox against that user's other applications.
+Frames are limited to 8 MiB, requests expire after 30 seconds, and expired queued requests
+are not executed. A timeout after dispatch can have an uncertain result: inspect the
+proposal list before retrying. Reusing a task name never overwrites an existing proposal.
+Selection subscriptions, progress events and a shared inference job queue remain future work.
+
+## OMP and the live editor: first testing workflow
+
+Keep OpenAI authentication and conversation in OMP. The editor owns the document; OMP
+uses the live MCP tools. The project `.omp/mcp.json` files configure one stable command:
+
+```json
+{
+  "mcpServers": {
+    "runebender": {
+      "type": "stdio",
+      "command": "runebender-core",
+      "args": ["mcp", "--live"]
+    }
+  }
+}
+```
+
+Install this core binary and rebuild/restart the native editor. In an existing OMP
+session in the configured project, run `/mcp reload`, then `/mcp test runebender`.
+Ask OMP: **Connect to my Runebender editor, confirm the font and master, and inspect n
+without making changes.** The `editor_sessions` and `editor_connect` tools handle the
+endpoint selection. No socket path needs to be pasted into a config file when the editor
+reopens. If multiple editors are open, identify the intended font before proposing edits.
+
+OMP's [MCP configuration guide](https://github.com/can1357/oh-my-pi/blob/main/docs/mcp-config.md)
+documents project `.omp/mcp.json` discovery, `/mcp reload`, and `/mcp test`.
+The setup changes no OMP model, provider, login, or approval preferences.
+
+Then try: **Read n in master 0 and propose 12 more units of right sidebearing. Leave it
+as a proposal for me to review.** Inspect the proposal in the editor's Local AI panel,
+install it there, and undo once to verify recovery. This is a mechanical integration
+test, not a spacing recommendation for Virtua Grotesk. Keep early tests in a font copy.
+
+The same server works with an external Codex TUI/CLI or desktop session:
+
+```toml
+[mcp_servers.runebender]
+command = "/absolute/path/runebender-core"
+args = ["mcp", "--live"]
+```
+
+The desktop app, CLI and IDE share MCP configuration on the same Codex host, according to
+OpenAI's [MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+ChatGPT web does not read local Codex configuration.
+
+GPUI's local GGUF chat now also uses the live endpoint through
+`RUNEBENDER_LIVE_SESSION`, inherited by `font-ml`'s core tool subprocesses. It no longer
+saves the font before a turn. Xilem exposes the same external tools but has no chat pane.
+Embedded Codex-login chat is deferred while the OMP workflow is tested. A preliminary
+Codex subprocess experiment authenticated, but its MCP calls required approval that a
+noninteractive turn could not request; no embedded Codex option ships in this phase.
+
+## Drawing missing glyphs
+
+Prefer typed contour/point operations and proofs for font geometry. Computer use is useful
+for seeing the editor and checking its interaction, but mouse coordinates are a poor
+contract for precise outlines. The current batch API adjusts existing geometry and anchors;
+it does not create new contours or glyphs. The next design capability is guarded contour
+creation with explicit point types, reference glyph measurements, family compatibility
+checks and visual comparison. SVG text proofs are available now; native raster MCP images
+and shaped text specimens still need implementation before claiming a complete visual
+Astra design loop.
+
 ## Next phases and acceptance criteria
 
-1. **Document session:** expose unsaved active master/layer/selection, revision-checked
-   transactions, rollback, and shared events. Verify that an edit arriving during a model
+1. **Document session:** extend the live master/proposal bridge with active layer/selection,
+   subscriptions, richer transactions, and shared events. Verify that an edit arriving during a model
    job is preserved and that cancelling a batch leaves no partial foreground edits.
 2. **Visual evaluation:** native raster MCP proof output, side-by-side and overlay proofs,
    shaped text with kerning, size-controlled specimens, and explicit master interpolation.
