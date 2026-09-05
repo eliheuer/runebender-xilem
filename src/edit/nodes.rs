@@ -302,8 +302,8 @@ impl Workspace {
         let registry = state.registry.clone();
         let path = state.path.clone();
         let mut rows = (*state.rows).clone();
-        if self.modified {
-            self.save();
+        if self.modified && !self.save() {
+            return;
         }
         let font = self.font.source().to_path_buf();
         let master = self.font.master_names().get(self.font.active()).cloned();

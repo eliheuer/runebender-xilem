@@ -222,14 +222,19 @@ impl Workspace {
         Ok(app)
     }
 
-    pub(crate) fn save(&mut self) {
+    /// Saves the live document and reports whether the disk now matches it.
+    pub(crate) fn save(&mut self) -> bool {
         self.refresh_open_glyph();
         match self.font.save() {
             Ok(()) => {
                 self.modified = false;
                 self.note = format!("Saved {}", self.font.source().display());
+                true
             }
-            Err(e) => self.note = format!("Save failed: {e}"),
+            Err(e) => {
+                self.note = format!("Save failed: {e}");
+                false
+            }
         }
     }
 
@@ -362,6 +367,28 @@ mod tests {
         assert!(workspace.search_case);
         assert!(workspace.search_regex);
         assert!(workspace.search_re.is_some());
+
+        std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
+    }
+
+    #[test]
+    fn save_reports_failure_for_an_unwritable_source() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-save-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        norad::Font::new()
+            .save(&path)
+            .expect("the empty UFO fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.font.master_mut().source_path = "/dev/null/runebender-test.ufo".into();
+
+        assert!(!workspace.save());
+        assert!(workspace.note.starts_with("Save failed:"));
 
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }

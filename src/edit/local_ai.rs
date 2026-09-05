@@ -423,8 +423,8 @@ impl Workspace {
         }
         // font-ml reads the UFO on disk, so what is on disk has to be
         // what is on screen.
-        if self.modified {
-            self.save();
+        if self.modified && !self.save() {
+            return;
         }
         let source = self.font.source().to_path_buf();
         if !source.is_dir() {

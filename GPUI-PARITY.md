@@ -331,6 +331,12 @@ GPUI reference: `src/edit/{local_ai,nodes,chat,experiments}.rs`,
   Follow the [live document and undo contract](XILEM-SWITCH.md#live-document-and-undo-contract).
   Split into reproductions, stable job targeting, save-failure handling and live
   node application. Existing disk-install/reload behavior does not establish undo parity.
+  - [x] **A05.a** Save-failure launch guard: `Workspace::save` reports success,
+    and node/AI launches stop before creating a worker when a modified document
+    cannot save. Regression coverage:
+    `platform::host::tests::save_reports_failure_for_an_unwritable_source`
+    (2026-09-05). Stable job identity and live result application remain separate
+    A05 work.
 
 ### Phase 6 — evidence for making Xilem primary
 
