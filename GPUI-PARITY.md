@@ -212,6 +212,12 @@ GPUI reference: `src/edit/commands/file.rs`, `src/platform/host.rs`,
   successful output and missing-tool behavior. Reuse core serialization/format logic.
 - [ ] **D06 / V** Save/reload multi-master edits, layers, images, features, kerning,
   lib values and proposals without loss; verify disk data after reopening.
+  - [x] **D06.a** Multi-master glyph persistence: a new glyph is written through
+    core to every source of a temporary two-master designspace and remains present
+    after reopening each master. Regression coverage:
+    `platform::host::tests::save_reopen_keeps_a_new_glyph_in_every_master`
+    (2026-09-05). Layers, images, features, kerning, lib values, and proposals
+    still need their own lossless round-trip coverage.
 - [ ] **D07 / P** Watch external edits without discarding unsaved work; preserve tabs,
   selected master, viewport, filters and text when a reload is accepted. Current
   `reload_from_disk` replaces the workspace and restores only some state.
