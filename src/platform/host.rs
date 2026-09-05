@@ -181,6 +181,10 @@ impl Workspace {
             kern_value_buf: String::new(),
             group_name_buf: String::new(),
             features_status: None,
+            #[cfg(unix)]
+            live: runebender_core::document::live_socket::Server::start()
+                .map_err(|e| eprintln!("Live tools unavailable: {e}"))
+                .ok(),
         };
         app.init_nodes();
         app.rescan_models();

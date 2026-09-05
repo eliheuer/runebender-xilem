@@ -40,6 +40,10 @@ pub(crate) enum Tool {
 }
 
 pub(crate) struct Workspace {
+    /// The live document's private agent endpoint, serviced on the UI thread.
+    #[cfg(unix)]
+    pub(crate) live: Option<runebender_core::document::live_socket::Server>,
+
     pub(crate) font: FontModel,
     pub(crate) palette: Arc<Palette>,
     pub(crate) cells: Arc<Vec<Cell>>,

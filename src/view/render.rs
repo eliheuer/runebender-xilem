@@ -119,6 +119,8 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         .background_color(pal.app),
     )
     .boxed();
+    #[cfg(unix)]
+    let root = live::with_live(root);
     watch::with_watch(
         ai_pump(
             nodes_pump(actions::with_menu_events(root), app.nodes.job.clone()),
