@@ -64,7 +64,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     let left = flex_col((left.flex(1.0), marks_bar(app)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::None);
-    let left_width = if app.left_collapsed { 0.0 } else { 220.0 };
+    let left_width = if app.left_collapsed { 0.0 } else { 246.0 };
 
     let columns = flex_row((
         sized_box(left)
@@ -107,7 +107,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
                     .constrain_horizontal(true)
                     .prop(AutoHideScrollBar(true)),
                 )
-                .dims(Dimensions::new(Dim::Fixed(Length::px(256.0)), Dim::Stretch))
+                .dims(Dimensions::new(Dim::Fixed(Length::px(246.0)), Dim::Stretch))
                 .background_color(pal.panel),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)

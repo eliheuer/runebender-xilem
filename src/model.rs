@@ -702,14 +702,14 @@ impl FontModel {
         let text = |value: &Option<String>| value.clone().unwrap_or_default();
         let number = |value: Option<f64>| value.map(|v| format!("{v:.0}")).unwrap_or_default();
         vec![
-            ("Family Name", text(&info.family_name)),
-            ("Style Name", text(&info.style_name)),
+            ("Family name", text(&info.family_name)),
+            ("Style name", text(&info.style_name)),
             ("UPM", number(info.units_per_em.map(|v| v.as_f64()))),
-            ("Italic Angle", number(info.italic_angle)),
+            ("Italic angle", number(info.italic_angle)),
             ("Ascender", number(info.ascender)),
             ("Descender", number(info.descender)),
-            ("x-Height", number(info.x_height)),
-            ("Cap Height", number(info.cap_height)),
+            ("x-height", number(info.x_height)),
+            ("Cap height", number(info.cap_height)),
             (
                 "typoAsc",
                 number(info.open_type_os2_typo_ascender.map(f64::from)),

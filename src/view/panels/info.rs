@@ -199,8 +199,20 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             editing.then(|| background_section(app)),
             editing.then(|| mark_section(app)),
             editing.then(|| related_section(app)),
-            (!editing).then(|| font_info_section(app)),
-            (!editing).then(|| dimensions_section(app)),
+            // One column for three sections: the panel's tuple is at
+            // Xilem's sixteen-child limit, so the overview's first
+            // three sections share a slot. Same region as the panel,
+            // so the gap between them is the panel's own.
+            (!editing).then(|| {
+                xcolumn(
+                    Region::Panel,
+                    (
+                        font_info_section(app),
+                        dimensions_section(app),
+                        font_advanced_section(app),
+                    ),
+                )
+            }),
             (!editing).then(|| kerning_section(app)),
             (!editing).then(|| groups_section(app)),
             (!editing).then(|| compare_section(app)),
