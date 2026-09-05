@@ -3,6 +3,12 @@
 
 # GPUI parity plan
 
+Implementation priorities: [XILEM-SWITCH.md](XILEM-SWITCH.md) defines the owner's
+immediate requirements: Virtua Grotesk Latin/Arabic editing, node/local AI workflows
+for a talk, and polished UI throughout. Use that workflow order rather than treating
+the numbered phases below as a mandatory sequential schedule. Full parity remains
+the target.
+
 Research baseline: 2026-09-05. Goal: bring Xilem up to the GPUI editor's useful
 capabilities, keep both shells while that happens, and make Xilem the eventual
 primary editor. This is an implementation handoff, not a claim of tested parity.
