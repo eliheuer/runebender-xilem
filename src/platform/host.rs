@@ -244,6 +244,12 @@ impl Workspace {
         }
         let source = self.font.source().to_path_buf();
         let open = self.session.glyph_name.clone();
+        let list = self.list;
+        let detail = self.detail;
+        let left_collapsed = self.left_collapsed;
+        let search_mode = self.search_mode;
+        let search_case = self.search_case;
+        let search_regex = self.search_regex;
         match Self::open(&source) {
             Ok(mut fresh) => {
                 fresh.theme_id = self.theme_id;
@@ -251,6 +257,13 @@ impl Workspace {
                 fresh.sel = self.sel;
                 fresh.sort = self.sort;
                 fresh.filter = self.filter.clone();
+                fresh.list = list;
+                fresh.detail = detail;
+                fresh.left_collapsed = left_collapsed;
+                fresh.search_mode = search_mode;
+                fresh.search_case = search_case;
+                fresh.search_regex = search_regex;
+                fresh.rebuild_search_regex();
                 let reopen = matches!(self.mode, Mode::Editor(_))
                     .then(|| fresh.font.index_of(&open))
                     .flatten();
@@ -331,6 +344,24 @@ mod tests {
         assert_eq!(workspace.session.glyph_name, "A");
         assert!(matches!(workspace.mode, Mode::Editor(0)));
         assert_eq!(workspace.tabs.len(), 1);
+
+        workspace.save();
+        workspace.list = true;
+        workspace.detail = true;
+        workspace.left_collapsed = true;
+        workspace.search_mode = 2;
+        workspace.search_case = true;
+        workspace.search_regex = true;
+        workspace.filter = "A".into();
+        workspace.rebuild_search_regex();
+        workspace.reload_from_disk();
+        assert!(workspace.list);
+        assert!(workspace.detail);
+        assert!(workspace.left_collapsed);
+        assert_eq!(workspace.search_mode, 2);
+        assert!(workspace.search_case);
+        assert!(workspace.search_regex);
+        assert!(workspace.search_re.is_some());
 
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }

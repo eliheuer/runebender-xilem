@@ -215,6 +215,12 @@ GPUI reference: `src/edit/commands/file.rs`, `src/platform/host.rs`,
 - [ ] **D07 / P** Watch external edits without discarding unsaved work; preserve tabs,
   selected master, viewport, filters and text when a reload is accepted. Current
   `reload_from_disk` replaces the workspace and restores only some state.
+  - [x] **D07.a** Overview preferences on reload: accepted reloads retain grid/list
+    mode, detail mode, collapsed sidebar state, and search scope/case/regex state,
+    rebuilding the compiled search expression. Regression coverage extends
+    `platform::host::tests::opens_an_empty_ufo_and_creates_its_first_glyph`
+    through save and reload (2026-09-05). Tabs, selected master, viewport, and
+    text context remain separate D07 work.
 - [ ] **D08 / M** Match GPUI config precedence and optional session journal. Reuse a
   shared parser/schema where appropriate; the journal is not autosave or replay.
 - [ ] **D09 / V** Test dirty-document New/Open/close/quit behavior against GPUI and
