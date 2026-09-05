@@ -10,6 +10,7 @@
 pub mod cleanup;
 pub mod component_ops;
 pub mod convert;
+pub mod drawing;
 pub mod effects;
 pub mod embolden;
 pub mod glyph_ops;

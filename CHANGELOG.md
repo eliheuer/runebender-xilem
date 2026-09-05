@@ -12,6 +12,16 @@ Until then, `main` is the only line and this section stays open.
 
 ### Added
 
+- Live experiment forks with independent glyph proposals and kerning, selective
+  conflict-checked application, and transaction undo. Session-only in this MVP.
+- Designbot raw PNG/PDF scene transport, harfrust live Latin specimens, and explicit
+  MCP proof export. Replaces the unshipped resvg proof renderer.
+
+- Explicit contour drawing and smooth-flag proposal operations, live mark/Unicode
+  inventory, numeric curve-join inspection, design-context documentation links,
+  and explicit live proposal installation with structure policy and undo.
+- PNG image content in MCP proof responses, rasterized in the CLI process.
+
 - Native live-document agent tools over a private Unix socket, `sessions` discovery,
   and CLI/MCP `--session` routing. Reads include unsaved changes; proposals remain
   in memory for editor installation and undo.

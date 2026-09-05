@@ -146,7 +146,9 @@ pub fn proof_sheet(
     let mut metrics = Vec::new();
     for (i, name) in names.iter().enumerate() {
         let glyph = match layer {
-            Some(l) => l.get_glyph(name.as_str()),
+            Some(l) => l
+                .get_glyph(name.as_str())
+                .or_else(|| font.get_glyph(name.as_str())),
             None => font.get_glyph(name.as_str()),
         };
         let Some(glyph) = glyph else {

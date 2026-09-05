@@ -43,11 +43,29 @@ pub struct GlyphEdit {
     pub operations: Vec<Operation>,
 }
 
-/// An exact edit in font units, preserving contour and point order.
+/// An exact edit in font units. Only `SetOutline` changes contour and point order.
 /// Coordinates must be finite. Point indices are zero-based and revision-scoped.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
+    /// Replace every contour with an explicit drawing in font units. Components are
+    /// removed when `clear_components` is true; anchors, encoding, marks and width stay.
+    SetOutline {
+        /// Complete replacement contours in UFO point order.
+        contours: Vec<crate::outline::drawing::DrawingContour>,
+        /// Explicitly remove components when replacing a composite with drawn outlines.
+        #[serde(default)]
+        clear_components: bool,
+    },
+    /// Set the intended smooth flag on an existing on-curve point.
+    SetSmooth {
+        /// Contour index.
+        contour: usize,
+        /// Point index within the contour.
+        point: usize,
+        /// Intended smoothness; use curve analysis to measure actual continuity.
+        smooth: bool,
+    },
     /// Change the advance, leaving the outline in place.
     SetWidth {
         /// Nonnegative advance in font units.
@@ -92,6 +110,30 @@ fn finite(values: &[f64]) -> Result<(), String> {
 
 fn apply(glyph: &mut Glyph, operation: &Operation) -> Result<(), String> {
     match operation {
+        Operation::SetOutline {
+            contours,
+            clear_components,
+        } => {
+            glyph.contours = crate::outline::drawing::contours(contours)?;
+            if *clear_components {
+                glyph.components.clear();
+            }
+        }
+        Operation::SetSmooth {
+            contour,
+            point,
+            smooth,
+        } => {
+            let target = glyph
+                .contours
+                .get_mut(*contour)
+                .and_then(|c| c.points.get_mut(*point))
+                .ok_or("unknown point")?;
+            if target.typ == norad::PointType::OffCurve {
+                return Err("off-curve point cannot be smooth".into());
+            }
+            target.smooth = *smooth;
+        }
         Operation::SetWidth { width } => {
             finite(&[*width])?;
             if *width < 0.0 {

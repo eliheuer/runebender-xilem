@@ -20,7 +20,7 @@ required-features = ["cli"]
 # which keeps clap and its tree out of their builds: nothing in the
 # library uses it.
 default = ["cli"]
-cli = ["dep:clap"]
+cli = ["dep:clap", "dep:base64"]
 
 [lints.rust]
 unsafe_code = "forbid"
@@ -78,6 +78,8 @@ name = "runebender_core"
 path = "src/lib.rs"
 
 [dependencies]
+# MCP proofs are rasterized in the CLI process, never on the editor thread.
+base64 = { version = "0.22.1", optional = true }
 glyphslib = "0.2.7"
 linesweeper = "0.4"
 clap = { version = "4", features = ["derive"], optional = true }

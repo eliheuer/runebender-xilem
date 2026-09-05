@@ -240,12 +240,24 @@ noninteractive turn could not request; no embedded Codex option ships in this ph
 
 Prefer typed contour/point operations and proofs for font geometry. Computer use is useful
 for seeing the editor and checking its interaction, but mouse coordinates are a poor
-contract for precise outlines. The current batch API adjusts existing geometry and anchors;
-it does not create new contours or glyphs. The next design capability is guarded contour
-creation with explicit point types, reference glyph measurements, family compatibility
-checks and visual comparison. SVG text proofs are available now; native raster MCP images
-and shaped text specimens still need implementation before claiming a complete visual
-Astra design loop.
+contract for precise outlines. `set_outline` supplies complete validated UFO contours;
+`set_smooth` records on-curve intent. Existing empty records can receive drawings, but
+entirely absent records must still be created in the editor. `glyph_inventory` resolves
+mark labels and Unicode scalars per master. `read_glyph` exposes numeric join diagnostics.
+Live `proposal_install` requires an explicit structure policy and records per-glyph undo.
+It is intended only for an explicit user request to apply a reviewed proposal.
+
+The CLI MCP adapter sends data-only scenes to Designbot for PNG image blocks. This keeps
+rendering off the GUI thread and out of editor library dependencies. Actual client image
+delivery was tested through OMP 18.1.10 using a synthetic live document: the configured
+model correctly identified an upright triangle from the proof image without reading
+coordinates. This verifies transport, not aesthetic quality. A bounded Latin specimen and independent kerning experiments now ship in the [experiment MVP](experiments-mvp.md).
+
+`design_context` points agents to the official type-design guide, MCP guide, and consolidated
+`llms-full.txt`. The website is the technique reference; project `DESIGN.md` and explicit
+user instructions determine the font's style and approved references. Docs contain no
+executable instructions that bypass the proposal/revision contract. PDF review uses the
+client's PDF tools and must retain page/glyph/pair evidence and unresolved findings.
 
 ## Next phases and acceptance criteria
 

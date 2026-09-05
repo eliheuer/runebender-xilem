@@ -1560,7 +1560,7 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
                     "name": t.name,
                     "description": t.description,
                     "inputSchema": t.parameters,
-                    "annotations": {"readOnlyHint": matches!(t.name.as_str(), "project_info" | "font_info" | "read_glyph" | "editor_sessions" | "editor_connect" | "proposal_list") || (live_mode && t.name == "proof"), "openWorldHint": !live_mode},
+                    "annotations": {"readOnlyHint": matches!(t.name.as_str(), "project_info" | "font_info" | "read_glyph" | "glyph_inventory" | "design_context" | "experiment_list" | "read_kerning" | "specimen" | "editor_sessions" | "editor_connect" | "proposal_list") || (live_mode && t.name == "proof"), "openWorldHint": !live_mode},
                 })).collect::<Vec<_>>()
             })),
             "tools/call" => {
@@ -1573,7 +1573,7 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
                 };
                 let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
                 Ok(json!({
-                    "content": [{ "type": "text", "text": value.to_string() }],
+                    "content": proof_content(value),
                     "isError": !ok,
                 }))
             }
@@ -1597,6 +1597,10 @@ fn mcp_tools(live: bool) -> Vec<agent::Tool> {
         return agent::tools();
     }
     let mut tools = runebender_core::document::live::tools();
+    if let Some(proof) = tools.iter_mut().find(|tool| tool.name == "proof") {
+        proof.description = "Return a PNG proof image and metrics from the live unsaved master. Supply 1 to 256 explicit glyph names; use layer to view a proposal. Use small groups for legible images. Images are required for visual judgment; report if your client does not deliver them.".into();
+    }
+    tools.push(agent::Tool {name:"export_proof".into(),description:"Export an explicit live or branch glyph/text proof using Designbot. Writes a new PNG or PDF file; refuses overwrite. Does not save the font. Supply either glyphs or text, an explicit output path, and format.".into(),parameters:json!({"type":"object","properties":{"master":{"type":"integer","minimum":0},"branch":{"type":"string"},"layer":{"type":"string"},"glyphs":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"output":{"type":"string"},"format":{"enum":["png","pdf"]}},"required":["output","format"],"additionalProperties":false})});
     tools.push(agent::Tool { name: "editor_sessions".into(), description: "List local editor endpoint paths. Connect to inspect the project. Never assume a different window is the requested font.".into(), parameters: json!({"type":"object", "properties":{}}) });
     tools.push(agent::Tool { name: "editor_connect".into(), description: "Connect this agent to a listed editor endpoint and return its live project/master information. Opening another font closes the old connection; reconnect explicitly.".into(), parameters: json!({"type":"object", "properties":{"session":{"type":"string"}}, "required":["session"]}) });
     tools
@@ -1616,6 +1620,55 @@ fn live_client_call(
     #[cfg(unix)]
     {
         use runebender_core::document::live_socket;
+        if name == "export_proof" {
+            let run = (|| -> Result<serde_json::Value, String> {
+                use std::io::Write as _;
+                let path = args
+                    .get("output")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .ok_or("output path required")?;
+                let pdf = match args.get("format").and_then(|v| v.as_str()) {
+                    Some("pdf") => true,
+                    Some("png") => false,
+                    _ => return Err("format must be png or pdf".into()),
+                };
+                if args.get("text").is_some() == args.get("glyphs").is_some() {
+                    return Err("supply exactly one of text or glyphs".into());
+                }
+                if args.get("text").is_some() && args.get("layer").is_some() {
+                    return Err("text proofs use branch foreground; install the proposal into the branch first".into());
+                }
+                let value = live_client_call(
+                    if args.get("text").is_some() {
+                        "specimen"
+                    } else {
+                        "proof"
+                    },
+                    args,
+                    connected,
+                );
+                if value["ok"] != true {
+                    return Ok(value);
+                }
+                let scene = value.get("scene").ok_or("proof has no scene")?;
+                let bytes = runebender_core::formats::designbot::render(scene, pdf)?;
+                let mut file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(path)
+                    .map_err(|e| e.to_string())?;
+                if let Err(e) = file.write_all(&bytes) {
+                    drop(file);
+                    let _ = std::fs::remove_file(path);
+                    return Err(e.to_string());
+                }
+                Ok(
+                    json!({"ok":true,"output":path,"bytes":bytes.len(),"master":value["master"],"branch":value["branch"]}),
+                )
+            })();
+            return run.unwrap_or_else(|error| json!({"ok":false,"error":error}));
+        }
         if name == "editor_sessions" {
             return json!({"ok":true, "sessions":live_socket::sessions(), "connected":connected});
         }
@@ -2022,6 +2075,33 @@ fn bolden_check(
         );
     }
     exit::OK
+}
+
+/// Return an actual MCP image alongside proof metadata, without external resources.
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "Raster dimensions are rounded and bounded to 2048 pixels"
+)]
+fn proof_content(mut value: serde_json::Value) -> Vec<serde_json::Value> {
+    use base64::Engine as _;
+    let mut content = Vec::new();
+    if let Some(scene) = value.get("scene") {
+        let rendered = runebender_core::formats::designbot::render(scene, false);
+        match rendered {
+            Ok(png) => {
+                content.push(serde_json::json!({"type":"image", "mimeType":"image/png",
+                    "data":base64::engine::general_purpose::STANDARD.encode(png)}));
+                value.as_object_mut().unwrap().remove("svg_content");
+                value.as_object_mut().unwrap().remove("scene");
+            }
+            Err(error) => value["image_error"] = serde_json::json!(error),
+        }
+    }
+    content.insert(
+        0,
+        serde_json::json!({"type":"text", "text":value.to_string()}),
+    );
+    content
 }
 
 #[cfg(test)]

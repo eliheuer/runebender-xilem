@@ -817,6 +817,8 @@ pub struct Project {
     /// in a named layer of a master UFO at their own location. In
     /// the designspace these are sources with a `layer` attribute.
     pub brace: Vec<BraceSource>,
+    /// Independent, session-only experimental versions of live masters.
+    pub experiments: super::experiments::Experiments,
 }
 
 #[derive(Debug)]
@@ -926,6 +928,7 @@ impl Project {
             ds_doc: None,
             ds_dirty: false,
             brace: Vec::new(),
+            experiments: super::experiments::Experiments::default(),
         };
         project.compute_compat();
         project
@@ -1026,6 +1029,7 @@ impl Project {
                 ds_doc: None,
                 ds_dirty: false,
                 brace: Vec::new(),
+                experiments: super::experiments::Experiments::default(),
             };
             project.compute_compat();
             return Ok(project);
@@ -1062,6 +1066,7 @@ impl Project {
                 ds_doc: None,
                 ds_dirty: false,
                 brace: Vec::new(),
+                experiments: super::experiments::Experiments::default(),
             })
         }
     }
@@ -1204,6 +1209,7 @@ impl Project {
                 ds_doc: Some(doc),
                 ds_dirty: false,
                 brace,
+                experiments: super::experiments::Experiments::default(),
             };
             project.refresh_instances_from_doc();
             Ok(project)

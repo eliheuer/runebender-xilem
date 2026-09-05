@@ -15,3 +15,5 @@ pub mod lib_keys;
 pub mod mark_color;
 pub mod metrics_keys;
 pub mod svg;
+
+pub mod designbot;
