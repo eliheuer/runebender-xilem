@@ -218,6 +218,12 @@ GPUI reference: `src/edit/commands/file.rs`, `src/platform/host.rs`,
     `platform::host::tests::save_reopen_keeps_a_new_glyph_in_every_master`
     (2026-09-05). Layers, images, features, kerning, lib values, and proposals
     still need their own lossless round-trip coverage.
+  - [x] **D06.b** Multi-master kerning-group persistence: the inspector's group
+    suffix is applied through core to every master, survives save/reopen, and is
+    visible after switching to Bold. Regression coverage:
+    `platform::host::tests::save_reopen_keeps_kerning_groups_in_every_master`
+    (2026-09-05). Layers, images, features, lib values, and proposals remain
+    separate D06 work.
 - [ ] **D07 / P** Watch external edits without discarding unsaved work; preserve tabs,
   selected master, viewport, filters and text when a reload is accepted. Current
   `reload_from_disk` replaces the workspace and restores only some state.

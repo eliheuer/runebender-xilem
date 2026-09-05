@@ -552,6 +552,22 @@ mod tests {
     }
 
     #[test]
+    fn save_reopen_keeps_kerning_groups_in_every_master() {
+        let (dir, designspace) = two_master_designspace("designspace-kerning");
+        let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
+        workspace.filter = "A".into();
+        workspace.new_glyph();
+        workspace.set_kern_group(true, "A".into());
+        assert!(workspace.save());
+
+        let mut reopened = Workspace::open(&designspace).expect("the saved designspace reopens");
+        assert_eq!(reopened.font.kern_group("A", true), "public.kern1.A");
+        reopened.set_master(1);
+        assert_eq!(reopened.font.kern_group("A", true), "public.kern1.A");
+        std::fs::remove_dir_all(dir).expect("the designspace fixture is removed");
+    }
+
+    #[test]
     fn new_font_keeps_a_dirty_document_open() {
         let path = std::env::temp_dir().join(format!(
             "runebender-xilem-new-dirty-{}-{}.ufo",
