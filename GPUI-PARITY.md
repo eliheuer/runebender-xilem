@@ -239,6 +239,12 @@ GPUI reference: `src/edit/commands/file.rs`, `src/platform/host.rs`,
     `platform::host::tests::new_font_keeps_a_dirty_document_open` (2026-09-05).
     GPUI currently also replaces its project directly, so a common confirmation
     policy and Open/close/quit coverage remain separate D09 work.
+  - [x] **D09.b** Dirty Open safety: `AppState::open_path` now keeps a modified
+    workspace intact and reports the required save/discard decision before it
+    invokes core's replacement load. Regression coverage:
+    `workspace::tests::open_keeps_a_dirty_document_open` opens a real second UFO
+    and verifies that the dirty source remains active (2026-09-05). Native picker
+    completion and an explicit discard/confirmation affordance remain separate work.
 
 ### Phase 2 — commands, focus and shell controls
 

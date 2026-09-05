@@ -192,6 +192,18 @@ impl AppState {
     /// Core owns format dispatch and conversion through [`Workspace::open`].
     /// This application boundary only changes which workspace the window shows.
     pub(crate) fn open_path(&mut self, path: &std::path::Path) -> bool {
+        if self
+            .workspace
+            .as_ref()
+            .is_some_and(|workspace| workspace.modified)
+        {
+            let error = "Save or discard changes before opening another font".to_string();
+            if let Some(workspace) = self.workspace.as_mut() {
+                workspace.note = error.clone();
+            }
+            self.notice = Some(error);
+            return false;
+        }
         match Workspace::open(path) {
             Ok(workspace) => {
                 self.palette = workspace.palette.clone();
@@ -302,5 +314,46 @@ mod tests {
         );
 
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
+    }
+
+    #[test]
+    fn open_keeps_a_dirty_document_open() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-dirty-open-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let replacement = path.with_file_name("runebender-xilem-dirty-open-replacement.ufo");
+        norad::Font::new()
+            .save(&path)
+            .expect("the source fixture saves");
+        norad::Font::new()
+            .save(&replacement)
+            .expect("the replacement fixture saves");
+        let mut app = AppState::open(Some(&path));
+        app.workspace
+            .as_mut()
+            .expect("the source fixture opens")
+            .modified = true;
+
+        assert!(!app.open_path(&replacement));
+        assert_eq!(
+            app.workspace
+                .as_ref()
+                .expect("the source remains open")
+                .font
+                .source(),
+            path
+        );
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("Save or discard changes before opening another font")
+        );
+
+        std::fs::remove_dir_all(path).expect("the source fixture is removed");
+        std::fs::remove_dir_all(replacement).expect("the replacement fixture is removed");
     }
 }
