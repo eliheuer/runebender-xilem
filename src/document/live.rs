@@ -120,7 +120,17 @@ pub fn tools() -> Vec<agent::Tool> {
 /// Multi-master calls require an explicit master, independent of UI selection.
 pub fn call(project: &mut Project, name: &str, args: &Value) -> Value {
     match handle(project, name, args) {
-        Ok(value) => value,
+        Ok(value) => {
+            if name == "proposal_install"
+                && value["root_changed"] == true
+                && let Some(names) = value["installed"]["installed"].as_array()
+            {
+                for name in names.iter().filter_map(Value::as_str) {
+                    project.recheck_compat(name);
+                }
+            }
+            value
+        }
         Err(error) => json!({"ok": false, "error": error}),
     }
 }

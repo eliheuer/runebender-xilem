@@ -177,7 +177,7 @@ pub fn apply(
         root.kerning_dirty = true;
         root.dirty = true;
     }
-    let names = changes.iter().map(|(name, _, _)| name.clone()).collect();
+    let names: Vec<String> = changes.iter().map(|(name, _, _)| name.clone()).collect();
     project.experiments.applied.push(Applied {
         root: v.root,
         glyphs: changes,
@@ -188,6 +188,9 @@ pub fn apply(
         },
         kerning: kern,
     });
+    for name in &names {
+        project.recheck_compat(name);
+    }
     Ok(names)
 }
 
@@ -224,16 +227,51 @@ pub fn undo_apply(project: &mut Project) -> Result<(usize, Vec<String>), String>
         root.kerning_dirty = true;
         root.dirty = true;
     }
-    Ok((
-        last.root,
-        last.glyphs.into_iter().map(|(name, _, _)| name).collect(),
-    ))
+    let names: Vec<String> = last.glyphs.into_iter().map(|(name, _, _)| name).collect();
+    for name in &names {
+        project.recheck_compat(name);
+    }
+    Ok((last.root, names))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::document::live::call;
+
+    #[test]
+    fn redraw_and_transaction_undo_refresh_family_compatibility() {
+        let mut p = Project::new_font("synthetic.ufo".into());
+        p.masters.push(Master::from_font(
+            p.masters[0].font.clone(),
+            "second.ufo".into(),
+        ));
+        p.compute_compat();
+        assert!(p.compat["A"]);
+        fork(&mut p, 0, "drawing", None, "test").unwrap();
+        p.experiments
+            .versions
+            .get_mut("drawing")
+            .unwrap()
+            .master
+            .font
+            .get_glyph_mut("A")
+            .unwrap()
+            .contours
+            .push(norad::Contour::new(
+                [(0.0, 0.0), (250.0, 700.0), (500.0, 0.0)]
+                    .into_iter()
+                    .map(|(x, y)| {
+                        norad::ContourPoint::new(x, y, norad::PointType::Line, false, None, None)
+                    })
+                    .collect(),
+                None,
+            ));
+        apply(&mut p, "drawing", &["A".into()], false, false).unwrap();
+        assert!(!p.compat["A"]);
+        undo_apply(&mut p).unwrap();
+        assert!(p.compat["A"]);
+    }
 
     #[test]
     fn two_kerning_versions_share_a_baseline_and_apply_undo_preserves_unrelated_edits() {
