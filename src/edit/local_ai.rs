@@ -102,9 +102,11 @@ pub(crate) struct AiJob {
     pub(crate) child: Arc<Mutex<Option<std::process::Child>>>,
     /// The report, or the error.
     pub(crate) finished: Arc<Mutex<Option<Result<serde_json::Value, String>>>>,
-    /// The task and the glyph it was run on, for what happens after.
+    /// The task and stable document targets captured at launch.
     pub(crate) task: String,
-    pub(crate) glyph: Option<usize>,
+    pub(crate) source: PathBuf,
+    pub(crate) master_path: PathBuf,
+    pub(crate) glyph: Option<String>,
 }
 
 /// Everything the panel holds.
@@ -451,7 +453,9 @@ impl Workspace {
         });
         let job = AiJob {
             task: task.to_string(),
-            glyph,
+            source: source.clone(),
+            master_path: self.font.source().to_path_buf(),
+            glyph: glyph_name.clone(),
             ..AiJob::default()
         };
         self.ai.job = Some(job.clone());
@@ -505,7 +509,7 @@ impl Workspace {
             self.ai.busy = None;
             self.ai.job = None;
             match result {
-                Ok(report) => self.task_finished(&job.task, job.glyph, &report),
+                Ok(report) => self.task_finished(&job, &report),
                 Err(e) => self.note = format!("font-ml: {e}"),
             }
         }
@@ -513,29 +517,37 @@ impl Workspace {
 
     /// What happens when font-ml comes back: the proposal layer is
     /// adopted from disk, and a single glyph is installed at once.
-    fn task_finished(&mut self, task: &str, glyph: Option<usize>, report: &serde_json::Value) {
-        let source = self.font.source().to_path_buf();
-        let summary = match self.adopt_proposal_from_disk(task, &source) {
+    fn task_finished(&mut self, job: &AiJob, report: &serde_json::Value) {
+        if self.font.source() != job.master_path || self.font.source() != job.source {
+            self.note = "font-ml result is stale after a document or master switch".into();
+            return;
+        }
+        if let Some(name) = &job.glyph
+            && self.font.index_of(name).is_none()
+        {
+            self.note = "font-ml result target no longer exists".into();
+            return;
+        }
+        let summary = match self.adopt_proposal_from_disk(&job.task, &job.source) {
             Ok(s) => s,
             Err(e) => {
                 self.note = format!("font-ml: {e}");
                 return;
             }
         };
-        match glyph {
-            Some(index) => {
-                let name = self.font.glyphs.get(index).map(|g| g.name.clone());
+        match &job.glyph {
+            Some(name) => {
                 let moved = report.get("moved").and_then(|v| v.as_u64()).unwrap_or(0);
                 let points = report.get("points").and_then(|v| v.as_u64()).unwrap_or(0);
                 let advance = report
                     .get("advance_delta")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0);
-                self.install_proposal(task, name.clone().map(|n| vec![n]));
+                self.install_proposal(&job.task, Some(vec![name.clone()]));
                 self.note = format!(
-                    "{task} on {}: {moved}/{points} points moved, advance {advance:+}. \
+                    "{} on {}: {moved}/{points} points moved, advance {advance:+}. \
                      Undo install to reject.",
-                    name.unwrap_or_default()
+                    job.task, name
                 );
             }
             None => {

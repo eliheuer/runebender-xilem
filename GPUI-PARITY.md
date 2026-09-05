@@ -337,6 +337,11 @@ GPUI reference: `src/edit/{local_ai,nodes,chat,experiments}.rs`,
     `platform::host::tests::save_reports_failure_for_an_unwritable_source`
     (2026-09-05). Stable job identity and live result application remain separate
     A05 work.
+  - [x] **A05.b** AI master/glyph targeting: `AiJob` captures the launched source,
+    master path, and glyph name rather than retaining a grid index. Completion
+    rejects a changed master/source or deleted target before adopting a proposal
+    (2026-09-05). Document-session identity and revision conflict checks remain
+    separate A05 work.
 
 ### Phase 6 — evidence for making Xilem primary
 
