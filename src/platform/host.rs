@@ -255,8 +255,27 @@ impl Workspace {
             self.note = "sources changed on disk; save or discard first".into();
             return;
         }
+        // Sessions hold outlines and undo state from the old core project, so
+        // re-create them from the fresh font. Viewport, fitted state, and the
+        // selected tab are presentation state and remain meaningful after an
+        // accepted reload.
+        self.park();
+        let tabs: Vec<_> = self
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(index, tab)| {
+                (
+                    tab.session.glyph_name.clone(),
+                    tab.session.viewport.clone(),
+                    tab.session.fitted,
+                    tab.tool,
+                    index == self.active_tab,
+                )
+            })
+            .collect();
+        let was_editor = matches!(self.mode, Mode::Editor(_));
         let source = self.font.source().to_path_buf();
-        let open = self.session.glyph_name.clone();
         let active_master = self.font.active();
         let list = self.list;
         let detail = self.detail;
@@ -280,12 +299,39 @@ impl Workspace {
                 fresh.search_case = search_case;
                 fresh.search_regex = search_regex;
                 fresh.rebuild_search_regex();
-                let reopen = matches!(self.mode, Mode::Editor(_))
-                    .then(|| fresh.font.index_of(&open))
-                    .flatten();
+                fresh.tabs.clear();
+                let mut active_tab = None;
+                for (name, viewport, fitted, tool, was_active) in tabs {
+                    let Some(mut session) = Session::new(fresh.font.font(), &name) else {
+                        continue;
+                    };
+                    session.viewport = viewport;
+                    session.fitted = fitted;
+                    fresh.tabs.push(Tab {
+                        session: Arc::new(session),
+                        tool,
+                    });
+                    if was_active {
+                        active_tab = Some(fresh.tabs.len() - 1);
+                    }
+                }
                 *self = fresh;
-                if let Some(index) = reopen {
-                    self.open_glyph(index);
+                if was_editor {
+                    if let Some(index) = active_tab {
+                        self.active_tab = index;
+                        let tab = &self.tabs[index];
+                        self.session = tab.session.clone();
+                        self.tool = tab.tool;
+                        self.selected = self.font.index_of(&self.session.glyph_name);
+                        if let Some(selected) = self.selected {
+                            self.mode = Mode::Editor(selected);
+                            self.refresh_metric_bufs();
+                            self.refresh_coord_bufs();
+                        }
+                    } else {
+                        self.mode = Mode::Overview;
+                        self.selected = None;
+                    }
                 }
                 self.note = "reloaded".into();
             }
@@ -380,6 +426,56 @@ mod tests {
         assert!(workspace.search_case);
         assert!(workspace.search_regex);
         assert!(workspace.search_re.is_some());
+
+        std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
+    }
+
+    #[test]
+    fn reload_keeps_open_tabs_and_their_viewports() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-tabs-reload-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        norad::Font::new()
+            .save(&path)
+            .expect("the empty UFO fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.filter = "A".into();
+        workspace.new_glyph();
+        workspace.new_tab();
+        workspace.filter = "B".into();
+        workspace.new_glyph();
+        let mut session = (*workspace.session).clone();
+        session.viewport.offset = kurbo::Vec2::new(40.0, 50.0);
+        session.viewport.zoom = 2.0;
+        workspace.session = Arc::new(session);
+        workspace.park();
+        workspace.activate_tab(0);
+        let mut session = (*workspace.session).clone();
+        session.viewport.offset = kurbo::Vec2::new(10.0, 20.0);
+        session.viewport.zoom = 1.5;
+        workspace.session = Arc::new(session);
+        workspace.park();
+        workspace.activate_tab(1);
+        workspace.save();
+
+        workspace.reload_from_disk();
+
+        assert_eq!(workspace.tabs.len(), 2);
+        assert_eq!(workspace.tabs[0].session.glyph_name, "A");
+        assert_eq!(workspace.tabs[1].session.glyph_name, "B");
+        assert_eq!(workspace.active_tab, 1);
+        assert_eq!(workspace.session.glyph_name, "B");
+        assert_eq!(workspace.tabs[0].session.viewport.offset.x, 10.0);
+        assert_eq!(workspace.tabs[0].session.viewport.offset.y, 20.0);
+        assert_eq!(workspace.tabs[0].session.viewport.zoom, 1.5);
+        assert_eq!(workspace.session.viewport.offset.x, 40.0);
+        assert_eq!(workspace.session.viewport.offset.y, 50.0);
+        assert_eq!(workspace.session.viewport.zoom, 2.0);
 
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }
