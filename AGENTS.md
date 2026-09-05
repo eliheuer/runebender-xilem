@@ -35,8 +35,14 @@ target. The rule that keeps the switch cheap is:
   install or discard it. It does not interpret it.
 - The shell renders state from core. If a feature needs new state,
   add the state to core first.
-- Until the switch, this shell gets parity only for the shared-state
-  seam (core's undo and proposals), not for every GPUI feature.
+- Full GPUI parity is the current target. `GPUI-PARITY.md` in the
+  repository root records the baseline, work order, and acceptance
+  checks. Keep both shells while that work proceeds; retiring GPUI
+  is a separate decision after verification.
+- GPUI is the behavioral reference; Linebender is the architectural
+  target. Prefer Linebender APIs and conventions, and record reusable
+  gaps as contribution opportunities in the appropriate ecosystem
+  project. Do not transplant GPUI architecture merely to match it.
 
 ## Layout
 

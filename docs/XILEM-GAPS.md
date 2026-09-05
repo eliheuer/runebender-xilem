@@ -1,5 +1,10 @@
 # What Xilem costs, measured against the same editor on GPUI
 
+> Historical notes, partly superseded as of 2026-09-05. See
+> [GPUI-PARITY.md](../GPUI-PARITY.md) for the current source audit and checklist.
+> Several features listed below now exist, and GPUI no longer uses gpui-component.
+> Preserve these notes as history, not as a current blocker inventory.
+
 <!-- Copyright 2026 the Runebender Authors -->
 <!-- SPDX-License-Identifier: Apache-2.0 OR MIT -->
 
