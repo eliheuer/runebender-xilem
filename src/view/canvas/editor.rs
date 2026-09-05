@@ -14,6 +14,7 @@ use masonry::core::{
     PropertiesMut, PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Widget, WidgetId,
 };
 use masonry::imaging::Painter;
+use masonry::kurbo;
 use masonry::kurbo::{Axis, Circle, Line, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 use runebender_core::outline::glyph_ops::PointId;
@@ -573,6 +574,16 @@ impl EditorWidget {
     }
 }
 
+/// A grid line index from an already rounded coordinate. The visible
+/// canvas is a few thousand units at most, so the cast cannot truncate.
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "the visible canvas spans a few thousand units"
+)]
+fn grid_index(v: f64) -> i64 {
+    v as i64
+}
+
 impl Widget for EditorWidget {
     type Action = EditorEvent;
 
@@ -694,6 +705,60 @@ impl Widget for EditorWidget {
                 .draw();
         }
 
+        // The design grid, as the GPUI build draws it: a dot at each
+        // 8-unit intersection once the zoom passes 0.8x, and a finer
+        // 2-unit dot past 8x. The dots grow with the pitch, a fifth of
+        // the coarse one and an eighth of the fine one, within limits.
+        {
+            let zoom = self.session.viewport.zoom;
+            let smoothstep = |t: f64| {
+                let t = t.clamp(0.0, 1.0);
+                t * t * (3.0 - 2.0 * t)
+            };
+            let mid = smoothstep((zoom - 0.8) / 0.8);
+            if mid > 0.0 {
+                let inv = affine.inverse();
+                let a = inv * Point::new(0.0, 0.0);
+                let b = inv * Point::new(self.size.width, self.size.height);
+                let (min_x, max_x) = (a.x.min(b.x), a.x.max(b.x));
+                let (min_y, max_y) = (a.y.min(b.y), a.y.max(b.y));
+                let mut level = |spacing: f64, skip_every: i64, size: f64, alpha: f64| {
+                    let mut dots = kurbo::BezPath::new();
+                    let h = size / 2.0;
+                    let (ix0, ix1) = (
+                        grid_index((min_x / spacing).floor()),
+                        grid_index((max_x / spacing).ceil()),
+                    );
+                    let (iy0, iy1) = (
+                        grid_index((min_y / spacing).floor()),
+                        grid_index((max_y / spacing).ceil()),
+                    );
+                    for ix in ix0..=ix1 {
+                        for iy in iy0..=iy1 {
+                            if skip_every > 0 && ix % skip_every == 0 && iy % skip_every == 0 {
+                                continue;
+                            }
+                            let at = affine * Point::new(ix as f64 * spacing, iy as f64 * spacing);
+                            dots.extend(kurbo::Shape::to_path(
+                                &Rect::new(at.x - h, at.y - h, at.x + h, at.y + h),
+                                0.1,
+                            ));
+                        }
+                    }
+                    painter
+                        .fill(&dots, pal.role("designGridCoarse").with_alpha(alpha as f32))
+                        .draw();
+                };
+                let coarse = (8.0 * zoom * 0.2).clamp(1.5, 5.0);
+                level(8.0, 0, coarse, mid);
+                let close = smoothstep((zoom - 8.0) / 8.0);
+                if close > 0.0 {
+                    let fine = (2.0 * zoom * 0.125).clamp(1.0, 3.5);
+                    level(2.0, 4, fine, close);
+                }
+            }
+        }
+
         let m = &self.session.metrics;
         let thin = Stroke::new(1.0);
         // The metric lines and the em box are the accent colour, as they
@@ -732,7 +797,9 @@ impl Widget for EditorWidget {
             }
             let outline = affine * self.session.outline();
             painter
-                .fill(&outline, pal.role("pathStroke").with_alpha(0.08))
+                // The outline fill role, opaque, as the GPUI build: a mid
+                // tone under the stroke so the shape reads at a glance.
+                .fill(&outline, pal.role("outlineFill"))
                 .draw();
             painter
                 .stroke(&outline, &Stroke::new(1.0), pal.role("pathStroke"))
