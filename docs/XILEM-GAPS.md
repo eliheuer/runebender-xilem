@@ -108,6 +108,28 @@ GPUI has no canvas primitive either and its build pays a similar cost.
 It is the largest shared gap in both frameworks, and the reason the xix
 fork has an `Island` widget.
 
+**The compile cliff, again, on a label.** 2026-09-04: five style
+wrappers on one label in the title bar's root tuple (`sized_box` with
+padding, background, border colour, border width, corner radius) made
+`rustc` never finish, debug or release. A plain coloured label builds
+in 2 minutes 17 seconds. The GPUI build draws the same thing as a
+keylined tag with no cost. So the tag waits for a painted widget.
+
+**A drag region is a widget, 100 lines.** Masonry has `drag_window`
+and `toggle_maximized` on the widget context, and upstream `WindowOptions`
+gained the macOS title bar options in August, so the header can be the
+title bar here as it is in the GPUI build. But nothing in view-land
+can call them: `src/widgets/drag_region.rs` is a widget of no size and
+no paint that exists only to listen for a press. Winit has no way to
+place the traffic lights, so the header pads for their default spot.
+
+**A property needs a sized widget.** `AutoHideScrollBar` fixed the
+scroll bars over the panel content in one line per portal, except the
+one whose child is a boxed view: `.prop()` requires `V::Widget: Sized`,
+so that portal's child had to be wrapped in a `sized_box` first, and
+the wrapper then had to be told to stretch or the panel spilled past
+the window.
+
 ## 3. Just unfinished
 
 Application work that no framework blocks: `.glyphs` import, live
