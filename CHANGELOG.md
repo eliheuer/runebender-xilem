@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Connected live font-version nodes, guarded application, explicit new-UFO export,
+  and shared canvas geometry for embedded Designbot proof controls.
+
+
 No releases yet. `AGENTS.md` has the checklist for the first one.
 Until then, `main` is the only line and this section stays open.
 

@@ -1,9 +1,9 @@
 # Live experiment MVP
 
-The GPUI Nodes workspace includes live version cards above the general graph canvas.
-These are a first version of the experiment graph, not yet arbitrary wired nodes in
-`.nodes.json`. Xilem exposes the same core operations through MCP; it does not yet
-have the version-card UI.
+The native GPUI Nodes workspace uses connected nodes for the live font, independent
+versions, Designbot proofs, and explicit application to the root. Controls and preview
+images live inside the canvas. Xilem exposes experiments through MCP; its canvas does
+not yet implement these live node controls.
 
 ## Start
 
@@ -11,8 +11,15 @@ Install current `designbot`, `runebender-core`, and the native editor. Restart t
 editor after updating. In OMP run `/mcp reload` and connect to the intended editor.
 Read `design_context`, the official type-design guide, and the font's DESIGN.md.
 
-The root is the open, unsaved master. Click Fork to capture it. Fork that baseline
-twice to make versions with exactly the same inputs, even if the root changes later.
+Open Nodes (or click New if an older workflow is open). The starter graph connects
+Current font to two Font version nodes, each with its own Designbot proof. Run creates
+unrun versions in connection order and renders the proofs; it never executes Apply.
+Create version snapshots a connected input once. Repeating it preserves the result.
+Fork direction adds another connected version and proof. A created version retains
+its original input connection; fork another direction to try a different input.
+
+The root is the open, unsaved master. For comparisons made at different times, create
+a baseline version and fork that twice, so both directions have exactly the same input.
 Each branch has its own font and proposal layers. Use `branch` and `master` on every
 agent operation targeting a version; omitting `branch` addresses the root.
 
@@ -45,13 +52,17 @@ which model/brief was used in the fork's reason.
 
 ## Review and apply
 
-Cards can render a glyph sheet or a fixed kerning specimen. To choose other glyphs
-or text, ask OMP for a proof, then click Show latest agent proof on that card.
+The Font version node displays the branch name to give OMP. Branches created through
+MCP also appear as connected version and proof nodes in the open live graph.
+
+Designbot proof nodes render selected glyphs (up to 256; six drawn glyphs when there
+is no selection), or the fixed kerning specimen "AVATAR To Wa". For custom text or
+reference sets, ask OMP for a proof, then click Latest OMP proof in that proof node.
 The PNG shown and exported PDF use the same scene. Images are snapshots: refresh after
 edits. Export PNG opens a save dialog for full-size inspection outside the thumbnail.
 
-Apply all accepts that version's changed glyphs and kerning; the label explicitly
-allows changed contour structure. Use `experiment_apply` through OMP for selective
+Add apply node creates a connected output. Clicking Apply changes accepts the input
+version's changed glyph outlines and kerning, including contour-structure changes. Use `experiment_apply` through OMP for selective
 existing glyphs or kerning-only application and an explicit keep_structure policy.
 Root changes since the baseline produce conflicts before any mutation. Unrelated edits
 survive. No operation saves the root to disk: inspect, undo if needed, then Save normally.
@@ -63,9 +74,20 @@ which preserves later work rather than guessing intent.
 
 ## Limits
 
-Versions are session-only and disappear when the font closes. Normal Save persists
-accepted root changes, not experimental versions. Maximum 16 versions per document.
-The MVP does not persist/reopen experiment graphs, merge overlapping conflicts, create
-absent glyph records, edit groups, or automatically dispatch multiple AI jobs. Family-wide
+Save as new UFO exports a version's complete master to a new .ufo directory and
+refuses existing destinations. Discard version removes a leaf experiment without
+changing the root; discard its children first if it has any.
+
+Versions are session-only and disappear when the font closes. The Nodes Save action
+stores layout and connections in .nodes.json, but does not persist version contents.
+Reopening that workflow requires creating new versions; it cannot restore old AI
+results. Save important versions as new UFOs before closing. Normal font Save persists
+accepted root changes. Maximum 16 versions per document.
+
+Live font ports deliberately cannot connect to the older disk-based model-task ports.
+OMP remains the AI client for this increment. Local/cloud process nodes, persistent
+version bundles, and comparison controls beyond adjacent proof previews remain future
+work. The MVP does not merge overlapping conflicts, create absent glyph records,
+edit groups, or automatically dispatch multiple AI jobs. Family-wide
 interpolation validation remains a separate review. Keep experimental proofs as files
 and record accepted decisions in the font project's design brief.

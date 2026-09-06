@@ -124,8 +124,23 @@ pub fn node_box(graph: &NodeGraph, registry: &Registry, node: &Node) -> NodeBox 
     let rows = (inputs.len() + outputs.len()).max(1);
     let x = f64::from(node.pos[0]);
     let y = f64::from(node.pos[1]);
-    let h = HEADER_H + PAD + ROW_H * rows as f64;
-    let rect = Rect::new(x, y, x + NODE_W, y + h);
+    let live = node.type_name.starts_with("live.");
+    let width = if live { LIVE_W } else { NODE_W };
+    let h = HEADER_H
+        + PAD
+        + ROW_H * rows as f64
+        + if live {
+            ROW_H * 2.0
+                + ACTION_H * actions(&node.type_name).len() as f64
+                + if node.type_name == "live.proof" {
+                    PREVIEW_H
+                } else {
+                    0.0
+                }
+        } else {
+            0.0
+        };
+    let rect = Rect::new(x, y, x + width, y + h);
     let row_y = |i: usize| y + HEADER_H + PAD / 2.0 + ROW_H * (i as f64 + 0.5);
     let first_input = outputs.len();
     let inputs = inputs
@@ -146,7 +161,7 @@ pub fn node_box(graph: &NodeGraph, registry: &Registry, node: &Node) -> NodeBox 
         .map(|(i, p)| PortBox {
             name: p.name.clone(),
             kind: p.kind,
-            at: Point::new(x + NODE_W, row_y(i)),
+            at: Point::new(x + width, row_y(i)),
             row: i,
             linked: graph
                 .links
@@ -196,7 +211,7 @@ pub fn wires(graph: &NodeGraph, boxes: &[NodeBox]) -> Vec<(usize, usize, usize, 
 /// colour.
 pub fn kind_mark(kind: Kind) -> Option<&'static str> {
     Some(match kind {
-        Kind::Source => "green",
+        Kind::Source | Kind::FontVersion => "green",
         Kind::Layer | Kind::Path => "yellow",
         Kind::Model => "blue",
         Kind::Adapter => "purple",
@@ -210,11 +225,11 @@ pub fn kind_mark(kind: Kind) -> Option<&'static str> {
 /// mostly gives, or what it does to the font.
 pub fn type_mark(type_name: &str) -> Option<&'static str> {
     Some(match type_name {
-        "core.source" | "core.master" => "green",
-        "core.layer" | "core.proof" => "yellow",
+        "core.source" | "core.master" | "live.font" | "live.fork" => "green",
+        "core.layer" | "core.proof" | "live.proof" => "yellow",
         "core.model" => "blue",
         "core.adapter" => "purple",
-        "core.install" => "red",
+        "core.install" | "live.apply" => "red",
         "core.compare" => "pink",
         "core.note" => return None,
         _ => "orange",
@@ -306,6 +321,61 @@ pub fn hit(boxes: &[NodeBox], at: Point) -> Hit {
     Hit::Empty
 }
 
+/// Live nodes have room for a proof and explicit actions inside the canvas.
+pub const LIVE_W: f64 = 256.0;
+/// Fixed preview allocation, in canvas units.
+pub const PREVIEW_H: f64 = 144.0;
+/// One compact action row, in canvas units.
+pub const ACTION_H: f64 = 24.0;
+
+/// Explicit actions rendered and hit-tested by the shell; none run during painting.
+pub fn actions(type_name: &str) -> &'static [&'static str] {
+    match type_name {
+        "live.font" => &["Fork direction", "Undo last application"],
+        "live.fork" => &[
+            "Create version",
+            "Fork direction",
+            "Add apply node",
+            "Save as new UFO…",
+            "Discard version",
+        ],
+        "live.proof" => &[
+            "Render glyphs",
+            "Render kerning",
+            "Latest OMP proof",
+            "Export PDF…",
+            "Export PNG…",
+        ],
+        "live.apply" => &["Apply changes"],
+        _ => &[],
+    }
+}
+
+impl NodeBox {
+    /// First content row below the input and output sockets.
+    pub fn content_top(&self) -> f64 {
+        self.rect.y0
+            + HEADER_H
+            + PAD
+            + ROW_H * (self.inputs.len() + self.outputs.len()).max(1) as f64
+    }
+    /// Action rectangle, shared by painting and pointer handling.
+    pub fn action_rect(&self, index: usize) -> Rect {
+        let y = self.content_top() + ROW_H * 2.0 + index as f64 * ACTION_H;
+        Rect::new(self.rect.x0 + PAD, y, self.rect.x1 - PAD, y + ACTION_H)
+    }
+    /// Preview rectangle below the actions of a proof node.
+    pub fn preview_rect(&self) -> Rect {
+        let y = self.content_top() + ROW_H * 2.0 + actions(&self.type_name).len() as f64 * ACTION_H;
+        Rect::new(
+            self.rect.x0 + PAD,
+            y + PAD,
+            self.rect.x1 - PAD,
+            y + PREVIEW_H - PAD,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,6 +387,31 @@ mod tests {
         let install = g.add("core.install", [320.0, 0.0]);
         g.connect(font, "glyphs", install, "glyphs");
         (g, registry)
+    }
+
+    #[test]
+    fn live_controls_and_previews_share_nonoverlapping_hit_geometry() {
+        let g = crate::document::nodes_live::starter(0);
+        let boxes = layout(&g, &Registry::core());
+        for node in &boxes {
+            for (index, _) in actions(&node.type_name).iter().enumerate() {
+                let r = node.action_rect(index);
+                assert!(node.rect.contains(r.origin()));
+                assert!(r.x1 <= node.rect.x1 && r.y1 <= node.rect.y1);
+                assert_eq!(hit(&boxes, r.center()), Hit::Node(node.id));
+                if index > 0 {
+                    assert!(node.action_rect(index - 1).y1 <= r.y0);
+                }
+            }
+            if node.type_name == "live.proof" {
+                assert!(
+                    node.preview_rect().y0
+                        >= node.action_rect(actions(&node.type_name).len() - 1).y1
+                );
+                assert!(node.preview_rect().y1 <= node.rect.y1);
+            }
+        }
+        assert_eq!(wires(&g, &boxes).len(), 4);
     }
 
     #[test]

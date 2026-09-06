@@ -43,6 +43,8 @@ pub const EXTENSION: &str = "nodes.json";
 pub enum Kind {
     /// A UFO on disk: one master.
     Source,
+    /// An in-memory font version in the connected editor; never a disk source.
+    FontVersion,
     /// A model directory.
     Model,
     /// An adapter directory, applied over a model.
@@ -363,7 +365,10 @@ impl Registry {
     /// Core's types only.
     pub fn core() -> Self {
         Self {
-            types: core_types(),
+            types: core_types()
+                .into_iter()
+                .chain(super::nodes_live::types())
+                .collect(),
         }
     }
 
@@ -666,6 +671,7 @@ fn value_fits(value: &Value, kind: Kind) -> bool {
         | Kind::Source
         | Kind::Path => value.is_string(),
         Kind::Rows => value.is_array(),
+        Kind::FontVersion => false,
     }
 }
 
