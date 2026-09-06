@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Keep GPUI live-node files out of the disk runner; experiments remain available through MCP.
+
+
 No releases yet. `AGENTS.md` has the checklist for the first one.
 Until then, `main` is the only line and this section stays open.
 

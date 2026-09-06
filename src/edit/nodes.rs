@@ -127,6 +127,8 @@ impl Workspace {
     /// The registry: core's types plus what font-ml declared.
     pub(crate) fn node_registry(&self) -> Registry {
         let mut registry = Registry::core();
+        // Live canvas actions are currently implemented by the GPUI shell.
+        registry.types.retain(|t| !t.name.starts_with("live."));
         if let Some(json) = &self.nodes.tasks_json {
             registry.add_tool("font-ml", json);
         }
@@ -293,6 +295,16 @@ impl Workspace {
         let Some(state) = self.nodes.graph.as_ref() else {
             return;
         };
+        if state
+            .graph
+            .nodes
+            .iter()
+            .any(|n| n.type_name.starts_with("live."))
+        {
+            self.note =
+                "Live graph controls currently require GPUI; use MCP for Xilem experiments".into();
+            return;
+        }
         if self.nodes.job.is_some() {
             self.note = "Already running".into();
             return;
