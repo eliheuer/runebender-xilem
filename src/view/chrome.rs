@@ -86,7 +86,7 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             tab_strip(app),
         ),
     )
-    .background_color(pal.panel);
+    .background_color(pal.header);
     // A rule under the header, drawn as a one pixel box. Masonry's
     // border width is one value for all four sides, so there is no
     // bottom-only border to set; GPUI writes `border_b_1`.

@@ -20,6 +20,12 @@ fn color(c: ColorRgba) -> Color {
 pub(crate) struct Palette {
     pub app: Color,
     pub panel: Color,
+    /// The recessed surface behind editor-rail tabs.
+    pub tab_rail: Color,
+    /// The face of an inactive editor-rail tab.
+    pub inactive_tab: Color,
+    /// The quiet dark band behind the title and tools.
+    pub header: Color,
     pub control: Color,
     pub button: Color,
     pub canvas: Color,
@@ -52,9 +58,29 @@ impl Palette {
     }
 
     fn from_theme(t: &CoreTheme) -> Self {
+        let titlebar = color(t.surface("titlebar"));
+        let panel = color(t.surface("panel"));
+        let selected = color(t.role("controlSelected"));
         Self {
             app: color(t.surface("app")),
-            panel: color(t.surface("panel")),
+            panel,
+            // The GPUI rail steps from titlebar to inactive tab to panel.
+            // Derive its middle step from the shared surfaces so every
+            // shipped theme keeps the same relationship without an
+            // application-owned colour literal.
+            tab_rail: titlebar,
+            inactive_tab: Color::new([
+                (titlebar.components[0] + panel.components[0]) * 0.5,
+                (titlebar.components[1] + panel.components[1]) * 0.5,
+                (titlebar.components[2] + panel.components[2]) * 0.5,
+                1.0,
+            ]),
+            header: Color::new([
+                selected.components[0] * 0.5,
+                selected.components[1] * 0.5,
+                selected.components[2] * 0.5,
+                1.0,
+            ]),
             control: color(t.surface("control")),
             button: color(t.surface("button")),
             canvas: color(t.surface("canvas")),
@@ -89,12 +115,12 @@ impl Palette {
     /// Selection is inversion, never a hue: the fill of anything
     /// selected or active is the ink.
     pub(crate) fn selected_bg(&self) -> Color {
-        self.text
+        self.role("controlSelected")
     }
 
     /// The ink on a selected fill: the panel colour.
     pub(crate) fn selected_ink(&self) -> Color {
-        self.panel
+        self.role("controlSelectedInk")
     }
 
     /// Whatever a tool draws while the pointer is down: the ink.

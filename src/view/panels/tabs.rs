@@ -6,6 +6,7 @@
 
 use crate::*;
 use masonry::properties::AutoHideScrollBar;
+use xilem::Color;
 
 /// The editor rail's tabs. The GPUI build has four (Glyphs, Shapes,
 /// Axes, Chat); these are the two this editor has something to put in.
@@ -23,26 +24,44 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         Mode::Editor(i) => Some(i),
         _ => None,
     };
-    // Icon tiles, as the GPUI build's editor sidebar has them: the
-    // glyph grid, the axes (when the family has any), and Local AI.
-    // The active one inverts.
+    // The GPUI rail has three deliberate surface steps: a recessed
+    // titlebar-colour rail, quiet intermediate inactive tabs, then the
+    // selected tab joining the panel.  Keep the Xilem version to the
+    // functions it really has; Shapes and Chat remain absent rather than
+    // pretending that their GPUI controls work here.
     let tab = |icon: &'static str, which: Rail| {
-        icon_button(
-            icon,
-            app.rail == which,
-            pal.text_muted,
-            pal.selected_ink(),
-            pal.selected_bg(),
-            pal.control,
-            move |app: &mut Workspace| {
-                app.rail = which;
-            },
+        let active = app.rail == which;
+        let (foreground, background, height) = if active {
+            (pal.text, pal.panel, ControlSize::Control)
+        } else {
+            (pal.text_muted, pal.inactive_tab, ControlSize::Row)
+        };
+        sized_box(
+            icon_button(
+                icon,
+                false,
+                foreground,
+                foreground,
+                Color::TRANSPARENT,
+                pal.control,
+                move |app: &mut Workspace| app.rail = which,
+            )
+            .background_color(background)
+            .border_color(pal.outline)
+            .border_width(Stroke::Hairline.length())
+            .corner_radius(Radius::Md.length()),
         )
+        .dims(Dimensions::new(
+            Dim::from(ControlSize::Control),
+            Dim::from(height),
+        ))
     };
     let has_axes = !app.font.axes.is_empty();
-    xcolumn(
-        Region::Panel,
-        (
+    flex_col((
+        // The fixed-height rail leaves one shared rule underneath. It
+        // gives the selected icon a stable visual join to the panel
+        // below while inactive icons remain recessed.
+        sized_box(
             xrow(
                 Region::Inline,
                 (
@@ -50,39 +69,49 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     has_axes.then(|| tab("measure", Rail::Axes)),
                     tab("preview", Rail::LocalAi),
                 ),
+            )
+            .background_color(pal.tab_rail),
+        )
+        .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(36.0)))),
+        xcolumn(
+            Region::Panel,
+            (
+                (app.rail == Rail::Axes)
+                    .then(|| axes_section(app))
+                    .flatten(),
+                (app.rail == Rail::LocalAi).then(|| local_ai_panel(app)),
+                (app.rail == Rail::Glyphs).then(|| {
+                    text_input(app.filter.clone(), |app: &mut Workspace, v| app.filter = v)
+                        .placeholder("Search")
+                        .text_color(pal.text)
+                        .placeholder_color(pal.text_muted)
+                        .background_color(pal.field())
+                        .border_color(pal.field_outline)
+                        .border_width(Stroke::Hairline.length())
+                        .corner_radius(Radius::Sm.length())
+                }),
+                // The grid scrolls itself, so no portal here: nesting the two
+                // gave the rail a dead area below the third row.
+                (app.rail == Rail::Glyphs).then(|| {
+                    grid(
+                        app.filtered_cells(),
+                        app.cell_metrics(62.0),
+                        app.palette.clone(),
+                        current,
+                        app.multi_selected.clone(),
+                        |app: &mut Workspace, ev| match ev {
+                            GridEvent::Selected { index, .. } => app.open_glyph(index),
+                            GridEvent::Open(i) => app.open_glyph(i),
+                        },
+                    )
+                    .flex(1.0)
+                }),
             ),
-            (app.rail == Rail::Axes)
-                .then(|| axes_section(app))
-                .flatten(),
-            (app.rail == Rail::LocalAi).then(|| local_ai_panel(app)),
-            (app.rail == Rail::Glyphs).then(|| {
-                text_input(app.filter.clone(), |app: &mut Workspace, v| app.filter = v)
-                    .placeholder("Search")
-                    .text_color(pal.text)
-                    .placeholder_color(pal.text_muted)
-                    .background_color(pal.field())
-                    .border_color(pal.field_outline)
-                    .border_width(Stroke::Hairline.length())
-                    .corner_radius(Radius::Sm.length())
-            }),
-            // The grid scrolls itself, so no portal here: nesting the two
-            // gave the rail a dead area below the third row.
-            (app.rail == Rail::Glyphs).then(|| {
-                grid(
-                    app.filtered_cells(),
-                    app.cell_metrics(62.0),
-                    app.palette.clone(),
-                    current,
-                    app.multi_selected.clone(),
-                    |app: &mut Workspace, ev| match ev {
-                        GridEvent::Selected { index, .. } => app.open_glyph(index),
-                        GridEvent::Open(i) => app.open_glyph(i),
-                    },
-                )
-                .flex(1.0)
-            }),
-        ),
-    )
+        )
+        .flex(1.0),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(Space::None)
     .background_color(pal.panel)
 }
 
