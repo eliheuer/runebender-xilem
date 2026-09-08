@@ -218,6 +218,7 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             (!editing).then(|| compare_section(app)),
             (!editing).then(|| features_section(app)),
             layers_section(app),
+            masters_section(app),
             editing.then(|| measure_section(app)),
             (!editing).then(|| glyph_preview(app)).flatten(),
         ),

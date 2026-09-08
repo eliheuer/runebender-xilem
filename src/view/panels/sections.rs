@@ -5,10 +5,69 @@
 
 use crate::*;
 
+/// Reference underlays, distinct from document masters. GPUI keeps this
+/// section folded in the overview, so the inspector stays a concise map of
+/// the document until someone needs to compare outlines.
+pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> {
+    if app.font.master_names().len() < 2 {
+        return None;
+    }
+    let pal = &app.palette;
+    let active = app.font.active();
+    let rows: Vec<_> = app
+        .font
+        .short_master_names()
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| *i != active)
+        .map(|(i, name)| {
+            let shown = app.reference_layers.contains(&i);
+            let (bg, fg) = if shown {
+                (pal.role("reference").with_alpha(0.28), pal.text)
+            } else {
+                (pal.panel, pal.text_muted)
+            };
+            sized_box(
+                button(
+                    label(format!("◉ {name}"))
+                        .text_size(TextSize::Body.px())
+                        .color(fg),
+                    move |app: &mut Workspace| {
+                        if !app.reference_layers.remove(&i) {
+                            app.reference_layers.insert(i);
+                        }
+                    },
+                )
+                .background_color(bg),
+            )
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::from(ControlSize::Control),
+            ))
+        })
+        .collect();
+    Some(xcolumn(
+        Region::Section,
+        (
+            recipes::section_toggle(
+                pal,
+                "Layers",
+                !app.collapsed.contains("Layers"),
+                move |app: &mut Workspace| {
+                    if !app.collapsed.remove("Layers") {
+                        app.collapsed.insert("Layers");
+                    }
+                },
+            ),
+            (!app.collapsed.contains("Layers")).then(|| xcolumn(Region::List, rows)),
+        ),
+    ))
+}
+
 /// Masters: one compact row per designspace source. This is deliberately
 /// separate from reference-layer controls: GPUI presents master switching as
 /// a plain list, while underlays belong to the editor's Layers section.
-pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> {
+pub(crate) fn masters_section(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> {
     if app.font.master_names().len() < 2 {
         return None;
     }
