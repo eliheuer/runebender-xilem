@@ -31,7 +31,7 @@ use crate::widgets::text_label::{self, Anchor};
 /// The metrics panel's geometry, shared by its painting and its boxes.
 const PANEL_PAD: f64 = 10.0;
 const PANEL_ROW: f64 = 18.0;
-const PANEL_WIDTH: f64 = 440.0;
+const PANEL_WIDTH: f64 = 288.0;
 const PANEL_HEADER: f64 = 22.0;
 
 const HIT_RADIUS_PX: f64 = 8.0;
@@ -239,15 +239,15 @@ impl EditorWidget {
         let y = top + PANEL_HEADER + PANEL_PAD;
         let box_at = |x: f64| Rect::new(left + x, y, left + x + 64.0, y + PANEL_ROW);
         Some([
-            (MetricField::Lsb, box_at(118.0)),
-            (MetricField::Width, box_at(188.0)),
-            (MetricField::Rsb, box_at(258.0)),
+            (MetricField::Lsb, box_at(42.0)),
+            (MetricField::Width, box_at(112.0)),
+            (MetricField::Rsb, box_at(182.0)),
         ])
     }
 
     /// The panel's top left corner, or `None` when it does not fit.
     fn metrics_panel_origin(&self) -> Option<(f64, f64)> {
-        let height = PANEL_HEADER + PANEL_ROW + PANEL_PAD * 2.0;
+        let height = PANEL_HEADER + PANEL_ROW * 2.0 + PANEL_PAD * 2.0;
         let top = self.size.height - height - PANEL_PAD;
         if top < 0.0 || PANEL_WIDTH + PANEL_PAD * 2.0 > self.size.width {
             return None;
@@ -336,7 +336,7 @@ impl EditorWidget {
         const ROW: f64 = PANEL_ROW;
         let pal = &self.palette;
         let bearings = self.session.side_bearings();
-        let height = PANEL_HEADER + ROW + PAD * 2.0;
+        let height = PANEL_HEADER + ROW * 2.0 + PAD * 2.0;
         let width = PANEL_WIDTH;
         let left = (self.size.width - width) / 2.0;
         let top = self.size.height - height - PAD;
@@ -401,18 +401,18 @@ impl EditorWidget {
                 painter,
                 PAD,
                 0.0,
-                &self.groups.0,
-                11.0,
-                pal.text,
+                "LSB",
+                10.0,
+                pal.text_muted,
                 Anchor::Start,
             );
             text_at(
                 painter,
                 width - PAD,
                 0.0,
-                &self.groups.1,
-                11.0,
-                pal.text,
+                "RSB",
+                10.0,
+                pal.text_muted,
                 Anchor::End,
             );
             // Three boxes you can type in, like the GPUI build's. Each
@@ -458,6 +458,24 @@ impl EditorWidget {
                     }
                 }
             }
+            text_at(
+                painter,
+                PAD,
+                1.0,
+                &self.groups.0,
+                11.0,
+                pal.text,
+                Anchor::Start,
+            );
+            text_at(
+                painter,
+                width - PAD,
+                1.0,
+                &self.groups.1,
+                11.0,
+                pal.text,
+                Anchor::End,
+            );
         }
     }
 

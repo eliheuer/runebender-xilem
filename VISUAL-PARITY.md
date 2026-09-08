@@ -115,8 +115,9 @@ warning role rather than an inverted pill. This was rendered in Gray at
 
 The editor metrics card follows the GPUI placement and hierarchy: it is
 centered over the bottom of the canvas, keeps the glyph mark in its header,
-and presents the two kerning groups beside the editable LSB, width, and RSB
-fields. The hit targets are derived from the same rectangles the painter uses.
+and uses GPUI's compact 288px two-row layout: editable LSB, width, and RSB
+fields first, then the two kerning groups. The hit targets are derived from
+the same rectangles the painter uses.
 
 The editor rail now gives its compact glyph grid the full rail width and a
 five-column density, matching the current live GPUI web frame at 1352×864.
