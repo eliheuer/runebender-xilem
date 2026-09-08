@@ -22,8 +22,10 @@
 //! application renders.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use masonry::app::{RenderRoot, RenderRootOptions, VisualLayerKind, WindowSizePolicy};
+use masonry::core::WindowEvent;
 use masonry::dpi::PhysicalSize;
 use masonry::imaging::Painter;
 use masonry::imaging::record::{Scene, replay_transformed};
@@ -100,6 +102,12 @@ pub(crate) fn render_to<State, V, F>(
         let root_widget = root_widget.downcast::<V::Widget>();
         again.rebuild(&view, &mut view_state, &mut ctx, root_widget, &mut app);
     });
+
+    // A real window has already received its first idle animation frame by
+    // the time it is useful to inspect it. Drive that frame here too, so
+    // auto-hiding portal scrollbars do not get frozen visible in every
+    // screenshot solely because this renderer exits after its first paint.
+    root.handle_window_event(WindowEvent::AnimFrame(Duration::from_millis(500)));
 
     let (layers, _tree) = root.redraw();
     let mut scene = Scene::new();
