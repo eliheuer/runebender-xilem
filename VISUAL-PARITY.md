@@ -29,6 +29,12 @@ hard-coded colours. The Xilem header now uses the GPUI header's darkened
 selected-control surface; active tools use the same control-selection
 tokens.
 
+The overview inspector now opens in the GPUI reference's compact accordion
+state: the common font sections remain available as headers, Masters stays
+open, and the existing keyboard/pointer-accessible section toggles retain
+their behavior. Header ink follows the shared selected-control ink in Gray
+and Light, while Dark retains its ordinary readable text ink.
+
 Only functional Xilem rail entries are rendered: Glyphs, Axes when the
 font has axes, and Local AI. GPUI's Shapes and Chat entries are not
 imitated until they have actual Xilem panels and accessible actions.

@@ -26,6 +26,8 @@ pub(crate) struct Palette {
     pub inactive_tab: Color,
     /// The quiet dark band behind the title and tools.
     pub header: Color,
+    /// The high-contrast ink used exclusively on the header band.
+    pub header_ink: Color,
     pub control: Color,
     pub button: Color,
     pub canvas: Color,
@@ -54,13 +56,14 @@ pub(crate) struct Palette {
 impl Palette {
     pub(crate) fn load(theme_id: &str) -> Self {
         let t = load_theme(theme_id).expect("theme file present");
-        Self::from_theme(&t)
+        Self::from_theme(&t, theme_id)
     }
 
-    fn from_theme(t: &CoreTheme) -> Self {
+    fn from_theme(t: &CoreTheme, theme_id: &str) -> Self {
         let titlebar = color(t.surface("titlebar"));
         let panel = color(t.surface("panel"));
         let selected = color(t.role("controlSelected"));
+        let text = color(t.text("primary"));
         Self {
             app: color(t.surface("app")),
             panel,
@@ -81,11 +84,18 @@ impl Palette {
                 selected.components[2] * 0.5,
                 1.0,
             ]),
+            // Gray and Light invert the header controls; Dark's selected
+            // ink is intentionally dark, so it keeps ordinary text ink.
+            header_ink: if theme_id == "dark" {
+                text
+            } else {
+                color(t.role("controlSelectedInk"))
+            },
             control: color(t.surface("control")),
             button: color(t.surface("button")),
             canvas: color(t.surface("canvas")),
             field: color(t.surface("field")),
-            text: color(t.text("primary")),
+            text,
             text_muted: color(t.text("muted")),
             outline: color(t.surface("outline")),
             field_outline: color(t.surface("fieldOutline")),

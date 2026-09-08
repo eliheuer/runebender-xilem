@@ -142,8 +142,23 @@ impl Workspace {
                                 .collect()
                         })
                         .unwrap_or_default();
-                // The export metrics start folded, as in the GPUI build.
-                set.insert("Advanced");
+                // Start with the compact, scan-friendly inspector that the
+                // GPUI shell presents: overview sections are headers until
+                // requested, while the edit-mode coordinate and transform
+                // sections remain immediately useful. This is state only;
+                // every header still toggles its existing accessible panel.
+                set.extend([
+                    "Glyph",
+                    "Font info",
+                    "Dimensions",
+                    "Advanced",
+                    "Kerning",
+                    "Groups",
+                    "Compare",
+                    "Features",
+                    "Layers",
+                    "Related",
+                ]);
                 set
             },
             sel: Sel::Category(match start_cat.as_deref() {

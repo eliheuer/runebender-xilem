@@ -41,8 +41,8 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             icon_button(
                 "glyph-grid",
                 !app.left_collapsed,
-                pal.text_muted,
-                pal.text,
+                pal.header_ink,
+                pal.header,
                 pal.control,
                 pal.control,
                 |app: &mut Workspace| app.left_collapsed = !app.left_collapsed,
@@ -54,7 +54,9 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             sized_box(xrow(
                 Region::Inline,
                 (
-                    label(title).text_size(TextSize::Body.px()).color(pal.text),
+                    label(title)
+                        .text_size(TextSize::Body.px())
+                        .color(pal.header_ink),
                     // Saved is the mark palette's green, not saved its
                     // red: the same two colours the glyph grid uses. The
                     // GPUI build draws this as a keylined tag; here that
@@ -135,8 +137,8 @@ pub(crate) fn direction_chips(app: &Workspace) -> impl WidgetView<Workspace> + u
 /// not in a left column).
 pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    let fg = pal.text_muted;
-    let fg_active = pal.selected_ink();
+    let fg = pal.header_ink;
+    let fg_active = pal.header;
     let active_bg = pal.selected_bg();
     let hover_bg = pal.control;
     let tile = move |icon: &'static str, tool: Tool| {
