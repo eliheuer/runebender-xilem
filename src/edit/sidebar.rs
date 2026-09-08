@@ -197,7 +197,9 @@ impl Workspace {
     pub(crate) fn cell_metrics(&self, cell: f64) -> CellMetrics {
         CellMetrics {
             cell,
-            padding: 12.0,
+            padding: 10.0,
+            padding_y: 4.0,
+            captions_below: true,
             ascender: self.font.ascender(),
             descender: self.font.descender(),
             upm: self.font.units_per_em(),
@@ -210,6 +212,8 @@ impl Workspace {
         CellMetrics {
             cell: 32.0,
             padding: 6.0,
+            padding_y: 2.0,
+            captions_below: false,
             ascender: self.font.ascender(),
             descender: self.font.descender(),
             upm: self.font.units_per_em(),

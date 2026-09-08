@@ -123,6 +123,10 @@ The editor rail now gives its compact glyph grid the full rail width and a
 five-column density, matching the current live GPUI web frame at 1352×864.
 The overview grid retains its independent, user-controlled cell size.
 
+The overview grid now uses GPUI's separate caption band below each thumbnail,
+with its 1352×864 live-frame inset and eight-column geometry. Compact rail
+thumbnails retain their shorter, caption-free rows.
+
 Linked node ports use the same typed mark color as their wire, rather than the
 generic node ink; the source, model, glyph, and layer connections therefore
 read as continuous colored paths.

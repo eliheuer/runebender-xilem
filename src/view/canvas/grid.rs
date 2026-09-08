@@ -107,6 +107,10 @@ pub(crate) struct CellMetrics {
     /// Insets around this grid. The editor rail is intentionally denser
     /// than the overview, matching GPUI's compact thumbnail index.
     pub padding: f64,
+    /// Vertical grid inset, independent from the horizontal rail inset.
+    pub padding_y: f64,
+    /// Whether each row reserves a caption band below its thumbnail.
+    pub captions_below: bool,
     pub ascender: f64,
     pub descender: f64,
     pub upm: f64,
@@ -184,11 +188,24 @@ impl GridWidget {
     }
 
     fn row_pitch(&self) -> f64 {
-        self.metrics.cell + GAP
+        self.cell_height() + GAP
+    }
+
+    /// The overview reserves its two-line name/codepoint caption below
+    /// the thumbnail, as GPUI's grid fit does. The editor rail is a
+    /// thumbnail index, so its short cells do not carry that band.
+    fn cell_height(&self) -> f64 {
+        let caption = if self.metrics.captions_below {
+            let lines = if self.metrics.detail { 3.0 } else { 2.0 };
+            LABEL_TOP + 17.0 * lines + LABEL_GAP * (lines - 1.0) + LABEL_BOTTOM
+        } else {
+            0.0
+        };
+        self.metrics.cell + caption
     }
 
     fn content_height(&self, rows: usize) -> f64 {
-        2.0 * self.metrics.padding + rows as f64 * self.row_pitch() - GAP
+        2.0 * self.metrics.padding_y + rows as f64 * self.row_pitch() - GAP
     }
 
     fn max_scroll(&self, rows: usize) -> f64 {
@@ -202,15 +219,15 @@ impl GridWidget {
             return None;
         }
         let pitch = self.row_pitch();
-        let r = ((p.y + self.scroll - self.metrics.padding) / pitch).floor();
+        let r = ((p.y + self.scroll - self.metrics.padding_y) / pitch).floor();
         if r < 0.0 {
             return None;
         }
         let rows = self.packed();
         let row_index = usize::try_from(round_units(r)).ok()?;
         let row = rows.get(row_index)?;
-        let row_y = self.metrics.padding + r * pitch - self.scroll;
-        if p.y > row_y + self.metrics.cell {
+        let row_y = self.metrics.padding_y + r * pitch - self.scroll;
+        if p.y > row_y + self.cell_height() {
             return None;
         }
         let mut x = self.metrics.padding;
@@ -275,14 +292,14 @@ impl Widget for GridWidget {
         let mark_ink = pal.mark_ink.unwrap_or(glyph_fill);
 
         for (r, row) in rows.iter().enumerate() {
-            let y = self.metrics.padding + r as f64 * pitch - self.scroll;
-            if y + self.metrics.cell < 0.0 || y > self.size.height {
+            let y = self.metrics.padding_y + r as f64 * pitch - self.scroll;
+            if y + self.cell_height() < 0.0 || y > self.size.height {
                 continue;
             }
             let mut x = self.metrics.padding;
             for &(ci, span) in row {
                 let w = self.cell_width(span);
-                let rect = Rect::new(x, y, x + w, y + self.metrics.cell);
+                let rect = Rect::new(x, y, x + w, y + self.cell_height());
                 x += w + GAP;
                 let Some(cell) = self.cells.get(ci) else {
                     continue;
@@ -499,7 +516,10 @@ impl Widget for GridWidget {
 /// Map design space into a cell: fit the em box (advance wide, ascender..descender tall)
 /// with a margin, Y-flipped, biased toward the top so descenders have room.
 fn fit_transform(cell: Rect, advance: f64, m: &CellMetrics) -> Affine {
-    let margin = 12.0;
+    // GPUI's overview tiles leave generous air around their separate
+    // caption band. The compact editor rail keeps the tighter thumbnail
+    // fit so its five-column index stays legible.
+    let margin = if m.captions_below { 20.0 } else { 12.0 };
     let inner = Rect::new(
         cell.x0 + margin,
         cell.y0 + margin,
