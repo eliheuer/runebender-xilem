@@ -351,9 +351,12 @@ impl Widget for NodesWidget {
                 };
                 let ink = if fades { pal.text_muted } else { pal.text };
                 let dot = tf * nl::circle(port.at, nl::PORT_R);
-                painter
-                    .fill(&dot, if port.linked { ink } else { pal.field })
-                    .draw();
+                let fill = if port.linked {
+                    self.kind_color(port.kind)
+                } else {
+                    pal.field
+                };
+                painter.fill(&dot, fill).draw();
                 painter.stroke(&dot, &Stroke::new(1.0), ink).draw();
                 if takes {
                     let ring = tf * nl::circle(port.at, nl::PORT_R * 2.0);

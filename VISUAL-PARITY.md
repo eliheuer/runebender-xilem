@@ -117,3 +117,7 @@ The editor metrics card follows the GPUI placement and hierarchy: it is
 centered over the bottom of the canvas, keeps the glyph mark in its header,
 and presents the two kerning groups beside the editable LSB, width, and RSB
 fields. The hit targets are derived from the same rectangles the painter uses.
+
+Linked node ports use the same typed mark color as their wire, rather than the
+generic node ink; the source, model, glyph, and layer connections therefore
+read as continuous colored paths.
