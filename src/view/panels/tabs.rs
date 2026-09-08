@@ -82,7 +82,7 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 (app.rail == Rail::LocalAi).then(|| local_ai_panel(app)),
                 (app.rail == Rail::Glyphs).then(|| {
                     text_input(app.filter.clone(), |app: &mut Workspace, v| app.filter = v)
-                        .placeholder("Search")
+                        .placeholder("Search glyphs")
                         .text_color(pal.text)
                         .placeholder_color(pal.text_muted)
                         .background_color(pal.field())
@@ -456,7 +456,7 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         app.filter = v;
                         app.rebuild_search_regex();
                     })
-                    .placeholder("Search")
+                    .placeholder("Search glyphs")
                     .text_color(pal.text)
                     .placeholder_color(pal.text_muted)
                     .background_color(pal.field())
