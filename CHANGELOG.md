@@ -15,7 +15,7 @@ Until then, `main` is the only line and this section stays open.
 
 ### Changed
 
-- Align the Xilem header and editor rail with GPUI's shared theme surface hierarchy.
+- Align the Xilem header, editor rail, and node canvas with GPUI's shared visual hierarchy.
 
 - Shared live experiment, kerning and drawing tools through MCP; refresh open sessions after application and preserve undo. Uses the core Designbot proof interface.
 

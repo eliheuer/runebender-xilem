@@ -193,13 +193,15 @@ impl Widget for NodesWidget {
         let zoom = self.viewport.zoom;
         painter.fill_rect(self.size.to_rect(), pal.app);
 
-        // The grid: a ring at every pitch, quiet, behind everything.
+        // The GPUI canvas uses a quiet field of solid alignment dots.
+        // Painting the shared circles rather than stroking them keeps the
+        // pattern dense and legible at normal zoom without competing with
+        // node ports or wires.
         if nl::GRID * zoom >= 8.0 {
             let rings = nl::grid_rings(nl::visible_canvas(&self.viewport, self.size.to_rect()));
             painter
-                .stroke(
+                .fill(
                     &(tf * rings),
-                    &Stroke::new(1.0),
                     // Mixed most of the way into the ground, as the
                     // GPUI build draws it, so the grid stays behind.
                     mix(pal.app, pal.outline, 0.4),

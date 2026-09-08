@@ -33,6 +33,33 @@ Only functional Xilem rail entries are rendered: Glyphs, Axes when the
 font has axes, and Local AI. GPUI's Shapes and Chat entries are not
 imitated until they have actual Xilem panels and accessible actions.
 
+## GPUI screenshot reference: 2026-09-07
+
+The owner supplied three current GPUI captures, retained outside this
+repository at:
+
+- `/Users/eli/Desktop/Screenshot 2026-09-07 at 8.59.40 PM.png` — Font
+  overview: charcoal header, dense category/sidebar rows, bordered mark
+  cells, full-width accordion inspector, and the status/zoom strip.
+- `/Users/eli/Desktop/Screenshot 2026-09-07 at 9.00.02 PM.png` — Glyph
+  editor: compact icon rail, dotted editing canvas, flat metric popover,
+  preview, and dense inspector controls.
+- `/Users/eli/Desktop/Screenshot 2026-09-07 at 9.01.00 PM.png` — Nodes:
+  filled alignment dots, flat marked node headers, outlined ports and
+  coloured keyed wires.
+
+Those captures are Retina images; the Xilem unattended renderer is fixed
+at scale 1.0. Compare layout relationships, token contrast, and control
+density across them rather than treating physical screenshot pixels as
+logical layout sizes.
+
+### Nodes canvas
+
+The Xilem node canvas now fills its shared core grid circles, producing the
+same quiet solid-dot field visible in the GPUI node capture. It retains
+core's 16-unit snap geometry and Xilem's Vello paths; node state and graph
+semantics are unchanged.
+
 ## Render evidence
 
 Matched input: `VirtuaGrotesk.designspace`, glyph `n`, 1100x720 logical
@@ -52,10 +79,19 @@ was intentionally not captured: doing so would require opening/managing a
 GUI while the owner is using the machine. The committed GPUI source and
 its known dirty state are the reference for this pass.
 
+The current nodes check used `bolden.nodes.json` with
+`RUNEBENDER_NODES=/Users/eli/GH/repos/virtua-grotesk/nodes/bolden.nodes.json`
+and `RUNEBENDER_MODE=nodes`, producing
+`/private/tmp/xilem-nodes-gray.png` at 1920x1298 logical pixels. It was
+visually inspected against the supplied Nodes capture. It is a structural
+comparison only: graph layout and file contents differ, and it does not
+assert GPU or interaction parity.
+
 ## Remaining gaps
 
-- Compare matching GPUI pixels once an unattended GPUI capture command or
-  already-captured reference images are available.
+- Compare matching GPUI pixels once an unattended GPUI capture command is
+  available; the supplied captures now cover the overview, editor, and
+  nodes surfaces.
 - Bring the header tab faces, grid/list filters, inspector density,
   preview/splitters, nodes, and proposal surfaces through the same
   screenshot-led loop.
