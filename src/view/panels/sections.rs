@@ -5,25 +5,14 @@
 
 use crate::*;
 
-/// Layers: one row per master, with a thumbnail of the current glyph in
-/// that master. Clicking a row switches the active master. This is the
-/// gpui inspector's Layers section, and it replaces the old tab strip
-/// that sat across the top of the canvas.
+/// Masters: one compact row per designspace source. This is deliberately
+/// separate from reference-layer controls: GPUI presents master switching as
+/// a plain list, while underlays belong to the editor's Layers section.
 pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> {
-    use masonry::imaging::Painter;
-    use masonry::kurbo::{Affine, Size};
     if app.font.master_names().len() < 2 {
         return None;
     }
     let pal = &app.palette;
-    let glyph_name = match app.mode {
-        Mode::Editor(_) => Some(app.session.glyph_name.clone()),
-        Mode::Overview | Mode::Nodes => app
-            .selected
-            .and_then(|i| app.font.glyphs.get(i))
-            .map(|g| g.name.clone()),
-    };
-    let (asc, desc) = (app.font.ascender(), app.font.descender());
     let rows: Vec<_> = app
         .font
         .short_master_names()
@@ -31,76 +20,22 @@ pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspac
         .enumerate()
         .map(|(i, name)| {
             let active = i == app.font.active();
-            let shown = app.reference_layers.contains(&i);
             let (bg, fg) = if active {
                 (pal.selected_bg(), pal.selected_ink())
             } else {
                 (pal.panel, pal.text)
             };
-            // A lit thumbnail means the master is drawn as a ghost under
-            // the active outline; clicking the thumbnail toggles that.
-            let ink = if active || shown {
-                pal.text
-            } else {
-                pal.text_muted
-            };
-            let thumb_bg = if shown {
-                pal.role("reference").with_alpha(0.28)
-            } else {
-                pal.control
-            };
-            let path_and_advance = glyph_name
-                .as_ref()
-                .and_then(|n| app.font.master_glyph(i, n));
-            let thumb = path_and_advance.map(|(path, advance)| {
-                sized_box(
-                    button(
-                        sized_box(canvas(
-                            move |_app: &mut Workspace, _ctx, scene, size: Size| {
-                                let mut p = Painter::new(scene);
-                                let em = (asc - desc).max(1.0);
-                                let scale = (size.height / em).min(size.width / advance.max(1.0));
-                                let ox = (size.width - advance * scale) / 2.0;
-                                let baseline = size.height + desc * scale;
-                                let t = Affine::new([scale, 0.0, 0.0, -scale, ox, baseline]);
-                                p.fill(&(t * path.clone()), ink).draw();
-                            },
-                        ))
-                        .dims(Dimensions::new(
-                            Dim::from(ControlSize::Icon),
-                            Dim::from(ControlSize::Icon),
-                        )),
-                        move |app: &mut Workspace| {
-                            if !app.reference_layers.remove(&i) {
-                                app.reference_layers.insert(i);
-                            }
-                        },
-                    )
-                    .background_color(thumb_bg),
+            sized_box(
+                button(
+                    label(name).text_size(TextSize::Body.px()).color(fg),
+                    move |app: &mut Workspace| app.set_master(i),
                 )
-                .dims(Dimensions::new(
-                    Dim::from(ControlSize::Control),
-                    Dim::from(ControlSize::Control),
-                ))
-            });
-            xrow(
-                Region::Inline,
-                (
-                    thumb,
-                    sized_box(
-                        button(
-                            label(name).text_size(TextSize::Body.px()).color(fg),
-                            move |app: &mut Workspace| app.set_master(i),
-                        )
-                        .background_color(bg),
-                    )
-                    .dims(Dimensions::new(
-                        Dim::Stretch,
-                        Dim::from(ControlSize::Control),
-                    ))
-                    .flex(1.0),
-                ),
+                .background_color(bg),
             )
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::from(ControlSize::Control),
+            ))
         })
         .collect();
     Some(xcolumn(

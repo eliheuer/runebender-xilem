@@ -517,15 +517,6 @@ impl FontModel {
         }
     }
 
-    pub(crate) fn master_glyph(&self, index: usize, glyph_name: &str) -> Option<(BezPath, f64)> {
-        let master = self.project.masters.get(index)?;
-        let glyph = master.font.get_glyph(glyph_name)?;
-        Some((
-            glyph_paths::glyph_to_bezpath(glyph, &master.font),
-            glyph.width,
-        ))
-    }
-
     /// Short display names for the masters: the common family prefix is
     /// dropped, so "Bricolage Grotesque 96pt `ExtraBold`" reads as
     /// "96pt `ExtraBold`" in a narrow inspector.
