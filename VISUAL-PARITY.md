@@ -35,6 +35,10 @@ open, and the existing keyboard/pointer-accessible section toggles retain
 their behavior. Header ink follows the shared selected-control ink in Gray
 and Light, while Dark retains its ordinary readable text ink.
 
+The editor title bar also retains the font file name beside its save state,
+matching the GPUI edit view instead of substituting the glyph tab for the
+document identity. This was checked at the 1100x720 compact viewport.
+
 Only functional Xilem rail entries are rendered: Glyphs, Axes when the
 font has axes, and Local AI. GPUI's Shapes and Chat entries are not
 imitated until they have actual Xilem panels and accessible actions.

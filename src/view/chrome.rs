@@ -14,20 +14,15 @@ use crate::*;
 pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let editing = matches!(app.mode, Mode::Editor(_));
-    // The file name is dropped once a glyph is open: with the direction
-    // chips, the tools and the tab strip in the same row there is no
-    // room for it, and nothing in the layout will clip, so an over-wide
-    // label pushes the tabs off the end of the window rather than being
-    // cut. The open font is named by the first tab either way.
-    let title = if editing {
-        String::new()
-    } else {
-        app.font
-            .source()
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default()
-    };
+    // The GPUI title bar keeps the document identity visible in every
+    // mode. An editor tab says which glyph is open; it is not a substitute
+    // for knowing which font the edits belong to.
+    let title = app
+        .font
+        .source()
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let status = if app.modified { "Not saved" } else { "Saved" };
     let bar = xrow(
         Region::Toolbar,
