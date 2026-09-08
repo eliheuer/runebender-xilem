@@ -29,7 +29,6 @@ use crate::widgets::text_label::{self, Anchor};
 use runebender_core::outline::glyph_paths::round_units;
 
 const GAP: f64 = 8.0;
-const PAD: f64 = 12.0;
 /// The label block, in the GPUI build's measurements: a little air over
 /// the first line, the lines close together, and the same inset under
 /// them as at the sides.
@@ -105,6 +104,9 @@ pub(crate) struct Cell {
 pub(crate) struct CellMetrics {
     /// Target cell edge length in px.
     pub cell: f64,
+    /// Insets around this grid. The editor rail is intentionally denser
+    /// than the overview, matching GPUI's compact thumbnail index.
+    pub padding: f64,
     pub ascender: f64,
     pub descender: f64,
     pub upm: f64,
@@ -159,7 +161,8 @@ pub(crate) struct GridWidget {
 impl GridWidget {
     fn columns(&self) -> usize {
         usize::try_from(round_units(
-            ((self.size.width - 2.0 * PAD + GAP) / (self.metrics.cell + GAP)).floor(),
+            ((self.size.width - 2.0 * self.metrics.padding + GAP) / (self.metrics.cell + GAP))
+                .floor(),
         ))
         .unwrap_or(1)
         .max(1)
@@ -185,7 +188,7 @@ impl GridWidget {
     }
 
     fn content_height(&self, rows: usize) -> f64 {
-        2.0 * PAD + rows as f64 * self.row_pitch() - GAP
+        2.0 * self.metrics.padding + rows as f64 * self.row_pitch() - GAP
     }
 
     fn max_scroll(&self, rows: usize) -> f64 {
@@ -195,22 +198,22 @@ impl GridWidget {
 
 impl GridWidget {
     fn cell_index_at(&self, p: Point) -> Option<usize> {
-        if p.x < PAD || p.y < 0.0 {
+        if p.x < self.metrics.padding || p.y < 0.0 {
             return None;
         }
         let pitch = self.row_pitch();
-        let r = ((p.y + self.scroll - PAD) / pitch).floor();
+        let r = ((p.y + self.scroll - self.metrics.padding) / pitch).floor();
         if r < 0.0 {
             return None;
         }
         let rows = self.packed();
         let row_index = usize::try_from(round_units(r)).ok()?;
         let row = rows.get(row_index)?;
-        let row_y = PAD + r * pitch - self.scroll;
+        let row_y = self.metrics.padding + r * pitch - self.scroll;
         if p.y > row_y + self.metrics.cell {
             return None;
         }
-        let mut x = PAD;
+        let mut x = self.metrics.padding;
         for &(ci, span) in row {
             let w = self.cell_width(span);
             if p.x >= x && p.x <= x + w {
@@ -272,11 +275,11 @@ impl Widget for GridWidget {
         let mark_ink = pal.mark_ink.unwrap_or(glyph_fill);
 
         for (r, row) in rows.iter().enumerate() {
-            let y = PAD + r as f64 * pitch - self.scroll;
+            let y = self.metrics.padding + r as f64 * pitch - self.scroll;
             if y + self.metrics.cell < 0.0 || y > self.size.height {
                 continue;
             }
-            let mut x = PAD;
+            let mut x = self.metrics.padding;
             for &(ci, span) in row {
                 let w = self.cell_width(span);
                 let rect = Rect::new(x, y, x + w, y + self.metrics.cell);

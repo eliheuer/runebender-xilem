@@ -118,6 +118,10 @@ centered over the bottom of the canvas, keeps the glyph mark in its header,
 and presents the two kerning groups beside the editable LSB, width, and RSB
 fields. The hit targets are derived from the same rectangles the painter uses.
 
+The editor rail now gives its compact glyph grid the full rail width and a
+five-column density, matching the current live GPUI web frame at 1352×864.
+The overview grid retains its independent, user-controlled cell size.
+
 Linked node ports use the same typed mark color as their wire, rather than the
 generic node ink; the source, model, glyph, and layer connections therefore
 read as continuous colored paths.

@@ -93,9 +93,13 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 // The grid scrolls itself, so no portal here: nesting the two
                 // gave the rail a dead area below the third row.
                 (app.rail == Rail::Glyphs).then(|| {
-                    grid(
+                    sized_box(grid(
                         app.filtered_cells(),
-                        app.cell_metrics(62.0),
+                        // GPUI's editor rail keeps a five-column thumbnail
+                        // index in this width. The overview remains at the
+                        // user-controlled 96px target; only this compact
+                        // navigation grid uses smaller cards and insets.
+                        app.rail_cell_metrics(),
                         app.palette.clone(),
                         current,
                         app.multi_selected.clone(),
@@ -103,7 +107,8 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                             GridEvent::Selected { index, .. } => app.open_glyph(index),
                             GridEvent::Open(i) => app.open_glyph(i),
                         },
-                    )
+                    ))
+                    .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
                     .flex(1.0)
                 }),
             ),

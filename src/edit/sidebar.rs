@@ -197,10 +197,23 @@ impl Workspace {
     pub(crate) fn cell_metrics(&self, cell: f64) -> CellMetrics {
         CellMetrics {
             cell,
+            padding: 12.0,
             ascender: self.font.ascender(),
             descender: self.font.descender(),
             upm: self.font.units_per_em(),
             detail: self.detail,
+        }
+    }
+
+    /// Metrics for the editor's compact glyph rail.
+    pub(crate) fn rail_cell_metrics(&self) -> CellMetrics {
+        CellMetrics {
+            cell: 32.0,
+            padding: 6.0,
+            ascender: self.font.ascender(),
+            descender: self.font.descender(),
+            upm: self.font.units_per_em(),
+            detail: false,
         }
     }
 
