@@ -164,6 +164,43 @@ where
     .dims(Dimensions::new(width, Dim::from(ControlSize::Row)))
 }
 
+/// A title-bar tab: GPUI keeps the header quiet and marks the active
+/// workspace with a warning-colour keyline instead of a filled control.
+fn header_tab_chip<F>(
+    pal: &Palette,
+    text: String,
+    active: bool,
+    fixed_width: bool,
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F>
+where
+    F: Fn(&mut Workspace) + Send + Sync + 'static,
+{
+    let accent = pal.role("warning");
+    let (fg, border) = if active {
+        (accent, accent)
+    } else {
+        (pal.header_ink, pal.text_muted)
+    };
+    let width = if fixed_width {
+        Dim::from(ControlSize::Row)
+    } else {
+        Dim::Auto
+    };
+    sized_box(
+        button(
+            label(text).text_size(TextSize::Body.px()).color(fg),
+            move |app: &mut Workspace| on_click(app),
+        )
+        .background_color(pal.header)
+        .border_color(border)
+        .border_width(Stroke::Hairline.length())
+        .corner_radius(Radius::Sm.length())
+        .padding(Space::Md),
+    )
+    .dims(Dimensions::new(width, Dim::from(ControlSize::Row)))
+}
+
 pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let editing = matches!(app.mode, Mode::Editor(_));
@@ -177,7 +214,7 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             xrow(
                 Region::Inline,
                 (
-                    tab_chip(
+                    header_tab_chip(
                         pal,
                         tab.session.glyph_name.clone(),
                         editing && index == active,
@@ -185,7 +222,7 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         move |app: &mut Workspace| app.activate_tab(index),
                     ),
                     closable.then(|| {
-                        tab_chip(
+                        header_tab_chip(
                             pal,
                             "\u{00d7}".into(),
                             false,
@@ -203,7 +240,7 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             // The font itself is a tab, and it is the one that is active
             // in the overview. Going back to the grid is picking that
             // tab, not pressing a back button.
-            tab_chip(
+            header_tab_chip(
                 pal,
                 "Font".into(),
                 matches!(app.mode, Mode::Overview),
@@ -212,7 +249,7 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             ),
             // Nodes sits beside Font: the workflow over the font, as
             // boxes and wires.
-            tab_chip(
+            header_tab_chip(
                 pal,
                 "Nodes".into(),
                 matches!(app.mode, Mode::Nodes),
@@ -220,7 +257,7 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 |app: &mut Workspace| app.enter_nodes_mode(),
             ),
             xrow(Region::Inline, tabs),
-            tab_chip(pal, "+".into(), false, true, |app: &mut Workspace| {
+            header_tab_chip(pal, "+".into(), false, true, |app: &mut Workspace| {
                 app.new_tab();
             }),
         ),

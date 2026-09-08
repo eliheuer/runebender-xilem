@@ -108,3 +108,7 @@ assert GPU or interaction parity.
 - Functional prerequisites remain for Shapes, Chat, native input/IME, and
   some node/Local-AI interactions. They remain owned by the functional
   parity work, not this visual branch.
+The header workspace tabs now use the GPUI treatment: restrained keylines on
+the header ground, with the selected Font, Nodes, or glyph tab marked in the
+warning role rather than an inverted pill. This was rendered in Gray at
+1100x720 after the change.
