@@ -30,9 +30,22 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
             .reference_outlines(&app.session.glyph_name, &app.reference_layers),
     );
     let interp = app.interp_preview();
+    let groups = (
+        app.font.kern_group(&app.session.glyph_name, true),
+        app.font.kern_group(&app.session.glyph_name, false),
+    );
+    let mark = app
+        .font
+        .glyphs
+        .iter()
+        .find(|glyph| glyph.name == app.session.glyph_name)
+        .and_then(|glyph| glyph.mark.as_deref())
+        .and_then(|label| app.palette.mark(label));
     editor(
         app.session.clone(),
         app.palette.clone(),
+        groups,
+        mark,
         app.tool,
         app.view,
         ghosts,

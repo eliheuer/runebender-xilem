@@ -31,7 +31,8 @@ use crate::widgets::text_label::{self, Anchor};
 /// The metrics panel's geometry, shared by its painting and its boxes.
 const PANEL_PAD: f64 = 10.0;
 const PANEL_ROW: f64 = 18.0;
-const PANEL_WIDTH: f64 = 196.0;
+const PANEL_WIDTH: f64 = 440.0;
+const PANEL_HEADER: f64 = 22.0;
 
 const HIT_RADIUS_PX: f64 = 8.0;
 
@@ -176,6 +177,10 @@ enum Drag {
 pub(crate) struct EditorWidget {
     session: Session,
     palette: Arc<Palette>,
+    /// The glyph's kerning groups, shown in the floating metrics card.
+    groups: (String, String),
+    /// A glyph mark colors the card header, as it does in GPUI.
+    mark: Option<xilem::Color>,
     tool: Tool,
     ghosts: Arc<Vec<kurbo::BezPath>>,
     /// Read-only interpolated instance overlay at the current axis location.
@@ -213,7 +218,7 @@ pub(crate) enum MetricField {
 }
 
 impl EditorWidget {
-    /// The metrics panel that floats over the drawing, bottom left.
+    /// The metrics panel that floats over the drawing, centered at its bottom.
     ///
     /// The GPUI build has this, and it is a large part of why that
     /// editor reads better: the numbers you are working on sit with the
@@ -231,28 +236,23 @@ impl EditorWidget {
     fn metric_boxes(&self) -> Option<[(MetricField, Rect); 3]> {
         self.session.side_bearings()?;
         let (left, top) = self.metrics_panel_origin()?;
-        let y = top + PANEL_PAD + PANEL_ROW;
-        let box_at = |x: f64| Rect::new(left + x, y + 1.0, left + x + 42.0, y + PANEL_ROW - 1.0);
+        let y = top + PANEL_HEADER + PANEL_PAD;
+        let box_at = |x: f64| Rect::new(left + x, y, left + x + 64.0, y + PANEL_ROW);
         Some([
-            (MetricField::Lsb, box_at(32.0)),
-            (MetricField::Width, box_at(76.0)),
-            (MetricField::Rsb, box_at(120.0)),
+            (MetricField::Lsb, box_at(118.0)),
+            (MetricField::Width, box_at(188.0)),
+            (MetricField::Rsb, box_at(258.0)),
         ])
     }
 
     /// The panel's top left corner, or `None` when it does not fit.
     fn metrics_panel_origin(&self) -> Option<(f64, f64)> {
-        let rows = 2 + if self.session.selection_bounds().is_some() {
-            3
-        } else {
-            0
-        };
-        let height = f64::from(rows) * PANEL_ROW + PANEL_PAD * 2.0;
+        let height = PANEL_HEADER + PANEL_ROW + PANEL_PAD * 2.0;
         let top = self.size.height - height - PANEL_PAD;
         if top < 0.0 || PANEL_WIDTH + PANEL_PAD * 2.0 > self.size.width {
             return None;
         }
-        Some((PANEL_PAD, top))
+        Some(((self.size.width - PANEL_WIDTH) / 2.0, top))
     }
 
     /// Type a key into the focused metric box. Returns whether the glyph
@@ -336,11 +336,9 @@ impl EditorWidget {
         const ROW: f64 = PANEL_ROW;
         let pal = &self.palette;
         let bearings = self.session.side_bearings();
-        let bounds = self.session.selection_bounds();
-        let rows = 2 + if bounds.is_some() { 3 } else { 0 };
-        let height = rows as f64 * ROW + PAD * 2.0;
-        let width = 196.0;
-        let left = PAD;
+        let height = PANEL_HEADER + ROW + PAD * 2.0;
+        let width = PANEL_WIDTH;
+        let left = (self.size.width - width) / 2.0;
         let top = self.size.height - height - PAD;
         if top < 0.0 || width + PAD * 2.0 > self.size.width {
             return;
@@ -350,25 +348,36 @@ impl EditorWidget {
         painter
             .stroke(frame, &Stroke::new(1.0), pal.role("gridBorder"))
             .draw();
+        let header = Rect::new(left, top, left + width, top + PANEL_HEADER).to_rounded_rect(6.0);
+        painter.fill(header, self.mark.unwrap_or(pal.header)).draw();
 
         let text_at =
             |painter: &mut Painter<'_>, x: f64, row: f64, s: &str, size: f32, color, anchor| {
                 text_label::draw(
                     painter,
-                    Point::new(left + x, top + PAD + row * ROW + ROW - 5.0),
+                    Point::new(left + x, top + PANEL_HEADER + PAD + row * ROW + ROW - 5.0),
                     s,
                     size,
                     color,
                     anchor,
                 );
             };
-        text_at(
+        let header_text = |painter: &mut Painter<'_>, x: f64, s: &str, size: f32, color, anchor| {
+            text_label::draw(
+                painter,
+                Point::new(left + x, top + PANEL_HEADER - 6.0),
+                s,
+                size,
+                color,
+                anchor,
+            );
+        };
+        header_text(
             painter,
-            10.0,
-            0.0,
+            PAD,
             &self.session.glyph_name,
             12.0_f32,
-            pal.text,
+            pal.header_ink,
             Anchor::Start,
         );
         // The codepoint, right aligned on the same line, as the GPUI
@@ -378,33 +387,32 @@ impl EditorWidget {
         // strings through the widget, the view, `build`, `rebuild` and
         // the constructor.
         if let Some(codepoint) = self.session.glyph.codepoints.iter().next() {
-            text_at(
+            header_text(
                 painter,
-                width - 10.0,
-                0.0,
+                width - PAD,
                 &format!("{:04X}", codepoint as u32),
                 11.0,
-                pal.text_muted,
+                pal.header_ink,
                 Anchor::End,
             );
         }
         if let Some(sb) = &bearings {
             text_at(
                 painter,
-                10.0,
-                1.0,
-                "LSB",
-                10.0,
-                pal.text_muted,
+                PAD,
+                0.0,
+                &self.groups.0,
+                11.0,
+                pal.text,
                 Anchor::Start,
             );
             text_at(
                 painter,
-                width - 10.0,
-                1.0,
-                "RSB",
-                10.0,
-                pal.text_muted,
+                width - PAD,
+                0.0,
+                &self.groups.1,
+                11.0,
+                pal.text,
                 Anchor::End,
             );
             // Three boxes you can type in, like the GPUI build's. Each
@@ -449,60 +457,6 @@ impl EditorWidget {
                         painter.fill(caret, pal.role("textCursor")).draw();
                     }
                 }
-            }
-        }
-        if let Some(b) = bounds {
-            text_at(
-                painter,
-                10.0,
-                2.0,
-                "Selection",
-                10.0,
-                pal.text_muted,
-                Anchor::Start,
-            );
-            for (row, (label_a, a, label_b, value_b)) in
-                [("X", b.x0, "W", b.width()), ("Y", b.y0, "H", b.height())]
-                    .into_iter()
-                    .enumerate()
-            {
-                let row = 3.0 + row as f64;
-                text_at(
-                    painter,
-                    10.0,
-                    row,
-                    label_a,
-                    10.0,
-                    pal.text_muted,
-                    Anchor::Start,
-                );
-                text_at(
-                    painter,
-                    84.0,
-                    row,
-                    &format!("{a:.0}"),
-                    11.0,
-                    pal.text,
-                    Anchor::End,
-                );
-                text_at(
-                    painter,
-                    104.0,
-                    row,
-                    label_b,
-                    10.0,
-                    pal.text_muted,
-                    Anchor::Start,
-                );
-                text_at(
-                    painter,
-                    186.0,
-                    row,
-                    &format!("{value_b:.0}"),
-                    11.0,
-                    pal.text,
-                    Anchor::End,
-                );
             }
         }
     }
@@ -1582,6 +1536,8 @@ fn interp_eq(a: &Option<Arc<kurbo::BezPath>>, b: &Option<Arc<kurbo::BezPath>>) -
 pub(crate) struct EditorView<F> {
     session: Arc<Session>,
     palette: Arc<Palette>,
+    groups: (String, String),
+    mark: Option<xilem::Color>,
     tool: Tool,
     view: ViewOptions,
     ghosts: Arc<Vec<kurbo::BezPath>>,
@@ -1600,6 +1556,8 @@ pub(crate) struct EditorView<F> {
 pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
     session: Arc<Session>,
     palette: Arc<Palette>,
+    groups: (String, String),
+    mark: Option<xilem::Color>,
     tool: Tool,
     view: ViewOptions,
     ghosts: Arc<Vec<kurbo::BezPath>>,
@@ -1611,6 +1569,8 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
     EditorView {
         session,
         palette,
+        groups,
+        mark,
         tool,
         view,
         ghosts,
@@ -1698,6 +1658,8 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
         let widget = EditorWidget {
             session,
             palette: self.palette.clone(),
+            groups: self.groups.clone(),
+            mark: self.mark,
             tool: self.tool,
             ghosts: self.ghosts.clone(),
             interp: self.interp.clone(),
@@ -1740,6 +1702,14 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             if self.tool != Tool::Pen {
                 element.widget.session.pen_cancel();
             }
+            dirty = true;
+        }
+        if self.groups != prev.groups {
+            element.widget.groups = self.groups.clone();
+            dirty = true;
+        }
+        if self.mark != prev.mark {
+            element.widget.mark = self.mark;
             dirty = true;
         }
         if self.view != prev.view {
@@ -1834,6 +1804,8 @@ mod tests {
         EditorWidget {
             session: session(),
             palette: Arc::new(Palette::load("dark")),
+            groups: (String::new(), String::new()),
+            mark: None,
             tool: Tool::Select,
             ghosts: Arc::new(Vec::new()),
             interp: None,
@@ -1864,7 +1836,7 @@ mod tests {
         assert_eq!(widget.session.advance(), 900.0);
     }
 
-    /// The boxes are where the panel paints them, at the bottom left.
+    /// The boxes are where the centered panel paints them.
     #[test]
     fn metric_boxes_sit_in_the_panel() {
         let mut widget = widget();

@@ -112,3 +112,8 @@ The header workspace tabs now use the GPUI treatment: restrained keylines on
 the header ground, with the selected Font, Nodes, or glyph tab marked in the
 warning role rather than an inverted pill. This was rendered in Gray at
 1100x720 after the change.
+
+The editor metrics card follows the GPUI placement and hierarchy: it is
+centered over the bottom of the canvas, keeps the glyph mark in its header,
+and presents the two kerning groups beside the editable LSB, width, and RSB
+fields. The hit targets are derived from the same rectangles the painter uses.
