@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Retain the live text buffer across tool switches without consuming outline-tool input.
+
 - Match GPUI continuity rings while preserving the underlying point markers.
 
 - Draw curvature combs with GPUI-normalized geometry and theme-colored, outlined teeth.

@@ -576,7 +576,7 @@ impl Widget for EditorWidget {
             if !self.session.fitted {
                 // The text tool frames the line; everything else frames
                 // the glyph.
-                if self.text.is_some() {
+                if self.tool == Tool::Text && self.text.is_some() {
                     self.fit_text();
                 } else {
                     self.fit();
@@ -599,7 +599,9 @@ impl Widget for EditorWidget {
         // The text tool draws a line of glyphs rather than one glyph.
         // The active sort is the one being edited, so it keeps the
         // editing colour and the rest are quiet.
-        if let Some(text) = &self.text {
+        if self.tool == Tool::Text
+            && let Some(text) = &self.text
+        {
             let m = &self.session.metrics;
             let ink = pal.text;
             let quiet = pal.text.with_alpha(0.55);
@@ -1111,7 +1113,8 @@ impl Widget for EditorWidget {
                 let at = ctx.local_position(state.position);
                 // Text tool: a click is a caret placement, and a click on
                 // a sort makes that glyph the one being edited.
-                if let Some(text) = self.text.as_mut()
+                if self.tool == Tool::Text
+                    && let Some(text) = self.text.as_mut()
                     && *button == Some(PointerButton::Primary)
                 {
                     let design = self.session.viewport.screen_to_design(at);
@@ -1430,7 +1433,8 @@ impl Widget for EditorWidget {
         // The text tool types. Everything a key would otherwise do to
         // the outline is off while it is in hand, because a person
         // typing "n" means the letter, not the pen.
-        if let Some(text) = self.text.as_mut()
+        if self.tool == Tool::Text
+            && let Some(text) = self.text.as_mut()
             && !cmd
         {
             let handled = match &key.key {
@@ -1752,7 +1756,8 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
                     element.widget.fit_text();
                     element.ctx.request_layout();
                 }
-                (None, _) => element.widget.text = None,
+                // Park the buffer between tool changes; only Text handles typing.
+                (None, _) => {}
             }
             element.widget.text_inputs = self.text.clone();
             dirty = true;

@@ -402,3 +402,20 @@ Build, Clippy with warnings denied, and 36 tests pass. This matches overlay
 geometry and color policy; overall editor parity still needs persistent
 word context, matching zoom/state, remaining inspector controls, and native
 interaction/rendering proof. The release binary predates this overlay pass.
+
+## September 9 text-buffer retention
+
+Switching away from Text previously set the canvas TextState to None,
+discarding typed content. The live editor widget now parks that buffer
+and refreshes it when Text is selected again. Text painting, caret clicks,
+and typing are explicitly gated on Tool::Text, so a parked buffer cannot
+consume outline-editing input. Scope is tool switches in the live widget,
+not persistence across editor destruction, application restarts, or sessions.
+
+Build, Clippy with warnings denied, and 36 existing tests pass. No dedicated
+interactive tool-switch regression or native proof has been completed.
+This does not complete persistent in-canvas word context: that requires
+placing the editable glyph at its shaped sort origin and applying the same
+origin to point hit testing, overlays, and metrics, while leaving shaping
+and Arabic joining in core. Simply keeping the text paint branch active
+would return before drawing/editing the outline and is not a valid fix.
