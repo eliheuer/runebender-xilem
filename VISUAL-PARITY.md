@@ -257,3 +257,21 @@ exact pixel comparison: reference screenshots have different window sizes and
 canvas zoom. Remaining visible gaps include shorter rail cells, smaller canvas
 glyph framing, extra proof controls, missing in-canvas text context, and the
 inspector's Measure section versus the GPUI Axes/Shaping inventory.
+
+## September 9 grid sizing and rebuild pass
+
+Read GPUI `src/view/grid.rs`: rail rows use a 1.18 aspect factor, and
+row heights divide the available viewport. Xilem now uses those rules in
+its existing grid widget. Grid rebuilds now propagate changed cell metrics
+and palette pointers; previously they updated selection and cell data only.
+Changing metrics resets scroll so a stale offset cannot hide resized rows.
+
+Inspected 1200x890 headless Gray editor and Light overview images:
+`/private/tmp/xilem-grid-fit-gray.png` and
+`/private/tmp/xilem-grid-fit-light.png`. Build, Clippy with warnings denied,
+and 35 tests pass. Whole-row fitting applies at the initial scroll position;
+GPUI's row-quantized wheel scrolling is still a behavioral gap. Overview
+caption/thumbnail proportions and ink fitting need another comparison pass.
+GPUI and Xilem both use a 0.62 initial canvas-fit factor: the much larger R
+in the reference is a different zoom state, not evidence for changing that
+default arbitrarily.

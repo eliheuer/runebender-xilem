@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Fit glyph rows to the viewport, give rail thumbnails GPUI proportions, and propagate grid size/theme changes on rebuild.
+
 - Give word proofs the GPUI initial drawing height and start additional inspector sections folded.
 
 - Add a contour-selection Shapes rail, inverted word proofs, connected coordinate reference controls, and GPUI-style glyph and node shadows.

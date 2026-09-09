@@ -29,6 +29,8 @@ use crate::widgets::text_label::{self, Anchor};
 use runebender_core::outline::glyph_paths::round_units;
 
 const GAP: f64 = 8.0;
+/// GPUI gives the compact rail extra vertical room for its outlines.
+const RAIL_ROW_FACTOR: f64 = 1.18;
 /// The label block, in the GPUI build's measurements: a little air over
 /// the first line, the lines close together, and the same inset under
 /// them as at the sides.
@@ -100,7 +102,7 @@ pub(crate) struct Cell {
 }
 
 /// The vertical metrics the cell preview is scaled against.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(crate) struct CellMetrics {
     /// Target cell edge length in px.
     pub cell: f64,
@@ -207,7 +209,15 @@ impl GridWidget {
         } else {
             0.0
         };
-        self.cell_width(1) + caption
+        let factor = if self.metrics.captions_below {
+            1.0
+        } else {
+            RAIL_ROW_FACTOR
+        };
+        let target = (self.cell_width(1) + caption) * factor;
+        let available = (self.size.height - 2.0 * self.metrics.padding_y).max(target);
+        let rows = ((available + GAP) / (target + GAP)).floor().max(1.0);
+        ((available - GAP * (rows - 1.0)) / rows).floor().max(1.0)
     }
 
     fn content_height(&self, rows: usize) -> f64 {
@@ -609,6 +619,15 @@ where
         _: &mut Workspace,
     ) {
         let mut changed = false;
+        if self.metrics != prev.metrics {
+            element.widget.metrics = self.metrics;
+            element.widget.scroll = 0.0;
+            changed = true;
+        }
+        if !Arc::ptr_eq(&self.palette, &prev.palette) {
+            element.widget.palette = self.palette.clone();
+            changed = true;
+        }
         if !Arc::ptr_eq(&self.cells, &prev.cells) {
             element.widget.cells = self.cells.clone();
             element.widget.scroll = 0.0;
