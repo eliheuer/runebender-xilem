@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Count the primary overview selection and contain glyph captions within their tiles.
+
 - Retain the live text buffer across tool switches without consuming outline-tool input.
 
 - Match GPUI continuity rings while preserving the underlying point markers.

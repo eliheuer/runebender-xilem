@@ -429,3 +429,18 @@ two-character buffer. Clippy with warnings denied and all 37 tests pass.
 This verifies event gating, not the Xilem view-rebuild transition itself,
 native IME, Arabic joining, or cross-session text persistence. No visual
 rendering changed in this test-only pass.
+
+## September 9 overview counts and caption containment
+
+The status count now includes the primary selection, adding it only when
+not already present in the multi-selection set. Long caption text is
+clipped inside its glyph tile with a balanced imaging clip scope; spanning
+cells retain their full width.
+
+Inspected Mark-category Gray and Light 1200x890 renders at
+`/private/tmp/xilem-marks-gray.png` and `/private/tmp/xilem-marks-light.png`.
+Build, Clippy with warnings denied, and 37 tests pass. The selected A stays
+selected when filtered out, so the count remains one while 84 marks are
+shown; the right preview intentionally continues to show that selection.
+No font marks or sources were changed. Full selection-toggle behavior and
+caption ellipsis/tooltips remain separate work.

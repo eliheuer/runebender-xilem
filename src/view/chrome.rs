@@ -223,7 +223,11 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let text = match app.mode {
         Mode::Overview => format!(
             "{} selected \u{00b7} {}/{} glyphs",
-            app.multi_selected.len(),
+            app.multi_selected.len()
+                + usize::from(
+                    app.selected
+                        .is_some_and(|index| !app.multi_selected.contains(&index))
+                ),
             app.filtered_cells().len(),
             app.font.glyphs.len(),
         ),

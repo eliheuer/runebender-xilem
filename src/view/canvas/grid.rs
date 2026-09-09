@@ -409,6 +409,12 @@ impl Widget for GridWidget {
                 } else {
                     self.palette.text_muted
                 };
+                painter.push_fill_clip(Rect::new(
+                    rect.x0 + 1.0,
+                    rect.y0,
+                    rect.x1 - 1.0,
+                    rect.y1 - 1.0,
+                ));
                 let name_color = ink;
                 let top = rect.y1 - block + LABEL_TOP;
                 // Baseline inside its own line box, not the box edge.
@@ -450,6 +456,7 @@ impl Widget for GridWidget {
                         Anchor::Start,
                     );
                 }
+                painter.pop_clip();
             }
         }
 
