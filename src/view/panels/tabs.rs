@@ -113,14 +113,12 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     .boxed()
 }
 
-pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+/// One navigation strip for the font, node, and glyph workspaces.
+fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    let current = match app.mode {
-        Mode::Editor(i) => Some(i),
-        _ => None,
-    };
     let tab = |icon: &'static str, which: Rail| {
-        let active = app.rail == which;
+        let active =
+            app.rail == which || (!editing && app.rail == Rail::Shapes && which == Rail::Glyphs);
         let (foreground, background, height) = if active {
             (pal.text, pal.panel, ControlSize::Control)
         } else {
@@ -144,23 +142,29 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         .dims(Dimensions::new(Dim::Stretch, Dim::from(height)))
     };
     let has_axes = !app.font.axes.is_empty();
-    flex_col((
-        // The fixed-height rail leaves one shared rule underneath. It
-        // gives the selected icon a stable visual join to the panel
-        // below while inactive icons remain recessed.
-        sized_box(
-            xrow(
-                Region::Inline,
-                (
-                    tab("glyph-grid", Rail::Glyphs).flex(1.0),
-                    tab("shapes", Rail::Shapes).flex(1.0),
-                    has_axes.then(|| tab("measure", Rail::Axes).flex(1.0)),
-                    tab("preview", Rail::LocalAi).flex(1.0),
-                ),
-            )
-            .background_color(pal.tab_rail),
+    sized_box(
+        xrow(
+            Region::Inline,
+            (
+                tab("glyph-grid", Rail::Glyphs).flex(1.0),
+                editing.then(|| tab("shapes", Rail::Shapes).flex(1.0)),
+                has_axes.then(|| tab("measure", Rail::Axes).flex(1.0)),
+                tab("preview", Rail::LocalAi).flex(1.0),
+            ),
         )
-        .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(36.0)))),
+        .background_color(pal.tab_rail),
+    )
+    .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(36.0))))
+}
+
+pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    let current = match app.mode {
+        Mode::Editor(i) => Some(i),
+        _ => None,
+    };
+    flex_col((
+        rail_tabs(app, true),
         xcolumn(
             Region::Panel,
             (
@@ -386,6 +390,19 @@ where
 }
 
 pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    use xilem::core::one_of::OneOf3;
+    let content = match app.rail {
+        Rail::Axes if !app.font.axes.is_empty() => OneOf3::A(flex_col((axes_section(app),))),
+        Rail::LocalAi => OneOf3::B(local_ai_panel(app)),
+        _ => OneOf3::C(category_sidebar(app)),
+    };
+    flex_col((rail_tabs(app, false), content.flex(1.0)))
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .gap(Space::None)
+        .background_color(app.palette.panel)
+}
+
+fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::Either;
     let pal = &app.palette;
 

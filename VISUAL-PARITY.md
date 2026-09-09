@@ -295,3 +295,18 @@ Remaining overview gaps include the missing rail tab strip, sidebar group
 spacing and borders, bottom control styling, and matching zoom/selection
 state for an exact reference comparison. No upstream Xilem blocker was
 needed to explain or fix these thumbnail differences.
+
+## September 9 shared rail navigation
+
+Overview and node workspaces now use the same navigation-strip builder as
+the glyph editor. Glyphs opens categories, Axes opens the existing axis
+controls when axes exist, and Local AI opens the existing models/tasks/nodes
+panel. Shapes remains editor-only; returning from Shapes to overview shows
+categories with the Glyphs tab active. No inert Chat tab was added.
+
+Inspected Gray overview and Light Local AI overview renders at 1200x890:
+`/private/tmp/xilem-nav-gray.png` and `/private/tmp/xilem-nav-ai-light.png`.
+Build, Clippy with warnings denied, and 36 tests pass. Models were listed
+only; no task, graph, install, or font-source write was executed. Native
+pointer navigation remains unverified. Remaining rail gaps include GPUI's
+Chat destination, sidebar group rules/insets, and count/control placement.

@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Share working Glyphs, Axes, and Local AI navigation across font, node, and glyph workspaces.
+
 - Match GPUI thumbnail ink centering, em-relative scale, and compact caption spacing; keep tall marks inside their cells.
 
 - Fit glyph rows to the viewport, give rail thumbnails GPUI proportions, and propagate grid size/theme changes on rebuild.
