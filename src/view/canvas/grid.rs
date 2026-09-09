@@ -173,7 +173,13 @@ impl GridWidget {
     }
 
     fn cell_width(&self, span: usize) -> f64 {
-        self.metrics.cell * span as f64 + GAP * (span.saturating_sub(1)) as f64
+        let edge = if self.metrics.captions_below {
+            self.metrics.cell
+        } else {
+            let columns = self.columns() as f64;
+            (self.size.width - 2.0 * self.metrics.padding - GAP * (columns - 1.0)) / columns
+        };
+        edge * span as f64 + GAP * (span.saturating_sub(1)) as f64
     }
 
     /// Packed rows of (cell-index-in-self.cells, span).
@@ -201,7 +207,7 @@ impl GridWidget {
         } else {
             0.0
         };
-        self.metrics.cell + caption
+        self.cell_width(1) + caption
     }
 
     fn content_height(&self, rows: usize) -> f64 {
@@ -323,7 +329,7 @@ impl Widget for GridWidget {
                 } else {
                     glyph_fill
                 };
-                let radius = Radius::Sm.px();
+                let radius = Radius::None.px();
                 painter.fill(rect.to_rounded_rect(radius), bg).draw();
                 let border = if picked {
                     pal.role("cellSelectedFill")
@@ -343,17 +349,18 @@ impl Widget for GridWidget {
                 // One type size, the interface's: a cell too narrow to
                 // carry a name at it carries none. The GPUI build's
                 // thresholds.
-                let (label_size, label_lines): (f64, usize) = if w < 48.0 {
-                    (0.0, 0)
-                } else if w < 64.0 {
-                    (13.0, 1)
-                } else {
-                    let mut lines = if cell.codepoint.is_some() { 2 } else { 1 };
-                    if self.metrics.detail {
-                        lines += 1;
-                    }
-                    (13.0, lines)
-                };
+                let (label_size, label_lines): (f64, usize) =
+                    if !self.metrics.captions_below || w < 48.0 {
+                        (0.0, 0)
+                    } else if w < 64.0 {
+                        (13.0, 1)
+                    } else {
+                        let mut lines = if cell.codepoint.is_some() { 2 } else { 1 };
+                        if self.metrics.detail {
+                            lines += 1;
+                        }
+                        (13.0, lines)
+                    };
                 let line = (label_size * 1.25).ceil();
                 let block = if label_lines == 0 {
                     0.0
@@ -519,7 +526,7 @@ fn fit_transform(cell: Rect, advance: f64, m: &CellMetrics) -> Affine {
     // GPUI's overview tiles leave generous air around their separate
     // caption band. The compact editor rail keeps the tighter thumbnail
     // fit so its five-column index stays legible.
-    let margin = if m.captions_below { 20.0 } else { 12.0 };
+    let margin = if m.captions_below { 20.0 } else { 3.0 };
     let inner = Rect::new(
         cell.x0 + margin,
         cell.y0 + margin,

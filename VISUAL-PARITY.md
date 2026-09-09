@@ -130,3 +130,22 @@ thumbnails retain their shorter, caption-free rows.
 Linked node ports use the same typed mark color as their wire, rather than the
 generic node ink; the source, model, glyph, and layer connections therefore
 read as continuous colored paths.
+
+## Screenshot-led follow-up, 2026-09-08
+
+Compared native GPUI at 79e3ab1 with Xilem rendered at 1200x800 on
+Virtua Grotesk glyph n. Corrected the compact rail: fill available column
+width, reduce excessive glyph margins, and suppress captions on spanning
+rail tiles (including Arabic names). Painting and hit testing share the
+expanded cell geometry. Shared fields and action buttons now have square,
+keylined edges. Tightened the coordinate picker and corrected metrics-card
+header contrast and borders. Gray and Light screenshots inspected.
+
+Validation: cargo build --locked, cargo fmt --check, git diff --check,
+and all 33 tests passed. GPUI native screenshot inspected; Xilem final
+proofs are Masonry CPU renders. Native capture stalled and the temporary
+Xilem app wrapper opened without a font, so native final parity is unverified.
+
+Remaining visible differences: inspector section borders/order and full-width
+control layout; header and rail tool inventory; metrics-card field layout;
+preview content and controls. These changes do not establish full parity.

@@ -343,12 +343,10 @@ impl EditorWidget {
         if top < 0.0 || width + PAD * 2.0 > self.size.width {
             return;
         }
-        let frame = Rect::new(left, top, left + width, top + height).to_rounded_rect(6.0);
+        let frame = Rect::new(left, top, left + width, top + height);
         painter.fill(frame, pal.panel.with_alpha(0.92)).draw();
-        painter
-            .stroke(frame, &Stroke::new(1.0), pal.role("gridBorder"))
-            .draw();
-        let header = Rect::new(left, top, left + width, top + PANEL_HEADER).to_rounded_rect(6.0);
+        painter.stroke(frame, &Stroke::new(1.0), pal.outline).draw();
+        let header = Rect::new(left, top, left + width, top + PANEL_HEADER);
         painter.fill(header, self.mark.unwrap_or(pal.header)).draw();
 
         let text_at =
@@ -377,7 +375,7 @@ impl EditorWidget {
             PAD,
             &self.session.glyph_name,
             12.0_f32,
-            pal.header_ink,
+            pal.mark_ink.unwrap_or(pal.text),
             Anchor::Start,
         );
         // The codepoint, right aligned on the same line, as the GPUI
@@ -392,7 +390,7 @@ impl EditorWidget {
                 width - PAD,
                 &format!("{:04X}", codepoint as u32),
                 11.0,
-                pal.header_ink,
+                pal.mark_ink.unwrap_or(pal.text),
                 Anchor::End,
             );
         }
@@ -431,15 +429,9 @@ impl EditorWidget {
                             MetricField::Rsb => sb.rsb.to_string(),
                         }
                     };
-                    let border = if focused {
-                        pal.text
-                    } else {
-                        pal.role("gridBorder")
-                    };
-                    painter.fill(rect.to_rounded_rect(3.0), pal.field()).draw();
-                    painter
-                        .stroke(rect.to_rounded_rect(3.0), &Stroke::new(1.0), border)
-                        .draw();
+                    let border = if focused { pal.text } else { pal.outline };
+                    painter.fill(rect, pal.field()).draw();
+                    painter.stroke(rect, &Stroke::new(1.0), border).draw();
                     let baseline = rect.y0 + rect.height() - 4.0;
                     text_label::draw(
                         painter,

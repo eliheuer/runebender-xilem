@@ -101,7 +101,7 @@ where
             .background_color(pal.field())
             .border_color(pal.field_outline)
             .border_width(Stroke::Hairline.length())
-            .corner_radius(Radius::Sm.length()),
+            .corner_radius(Radius::None.length()),
     )
     .dims(Dimensions::new(
         Dim::Stretch,
@@ -132,7 +132,7 @@ where
                     .background_color(pal.field())
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())
-                    .corner_radius(Radius::Sm.length()),
+                    .corner_radius(Radius::None.length()),
             )
             .dims(Dimensions::new(
                 Dim::Stretch,
@@ -174,7 +174,7 @@ where
                     .background_color(pal.field())
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())
-                    .corner_radius(Radius::Sm.length()),
+                    .corner_radius(Radius::None.length()),
             )
             .dims(Dimensions::new(
                 Dim::Stretch,
@@ -263,7 +263,7 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         .background_color(bg)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::Sm.length()),
+        .corner_radius(Radius::None.length()),
     )
     .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
 }
@@ -290,7 +290,7 @@ pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         .background_color(bg)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::Sm.length()),
+        .corner_radius(Radius::None.length()),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
 }
@@ -318,7 +318,7 @@ pub(crate) fn toggle_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         .background_color(bg)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::Sm.length()),
+        .corner_radius(Radius::None.length()),
     )
     .dims(Dimensions::fixed(size.length(), size.length()))
 }
@@ -335,7 +335,9 @@ pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             move |app: &mut Workspace| on_click(app),
         )
         .background_color(pal.button)
-        .corner_radius(Radius::Md.length()),
+        .border_color(pal.outline)
+        .border_width(Stroke::Hairline.length())
+        .corner_radius(Radius::None.length()),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
 }

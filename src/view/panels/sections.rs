@@ -323,7 +323,7 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
     };
     let row = |a: usize| {
         xrow(
-            Region::Card,
+            Region::List,
             (
                 dot(QUADRANTS[a]),
                 dot(QUADRANTS[a + 1]),
@@ -331,7 +331,7 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
             ),
         )
     };
-    let picker = xcolumn(Region::Card, (row(0), row(3), row(6)));
+    let picker = xcolumn(Region::List, (row(0), row(3), row(6)));
     let field = |name: &'static str, value: String, axis: usize| {
         xrow(
             Region::Inline,
@@ -346,7 +346,11 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                     ControlSize::Icon.length(),
                 )),
                 text_input(value, move |app: &mut Workspace, v| app.set_coord(axis, v))
+                    .text_color(pal.text)
                     .background_color(pal.field())
+                    .border_color(pal.field_outline)
+                    .border_width(Stroke::Hairline.length())
+                    .corner_radius(Radius::None.length())
                     .flex(1.0),
             ),
         )
