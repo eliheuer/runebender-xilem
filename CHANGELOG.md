@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Draw curvature combs with GPUI-normalized geometry and theme-colored, outlined teeth.
+
 - Add Fit graph and refit newly opened node files; keep glyph-grid controls in Font view.
 
 - Fit the initial node viewport and keep connection wires and ports visible above cards.

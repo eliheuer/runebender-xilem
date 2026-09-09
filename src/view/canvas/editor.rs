@@ -888,25 +888,33 @@ impl Widget for EditorWidget {
         // Curvature comb: a strip pushed out along the normal of every
         // curved segment, so the shape of the curvature is visible.
         if self.view.comb && self.interp.is_none() {
-            let comb = pal.text_muted.with_alpha(0.7);
-            for strip in self.session.curvature_comb() {
-                let mut previous: Option<Point> = None;
-                for (on, outer) in strip {
-                    let on = affine * on;
-                    let outer = affine * outer;
+            let strips = self.session.curvature_comb();
+            let maxk = strips
+                .iter()
+                .flatten()
+                .map(|sample| sample.kappa.abs())
+                .fold(0.0, f64::max);
+            for strip in strips {
+                for pair in strip.windows(2) {
+                    let mut quad = kurbo::BezPath::new();
+                    quad.move_to(affine * pair[0].on);
+                    quad.line_to(affine * pair[1].on);
+                    quad.line_to(affine * pair[1].outer);
+                    quad.line_to(affine * pair[0].outer);
+                    quad.close_path();
+                    let k = if maxk > 1e-12 {
+                        (pair[0].kappa.abs() + pair[1].kappa.abs()) * 0.5 / maxk
+                    } else {
+                        0.0
+                    };
                     painter
                         .stroke(
-                            Line::new(on, outer),
-                            &Stroke::new(1.0),
-                            comb.with_alpha(0.35),
+                            &quad,
+                            &Stroke::new(2.0),
+                            pal.point_outline.unwrap_or(pal.text),
                         )
                         .draw();
-                    if let Some(previous) = previous {
-                        painter
-                            .stroke(Line::new(previous, outer), &Stroke::new(1.0), comb)
-                            .draw();
-                    }
-                    previous = Some(outer);
+                    painter.fill(&quad, pal.comb_gradient(k)).draw();
                 }
             }
         }

@@ -763,12 +763,13 @@ impl Session {
         runebender_core::analysis::measure::colored_strokes(&self.paths())
     }
 
-    pub(crate) fn curvature_comb(&self) -> Vec<Vec<(Point, Point)>> {
+    pub(crate) fn curvature_comb(&self) -> Vec<Vec<runebender_core::analysis::curve::CombSample>> {
         let cubics = runebender_core::analysis::curve::cubics_from_norad(&self.glyph);
-        runebender_core::analysis::curve::curvature_comb(&cubics, 1.0, 4000.0, false, 12)
-            .into_iter()
-            .map(|strip| strip.into_iter().map(|s| (s.on, s.outer)).collect())
-            .collect()
+        let maxk = runebender_core::analysis::curve::max_curvature(&cubics);
+        if maxk <= 1e-12 {
+            return Vec::new();
+        }
+        runebender_core::analysis::curve::curvature_comb(&cubics, 1.0, 74.0 / maxk, false, 16)
     }
 
     pub(crate) fn set_mark(&mut self, label: Option<&str>) {

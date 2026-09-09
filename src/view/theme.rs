@@ -193,6 +193,30 @@ impl Palette {
         }
     }
 
+    /// GPUI's shared mark-color ramp for normalized curvature magnitude.
+    pub(crate) fn comb_gradient(&self, t: f64) -> Color {
+        let stops = ["green", "blue", "purple", "pink", "orange"];
+        let u = t.clamp(0.0, 1.0) * 4.0;
+        let (i, f) = if u < 1.0 {
+            (0, u)
+        } else if u < 2.0 {
+            (1, u - 1.0)
+        } else if u < 3.0 {
+            (2, u - 2.0)
+        } else {
+            (3, u - 3.0)
+        };
+        let a = self.mark(stops[i]).unwrap_or(self.text).components;
+        let b = self.mark(stops[i + 1]).unwrap_or(self.text).components;
+        let f = crate::view::render::px32(f);
+        Color::new([
+            a[0] + (b[0] - a[0]) * f,
+            a[1] + (b[1] - a[1]) * f,
+            a[2] + (b[2] - a[2]) * f,
+            1.0,
+        ])
+    }
+
     pub(crate) fn mark(&self, label: &str) -> Option<Color> {
         self.marks.get(label).copied()
     }

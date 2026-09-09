@@ -371,3 +371,20 @@ Inspected Gray and Light 1200x890 renders at
 denied, and 36 tests pass. Pointer activation remains unverified; the
 request travels through Workspace state and the canvas rebuild/layout path.
 No graph execution, graph save, or font-source writes occurred.
+
+## September 9 curvature-comb parity and integration check
+
+GPUI reference checkout verified clean at 79e3ab1. Xilem's comb now retains
+core CombSample curvature values, uses GPUI's 16 samples and normalized
+74-unit maximum height, and paints outlined quadrilateral teeth through
+the green/blue/purple/pink/orange theme-mark ramp. The old fixed-scale
+monochrome line comb is replaced.
+
+Inspected Gray and Light R comb renders at 1200x890:
+`/private/tmp/xilem-comb-gray.png` and `/private/tmp/xilem-comb-light.png`.
+Debug build, Clippy with warnings denied, and 36 tests pass. Formatting
+and docs passed for the integration baseline. Release build passed for
+334a5fb before the comb implementation; it does not yet include this comb
+change. Remaining prominent editor gaps: continuity rings still use filled
+classification dots, persistent word context is limited to the Text tool,
+and reference zoom/state has not been matched for a pixel-level comparison.
