@@ -16,7 +16,7 @@ use masonry::core::{
     RegisterCtx, ScrollDelta, Widget,
 };
 use masonry::imaging::Painter;
-use masonry::kurbo::{Affine, Axis, Point, Rect, Size, Stroke};
+use masonry::kurbo::{Affine, Axis, Point, Rect, Shape, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
@@ -34,9 +34,9 @@ const RAIL_ROW_FACTOR: f64 = 1.18;
 /// The label block, in the GPUI build's measurements: a little air over
 /// the first line, the lines close together, and the same inset under
 /// them as at the sides.
-const LABEL_TOP: f64 = 4.0;
-const LABEL_BOTTOM: f64 = 8.0;
-const LABEL_GAP: f64 = 2.0;
+const LABEL_TOP: f64 = 5.0;
+const LABEL_BOTTOM: f64 = 5.0;
+const LABEL_GAP: f64 = 0.0;
 
 /// Column span for a glyph, from name length and advance/upm (matches gpui).
 fn column_span(name: &str, advance: f64, upm: f64) -> usize {
@@ -203,9 +203,15 @@ impl GridWidget {
     /// the thumbnail, as GPUI's grid fit does. The editor rail is a
     /// thumbnail index, so its short cells do not carry that band.
     fn cell_height(&self) -> f64 {
-        let caption = if self.metrics.captions_below {
-            let lines = if self.metrics.detail { 3.0 } else { 2.0 };
-            LABEL_TOP + 17.0 * lines + LABEL_GAP * (lines - 1.0) + LABEL_BOTTOM
+        let caption = if self.metrics.captions_below && self.cell_width(1) >= 48.0 {
+            let lines = if self.cell_width(1) < 90.0 {
+                1.0
+            } else if self.metrics.detail {
+                3.0
+            } else {
+                2.0
+            };
+            LABEL_TOP + 15.0 * lines + LABEL_GAP * (lines - 1.0) + LABEL_BOTTOM
         } else {
             0.0
         };
@@ -364,9 +370,9 @@ impl Widget for GridWidget {
                 // carry a name at it carries none. The GPUI build's
                 // thresholds.
                 let (label_size, label_lines): (f64, usize) =
-                    if !self.metrics.captions_below || w < 48.0 {
+                    if !self.metrics.captions_below || self.cell_width(1) < 48.0 {
                         (0.0, 0)
-                    } else if w < 64.0 {
+                    } else if self.cell_width(1) < 90.0 {
                         (13.0, 1)
                     } else {
                         let mut lines = if cell.codepoint.is_some() { 2 } else { 1 };
@@ -375,7 +381,7 @@ impl Widget for GridWidget {
                         }
                         (13.0, lines)
                     };
-                let line = (label_size * 1.25).ceil();
+                let line = (label_size * 1.10).ceil();
                 let block = if label_lines == 0 {
                     0.0
                 } else {
@@ -387,7 +393,8 @@ impl Widget for GridWidget {
 
                 let preview_rect = Rect::new(rect.x0, rect.y0, rect.x1, rect.y1 - block);
                 if !cell.outline.elements().is_empty() {
-                    let preview = fit_transform(preview_rect, cell.advance, &self.metrics);
+                    let preview =
+                        fit_transform(preview_rect, cell.outline.bounding_box(), self.metrics.upm);
                     let outline = preview * (*cell.outline).clone();
                     // Fill the glyph with its mark colour (gpui), so the grid
                     // reads by category; selected cells use the ring colour,
@@ -405,10 +412,10 @@ impl Widget for GridWidget {
                 let name_color = ink;
                 let top = rect.y1 - block + LABEL_TOP;
                 // Baseline inside its own line box, not the box edge.
-                let baseline = |n: f64| top + (line + LABEL_GAP) * n + line * 0.8;
+                let baseline = |n: f64| top + (line + LABEL_GAP) * n + line * 0.5;
                 text_label::draw(
                     painter,
-                    Point::new(rect.x0 + 8.0, baseline(0.0)),
+                    Point::new(rect.x0 + LABEL_TOP, baseline(0.0)),
                     &cell.name,
                     px32(label_size),
                     name_color,
@@ -419,7 +426,7 @@ impl Widget for GridWidget {
                 {
                     text_label::draw(
                         painter,
-                        Point::new(rect.x0 + 8.0, baseline(1.0)),
+                        Point::new(rect.x0 + LABEL_TOP, baseline(1.0)),
                         &format!("U+{:04X}", cp as u32),
                         px32(label_size),
                         muted,
@@ -436,7 +443,7 @@ impl Widget for GridWidget {
                         .unwrap_or("Unencoded");
                     text_label::draw(
                         painter,
-                        Point::new(rect.x0 + 8.0, baseline(2.0)),
+                        Point::new(rect.x0 + LABEL_TOP, baseline(2.0)),
                         &format!("{category} \u{00b7} {:.0}", cell.advance),
                         px32(label_size),
                         muted,
@@ -534,25 +541,21 @@ impl Widget for GridWidget {
     }
 }
 
-/// Map design space into a cell: fit the em box (advance wide, ascender..descender tall)
-/// with a margin, Y-flipped, biased toward the top so descenders have room.
-fn fit_transform(cell: Rect, advance: f64, m: &CellMetrics) -> Affine {
-    // GPUI's overview tiles leave generous air around their separate
-    // caption band. The compact editor rail keeps the tighter thumbnail
-    // fit so its five-column index stays legible.
-    let margin = if m.captions_below { 20.0 } else { 3.0 };
-    let inner = Rect::new(
-        cell.x0 + margin,
-        cell.y0 + margin,
-        cell.x1 - margin,
-        cell.y1 - margin,
-    );
-    let em_w = advance.max(m.upm * 0.5);
-    let em_h = m.ascender - m.descender;
-    let scale = (inner.width() / em_w).min(inner.height() / em_h);
-    let baseline_y = inner.y0 + (m.ascender / em_h) * inner.height();
-    let x0 = inner.x0 + (inner.width() - em_w * scale) / 2.0;
-    Affine::new([scale, 0.0, 0.0, -scale, x0, baseline_y])
+/// GPUI thumbnail placement: retain em-relative sizes while centering ink.
+/// Expand the em window for tall marks rather than clipping their outlines.
+fn fit_transform(cell: Rect, ink: Rect, upm: f64) -> Affine {
+    const EM_FILL: f64 = 0.65;
+    const BASELINE_FROM_TOP: f64 = 0.8;
+    const THUMBNAIL_FILL: f64 = 0.92;
+    let em_height = upm.max(1.0) / EM_FILL;
+    let em_top = -BASELINE_FROM_TOP * em_height;
+    let top = em_top.min(-ink.y1);
+    let bottom = (em_top + em_height).max(-ink.y0);
+    let scale = (cell.width() / ink.width().max(1.0)).min(cell.height() / (bottom - top).max(1.0))
+        * THUMBNAIL_FILL;
+    let x = cell.x0 + (cell.width() - ink.width() * scale) / 2.0 - ink.x0 * scale;
+    let y = cell.y0 + (cell.height() - ink.height() * scale) / 2.0 + ink.y1 * scale;
+    Affine::new([scale, 0.0, 0.0, -scale, x, y])
 }
 
 // ---------------------------------------------------------------------------
@@ -662,5 +665,28 @@ where
             }
             None => MessageResult::Stale,
         }
+    }
+}
+
+#[cfg(test)]
+mod thumbnail_tests {
+    use super::*;
+
+    #[test]
+    fn thumbnail_ink_is_centered_and_tall_marks_stay_inside() {
+        let cell = Rect::new(10.0, 20.0, 110.0, 120.0);
+        for ink in [
+            Rect::new(80.0, 0.0, 680.0, 700.0),
+            Rect::new(-100.0, 900.0, 100.0, 2400.0),
+        ] {
+            let transform = fit_transform(cell, ink, 1000.0);
+            let drawn = transform.transform_rect_bbox(ink);
+            assert!((drawn.center() - cell.center()).hypot() < 1e-9);
+            assert!(cell.contains(drawn.origin()));
+            assert!(drawn.x1 <= cell.x1 && drawn.y1 <= cell.y1);
+        }
+        let period = fit_transform(cell, Rect::new(0.0, 0.0, 100.0, 100.0), 1000.0)
+            .transform_rect_bbox(Rect::new(0.0, 0.0, 100.0, 100.0));
+        assert!(period.height() < cell.height() * 0.1);
     }
 }

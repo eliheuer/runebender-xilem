@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Match GPUI thumbnail ink centering, em-relative scale, and compact caption spacing; keep tall marks inside their cells.
+
 - Fit glyph rows to the viewport, give rail thumbnails GPUI proportions, and propagate grid size/theme changes on rebuild.
 
 - Give word proofs the GPUI initial drawing height and start additional inspector sections folded.

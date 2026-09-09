@@ -275,3 +275,23 @@ caption/thumbnail proportions and ink fitting need another comparison pass.
 GPUI and Xilem both use a 0.62 initial canvas-fit factor: the much larger R
 in the reference is a different zoom state, not evidence for changing that
 default arbitrarily.
+
+## September 9 thumbnail transform pass
+
+GPUI's `cell_glyph_transform` in `src/view/grid.rs` uses 0.65 em fill,
+0.92 thumbnail fill, visible-ink centering, and an em window expanded for
+tall marks. Xilem now follows the same placement calculations, replacing
+its ascender/descender fit. Caption padding is 5 pixels, leading is 1.10,
+and the second line starts at the GPUI 90-pixel base-column threshold.
+Spanning glyphs use base-column caption policy. Text drawing now receives
+line centers rather than baseline coordinates.
+
+Inspected Gray and Light overview renders at 1200x890:
+`/private/tmp/xilem-ink-gray.png` and `/private/tmp/xilem-ink-light.png`.
+The enlarged/clipped-looking glyphs in the previous proof are corrected.
+Build, Clippy with warnings denied, and 36 tests passed, including a new
+thumbnail regression covering ink centering, period scale, and tall marks.
+Remaining overview gaps include the missing rail tab strip, sidebar group
+spacing and borders, bottom control styling, and matching zoom/selection
+state for an exact reference comparison. No upstream Xilem blocker was
+needed to explain or fix these thumbnail differences.
