@@ -919,21 +919,19 @@ impl Widget for EditorWidget {
             }
         }
 
-        // Continuity: one dot per on-curve node, colored by how smooth
-        // the join actually is. A kink is a node marked smooth whose
-        // tangents do not line up, which is the defect worth seeing.
+        // Continuity rings match GPUI and preserve the underlying point shape.
         if self.view.continuity && self.interp.is_none() {
             use runebender_core::analysis::curve::GLevel;
+            const CONTINUITY_RADIUS: f64 = 4.5 * 1.9;
+            let color = pal.mark("green").unwrap_or(pal.text);
+            let outline = pal.point_outline.unwrap_or(pal.text);
             for node in self.session.continuity() {
-                let color = match node.level {
-                    GLevel::Kink => pal.role("error"),
-                    GLevel::Corner => pal.role("metricQuiet"),
-                    GLevel::G1 => pal.role("warning"),
-                    GLevel::G1Line => pal.role("pointOffcurve"),
-                    GLevel::G2 | GLevel::G3 => pal.role("success"),
-                };
-                let at = affine * node.at;
-                painter.fill(Circle::new(at, 4.5), color).draw();
+                if matches!(node.level, GLevel::Corner) {
+                    continue;
+                }
+                let ring = Circle::new(affine * node.at, CONTINUITY_RADIUS);
+                painter.stroke(ring, &Stroke::new(3.0), outline).draw();
+                painter.stroke(ring, &Stroke::new(1.5), color).draw();
             }
         }
 

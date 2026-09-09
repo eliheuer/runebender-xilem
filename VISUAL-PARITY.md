@@ -388,3 +388,17 @@ and docs passed for the integration baseline. Release build passed for
 change. Remaining prominent editor gaps: continuity rings still use filled
 classification dots, persistent word context is limited to the Text tool,
 and reference zoom/state has not been matched for a pixel-level comparison.
+
+## September 9 continuity overlay
+
+Matched GPUI's `paint_continuity_rings`: non-corner classifications from
+core receive a green ring at 8.55 screen pixels, with a 3-pixel point-outline
+understroke and 1.5-pixel color stroke. Corners retain their ordinary point
+markers. The previous filled classification dots no longer cover the points.
+
+Inspected combined comb/continuity Gray and Light R renders at 1200x890:
+`/private/tmp/xilem-curves-gray.png` and `/private/tmp/xilem-curves-light.png`.
+Build, Clippy with warnings denied, and 36 tests pass. This matches overlay
+geometry and color policy; overall editor parity still needs persistent
+word context, matching zoom/state, remaining inspector controls, and native
+interaction/rendering proof. The release binary predates this overlay pass.

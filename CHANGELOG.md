@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Match GPUI continuity rings while preserving the underlying point markers.
+
 - Draw curvature combs with GPUI-normalized geometry and theme-colored, outlined teeth.
 
 - Add Fit graph and refit newly opened node files; keep glyph-grid controls in Font view.
