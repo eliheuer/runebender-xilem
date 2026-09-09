@@ -93,6 +93,27 @@ pub(crate) struct TextState {
 }
 
 impl TextState {
+    #[cfg(test)]
+    pub(crate) fn test_buffer() -> Self {
+        let mut font = norad::Font::new();
+        for name in ["A", "B"] {
+            let mut glyph = norad::Glyph::new(name);
+            glyph.width = 500.0;
+            glyph.codepoints.insert(name.chars().next().unwrap());
+            font.default_layer_mut().insert_glyph(glyph);
+        }
+        Self::new(&TextInputs {
+            inventory: TextGlyphInventory::from_font(&font),
+            kerning: TextKerningModel::from_font(&font),
+            outlines: Arc::new(Vec::new()),
+            line_height: 1000.0,
+            ascender: 800.0,
+            descender: -200.0,
+            initial: "A".into(),
+            direction: None,
+        })
+    }
+
     /// A buffer wired to a master.
     pub(crate) fn new(inputs: &TextInputs) -> Self {
         let mut buffer = TextBuffer::new();

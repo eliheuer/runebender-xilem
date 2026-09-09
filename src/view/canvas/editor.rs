@@ -1838,6 +1838,41 @@ mod tests {
         }
     }
 
+    #[test]
+    fn parked_text_does_not_consume_outline_tool_typing() {
+        use masonry::core::keyboard::{Code, KeyboardEvent};
+        let mut editor = widget();
+        editor.text = Some(crate::edit::text_tool::TextState::test_buffer());
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        harness.focus_on(Some(harness.root_id()));
+        let typed = || {
+            TextEvent::Keyboard(KeyboardEvent {
+                state: KeyState::Down,
+                key: Key::Character("B".into()),
+                code: Code::Unidentified,
+                ..KeyboardEvent::default()
+            })
+        };
+        harness.process_text_event(typed());
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
+            1
+        );
+        harness.edit_root_widget(|root| root.widget.tool = Tool::Text);
+        harness.process_text_event(typed());
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
+            2
+        );
+        harness.edit_root_widget(|root| root.widget.tool = Tool::Select);
+        harness.process_text_event(typed());
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
+            2
+        );
+    }
+
     /// Typing in the width box changes the advance, and only on Enter.
     #[test]
     fn metric_box_commits_on_enter() {

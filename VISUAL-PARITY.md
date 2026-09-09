@@ -412,10 +412,20 @@ and typing are explicitly gated on Tool::Text, so a parked buffer cannot
 consume outline-editing input. Scope is tool switches in the live widget,
 not persistence across editor destruction, application restarts, or sessions.
 
-Build, Clippy with warnings denied, and 36 existing tests pass. No dedicated
-interactive tool-switch regression or native proof has been completed.
+Build, Clippy with warnings denied, and 36 existing tests pass. A later headless event regression covers tool-mode input gating; full
+view-rebuild and native proof remain incomplete.
 This does not complete persistent in-canvas word context: that requires
 placing the editable glyph at its shaped sort origin and applying the same
 origin to point hit testing, overlays, and metrics, while leaving shaping
 and Arabic joining in core. Simply keeping the text paint branch active
 would return before drawing/editing the outline and is not a valid fix.
+
+## September 9 parked-text event regression
+
+Added a disposable in-memory A/B text fixture and a Masonry TestHarness
+keyboard test. With the same live widget, a character event in Select does
+not change the parked buffer; Text accepts it; Select again preserves the
+two-character buffer. Clippy with warnings denied and all 37 tests pass.
+This verifies event gating, not the Xilem view-rebuild transition itself,
+native IME, Arabic joining, or cross-session text persistence. No visual
+rendering changed in this test-only pass.
