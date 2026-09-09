@@ -79,6 +79,8 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             ),
         ),
     )
+    .padding(Space::Sm)
+    .gap(Space::Sm)
     .background_color(pal.panel);
     let choices = nodes_choices(app);
     let problems: Vec<_> = state

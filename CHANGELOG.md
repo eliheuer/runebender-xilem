@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Fit the initial node viewport and keep connection wires and ports visible above cards.
+
 - Use shared neutral theme colors for sliders and header tab selection.
 
 - Align category sidebar insets and full-width rules; group font counts under Filters.

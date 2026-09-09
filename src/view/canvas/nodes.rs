@@ -174,9 +174,26 @@ impl Widget for NodesWidget {
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
         self.size = size;
         if !self.fitted {
-            // First use: canvas units at one pixel each, a margin in.
-            self.viewport.zoom = 1.0;
-            self.viewport.offset = kurbo::Vec2::new(24.0, 24.0);
+            // Fit the initial graph without rewriting its authored positions.
+            const FIT_MARGIN: f64 = 24.0;
+            let bounds = self
+                .boxes
+                .iter()
+                .map(|node| node.rect)
+                .reduce(|a, b| a.union(b));
+            if let Some(bounds) = bounds {
+                let zoom = ((size.width - FIT_MARGIN * 2.0).max(1.0) / bounds.width().max(1.0))
+                    .min((size.height - FIT_MARGIN * 2.0).max(1.0) / bounds.height().max(1.0))
+                    .clamp(0.05, 1.0);
+                self.viewport.zoom = zoom;
+                self.viewport.offset = kurbo::Vec2::new(
+                    size.width / 2.0 - bounds.center().x * zoom,
+                    size.height / 2.0 - bounds.center().y * zoom,
+                );
+            } else {
+                self.viewport.zoom = 1.0;
+                self.viewport.offset = kurbo::Vec2::new(FIT_MARGIN, FIT_MARGIN);
+            }
             self.fitted = true;
         }
         ctx.set_clip_path(size.to_rect());
@@ -224,27 +241,6 @@ impl Widget for NodesWidget {
                 .draw();
             painter.stroke(&path, &Stroke::new(wire_w), ink).draw();
         };
-        for (a, o, b, i) in nl::wires(&self.graph, &self.boxes) {
-            let port = &self.boxes[a].outputs[o];
-            draw_wire(
-                painter,
-                port.at,
-                self.boxes[b].inputs[i].at,
-                self.kind_color(port.kind),
-            );
-        }
-        if let Some(Drag::Wire {
-            from, output, to, ..
-        }) = &self.drag
-            && let Some(port) = self
-                .boxes
-                .iter()
-                .find(|b| b.id == *from)
-                .and_then(|b| b.outputs.iter().find(|p| p.name == *output))
-        {
-            let ink = pending_kind.map_or(pal.text, |k| self.kind_color(k));
-            draw_wire(painter, port.at, *to, ink);
-        }
 
         let text_px = crate::px32((13.0 * zoom).clamp(6.0, 40.0));
         for nb in &self.boxes {
@@ -342,6 +338,43 @@ impl Widget for NodesWidget {
                     Anchor::End,
                 );
             }
+            // A result line under the box, when the node has one.
+            if let Some(RowState::Done(_, Some(note))) = self.rows.get(&nb.id) {
+                let at = tf * Point::new(nb.rect.x0, nb.rect.y1 + nl::PAD);
+                text_label::draw(
+                    painter,
+                    at,
+                    note,
+                    text_px * 0.9,
+                    pal.text_muted,
+                    Anchor::Start,
+                );
+            }
+        }
+        // Foreground wires and ports stay visible over card edges, as in GPUI.
+        for (a, o, b, i) in nl::wires(&self.graph, &self.boxes) {
+            let port = &self.boxes[a].outputs[o];
+            draw_wire(
+                painter,
+                port.at,
+                self.boxes[b].inputs[i].at,
+                self.kind_color(port.kind),
+            );
+        }
+        if let Some(Drag::Wire {
+            from, output, to, ..
+        }) = &self.drag
+            && let Some(port) = self
+                .boxes
+                .iter()
+                .find(|b| b.id == *from)
+                .and_then(|b| b.outputs.iter().find(|p| p.name == *output))
+        {
+            let ink = pending_kind.map_or(pal.text, |k| self.kind_color(k));
+            draw_wire(painter, port.at, *to, ink);
+        }
+
+        for nb in &self.boxes {
             // Ports: a filled dot when wired, a ring when not. While a
             // wire is out, the inputs that take it grow a second ring
             // and the rest fade.
@@ -369,18 +402,6 @@ impl Widget for NodesWidget {
                     let ring = tf * nl::circle(port.at, nl::PORT_R * 2.0);
                     painter.stroke(&ring, &Stroke::new(1.0), pal.text).draw();
                 }
-            }
-            // A result line under the box, when the node has one.
-            if let Some(RowState::Done(_, Some(note))) = self.rows.get(&nb.id) {
-                let at = tf * Point::new(nb.rect.x0, nb.rect.y1 + nl::PAD);
-                text_label::draw(
-                    painter,
-                    at,
-                    note,
-                    text_px * 0.9,
-                    pal.text_muted,
-                    Anchor::Start,
-                );
             }
         }
     }

@@ -340,3 +340,19 @@ inactive-header contrast correction using translucent header ink. Build
 and Clippy pass; 36 tests passed for the slider implementation before
 the final header color adjustments. Native interaction remains unverified.
 This styling required no custom widget or upstream change.
+
+## September 9 node foreground and initial framing
+
+Matched GPUI's foreground ordering: card bodies first, then connection
+wires, then all ports. The node toolbar uses compact spacing. Initial
+viewport framing now fits graph bounds with a margin, capped at 100%,
+rather than clipping the rightmost nodes at a fixed zoom. Authored graph
+positions are unchanged; subsequent user pan/zoom is preserved.
+
+Inspected Gray and Light 1200x890 renders at
+`/private/tmp/xilem-nodes-fit-gray.png` and
+`/private/tmp/xilem-nodes-fit-light.png`. All six bolden graph nodes are
+visible. Build, Clippy with warnings denied, and 36 tests pass. No graph
+was run or saved. Remaining gaps include file-dialog behavior, node zoom
+controls in the bottom bar, exact graph arrangement/reference state, and
+native pointer verification.
