@@ -296,8 +296,6 @@ pub(crate) enum Region {
     Panel,
     /// A titled group of related controls inside a panel.
     Section,
-    /// A card in a collection.
-    Card,
     /// A form: labeled fields down the page.
     Form,
     /// A toolbar, header, or status bar.
@@ -314,7 +312,6 @@ impl Region {
         match self {
             Self::Panel => Space::Lg,
             Self::Section => Space::Md,
-            Self::Card => Space::Sm,
             Self::Form => Space::Md,
             Self::Toolbar => Space::Md,
             Self::Inline => Space::Sm,
@@ -332,7 +329,6 @@ impl Region {
         match self {
             Self::Panel => Space::Lg,
             Self::Section => Space::None,
-            Self::Card => Space::Md,
             Self::Toolbar => Space::Md,
             Self::Form | Self::Inline | Self::List => Space::None,
         }

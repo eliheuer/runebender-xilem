@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Align category sidebar insets and full-width rules; group font counts under Filters.
+
 - Share working Glyphs, Axes, and Local AI navigation across font, node, and glyph workspaces.
 
 - Match GPUI thumbnail ink centering, em-relative scale, and compact caption spacing; keep tall marks inside their cells.

@@ -310,3 +310,17 @@ Build, Clippy with warnings denied, and 36 tests pass. Models were listed
 only; no task, graph, install, or font-source write was executed. Native
 pointer navigation remains unverified. Remaining rail gaps include GPUI's
 Chat destination, sidebar group rules/insets, and count/control placement.
+
+## September 9 sidebar grouping pass
+
+Removed nested Panel/Card insets from category navigation. Search and each
+accordion now own one compact inset, while group rules span the full sidebar.
+Exporting and incompatible-master counts are at the head of Filters and
+collapse with that section. Removed the unused Card region token.
+
+Inspected Gray and Light 1200x890 renders at
+`/private/tmp/xilem-sidebar-gray.png` and
+`/private/tmp/xilem-sidebar-light.png`. Build, Clippy with warnings denied,
+and 36 tests pass. Remaining differences include row typography, missing
+Chat navigation, native slider styling, and matching reference selection
+and scroll state. No font sources or GPUI files changed.

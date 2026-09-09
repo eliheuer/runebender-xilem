@@ -372,21 +372,29 @@ where
 {
     let open = !app.collapsed.contains(title);
     let rule = app.palette.outline;
-    xcolumn(
-        Region::Section,
-        (
-            recipes::section_toggle(&app.palette, title, open, move |app: &mut Workspace| {
-                if !app.collapsed.remove(title) {
-                    app.collapsed.insert(title);
-                }
-            }),
-            open.then(|| xcolumn(Region::List, rows)),
-            // The rule under a group, as the GPUI sidebar draws one.
-            sized_box(label(""))
-                .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(1.0))))
-                .background_color(rule),
-        ),
-    )
+    flex_col((
+        xcolumn(
+            Region::Section,
+            (
+                recipes::section_toggle(&app.palette, title, open, move |app: &mut Workspace| {
+                    if !app.collapsed.remove(title) {
+                        app.collapsed.insert(title);
+                    }
+                }),
+                open.then(|| xcolumn(Region::List, rows)),
+            ),
+        )
+        .padding(Space::Md)
+        .gap(Space::Sm),
+        sized_box(label(""))
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::Fixed(Stroke::Hairline.length()),
+            ))
+            .background_color(rule),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Stretch)
+    .gap(Space::None)
 }
 
 pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -544,61 +552,57 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         })
         .collect();
 
-    xcolumn(
-        Region::Panel,
-        (
-            glyph_search(app),
-            {
-                let fresh =
-                    !app.filter.trim().is_empty() && app.font.index_of(app.filter.trim()).is_none();
-                fresh.then(|| {
-                    recipes::action(
-                        pal,
-                        format!("+ New {}", app.filter.trim()),
-                        |app: &mut Workspace| app.new_glyph(),
-                    )
-                })
-            },
-            // Constrained horizontally, or the rows lay out at their
-            // intrinsic width and the sidebar grows a horizontal scrollbar
-            // with the counts cut off past the edge.
-            // A card, not a panel: this column is already inside the
-            // sidebar panel, and two panel insets in a row take 48px out of
-            // a 200px column, which is where the counts went. The card's
-            // smaller inset also keeps the counts clear of the scrollbar,
-            // which the portal draws over its own right edge.
-            portal(xcolumn(
-                Region::Card,
-                (
-                    sidebar_group(app, "Categories", cat_rows),
-                    (!lang_rows.is_empty())
-                        .then(|| sidebar_group(app, "Global Scripts", lang_rows)),
-                    (!filter_rows.is_empty()).then(|| sidebar_group(app, "Filters", filter_rows)),
-                    // Two counts the GPUI build puts at the head of its filters:
-                    // how much of the font exports, and how much of it the
-                    // masters disagree about. Neither is a filter to click, so
-                    // they are rows, not buttons.
-                    xcolumn(
-                        Region::List,
-                        (
-                            recipes::kv(
-                                pal,
-                                "Exporting glyphs".into(),
-                                format!("{}", app.font.exporting_count()),
-                            ),
-                            recipes::kv(
-                                pal,
-                                "Incompatible masters".into(),
-                                format!("{}", app.font.incompatible_count()),
-                            ),
-                        ),
-                    ),
-                ),
+    let mut filters = vec![
+        recipes::kv(
+            pal,
+            "Exporting glyphs".into(),
+            format!("{}", app.font.exporting_count()),
+        )
+        .boxed(),
+        recipes::kv(
+            pal,
+            "Incompatible masters".into(),
+            format!("{}", app.font.incompatible_count()),
+        )
+        .boxed(),
+    ];
+    filters.extend(filter_rows.into_iter().map(|row| row.boxed()));
+    flex_col((
+        xcolumn(
+            Region::List,
+            (
+                glyph_search(app),
+                (!app.filter.trim().is_empty() && app.font.index_of(app.filter.trim()).is_none())
+                    .then(|| {
+                        recipes::action(
+                            pal,
+                            format!("+ New {}", app.filter.trim()),
+                            |app: &mut Workspace| app.new_glyph(),
+                        )
+                    }),
+            ),
+        )
+        .padding(Space::Md),
+        sized_box(label(""))
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::Fixed(Stroke::Hairline.length()),
             ))
-            .constrain_horizontal(true)
-            .prop(AutoHideScrollBar(true))
-            .flex(1.0),
-        ),
-    )
+            .background_color(pal.outline),
+        portal(
+            flex_col((
+                sidebar_group(app, "Categories", cat_rows),
+                (!lang_rows.is_empty()).then(|| sidebar_group(app, "Global Scripts", lang_rows)),
+                sidebar_group(app, "Filters", filters),
+            ))
+            .cross_axis_alignment(CrossAxisAlignment::Stretch)
+            .gap(Space::None),
+        )
+        .constrain_horizontal(true)
+        .prop(AutoHideScrollBar(true))
+        .flex(1.0),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Stretch)
+    .gap(Space::None)
     .background_color(pal.panel)
 }
