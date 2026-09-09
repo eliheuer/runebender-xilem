@@ -123,6 +123,8 @@ pub(crate) struct Workspace {
     pub(crate) coord_quadrant: runebender_core::outline::path::Quadrant,
     pub(crate) coord_x_buf: String,
     pub(crate) coord_y_buf: String,
+    pub(crate) coord_w_buf: String,
+    pub(crate) coord_h_buf: String,
     /// Search scope: 0 name and unicode, 1 name only, 2 unicode only.
     pub(crate) search_mode: u8,
     /// Case-sensitive search.

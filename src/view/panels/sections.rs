@@ -314,7 +314,6 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
         Quadrant::BottomRight,
     ];
     let pal = &app.palette;
-    let bounds = app.session.selection_bounds();
     // The picker: three rows of three dots, the active one filled accent.
     let dot = |q: Quadrant| {
         let active = app.coord_quadrant == q;
@@ -362,33 +361,25 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                         .color(pal.text_muted),
                 )
                 .dims(Dimensions::fixed(
-                    ControlSize::Swatch.length(),
+                    ControlSize::Icon.length(),
                     ControlSize::Icon.length(),
                 )),
-                text_input(value, move |app: &mut Workspace, v| app.set_coord(axis, v))
-                    .text_color(pal.text)
-                    .background_color(pal.field())
-                    .border_color(pal.field_outline)
-                    .border_width(Stroke::Hairline.length())
-                    .corner_radius(Radius::None.length())
-                    .flex(1.0),
+                text_input(value, move |app: &mut Workspace, v| {
+                    if axis < 2 {
+                        app.set_coord(axis, v);
+                    } else {
+                        app.set_coord_size(axis == 2, v);
+                    }
+                })
+                .text_color(pal.text)
+                .background_color(pal.field())
+                .border_color(pal.field_outline)
+                .border_width(Stroke::Hairline.length())
+                .corner_radius(Radius::None.length())
+                .flex(1.0),
             ),
         )
     };
-    let size_row = bounds.map(|b| {
-        xrow(
-            Region::Inline,
-            (
-                label("Size")
-                    .text_size(TextSize::Body.px())
-                    .color(pal.text_muted),
-                FlexSpacer::Flex(1.0),
-                label(format!("{:.0} x {:.0}", b.width(), b.height()))
-                    .text_size(TextSize::Body.px())
-                    .color(pal.text),
-            ),
-        )
-    });
     xcolumn(
         Region::Section,
         (
@@ -410,15 +401,26 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                         xcolumn(
                             Region::List,
                             (
-                                field("X", app.coord_x_buf.clone(), 0),
-                                field("Y", app.coord_y_buf.clone(), 1),
+                                xrow(
+                                    Region::Inline,
+                                    (
+                                        field("X", app.coord_x_buf.clone(), 0).flex(1.0),
+                                        field("W", app.coord_w_buf.clone(), 2).flex(1.0),
+                                    ),
+                                ),
+                                xrow(
+                                    Region::Inline,
+                                    (
+                                        field("Y", app.coord_y_buf.clone(), 1).flex(1.0),
+                                        field("H", app.coord_h_buf.clone(), 3).flex(1.0),
+                                    ),
+                                ),
                             ),
                         )
                         .flex(1.0),
                     ),
                 )
             }),
-            (!app.collapsed.contains("Coordinates")).then_some(size_row),
         ),
     )
 }

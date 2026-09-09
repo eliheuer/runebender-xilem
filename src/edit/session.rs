@@ -1013,6 +1013,7 @@ impl Workspace {
         }
         self.cells = Arc::new(cells_of(&self.font, &self.palette));
         self.refresh_metric_bufs();
+        self.refresh_coord_bufs();
         self.selected_points = self.session.selection.len();
         self.modified = true;
         self.note.clear();

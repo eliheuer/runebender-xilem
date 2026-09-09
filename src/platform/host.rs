@@ -207,6 +207,8 @@ impl Workspace {
             coord_quadrant: runebender_core::outline::path::Quadrant::Center,
             coord_x_buf: String::new(),
             coord_y_buf: String::new(),
+            coord_w_buf: String::new(),
+            coord_h_buf: String::new(),
             search_mode: 0,
             search_case: false,
             reference_layers: std::collections::HashSet::new(),

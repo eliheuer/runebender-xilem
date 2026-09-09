@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Add selection width/height editing around the chosen reference point and record inspector undo immediately.
+
 - Align inspector section borders, spacing, ordering, and path-operation groups with GPUI; fit overview tiles across the available width.
 
 - Keep GPUI live-node files out of the disk runner; experiments remain available through MCP.

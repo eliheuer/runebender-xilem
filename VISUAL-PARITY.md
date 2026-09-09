@@ -179,3 +179,14 @@ as a current blocker list.
 
 Proofs use the existing Masonry CPU screenshot path. They verify layout and
 paint, not native input, GPU rendering, or full visual parity.
+
+### Workday kickoff: coordinate dimensions
+
+Implemented W/H fields beside X/Y. Resize selected points about the chosen
+quadrant using the existing core transform, rejecting nonfinite, nonpositive,
+and degenerate dimensions. Fixed inspector operations to drain pending undo
+snapshots immediately; undo now refreshes coordinate values. Regression test
+uses a disposable UFO and verifies reference preservation, invalid input, and
+undo. All 34 tests pass; the selected-R screenshot verifies four-field layout.
+Next: reference picker connecting lines, header/rail tool layout, preview
+text/blur controls, and selected-state theme alignment.

@@ -39,6 +39,13 @@ impl Workspace {
 
     /// Refill the Coordinates fields from the selection.
     pub(crate) fn refresh_coord_bufs(&mut self) {
+        if let Some(bounds) = self.session.selection_bounds() {
+            self.coord_w_buf = format!("{}", round_units(bounds.width()));
+            self.coord_h_buf = format!("{}", round_units(bounds.height()));
+        } else {
+            self.coord_w_buf.clear();
+            self.coord_h_buf.clear();
+        }
         match self.coord_point() {
             Some(p) => {
                 self.coord_x_buf = format!("{}", round_units(p.x));
@@ -70,6 +77,40 @@ impl Workspace {
             return;
         }
         self.apply_op(|s| s.nudge(dx, dy));
+        self.refresh_coord_bufs();
+    }
+
+    /// Resize selected points about the chosen reference, through the undoable transform path.
+    pub(crate) fn set_coord_size(&mut self, width: bool, value: String) {
+        if width {
+            self.coord_w_buf = value.clone();
+        } else {
+            self.coord_h_buf = value.clone();
+        }
+        let (Ok(target), Some(bounds)) =
+            (value.trim().parse::<f64>(), self.session.selection_bounds())
+        else {
+            return;
+        };
+        let current = if width {
+            bounds.width()
+        } else {
+            bounds.height()
+        };
+        if !target.is_finite() || target <= 0.0 || current.abs() < 1e-9 {
+            return;
+        }
+        let scale = target / current;
+        if !scale.is_finite() || (scale - 1.0).abs() < 1e-9 {
+            return;
+        }
+        // Core's transform is in a frame centered on the selection bounds.
+        let reference = self.coord_quadrant.point_in_dspace_rect(bounds) - bounds.center();
+        let (sx, sy) = if width { (scale, 1.0) } else { (1.0, scale) };
+        let transform = kurbo::Affine::translate(-reference)
+            .then_scale_non_uniform(sx, sy)
+            .then_translate(reference);
+        self.apply_op(|session| session.transform(transform));
         self.refresh_coord_bufs();
     }
 
@@ -382,5 +423,54 @@ impl Workspace {
     pub(crate) fn apply_features(&mut self) {
         self.features_status = Some("Applied".into());
         self.modified = true;
+    }
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+
+    #[test]
+    fn dimensions_keep_reference_and_support_undo() {
+        let path =
+            std::env::temp_dir().join(format!("runebender-size-test-{}.ufo", std::process::id()));
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("size_test");
+        let mut contour = norad::Contour::default();
+        for (x, y) in [(20.0, 30.0), (120.0, 30.0), (120.0, 230.0), (20.0, 230.0)] {
+            contour.points.push(norad::ContourPoint::new(
+                x,
+                y,
+                norad::PointType::Line,
+                false,
+                None,
+                None,
+            ));
+        }
+        glyph.contours.push(contour);
+        font.default_layer_mut().insert_glyph(glyph);
+        font.save(&path).expect("save disposable test font");
+        let mut app = Workspace::open(&path).expect("open test font");
+        app.open_glyph(app.font.index_of("size_test").expect("test glyph"));
+        let mut session = (*app.session).clone();
+        session.select_all();
+        app.session = Arc::new(session);
+        app.coord_quadrant = runebender_core::outline::path::Quadrant::TopRight;
+        let reference = app.coord_point().expect("selected points");
+        app.set_coord_size(true, "250".into());
+        assert_eq!(app.session.selection_bounds().unwrap().width(), 250.0);
+        assert_eq!(app.coord_point(), Some(reference));
+        app.set_coord_size(false, "400".into());
+        assert_eq!(app.session.selection_bounds().unwrap().height(), 400.0);
+        assert_eq!(app.coord_point(), Some(reference));
+        let before = app.session.glyph.clone();
+        for invalid in ["NaN", "inf", "0", "-10", "-"] {
+            app.set_coord_size(true, invalid.into());
+            assert_eq!(app.session.glyph, before);
+        }
+        app.undo_open_glyph(false);
+        let points = &app.session.glyph.contours[0].points;
+        assert_eq!(points[2].y - points[0].y, 200.0);
+        std::fs::remove_dir_all(path).expect("remove disposable font");
     }
 }

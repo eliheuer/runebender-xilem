@@ -205,7 +205,7 @@ impl Workspace {
         }
         let mut sess = (*self.session).clone();
         if f(&mut sess) {
-            self.session = Arc::new(sess);
+            self.sync_session_from(&mut sess);
             self.refresh_open_glyph();
         }
     }
