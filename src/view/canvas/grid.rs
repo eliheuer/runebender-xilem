@@ -173,12 +173,12 @@ impl GridWidget {
     }
 
     fn cell_width(&self, span: usize) -> f64 {
-        let edge = if self.metrics.captions_below {
-            self.metrics.cell
-        } else {
-            let columns = self.columns() as f64;
-            (self.size.width - 2.0 * self.metrics.padding - GAP * (columns - 1.0)) / columns
-        };
+        // Distribute the remainder across columns in both overview and rail.
+        // Painting and pointer hit testing use this same fitted width.
+        let columns = self.columns() as f64;
+        let edge = ((self.size.width - 2.0 * self.metrics.padding - GAP * (columns - 1.0))
+            / columns)
+            .max(1.0);
         edge * span as f64 + GAP * (span.saturating_sub(1)) as f64
     }
 

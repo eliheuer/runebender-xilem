@@ -63,6 +63,26 @@ where
     .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
 }
 
+/// An inspector group with a full-width dividing rule and a shared inset.
+pub(crate) fn inspector_group<V>(pal: &Palette, body: V) -> impl WidgetView<Workspace> + use<V>
+where
+    V: WidgetView<Workspace> + 'static,
+{
+    column(
+        Region::List,
+        (
+            sized_box(body).padding(Space::Md),
+            sized_box(label(""))
+                .dims(Dimensions::new(
+                    Dim::Stretch,
+                    Dim::Fixed(Stroke::Hairline.length()),
+                ))
+                .background_color(pal.outline),
+        ),
+    )
+    .gap(Space::None)
+}
+
 /// A read-only label/value row: name left, value right, one row tall.
 pub(crate) fn kv(pal: &Palette, name: String, value: String) -> impl WidgetView<Workspace> + use<> {
     let (muted, text) = (pal.text_muted, pal.text);

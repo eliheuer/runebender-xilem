@@ -149,3 +149,33 @@ Xilem app wrapper opened without a font, so native final parity is unverified.
 Remaining visible differences: inspector section borders/order and full-width
 control layout; header and rail tool inventory; metrics-card field layout;
 preview content and controls. These changes do not establish full parity.
+
+## Inspector and overview follow-up, 2026-09-09
+
+The user's GPUI overview and R-editor screenshots are the visual reference.
+Added a shared inspector-group recipe with full-width dividing rules and
+consistent insets. Coordinates and transformations precede Glyph; path
+operations now fold independently. Operation rows stretch across the panel;
+curve labels match the reference. Overview tiles distribute remaining width
+instead of leaving an unused strip. No framework fork or dependency change.
+
+### What actually prevents parity
+
+No rendering blocker was demonstrated for these changes. Masonry already
+provides layout, borders, padding, text, and custom widgets. The immediate
+work is in this application: W/H coordinate editing, matching tool inventory,
+preview text/blur controls, selection colors, and consistent metrics fields.
+These must preserve real behavior; absent controls must not be painted as
+working features. Arabic shaping and local-AI correctness need separate
+workflow verification and cannot be established by these screenshots.
+
+Framework development costs remain: composing polished reusable controls,
+bridging custom widgets to views, and keeping complex generic view types
+manageable. Contribution candidates are an inspector/form example, reusable
+control recipes, and reproducible screenshot fixtures. These are opportunities,
+not evidence that the desired appearance is impossible. The old XILEM-GAPS
+document explicitly describes historical findings and must not be presented
+as a current blocker list.
+
+Proofs use the existing Masonry CPU screenshot path. They verify layout and
+paint, not native input, GPU rendering, or full visual parity.

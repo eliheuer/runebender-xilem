@@ -149,43 +149,40 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         )
     });
     let show_multi_mark = !editing && !app.multi_selected.is_empty();
-    xcolumn(
-        Region::Panel,
+    let glyph_section = xcolumn(
+        Region::Section,
         (
-            xcolumn(
-                Region::Section,
-                (
-                    recipes::section_toggle(
-                        pal,
-                        "Glyph",
-                        !app.collapsed.contains("Glyph"),
-                        move |app: &mut Workspace| {
-                            if !app.collapsed.remove("Glyph") {
-                                app.collapsed.insert("Glyph");
-                            }
-                        },
-                    ),
-                    (!app.collapsed.contains("Glyph")).then(|| {
-                        xcolumn(
-                            Region::List,
-                            (
-                                show_multi_mark.then(|| {
-                                    row("Selected".into(), format!("{}", app.multi_selected.len()))
-                                }),
-                                (!pts.is_empty()).then(|| row("Points".into(), pts)),
-                                editing.then(|| {
-                                    row("Selected".into(), format!("{}", app.selected_points))
-                                }),
-                            ),
-                        )
-                    }),
-                    (!app.collapsed.contains("Glyph"))
-                        .then(|| show_multi_mark.then(|| mark_section(app))),
-                    (!app.collapsed.contains("Glyph")).then_some(name_field),
-                    (!app.collapsed.contains("Glyph")).then_some(advance_field),
-                    (!app.collapsed.contains("Glyph")).then_some(overview_fields),
-                ),
+            recipes::section_toggle(
+                pal,
+                "Glyph",
+                !app.collapsed.contains("Glyph"),
+                move |app: &mut Workspace| {
+                    if !app.collapsed.remove("Glyph") {
+                        app.collapsed.insert("Glyph");
+                    }
+                },
             ),
+            (!app.collapsed.contains("Glyph")).then(|| {
+                xcolumn(
+                    Region::List,
+                    (
+                        show_multi_mark.then(|| {
+                            row("Selected".into(), format!("{}", app.multi_selected.len()))
+                        }),
+                        (!pts.is_empty()).then(|| row("Points".into(), pts)),
+                        editing.then(|| row("Selected".into(), format!("{}", app.selected_points))),
+                    ),
+                )
+            }),
+            (!app.collapsed.contains("Glyph")).then(|| show_multi_mark.then(|| mark_section(app))),
+            (!app.collapsed.contains("Glyph")).then_some(name_field),
+            (!app.collapsed.contains("Glyph")).then_some(advance_field),
+            (!app.collapsed.contains("Glyph")).then_some(overview_fields),
+        ),
+    );
+    xcolumn(
+        Region::List,
+        (
             // The GPUI build's order: Coordinates, Transformations,
             // Curves, Background, Color, then Layers, in the editor;
             // Font info, Layers and the preview over the grid.
@@ -193,35 +190,48 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             // Transformations, Curves, Background, Color, Related,
             // Masters. Overview: Font info, Dimensions, Kerning,
             // Groups, Compare, Features, Masters, the preview.
-            editing.then(|| coordinates_section(app)),
-            editing.then(|| path_section(app)),
-            editing.then(|| curves_section(app)),
-            editing.then(|| background_section(app)),
-            editing.then(|| mark_section(app)),
-            editing.then(|| related_section(app)),
+            editing.then(|| recipes::inspector_group(pal, coordinates_section(app))),
+            editing.then(|| {
+                xcolumn(
+                    Region::List,
+                    (
+                        recipes::inspector_group(pal, path_section(app)),
+                        recipes::inspector_group(pal, path_operations_section(app)),
+                    ),
+                )
+                .gap(Space::None)
+            }),
+            recipes::inspector_group(pal, glyph_section),
+            editing.then(|| recipes::inspector_group(pal, curves_section(app))),
+            editing.then(|| recipes::inspector_group(pal, background_section(app))),
+            editing.then(|| recipes::inspector_group(pal, mark_section(app))),
+            editing.then(|| recipes::inspector_group(pal, related_section(app))),
             // One column for three sections: the panel's tuple is at
             // Xilem's sixteen-child limit, so the overview's first
             // three sections share a slot. Same region as the panel,
             // so the gap between them is the panel's own.
             (!editing).then(|| {
                 xcolumn(
-                    Region::Panel,
+                    Region::List,
                     (
-                        font_info_section(app),
-                        dimensions_section(app),
-                        font_advanced_section(app),
+                        recipes::inspector_group(pal, font_info_section(app)),
+                        recipes::inspector_group(pal, dimensions_section(app)),
+                        recipes::inspector_group(pal, font_advanced_section(app)),
                     ),
                 )
+                .gap(Space::None)
             }),
-            (!editing).then(|| kerning_section(app)),
-            (!editing).then(|| groups_section(app)),
-            (!editing).then(|| compare_section(app)),
-            (!editing).then(|| features_section(app)),
-            layers_section(app),
-            masters_section(app),
-            editing.then(|| measure_section(app)),
+            (!editing).then(|| recipes::inspector_group(pal, kerning_section(app))),
+            (!editing).then(|| recipes::inspector_group(pal, groups_section(app))),
+            (!editing).then(|| recipes::inspector_group(pal, compare_section(app))),
+            (!editing).then(|| recipes::inspector_group(pal, features_section(app))),
+            layers_section(app).map(|body| recipes::inspector_group(pal, body)),
+            masters_section(app).map(|body| recipes::inspector_group(pal, body)),
+            editing.then(|| recipes::inspector_group(pal, measure_section(app))),
             (!editing).then(|| glyph_preview(app)).flatten(),
         ),
     )
+    .gap(Space::None)
+    .padding(Space::None)
     .background_color(pal.panel)
 }

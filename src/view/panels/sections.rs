@@ -233,26 +233,46 @@ pub(crate) fn path_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
                     ),
                 )
             }),
+        ),
+    )
+}
+
+/// Path operations fold independently of the geometric transform tools.
+pub(crate) fn path_operations_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    xcolumn(
+        Region::Section,
+        (
+            recipes::section_toggle(
+                pal,
+                "Path Operations",
+                !app.collapsed.contains("Path Operations"),
+                |app: &mut Workspace| {
+                    if !app.collapsed.remove("Path Operations") {
+                        app.collapsed.insert("Path Operations");
+                    }
+                },
+            ),
             // Labeled transform buttons, matching gpui's Transformations block.
-            (!app.collapsed.contains("Transformations")).then(|| {
+            (!app.collapsed.contains("Path Operations")).then(|| {
                 xrow(
                     Region::Inline,
                     (
-                        tbtn(pal, "Harmonize", |s| s.harmonize()),
-                        tbtn(pal, "Balance", |s| s.balance()),
+                        tbtn(pal, "Harmonize", |s| s.harmonize()).flex(1.0),
+                        tbtn(pal, "Balance", |s| s.balance()).flex(1.0),
                     ),
                 )
             }),
-            (!app.collapsed.contains("Transformations")).then(|| {
+            (!app.collapsed.contains("Path Operations")).then(|| {
                 xrow(
                     Region::Inline,
                     (
-                        tbtn(pal, "Optimize", |s| s.optimize()),
-                        tbtn(pal, "Round", |s| s.round_corners()),
+                        tbtn(pal, "Optimize", |s| s.optimize()).flex(1.0),
+                        tbtn(pal, "Round Corners", |s| s.round_corners()).flex(1.0),
                     ),
                 )
             }),
-            (!app.collapsed.contains("Transformations"))
+            (!app.collapsed.contains("Path Operations"))
                 .then(|| xrow(Region::Inline, (tbtn(pal, "Reverse", |s| s.reverse()),))),
         ),
     )
@@ -423,12 +443,17 @@ pub(crate) fn curves_section(app: &Workspace) -> impl WidgetView<Workspace> + us
                 xrow(
                     Region::Inline,
                     (
-                        recipes::toggle(pal, "Comb".into(), view.comb, |app: &mut Workspace| {
-                            app.view.comb = !app.view.comb;
-                        }),
                         recipes::toggle(
                             pal,
-                            "G0-G3".into(),
+                            "Curvature Comb".into(),
+                            view.comb,
+                            |app: &mut Workspace| {
+                                app.view.comb = !app.view.comb;
+                            },
+                        ),
+                        recipes::toggle(
+                            pal,
+                            "Continuity".into(),
                             view.continuity,
                             |app: &mut Workspace| {
                                 app.view.continuity = !app.view.continuity;
