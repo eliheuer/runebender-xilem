@@ -675,7 +675,7 @@ pub(crate) fn mark_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
         (
             recipes::section_toggle(
                 pal,
-                "Mark",
+                "Color",
                 !app.collapsed.contains("Mark"),
                 move |app: &mut Workspace| {
                     if !app.collapsed.remove("Mark") {

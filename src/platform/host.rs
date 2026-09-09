@@ -158,6 +158,10 @@ impl Workspace {
                     "Features",
                     "Layers",
                     "Related",
+                    "Path Operations",
+                    "Background",
+                    "Mark",
+                    "Masters",
                 ]);
                 set
             },

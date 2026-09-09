@@ -239,3 +239,21 @@ Headless CPU renders cover the Gray editor, Shapes rail, and node graph.
 These are visual layout proofs, not native GPU or pointer-interaction proof.
 The GPU backend's group-filter limitation remains worked around by the
 cached Linebender CPU blur image; native compositing still needs a GUI check.
+
+## September 9 proportions pass
+
+GPUI `src/view/render.rs` assigns the initial preview panel 140 logical
+pixels. Xilem previously assigned 120 to both drawing and controls. The
+drawing now receives 140 plus a separate control-row allocation. Dock widths
+are named together to prevent drift. Path Operations, Background, Color, and
+Masters start folded, matching the supplied editor screenshot; their controls
+remain available. The Color header retains the existing Mark state key.
+
+Gray and Light 1200x890 headless renders were inspected in
+`/private/tmp/xilem-proportions-gray.png` and
+`/private/tmp/xilem-proportions-light.png`. Build, Clippy with warnings denied,
+and all 35 tests passed. These are approximate content dimensions, not an
+exact pixel comparison: reference screenshots have different window sizes and
+canvas zoom. Remaining visible gaps include shorter rail cells, smaller canvas
+glyph framing, extra proof controls, missing in-canvas text context, and the
+inspector's Measure section versus the GPUI Axes/Shaping inventory.

@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Give word proofs the GPUI initial drawing height and start additional inspector sections folded.
+
 - Add a contour-selection Shapes rail, inverted word proofs, connected coordinate reference controls, and GPUI-style glyph and node shadows.
 
 - Add editable shaped word previews with cached Vello CPU blur, larger outline previews, shared rail search controls, and clearer selected-state and metrics styling.

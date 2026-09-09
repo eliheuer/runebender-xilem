@@ -3,6 +3,7 @@
 
 //! The render tree: how the workspace's state becomes a frame.
 
+use crate::view::design::{DOCK_WIDTH, PROOF_DRAWING_HEIGHT};
 use crate::*;
 use masonry::properties::AutoHideScrollBar;
 use xilem::core::lens;
@@ -45,7 +46,12 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     };
     let preview = matches!(app.mode, Mode::Editor(_)).then(|| {
         sized_box(preview_strip(app))
-            .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(120.0))))
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::Fixed(Length::px(
+                    PROOF_DRAWING_HEIGHT + ControlSize::Control.px() + Space::Sm.px() * 2.0,
+                )),
+            ))
             .background_color(pal.panel)
     });
     // The bottom bar belongs to the middle column, so the sidebar
@@ -65,7 +71,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     let left = flex_col((left.flex(1.0), marks_bar(app)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::None);
-    let left_width = if app.left_collapsed { 0.0 } else { 246.0 };
+    let left_width = if app.left_collapsed { 0.0 } else { DOCK_WIDTH };
 
     let columns = flex_row((
         sized_box(left)
@@ -108,7 +114,10 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
                     .constrain_horizontal(true)
                     .prop(AutoHideScrollBar(true)),
                 )
-                .dims(Dimensions::new(Dim::Fixed(Length::px(246.0)), Dim::Stretch))
+                .dims(Dimensions::new(
+                    Dim::Fixed(Length::px(DOCK_WIDTH)),
+                    Dim::Stretch,
+                ))
                 .background_color(pal.panel),
             ))
             .cross_axis_alignment(CrossAxisAlignment::Start)

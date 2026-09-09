@@ -25,6 +25,12 @@ use masonry::properties::{Gap, Padding};
 use xilem::style::Style;
 use xilem::view::{Flex, FlexSequence, Prop, flex_col, flex_row};
 
+/// Initial dock width shared by the glyph rail and inspector.
+pub(crate) const DOCK_WIDTH: f64 = 246.0;
+/// GPUI allocates 140 logical pixels to the proof drawing. Xilem's
+/// editable proof controls occupy an additional control row.
+pub(crate) const PROOF_DRAWING_HEIGHT: f64 = 140.0;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[expect(
     dead_code,
