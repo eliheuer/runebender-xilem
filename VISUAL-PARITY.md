@@ -324,3 +324,19 @@ Inspected Gray and Light 1200x890 renders at
 and 36 tests pass. Remaining differences include row typography, missing
 Chat navigation, native slider styling, and matching reference selection
 and scroll state. No font sources or GPUI files changed.
+
+## September 9 neutral controls
+
+Zoom, glyph-size, blur, axis, and AI-strength sliders now share a recipe
+using Masonry TrackColor and ThumbColor properties. Both track segments
+use neutral theme ink; the thumb uses the panel surface. The existing
+Masonry slider retains its keyboard, pointer, and accessibility behavior.
+Header active tabs use neutral header ink instead of warning orange.
+
+Gray and Light editor proofs inspected at 1200x890:
+`/private/tmp/xilem-controls-gray.png` and
+`/private/tmp/xilem-controls-light.png`. Those images precede a final
+inactive-header contrast correction using translucent header ink. Build
+and Clippy pass; 36 tests passed for the slider implementation before
+the final header color adjustments. Native interaction remains unverified.
+This styling required no custom widget or upstream change.

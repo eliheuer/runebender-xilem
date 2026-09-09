@@ -144,9 +144,15 @@ pub(crate) fn axes_section(app: &Workspace) -> Option<impl WidgetView<Workspace>
                                 .color(text),
                         ),
                     ),
-                    slider(ax.min, ax.max, value, move |app: &mut Workspace, v| {
-                        app.set_axis(i, v);
-                    })
+                    recipes::neutral_slider(
+                        &app.palette,
+                        ax.min,
+                        ax.max,
+                        value,
+                        move |app: &mut Workspace, v| {
+                            app.set_axis(i, v);
+                        },
+                    )
                     .width(Length::px(214.0)),
                 ),
             )

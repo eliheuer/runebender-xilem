@@ -256,7 +256,7 @@ where
 }
 
 /// A title-bar tab: GPUI keeps the header quiet and marks the active
-/// workspace with a warning-colour keyline instead of a filled control.
+/// workspace with a brighter neutral keyline, matching the GPUI reference.
 fn header_tab_chip<F>(
     pal: &Palette,
     text: String,
@@ -267,11 +267,13 @@ fn header_tab_chip<F>(
 where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
-    let accent = pal.role("warning");
     let (fg, border) = if active {
-        (accent, accent)
+        (pal.header_ink, pal.header_ink)
     } else {
-        (pal.header_ink, pal.text_muted)
+        (
+            pal.header_ink.with_alpha(0.7),
+            pal.header_ink.with_alpha(0.5),
+        )
     };
     let width = if fixed_width {
         Dim::from(ControlSize::Row)

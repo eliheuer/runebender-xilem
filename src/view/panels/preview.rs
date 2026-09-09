@@ -120,9 +120,15 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
                 label("Blur")
                     .text_size(TextSize::Body.px())
                     .color(app.palette.text_muted),
-                slider(0.0, 8.0, app.preview_blur, |app: &mut Workspace, value| {
-                    app.preview_blur = value;
-                })
+                recipes::neutral_slider(
+                    &app.palette,
+                    0.0,
+                    8.0,
+                    app.preview_blur,
+                    |app: &mut Workspace, value| {
+                        app.preview_blur = value;
+                    },
+                )
                 .width(Length::px(96.0)),
             ),
         )

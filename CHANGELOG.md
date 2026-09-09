@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Use shared neutral theme colors for sliders and header tab selection.
+
 - Align category sidebar insets and full-width rules; group font counts under Filters.
 
 - Share working Glyphs, Axes, and Local AI navigation across font, node, and glyph workspaces.

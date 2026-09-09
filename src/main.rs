@@ -26,8 +26,8 @@ use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
 use xilem::view::{
-    FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, portal, sized_box, slider,
-    text_button, text_input,
+    FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, portal, sized_box, text_button,
+    text_input,
 };
 use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 

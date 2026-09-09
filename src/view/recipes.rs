@@ -365,3 +365,23 @@ pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
 }
+
+/// The editor's neutral slider, retaining Masonry keyboard and pointer behavior.
+pub(crate) fn neutral_slider<F>(
+    pal: &Palette,
+    min: f64,
+    max: f64,
+    value: f64,
+    on_change: F,
+) -> impl WidgetView<Workspace, Widget = masonry::widgets::Slider> + use<F>
+where
+    F: Fn(&mut Workspace, f64) + Send + Sync + 'static,
+{
+    use masonry::properties::{ThumbColor, TrackColor};
+    xilem::view::slider(min, max, value, on_change)
+        .prop(TrackColor {
+            active: pal.text_muted,
+            inactive: pal.text_muted,
+        })
+        .prop(ThumbColor(pal.panel))
+}

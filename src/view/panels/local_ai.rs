@@ -52,9 +52,15 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
             Region::Inline,
             (
                 muted(format!("Strength {strength:.2}\u{00d7}")),
-                slider(0.0, 3.0, strength, |app: &mut Workspace, v| {
-                    app.ai.strength = (v * 20.0).round() / 20.0;
-                })
+                recipes::neutral_slider(
+                    &app.palette,
+                    0.0,
+                    3.0,
+                    strength,
+                    |app: &mut Workspace, v| {
+                        app.ai.strength = (v * 20.0).round() / 20.0;
+                    },
+                )
                 .width(Length::px(96.0)),
             ),
         )

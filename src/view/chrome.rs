@@ -282,8 +282,14 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 xrow(
                     Region::Inline,
                     (
-                        slider(0.05, 8.0, zoom, |app: &mut Workspace, v| app.zoom_to(v))
-                            .width(Length::px(96.0)),
+                        recipes::neutral_slider(
+                            &app.palette,
+                            0.05,
+                            8.0,
+                            zoom,
+                            |app: &mut Workspace, v| app.zoom_to(v),
+                        )
+                        .width(Length::px(96.0)),
                         label(format!("{:.0}%", zoom * 100.0))
                             .text_size(TextSize::Body.px())
                             .color(pal.text_muted),
@@ -301,9 +307,15 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         bar_box("\u{2261}".into(), app.list, |app: &mut Workspace| {
                             app.list = true;
                         }),
-                        slider(48.0, 200.0, app.cell_size, |app: &mut Workspace, v| {
-                            app.cell_size = v;
-                        })
+                        recipes::neutral_slider(
+                            &app.palette,
+                            48.0,
+                            200.0,
+                            app.cell_size,
+                            |app: &mut Workspace, v| {
+                                app.cell_size = v;
+                            },
+                        )
                         .width(Length::px(96.0)),
                     ),
                 )
