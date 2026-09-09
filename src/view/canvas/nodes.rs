@@ -621,6 +621,7 @@ impl Widget for NodesWidget {
 /// The view: the file, the registry, the run marks, and the selection
 /// the app remembers.
 pub(crate) struct NodesView<F> {
+    fit_request: u64,
     graph: Arc<NodeGraph>,
     registry: Arc<Registry>,
     palette: Arc<Palette>,
@@ -635,9 +636,11 @@ pub(crate) fn nodes_canvas<F: Fn(&mut Workspace, NodesEvent) + 'static>(
     palette: Arc<Palette>,
     rows: Arc<BTreeMap<u32, RowState>>,
     selected: Option<u32>,
+    fit_request: u64,
     on_event: F,
 ) -> NodesView<F> {
     NodesView {
+        fit_request,
         graph,
         registry,
         palette,
@@ -679,6 +682,11 @@ impl<F: Fn(&mut Workspace, NodesEvent) + 'static> View<Workspace, (), ViewCtx> f
         _: &mut Workspace,
     ) {
         let mut dirty = false;
+        if self.fit_request != prev.fit_request {
+            element.widget.fitted = false;
+            element.ctx.request_layout();
+            dirty = true;
+        }
         if !Arc::ptr_eq(&self.graph, &prev.graph) && *self.graph != element.widget.graph {
             element.widget.graph = (*self.graph).clone();
             element.widget.relayout();

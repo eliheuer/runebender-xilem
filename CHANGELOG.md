@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Add Fit graph and refit newly opened node files; keep glyph-grid controls in Font view.
+
 - Fit the initial node viewport and keep connection wires and ports visible above cards.
 
 - Use shared neutral theme colors for sliders and header tab selection.

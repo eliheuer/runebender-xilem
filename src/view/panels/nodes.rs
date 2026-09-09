@@ -98,6 +98,7 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         app.palette.clone(),
         state.rows.clone(),
         app.nodes.selected,
+        app.nodes.fit_request,
         |app: &mut Workspace, ev| match ev {
             NodesEvent::Changed(graph) => app.nodes_changed(graph),
             NodesEvent::Selected(id) => app.nodes.selected = id,

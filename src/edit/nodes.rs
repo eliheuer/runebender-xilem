@@ -63,6 +63,8 @@ pub(crate) struct NodeJob {
 /// Everything nodes-related the app holds.
 #[derive(Debug, Default)]
 pub(crate) struct NodesState {
+    /// Revision of the explicit fit-to-view request.
+    pub(crate) fit_request: u64,
     /// The open file.
     pub(crate) graph: Option<GraphState>,
     /// The `.nodes.json` files found beside the font.
@@ -194,6 +196,7 @@ impl Workspace {
                     rows: Arc::new(rows),
                 });
                 self.nodes.selected = None;
+                self.nodes.fit_request = self.nodes.fit_request.wrapping_add(1);
                 self.note = if n == 0 {
                     format!("Opened {}", file_label(path))
                 } else {
@@ -223,6 +226,7 @@ impl Workspace {
             rows: Arc::new(BTreeMap::new()),
         });
         self.nodes.selected = None;
+        self.nodes.fit_request = self.nodes.fit_request.wrapping_add(1);
         self.mode = Mode::Nodes;
     }
 

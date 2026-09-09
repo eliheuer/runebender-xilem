@@ -356,3 +356,18 @@ visible. Build, Clippy with warnings denied, and 36 tests pass. No graph
 was run or saved. Remaining gaps include file-dialog behavior, node zoom
 controls in the bottom bar, exact graph arrangement/reference state, and
 native pointer verification.
+
+## September 9 node viewport controls
+
+The Nodes bottom bar no longer displays glyph creation/list/grid-size
+controls. It offers Fit graph, which requests layout and reapplies the
+existing bounds fit. Opening or creating a graph also requests a fit;
+ordinary edits and pan/zoom do not. This is an intentional functional
+correction to the reference layout: controls must affect their workspace.
+
+Inspected Gray and Light 1200x890 renders at
+`/private/tmp/xilem-node-controls-gray.png` and
+`/private/tmp/xilem-node-controls-light.png`. Build, Clippy with warnings
+denied, and 36 tests pass. Pointer activation remains unverified; the
+request travels through Workspace state and the canvas rebuild/layout path.
+No graph execution, graph save, or font-source writes occurred.

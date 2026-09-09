@@ -262,7 +262,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     xrow(
         Region::Toolbar,
         (
-            (!editing).then(|| {
+            matches!(app.mode, Mode::Overview).then(|| {
                 xrow(
                     Region::Inline,
                     (
@@ -278,6 +278,11 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 .text_size(TextSize::Body.px())
                 .color(pal.text_muted),
             FlexSpacer::Flex(1.0),
+            matches!(app.mode, Mode::Nodes).then(|| {
+                recipes::toggle(pal, "Fit graph".into(), false, |app: &mut Workspace| {
+                    app.nodes.fit_request = app.nodes.fit_request.wrapping_add(1);
+                })
+            }),
             editing.then(|| {
                 xrow(
                     Region::Inline,
@@ -296,7 +301,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     ),
                 )
             }),
-            (!editing).then(|| {
+            matches!(app.mode, Mode::Overview).then(|| {
                 xrow(
                     Region::Inline,
                     (
