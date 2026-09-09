@@ -125,6 +125,10 @@ pub(crate) struct Workspace {
     pub(crate) coord_y_buf: String,
     pub(crate) coord_w_buf: String,
     pub(crate) coord_h_buf: String,
+    /// Text rendered in the proof strip; empty shows the current glyph.
+    pub(crate) preview_text: String,
+    /// Gaussian blur radius for the proof strip in logical pixels.
+    pub(crate) preview_blur: f64,
     /// Search scope: 0 name and unicode, 1 name only, 2 unicode only.
     pub(crate) search_mode: u8,
     /// Case-sensitive search.

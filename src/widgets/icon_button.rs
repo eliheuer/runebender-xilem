@@ -74,7 +74,7 @@ impl Widget for IconWidget {
         let Some(icon) = toolbar_icons().get(self.icon) else {
             return;
         };
-        let pad = self.size.width.min(self.size.height) * 0.22;
+        let pad = self.size.width.min(self.size.height) * 0.10;
         let vb = icon.view_box;
         let scale = ((self.size.width - pad * 2.0) / vb.width())
             .min((self.size.height - pad * 2.0) / vb.height());

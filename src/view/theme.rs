@@ -133,6 +133,11 @@ impl Palette {
         self.role("controlSelectedInk")
     }
 
+    /// The selected glyph or sidebar label, matching GPUI's yellow mark ink.
+    pub(crate) fn selected_content_ink(&self) -> Color {
+        self.mark("yellow").unwrap_or_else(|| self.selected_ink())
+    }
+
     /// Whatever a tool draws while the pointer is down: the ink.
     pub(crate) fn tool_feedback(&self) -> Color {
         self.text

@@ -56,7 +56,7 @@ pub(crate) fn glyph_list(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             let entry = &app.font.glyphs[index];
             let selected = app.selected == Some(index) || app.multi_selected.contains(&index);
             let (fg, bg) = if selected {
-                (pal.role("cellSelectedInk"), pal.role("cellSelectedFill"))
+                (pal.selected_content_ink(), pal.selected_bg())
             } else {
                 (pal.text, pal.panel)
             };

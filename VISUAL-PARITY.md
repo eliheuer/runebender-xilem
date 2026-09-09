@@ -190,3 +190,37 @@ uses a disposable UFO and verifies reference preservation, invalid input, and
 undo. All 34 tests pass; the selected-R screenshot verifies four-field layout.
 Next: reference picker connecting lines, header/rail tool layout, preview
 text/blur controls, and selected-state theme alignment.
+
+### Sustained visual implementation: rail and proof surfaces
+
+- Shared real search/scope/regex/case controls between overview and glyph rail.
+  Rail tabs stretch across the column; the search row uses compact insets.
+- Larger toolbar icon artwork and GPUI's yellow selected-content ink in the
+  grid, list, and sidebar; ordinary tool selection remains separate.
+- Editable word proofs via the existing TextInputs/TextState/core text engine.
+  Latin Runebender and Arabic salaam screenshots inspected; this does not
+  certify complete Arabic shaping or interactive IME support. Direction
+  controls live beside the proof. Off-master locations retain the interpolated
+  current-glyph proof and label it explicitly.
+- Real preview blur slider, cached Vello CPU raster, composited as an image.
+  Pinned imaging_vello and imaging_vello_hybrid 0.0.1 reject group filters;
+  imaging_vello_cpu 0.0.1 supports them. This is a concrete backend capability
+  gap, not a reason to redesign the application or claim all Vello backends
+  support blur. No dependencies added. The CPU image-compositing regression
+  test passes; native GPU interaction/compositing still needs live verification.
+  The last raster is cached by paths, transform, dimensions, sigma, and color;
+  raster dimensions are bounded without cropping large views.
+- Overview preview now shows outline, control handles, and point types at a
+  useful size instead of a small filled glyph.
+- Metrics card reduced to one row with readable centered numbers. Kerning
+  group labels remain read-only and are abbreviated to avoid overlaps; editing
+  those groups still belongs to the existing inspector controls.
+
+Validation: 35 tests, Clippy with warnings denied, and docs passed before the
+final metrics text-centering adjustment; final build and rendered proof check
+follow that adjustment. Proofs in /private/tmp/xilem-blur-gray.png,
+xilem-blur-light.png, xilem-progress-overview.png (and copied into this task's
+visualizations folder). No font sources, GPUI files, or dependency pins changed.
+Remaining: full rail panel inventory, closer header/tool layout, connecting
+lines in the reference picker, complete editable metrics groups, node surfaces,
+and native interaction proof.

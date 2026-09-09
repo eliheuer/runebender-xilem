@@ -18,6 +18,52 @@ pub(crate) enum Rail {
     LocalAi,
 }
 
+/// Shared search controls keep filtering identical in overview and the editor rail.
+fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    // Search row: the field, then gpui's small scope and case toggles.
+    let toggle = |text: String, active: bool, f: fn(&mut Workspace)| {
+        recipes::toggle(pal, text, active, move |app: &mut Workspace| f(app))
+    };
+    xrow(
+        Region::Inline,
+        (
+            // A field, not a well: one step darker than the
+            // panel with a quiet outline, as every field is.
+            text_input(app.filter.clone(), |app: &mut Workspace, v| {
+                app.filter = v;
+                app.rebuild_search_regex();
+            })
+            .placeholder("Search glyphs")
+            .text_color(pal.text)
+            .placeholder_color(pal.text_muted)
+            .background_color(pal.field())
+            .border_color(pal.field_outline)
+            .border_width(Stroke::Hairline.length())
+            .corner_radius(Radius::None.length())
+            .flex(1.0),
+            toggle(
+                match app.search_mode {
+                    1 => "N",
+                    2 => "U",
+                    _ => "A",
+                }
+                .to_string(),
+                app.search_mode != 0,
+                |app: &mut Workspace| app.search_mode = (app.search_mode + 1) % 3,
+            ),
+            toggle(".*".into(), app.search_regex, |app: &mut Workspace| {
+                app.search_regex = !app.search_regex;
+                app.rebuild_search_regex();
+            }),
+            toggle("Aa".into(), app.search_case, |app: &mut Workspace| {
+                app.search_case = !app.search_case;
+                app.rebuild_search_regex();
+            }),
+        ),
+    )
+}
+
 pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let current = match app.mode {
@@ -51,10 +97,7 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             .border_width(Stroke::Hairline.length())
             .corner_radius(Radius::Md.length()),
         )
-        .dims(Dimensions::new(
-            Dim::from(ControlSize::Control),
-            Dim::from(height),
-        ))
+        .dims(Dimensions::new(Dim::Stretch, Dim::from(height)))
     };
     let has_axes = !app.font.axes.is_empty();
     flex_col((
@@ -65,9 +108,9 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             xrow(
                 Region::Inline,
                 (
-                    tab("glyph-grid", Rail::Glyphs),
-                    has_axes.then(|| tab("measure", Rail::Axes)),
-                    tab("preview", Rail::LocalAi),
+                    tab("glyph-grid", Rail::Glyphs).flex(1.0),
+                    has_axes.then(|| tab("measure", Rail::Axes).flex(1.0)),
+                    tab("preview", Rail::LocalAi).flex(1.0),
                 ),
             )
             .background_color(pal.tab_rail),
@@ -80,16 +123,7 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     .then(|| axes_section(app))
                     .flatten(),
                 (app.rail == Rail::LocalAi).then(|| local_ai_panel(app)),
-                (app.rail == Rail::Glyphs).then(|| {
-                    text_input(app.filter.clone(), |app: &mut Workspace, v| app.filter = v)
-                        .placeholder("Search glyphs")
-                        .text_color(pal.text)
-                        .placeholder_color(pal.text_muted)
-                        .background_color(pal.field())
-                        .border_color(pal.field_outline)
-                        .border_width(Stroke::Hairline.length())
-                        .corner_radius(Radius::Sm.length())
-                }),
+                (app.rail == Rail::Glyphs).then(|| glyph_search(app)),
                 // The grid scrolls itself, so no portal here: nesting the two
                 // gave the rail a dead area below the third row.
                 (app.rail == Rail::Glyphs).then(|| {
@@ -113,6 +147,8 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 }),
             ),
         )
+        .padding(Space::Md)
+        .gap(Space::Md)
         .flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
@@ -445,50 +481,10 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         })
         .collect();
 
-    // Search row: the field, then gpui's small scope and case toggles.
-    let toggle = |text: String, active: bool, f: fn(&mut Workspace)| {
-        recipes::toggle(pal, text, active, move |app: &mut Workspace| f(app))
-    };
     xcolumn(
         Region::Panel,
         (
-            xrow(
-                Region::Inline,
-                (
-                    // A field, not a well: one step darker than the
-                    // panel with a quiet outline, as every field is.
-                    text_input(app.filter.clone(), |app: &mut Workspace, v| {
-                        app.filter = v;
-                        app.rebuild_search_regex();
-                    })
-                    .placeholder("Search glyphs")
-                    .text_color(pal.text)
-                    .placeholder_color(pal.text_muted)
-                    .background_color(pal.field())
-                    .border_color(pal.field_outline)
-                    .border_width(Stroke::Hairline.length())
-                    .corner_radius(Radius::Sm.length())
-                    .flex(1.0),
-                    toggle(
-                        match app.search_mode {
-                            1 => "N",
-                            2 => "U",
-                            _ => "A",
-                        }
-                        .to_string(),
-                        app.search_mode != 0,
-                        |app: &mut Workspace| app.search_mode = (app.search_mode + 1) % 3,
-                    ),
-                    toggle(".*".into(), app.search_regex, |app: &mut Workspace| {
-                        app.search_regex = !app.search_regex;
-                        app.rebuild_search_regex();
-                    }),
-                    toggle("Aa".into(), app.search_case, |app: &mut Workspace| {
-                        app.search_case = !app.search_case;
-                        app.rebuild_search_regex();
-                    }),
-                ),
-            ),
+            glyph_search(app),
             {
                 let fresh =
                     !app.filter.trim().is_empty() && app.font.index_of(app.filter.trim()).is_none();

@@ -209,6 +209,14 @@ impl Workspace {
             coord_y_buf: String::new(),
             coord_w_buf: String::new(),
             coord_h_buf: String::new(),
+            preview_text: std::env::var("RUNEBENDER_PREVIEW_TEXT")
+                .unwrap_or_else(|_| "Runebender".into()),
+            preview_blur: std::env::var("RUNEBENDER_PREVIEW_BLUR")
+                .ok()
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .unwrap_or(0.0)
+                .clamp(0.0, 8.0),
             search_mode: 0,
             search_case: false,
             reference_layers: std::collections::HashSet::new(),

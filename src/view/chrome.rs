@@ -78,7 +78,6 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             // The empty middle of the bar moves the window and zooms
             // it on a double click, as the system title bar would.
             drag_region().flex(1.0),
-            editing.then(|| direction_chips(app)),
             editing.then(|| header_tools(app)),
             tab_strip(app),
         ),

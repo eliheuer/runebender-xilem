@@ -318,12 +318,12 @@ impl Widget for GridWidget {
                 // on every cell and changes only the colour.
                 let picked = selected || multi;
                 let bg = if picked {
-                    pal.role("cellSelectedFill")
+                    pal.selected_bg()
                 } else {
                     cell.mark.unwrap_or(pal.panel)
                 };
                 let ink = if picked {
-                    pal.role("cellSelectedInk")
+                    pal.selected_content_ink()
                 } else if cell.mark.is_some() {
                     mark_ink
                 } else {
@@ -332,7 +332,7 @@ impl Widget for GridWidget {
                 let radius = Radius::None.px();
                 painter.fill(rect.to_rounded_rect(radius), bg).draw();
                 let border = if picked {
-                    pal.role("cellSelectedFill")
+                    pal.selected_bg()
                 } else if cell.mark.is_some() {
                     mark_outline
                 } else {

@@ -29,9 +29,9 @@ use crate::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget}
 use crate::widgets::text_label::{self, Anchor};
 
 /// The metrics panel's geometry, shared by its painting and its boxes.
-const PANEL_PAD: f64 = 10.0;
-const PANEL_ROW: f64 = 18.0;
-const PANEL_WIDTH: f64 = 288.0;
+const PANEL_PAD: f64 = 8.0;
+const PANEL_ROW: f64 = 24.0;
+const PANEL_WIDTH: f64 = 320.0;
 const PANEL_HEADER: f64 = 22.0;
 
 const HIT_RADIUS_PX: f64 = 8.0;
@@ -237,17 +237,17 @@ impl EditorWidget {
         self.session.side_bearings()?;
         let (left, top) = self.metrics_panel_origin()?;
         let y = top + PANEL_HEADER + PANEL_PAD;
-        let box_at = |x: f64| Rect::new(left + x, y, left + x + 64.0, y + PANEL_ROW);
+        let box_at = |x: f64| Rect::new(left + x, y, left + x + 56.0, y + PANEL_ROW);
         Some([
-            (MetricField::Lsb, box_at(42.0)),
-            (MetricField::Width, box_at(112.0)),
-            (MetricField::Rsb, box_at(182.0)),
+            (MetricField::Lsb, box_at(70.0)),
+            (MetricField::Width, box_at(132.0)),
+            (MetricField::Rsb, box_at(194.0)),
         ])
     }
 
     /// The panel's top left corner, or `None` when it does not fit.
     fn metrics_panel_origin(&self) -> Option<(f64, f64)> {
-        let height = PANEL_HEADER + PANEL_ROW * 2.0 + PANEL_PAD * 2.0;
+        let height = PANEL_HEADER + PANEL_ROW + PANEL_PAD * 2.0;
         let top = self.size.height - height - PANEL_PAD;
         if top < 0.0 || PANEL_WIDTH + PANEL_PAD * 2.0 > self.size.width {
             return None;
@@ -336,7 +336,20 @@ impl EditorWidget {
         const ROW: f64 = PANEL_ROW;
         let pal = &self.palette;
         let bearings = self.session.side_bearings();
-        let height = PANEL_HEADER + ROW * 2.0 + PAD * 2.0;
+        // Keep read-only group labels inside their end columns. Full names
+        // remain available in the inspector's kerning group fields.
+        let group_label = |name: &str| {
+            let name = name
+                .strip_prefix("public.kern1.")
+                .or_else(|| name.strip_prefix("public.kern2."))
+                .unwrap_or(name);
+            if name.chars().count() > 6 {
+                format!("{}…", name.chars().take(5).collect::<String>())
+            } else {
+                name.to_owned()
+            }
+        };
+        let height = PANEL_HEADER + ROW + PAD * 2.0;
         let width = PANEL_WIDTH;
         let left = (self.size.width - width) / 2.0;
         let top = self.size.height - height - PAD;
@@ -353,7 +366,7 @@ impl EditorWidget {
             |painter: &mut Painter<'_>, x: f64, row: f64, s: &str, size: f32, color, anchor| {
                 text_label::draw(
                     painter,
-                    Point::new(left + x, top + PANEL_HEADER + PAD + row * ROW + ROW - 5.0),
+                    Point::new(left + x, top + PANEL_HEADER + PAD + row * ROW + ROW / 2.0),
                     s,
                     size,
                     color,
@@ -363,7 +376,7 @@ impl EditorWidget {
         let header_text = |painter: &mut Painter<'_>, x: f64, s: &str, size: f32, color, anchor| {
             text_label::draw(
                 painter,
-                Point::new(left + x, top + PANEL_HEADER - 6.0),
+                Point::new(left + x, top + PANEL_HEADER / 2.0),
                 s,
                 size,
                 color,
@@ -374,7 +387,7 @@ impl EditorWidget {
             painter,
             PAD,
             &self.session.glyph_name,
-            12.0_f32,
+            13.0_f32,
             pal.mark_ink.unwrap_or(pal.text),
             Anchor::Start,
         );
@@ -389,30 +402,12 @@ impl EditorWidget {
                 painter,
                 width - PAD,
                 &format!("{:04X}", codepoint as u32),
-                11.0,
+                13.0,
                 pal.mark_ink.unwrap_or(pal.text),
                 Anchor::End,
             );
         }
         if let Some(sb) = &bearings {
-            text_at(
-                painter,
-                PAD,
-                0.0,
-                "LSB",
-                10.0,
-                pal.text_muted,
-                Anchor::Start,
-            );
-            text_at(
-                painter,
-                width - PAD,
-                0.0,
-                "RSB",
-                10.0,
-                pal.text_muted,
-                Anchor::End,
-            );
             // Three boxes you can type in, like the GPUI build's. Each
             // one is drawn here and hit tested from the same rectangles,
             // because a painted control that computes its geometry twice
@@ -432,14 +427,14 @@ impl EditorWidget {
                     let border = if focused { pal.text } else { pal.outline };
                     painter.fill(rect, pal.field()).draw();
                     painter.stroke(rect, &Stroke::new(1.0), border).draw();
-                    let baseline = rect.y0 + rect.height() - 4.0;
+                    let baseline = rect.center().y;
                     text_label::draw(
                         painter,
-                        Point::new(rect.x1 - 6.0, baseline),
+                        Point::new(rect.center().x, baseline),
                         &value,
-                        11.0,
+                        13.0,
                         pal.text,
-                        Anchor::End,
+                        Anchor::Middle,
                     );
                     if focused {
                         // A caret, drawn by hand, because this is a text
@@ -453,18 +448,18 @@ impl EditorWidget {
             text_at(
                 painter,
                 PAD,
-                1.0,
-                &self.groups.0,
-                11.0,
+                0.0,
+                &group_label(&self.groups.0),
+                13.0,
                 pal.text,
                 Anchor::Start,
             );
             text_at(
                 painter,
                 width - PAD,
-                1.0,
-                &self.groups.1,
-                11.0,
+                0.0,
+                &group_label(&self.groups.1),
+                13.0,
                 pal.text,
                 Anchor::End,
             );

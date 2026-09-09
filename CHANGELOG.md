@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Add editable shaped word previews with cached Vello CPU blur, larger outline previews, shared rail search controls, and clearer selected-state and metrics styling.
+
 - Add selection width/height editing around the chosen reference point and record inspector undo immediately.
 
 - Align inspector section borders, spacing, ordering, and path-operation groups with GPUI; fit overview tiles across the available width.

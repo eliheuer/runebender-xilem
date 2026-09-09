@@ -9,3 +9,5 @@ pub(crate) mod drag_region;
 pub(crate) mod icon_button;
 pub(crate) mod shortcuts;
 pub(crate) mod text_label;
+
+pub(crate) mod preview_blur;

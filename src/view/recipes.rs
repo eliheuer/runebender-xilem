@@ -252,12 +252,16 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         format!("{}  {text}", marker.text())
     };
     let (fg, border, bg) = if active {
-        (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
+        (
+            pal.selected_content_ink(),
+            pal.selected_bg(),
+            pal.selected_bg(),
+        )
     } else {
         (pal.text, xilem::Color::TRANSPARENT, pal.panel)
     };
     let trailing_color = if active {
-        pal.selected_ink()
+        pal.selected_content_ink()
     } else {
         pal.text_muted
     };
