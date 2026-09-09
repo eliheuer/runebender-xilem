@@ -217,6 +217,7 @@ impl Workspace {
                 .filter(|v| v.is_finite())
                 .unwrap_or(0.0)
                 .clamp(0.0, 8.0),
+            preview_invert: std::env::var("RUNEBENDER_PREVIEW_INVERT").as_deref() == Ok("1"),
             search_mode: 0,
             search_case: false,
             reference_layers: std::collections::HashSet::new(),
@@ -238,8 +239,10 @@ impl Workspace {
         app.refresh_proposals();
         // Headless: RUNEBENDER_RAIL=ai starts the editor's rail on the
         // Local AI panel, and RUNEBENDER_MODEL=<dir> chooses a model.
-        if std::env::var("RUNEBENDER_RAIL").as_deref() == Ok("ai") {
-            app.rail = Rail::LocalAi;
+        match std::env::var("RUNEBENDER_RAIL").as_deref() {
+            Ok("ai") => app.rail = Rail::LocalAi,
+            Ok("shapes") => app.rail = Rail::Shapes,
+            _ => {}
         }
         if let Some(dir) = std::env::var_os("RUNEBENDER_MODEL").filter(|d| !d.is_empty()) {
             app.load_model(FsPath::new(&dir));

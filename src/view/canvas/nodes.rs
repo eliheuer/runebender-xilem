@@ -250,12 +250,17 @@ impl Widget for NodesWidget {
         for nb in &self.boxes {
             let selected = self.selected == Some(nb.id);
             let mark = nb.mark().and_then(|m| pal.mark(m));
-            let outline = if selected { pal.text } else { keyline };
+            let outline = if selected { pal.outline } else { keyline };
             // Body, header band in the mark colour (inverted when
             // selected), the rule between them, the keyline.
+            let offset = if selected { 5.0 } else { 4.0 } / zoom.max(0.01);
+            let shadow = nb.rect + kurbo::Vec2::new(-offset, offset);
+            painter
+                .fill(&(tf * rect_path(shadow)), pal.cell_shadow())
+                .draw();
             painter.fill(&(tf * rect_path(nb.rect)), pal.field).draw();
             let header_bg = if selected {
-                pal.text
+                pal.selected_bg()
             } else {
                 mark.unwrap_or(pal.panel)
             };
@@ -268,14 +273,16 @@ impl Widget for NodesWidget {
             );
             painter.stroke(rule, &Stroke::new(1.0), outline).draw();
             painter
-                .stroke(
-                    &(tf * rect_path(nb.rect)),
-                    &Stroke::new(if selected { 2.0 } else { 1.0 }),
-                    outline,
-                )
+                .stroke(&(tf * rect_path(nb.rect)), &Stroke::new(1.0), outline)
                 .draw();
             // Title left, the run mark right.
-            let title_ink = if selected { pal.app } else { pal.text };
+            let title_ink = if selected {
+                pal.selected_ink()
+            } else if mark.is_some() {
+                pal.mark_ink.unwrap_or(pal.text)
+            } else {
+                pal.text
+            };
             let pad = nl::PAD * zoom;
             let header_mid = tf * Point::new(nb.rect.x0, nb.rect.y0 + nl::HEADER_H / 2.0);
             text_label::draw(

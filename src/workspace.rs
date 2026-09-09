@@ -129,6 +129,8 @@ pub(crate) struct Workspace {
     pub(crate) preview_text: String,
     /// Gaussian blur radius for the proof strip in logical pixels.
     pub(crate) preview_blur: f64,
+    /// Reverse the proof foreground and background contrast.
+    pub(crate) preview_invert: bool,
     /// Search scope: 0 name and unicode, 1 name only, 2 unicode only.
     pub(crate) search_mode: u8,
     /// Case-sensitive search.

@@ -18,7 +18,16 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
     let has_components = interp.is_none() && !components.elements().is_empty();
     // The preview is type, so it takes the text colour, as the GPUI
     // build draws it: ink on the panel, no hue.
-    let fill = app.palette.text;
+    let fill = if app.preview_invert {
+        app.palette.selected_ink()
+    } else {
+        app.palette.text
+    };
+    let background = if app.preview_invert {
+        app.palette.selected_bg()
+    } else {
+        app.palette.panel
+    };
     let blur = app.preview_blur;
     let instance_preview = interp.is_some();
     let has_preview_text = !app.preview_text.is_empty() && !instance_preview;
@@ -82,7 +91,7 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
         }
     });
     flex_col((
-        drawing.flex(1.0),
+        drawing.background_color(background).flex(1.0),
         xrow(
             Region::Inline,
             (
@@ -101,6 +110,12 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
                     )
                     .flex(1.0)
                 }),
+                recipes::toggle(
+                    &app.palette,
+                    "Invert".into(),
+                    app.preview_invert,
+                    |app: &mut Workspace| app.preview_invert = !app.preview_invert,
+                ),
                 direction_chips(app),
                 label("Blur")
                     .text_size(TextSize::Body.px())

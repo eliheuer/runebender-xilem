@@ -224,3 +224,18 @@ visualizations folder). No font sources, GPUI files, or dependency pins changed.
 Remaining: full rail panel inventory, closer header/tool layout, connecting
 lines in the reference picker, complete editable metrics groups, node surfaces,
 and native interaction proof.
+
+## September 9 follow-up: shapes and proof surfaces
+
+The editor has a Shapes rail listing contours and their point counts. Clicking
+a contour selects its points and refreshes the coordinate fields. Component
+rows are informational: component selection and transforms remain a gap.
+The reference picker retains nine real buttons with connecting rules.
+Word proofs now offer inversion using shared selected-surface theme colors.
+Glyph tiles and node cards use lower-left shadows; selected node headers use
+the selected-control surface.
+
+Headless CPU renders cover the Gray editor, Shapes rail, and node graph.
+These are visual layout proofs, not native GPU or pointer-interaction proof.
+The GPU backend's group-filter limitation remains worked around by the
+cached Linebender CPU blur image; native compositing still needs a GUI check.

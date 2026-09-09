@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Add a contour-selection Shapes rail, inverted word proofs, connected coordinate reference controls, and GPUI-style glyph and node shadows.
+
 - Add editable shaped word previews with cached Vello CPU blur, larger outline previews, shared rail search controls, and clearer selected-state and metrics styling.
 
 - Add selection width/height editing around the chosen reference point and record inspector undo immediately.

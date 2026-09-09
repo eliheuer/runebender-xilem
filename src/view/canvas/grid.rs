@@ -329,6 +329,10 @@ impl Widget for GridWidget {
                 } else {
                     glyph_fill
                 };
+                let offset = if picked { 3.0 } else { 2.0 };
+                painter
+                    .fill(rect + kurbo::Vec2::new(-offset, offset), pal.cell_shadow())
+                    .draw();
                 let radius = Radius::None.px();
                 painter.fill(rect.to_rounded_rect(radius), bg).draw();
                 let border = if picked {

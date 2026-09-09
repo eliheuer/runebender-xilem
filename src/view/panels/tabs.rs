@@ -8,11 +8,11 @@ use crate::*;
 use masonry::properties::AutoHideScrollBar;
 use xilem::Color;
 
-/// The editor rail's tabs. The GPUI build has four (Glyphs, Shapes,
-/// Axes, Chat); these are the two this editor has something to put in.
+/// The editor rail's implemented navigation panels.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Rail {
     Glyphs,
+    Shapes,
     Axes,
     /// Local models: the same panel the GPUI build keeps on this rail.
     LocalAi,
@@ -64,17 +64,61 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     )
 }
 
+/// Contour rows select real points; components remain informational until
+/// the editor supports component selection and transforms.
+fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    let contours = app
+        .session
+        .glyph
+        .contours
+        .iter()
+        .enumerate()
+        .map(|(ci, contour)| {
+            let active = app.session.selection.iter().any(|&(index, _)| index == ci);
+            recipes::toggle(
+                pal,
+                format!("Contour {} · {} nodes", ci + 1, contour.points.len()),
+                active,
+                move |app: &mut Workspace| {
+                    let Some(contour) = app.session.glyph.contours.get(ci) else {
+                        return;
+                    };
+                    let points = contour.points.len();
+                    let session = Arc::make_mut(&mut app.session);
+                    session.selection = (0..points).map(|pi| (ci, pi)).collect();
+                    app.selected_points = points;
+                    app.refresh_coord_bufs();
+                },
+            )
+            .boxed()
+        })
+        .collect::<Vec<_>>();
+    let components = app
+        .session
+        .glyph
+        .components
+        .iter()
+        .map(|component| recipes::kv(pal, component.base.to_string(), "component".into()).boxed())
+        .collect::<Vec<_>>();
+    xcolumn(
+        Region::Panel,
+        (
+            contours,
+            components,
+            (app.session.glyph.contours.is_empty() && app.session.glyph.components.is_empty())
+                .then(|| label("No contours or components").color(pal.text_muted)),
+        ),
+    )
+    .boxed()
+}
+
 pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let current = match app.mode {
         Mode::Editor(i) => Some(i),
         _ => None,
     };
-    // The GPUI rail has three deliberate surface steps: a recessed
-    // titlebar-colour rail, quiet intermediate inactive tabs, then the
-    // selected tab joining the panel.  Keep the Xilem version to the
-    // functions it really has; Shapes and Chat remain absent rather than
-    // pretending that their GPUI controls work here.
     let tab = |icon: &'static str, which: Rail| {
         let active = app.rail == which;
         let (foreground, background, height) = if active {
@@ -109,6 +153,7 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 Region::Inline,
                 (
                     tab("glyph-grid", Rail::Glyphs).flex(1.0),
+                    tab("shapes", Rail::Shapes).flex(1.0),
                     has_axes.then(|| tab("measure", Rail::Axes).flex(1.0)),
                     tab("preview", Rail::LocalAi).flex(1.0),
                 ),
@@ -123,6 +168,7 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     .then(|| axes_section(app))
                     .flatten(),
                 (app.rail == Rail::LocalAi).then(|| local_ai_panel(app)),
+                (app.rail == Rail::Shapes).then(|| shapes_panel(app)),
                 (app.rail == Rail::Glyphs).then(|| glyph_search(app)),
                 // The grid scrolls itself, so no portal here: nesting the two
                 // gave the rail a dead area below the third row.

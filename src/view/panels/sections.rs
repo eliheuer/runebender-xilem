@@ -349,8 +349,38 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                 dot(QUADRANTS[a + 2]),
             ),
         )
+        .gap(Space::Md)
     };
-    let picker = xcolumn(Region::List, (row(0), row(3), row(6)));
+    let picker_buttons = xcolumn(Region::List, (row(0), row(3), row(6))).gap(Space::Md);
+    let line_color = pal.outline;
+    let edge = ControlSize::Dot.px() * 3.0 + Space::Md.px() * 2.0;
+    let lines = sized_box(canvas(move |_: &mut Workspace, _, scene, _| {
+        use masonry::imaging::Painter;
+        use masonry::kurbo::{Line, Stroke as LineStroke};
+        let mut painter = Painter::new(scene);
+        let first = ControlSize::Dot.px() / 2.0;
+        let last = edge - first;
+        for coordinate in [first, edge / 2.0, last] {
+            painter
+                .stroke(
+                    Line::new((first, coordinate), (last, coordinate)),
+                    &LineStroke::new(Stroke::Hairline.px()),
+                    line_color,
+                )
+                .draw();
+            painter
+                .stroke(
+                    Line::new((coordinate, first), (coordinate, last)),
+                    &LineStroke::new(Stroke::Hairline.px()),
+                    line_color,
+                )
+                .draw();
+        }
+    }))
+    .dims(Dimensions::fixed(Length::px(edge), Length::px(edge)));
+    let picker = sized_box(xilem::view::zstack((lines, picker_buttons)))
+        .dims(Dimensions::fixed(Length::px(edge), Length::px(edge)))
+        .boxed();
     let field = |name: &'static str, value: String, axis: usize| {
         xrow(
             Region::Inline,

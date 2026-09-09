@@ -138,6 +138,17 @@ impl Palette {
         self.mark("yellow").unwrap_or_else(|| self.selected_ink())
     }
 
+    /// Recessed tile shadow, derived from the grid ground and selected surface.
+    pub(crate) fn cell_shadow(&self) -> Color {
+        let selected = self.selected_bg();
+        Color::new([
+            (self.app.components[0] + selected.components[0]) * 0.5,
+            (self.app.components[1] + selected.components[1]) * 0.5,
+            (self.app.components[2] + selected.components[2]) * 0.5,
+            1.0,
+        ])
+    }
+
     /// Whatever a tool draws while the pointer is down: the ink.
     pub(crate) fn tool_feedback(&self) -> Color {
         self.text
