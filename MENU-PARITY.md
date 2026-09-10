@@ -97,7 +97,7 @@ framework-integration work.
 - `docs/screenshots/menu-parity/view-gray.png` and `view-light.png` are matched
   1100x720 headless captures of the View menu. The headless driver now processes
   real layer lifecycle signals instead of dropping them.
-- Verified locally on macOS: 49 tests pass serially and all-target Clippy passes
+- Verified locally on macOS: 51 tests pass serially and all-target Clippy passes
   with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
   filename race; the unfiltered suite can intermittently fail in parallel and
   passes with `--test-threads=1`. Linux and Windows have not been run yet.
@@ -130,7 +130,8 @@ framework-integration work.
 - [ ] Finish focused-field precedence for native macOS accelerators, including a
   regression proving one dispatch. The Masonry shortcut scope already runs only
   after a focused descendant declines the key.
-- [ ] Add direct accessibility-action coverage for menu titles and items.
+- [x] Direct accessibility actions open menu titles and activate enabled items;
+  disabled and checked state are present on their AccessKit nodes.
 - [ ] Run the in-window implementation and its interaction suite on Linux. Cross
   compilation alone is not interaction evidence; no Linux or Windows run has
   happened on this macOS host.

@@ -14,9 +14,10 @@ use masonry::accesskit::{Node, Role, Toggled};
 use masonry::core::WidgetMut;
 use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
-    AccessCtx, ChildrenIds, EventCtx, Layer, LayerType, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
-    PointerButton, PointerButtonEvent, PointerEvent, PointerUpdate, PropertiesMut, PropertiesRef,
-    RegisterCtx, TextEvent, Update, UpdateCtx, Widget, WidgetId, WidgetPod,
+    AccessCtx, AccessEvent, ChildrenIds, EventCtx, Layer, LayerType, LayoutCtx, MeasureCtx,
+    NewWidget, PaintCtx, PointerButton, PointerButtonEvent, PointerEvent, PointerUpdate,
+    PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Update, UpdateCtx, Widget, WidgetId,
+    WidgetPod,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, Line, Point, Rect, Size, Stroke};
@@ -127,6 +128,7 @@ struct EntryState {
 /// The application content plus a menu bar and window-level shortcut scope.
 pub(crate) struct MenuShell {
     inner: WidgetPod<dyn Widget>,
+    accessible_titles: Vec<WidgetPod<AccessibleMenuTitle>>,
     palette: Arc<Palette>,
     states: Arc<Vec<EntryState>>,
     open: Option<WidgetId>,
@@ -146,6 +148,10 @@ impl MenuShell {
     ) -> Self {
         Self {
             inner: child.erased().to_pod(),
+            accessible_titles: MENUS
+                .iter()
+                .map(|label| NewWidget::new(AccessibleMenuTitle { label }).to_pod())
+                .collect(),
             palette,
             states,
             open: None,
@@ -171,14 +177,14 @@ impl MenuShell {
         if let Some(id) = self.open.take() {
             ctx.remove_layer(id);
         }
-        let popup = NewWidget::new(MenuPopup::new(
+        let popup = new_popup(
             ctx.widget_id(),
             index,
             None,
             self.palette.clone(),
             self.states.clone(),
             self.focus_before,
-        ));
+        );
         let id = popup.id();
         let at = ctx.to_window(Point::new(title_rect(index).x0, BAR_HEIGHT));
         ctx.create_layer(LayerType::Other, popup, at);
@@ -194,14 +200,14 @@ impl MenuShell {
         if let Some(id) = self.open.take() {
             ctx.remove_layer(id);
         }
-        let popup = NewWidget::new(MenuPopup::new(
+        let popup = new_popup(
             ctx.widget_id(),
             menu,
             Some(submenu),
             self.palette.clone(),
             self.states.clone(),
             self.focus_before,
-        ));
+        );
         let id = popup.id();
         let at = ctx.to_window(Point::new(title_rect(menu).x0 + POPUP_WIDTH, BAR_HEIGHT));
         ctx.create_layer(LayerType::Other, popup, at);
@@ -245,20 +251,23 @@ impl Widget for MenuShell {
 
     fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
         ctx.register_child(&mut self.inner);
+        for title in &mut self.accessible_titles {
+            ctx.register_child(title);
+        }
     }
 
     fn update(&mut self, ctx: &mut UpdateCtx<'_>, _props: &mut PropertiesMut<'_>, event: &Update) {
         if matches!(event, Update::WidgetAdded)
             && let Some(index) = self.initial_menu.take()
         {
-            let popup = NewWidget::new(MenuPopup::new(
+            let popup = new_popup(
                 ctx.widget_id(),
                 index,
                 None,
                 self.palette.clone(),
                 self.states.clone(),
                 None,
-            ));
+            );
             let id = popup.id();
             ctx.create_layer(
                 LayerType::Other,
@@ -291,6 +300,11 @@ impl Widget for MenuShell {
         let child_size = Size::new(size.width, (size.height - BAR_HEIGHT).max(0.0));
         ctx.run_layout(&mut self.inner, child_size);
         ctx.place_child(&mut self.inner, Point::new(0.0, BAR_HEIGHT));
+        for (index, title) in self.accessible_titles.iter_mut().enumerate() {
+            let rect = title_rect(index);
+            ctx.run_layout(title, rect.size());
+            ctx.place_child(title, rect.origin());
+        }
         ctx.derive_baselines(&self.inner);
     }
 
@@ -463,6 +477,26 @@ impl Widget for MenuShell {
         }
     }
 
+    fn on_access_event(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &AccessEvent,
+    ) {
+        if event.action != masonry::accesskit::Action::Click {
+            return;
+        }
+        let target = ctx.target();
+        if let Some(index) = self
+            .accessible_titles
+            .iter()
+            .position(|title| title.id() == target)
+        {
+            self.show_menu(ctx, index, true);
+            ctx.set_handled();
+        }
+    }
+
     fn accessibility_role(&self) -> Role {
         Role::MenuBar
     }
@@ -477,7 +511,9 @@ impl Widget for MenuShell {
     }
 
     fn children_ids(&self) -> ChildrenIds {
-        ChildrenIds::from_slice(&[self.inner.id()])
+        std::iter::once(self.inner.id())
+            .chain(self.accessible_titles.iter().map(|title| title.id()))
+            .collect()
     }
 
     fn accepts_focus(&self) -> bool {
@@ -485,9 +521,72 @@ impl Widget for MenuShell {
     }
 }
 
+struct AccessibleMenuTitle {
+    label: &'static str,
+}
+
+impl Widget for AccessibleMenuTitle {
+    type Action = ();
+
+    fn register_children(&mut self, _ctx: &mut RegisterCtx<'_>) {}
+
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        _len_req: LenReq,
+        _cross: Option<Length>,
+    ) -> Length {
+        match axis {
+            Axis::Horizontal => Length::px(title_width(self.label)),
+            Axis::Vertical => Length::px(BAR_HEIGHT),
+        }
+    }
+
+    fn layout(&mut self, _ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, _size: Size) {}
+
+    fn paint(
+        &mut self,
+        _ctx: &mut PaintCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        _painter: &mut Painter<'_>,
+    ) {
+    }
+
+    fn accessibility_role(&self) -> Role {
+        Role::MenuItem
+    }
+
+    fn accessibility(
+        &mut self,
+        _ctx: &mut AccessCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        node: &mut Node,
+    ) {
+        node.set_label(self.label);
+        node.add_action(masonry::accesskit::Action::Click);
+    }
+
+    fn children_ids(&self) -> ChildrenIds {
+        ChildrenIds::new()
+    }
+
+    fn accepts_pointer_interaction(&self) -> bool {
+        false
+    }
+}
+
 struct AccessibleMenuItem {
     label: &'static str,
     state: EntryState,
+    row: MenuRow,
+    creator: WidgetId,
+    popup: WidgetId,
+    menu: usize,
+    palette: Arc<Palette>,
+    states: Arc<Vec<EntryState>>,
+    focus_before: Option<WidgetId>,
 }
 
 impl Widget for AccessibleMenuItem {
@@ -540,6 +639,62 @@ impl Widget for AccessibleMenuItem {
         if let Some(checked) = self.state.checked {
             node.set_toggled(Toggled::from(checked));
         }
+        if self.state.enabled {
+            node.add_action(masonry::accesskit::Action::Click);
+        }
+    }
+
+    fn on_access_event(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &AccessEvent,
+    ) {
+        if event.action != masonry::accesskit::Action::Click || !self.state.enabled {
+            return;
+        }
+        let creator = self.creator;
+        let old_popup = self.popup;
+        let menu = self.menu;
+        let focus = self.focus_before;
+        match self.row {
+            MenuRow::Submenu(name) => {
+                let palette = self.palette.clone();
+                let states = self.states.clone();
+                ctx.mutate_later(creator, move |mut shell| {
+                    let mut shell = shell.downcast::<MenuShell>();
+                    shell.ctx.remove_layer(old_popup);
+                    let popup = new_popup(creator, menu, Some(name), palette, states, focus);
+                    let id = popup.id();
+                    shell.ctx.create_layer(
+                        LayerType::Other,
+                        popup,
+                        Point::new(title_rect(menu).x0 + POPUP_WIDTH, BAR_HEIGHT),
+                    );
+                    shell.widget.open = Some(id);
+                    shell.widget.active_submenu = Some(name);
+                    shell.widget.selected = 0;
+                    shell.ctx.request_render();
+                });
+            }
+            MenuRow::Action(index) => {
+                let action = ACTIONS[index].action;
+                if let Some(id) = focus {
+                    ctx.set_focus(id);
+                }
+                ctx.mutate_later(creator, move |mut shell| {
+                    let mut shell = shell.downcast::<MenuShell>();
+                    shell.widget.open = None;
+                    shell.widget.active_menu = None;
+                    shell.widget.active_submenu = None;
+                    shell.widget.focus_before = None;
+                    shell.ctx.remove_layer(old_popup);
+                    shell.ctx.submit_action::<AppAction>(action);
+                    shell.ctx.request_render();
+                });
+            }
+        }
+        ctx.set_handled();
     }
 
     fn children_ids(&self) -> ChildrenIds {
@@ -572,16 +727,6 @@ impl MenuPopup {
         states: Arc<Vec<EntryState>>,
         focus_before: Option<WidgetId>,
     ) -> Self {
-        let accessible_rows = rows(menu, submenu)
-            .into_iter()
-            .map(|row| {
-                NewWidget::new(AccessibleMenuItem {
-                    label: row_label(row),
-                    state: row_state(row, &states),
-                })
-                .to_pod()
-            })
-            .collect();
         Self {
             creator,
             menu,
@@ -591,7 +736,7 @@ impl MenuPopup {
             states,
             focus_before,
             size: Size::ZERO,
-            accessible_rows,
+            accessible_rows: Vec::new(),
         }
     }
 
@@ -619,8 +764,7 @@ impl MenuPopup {
             ctx.mutate_later(creator, move |mut shell| {
                 let mut shell = shell.downcast::<MenuShell>();
                 shell.ctx.remove_layer(old_popup);
-                let popup =
-                    NewWidget::new(Self::new(creator, menu, Some(name), palette, states, focus));
+                let popup = new_popup(creator, menu, Some(name), palette, states, focus);
                 let id = popup.id();
                 shell.ctx.create_layer(
                     LayerType::Other,
@@ -675,6 +819,43 @@ impl MenuPopup {
             shell.ctx.request_render();
         });
     }
+}
+
+fn new_popup(
+    creator: WidgetId,
+    menu: usize,
+    submenu: Option<&'static str>,
+    palette: Arc<Palette>,
+    states: Arc<Vec<EntryState>>,
+    focus_before: Option<WidgetId>,
+) -> NewWidget<MenuPopup> {
+    let mut popup = NewWidget::new(MenuPopup::new(
+        creator,
+        menu,
+        submenu,
+        palette.clone(),
+        states.clone(),
+        focus_before,
+    ));
+    let popup_id = popup.id();
+    popup.widget.accessible_rows = rows(menu, submenu)
+        .into_iter()
+        .map(|row| {
+            NewWidget::new(AccessibleMenuItem {
+                label: row_label(row),
+                state: row_state(row, &states),
+                row,
+                creator,
+                popup: popup_id,
+                menu,
+                palette: palette.clone(),
+                states: states.clone(),
+                focus_before,
+            })
+            .to_pod()
+        })
+        .collect();
+    popup
 }
 
 impl Widget for MenuPopup {
@@ -1016,6 +1197,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use masonry::accesskit::{ActionRequest, TreeId};
     use masonry::core::keyboard::{Code, KeyboardEvent, Modifiers};
     use masonry::properties::Dimensions;
     use masonry::theme::default_property_set;
@@ -1203,6 +1385,58 @@ mod tests {
             Some(AppAction::Theme("dark"))
         );
         assert_eq!(harness.focused_widget_id(), Some(button_id));
+        assert!(harness.pop_action::<AppAction>().is_none());
+    }
+
+    #[test]
+    fn accessibility_click_dispatches_and_closes_the_menu() {
+        let (mut harness, button_id) = harness();
+        harness.focus_on(Some(button_id));
+        harness.process_text_event(key(Key::Named(NamedKey::F10)));
+
+        let popup_id = harness
+            .edit_root_widget(|root| root.widget.open)
+            .expect("F10 creates a popup layer");
+        let first_row = harness
+            .get_widget_with_id(popup_id)
+            .downcast::<MenuPopup>()
+            .expect("the layer is a menu popup")
+            .inner()
+            .accessible_rows[0]
+            .id();
+        harness.process_access_event(ActionRequest {
+            action: masonry::accesskit::Action::Click,
+            target_tree: TreeId::ROOT,
+            target_node: first_row.into(),
+            data: None,
+        });
+
+        let action = harness.pop_action::<AppAction>();
+        assert_eq!(action.map(|(action, _)| action), Some(AppAction::NewFont));
+        assert_eq!(harness.focused_widget_id(), Some(button_id));
+        assert_eq!(harness.edit_root_widget(|root| root.widget.open), None);
+        assert!(harness.pop_action::<AppAction>().is_none());
+    }
+
+    #[test]
+    fn accessibility_click_opens_a_top_level_menu() {
+        let (mut harness, button_id) = harness();
+        harness.focus_on(Some(button_id));
+        let view = MENUS.len() - 1;
+        let title_id = harness.edit_root_widget(|root| root.widget.accessible_titles[view].id());
+
+        harness.process_access_event(ActionRequest {
+            action: masonry::accesskit::Action::Click,
+            target_tree: TreeId::ROOT,
+            target_node: title_id.into(),
+            data: None,
+        });
+
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.active_menu),
+            Some(view)
+        );
+        assert_ne!(harness.focused_widget_id(), Some(button_id));
         assert!(harness.pop_action::<AppAction>().is_none());
     }
 }
