@@ -10,29 +10,26 @@
 
 use std::sync::Arc;
 
-use masonry::accesskit::{Node, Role};
-#[cfg(not(target_os = "macos"))]
+use masonry::accesskit::{Node, Role, Toggled};
 use masonry::core::WidgetMut;
 use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
     AccessCtx, ChildrenIds, EventCtx, Layer, LayerType, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
     PointerButton, PointerButtonEvent, PointerEvent, PointerUpdate, PropertiesMut, PropertiesRef,
-    RegisterCtx, TextEvent, Widget, WidgetId, WidgetPod,
+    RegisterCtx, TextEvent, Update, UpdateCtx, Widget, WidgetId, WidgetPod,
 };
 use masonry::imaging::Painter;
-use masonry::kurbo::{Axis, Point, Rect, Size, Stroke};
+use masonry::kurbo::{Axis, Line, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-#[cfg(not(target_os = "macos"))]
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
-#[cfg(not(target_os = "macos"))]
 use xilem::{Pod, ViewCtx, WidgetView};
 
-#[cfg(not(target_os = "macos"))]
 use crate::Workspace;
 use crate::actions::{ACTIONS, MENUS};
 use crate::view::theme::Palette;
 use crate::widgets::shortcuts::AppAction;
 use crate::widgets::text_label::{self, Anchor};
+use runebender_core::outline::glyph_paths::round_units;
 
 const BAR_HEIGHT: f64 = 24.0;
 const TITLE_PAD: f64 = 10.0;
@@ -42,6 +39,10 @@ const POPUP_WIDTH: f64 = 220.0;
 
 fn title_width(title: &str) -> f64 {
     title.chars().count() as f64 * 7.25 + TITLE_PAD * 2.0
+}
+
+fn shortcut_label(accelerator: &str) -> String {
+    accelerator.replace("CmdOrCtrl", "Ctrl")
 }
 
 fn title_rect(index: usize) -> Rect {
@@ -56,37 +57,109 @@ fn menu_at(point: Point) -> Option<usize> {
         .find_map(|(index, _)| title_rect(index).contains(point).then_some(index))
 }
 
-fn entries(menu: usize) -> impl Iterator<Item = &'static crate::actions::Entry> {
+fn indexed_entries(menu: usize) -> impl Iterator<Item = (usize, &'static crate::actions::Entry)> {
     ACTIONS
         .iter()
-        .filter(move |entry| entry.menu == MENUS[menu])
+        .enumerate()
+        .filter(move |(_, entry)| entry.menu == MENUS[menu])
+}
+
+#[derive(Clone, Copy)]
+enum MenuRow {
+    Action(usize),
+    Submenu(&'static str),
+}
+
+fn row_label(row: MenuRow) -> &'static str {
+    match row {
+        MenuRow::Action(index) => ACTIONS[index].title,
+        MenuRow::Submenu(name) => name,
+    }
+}
+
+fn row_state(row: MenuRow, states: &[EntryState]) -> EntryState {
+    match row {
+        MenuRow::Action(index) => states[index],
+        MenuRow::Submenu(_) => EntryState {
+            enabled: true,
+            checked: None,
+        },
+    }
+}
+
+fn row_separator(row: MenuRow, menu: usize) -> bool {
+    match row {
+        MenuRow::Action(index) => ACTIONS[index].separator_before(),
+        MenuRow::Submenu(name) => indexed_entries(menu)
+            .find(|(_, entry)| entry.submenu() == Some(name))
+            .is_some_and(|(_, entry)| entry.separator_before()),
+    }
+}
+
+fn rows(menu: usize, submenu: Option<&'static str>) -> Vec<MenuRow> {
+    if let Some(submenu) = submenu {
+        return indexed_entries(menu)
+            .filter(|(_, entry)| entry.submenu() == Some(submenu))
+            .map(|(index, _)| MenuRow::Action(index))
+            .collect();
+    }
+    let mut rows = Vec::new();
+    let mut last_submenu = None;
+    for (index, entry) in indexed_entries(menu) {
+        match entry.submenu() {
+            Some(name) if last_submenu != Some(name) => {
+                rows.push(MenuRow::Submenu(name));
+                last_submenu = Some(name);
+            }
+            Some(_) => {}
+            None => rows.push(MenuRow::Action(index)),
+        }
+    }
+    rows
+}
+
+#[derive(Clone, Copy)]
+struct EntryState {
+    enabled: bool,
+    checked: Option<bool>,
 }
 
 /// The application content plus a menu bar and window-level shortcut scope.
 pub(crate) struct MenuShell {
     inner: WidgetPod<dyn Widget>,
     palette: Arc<Palette>,
+    states: Arc<Vec<EntryState>>,
     open: Option<WidgetId>,
     active_menu: Option<usize>,
+    active_submenu: Option<&'static str>,
     selected: usize,
     focus_before: Option<WidgetId>,
+    initial_menu: Option<usize>,
     size: Size,
 }
 
 impl MenuShell {
-    fn new(child: NewWidget<impl Widget + ?Sized>, palette: Arc<Palette>) -> Self {
+    fn new(
+        child: NewWidget<impl Widget + ?Sized>,
+        palette: Arc<Palette>,
+        states: Arc<Vec<EntryState>>,
+    ) -> Self {
         Self {
             inner: child.erased().to_pod(),
             palette,
+            states,
             open: None,
             active_menu: None,
+            active_submenu: None,
             selected: 0,
             focus_before: None,
+            initial_menu: std::env::var("RUNEBENDER_MENU_OPEN")
+                .ok()
+                .and_then(|title| MENUS.iter().position(|menu| *menu == title)),
             size: Size::ZERO,
         }
     }
 
-    #[cfg(not(target_os = "macos"))]
     fn child_mut<'t>(this: &'t mut WidgetMut<'_, Self>) -> WidgetMut<'t, dyn Widget> {
         this.ctx.get_mut(&mut this.widget.inner)
     }
@@ -101,7 +174,9 @@ impl MenuShell {
         let popup = NewWidget::new(MenuPopup::new(
             ctx.widget_id(),
             index,
+            None,
             self.palette.clone(),
+            self.states.clone(),
             self.focus_before,
         ));
         let id = popup.id();
@@ -110,6 +185,29 @@ impl MenuShell {
         ctx.request_focus();
         self.open = Some(id);
         self.active_menu = Some(index);
+        self.active_submenu = None;
+        self.selected = 0;
+        ctx.request_render();
+    }
+
+    fn show_submenu(&mut self, ctx: &mut EventCtx<'_>, menu: usize, submenu: &'static str) {
+        if let Some(id) = self.open.take() {
+            ctx.remove_layer(id);
+        }
+        let popup = NewWidget::new(MenuPopup::new(
+            ctx.widget_id(),
+            menu,
+            Some(submenu),
+            self.palette.clone(),
+            self.states.clone(),
+            self.focus_before,
+        ));
+        let id = popup.id();
+        let at = ctx.to_window(Point::new(title_rect(menu).x0 + POPUP_WIDTH, BAR_HEIGHT));
+        ctx.create_layer(LayerType::Other, popup, at);
+        self.open = Some(id);
+        self.active_menu = Some(menu);
+        self.active_submenu = Some(submenu);
         self.selected = 0;
         ctx.request_render();
     }
@@ -119,10 +217,26 @@ impl MenuShell {
             ctx.remove_layer(id);
         }
         self.active_menu = None;
+        self.active_submenu = None;
         if let Some(id) = restore_focus.or(self.focus_before.take()) {
             ctx.set_focus(id);
         }
         ctx.request_render();
+    }
+
+    fn activate_selected(&mut self, ctx: &mut EventCtx<'_>, menu: usize) {
+        let Some(row) = rows(menu, self.active_submenu).get(self.selected).copied() else {
+            return;
+        };
+        match row {
+            MenuRow::Action(index) if self.states[index].enabled => {
+                let action = ACTIONS[index].action;
+                self.close(ctx, None);
+                ctx.submit_action::<AppAction>(action);
+            }
+            MenuRow::Submenu(name) => self.show_submenu(ctx, menu, name),
+            MenuRow::Action(_) => {}
+        }
     }
 }
 
@@ -131,6 +245,30 @@ impl Widget for MenuShell {
 
     fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
         ctx.register_child(&mut self.inner);
+    }
+
+    fn update(&mut self, ctx: &mut UpdateCtx<'_>, _props: &mut PropertiesMut<'_>, event: &Update) {
+        if matches!(event, Update::WidgetAdded)
+            && let Some(index) = self.initial_menu.take()
+        {
+            let popup = NewWidget::new(MenuPopup::new(
+                ctx.widget_id(),
+                index,
+                None,
+                self.palette.clone(),
+                self.states.clone(),
+                None,
+            ));
+            let id = popup.id();
+            ctx.create_layer(
+                LayerType::Other,
+                popup,
+                Point::new(title_rect(index).x0, BAR_HEIGHT),
+            );
+            self.open = Some(id);
+            self.active_menu = Some(index);
+            self.active_submenu = None;
+        }
     }
 
     fn measure(
@@ -248,7 +386,8 @@ impl Widget for MenuShell {
             return;
         }
         if let Some(menu) = self.active_menu {
-            let count = entries(menu).count();
+            let menu_rows = rows(menu, self.active_submenu);
+            let count = menu_rows.len();
             match key.key {
                 Key::Named(NamedKey::ArrowDown) => self.selected = (self.selected + 1) % count,
                 Key::Named(NamedKey::ArrowUp) => {
@@ -256,6 +395,18 @@ impl Widget for MenuShell {
                 }
                 Key::Named(NamedKey::Home) => self.selected = 0,
                 Key::Named(NamedKey::End) => self.selected = count - 1,
+                Key::Named(NamedKey::ArrowLeft) if self.active_submenu.is_some() => {
+                    self.show_menu(ctx, menu, false);
+                    ctx.set_handled();
+                    return;
+                }
+                Key::Named(NamedKey::ArrowRight)
+                    if matches!(menu_rows.get(self.selected), Some(MenuRow::Submenu(_))) =>
+                {
+                    self.activate_selected(ctx, menu);
+                    ctx.set_handled();
+                    return;
+                }
                 Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowRight) => {
                     let backwards = matches!(key.key, Key::Named(NamedKey::ArrowLeft));
                     let next = if backwards {
@@ -268,25 +419,21 @@ impl Widget for MenuShell {
                     return;
                 }
                 Key::Named(NamedKey::Enter) => {
-                    if let Some(action) = entries(menu).nth(self.selected).map(|entry| entry.action)
-                    {
-                        self.close(ctx, None);
-                        ctx.submit_action::<AppAction>(action);
-                    }
+                    self.activate_selected(ctx, menu);
                     ctx.set_handled();
                     return;
                 }
                 Key::Character(ref c) if c.as_str() == " " => {
-                    if let Some(action) = entries(menu).nth(self.selected).map(|entry| entry.action)
-                    {
-                        self.close(ctx, None);
-                        ctx.submit_action::<AppAction>(action);
-                    }
+                    self.activate_selected(ctx, menu);
                     ctx.set_handled();
                     return;
                 }
                 Key::Named(NamedKey::Escape) => {
-                    self.close(ctx, None);
+                    if self.active_submenu.is_some() {
+                        self.show_menu(ctx, menu, false);
+                    } else {
+                        self.close(ctx, None);
+                    }
                     ctx.set_handled();
                     return;
                 }
@@ -304,9 +451,14 @@ impl Widget for MenuShell {
             ctx.request_render();
             return;
         }
-        let cmd = key.modifiers.meta() || key.modifiers.ctrl();
-        if let Some(action) = crate::actions::action_for_key(&key.key, cmd) {
-            ctx.submit_action::<AppAction>(action);
+        if let Some(action) = crate::actions::action_for_key(&key.key, key.modifiers) {
+            if ACTIONS
+                .iter()
+                .position(|entry| entry.action == action)
+                .is_some_and(|index| self.states[index].enabled)
+            {
+                ctx.submit_action::<AppAction>(action);
+            }
             ctx.set_handled();
         }
     }
@@ -319,8 +471,9 @@ impl Widget for MenuShell {
         &mut self,
         _ctx: &mut AccessCtx<'_>,
         _props: &PropertiesRef<'_>,
-        _node: &mut Node,
+        node: &mut Node,
     ) {
+        node.set_label("Application menu");
     }
 
     fn children_ids(&self) -> ChildrenIds {
@@ -332,29 +485,113 @@ impl Widget for MenuShell {
     }
 }
 
+struct AccessibleMenuItem {
+    label: &'static str,
+    state: EntryState,
+}
+
+impl Widget for AccessibleMenuItem {
+    type Action = ();
+
+    fn register_children(&mut self, _ctx: &mut RegisterCtx<'_>) {}
+
+    fn measure(
+        &mut self,
+        _ctx: &mut MeasureCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        axis: Axis,
+        _len_req: LenReq,
+        _cross: Option<Length>,
+    ) -> Length {
+        match axis {
+            Axis::Horizontal => Length::px(POPUP_WIDTH),
+            Axis::Vertical => Length::px(ROW_HEIGHT),
+        }
+    }
+
+    fn layout(&mut self, _ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, _size: Size) {}
+
+    fn paint(
+        &mut self,
+        _ctx: &mut PaintCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        _painter: &mut Painter<'_>,
+    ) {
+    }
+
+    fn accessibility_role(&self) -> Role {
+        if self.state.checked.is_some() {
+            Role::MenuItemCheckBox
+        } else {
+            Role::MenuItem
+        }
+    }
+
+    fn accessibility(
+        &mut self,
+        _ctx: &mut AccessCtx<'_>,
+        _props: &PropertiesRef<'_>,
+        node: &mut Node,
+    ) {
+        node.set_label(self.label);
+        if !self.state.enabled {
+            node.set_disabled();
+        }
+        if let Some(checked) = self.state.checked {
+            node.set_toggled(Toggled::from(checked));
+        }
+    }
+
+    fn children_ids(&self) -> ChildrenIds {
+        ChildrenIds::new()
+    }
+
+    fn accepts_pointer_interaction(&self) -> bool {
+        false
+    }
+}
+
 struct MenuPopup {
     creator: WidgetId,
     menu: usize,
+    submenu: Option<&'static str>,
     selected: usize,
     palette: Arc<Palette>,
+    states: Arc<Vec<EntryState>>,
     focus_before: Option<WidgetId>,
     size: Size,
+    accessible_rows: Vec<WidgetPod<AccessibleMenuItem>>,
 }
 
 impl MenuPopup {
     fn new(
         creator: WidgetId,
         menu: usize,
+        submenu: Option<&'static str>,
         palette: Arc<Palette>,
+        states: Arc<Vec<EntryState>>,
         focus_before: Option<WidgetId>,
     ) -> Self {
+        let accessible_rows = rows(menu, submenu)
+            .into_iter()
+            .map(|row| {
+                NewWidget::new(AccessibleMenuItem {
+                    label: row_label(row),
+                    state: row_state(row, &states),
+                })
+                .to_pod()
+            })
+            .collect();
         Self {
             creator,
             menu,
+            submenu,
             selected: 0,
             palette,
+            states,
             focus_before,
             size: Size::ZERO,
+            accessible_rows,
         }
     }
 
@@ -362,17 +599,47 @@ impl MenuPopup {
         if !(0.0..=POPUP_WIDTH).contains(&point.x) {
             return None;
         }
-        let row = ((point.y - POPUP_PAD) / ROW_HEIGHT).floor() as isize;
-        (row >= 0 && (row as usize) < entries(self.menu).count()).then_some(row as usize)
+        let row = round_units(((point.y - POPUP_PAD) / ROW_HEIGHT).floor());
+        usize::try_from(row)
+            .ok()
+            .filter(|row| *row < rows(self.menu, self.submenu).len())
     }
 
     fn choose(&self, ctx: &mut EventCtx<'_>) {
-        let Some(action) = entries(self.menu)
-            .nth(self.selected)
-            .map(|entry| entry.action)
-        else {
+        let Some(row) = rows(self.menu, self.submenu).get(self.selected).copied() else {
             return;
         };
+        if let MenuRow::Submenu(name) = row {
+            let creator = self.creator;
+            let old_popup = ctx.widget_id();
+            let menu = self.menu;
+            let palette = self.palette.clone();
+            let states = self.states.clone();
+            let focus = self.focus_before;
+            ctx.mutate_later(creator, move |mut shell| {
+                let mut shell = shell.downcast::<MenuShell>();
+                shell.ctx.remove_layer(old_popup);
+                let popup =
+                    NewWidget::new(Self::new(creator, menu, Some(name), palette, states, focus));
+                let id = popup.id();
+                shell.ctx.create_layer(
+                    LayerType::Other,
+                    popup,
+                    Point::new(title_rect(menu).x0 + POPUP_WIDTH, BAR_HEIGHT),
+                );
+                shell.widget.open = Some(id);
+                shell.widget.active_submenu = Some(name);
+                shell.widget.selected = 0;
+                shell.ctx.request_render();
+            });
+            return;
+        }
+        let MenuRow::Action(index) = row else { return };
+        if !self.states[index].enabled {
+            return;
+        }
+        let entry = &ACTIONS[index];
+        let action = entry.action;
         let creator = self.creator;
         let popup = ctx.widget_id();
         let focus = self.focus_before;
@@ -383,6 +650,7 @@ impl MenuPopup {
             let mut shell = shell.downcast::<MenuShell>();
             shell.widget.open = None;
             shell.widget.active_menu = None;
+            shell.widget.active_submenu = None;
             shell.widget.focus_before = None;
             shell.ctx.remove_layer(popup);
             shell.ctx.submit_action::<AppAction>(action);
@@ -401,6 +669,7 @@ impl MenuPopup {
             let mut shell = shell.downcast::<MenuShell>();
             shell.widget.open = None;
             shell.widget.active_menu = None;
+            shell.widget.active_submenu = None;
             shell.widget.focus_before = None;
             shell.ctx.remove_layer(popup);
             shell.ctx.request_render();
@@ -410,7 +679,11 @@ impl MenuPopup {
 
 impl Widget for MenuPopup {
     type Action = ();
-    fn register_children(&mut self, _ctx: &mut RegisterCtx<'_>) {}
+    fn register_children(&mut self, ctx: &mut RegisterCtx<'_>) {
+        for row in &mut self.accessible_rows {
+            ctx.register_child(row);
+        }
+    }
     fn measure(
         &mut self,
         _ctx: &mut MeasureCtx<'_>,
@@ -421,13 +694,17 @@ impl Widget for MenuPopup {
     ) -> Length {
         match axis {
             Axis::Horizontal => Length::px(POPUP_WIDTH),
-            Axis::Vertical => {
-                Length::px(entries(self.menu).count() as f64 * ROW_HEIGHT + POPUP_PAD * 2.0)
-            }
+            Axis::Vertical => Length::px(
+                rows(self.menu, self.submenu).len() as f64 * ROW_HEIGHT + POPUP_PAD * 2.0,
+            ),
         }
     }
-    fn layout(&mut self, _ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
+    fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
         self.size = size;
+        for (index, row) in self.accessible_rows.iter_mut().enumerate() {
+            ctx.run_layout(row, Size::new(POPUP_WIDTH, ROW_HEIGHT));
+            ctx.place_child(row, Point::new(0.0, POPUP_PAD + index as f64 * ROW_HEIGHT));
+        }
     }
     fn paint(
         &mut self,
@@ -444,8 +721,19 @@ impl Widget for MenuPopup {
                 pal.role("gridBorder"),
             )
             .draw();
-        for (index, entry) in entries(self.menu).enumerate() {
+        for (index, row) in rows(self.menu, self.submenu).into_iter().enumerate() {
+            let state = row_state(row, &self.states);
+            let label = row_label(row);
             let top = POPUP_PAD + index as f64 * ROW_HEIGHT;
+            if row_separator(row, self.menu) {
+                painter
+                    .stroke(
+                        Line::new(Point::new(6.0, top), Point::new(POPUP_WIDTH - 6.0, top)),
+                        &Stroke::new(1.0),
+                        pal.role("gridBorder"),
+                    )
+                    .draw();
+            }
             if self.selected == index {
                 painter
                     .fill(
@@ -456,21 +744,57 @@ impl Widget for MenuPopup {
             }
             text_label::draw(
                 painter,
-                Point::new(10.0, top + ROW_HEIGHT / 2.0 + 4.0),
-                entry.title,
+                Point::new(26.0, top + ROW_HEIGHT / 2.0 + 4.0),
+                label,
                 13.0,
-                if self.selected == index {
+                if !state.enabled {
+                    pal.role("textMuted").with_alpha(0.55)
+                } else if self.selected == index {
                     pal.role("selectedInk")
                 } else {
                     pal.text
                 },
                 Anchor::Start,
             );
-            if let Some(accelerator) = entry.accelerator {
+            if state.checked == Some(true) {
+                let ink = if self.selected == index {
+                    pal.role("selectedInk")
+                } else {
+                    pal.text
+                };
+                painter
+                    .stroke(
+                        Line::new(Point::new(10.0, top + 12.0), Point::new(14.0, top + 16.0)),
+                        &Stroke::new(1.5),
+                        ink,
+                    )
+                    .draw();
+                painter
+                    .stroke(
+                        Line::new(Point::new(14.0, top + 16.0), Point::new(21.0, top + 8.0)),
+                        &Stroke::new(1.5),
+                        ink,
+                    )
+                    .draw();
+            }
+            if let MenuRow::Submenu(_) = row {
                 text_label::draw(
                     painter,
                     Point::new(POPUP_WIDTH - 10.0, top + ROW_HEIGHT / 2.0 + 4.0),
-                    accelerator,
+                    "›",
+                    15.0,
+                    pal.text,
+                    Anchor::End,
+                );
+            }
+            if let MenuRow::Action(state_index) = row
+                && let Some(accelerator) = ACTIONS[state_index].accelerator
+            {
+                let accelerator = shortcut_label(accelerator);
+                text_label::draw(
+                    painter,
+                    Point::new(POPUP_WIDTH - 10.0, top + ROW_HEIGHT / 2.0 + 4.0),
+                    &accelerator,
                     13.0,
                     if self.selected == index {
                         pal.role("selectedInk")
@@ -490,11 +814,11 @@ impl Widget for MenuPopup {
     ) {
         match event {
             PointerEvent::Move(PointerUpdate { current, .. }) => {
-                if let Some(row) = self.row_at(ctx.local_position(current.position)) {
-                    if row != self.selected {
-                        self.selected = row;
-                        ctx.request_render();
-                    }
+                if let Some(row) = self.row_at(ctx.local_position(current.position))
+                    && row != self.selected
+                {
+                    self.selected = row;
+                    ctx.request_render();
                 }
                 ctx.set_handled();
             }
@@ -524,7 +848,7 @@ impl Widget for MenuPopup {
         if key.state != KeyState::Down {
             return;
         }
-        let count = entries(self.menu).count();
+        let count = rows(self.menu, self.submenu).len();
         match key.key {
             Key::Named(NamedKey::ArrowDown) => self.selected = (self.selected + 1) % count,
             Key::Named(NamedKey::ArrowUp) => self.selected = (self.selected + count - 1) % count,
@@ -562,11 +886,12 @@ impl Widget for MenuPopup {
         &mut self,
         _ctx: &mut AccessCtx<'_>,
         _props: &PropertiesRef<'_>,
-        _node: &mut Node,
+        node: &mut Node,
     ) {
+        node.set_label(MENUS[self.menu]);
     }
     fn children_ids(&self) -> ChildrenIds {
-        ChildrenIds::new()
+        self.accessible_rows.iter().map(|row| row.id()).collect()
     }
     fn accepts_focus(&self) -> bool {
         true
@@ -593,23 +918,37 @@ impl Layer for MenuPopup {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
 pub(crate) struct MenuShellView<V> {
     inner: V,
     palette: Arc<Palette>,
+    states: Arc<Vec<EntryState>>,
 }
 
-#[cfg(not(target_os = "macos"))]
+fn entry_states(app: &Workspace) -> Arc<Vec<EntryState>> {
+    Arc::new(
+        ACTIONS
+            .iter()
+            .map(|entry| EntryState {
+                enabled: entry.enabled(app),
+                checked: entry.checked(app),
+            })
+            .collect(),
+    )
+}
+
 pub(crate) fn menu_shell<V: WidgetView<Workspace>>(
     inner: V,
     palette: Arc<Palette>,
+    app: &Workspace,
 ) -> MenuShellView<V> {
-    MenuShellView { inner, palette }
+    MenuShellView {
+        inner,
+        palette,
+        states: entry_states(app),
+    }
 }
 
-#[cfg(not(target_os = "macos"))]
 impl<V> ViewMarker for MenuShellView<V> {}
-#[cfg(not(target_os = "macos"))]
 impl<V> View<Workspace, (), ViewCtx> for MenuShellView<V>
 where
     V: WidgetView<Workspace>,
@@ -619,7 +958,11 @@ where
     fn build(&self, ctx: &mut ViewCtx, app: &mut Workspace) -> (Self::Element, Self::ViewState) {
         let (child, child_state) = self.inner.build(ctx, app);
         let pod = ctx.with_action_widget(|ctx| {
-            ctx.create_pod(MenuShell::new(child.new_widget, self.palette.clone()))
+            ctx.create_pod(MenuShell::new(
+                child.new_widget,
+                self.palette.clone(),
+                self.states.clone(),
+            ))
         });
         (pod, child_state)
     }
@@ -632,6 +975,7 @@ where
         app: &mut Workspace,
     ) {
         element.widget.palette = self.palette.clone();
+        element.widget.states = self.states.clone();
         let mut child = MenuShell::child_mut(&mut element);
         self.inner
             .rebuild(&prev.inner, view_state, ctx, child.downcast(), app);
@@ -655,7 +999,9 @@ where
         if message.remaining_path().is_empty() {
             return match message.take_message::<AppAction>() {
                 Some(action) => {
-                    app.dispatch(*action);
+                    if crate::actions::action_enabled(*action, app) {
+                        app.dispatch(*action);
+                    }
                     MessageResult::Action(())
                 }
                 None => MessageResult::Stale,
@@ -689,7 +1035,16 @@ mod tests {
     fn harness() -> (TestHarness<MenuShell>, WidgetId) {
         let button = NewWidget::new(Button::new(Label::new("editor").prepare()));
         let button_id = button.id();
-        let shell = MenuShell::new(button, Arc::new(Palette::load("gray")))
+        let states = Arc::new(
+            ACTIONS
+                .iter()
+                .map(|_| EntryState {
+                    enabled: true,
+                    checked: None,
+                })
+                .collect(),
+        );
+        let shell = MenuShell::new(button, Arc::new(Palette::load("gray")), states)
             .prepare()
             .with_props(Dimensions::MAX);
         (
@@ -739,5 +1094,61 @@ mod tests {
         harness.process_text_event(key(Key::Named(NamedKey::ArrowRight)));
         let active = harness.edit_root_widget(|root| root.widget.active_menu);
         assert_eq!(active, Some(0));
+    }
+
+    #[test]
+    fn keyboard_enters_submenu_and_dispatches_choice() {
+        let (mut harness, button_id) = harness();
+        harness.focus_on(Some(button_id));
+
+        harness.process_text_event(key(Key::Named(NamedKey::F10)));
+        harness.process_text_event(key(Key::Named(NamedKey::ArrowLeft)));
+        for _ in 0..5 {
+            harness.process_text_event(key(Key::Named(NamedKey::ArrowDown)));
+        }
+        harness.process_text_event(key(Key::Named(NamedKey::ArrowRight)));
+        let submenu = harness.edit_root_widget(|root| root.widget.active_submenu);
+        assert_eq!(submenu, Some("Theme"));
+
+        harness.process_text_event(key(Key::Named(NamedKey::Enter)));
+        let action = harness.pop_action::<AppAction>();
+        assert_eq!(
+            action.map(|(action, _)| action),
+            Some(AppAction::Theme("dark"))
+        );
+        assert_eq!(harness.focused_widget_id(), Some(button_id));
+    }
+
+    #[test]
+    fn pointer_down_outside_dismisses_and_restores_focus() {
+        let (mut harness, button_id) = harness();
+        harness.focus_on(Some(button_id));
+        harness.process_text_event(key(Key::Named(NamedKey::F10)));
+
+        harness.mouse_move(Point::new(700.0, 500.0));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+
+        let active = harness.edit_root_widget(|root| root.widget.active_menu);
+        assert_eq!(active, None);
+        assert_eq!(harness.focused_widget_id(), Some(button_id));
+    }
+
+    #[test]
+    fn pointer_opens_bar_and_dispatches_a_row_once() {
+        let (mut harness, button_id) = harness();
+        harness.focus_on(Some(button_id));
+
+        harness.mouse_move(Point::new(20.0, 12.0));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        let active = harness.edit_root_widget(|root| root.widget.active_menu);
+        assert_eq!(active, Some(0));
+
+        harness.mouse_move(Point::new(40.0, BAR_HEIGHT + POPUP_PAD + ROW_HEIGHT / 2.0));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        let action = harness.pop_action::<AppAction>();
+        assert_eq!(action.map(|(action, _)| action), Some(AppAction::NewFont));
+        assert!(harness.pop_action::<AppAction>().is_none());
     }
 }

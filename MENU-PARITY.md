@@ -8,7 +8,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
 
 ### One command model
 
-- [ ] One command table supplies native macOS menus, the Windows/Linux in-window
+- [x] One command table supplies native macOS menus, the Windows/Linux in-window
   bar, accelerator labels, shortcut matching, enabled state, and checked state.
 - [ ] Every visible item dispatches a working command. Commands unavailable in
   the Xilem shell are recorded below and are not presented as working.
@@ -59,9 +59,9 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
 
 - [ ] Pure command-table tests cover ordering, titles, shortcuts, duplicate
   accelerators, state predicates, and native/in-window conversion.
-- [ ] Masonry interaction tests cover keyboard traversal, submenu traversal,
+- [x] Masonry interaction tests cover keyboard traversal, submenu traversal,
   dispatch, outside dismissal, Escape, and focus restoration.
-- [ ] Gray and Light headless screenshots show the closed bar and representative
+- [x] Gray and Light headless screenshots show the closed bar and representative
   open menus at the same size.
 - [ ] `cargo fmt --check`, `cargo clippy --all-targets`, `cargo doc --no-deps`,
   `cargo test`, and a release build pass.
@@ -81,6 +81,26 @@ second hand-written keymap.
 The missing GPUI commands are application work, not evidence of a Xilem
 limitation. The in-window popup lifecycle and focus/result plumbing are reusable
 framework-integration work.
+
+## Implemented and verified on this branch
+
+- The non-macOS shell is a full-window Masonry widget whose dropdown and nested
+  Theme/Measure menus are real layers. F10/Alt enters it, arrows/Home/End
+  navigate, Enter/Space dispatch once, Escape dismisses, pointer hover switches
+  titles, and prior focus is restored.
+- The command table now owns accelerator matching, enabled state, and checked
+  state. macOS `muda` items update those states on rebuild; the in-window menu
+  draws and exposes them through AccessKit menu-item nodes.
+- Existing Xilem operations are wired for Undo/Redo, selection, transforms,
+  booleans, curve operations, fit/master navigation, explicit themes, and
+  measure toggles. Unimplemented GPUI commands remain absent rather than inert.
+- `docs/screenshots/menu-parity/view-gray.png` and `view-light.png` are matched
+  1100x720 headless captures of the View menu. The headless driver now processes
+  real layer lifecycle signals instead of dropping them.
+- Verified locally on macOS: 45 tests pass serially and all-target Clippy passes
+  with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
+  filename race; the unfiltered suite can intermittently fail in parallel and
+  passes with `--test-threads=1`. Linux and Windows have not been run yet.
 
 ## Upstream contribution opportunities
 

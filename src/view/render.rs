@@ -92,7 +92,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
 
     // The menu bar is built on the main thread, which is here, and only
     // once. Xilem owns the event loop and offers no startup hook.
-    actions::install();
+    actions::install(app);
     // Boxed on purpose, and not for tidiness. Every wrapper here adds a
     // layer to a monomorphized view type that is already enormous, and
     // with the watcher wrapped around the menu pump around the shortcut
@@ -125,9 +125,17 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     .gap(Space::None)
     .background_color(pal.app);
     #[cfg(target_os = "macos")]
-    let root = shortcuts::shortcut_host(content).boxed();
+    let root = {
+        use xilem::core::one_of::OneOf2;
+        if std::env::var("RUNEBENDER_IN_WINDOW_MENU").is_ok() {
+            OneOf2::A(menu_shell::menu_shell(content, app.palette.clone(), app))
+        } else {
+            OneOf2::B(shortcuts::shortcut_host(content))
+        }
+        .boxed()
+    };
     #[cfg(not(target_os = "macos"))]
-    let root = crate::widgets::menu_shell::menu_shell(content, app.palette.clone()).boxed();
+    let root = crate::widgets::menu_shell::menu_shell(content, app.palette.clone(), app).boxed();
     #[cfg(unix)]
     let root = live::with_live(root);
     watch::with_watch(

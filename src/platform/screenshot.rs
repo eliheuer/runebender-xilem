@@ -23,8 +23,11 @@
 
 use std::sync::Arc;
 use std::time::Duration;
+use std::{cell::RefCell, rc::Rc};
 
-use masonry::app::{RenderRoot, RenderRootOptions, VisualLayerKind, WindowSizePolicy};
+use masonry::app::{
+    RenderRoot, RenderRootOptions, RenderRootSignal, VisualLayerKind, WindowSizePolicy,
+};
 use masonry::core::WindowEvent;
 use masonry::dpi::PhysicalSize;
 use masonry::imaging::Painter;
@@ -48,6 +51,29 @@ impl RawProxy for NoProxy {
 
     fn dyn_debug(&self) -> &dyn std::fmt::Debug {
         self
+    }
+}
+
+/// Apply layer lifecycle signals synchronously, as the window runner and test
+/// harness do. Other signals are irrelevant to a one-frame image.
+fn process_layer_signals(root: &mut RenderRoot, signals: &Rc<RefCell<Vec<RenderRootSignal>>>) {
+    loop {
+        let pending = std::mem::take(&mut *signals.borrow_mut());
+        if pending.is_empty() {
+            return;
+        }
+        for signal in pending {
+            match signal {
+                RenderRootSignal::NewLayer(_, widget, position) => {
+                    root.add_layer(widget, position);
+                }
+                RenderRootSignal::RemoveLayer(id) => root.remove_layer(id),
+                RenderRootSignal::RepositionLayer(id, position) => {
+                    root.reposition_layer(id, position);
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -79,9 +105,11 @@ pub(crate) fn render_to<State, V, F>(
     let view = logic(&mut app);
     let (pod, mut view_state) = view.build(&mut ctx, &mut app);
 
+    let signals = Rc::new(RefCell::new(Vec::new()));
+    let signal_sink = signals.clone();
     let mut root = RenderRoot::new(
         pod.new_widget.erased(),
-        |_signal| {},
+        move |signal| signal_sink.borrow_mut().push(signal),
         RenderRootOptions {
             default_properties: Arc::new(default_property_set()),
             // The setting this file exists for.
@@ -92,6 +120,7 @@ pub(crate) fn render_to<State, V, F>(
             test_font: None,
         },
     );
+    process_layer_signals(&mut root, &signals);
 
     root.register_fonts(xilem::Blob::new(Arc::new(crate::UI_FONT)));
 
@@ -102,12 +131,14 @@ pub(crate) fn render_to<State, V, F>(
         let root_widget = root_widget.downcast::<V::Widget>();
         again.rebuild(&view, &mut view_state, &mut ctx, root_widget, &mut app);
     });
+    process_layer_signals(&mut root, &signals);
 
     // A real window has already received its first idle animation frame by
     // the time it is useful to inspect it. Drive that frame here too, so
     // auto-hiding portal scrollbars do not get frozen visible in every
     // screenshot solely because this renderer exits after its first paint.
     root.handle_window_event(WindowEvent::AnimFrame(Duration::from_millis(500)));
+    process_layer_signals(&mut root, &signals);
 
     let (layers, _tree) = root.redraw();
     let mut scene = Scene::new();

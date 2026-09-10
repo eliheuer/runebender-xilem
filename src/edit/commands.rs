@@ -72,6 +72,8 @@ impl Workspace {
                 }
                 self.save();
             }
+            A::Undo => self.undo_open_glyph(false),
+            A::Redo => self.undo_open_glyph(true),
             A::Overview => {
                 if matches!(self.mode, Mode::Editor(_) | Mode::Nodes) {
                     self.back_to_overview();
@@ -93,11 +95,63 @@ impl Workspace {
             A::FlipHorizontal => self.apply_op(|s| s.flip_horizontal()),
             A::FlipVertical => self.apply_op(|s| s.flip_vertical()),
             A::Rotate90 => self.apply_op(|s| s.rotate_90()),
+            A::RotateRight => {
+                self.apply_op(|s| s.transform(kurbo::Affine::new([0.0, -1.0, 1.0, 0.0, 0.0, 0.0])));
+            }
+            A::Rotate180 => self.apply_op(|s| s.transform(kurbo::Affine::scale(-1.0))),
             A::RemoveOverlap => self.apply_op(|s| s.remove_overlap()),
+            A::BooleanSubtract => self.apply_op(|s| s.boolean(session::BoolOp::Subtract)),
+            A::BooleanIntersect => self.apply_op(|s| s.boolean(session::BoolOp::Intersect)),
+            A::BooleanExclude => self.apply_op(|s| s.boolean(session::BoolOp::Exclude)),
             A::Decompose => self.apply_op(|s| s.decompose()),
             A::Duplicate => self.apply_op(|s| s.duplicate()),
+            A::ReverseContours => self.apply_op(|s| s.reverse()),
+            A::SetStartPoint => self.apply_op(|s| s.set_start()),
+            A::RoundCorners => self.apply_op(|s| s.round_corners()),
+            A::Harmonize => self.apply_op(|s| s.harmonize()),
+            A::Balance => self.apply_op(|s| s.balance()),
+            A::Optimize => self.apply_op(|s| s.optimize()),
             A::NewFont => self.new_font(),
             A::CycleTheme => self.cycle_theme(),
+            A::Theme(id) => {
+                self.theme_id = id;
+                self.palette = Arc::new(Palette::load(id));
+                self.cells = Arc::new(cells_of(&self.font, &self.palette));
+            }
+            A::ZoomToFit => {
+                let mut session = (*self.session).clone();
+                session.fitted = false;
+                self.session = Arc::new(session);
+            }
+            A::NextMaster | A::PreviousMaster => {
+                let count = self.font.master_count();
+                if count > 1 {
+                    let current = self.font.active();
+                    let next = if matches!(action, A::NextMaster) {
+                        (current + 1) % count
+                    } else {
+                        (current + count - 1) % count
+                    };
+                    self.set_master(next);
+                }
+            }
+            A::MeasureColorize => self.view.colorize = !self.view.colorize,
+            A::MeasureHandles => self.view.handles = !self.view.handles,
+            A::MeasureSegments => self.view.segments = !self.view.segments,
+            A::MeasureSideBearings => self.view.bearings = !self.view.bearings,
+            A::MeasurePopcount => self.view.popcount = !self.view.popcount,
+            A::MeasureAllOn => {
+                self.view.colorize = true;
+                self.view.handles = true;
+                self.view.segments = true;
+                self.view.bearings = true;
+            }
+            A::MeasureAllOff => {
+                self.view.colorize = false;
+                self.view.handles = false;
+                self.view.segments = false;
+                self.view.bearings = false;
+            }
             A::GenerateMissing => match self.sel {
                 Sel::Filter(i) => {
                     let missing = self.filter_missing(i);
@@ -122,6 +176,32 @@ impl Workspace {
             }
             A::Copy => self.copy_contours(),
             A::Paste => self.paste_contours(),
+            A::SelectAll => {
+                if matches!(self.mode, Mode::Editor(_)) {
+                    let mut session = (*self.session).clone();
+                    session.select_all();
+                    self.selected_points = session.selection.len();
+                    self.session = Arc::new(session);
+                }
+            }
+            A::DeselectAll => {
+                if matches!(self.mode, Mode::Editor(_)) {
+                    let mut session = (*self.session).clone();
+                    session.selection.clear();
+                    self.selected_points = 0;
+                    self.session = Arc::new(session);
+                }
+            }
+            A::InvertSelection => {
+                if matches!(self.mode, Mode::Editor(_)) {
+                    let mut session = (*self.session).clone();
+                    let all: std::collections::HashSet<_> =
+                        session.points().into_iter().map(|point| point.id).collect();
+                    session.selection = all.difference(&session.selection).copied().collect();
+                    self.selected_points = session.selection.len();
+                    self.session = Arc::new(session);
+                }
+            }
         }
     }
 

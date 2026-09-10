@@ -39,18 +39,45 @@ use crate::{Tool, Workspace};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AppAction {
     Save,
+    Undo,
+    Redo,
     Overview,
     Tool(Tool),
     FlipHorizontal,
     FlipVertical,
     Rotate90,
+    RotateRight,
+    Rotate180,
     RemoveOverlap,
+    BooleanSubtract,
+    BooleanIntersect,
+    BooleanExclude,
     Decompose,
     Duplicate,
+    ReverseContours,
+    SetStartPoint,
+    RoundCorners,
+    Harmonize,
+    Balance,
+    Optimize,
     Copy,
     Paste,
+    SelectAll,
+    DeselectAll,
+    InvertSelection,
     NewFont,
     CycleTheme,
+    Theme(&'static str),
+    ZoomToFit,
+    NextMaster,
+    PreviousMaster,
+    MeasureColorize,
+    MeasureHandles,
+    MeasureSegments,
+    MeasureSideBearings,
+    MeasurePopcount,
+    MeasureAllOn,
+    MeasureAllOff,
     /// The Nodes menu: the canvas, a new file, save it, run it.
     NodesTab,
     NodesNew,
@@ -115,8 +142,7 @@ impl Widget for ShortcutHost {
         if key.state != KeyState::Down {
             return;
         }
-        let cmd = key.modifiers.meta() || key.modifiers.ctrl();
-        if let Some(action) = crate::actions::action_for_key(&key.key, cmd) {
+        if let Some(action) = crate::actions::action_for_key(&key.key, key.modifiers) {
             ctx.submit_action::<AppAction>(action);
             ctx.set_handled();
         }
@@ -206,7 +232,9 @@ where
         if message.remaining_path().is_empty() {
             return match message.take_message::<AppAction>() {
                 Some(action) => {
-                    app.dispatch(*action);
+                    if crate::actions::action_enabled(*action, app) {
+                        app.dispatch(*action);
+                    }
                     MessageResult::Action(())
                 }
                 None => MessageResult::Stale,
