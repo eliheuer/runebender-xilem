@@ -545,6 +545,7 @@ pub(crate) fn action_enabled(action: AppAction, app: &Workspace) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn accelerator_metadata_is_the_shortcut_map() {
@@ -560,6 +561,42 @@ mod tests {
             action_for_key(&Key::Named(NamedKey::Escape), Modifiers::empty()),
             Some(AppAction::Overview)
         );
+    }
+
+    #[test]
+    fn accelerators_are_unique_and_every_row_has_a_known_home() {
+        let mut accelerators = HashSet::new();
+        for entry in ACTIONS {
+            assert!(
+                entry.menu.is_empty() || MENUS.contains(&entry.menu),
+                "unknown menu for {}: {}",
+                entry.title,
+                entry.menu
+            );
+            if let Some(accelerator) = entry.accelerator {
+                assert!(
+                    accelerators.insert(accelerator),
+                    "duplicate accelerator: {accelerator}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn menu_and_submenu_order_matches_the_gpui_reference() {
+        assert_eq!(
+            MENUS,
+            &["File", "Nodes", "Edit", "Glyph", "Path", "Filter", "View"]
+        );
+        let view: Vec<_> = ACTIONS
+            .iter()
+            .filter(|entry| entry.menu == "View")
+            .map(|entry| (entry.title, entry.submenu()))
+            .collect();
+        assert_eq!(view[0], ("Zoom to Fit", None));
+        assert_eq!(view[5], ("Dark", Some("Theme")));
+        assert_eq!(view[8], ("Colorize Outline", Some("Measure")));
+        assert_eq!(view.last(), Some(&("All Off", Some("Measure"))));
     }
 }
 

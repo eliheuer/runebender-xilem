@@ -1151,4 +1151,58 @@ mod tests {
         assert_eq!(action.map(|(action, _)| action), Some(AppAction::NewFont));
         assert!(harness.pop_action::<AppAction>().is_none());
     }
+
+    #[test]
+    fn pointer_switches_titles_while_a_menu_is_open() {
+        let (mut harness, button_id) = harness();
+        harness.focus_on(Some(button_id));
+
+        harness.mouse_move(Point::new(20.0, 12.0));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+
+        let view = MENUS.len() - 1;
+        let view_title = title_rect(view).center();
+        harness.mouse_move(view_title);
+
+        let active = harness.edit_root_widget(|root| root.widget.active_menu);
+        assert_eq!(active, Some(view));
+        assert_ne!(harness.focused_widget_id(), Some(button_id));
+    }
+
+    #[test]
+    fn pointer_enters_submenu_and_dispatches_choice() {
+        let (mut harness, button_id) = harness();
+        harness.focus_on(Some(button_id));
+
+        let view = MENUS.len() - 1;
+        harness.mouse_move(title_rect(view).center());
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+
+        let theme_row = 5.0;
+        harness.mouse_move(Point::new(
+            title_rect(view).x0 + 40.0,
+            BAR_HEIGHT + POPUP_PAD + (theme_row + 0.5) * ROW_HEIGHT,
+        ));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        let submenu = harness.edit_root_widget(|root| root.widget.active_submenu);
+        assert_eq!(submenu, Some("Theme"));
+
+        harness.mouse_move(Point::new(
+            title_rect(view).x0 + POPUP_WIDTH + 40.0,
+            BAR_HEIGHT + POPUP_PAD + ROW_HEIGHT / 2.0,
+        ));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+
+        let action = harness.pop_action::<AppAction>();
+        assert_eq!(
+            action.map(|(action, _)| action),
+            Some(AppAction::Theme("dark"))
+        );
+        assert_eq!(harness.focused_widget_id(), Some(button_id));
+        assert!(harness.pop_action::<AppAction>().is_none());
+    }
 }

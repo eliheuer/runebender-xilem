@@ -45,7 +45,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
   state; document-only navigation is disabled without a document.
 - [ ] Tool, sort, grid, measure, theme, and Show All Masters choices expose their
   current checked state.
-- [ ] Mouse click opens a menu; moving across titles switches it; choosing a row
+- [x] Mouse click opens a menu; moving across titles switches it; choosing a row
   dispatches once; clicking outside dismisses it.
 - [ ] Alt/F10 focuses the bar on Windows/Linux. Left/Right changes the top-level
   menu; Up/Down changes the row; Enter/Space activates; Escape closes one level
@@ -63,7 +63,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
   dispatch, outside dismissal, Escape, and focus restoration.
 - [x] Gray and Light headless screenshots show the closed bar and representative
   open menus at the same size.
-- [ ] `cargo fmt --check`, `cargo clippy --all-targets`, `cargo doc --no-deps`,
+- [x] `cargo fmt --check`, `cargo clippy --all-targets`, `cargo doc --no-deps`,
   `cargo test`, and a release build pass.
 - [ ] macOS native behaviour is tested on macOS. Linux behaviour is tested on
   Linux or explicitly reported as compile-only; Windows is compile-only unless a
@@ -97,7 +97,7 @@ framework-integration work.
 - `docs/screenshots/menu-parity/view-gray.png` and `view-light.png` are matched
   1100x720 headless captures of the View menu. The headless driver now processes
   real layer lifecycle signals instead of dropping them.
-- Verified locally on macOS: 45 tests pass serially and all-target Clippy passes
+- Verified locally on macOS: 49 tests pass serially and all-target Clippy passes
   with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
   filename race; the unfiltered suite can intermittently fail in parallel and
   passes with `--test-threads=1`. Linux and Windows have not been run yet.
@@ -112,3 +112,41 @@ framework-integration work.
    tests.
 4. A desktop-service facade for native menu/dialog/window-handle lifecycle rather
    than application code reaching through driver internals.
+
+## Remaining work
+
+- [ ] Move the menu/command scope to `AppState` so File and application commands
+  exist on the welcome screen as well as inside a loaded `Workspace`.
+- [ ] Add real Open…, Save As…, Export…, and Open Nodes… platform workflows. The
+  existing Xilem host has Save and New only; no inert dialog rows should be added.
+- [ ] Port the remaining working GPUI handlers: Copy Selected Glyphs as Text;
+  New/Duplicate/Remove Glyph; Update Metrics; Reinterpolate; Check Joining;
+  Compose from Anchors; Bake Masks; Export Glyph as SVG; image/model commands;
+  Tidy/Add Extremes/Round/Correct Direction/Union/Duplicate Repeat/curve
+  conversion; parameterized filters; Show All Masters; sample navigation; Grid;
+  Segment Sizes; Stems & Counters.
+- [ ] Add the in-window Runebender/Quit command through the Xilem driver rather
+  than pretending a workspace mutation can exit the process.
+- [ ] Finish focused-field precedence for native macOS accelerators, including a
+  regression proving one dispatch. The Masonry shortcut scope already runs only
+  after a focused descendant declines the key.
+- [ ] Add direct accessibility-action coverage for menu titles and items.
+- [ ] Run the in-window implementation and its interaction suite on Linux. Cross
+  compilation alone is not interaction evidence; no Linux or Windows run has
+  happened on this macOS host.
+
+## Integration and launch handoff
+
+The isolated checkout is
+`/Users/eli/GH/repos/runebender-xilem/.worktrees/menu-parity` on
+`codex/xilem-menu-parity`. On Linux the menu shell is automatic. On macOS it can
+be forced without replacing the native bar for headless proof or review:
+
+```sh
+RUNEBENDER_IN_WINDOW_MENU=1 cargo run -- \
+  /Users/eli/GH/repos/virtua-grotesk/sources/VirtuaGrotesk.designspace
+```
+
+For a non-foreground screenshot, add `RUNEBENDER_SCREENSHOT=/tmp/menu.png`,
+`RUNEBENDER_MENU_OPEN=View`, `RUNEBENDER_THEME=gray`, and
+`RUNEBENDER_SIZE=1100x720`.
