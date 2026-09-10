@@ -259,6 +259,17 @@ impl AppState {
             self.theme_id = id;
             self.palette = Arc::new(Palette::load(id));
         }
+        if action == shortcuts::AppAction::OpenFont {
+            let directory = self
+                .workspace
+                .as_ref()
+                .and_then(|workspace| workspace.font.document_source().parent())
+                .unwrap_or_else(|| std::path::Path::new("."));
+            if let Some(path) = dialogs::font(directory) {
+                self.open_path(&path);
+            }
+            return;
+        }
         if action == shortcuts::AppAction::NewFont && self.workspace.is_none() {
             let path = std::env::temp_dir().join(format!(
                 "Runebender-Untitled-{}-{}.ufo",

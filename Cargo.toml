@@ -85,6 +85,9 @@ winit = "0.30"
 muda = "0.19"
 # Reload when the sources change under us, the way the GPUI build does.
 notify = "8"
+# Cross-platform native file and folder prompts for File, Nodes, and image
+# commands. Xilem/winit intentionally do not supply dialog APIs.
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
 # Headless rendering, for review screenshots and for agents to see their
 # own output. Upstream Xilem has no such path, so this is app-side.
 tokio = { version = "1", features = ["rt", "time"] }

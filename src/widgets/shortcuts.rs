@@ -39,6 +39,8 @@ use crate::{AppState, Tool};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AppAction {
     Quit,
+    OpenFont,
+    SaveAs,
     Save,
     Undo,
     Redo,
@@ -98,6 +100,7 @@ pub(crate) enum AppAction {
     /// The Nodes menu: the canvas, a new file, save it, run it.
     NodesTab,
     NodesNew,
+    NodesOpen,
     NodesSave,
     NodesRun,
     /// Add every glyph the selected coverage filter is missing.
@@ -111,6 +114,10 @@ pub(crate) enum AppAction {
     ComposeFromAnchors,
     BakeMasks,
     ExportGlyphSvg,
+    TraceImage,
+    PlaceImage,
+    ImportSvg,
+    RemoveImage,
     /// The grid's order, as the GPUI build's View menu has it.
     SortByName,
     SortByUnicode,

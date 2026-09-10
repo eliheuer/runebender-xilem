@@ -386,6 +386,196 @@ impl Workspace {
         };
     }
 
+    /// Pick a destination directory and keep saving each master there.
+    pub(crate) fn command_save_as(&mut self) {
+        let start = self
+            .font
+            .document_source()
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let Some(directory) = dialogs::folder(start) else {
+            return;
+        };
+        for master in &mut self.font.project.masters {
+            let family = master
+                .font
+                .font_info
+                .family_name
+                .clone()
+                .unwrap_or_else(|| "Untitled".into())
+                .replace(' ', "");
+            let style = master
+                .font
+                .font_info
+                .style_name
+                .clone()
+                .unwrap_or_else(|| "Regular".into())
+                .replace(' ', "");
+            master.source_path = directory.join(format!("{family}-{style}.ufo"));
+            master.dirty = true;
+        }
+        self.save();
+    }
+
+    /// Pick and open a nodes graph.
+    pub(crate) fn command_open_nodes(&mut self) {
+        let start = self
+            .font
+            .document_source()
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        if let Some(path) = dialogs::nodes(start) {
+            self.open_nodes_file(&path);
+        }
+    }
+
+    /// Pick a raster image and replace the open glyph's contours with its trace.
+    pub(crate) fn command_trace_image(&mut self) {
+        if !matches!(self.mode, Mode::Editor(_)) {
+            return;
+        }
+        let start = self
+            .font
+            .document_source()
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let Some(path) = dialogs::image(start) else {
+            return;
+        };
+        let traced = std::fs::read(&path)
+            .map_err(|error| error.to_string())
+            .and_then(|bytes| {
+                runebender_core::formats::image_trace::trace_image(
+                    &bytes,
+                    &runebender_core::formats::image_trace::TraceConfig {
+                        target_height: (self.font.ascender() - self.font.descender()).max(1.0),
+                        y_offset: self.font.descender(),
+                        advance: self.session.advance().max(1.0),
+                        ..Default::default()
+                    },
+                )
+            });
+        match traced {
+            Ok(glyph) => {
+                let count = glyph.contours.len();
+                self.apply_op(move |session| session.set_contours(glyph.contours));
+                self.note = format!("Traced {count} contour(s)");
+            }
+            Err(error) => self.note = format!("Trace: {error}"),
+        }
+    }
+
+    /// Pick an SVG and append its contours to the open glyph.
+    pub(crate) fn command_import_svg(&mut self) {
+        if !matches!(self.mode, Mode::Editor(_)) {
+            return;
+        }
+        let start = self
+            .font
+            .document_source()
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let Some(path) = dialogs::svg(start) else {
+            return;
+        };
+        let contours = std::fs::read_to_string(path)
+            .map_err(|error| error.to_string())
+            .and_then(|svg| {
+                runebender_core::formats::svg::svg_to_contours(
+                    &svg,
+                    self.font.ascender(),
+                    self.font.descender(),
+                )
+            });
+        match contours {
+            Ok(contours) => {
+                let count = contours.len();
+                self.apply_op(move |session| session.paste_contours(&contours));
+                self.note = format!("Imported {count} SVG contour(s)");
+            }
+            Err(error) => self.note = format!("SVG import: {error}"),
+        }
+    }
+
+    /// Pick a raster image, store it in the UFO, and attach it to the glyph.
+    pub(crate) fn command_place_image(&mut self) {
+        if !matches!(self.mode, Mode::Editor(_)) {
+            return;
+        }
+        let start = self
+            .font
+            .document_source()
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let Some(path) = dialogs::image(start) else {
+            return;
+        };
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                self.note = format!("Place image: {error}");
+                return;
+            }
+        };
+        let decoded = match image::load_from_memory(&bytes) {
+            Ok(image) => image,
+            Err(error) => {
+                self.note = format!("Place image: {error}");
+                return;
+            }
+        };
+        let (width, height) = (decoded.width(), decoded.height());
+        let file_name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "image.png".into());
+        let scale =
+            ((self.font.ascender() - self.font.descender()) / f64::from(height).max(1.0)).max(1e-6);
+        let placed = match norad::Image::new(
+            std::path::PathBuf::from(&file_name),
+            None,
+            norad::AffineTransform {
+                x_scale: scale,
+                xy_scale: 0.0,
+                yx_scale: 0.0,
+                y_scale: scale,
+                x_offset: 0.0,
+                y_offset: self.font.descender(),
+            },
+        ) {
+            Ok(image) => image,
+            Err(error) => {
+                self.note = format!("Place image: {error}");
+                return;
+            }
+        };
+        let _ = self
+            .font
+            .font_mut()
+            .images
+            .insert(std::path::PathBuf::from(&file_name), bytes);
+        self.apply_op(move |session| {
+            session.record(runebender_core::ui::editing::edit_types::EditType::Normal);
+            session.glyph.image = Some(placed);
+            true
+        });
+        self.show_background = true;
+        self.note = format!("Placed {file_name} · {width}×{height}px");
+    }
+
+    /// Unlink the open glyph's background image, preserving the stored file.
+    pub(crate) fn command_remove_image(&mut self) {
+        if !matches!(self.mode, Mode::Editor(_)) || self.session.glyph.image.is_none() {
+            return;
+        }
+        self.apply_op(|session| {
+            session.record(runebender_core::ui::editing::edit_types::EditType::Normal);
+            session.glyph.image = None;
+            true
+        });
+        self.note = "Removed image".into();
+    }
+
     pub(crate) fn new_glyph(&mut self) {
         let name = self.filter.trim().to_string();
         let upm = self.font.units_per_em();
@@ -453,6 +643,8 @@ impl Workspace {
                 }
                 self.save();
             }
+            A::OpenFont => unreachable!("Open belongs to AppState"),
+            A::SaveAs => self.command_save_as(),
             A::Undo => self.undo_open_glyph(false),
             A::Redo => self.undo_open_glyph(true),
             A::Overview => {
@@ -594,10 +786,15 @@ impl Workspace {
             A::ComposeFromAnchors => self.command_compose_from_anchors(),
             A::BakeMasks => self.command_bake_masks(),
             A::ExportGlyphSvg => self.command_export_glyph_svg(),
+            A::TraceImage => self.command_trace_image(),
+            A::PlaceImage => self.command_place_image(),
+            A::ImportSvg => self.command_import_svg(),
+            A::RemoveImage => self.command_remove_image(),
             A::SortByName => self.sort = Sort::Name,
             A::SortByUnicode => self.sort = Sort::Unicode,
             A::NodesTab => self.enter_nodes_mode(),
             A::NodesNew => self.new_nodes_file(),
+            A::NodesOpen => self.command_open_nodes(),
             A::NodesSave => self.save_nodes_file(),
             A::NodesRun => {
                 if self.nodes.graph.is_none() {

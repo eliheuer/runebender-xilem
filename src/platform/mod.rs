@@ -3,6 +3,8 @@
 
 //! The world outside the window: files, watching, and headless frames.
 
+pub(crate) mod dialogs;
+
 pub(crate) mod host;
 pub(crate) mod screenshot;
 pub(crate) mod watch;

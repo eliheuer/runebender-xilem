@@ -1288,6 +1288,7 @@ mod tests {
         harness.process_text_event(key(Key::Named(NamedKey::F10)));
         harness.process_text_event(key(Key::Named(NamedKey::ArrowRight)));
         harness.process_text_event(key(Key::Named(NamedKey::ArrowDown)));
+        harness.process_text_event(key(Key::Named(NamedKey::ArrowDown)));
         harness.process_text_event(key(Key::Named(NamedKey::Enter)));
 
         let action = harness.pop_action::<AppAction>();

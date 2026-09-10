@@ -66,6 +66,7 @@ impl Entry {
                     | A::SelectAll
                     | A::UpdateMetrics
                     | A::CheckJoining
+                    | A::TraceImage
                     | A::Decompose
                     | A::CorrectPathDirection
                     | A::RemoveOverlap
@@ -107,7 +108,10 @@ impl Entry {
     pub(crate) fn enabled(&self, app: &AppState) -> bool {
         use AppAction as A;
         let Some(app) = app.workspace.as_ref() else {
-            return matches!(self.action, A::Quit | A::NewFont | A::Theme(_));
+            return matches!(
+                self.action,
+                A::Quit | A::NewFont | A::OpenFont | A::Theme(_)
+            );
         };
         let editor = matches!(app.mode, crate::Mode::Editor(_));
         match self.action {
@@ -155,6 +159,8 @@ impl Entry {
             A::DuplicateGlyph | A::RemoveGlyph | A::BakeMasks | A::ExportGlyphSvg => {
                 app.selected.is_some()
             }
+            A::TraceImage | A::PlaceImage | A::ImportSvg => editor,
+            A::RemoveImage => editor && app.session.glyph.image.is_some(),
             A::Reinterpolate => app.selected.is_some() && app.font.master_count() > 1,
             A::NextMaster | A::PreviousMaster => app.font.master_count() > 1,
             A::ShowAllMasters | A::NextSampleString | A::PreviousSampleString => editor,
@@ -210,15 +216,33 @@ pub(crate) const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "File",
+        title: "Open…",
+        accelerator: Some("CmdOrCtrl+O"),
+        action: AppAction::OpenFont,
+    },
+    Entry {
+        menu: "File",
         title: "Save",
         accelerator: Some("CmdOrCtrl+S"),
         action: AppAction::Save,
+    },
+    Entry {
+        menu: "File",
+        title: "Save As…",
+        accelerator: Some("CmdOrCtrl+Shift+S"),
+        action: AppAction::SaveAs,
     },
     Entry {
         menu: "Nodes",
         title: "New Nodes",
         accelerator: None,
         action: AppAction::NodesNew,
+    },
+    Entry {
+        menu: "Nodes",
+        title: "Open Nodes…",
+        accelerator: None,
+        action: AppAction::NodesOpen,
     },
     Entry {
         menu: "Nodes",
@@ -339,6 +363,30 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "Export Glyph as SVG",
         accelerator: None,
         action: AppAction::ExportGlyphSvg,
+    },
+    Entry {
+        menu: "Glyph",
+        title: "Trace Image…",
+        accelerator: None,
+        action: AppAction::TraceImage,
+    },
+    Entry {
+        menu: "Glyph",
+        title: "Place Image…",
+        accelerator: None,
+        action: AppAction::PlaceImage,
+    },
+    Entry {
+        menu: "Glyph",
+        title: "Import SVG…",
+        accelerator: None,
+        action: AppAction::ImportSvg,
+    },
+    Entry {
+        menu: "Glyph",
+        title: "Remove Image",
+        accelerator: None,
+        action: AppAction::RemoveImage,
     },
     Entry {
         menu: "Path",
@@ -853,8 +901,19 @@ mod tests {
                 "Compose from Anchors",
                 "Bake Masks",
                 "Export Glyph as SVG",
+                "Trace Image…",
+                "Place Image…",
+                "Import SVG…",
+                "Remove Image",
             ]
         );
+
+        let file: Vec<_> = ACTIONS
+            .iter()
+            .filter(|entry| entry.menu == "File")
+            .map(|entry| entry.title)
+            .collect();
+        assert_eq!(file, ["New Font", "Open…", "Save", "Save As…"]);
 
         let path: Vec<_> = ACTIONS
             .iter()
@@ -904,6 +963,7 @@ mod tests {
 
         assert!(entry(AppAction::Quit).enabled(&app));
         assert!(entry(AppAction::NewFont).enabled(&app));
+        assert!(entry(AppAction::OpenFont).enabled(&app));
         assert!(entry(AppAction::Theme("gray")).enabled(&app));
         assert!(entry(AppAction::Theme("gray")).checked(&app).unwrap());
         assert!(!entry(AppAction::Save).enabled(&app));

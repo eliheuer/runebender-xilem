@@ -20,7 +20,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
 - [x] **Runebender:** Quit Runebender. macOS additionally uses the standard About
   and Hide items supplied by the platform.
 - [ ] **File:** New Font; Open…; Save; Save As…; Export….
-- [ ] **Nodes:** New Nodes; Open Nodes…; Save Nodes; Run Nodes.
+- [x] **Nodes:** New Nodes; Open Nodes…; Save Nodes; Run Nodes.
 - [ ] **Edit:** Undo; Redo; Copy; Paste; Copy Selected Glyphs as Text; Select All;
   Deselect All; Invert Selection.
 - [ ] **Glyph:** New Glyph; Duplicate Glyph; Remove Glyph; Update Metrics;
@@ -50,9 +50,9 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
 - [ ] Alt/F10 focuses the bar on Windows/Linux. Left/Right changes the top-level
   menu; Up/Down changes the row; Enter/Space activates; Escape closes one level
   and then restores the previous focus.
-- [ ] Submenus open by pointer or Right/Enter, stay inside the window, return with
+- [x] Submenus open by pointer or Right/Enter, stay inside the window, return with
   Left/Escape, and expose their hierarchy to accessibility.
-- [ ] Menu bar, menus, menu items, separators, disabled items, checked items, and
+- [x] Menu bar, menus, menu items, separators, disabled items, checked items, and
   shortcut labels have appropriate AccessKit roles/state/names.
 
 ### Evidence
@@ -115,6 +115,9 @@ framework-integration work.
   retains its predefined application-menu Quit behavior.
 - New Font works from the welcome screen as well as an open document, and Save
   is enabled only while the document is dirty.
+- A single cross-platform dialog adapter now backs Open, Save As, Open Nodes,
+  Trace Image, Place Image, and Import SVG. Remove Image is undoable through the
+  same editing-session history as outline commands.
 - Verified locally on macOS: 58 tests pass serially and all-target Clippy passes
   with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
   filename race; the unfiltered suite can intermittently fail in parallel and
@@ -135,10 +138,10 @@ framework-integration work.
 
 - [x] Move the menu/command scope to `AppState` so File and application commands
   exist on the welcome screen as well as inside a loaded `Workspace`.
-- [ ] Add real Open…, Save As…, Export…, and Open Nodes… platform workflows. The
-  existing Xilem host has Save and New only; no inert dialog rows should be added.
-- [ ] Port the remaining working GPUI handlers: Copy Selected Glyphs as Text;
-  image/model commands, and parameterized filters.
+- [ ] Add the remaining Export… workflow. Open, Save As, and Open Nodes now use
+  the shared native dialog adapter.
+- [ ] Port the remaining working GPUI handlers: Copy Selected Glyphs as Text,
+  Bolden With Model, and parameterized filters.
 - [x] Add the in-window Runebender/Quit command through the Xilem driver rather
   than pretending a workspace mutation can exit the process.
 - [ ] Finish focused-field precedence for native macOS accelerators, including a
