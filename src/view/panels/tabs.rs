@@ -4,6 +4,7 @@
 //! The left edge: the tab strip, the editor's rail, and the sidebar of
 //! categories, languages, and filters.
 
+use crate::view::design::{RAIL_TAB_ACTIVE_HEIGHT, RAIL_TAB_HEIGHT, RAIL_TAB_INACTIVE_HEIGHT};
 use crate::*;
 use masonry::properties::AutoHideScrollBar;
 use xilem::Color;
@@ -119,42 +120,52 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
     let tab = |icon: &'static str, which: Rail| {
         let active =
             app.rail == which || (!editing && app.rail == Rail::Shapes && which == Rail::Glyphs);
-        let (foreground, background, height) = if active {
-            (pal.text, pal.panel, ControlSize::Control)
-        } else {
-            (pal.text_muted, pal.inactive_tab, ControlSize::Row)
-        };
         sized_box(
             icon_button(
                 icon,
-                false,
-                foreground,
-                foreground,
+                active,
+                pal.text.with_alpha(0.42),
+                pal.text,
                 Color::TRANSPARENT,
-                pal.control,
+                Color::TRANSPARENT,
                 move |app: &mut Workspace| app.rail = which,
             )
-            .background_color(background)
-            .border_color(pal.outline)
-            .border_width(Stroke::Hairline.length())
-            .corner_radius(Radius::Md.length()),
+            .rail_tab(
+                if active { pal.panel } else { pal.inactive_tab },
+                pal.outline,
+            ),
         )
-        .dims(Dimensions::new(Dim::Stretch, Dim::from(height)))
+        .dims(Dimensions::new(
+            Dim::Stretch,
+            Dim::Fixed(Length::px(if active {
+                RAIL_TAB_ACTIVE_HEIGHT
+            } else {
+                RAIL_TAB_INACTIVE_HEIGHT
+            })),
+        ))
     };
     let has_axes = !app.font.axes.is_empty();
     sized_box(
-        xrow(
-            Region::Inline,
-            (
-                tab("glyph-grid", Rail::Glyphs).flex(1.0),
-                editing.then(|| tab("shapes", Rail::Shapes).flex(1.0)),
-                has_axes.then(|| tab("measure", Rail::Axes).flex(1.0)),
-                tab("preview", Rail::LocalAi).flex(1.0),
-            ),
-        )
+        flex_row((
+            tab("glyph-grid", Rail::Glyphs).flex(1.0),
+            editing.then(|| tab("shapes", Rail::Shapes).flex(1.0)),
+            has_axes.then(|| tab("measure", Rail::Axes).flex(1.0)),
+            tab("preview", Rail::LocalAi).flex(1.0),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Start)
+        .gap(Space::Sm)
+        .padding(masonry::properties::Padding {
+            left: Space::Sm.length(),
+            right: Space::Sm.length(),
+            top: Space::Sm.length(),
+            bottom: Space::None.length(),
+        })
         .background_color(pal.tab_rail),
     )
-    .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(36.0))))
+    .dims(Dimensions::new(
+        Dim::Stretch,
+        Dim::Fixed(Length::px(RAIL_TAB_HEIGHT)),
+    ))
 }
 
 pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> {

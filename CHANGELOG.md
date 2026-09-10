@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Match navigation tab heights, top-only selected corners, and icon sizing to GPUI.
+
 - Remove the extra titlebar icon and tighten category sidebar rows to the GPUI reference.
 
 - Count the primary overview selection and contain glyph captions within their tiles.

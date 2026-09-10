@@ -29,6 +29,13 @@ use xilem::view::{Flex, FlexSequence, Prop, flex_col, flex_row};
 pub(crate) const DOCK_WIDTH: f64 = 246.0;
 /// GPUI category rows inset their marker and count by 14 logical pixels.
 pub(crate) const SIDEBAR_ROW_INSET: f64 = 14.0;
+/// GPUI navigation strip geometry, in logical pixels.
+pub(crate) const RAIL_TAB_ACTIVE_HEIGHT: f64 = 32.0;
+pub(crate) const RAIL_TAB_INACTIVE_HEIGHT: f64 = 28.0;
+pub(crate) const RAIL_TAB_HEIGHT: f64 = 36.0;
+pub(crate) const RAIL_TAB_ICON: f64 = 18.0;
+pub(crate) const RAIL_TAB_RADIUS: f64 = 6.0;
+pub(crate) const RAIL_TAB_ICON_RISE: f64 = 2.0;
 /// GPUI allocates 140 logical pixels to the proof drawing. Xilem's
 /// editable proof controls occupy an additional control row.
 pub(crate) const PROOF_DRAWING_HEIGHT: f64 = 140.0;

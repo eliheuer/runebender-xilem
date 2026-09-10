@@ -13,11 +13,13 @@ use masonry::core::{
     PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, Widget,
 };
 use masonry::imaging::Painter;
-use masonry::kurbo::{Affine, Axis, Size, Stroke};
+use masonry::kurbo::{Affine, Axis, BezPath, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 use runebender_core::ui::theme::toolbar_icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
+
+use crate::view::design::{RAIL_TAB_ICON, RAIL_TAB_ICON_RISE, RAIL_TAB_RADIUS};
 
 const TILE: f64 = 24.0;
 
@@ -31,6 +33,7 @@ pub(crate) struct IconWidget {
     fg_active: Color,
     active_bg: Color,
     hover_bg: Color,
+    rail: Option<(Color, Color)>,
     size: Size,
     hovered: bool,
 }
@@ -62,11 +65,33 @@ impl Widget for IconWidget {
         painter: &mut Painter<'_>,
     ) {
         let rect = self.size.to_rect();
-        if self.active {
+        if let Some((background, border)) = self.rail {
+            // Open at the bottom when selected, joining the panel below.
+            let r = RAIL_TAB_RADIUS;
+            let w = self.size.width;
+            let h = self.size.height;
+            if self.active {
+                let mut face = BezPath::new();
+                face.move_to((0.5, h));
+                face.line_to((0.5, r));
+                face.quad_to((0.5, 0.5), (r, 0.5));
+                face.line_to((w - r, 0.5));
+                face.quad_to((w - 0.5, 0.5), (w - 0.5, r));
+                face.line_to((w - 0.5, h));
+                painter.fill(&face, background).draw();
+                painter.stroke(&face, &Stroke::new(1.0), border).draw();
+            } else {
+                let face = rect.inset(-0.5).to_rounded_rect(r);
+                painter.fill(face, background).draw();
+                painter.stroke(face, &Stroke::new(1.0), border).draw();
+            }
+        }
+
+        if self.rail.is_none() && self.active {
             painter
                 .fill(rect.to_rounded_rect(6.0), self.active_bg)
                 .draw();
-        } else if self.hovered {
+        } else if self.rail.is_none() && self.hovered {
             painter
                 .fill(rect.to_rounded_rect(6.0), self.hover_bg)
                 .draw();
@@ -76,14 +101,27 @@ impl Widget for IconWidget {
         };
         let pad = self.size.width.min(self.size.height) * 0.10;
         let vb = icon.view_box;
-        let scale = ((self.size.width - pad * 2.0) / vb.width())
-            .min((self.size.height - pad * 2.0) / vb.height());
+        let scale = if self.rail.is_some() {
+            RAIL_TAB_ICON / vb.width().max(vb.height())
+        } else {
+            ((self.size.width - pad * 2.0) / vb.width())
+                .min((self.size.height - pad * 2.0) / vb.height())
+        };
         let dx = (self.size.width - vb.width() * scale) / 2.0;
-        let dy = (self.size.height - vb.height() * scale) / 2.0;
+        let dy = (self.size.height - vb.height() * scale) / 2.0
+            - if self.rail.is_some() && self.active {
+                RAIL_TAB_ICON_RISE
+            } else {
+                0.0
+            };
         let t = Affine::translate((dx, dy))
             * Affine::scale(scale)
             * Affine::translate((-vb.x0, -vb.y0));
-        let color = if self.active { self.fg_active } else { self.fg };
+        let color = if self.active || (self.rail.is_some() && self.hovered) {
+            self.fg_active
+        } else {
+            self.fg
+        };
         let path = t * icon.path.clone();
         if icon.stroke {
             painter.stroke(&path, &Stroke::new(1.5), color).draw();
@@ -143,6 +181,7 @@ pub(crate) struct IconView<F> {
     fg_active: Color,
     active_bg: Color,
     hover_bg: Color,
+    rail: Option<(Color, Color)>,
     on_click: F,
 }
 
@@ -162,7 +201,16 @@ pub(crate) fn icon_button<State: 'static, F: Fn(&mut State) + 'static>(
         fg_active,
         active_bg,
         hover_bg,
+        rail: None,
         on_click,
+    }
+}
+
+impl<F> IconView<F> {
+    /// Paint a GPUI-style rail tab around the icon.
+    pub(crate) fn rail_tab(mut self, background: Color, border: Color) -> Self {
+        self.rail = Some((background, border));
+        self
     }
 }
 
@@ -179,6 +227,7 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
             fg_active: self.fg_active,
             active_bg: self.active_bg,
             hover_bg: self.hover_bg,
+            rail: self.rail,
             size: Size::ZERO,
             hovered: false,
         };
@@ -193,8 +242,15 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
         mut el: Mut<'_, Self::Element>,
         _: &mut State,
     ) {
-        if self.active != prev.active {
+        if self.active != prev.active
+            || self.rail != prev.rail
+            || self.fg != prev.fg
+            || self.fg_active != prev.fg_active
+        {
             el.widget.active = self.active;
+            el.widget.rail = self.rail;
+            el.widget.fg = self.fg;
+            el.widget.fg_active = self.fg_active;
             el.ctx.request_render();
         }
     }

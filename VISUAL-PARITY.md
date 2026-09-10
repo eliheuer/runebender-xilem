@@ -450,3 +450,7 @@ caption ellipsis/tooltips remain separate work.
 Removed the extra titlebar sidebar icon. Category rows now use the GPUI source dimensions: 19 logical pixels high, 14 pixels horizontal padding, and no gaps between rows. Build and all-target Clippy pass. Gray and Light headless 1200x800 images were inspected; native titlebar placement remains to be reviewed in the user launch.
 
 This section is not at full parity: the navigation strip still needs GPUI active-tab geometry and icon sizing; the fourth GPUI tab opens Chat, which needs real functionality rather than a placeholder. Search-field sizing and section-header rhythm also remain for the next focused comparison. Automation remains paused.
+
+### Navigation tab styling
+
+Matched GPUI 32/28px active/inactive heights, 4px rail insets and gaps, 18px icons, muted inactive ink, and top-only selected corners with an open bottom. Uses the existing Masonry icon widget because the stock radius property is uniform. Build and all-target Clippy pass; Gray and Light headless renders inspected. Three tabs remain: Chat functionality is still absent, so widths differ from the four-tab GPUI reference.
