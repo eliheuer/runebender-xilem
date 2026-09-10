@@ -64,7 +64,7 @@ pub(crate) enum AppAction {
 }
 
 /// Resolve a key press the focused widget did not consume to an app action.
-fn keymap(key: &Key, cmd: bool) -> Option<AppAction> {
+pub(crate) fn keymap(key: &Key, cmd: bool) -> Option<AppAction> {
     match key {
         Key::Character(c) if cmd && c.eq_ignore_ascii_case("s") => Some(AppAction::Save),
         Key::Character(c) if cmd && c.eq_ignore_ascii_case("d") => Some(AppAction::Duplicate),

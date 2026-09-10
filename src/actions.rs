@@ -227,7 +227,7 @@ pub(crate) const ACTIONS: &[Entry] = &[
         reason = "the menu table is read by the native menu bar, which is macOS only"
     )
 )]
-const MENUS: &[&str] = &["File", "Nodes", "Edit", "Glyph", "View", "Tools"];
+pub(crate) const MENUS: &[&str] = &["File", "Nodes", "Edit", "Glyph", "View", "Tools"];
 
 #[cfg(target_os = "macos")]
 mod platform {

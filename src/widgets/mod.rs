@@ -7,6 +7,7 @@
 pub(crate) mod context_menu;
 pub(crate) mod drag_region;
 pub(crate) mod icon_button;
+pub(crate) mod menu_shell;
 pub(crate) mod shortcuts;
 pub(crate) mod text_label;
 

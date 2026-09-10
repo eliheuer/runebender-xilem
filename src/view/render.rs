@@ -100,35 +100,34 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     // accepts: "ld: Assertion failed: (name.size() <= maxLength)". Not a
     // compile error, a link error, after a clean build of everything.
     // Erasing the type here cuts the chain.
-    let root = shortcuts::shortcut_host(
-        flex_col((
-            titlebar(app),
-            flex_row((
-                sized_box(left_and_middle)
-                    .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
-                    .flex(1.0),
-                sized_box(
-                    portal(
-                        sized_box(info_panel(app)).dims(Dimensions::new(Dim::Stretch, Dim::Auto)),
-                    )
+    let content = flex_col((
+        titlebar(app),
+        flex_row((
+            sized_box(left_and_middle)
+                .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
+                .flex(1.0),
+            sized_box(
+                portal(sized_box(info_panel(app)).dims(Dimensions::new(Dim::Stretch, Dim::Auto)))
                     .constrain_horizontal(true)
                     .prop(AutoHideScrollBar(true)),
-                )
-                .dims(Dimensions::new(
-                    Dim::Fixed(Length::px(DOCK_WIDTH)),
-                    Dim::Stretch,
-                ))
-                .background_color(pal.panel),
+            )
+            .dims(Dimensions::new(
+                Dim::Fixed(Length::px(DOCK_WIDTH)),
+                Dim::Stretch,
             ))
-            .cross_axis_alignment(CrossAxisAlignment::Start)
-            .gap(Space::None)
-            .flex(1.0),
+            .background_color(pal.panel),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::None)
-        .background_color(pal.app),
-    )
-    .boxed();
+        .flex(1.0),
+    ))
+    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .gap(Space::None)
+    .background_color(pal.app);
+    #[cfg(target_os = "macos")]
+    let root = shortcuts::shortcut_host(content).boxed();
+    #[cfg(not(target_os = "macos"))]
+    let root = crate::widgets::menu_shell::menu_shell(content, app.palette.clone()).boxed();
     #[cfg(unix)]
     let root = live::with_live(root);
     watch::with_watch(
