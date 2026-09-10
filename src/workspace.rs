@@ -259,6 +259,26 @@ impl AppState {
             self.theme_id = id;
             self.palette = Arc::new(Palette::load(id));
         }
+        if action == shortcuts::AppAction::NewFont && self.workspace.is_none() {
+            let path = std::env::temp_dir().join(format!(
+                "Runebender-Untitled-{}-{}.ufo",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |duration| duration.as_nanos()),
+            ));
+            let font = runebender_core::document::new_font::new_font("Untitled", "Regular", 400);
+            match font.save(&path) {
+                Ok(()) => {
+                    self.open_path(&path);
+                    if let Some(workspace) = self.workspace.as_mut() {
+                        workspace.note = "new font · Save As picks where it lives".into();
+                    }
+                }
+                Err(error) => self.notice = Some(format!("could not create new font: {error}")),
+            }
+            return;
+        }
         if let Some(workspace) = self.workspace.as_mut() {
             workspace.dispatch(action);
             self.theme_id = workspace.theme_id;

@@ -107,10 +107,11 @@ impl Entry {
     pub(crate) fn enabled(&self, app: &AppState) -> bool {
         use AppAction as A;
         let Some(app) = app.workspace.as_ref() else {
-            return matches!(self.action, A::Quit | A::Theme(_));
+            return matches!(self.action, A::Quit | A::NewFont | A::Theme(_));
         };
         let editor = matches!(app.mode, crate::Mode::Editor(_));
         match self.action {
+            A::Save => app.modified,
             A::Undo => match app.mode {
                 crate::Mode::Editor(index) => app.font.master().can_undo(index),
                 _ => false,
@@ -902,6 +903,7 @@ mod tests {
         };
 
         assert!(entry(AppAction::Quit).enabled(&app));
+        assert!(entry(AppAction::NewFont).enabled(&app));
         assert!(entry(AppAction::Theme("gray")).enabled(&app));
         assert!(entry(AppAction::Theme("gray")).checked(&app).unwrap());
         assert!(!entry(AppAction::Save).enabled(&app));

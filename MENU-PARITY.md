@@ -113,6 +113,8 @@ framework-integration work.
   screen, and disable document commands when there is no workspace. The
   in-window Quit row and Ctrl-Q issue Masonry's real driver exit signal; macOS
   retains its predefined application-menu Quit behavior.
+- New Font works from the welcome screen as well as an open document, and Save
+  is enabled only while the document is dirty.
 - Verified locally on macOS: 58 tests pass serially and all-target Clippy passes
   with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
   filename race; the unfiltered suite can intermittently fail in parallel and
