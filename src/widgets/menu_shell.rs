@@ -31,7 +31,7 @@ use xilem::{Pod, ViewCtx, WidgetView};
 use crate::Workspace;
 use crate::actions::{ACTIONS, MENUS};
 use crate::view::theme::Palette;
-use crate::widgets::shortcuts::{self, AppAction};
+use crate::widgets::shortcuts::AppAction;
 use crate::widgets::text_label::{self, Anchor};
 
 const BAR_HEIGHT: f64 = 24.0;
@@ -305,7 +305,7 @@ impl Widget for MenuShell {
             return;
         }
         let cmd = key.modifiers.meta() || key.modifiers.ctrl();
-        if let Some(action) = shortcuts::keymap(&key.key, cmd) {
+        if let Some(action) = crate::actions::action_for_key(&key.key, cmd) {
             ctx.submit_action::<AppAction>(action);
             ctx.set_handled();
         }

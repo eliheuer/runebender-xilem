@@ -27,6 +27,7 @@
 
 use crate::widgets::shortcuts::AppAction;
 use crate::{Tool, Workspace};
+use masonry::core::keyboard::{Key, NamedKey};
 
 /// One row of the application's action table.
 ///
@@ -228,6 +229,42 @@ pub(crate) const ACTIONS: &[Entry] = &[
     )
 )]
 pub(crate) const MENUS: &[&str] = &["File", "Nodes", "Edit", "Glyph", "View", "Tools"];
+
+/// Resolve a key press from the same accelerator metadata used by both menu bars.
+pub(crate) fn action_for_key(key: &Key, command: bool) -> Option<AppAction> {
+    ACTIONS.iter().find_map(|entry| {
+        let accelerator = entry.accelerator?;
+        let matches = if accelerator == "Escape" {
+            !command && matches!(key, Key::Named(NamedKey::Escape))
+        } else if let Some(letter) = accelerator.strip_prefix("CmdOrCtrl+") {
+            command && matches!(key, Key::Character(c) if c.eq_ignore_ascii_case(letter))
+        } else {
+            !command && matches!(key, Key::Character(c) if c.eq_ignore_ascii_case(accelerator))
+        };
+        matches.then_some(entry.action)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accelerator_metadata_is_the_shortcut_map() {
+        assert_eq!(
+            action_for_key(&Key::Character("s".into()), true),
+            Some(AppAction::Save)
+        );
+        assert_eq!(
+            action_for_key(&Key::Character("p".into()), false),
+            Some(AppAction::Tool(Tool::Pen))
+        );
+        assert_eq!(
+            action_for_key(&Key::Named(NamedKey::Escape), false),
+            Some(AppAction::Overview)
+        );
+    }
+}
 
 #[cfg(target_os = "macos")]
 mod platform {

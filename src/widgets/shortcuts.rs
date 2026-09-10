@@ -14,7 +14,7 @@
 //! drives a native menu bar (muda) from the same action list.
 
 use masonry::accesskit::{Node, Role};
-use masonry::core::keyboard::{Key, KeyState, NamedKey};
+use masonry::core::keyboard::KeyState;
 use masonry::core::{
     AccessCtx, ChildrenIds, EventCtx, FromDynWidget, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
     PropertiesMut, PropertiesRef, RegisterCtx, TextEvent, Widget, WidgetMut, WidgetPod,
@@ -61,29 +61,6 @@ pub(crate) enum AppAction {
     /// The grid's order, as the GPUI build's View menu has it.
     SortByName,
     SortByUnicode,
-}
-
-/// Resolve a key press the focused widget did not consume to an app action.
-pub(crate) fn keymap(key: &Key, cmd: bool) -> Option<AppAction> {
-    match key {
-        Key::Character(c) if cmd && c.eq_ignore_ascii_case("s") => Some(AppAction::Save),
-        Key::Character(c) if cmd && c.eq_ignore_ascii_case("d") => Some(AppAction::Duplicate),
-        Key::Character(c) if cmd && c.eq_ignore_ascii_case("n") => Some(AppAction::NewFont),
-        Key::Character(c) if cmd && c.eq_ignore_ascii_case("c") => Some(AppAction::Copy),
-        Key::Character(c) if cmd && c.eq_ignore_ascii_case("v") => Some(AppAction::Paste),
-        Key::Named(NamedKey::Escape) => Some(AppAction::Overview),
-        Key::Character(c) if !cmd => match c.as_str() {
-            "v" => Some(AppAction::Tool(Tool::Select)),
-            "p" => Some(AppAction::Tool(Tool::Pen)),
-            "b" => Some(AppAction::Tool(Tool::HyperPen)),
-            "u" => Some(AppAction::Tool(Tool::Rect)),
-            "o" => Some(AppAction::Tool(Tool::Ellipse)),
-            "e" => Some(AppAction::Tool(Tool::Knife)),
-            "m" => Some(AppAction::Tool(Tool::Measure)),
-            _ => None,
-        },
-        _ => None,
-    }
 }
 
 pub(crate) struct ShortcutHost {
@@ -139,7 +116,7 @@ impl Widget for ShortcutHost {
             return;
         }
         let cmd = key.modifiers.meta() || key.modifiers.ctrl();
-        if let Some(action) = keymap(&key.key, cmd) {
+        if let Some(action) = crate::actions::action_for_key(&key.key, cmd) {
             ctx.submit_action::<AppAction>(action);
             ctx.set_handled();
         }
