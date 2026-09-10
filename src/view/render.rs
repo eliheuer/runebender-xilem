@@ -128,7 +128,10 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     let content = live::with_live(content);
     watch::with_watch(
         ai_pump(
-            nodes_pump(content, app.nodes.job.clone()),
+            export_pump(
+                nodes_pump(content, app.nodes.job.clone()),
+                app.export_job.clone(),
+            ),
             app.ai.job.clone(),
         ),
         app.font.master_paths().clone(),
@@ -271,6 +274,40 @@ fn nodes_pump<V: WidgetView<Workspace>>(
                     }
                 },
                 |app: &mut Workspace, _: nodes::NodesProgress| app.nodes_pump(),
+            )
+        }),
+    )
+}
+
+/// Wake the application once a background font export has finished.
+fn export_pump<V: WidgetView<Workspace>>(
+    view: V,
+    job: Option<export::ExportJob>,
+) -> impl WidgetView<Workspace> + use<V> {
+    use xilem::core::{MessageProxy, fork};
+    use xilem::view::task_raw;
+    fork(
+        view,
+        job.map(|job| {
+            task_raw(
+                move |proxy: MessageProxy<export::ExportProgress>, _: &mut Workspace| {
+                    let job = job.clone();
+                    async move {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                            if job
+                                .finished
+                                .lock()
+                                .unwrap_or_else(|error| error.into_inner())
+                                .is_some()
+                            {
+                                let _ = proxy.message(export::ExportProgress);
+                                return;
+                            }
+                        }
+                    }
+                },
+                |app: &mut Workspace, _: export::ExportProgress| app.export_pump(),
             )
         }),
     )

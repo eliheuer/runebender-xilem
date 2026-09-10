@@ -61,6 +61,7 @@ impl Entry {
             || matches!(
                 self.action,
                 A::Save
+                    | A::ExportFont
                     | A::NodesRun
                     | A::Copy
                     | A::SelectAll
@@ -116,6 +117,7 @@ impl Entry {
         let editor = matches!(app.mode, crate::Mode::Editor(_));
         match self.action {
             A::Save => app.modified,
+            A::ExportFont => app.export_job.is_none(),
             A::Undo => match app.mode {
                 crate::Mode::Editor(index) => app.font.master().can_undo(index),
                 _ => false,
@@ -231,6 +233,12 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "Save As…",
         accelerator: Some("CmdOrCtrl+Shift+S"),
         action: AppAction::SaveAs,
+    },
+    Entry {
+        menu: "File",
+        title: "Export…",
+        accelerator: Some("CmdOrCtrl+Alt+E"),
+        action: AppAction::ExportFont,
     },
     Entry {
         menu: "Nodes",
@@ -913,7 +921,7 @@ mod tests {
             .filter(|entry| entry.menu == "File")
             .map(|entry| entry.title)
             .collect();
-        assert_eq!(file, ["New Font", "Open…", "Save", "Save As…"]);
+        assert_eq!(file, ["New Font", "Open…", "Save", "Save As…", "Export…"]);
 
         let path: Vec<_> = ACTIONS
             .iter()

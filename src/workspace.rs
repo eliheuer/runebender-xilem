@@ -144,6 +144,8 @@ pub(crate) struct Workspace {
     pub(crate) sample_index: usize,
     /// The nodes file, the files beside the font, and a run.
     pub(crate) nodes: nodes::NodesState,
+    /// A font build running outside the UI thread.
+    pub(crate) export_job: Option<export::ExportJob>,
     /// The Local AI panel: models, tasks, a run, proposals.
     pub(crate) ai: local_ai::LocalAiState,
     /// The Kerning section's fields: filter, then the pair being

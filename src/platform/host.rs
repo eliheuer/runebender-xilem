@@ -228,6 +228,7 @@ impl Workspace {
             show_all_masters: false,
             sample_index: 0,
             nodes: nodes::NodesState::default(),
+            export_job: None,
             ai: local_ai::LocalAiState::default(),
             kern_filter_buf: String::new(),
             kern_first_buf: String::new(),

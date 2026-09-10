@@ -19,7 +19,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
 
 - [x] **Runebender:** Quit Runebender. macOS additionally uses the standard About
   and Hide items supplied by the platform.
-- [ ] **File:** New Font; Open…; Save; Save As…; Export….
+- [x] **File:** New Font; Open…; Save; Save As…; Export….
 - [x] **Nodes:** New Nodes; Open Nodes…; Save Nodes; Run Nodes.
 - [ ] **Edit:** Undo; Redo; Copy; Paste; Copy Selected Glyphs as Text; Select All;
   Deselect All; Invert Selection.
@@ -106,9 +106,10 @@ framework-integration work.
   and Export Glyph as SVG now call the same core operations and preserve the
   active editing session where applicable.
 - `docs/screenshots/menu-parity/view-gray.png`, `view-light.png`,
-  `glyph-gray.png`, and `welcome-gray.png` are matched 1100x720 headless captures
-  of representative document and application menus. The headless driver
-  processes real layer lifecycle signals instead of dropping them.
+  `file-gray.png`, `glyph-gray.png`, and `welcome-gray.png` are matched 1100x720
+  headless captures of representative document and application menus. The
+  headless driver processes real layer lifecycle signals instead of dropping
+  them.
 - The menu and shortcut scopes now wrap `AppState`, remain present on the welcome
   screen, and disable document commands when there is no workspace. The
   in-window Quit row and Ctrl-Q issue Masonry's real driver exit signal; macOS
@@ -118,6 +119,9 @@ framework-integration work.
 - A single cross-platform dialog adapter now backs Open, Save As, Open Nodes,
   Trace Image, Place Image, and Import SVG. Remove Image is undoable through the
   same editing-session history as outline commands.
+- Export saves dirty sources, then runs a repository build script when present
+  or falls back to `fontc`, all on a background worker with completion reported
+  back through the Xilem task pump.
 - Verified locally on macOS: 58 tests pass serially and all-target Clippy passes
   with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
   filename race; the unfiltered suite can intermittently fail in parallel and
@@ -138,8 +142,8 @@ framework-integration work.
 
 - [x] Move the menu/command scope to `AppState` so File and application commands
   exist on the welcome screen as well as inside a loaded `Workspace`.
-- [ ] Add the remaining Export… workflow. Open, Save As, and Open Nodes now use
-  the shared native dialog adapter.
+- [x] Open, Save As, Export, and Open Nodes use real platform or background
+  workflows; none of their menu rows are inert.
 - [ ] Port the remaining working GPUI handlers: Copy Selected Glyphs as Text,
   Bolden With Model, and parameterized filters.
 - [x] Add the in-window Runebender/Quit command through the Xilem driver rather
