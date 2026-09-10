@@ -87,6 +87,8 @@ pub(crate) struct Session {
     pen: Vec<PenPt>,
     /// The currently selected anchor, if any.
     pub selected_anchor: Option<usize>,
+    /// Last flip or rotation, re-applied by Duplicate + Repeat.
+    last_transform: Option<kurbo::Affine>,
 }
 
 /// An undo step the session took, for the master's pile.
@@ -128,6 +130,7 @@ impl Session {
             active_contour: None,
             pen: Vec::new(),
             selected_anchor: None,
+            last_transform: None,
         }
     }
 
@@ -150,6 +153,7 @@ impl Session {
             active_contour: None,
             pen: Vec::new(),
             selected_anchor: None,
+            last_transform: None,
         })
     }
 
@@ -526,7 +530,11 @@ impl Session {
     /// centered on the target bounding box.
     pub(crate) fn transform(&mut self, affine: kurbo::Affine) -> bool {
         self.record(EditType::Normal);
-        glyph_ops::transform_selection(&mut self.glyph, &self.selection, affine)
+        let changed = glyph_ops::transform_selection(&mut self.glyph, &self.selection, affine);
+        if changed {
+            self.last_transform = Some(affine);
+        }
+        changed
     }
 
     pub(crate) fn flip_horizontal(&mut self) -> bool {
@@ -706,6 +714,17 @@ impl Session {
             }
             None => false,
         }
+    }
+
+    pub(crate) fn duplicate_repeat(&mut self) -> bool {
+        let transform = self.last_transform;
+        if !self.duplicate() {
+            return false;
+        }
+        if let Some(transform) = transform {
+            let _ = glyph_ops::transform_selection(&mut self.glyph, &self.selection, transform);
+        }
+        true
     }
 
     pub(crate) fn tidy_paths(&mut self) -> bool {
@@ -1263,5 +1282,15 @@ mod tests {
         assert!(session.round_coordinates());
         assert_eq!(session.glyph.contours[0].points[0].x, 0.0);
         assert!(matches!(session.pending.last(), Some(HistoryOp::Record(_))));
+    }
+
+    #[test]
+    fn duplicate_repeat_reapplies_the_last_transform_to_the_clone() {
+        let mut session = two_squares();
+        session.selection.extend((0..4).map(|point| (0, point)));
+        assert!(session.rotate_90());
+        assert!(session.duplicate_repeat());
+        assert_eq!(session.glyph.contours.len(), 3);
+        assert!(session.selection.iter().all(|(contour, _)| *contour == 2));
     }
 }

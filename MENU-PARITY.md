@@ -27,7 +27,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
   Reinterpolate; Decompose Components; Check Joining; Compose from Anchors; Bake
   Masks; Export Glyph as SVG; Trace Image…; Bolden With Model…; Place Image…;
   Import SVG…; Remove Image.
-- [ ] **Path:** Tidy Up Paths; Add Extremes; Round Coordinates; Correct Path
+- [x] **Path:** Tidy Up Paths; Add Extremes; Round Coordinates; Correct Path
   Direction; Reverse Contours; Set Start Point; Remove Overlap; Union; Subtract;
   Intersect; Exclude; Flip Horizontal; Flip Vertical; Rotate 90° Left; Rotate 90°
   Right; Rotate 180°; Duplicate Selection; Duplicate + Repeat; Harmonize;
@@ -43,7 +43,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
 - [ ] Undo/Redo reflect history; document edits require a document; selection
   commands require a compatible editor selection; Save reflects dirty/writeable
   state; document-only navigation is disabled without a document.
-- [ ] Tool, sort, grid, measure, theme, and Show All Masters choices expose their
+- [x] Tool, sort, grid, measure, theme, and Show All Masters choices expose their
   current checked state.
 - [x] Mouse click opens a menu; moving across titles switches it; choosing a row
   dispatches once; clicking outside dismisses it.
@@ -107,7 +107,7 @@ framework-integration work.
   screen, and disable document commands when there is no workspace. The
   in-window Quit row and Ctrl-Q issue Masonry's real driver exit signal; macOS
   retains its predefined application-menu Quit behavior.
-- Verified locally on macOS: 55 tests pass serially and all-target Clippy passes
+- Verified locally on macOS: 56 tests pass serially and all-target Clippy passes
   with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
   filename race; the unfiltered suite can intermittently fail in parallel and
   passes with `--test-threads=1`. Linux and Windows have not been run yet.
@@ -132,7 +132,7 @@ framework-integration work.
 - [ ] Port the remaining working GPUI handlers: Copy Selected Glyphs as Text;
   New/Duplicate/Remove Glyph; Update Metrics; Reinterpolate; Check Joining;
   Compose from Anchors; Bake Masks; Export Glyph as SVG; image/model commands;
-  Duplicate Repeat; and parameterized filters.
+  and parameterized filters.
 - [x] Add the in-window Runebender/Quit command through the Xilem driver rather
   than pretending a workspace mutation can exit the process.
 - [ ] Finish focused-field precedence for native macOS accelerators, including a

@@ -138,6 +138,7 @@ impl Entry {
             | A::BooleanExclude
             | A::Decompose
             | A::Duplicate
+            | A::DuplicateRepeat
             | A::ReverseContours
             | A::TidyPaths
             | A::AddExtremes
@@ -379,6 +380,12 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "Duplicate Selection",
         accelerator: Some("CmdOrCtrl+D"),
         action: AppAction::Duplicate,
+    },
+    Entry {
+        menu: "Path",
+        title: "Duplicate + Repeat",
+        accelerator: Some("CmdOrCtrl+Shift+D"),
+        action: AppAction::DuplicateRepeat,
     },
     Entry {
         menu: "Path",
@@ -791,6 +798,7 @@ mod tests {
                 "Rotate 90° Right",
                 "Rotate 180°",
                 "Duplicate Selection",
+                "Duplicate + Repeat",
                 "Harmonize",
                 "Balance",
                 "Optimize",

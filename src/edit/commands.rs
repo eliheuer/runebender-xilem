@@ -117,6 +117,7 @@ impl Workspace {
             A::BooleanExclude => self.apply_op(|s| s.boolean(session::BoolOp::Exclude)),
             A::Decompose => self.apply_op(|s| s.decompose()),
             A::Duplicate => self.apply_op(|s| s.duplicate()),
+            A::DuplicateRepeat => self.apply_op(|s| s.duplicate_repeat()),
             A::ReverseContours => self.apply_op(|s| s.reverse()),
             A::SetStartPoint => self.apply_op(|s| s.set_start()),
             A::TidyPaths => self.apply_op(|s| s.tidy_paths()),

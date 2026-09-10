@@ -56,6 +56,7 @@ pub(crate) enum AppAction {
     BooleanExclude,
     Decompose,
     Duplicate,
+    DuplicateRepeat,
     ReverseContours,
     SetStartPoint,
     TidyPaths,
