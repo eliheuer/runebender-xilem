@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Make the main checkout the primary Xilem development location; retain GPUI as a reference and fallback.
+
 - Hide scrollbar overlays throughout the editor while preserving wheel and trackpad scrolling.
 
 - Correct the header separator and outline the navigation strip; restore the Chat tab with an explicit unavailable state.
