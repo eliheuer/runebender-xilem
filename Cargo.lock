@@ -4226,6 +4226,7 @@ dependencies = [
 name = "runebender-xilem"
 version = "0.1.0"
 dependencies = [
+ "copypasta",
  "image",
  "imaging_vello_cpu",
  "kurbo 0.13.1",

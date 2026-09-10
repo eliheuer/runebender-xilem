@@ -21,7 +21,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
   and Hide items supplied by the platform.
 - [x] **File:** New Font; Open…; Save; Save As…; Export….
 - [x] **Nodes:** New Nodes; Open Nodes…; Save Nodes; Run Nodes.
-- [ ] **Edit:** Undo; Redo; Copy; Paste; Copy Selected Glyphs as Text; Select All;
+- [x] **Edit:** Undo; Redo; Copy; Paste; Copy Selected Glyphs as Text; Select All;
   Deselect All; Invert Selection.
 - [ ] **Glyph:** New Glyph; Duplicate Glyph; Remove Glyph; Update Metrics;
   Reinterpolate; Decompose Components; Check Joining; Compose from Anchors; Bake
@@ -122,6 +122,8 @@ framework-integration work.
 - Export saves dirty sources, then runs a repository build script when present
   or falls back to `fontc`, all on a background worker with completion reported
   back through the Xilem task pump.
+- Copy Selected Glyphs as Text preserves GPUI's name ordering, skips unencoded
+  selections, and writes the result to the system clipboard.
 - Verified locally on macOS: 58 tests pass serially and all-target Clippy passes
   with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
   filename race; the unfiltered suite can intermittently fail in parallel and
@@ -144,8 +146,8 @@ framework-integration work.
   exist on the welcome screen as well as inside a loaded `Workspace`.
 - [x] Open, Save As, Export, and Open Nodes use real platform or background
   workflows; none of their menu rows are inert.
-- [ ] Port the remaining working GPUI handlers: Copy Selected Glyphs as Text,
-  Bolden With Model, and parameterized filters.
+- [ ] Port the remaining working GPUI handlers: Bolden With Model and
+  parameterized filters.
 - [x] Add the in-window Runebender/Quit command through the Xilem driver rather
   than pretending a workspace mutation can exit the process.
 - [ ] Finish focused-field precedence for native macOS accelerators, including a

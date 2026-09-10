@@ -128,6 +128,7 @@ impl Entry {
             },
             A::Copy | A::SelectAll => editor,
             A::Paste => editor && !app.clipboard.is_empty(),
+            A::CopySelectedGlyphs => app.selected.is_some() || !app.multi_selected.is_empty(),
             A::DeselectAll
             | A::InvertSelection
             | A::SetStartPoint
@@ -287,6 +288,12 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "Paste",
         accelerator: Some("CmdOrCtrl+V"),
         action: AppAction::Paste,
+    },
+    Entry {
+        menu: "Edit",
+        title: "Copy Selected Glyphs as Text",
+        accelerator: None,
+        action: AppAction::CopySelectedGlyphs,
     },
     Entry {
         menu: "Edit",
@@ -922,6 +929,25 @@ mod tests {
             .map(|entry| entry.title)
             .collect();
         assert_eq!(file, ["New Font", "Open…", "Save", "Save As…", "Export…"]);
+
+        let edit: Vec<_> = ACTIONS
+            .iter()
+            .filter(|entry| entry.menu == "Edit")
+            .map(|entry| entry.title)
+            .collect();
+        assert_eq!(
+            edit,
+            [
+                "Undo",
+                "Redo",
+                "Copy",
+                "Paste",
+                "Copy Selected Glyphs as Text",
+                "Select All",
+                "Deselect All",
+                "Invert Selection",
+            ]
+        );
 
         let path: Vec<_> = ACTIONS
             .iter()

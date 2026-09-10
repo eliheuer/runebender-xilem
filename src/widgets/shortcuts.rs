@@ -75,6 +75,7 @@ pub(crate) enum AppAction {
     Optimize,
     Copy,
     Paste,
+    CopySelectedGlyphs,
     SelectAll,
     DeselectAll,
     InvertSelection,

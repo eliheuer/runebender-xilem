@@ -805,6 +805,7 @@ impl Workspace {
             }
             A::Copy => self.copy_contours(),
             A::Paste => self.paste_contours(),
+            A::CopySelectedGlyphs => self.copy_selected_glyphs_as_text(),
             A::SelectAll => {
                 if matches!(self.mode, Mode::Editor(_)) {
                     let mut session = (*self.session).clone();
@@ -863,6 +864,42 @@ impl Workspace {
         let contours = self.clipboard.clone();
         self.apply_op(move |session| session.paste_contours(&contours));
         self.note = format!("pasted {} contours", self.clipboard.len());
+    }
+
+    /// The encoded characters of the current glyph-grid selection.
+    fn selected_glyph_text(&self) -> String {
+        let mut indices: Vec<usize> = self.multi_selected.iter().copied().collect();
+        if let Some(index) = self.selected
+            && !indices.contains(&index)
+        {
+            indices.push(index);
+        }
+        let mut glyphs: Vec<_> = indices
+            .into_iter()
+            .filter_map(|index| self.font.glyphs.get(index))
+            .collect();
+        glyphs.sort_by(|a, b| a.name.cmp(&b.name));
+        glyphs
+            .into_iter()
+            .filter_map(|glyph| glyph.codepoint)
+            .collect()
+    }
+
+    /// Copy selected glyphs' encoded characters to the system clipboard.
+    pub(crate) fn copy_selected_glyphs_as_text(&mut self) {
+        use copypasta::ClipboardProvider as _;
+
+        let text = self.selected_glyph_text();
+        if text.is_empty() {
+            self.note = "Nothing encoded to copy".into();
+            return;
+        }
+        self.note = match copypasta::ClipboardContext::new()
+            .and_then(|mut clipboard| clipboard.set_contents(text.clone()))
+        {
+            Ok(()) => format!("Copied {} character(s)", text.chars().count()),
+            Err(error) => format!("Clipboard: {error}"),
+        };
     }
 
     /// Copy the open glyph's outline into the UFO background layer.
@@ -927,6 +964,9 @@ mod tests {
     fn rectangle(name: &str, x0: f64, x1: f64) -> norad::Glyph {
         let mut glyph = norad::Glyph::new(name);
         glyph.width = 500.0;
+        if let Some(character) = name.chars().next().filter(|_| name.chars().count() == 1) {
+            glyph.codepoints = norad::Codepoints::new([character]);
+        }
         let mut contour = norad::Contour::default();
         for (x, y) in [(x0, 0.0), (x1, 0.0), (x1, 500.0), (x0, 500.0)] {
             contour.points.push(norad::ContourPoint::new(
@@ -961,6 +1001,16 @@ mod tests {
         font.save(&path).expect("the fixture saves");
 
         let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.selected = None;
+        workspace.multi_selected = Arc::new(
+            [
+                workspace.font.index_of("n").expect("n exists"),
+                workspace.font.index_of("h").expect("h exists"),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        assert_eq!(workspace.selected_glyph_text(), "hn");
         workspace.command_update_metrics();
         let h = workspace.font.index_of("h").expect("h remains present");
         assert_eq!(workspace.font.master().ink_bounds(h).unwrap().x0, 60.0);

@@ -79,6 +79,8 @@ regex = "1"
 serde_json = "1"
 kurbo = "0.13"
 linesweeper = "0.4"
+# System text clipboard for the glyph-grid Copy as Text command.
+copypasta = "0.10.2"
 winit = "0.30"
 # Native menu bar. Xilem is on winit, which has no menu API, so this is
 # the application's job. Tauri's crate, the same one Zed-class apps use.
