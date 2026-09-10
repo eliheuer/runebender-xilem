@@ -27,6 +27,8 @@ use xilem::view::{Flex, FlexSequence, Prop, flex_col, flex_row};
 
 /// Initial dock width shared by the glyph rail and inspector.
 pub(crate) const DOCK_WIDTH: f64 = 246.0;
+/// GPUI category rows inset their marker and count by 14 logical pixels.
+pub(crate) const SIDEBAR_ROW_INSET: f64 = 14.0;
 /// GPUI allocates 140 logical pixels to the proof drawing. Xilem's
 /// editable proof controls occupy an additional control row.
 pub(crate) const PROOF_DRAWING_HEIGHT: f64 = 140.0;
@@ -97,7 +99,9 @@ pub(crate) enum ControlSize {
     Swatch,
     /// 20 px. An icon, a small thumbnail.
     Icon,
-    /// 22 px. A row in a dense list, sidebar, or tree.
+    /// 19 px. A category row, matching the GPUI sidebar.
+    SidebarRow,
+    /// 21 px. A row in a dense list or tree.
     Row,
     /// 28 px. A text field, a button, a toggle. The default.
     #[default]
@@ -115,6 +119,7 @@ impl ControlSize {
             Self::Dot => 10.0,
             Self::Swatch => 24.0,
             Self::Icon => 20.0,
+            Self::SidebarRow => 19.0,
             Self::Row => 21.0,
             Self::Control => 28.0,
             Self::Large => 36.0,

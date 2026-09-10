@@ -444,3 +444,9 @@ selected when filtered out, so the count remains one while 84 marks are
 shown; the right preview intentionally continues to show that selection.
 No font marks or sources were changed. Full selection-toggle behavior and
 caption ellipsis/tooltips remain separate work.
+
+## Focused upper-left review — September 9 evening
+
+Removed the extra titlebar sidebar icon. Category rows now use the GPUI source dimensions: 19 logical pixels high, 14 pixels horizontal padding, and no gaps between rows. Build and all-target Clippy pass. Gray and Light headless 1200x800 images were inspected; native titlebar placement remains to be reviewed in the user launch.
+
+This section is not at full parity: the navigation strip still needs GPUI active-tab geometry and icon sizing; the fourth GPUI tab opens Chat, which needs real functionality rather than a placeholder. Search-field sizing and section-header rhythm also remain for the next focused comparison. Automation remains paused.

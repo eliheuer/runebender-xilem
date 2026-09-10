@@ -283,13 +283,18 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             ),
             move |app: &mut Workspace| on_click(app),
         )
-        .padding(Space::Sm)
+        .padding(masonry::properties::Padding::horizontal(
+            masonry::layout::Length::px(crate::view::design::SIDEBAR_ROW_INSET),
+        ))
         .background_color(bg)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
         .corner_radius(Radius::None.length()),
     )
-    .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
+    .dims(Dimensions::new(
+        Dim::Stretch,
+        Dim::from(ControlSize::SidebarRow),
+    ))
 }
 
 /// A toggle at control height that takes the width of its label: the

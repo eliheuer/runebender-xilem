@@ -7,8 +7,8 @@ use crate::*;
 
 /// The title bar, laid out like the GPUI build's header.
 ///
-/// Left to right: a button that folds the left column away, the file
-/// name, the save state, the tools when a glyph is open, and the tab
+/// Left to right: the file name, the save state, the tools when a
+/// glyph is open, and the tab
 /// strip. The tabs live here in both modes, so the strip does not move
 /// when the mode changes.
 pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -33,15 +33,6 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             cfg!(target_os = "macos").then(|| {
                 sized_box(label("")).dims(Dimensions::new(Dim::Fixed(Length::px(66.0)), Dim::Auto))
             }),
-            icon_button(
-                "glyph-grid",
-                !app.left_collapsed,
-                pal.header_ink,
-                pal.header,
-                pal.control,
-                pal.control,
-                |app: &mut Workspace| app.left_collapsed = !app.left_collapsed,
-            ),
             // The name and the save state take whatever is left and
             // clip. GPUI writes `flex_1` and `overflow_hidden` on this
             // group for the same reason: when the window is narrow, the

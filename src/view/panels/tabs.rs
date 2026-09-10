@@ -383,7 +383,7 @@ where
                         app.collapsed.insert(title);
                     }
                 }),
-                open.then(|| xcolumn(Region::List, rows)),
+                open.then(|| xcolumn(Region::List, rows).gap(Space::None)),
             ),
         )
         .padding(Space::Md)

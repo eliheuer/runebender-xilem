@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Remove the extra titlebar icon and tighten category sidebar rows to the GPUI reference.
+
 - Count the primary overview selection and contain glyph captions within their tiles.
 
 - Retain the live text buffer across tool switches without consuming outline-tool input.
