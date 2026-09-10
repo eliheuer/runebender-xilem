@@ -65,6 +65,7 @@ impl Workspace {
     pub(crate) fn dispatch(&mut self, action: shortcuts::AppAction) {
         use shortcuts::AppAction as A;
         match action {
+            A::Quit => unreachable!("Quit is handled at the application shell"),
             A::Save => {
                 // On the nodes canvas, Save writes the graph file too.
                 if matches!(self.mode, Mode::Nodes) {

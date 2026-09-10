@@ -24,7 +24,7 @@ use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx, WidgetView};
 
-use crate::{Tool, Workspace};
+use crate::{AppState, Tool};
 
 /// Workspace-level actions a shortcut or a menu item can fire.
 // Some variants are only constructed by the menu table, which the
@@ -38,6 +38,7 @@ use crate::{Tool, Workspace};
 )]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AppAction {
+    Quit,
     Save,
     Undo,
     Redo,
@@ -180,19 +181,19 @@ pub(crate) struct ShortcutHostView<V> {
     inner: V,
 }
 
-pub(crate) fn shortcut_host<V: WidgetView<Workspace>>(inner: V) -> ShortcutHostView<V> {
+pub(crate) fn shortcut_host<V: WidgetView<AppState>>(inner: V) -> ShortcutHostView<V> {
     ShortcutHostView { inner }
 }
 
 impl<V> ViewMarker for ShortcutHostView<V> {}
-impl<V> View<Workspace, (), ViewCtx> for ShortcutHostView<V>
+impl<V> View<AppState, (), ViewCtx> for ShortcutHostView<V>
 where
-    V: WidgetView<Workspace>,
+    V: WidgetView<AppState>,
 {
     type Element = Pod<ShortcutHost>;
     type ViewState = V::ViewState;
 
-    fn build(&self, ctx: &mut ViewCtx, app: &mut Workspace) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, app: &mut AppState) -> (Self::Element, Self::ViewState) {
         let (child, child_state) = self.inner.build(ctx, app);
         let widget = ShortcutHost::new(child.new_widget);
         let pod = ctx.with_action_widget(|ctx| ctx.create_pod(widget));
@@ -205,7 +206,7 @@ where
         view_state: &mut Self::ViewState,
         ctx: &mut ViewCtx,
         mut element: Mut<'_, Self::Element>,
-        app: &mut Workspace,
+        app: &mut AppState,
     ) {
         let mut child = ShortcutHost::child_mut(&mut element);
         self.inner
@@ -227,7 +228,7 @@ where
         view_state: &mut Self::ViewState,
         message: &mut MessageCtx,
         mut element: Mut<'_, Self::Element>,
-        app: &mut Workspace,
+        app: &mut AppState,
     ) -> MessageResult<()> {
         if message.remaining_path().is_empty() {
             return match message.take_message::<AppAction>() {

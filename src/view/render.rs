@@ -90,9 +90,6 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
 
     let left_and_middle = columns;
 
-    // The menu bar is built on the main thread, which is here, and only
-    // once. Xilem owns the event loop and offers no startup hook.
-    actions::install(app);
     // Boxed on purpose, and not for tidiness. Every wrapper here adds a
     // layer to a monomorphized view type that is already enormous, and
     // with the watcher wrapped around the menu pump around the shortcut
@@ -124,27 +121,25 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Space::None)
     .background_color(pal.app);
-    #[cfg(target_os = "macos")]
-    let root = {
-        use xilem::core::one_of::OneOf2;
-        if std::env::var("RUNEBENDER_IN_WINDOW_MENU").is_ok() {
-            OneOf2::A(menu_shell::menu_shell(content, app.palette.clone(), app))
-        } else {
-            OneOf2::B(shortcuts::shortcut_host(content))
-        }
-        .boxed()
-    };
-    #[cfg(not(target_os = "macos"))]
-    let root = crate::widgets::menu_shell::menu_shell(content, app.palette.clone(), app).boxed();
+    // Erase the chrome before the async pumps add their own generic layers;
+    // otherwise the macOS linker receives multi-megabyte symbol names.
+    let content = content.boxed();
     #[cfg(unix)]
-    let root = live::with_live(root);
+    let content = live::with_live(content);
     watch::with_watch(
         ai_pump(
-            nodes_pump(actions::with_menu_events(root), app.nodes.job.clone()),
+            nodes_pump(content, app.nodes.job.clone()),
             app.ai.job.clone(),
         ),
         app.font.master_paths().clone(),
     )
+}
+
+/// Erase the large workspace tree before adapting it to `AppState`.
+/// The named return type keeps the concrete tree out of the outer menu/lens
+/// symbols, which otherwise exceed the macOS linker's symbol-name limit.
+fn boxed_app_logic(app: &mut Workspace) -> Box<xilem::AnyWidgetView<Workspace>> {
+    app_logic(app).boxed()
 }
 
 /// Builds either the document editor or the no-document welcome state.
@@ -155,14 +150,28 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
 pub(crate) fn root_logic(app: &mut AppState) -> impl WidgetView<AppState> + use<> {
     use xilem::core::one_of::OneOf2;
 
-    match app.workspace.is_some() {
-        true => OneOf2::A(lens(app_logic, |app: &mut AppState| {
+    let content = match app.workspace.is_some() {
+        true => OneOf2::A(lens(boxed_app_logic, |app: &mut AppState| {
             app.workspace
                 .as_mut()
                 .expect("the document branch has a workspace")
         })),
         false => OneOf2::B(welcome(app)),
+    };
+
+    // Native menu installation and the in-window fallback belong to the
+    // application boundary so they remain present without an open document.
+    actions::install(app);
+    #[cfg(target_os = "macos")]
+    let root = if std::env::var("RUNEBENDER_IN_WINDOW_MENU").is_ok() {
+        OneOf2::A(menu_shell::menu_shell(content, app.palette.clone(), app))
+    } else {
+        OneOf2::B(shortcuts::shortcut_host(content))
     }
+    .boxed();
+    #[cfg(not(target_os = "macos"))]
+    let root = menu_shell::menu_shell(content, app.palette.clone(), app).boxed();
+    actions::with_menu_events(root)
 }
 
 /// A stable first frame for a window that has no document yet.

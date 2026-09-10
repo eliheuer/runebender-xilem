@@ -26,7 +26,7 @@
 //! simply a pull request against Xilem.
 
 use crate::widgets::shortcuts::AppAction;
-use crate::{Tool, Workspace};
+use crate::{AppState, Tool};
 use masonry::core::keyboard::{Key, Modifiers, NamedKey};
 
 /// One row of the application's action table.
@@ -92,8 +92,11 @@ impl Entry {
     }
 
     /// Whether the command can change the current workspace.
-    pub(crate) fn enabled(&self, app: &Workspace) -> bool {
+    pub(crate) fn enabled(&self, app: &AppState) -> bool {
         use AppAction as A;
+        let Some(app) = app.workspace.as_ref() else {
+            return matches!(self.action, A::Quit | A::Theme(_));
+        };
         let editor = matches!(app.mode, crate::Mode::Editor(_));
         match self.action {
             A::Undo => match app.mode {
@@ -134,18 +137,19 @@ impl Entry {
     }
 
     /// Checked state for choice and toggle commands; `None` for ordinary rows.
-    pub(crate) fn checked(&self, app: &Workspace) -> Option<bool> {
+    pub(crate) fn checked(&self, app: &AppState) -> Option<bool> {
         use AppAction as A;
+        let workspace = app.workspace.as_ref();
         match self.action {
-            A::SortByName => Some(app.sort == crate::Sort::Name),
-            A::SortByUnicode => Some(app.sort == crate::Sort::Unicode),
+            A::SortByName => workspace.map(|app| app.sort == crate::Sort::Name),
+            A::SortByUnicode => workspace.map(|app| app.sort == crate::Sort::Unicode),
             A::Theme(id) => Some(app.theme_id == id),
-            A::MeasureColorize => Some(app.view.colorize),
-            A::MeasureHandles => Some(app.view.handles),
-            A::MeasureSegments => Some(app.view.segments),
-            A::MeasureSideBearings => Some(app.view.bearings),
-            A::MeasurePopcount => Some(app.view.popcount),
-            A::Tool(tool) => Some(app.tool == tool),
+            A::MeasureColorize => workspace.map(|app| app.view.colorize),
+            A::MeasureHandles => workspace.map(|app| app.view.handles),
+            A::MeasureSegments => workspace.map(|app| app.view.segments),
+            A::MeasureSideBearings => workspace.map(|app| app.view.bearings),
+            A::MeasurePopcount => workspace.map(|app| app.view.popcount),
+            A::Tool(tool) => workspace.map(|app| app.tool == tool),
             _ => None,
         }
     }
@@ -160,6 +164,12 @@ impl Entry {
     )
 )]
 pub(crate) const ACTIONS: &[Entry] = &[
+    Entry {
+        menu: "Runebender",
+        title: "Quit Runebender",
+        accelerator: Some("CmdOrCtrl+Q"),
+        action: AppAction::Quit,
+    },
     Entry {
         menu: "File",
         title: "New Font",
@@ -508,11 +518,39 @@ pub(crate) const ACTIONS: &[Entry] = &[
         reason = "the menu table is read by the native menu bar, which is macOS only"
     )
 )]
-pub(crate) const MENUS: &[&str] = &["File", "Nodes", "Edit", "Glyph", "Path", "Filter", "View"];
+pub(crate) const MENUS: &[&str] = &[
+    "Runebender",
+    "File",
+    "Nodes",
+    "Edit",
+    "Glyph",
+    "Path",
+    "Filter",
+    "View",
+];
 
 /// Resolve a key press from the same accelerator metadata used by both menu bars.
 pub(crate) fn action_for_key(key: &Key, modifiers: Modifiers) -> Option<AppAction> {
+    action_for_key_impl(key, modifiers, false)
+}
+
+/// Resolve a key for the in-window menu, including commands owned by the native
+/// application menu when the same code is exercised on macOS.
+pub(crate) fn action_for_key_in_window(key: &Key, modifiers: Modifiers) -> Option<AppAction> {
+    action_for_key_impl(key, modifiers, true)
+}
+
+fn action_for_key_impl(
+    key: &Key,
+    modifiers: Modifiers,
+    include_platform_commands: bool,
+) -> Option<AppAction> {
     ACTIONS.iter().find_map(|entry| {
+        #[cfg(target_os = "macos")]
+        if entry.action == AppAction::Quit && !include_platform_commands {
+            // The native application menu owns Cmd-Q on macOS.
+            return None;
+        }
         let accelerator = entry.accelerator?;
         let command = modifiers.meta() || modifiers.ctrl();
         let wants_command = accelerator.contains("CmdOrCtrl+");
@@ -535,7 +573,7 @@ pub(crate) fn action_for_key(key: &Key, modifiers: Modifiers) -> Option<AppActio
 }
 
 /// Whether `action` is currently available, using its shared menu predicate.
-pub(crate) fn action_enabled(action: AppAction, app: &Workspace) -> bool {
+pub(crate) fn action_enabled(action: AppAction, app: &AppState) -> bool {
     ACTIONS
         .iter()
         .find(|entry| entry.action == action)
@@ -586,7 +624,16 @@ mod tests {
     fn menu_and_submenu_order_matches_the_gpui_reference() {
         assert_eq!(
             MENUS,
-            &["File", "Nodes", "Edit", "Glyph", "Path", "Filter", "View"]
+            &[
+                "Runebender",
+                "File",
+                "Nodes",
+                "Edit",
+                "Glyph",
+                "Path",
+                "Filter",
+                "View"
+            ]
         );
         let view: Vec<_> = ACTIONS
             .iter()
@@ -597,6 +644,24 @@ mod tests {
         assert_eq!(view[5], ("Dark", Some("Theme")));
         assert_eq!(view[8], ("Colorize Outline", Some("Measure")));
         assert_eq!(view.last(), Some(&("All Off", Some("Measure"))));
+    }
+
+    #[test]
+    fn welcome_state_keeps_application_commands_and_disables_document_commands() {
+        let app = AppState::open(None);
+        let entry = |action| {
+            ACTIONS
+                .iter()
+                .find(|entry| entry.action == action)
+                .expect("the action is in the command table")
+        };
+
+        assert!(entry(AppAction::Quit).enabled(&app));
+        assert!(entry(AppAction::Theme("gray")).enabled(&app));
+        assert!(entry(AppAction::Theme("gray")).checked(&app).unwrap());
+        assert!(!entry(AppAction::Save).enabled(&app));
+        assert!(!entry(AppAction::Undo).enabled(&app));
+        assert!(!entry(AppAction::ZoomToFit).enabled(&app));
     }
 }
 
@@ -626,13 +691,13 @@ mod platform {
     ///
     /// Must run on the main thread, which is where the view function runs.
     /// Later calls update enabled and checked state without rebuilding the bar.
-    pub(crate) fn install(app: &crate::Workspace) {
+    pub(crate) fn install(app: &crate::AppState) {
         if IDS.get().is_some() {
             MENU.with(|slot| {
                 if let Some((_, items)) = slot.borrow().as_ref() {
                     for (entry, item) in ACTIONS
                         .iter()
-                        .filter(|entry| MENUS.contains(&entry.menu))
+                        .filter(|entry| entry.menu != "Runebender" && MENUS.contains(&entry.menu))
                         .zip(items)
                     {
                         match item {
@@ -661,7 +726,7 @@ mod platform {
         let _ = app_menu.append(&muda::PredefinedMenuItem::quit(None));
         let _ = bar.append(&app_menu);
 
-        for name in MENUS {
+        for name in MENUS.iter().filter(|name| **name != "Runebender") {
             let submenu = Submenu::new(*name, true);
             let menu_entries: Vec<_> = ACTIONS.iter().filter(|entry| entry.menu == *name).collect();
             let mut index = 0;
@@ -744,7 +809,7 @@ mod platform {
         let ids = IDS.get()?;
         // ACTIONS and IDS are built together, in menu order.
         let mut index = 0;
-        for name in MENUS {
+        for name in MENUS.iter().filter(|name| **name != "Runebender") {
             for entry in ACTIONS.iter().filter(|e| e.menu == *name) {
                 if ids.get(index) == Some(id) {
                     return Some(entry.action);
@@ -762,7 +827,7 @@ mod platform {
 
     /// The native menu is macOS-only; [`crate::widgets::menu_shell`] owns the
     /// in-window menu on these platforms.
-    pub(crate) fn install(_app: &crate::Workspace) {}
+    pub(crate) fn install(_app: &crate::AppState) {}
 
     /// No menu ids exist off macOS, so nothing matches.
     pub(super) fn action_for(_id: &muda::MenuId) -> Option<AppAction> {
@@ -778,16 +843,16 @@ pub(crate) use platform::install;
 /// Menu events do not travel through winit's event loop, so without this
 /// they never reach the widget tree at all. The pump produces no widget,
 /// which is why it is forked alongside the tree rather than placed in it.
-pub(crate) fn with_menu_events<V: xilem::WidgetView<Workspace>>(
+pub(crate) fn with_menu_events<V: xilem::WidgetView<AppState>>(
     view: V,
-) -> impl xilem::WidgetView<Workspace> + use<V> {
+) -> impl xilem::WidgetView<AppState> + use<V> {
     use xilem::core::fork;
     use xilem::view::task;
 
     fork(
         view,
         task(
-            |proxy: xilem::core::MessageProxy<muda::MenuId>, _: &mut Workspace| async move {
+            |proxy: xilem::core::MessageProxy<muda::MenuId>, _: &mut AppState| async move {
                 let channel = muda::MenuEvent::receiver();
                 loop {
                     // Polled, never blocked. `recv()` is a synchronous call:
@@ -810,7 +875,7 @@ pub(crate) fn with_menu_events<V: xilem::WidgetView<Workspace>>(
                     }
                 }
             },
-            |app: &mut Workspace, id: muda::MenuId| {
+            |app: &mut AppState, id: muda::MenuId| {
                 if let Some(action) = platform::action_for(&id) {
                     app.dispatch(action);
                 }

@@ -17,7 +17,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
 
 ### Menu inventory
 
-- [ ] **Runebender:** Quit Runebender. macOS additionally uses the standard About
+- [x] **Runebender:** Quit Runebender. macOS additionally uses the standard About
   and Hide items supplied by the platform.
 - [ ] **File:** New Font; Open…; Save; Save As…; Export….
 - [ ] **Nodes:** New Nodes; Open Nodes…; Save Nodes; Run Nodes.
@@ -94,10 +94,15 @@ framework-integration work.
 - Existing Xilem operations are wired for Undo/Redo, selection, transforms,
   booleans, curve operations, fit/master navigation, explicit themes, and
   measure toggles. Unimplemented GPUI commands remain absent rather than inert.
-- `docs/screenshots/menu-parity/view-gray.png` and `view-light.png` are matched
-  1100x720 headless captures of the View menu. The headless driver now processes
-  real layer lifecycle signals instead of dropping them.
-- Verified locally on macOS: 51 tests pass serially and all-target Clippy passes
+- `docs/screenshots/menu-parity/view-gray.png`, `view-light.png`, and
+  `welcome-gray.png` are matched 1100x720 headless captures of the View and
+  application menus. The headless driver processes real layer lifecycle signals
+  instead of dropping them.
+- The menu and shortcut scopes now wrap `AppState`, remain present on the welcome
+  screen, and disable document commands when there is no workspace. The
+  in-window Quit row and Ctrl-Q issue Masonry's real driver exit signal; macOS
+  retains its predefined application-menu Quit behavior.
+- Verified locally on macOS: 53 tests pass serially and all-target Clippy passes
   with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
   filename race; the unfiltered suite can intermittently fail in parallel and
   passes with `--test-threads=1`. Linux and Windows have not been run yet.
@@ -115,7 +120,7 @@ framework-integration work.
 
 ## Remaining work
 
-- [ ] Move the menu/command scope to `AppState` so File and application commands
+- [x] Move the menu/command scope to `AppState` so File and application commands
   exist on the welcome screen as well as inside a loaded `Workspace`.
 - [ ] Add real Open…, Save As…, Export…, and Open Nodes… platform workflows. The
   existing Xilem host has Save and New only; no inert dialog rows should be added.
@@ -125,7 +130,7 @@ framework-integration work.
   Tidy/Add Extremes/Round/Correct Direction/Union/Duplicate Repeat/curve
   conversion; parameterized filters; Show All Masters; sample navigation; Grid;
   Segment Sizes; Stems & Counters.
-- [ ] Add the in-window Runebender/Quit command through the Xilem driver rather
+- [x] Add the in-window Runebender/Quit command through the Xilem driver rather
   than pretending a workspace mutation can exit the process.
 - [ ] Finish focused-field precedence for native macOS accelerators, including a
   regression proving one dispatch. The Masonry shortcut scope already runs only

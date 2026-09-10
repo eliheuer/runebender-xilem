@@ -165,6 +165,8 @@ pub(crate) struct AppState {
     pub(crate) workspace: Option<Workspace>,
     /// Palette used before a document has supplied its workspace palette.
     pub(crate) palette: Arc<Palette>,
+    /// Active palette before and after a workspace is opened.
+    pub(crate) theme_id: &'static str,
     /// A load failure to report on the welcome screen.
     pub(crate) notice: Option<String>,
 }
@@ -182,12 +184,14 @@ impl AppState {
             return Self {
                 workspace: None,
                 palette,
+                theme_id,
                 notice: None,
             };
         };
         let mut app = Self {
             workspace: None,
             palette,
+            theme_id,
             notice: None,
         };
         app.open_path(path);
@@ -214,6 +218,7 @@ impl AppState {
         }
         match Workspace::open(path) {
             Ok(workspace) => {
+                self.theme_id = workspace.theme_id;
                 self.palette = workspace.palette.clone();
                 self.workspace = Some(workspace);
                 self.notice = None;
@@ -235,6 +240,26 @@ impl AppState {
             .as_ref()
             .map(|workspace| workspace.palette.app)
             .unwrap_or(self.palette.app)
+    }
+
+    /// Dispatch an application command, routing document commands to the live
+    /// workspace while keeping application-level theme state available on the
+    /// welcome screen.
+    pub(crate) fn dispatch(&mut self, action: shortcuts::AppAction) {
+        if action == shortcuts::AppAction::Quit {
+            // MenuShell exits through its driver context; macOS uses the
+            // platform application menu. Quit is never a state mutation.
+            return;
+        }
+        if let shortcuts::AppAction::Theme(id) = action {
+            self.theme_id = id;
+            self.palette = Arc::new(Palette::load(id));
+        }
+        if let Some(workspace) = self.workspace.as_mut() {
+            workspace.dispatch(action);
+            self.theme_id = workspace.theme_id;
+            self.palette = workspace.palette.clone();
+        }
     }
 }
 

@@ -25,7 +25,7 @@ use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx, WidgetView};
 
-use crate::Workspace;
+use crate::AppState;
 use crate::actions::{ACTIONS, MENUS};
 use crate::view::theme::Palette;
 use crate::widgets::shortcuts::AppAction;
@@ -238,7 +238,11 @@ impl MenuShell {
             MenuRow::Action(index) if self.states[index].enabled => {
                 let action = ACTIONS[index].action;
                 self.close(ctx, None);
-                ctx.submit_action::<AppAction>(action);
+                if action == AppAction::Quit {
+                    ctx.exit();
+                } else {
+                    ctx.submit_action::<AppAction>(action);
+                }
             }
             MenuRow::Submenu(name) => self.show_submenu(ctx, menu, name),
             MenuRow::Action(_) => {}
@@ -465,13 +469,17 @@ impl Widget for MenuShell {
             ctx.request_render();
             return;
         }
-        if let Some(action) = crate::actions::action_for_key(&key.key, key.modifiers) {
+        if let Some(action) = crate::actions::action_for_key_in_window(&key.key, key.modifiers) {
             if ACTIONS
                 .iter()
                 .position(|entry| entry.action == action)
                 .is_some_and(|index| self.states[index].enabled)
             {
-                ctx.submit_action::<AppAction>(action);
+                if action == AppAction::Quit {
+                    ctx.exit();
+                } else {
+                    ctx.submit_action::<AppAction>(action);
+                }
             }
             ctx.set_handled();
         }
@@ -689,7 +697,11 @@ impl Widget for AccessibleMenuItem {
                     shell.widget.active_submenu = None;
                     shell.widget.focus_before = None;
                     shell.ctx.remove_layer(old_popup);
-                    shell.ctx.submit_action::<AppAction>(action);
+                    if action == AppAction::Quit {
+                        shell.ctx.exit();
+                    } else {
+                        shell.ctx.submit_action::<AppAction>(action);
+                    }
                     shell.ctx.request_render();
                 });
             }
@@ -797,7 +809,11 @@ impl MenuPopup {
             shell.widget.active_submenu = None;
             shell.widget.focus_before = None;
             shell.ctx.remove_layer(popup);
-            shell.ctx.submit_action::<AppAction>(action);
+            if action == AppAction::Quit {
+                shell.ctx.exit();
+            } else {
+                shell.ctx.submit_action::<AppAction>(action);
+            }
             shell.ctx.request_render();
         });
     }
@@ -1105,7 +1121,7 @@ pub(crate) struct MenuShellView<V> {
     states: Arc<Vec<EntryState>>,
 }
 
-fn entry_states(app: &Workspace) -> Arc<Vec<EntryState>> {
+fn entry_states(app: &AppState) -> Arc<Vec<EntryState>> {
     Arc::new(
         ACTIONS
             .iter()
@@ -1117,10 +1133,10 @@ fn entry_states(app: &Workspace) -> Arc<Vec<EntryState>> {
     )
 }
 
-pub(crate) fn menu_shell<V: WidgetView<Workspace>>(
+pub(crate) fn menu_shell<V: WidgetView<AppState>>(
     inner: V,
     palette: Arc<Palette>,
-    app: &Workspace,
+    app: &AppState,
 ) -> MenuShellView<V> {
     MenuShellView {
         inner,
@@ -1130,13 +1146,13 @@ pub(crate) fn menu_shell<V: WidgetView<Workspace>>(
 }
 
 impl<V> ViewMarker for MenuShellView<V> {}
-impl<V> View<Workspace, (), ViewCtx> for MenuShellView<V>
+impl<V> View<AppState, (), ViewCtx> for MenuShellView<V>
 where
-    V: WidgetView<Workspace>,
+    V: WidgetView<AppState>,
 {
     type Element = Pod<MenuShell>;
     type ViewState = V::ViewState;
-    fn build(&self, ctx: &mut ViewCtx, app: &mut Workspace) -> (Self::Element, Self::ViewState) {
+    fn build(&self, ctx: &mut ViewCtx, app: &mut AppState) -> (Self::Element, Self::ViewState) {
         let (child, child_state) = self.inner.build(ctx, app);
         let pod = ctx.with_action_widget(|ctx| {
             ctx.create_pod(MenuShell::new(
@@ -1153,7 +1169,7 @@ where
         view_state: &mut Self::ViewState,
         ctx: &mut ViewCtx,
         mut element: Mut<'_, Self::Element>,
-        app: &mut Workspace,
+        app: &mut AppState,
     ) {
         element.widget.palette = self.palette.clone();
         element.widget.states = self.states.clone();
@@ -1175,7 +1191,7 @@ where
         view_state: &mut Self::ViewState,
         message: &mut MessageCtx,
         mut element: Mut<'_, Self::Element>,
-        app: &mut Workspace,
+        app: &mut AppState,
     ) -> MessageResult<()> {
         if message.remaining_path().is_empty() {
             return match message.take_message::<AppAction>() {
@@ -1205,11 +1221,15 @@ mod tests {
     use masonry_testing::TestHarness;
 
     fn key(key: Key) -> TextEvent {
+        key_with_modifiers(key, Modifiers::empty())
+    }
+
+    fn key_with_modifiers(key: Key, modifiers: Modifiers) -> TextEvent {
         TextEvent::Keyboard(KeyboardEvent {
             state: KeyState::Down,
             key,
             code: Code::Unidentified,
-            modifiers: Modifiers::empty(),
+            modifiers,
             ..KeyboardEvent::default()
         })
     }
@@ -1249,11 +1269,24 @@ mod tests {
     }
 
     #[test]
+    fn quit_shortcut_is_consumed_without_a_state_action() {
+        let (mut harness, button_id) = harness();
+        harness.focus_on(Some(button_id));
+        let mut modifiers = Modifiers::empty();
+        modifiers.set(Modifiers::META, true);
+
+        harness.process_text_event(key_with_modifiers(Key::Character("q".into()), modifiers));
+
+        assert!(harness.pop_action::<AppAction>().is_none());
+    }
+
+    #[test]
     fn keyboard_navigation_dispatches_one_shared_table_action() {
         let (mut harness, button_id) = harness();
         harness.focus_on(Some(button_id));
 
         harness.process_text_event(key(Key::Named(NamedKey::F10)));
+        harness.process_text_event(key(Key::Named(NamedKey::ArrowRight)));
         harness.process_text_event(key(Key::Named(NamedKey::ArrowDown)));
         harness.process_text_event(key(Key::Named(NamedKey::Enter)));
 
@@ -1320,13 +1353,17 @@ mod tests {
         let (mut harness, button_id) = harness();
         harness.focus_on(Some(button_id));
 
-        harness.mouse_move(Point::new(20.0, 12.0));
+        let file = MENUS.iter().position(|menu| *menu == "File").unwrap();
+        harness.mouse_move(title_rect(file).center());
         harness.mouse_button_press(Some(PointerButton::Primary));
         harness.mouse_button_release(Some(PointerButton::Primary));
         let active = harness.edit_root_widget(|root| root.widget.active_menu);
-        assert_eq!(active, Some(0));
+        assert_eq!(active, Some(file));
 
-        harness.mouse_move(Point::new(40.0, BAR_HEIGHT + POPUP_PAD + ROW_HEIGHT / 2.0));
+        harness.mouse_move(Point::new(
+            title_rect(file).x0 + 40.0,
+            BAR_HEIGHT + POPUP_PAD + ROW_HEIGHT / 2.0,
+        ));
         harness.mouse_button_press(Some(PointerButton::Primary));
         harness.mouse_button_release(Some(PointerButton::Primary));
         let action = harness.pop_action::<AppAction>();
@@ -1392,7 +1429,14 @@ mod tests {
     fn accessibility_click_dispatches_and_closes_the_menu() {
         let (mut harness, button_id) = harness();
         harness.focus_on(Some(button_id));
-        harness.process_text_event(key(Key::Named(NamedKey::F10)));
+        let file = MENUS.iter().position(|menu| *menu == "File").unwrap();
+        let file_title = harness.edit_root_widget(|root| root.widget.accessible_titles[file].id());
+        harness.process_access_event(ActionRequest {
+            action: masonry::accesskit::Action::Click,
+            target_tree: TreeId::ROOT,
+            target_node: file_title.into(),
+            data: None,
+        });
 
         let popup_id = harness
             .edit_root_widget(|root| root.widget.open)
