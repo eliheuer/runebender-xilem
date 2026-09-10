@@ -89,6 +89,303 @@ impl Workspace {
         }
     }
 
+    /// Rebuild the selected glyph in this master from the other masters.
+    pub(crate) fn command_reinterpolate(&mut self) {
+        let Some(index) = self.selected else {
+            return;
+        };
+        let Some(name) = self.font.glyphs.get(index).map(|glyph| glyph.name.clone()) else {
+            return;
+        };
+        let rebuilt = match self.font.project.reinterpolated_from_others(&name) {
+            Ok(glyph) => glyph,
+            Err(error) => {
+                self.note = error;
+                return;
+            }
+        };
+        if matches!(self.mode, Mode::Editor(_)) {
+            self.apply_op(move |session| {
+                session.record(runebender_core::ui::editing::edit_types::EditType::Normal);
+                session.glyph.contours = rebuilt.contours;
+                session.glyph.width = rebuilt.width;
+                session.selection.clear();
+                true
+            });
+        } else {
+            let master = self.font.master_mut();
+            if let Some(original) = master.font.get_glyph(&name).cloned() {
+                master.history.record(&name, &original);
+            }
+            master.edit_glyph(index, |glyph| {
+                glyph.contours = rebuilt.contours;
+                glyph.width = rebuilt.width;
+            });
+            self.font.refresh_entry(index);
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+            self.modified = true;
+        }
+        self.note = format!("{name}: reinterpolated from the other masters");
+    }
+
+    /// Apply Glyphs-style sidebearing formulas in every master.
+    pub(crate) fn command_update_metrics(&mut self) {
+        use runebender_core::document::project::Master;
+        use runebender_core::formats::metrics_keys::{
+            MetricsFormula, parse_metrics_key, read_metrics_key,
+        };
+
+        let mut adjusted = 0;
+        for _ in 0..5 {
+            let mut moved = false;
+            for master in &mut self.font.project.masters {
+                let keyed: Vec<_> = (0..master.glyphs.len())
+                    .filter_map(|index| {
+                        let glyph = master.font.get_glyph(master.glyphs[index].name.as_ref())?;
+                        let left = read_metrics_key(glyph, true);
+                        let right = read_metrics_key(glyph, false);
+                        (left.is_some() || right.is_some()).then_some((index, left, right))
+                    })
+                    .collect();
+                for (index, left, right) in keyed {
+                    let resolve = |master: &Master,
+                                   formula: &MetricsFormula,
+                                   want_left: bool|
+                     -> Option<f64> {
+                        match formula {
+                            MetricsFormula::Constant(value) => Some(*value),
+                            MetricsFormula::Reference { glyph, mirror, op } => {
+                                let reference = master.name_map.get(glyph).copied()?;
+                                let ink = master.ink_bounds(reference)?;
+                                let advance = master.glyphs[reference].advance;
+                                let mut value = if want_left != *mirror {
+                                    ink.x0
+                                } else {
+                                    advance - ink.x1
+                                };
+                                if let Some((operator, amount)) = op {
+                                    value = match operator {
+                                        '+' => value + amount,
+                                        '-' => value - amount,
+                                        _ => value * amount,
+                                    };
+                                }
+                                Some(value)
+                            }
+                        }
+                    };
+                    if let Some(formula) = left.as_deref().and_then(parse_metrics_key)
+                        && let (Some(target), Some(ink)) =
+                            (resolve(master, &formula, true), master.ink_bounds(index))
+                    {
+                        let delta = (target - ink.x0).round();
+                        if delta != 0.0 {
+                            master.shift_ink(index, delta);
+                            moved = true;
+                            adjusted += 1;
+                        }
+                    }
+                    if let Some(formula) = right.as_deref().and_then(parse_metrics_key)
+                        && let (Some(target), Some(ink)) =
+                            (resolve(master, &formula, false), master.ink_bounds(index))
+                    {
+                        let advance = master.glyphs[index].advance;
+                        let wanted = (ink.x1 + target).round();
+                        if (advance - wanted).abs() >= 1.0 {
+                            master.set_advance(index, wanted);
+                            moved = true;
+                            adjusted += 1;
+                        }
+                    }
+                }
+            }
+            if !moved {
+                break;
+            }
+        }
+        if adjusted > 0 {
+            self.font.rebuild_cache();
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+            self.modified = true;
+            if matches!(self.mode, Mode::Editor(_))
+                && let Some(glyph) = self.font.font().get_glyph(&self.session.glyph_name)
+            {
+                let mut session = (*self.session).clone();
+                session.reload_glyph(glyph.clone());
+                self.session = Arc::new(session);
+                self.refresh_metric_bufs();
+            }
+        }
+        self.note = if adjusted == 0 {
+            "Metrics keys: everything in sync".into()
+        } else {
+            format!("Metrics keys: {adjusted} sidebearings adjusted")
+        };
+    }
+
+    /// Select positional Arabic forms whose joining bands disagree.
+    pub(crate) fn command_check_joining(&mut self) {
+        use runebender_core::analysis::measure::joining_band;
+
+        let mut bands = Vec::new();
+        let mut broken = Vec::new();
+        for (index, entry) in self.font.glyphs.iter().enumerate() {
+            let (joins_left, joins_right) = if entry.name.ends_with(".init") {
+                (true, false)
+            } else if entry.name.ends_with(".medi") {
+                (true, true)
+            } else if entry.name.ends_with(".fina") {
+                (false, true)
+            } else {
+                continue;
+            };
+            let Some(glyph) = self.font.font().get_glyph(&entry.name) else {
+                continue;
+            };
+            let outline =
+                runebender_core::outline::glyph_paths::glyph_to_bezpath(glyph, self.font.font());
+            for left in [true, false] {
+                if (left && joins_left) || (!left && joins_right) {
+                    match joining_band(&outline, entry.advance, left, 2.0) {
+                        Some((lo, hi)) => bands.push((index, lo, hi)),
+                        None => broken.push(index),
+                    }
+                }
+            }
+        }
+        if bands.is_empty() && broken.is_empty() {
+            self.note = "Joining: no positional forms to check".into();
+            return;
+        }
+        let median = |mut values: Vec<f64>| {
+            values.sort_by(f64::total_cmp);
+            values[values.len() / 2]
+        };
+        let med_lo = median(bands.iter().map(|(_, lo, _)| *lo).collect());
+        let med_hi = median(bands.iter().map(|(_, _, hi)| *hi).collect());
+        let mut off: std::collections::HashSet<usize> = bands
+            .into_iter()
+            .filter(|(_, lo, hi)| (lo - med_lo).abs() > 4.0 || (hi - med_hi).abs() > 4.0)
+            .map(|(index, _, _)| index)
+            .collect();
+        off.extend(broken);
+        let count = off.len();
+        self.multi_selected = Arc::new(off);
+        self.selected = None;
+        self.note = if count == 0 {
+            format!("Joining: all forms share the {med_lo:.0}–{med_hi:.0} band")
+        } else {
+            format!("Joining: {count} form(s) off the {med_lo:.0}–{med_hi:.0} band (selected)")
+        };
+    }
+
+    /// Derive selected composable glyphs, or every recipe when none are selected.
+    pub(crate) fn command_compose_from_anchors(&mut self) {
+        let names: Vec<String> = self
+            .multi_selected
+            .iter()
+            .filter_map(|index| self.font.glyphs.get(*index))
+            .map(|glyph| glyph.name.clone())
+            .collect();
+        let only = (!names.is_empty()).then_some(names);
+        let report = runebender_core::document::compose::compose(
+            self.font.font_mut(),
+            only.as_deref(),
+            true,
+        );
+        let proposed = report.proposed().len();
+        let current = report
+            .derived
+            .iter()
+            .filter(|derived| derived.up_to_date)
+            .count();
+        self.modified |= report.proposal.is_some();
+        self.note = format!("Compose: {proposed} proposed, {current} up to date");
+        if !report.skipped.is_empty() {
+            self.note
+                .push_str(&format!(", {} skipped", report.skipped.len()));
+        }
+        self.refresh_proposals();
+    }
+
+    /// Make mask subtraction permanent in every master.
+    pub(crate) fn command_bake_masks(&mut self) {
+        let Some(index) = self.selected else {
+            return;
+        };
+        let Some(name) = self.font.glyphs.get(index).map(|glyph| glyph.name.clone()) else {
+            return;
+        };
+        let active = self.font.active();
+        let mut baked = 0;
+        for (master_index, master) in self.font.project.masters.iter_mut().enumerate() {
+            let Some(glyph_index) = master.name_map.get(&name).copied() else {
+                continue;
+            };
+            if master_index == active
+                && let Some(glyph) = master.font.get_glyph(&name)
+            {
+                master.history.record(&name, glyph);
+            }
+            if master
+                .edit_glyph(glyph_index, runebender_core::formats::lib_keys::bake_masks)
+                .unwrap_or(false)
+            {
+                baked += 1;
+            }
+        }
+        self.font.project.compute_compat();
+        self.font.rebuild_cache();
+        if baked > 0 {
+            if matches!(self.mode, Mode::Editor(_))
+                && self.session.glyph_name == name
+                && let Some(glyph) = self.font.font().get_glyph(&name)
+            {
+                let mut session = (*self.session).clone();
+                session.reload_glyph(glyph.clone());
+                self.session = Arc::new(session);
+                self.selected_points = 0;
+            }
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+            self.modified = true;
+        }
+        self.note = if baked == 0 {
+            "No masks to bake".into()
+        } else {
+            format!("Masks baked in {baked} master(s)")
+        };
+    }
+
+    /// Write the selected glyph as SVG beside the document source.
+    pub(crate) fn command_export_glyph_svg(&mut self) {
+        let Some(index) = self.selected else {
+            return;
+        };
+        let Some(entry) = self.font.glyphs.get(index) else {
+            return;
+        };
+        let Some(glyph) = self.font.font().get_glyph(&entry.name) else {
+            return;
+        };
+        let path = runebender_core::outline::glyph_paths::glyph_to_bezpath(glyph, self.font.font());
+        let svg = runebender_core::formats::svg::glyph_svg(
+            &path,
+            glyph.width,
+            self.font.ascender(),
+            self.font.descender(),
+        );
+        let directory = self
+            .font
+            .document_source()
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let output = directory.join(format!("{}.svg", entry.name));
+        self.note = match std::fs::write(&output, svg) {
+            Ok(()) => format!("wrote {}", output.display()),
+            Err(error) => format!("SVG export failed: {error}"),
+        };
+    }
+
     pub(crate) fn new_glyph(&mut self) {
         let name = self.filter.trim().to_string();
         let upm = self.font.units_per_em();
@@ -291,6 +588,12 @@ impl Workspace {
             A::NewGlyph => self.command_new_glyph(),
             A::DuplicateGlyph => self.command_duplicate_glyph(),
             A::RemoveGlyph => self.command_remove_glyph(),
+            A::UpdateMetrics => self.command_update_metrics(),
+            A::Reinterpolate => self.command_reinterpolate(),
+            A::CheckJoining => self.command_check_joining(),
+            A::ComposeFromAnchors => self.command_compose_from_anchors(),
+            A::BakeMasks => self.command_bake_masks(),
+            A::ExportGlyphSvg => self.command_export_glyph_svg(),
             A::SortByName => self.sort = Sort::Name,
             A::SortByUnicode => self.sort = Sort::Unicode,
             A::NodesTab => self.enter_nodes_mode(),
@@ -416,5 +719,55 @@ impl Workspace {
             self.sync_session_from(&mut sess);
             self.refresh_open_glyph();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rectangle(name: &str, x0: f64, x1: f64) -> norad::Glyph {
+        let mut glyph = norad::Glyph::new(name);
+        glyph.width = 500.0;
+        let mut contour = norad::Contour::default();
+        for (x, y) in [(x0, 0.0), (x1, 0.0), (x1, 500.0), (x0, 500.0)] {
+            contour.points.push(norad::ContourPoint::new(
+                x,
+                y,
+                norad::PointType::Line,
+                false,
+                None,
+                None,
+            ));
+        }
+        glyph.contours.push(contour);
+        glyph
+    }
+
+    #[test]
+    fn update_metrics_applies_reference_keys() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-update-metrics-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(rectangle("n", 50.0, 450.0));
+        let mut h = rectangle("h", 0.0, 400.0);
+        runebender_core::formats::metrics_keys::write_metrics_key(&mut h, true, "=n+10");
+        font.default_layer_mut().insert_glyph(h);
+        font.save(&path).expect("the fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.command_update_metrics();
+        let h = workspace.font.index_of("h").expect("h remains present");
+        assert_eq!(workspace.font.master().ink_bounds(h).unwrap().x0, 60.0);
+        assert!(workspace.modified);
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 }

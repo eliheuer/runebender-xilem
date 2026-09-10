@@ -102,6 +102,9 @@ framework-integration work.
 - New, Duplicate, and Remove Glyph follow GPUI's naming and copying rules in
   every master. Removing an open glyph also removes its tabs without disturbing
   tabs for other glyphs.
+- Update Metrics, Reinterpolate, Check Joining, Compose from Anchors, Bake Masks,
+  and Export Glyph as SVG now call the same core operations and preserve the
+  active editing session where applicable.
 - `docs/screenshots/menu-parity/view-gray.png`, `view-light.png`,
   `glyph-gray.png`, and `welcome-gray.png` are matched 1100x720 headless captures
   of representative document and application menus. The headless driver
@@ -110,7 +113,7 @@ framework-integration work.
   screen, and disable document commands when there is no workspace. The
   in-window Quit row and Ctrl-Q issue Masonry's real driver exit signal; macOS
   retains its predefined application-menu Quit behavior.
-- Verified locally on macOS: 57 tests pass serially and all-target Clippy passes
+- Verified locally on macOS: 58 tests pass serially and all-target Clippy passes
   with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
   filename race; the unfiltered suite can intermittently fail in parallel and
   passes with `--test-threads=1`. Linux and Windows have not been run yet.
@@ -133,9 +136,7 @@ framework-integration work.
 - [ ] Add real Open…, Save As…, Export…, and Open Nodes… platform workflows. The
   existing Xilem host has Save and New only; no inert dialog rows should be added.
 - [ ] Port the remaining working GPUI handlers: Copy Selected Glyphs as Text;
-  Update Metrics; Reinterpolate; Check Joining;
-  Compose from Anchors; Bake Masks; Export Glyph as SVG; image/model commands;
-  and parameterized filters.
+  image/model commands, and parameterized filters.
 - [x] Add the in-window Runebender/Quit command through the Xilem driver rather
   than pretending a workspace mutation can exit the process.
 - [ ] Finish focused-field precedence for native macOS accelerators, including a

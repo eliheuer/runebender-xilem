@@ -64,6 +64,8 @@ impl Entry {
                     | A::NodesRun
                     | A::Copy
                     | A::SelectAll
+                    | A::UpdateMetrics
+                    | A::CheckJoining
                     | A::Decompose
                     | A::CorrectPathDirection
                     | A::RemoveOverlap
@@ -149,7 +151,10 @@ impl Entry {
             | A::CubicsToQuads
             | A::ZoomToFit => editor,
             A::GenerateMissing => matches!(app.sel, crate::Sel::Filter(_)),
-            A::DuplicateGlyph | A::RemoveGlyph => app.selected.is_some(),
+            A::DuplicateGlyph | A::RemoveGlyph | A::BakeMasks | A::ExportGlyphSvg => {
+                app.selected.is_some()
+            }
+            A::Reinterpolate => app.selected.is_some() && app.font.master_count() > 1,
             A::NextMaster | A::PreviousMaster => app.font.master_count() > 1,
             A::ShowAllMasters | A::NextSampleString | A::PreviousSampleString => editor,
             A::NodesSave => app.nodes.graph.is_some(),
@@ -288,6 +293,18 @@ pub(crate) const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "Glyph",
+        title: "Update Metrics",
+        accelerator: None,
+        action: AppAction::UpdateMetrics,
+    },
+    Entry {
+        menu: "Glyph",
+        title: "Reinterpolate",
+        accelerator: None,
+        action: AppAction::Reinterpolate,
+    },
+    Entry {
+        menu: "Glyph",
         title: "Generate Missing Glyphs",
         accelerator: None,
         action: AppAction::GenerateMissing,
@@ -297,6 +314,30 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "Decompose Components",
         accelerator: None,
         action: AppAction::Decompose,
+    },
+    Entry {
+        menu: "Glyph",
+        title: "Check Joining",
+        accelerator: None,
+        action: AppAction::CheckJoining,
+    },
+    Entry {
+        menu: "Glyph",
+        title: "Compose from Anchors",
+        accelerator: None,
+        action: AppAction::ComposeFromAnchors,
+    },
+    Entry {
+        menu: "Glyph",
+        title: "Bake Masks",
+        accelerator: None,
+        action: AppAction::BakeMasks,
+    },
+    Entry {
+        menu: "Glyph",
+        title: "Export Glyph as SVG",
+        accelerator: None,
+        action: AppAction::ExportGlyphSvg,
     },
     Entry {
         menu: "Path",
@@ -798,12 +839,19 @@ mod tests {
             .map(|entry| entry.title)
             .collect();
         assert_eq!(
-            &glyph[..4],
+            glyph,
             [
                 "New Glyph",
                 "Duplicate Glyph",
                 "Remove Glyph",
+                "Update Metrics",
+                "Reinterpolate",
                 "Generate Missing Glyphs",
+                "Decompose Components",
+                "Check Joining",
+                "Compose from Anchors",
+                "Bake Masks",
+                "Export Glyph as SVG",
             ]
         );
 

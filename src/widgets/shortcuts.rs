@@ -105,6 +105,12 @@ pub(crate) enum AppAction {
     NewGlyph,
     DuplicateGlyph,
     RemoveGlyph,
+    UpdateMetrics,
+    Reinterpolate,
+    CheckJoining,
+    ComposeFromAnchors,
+    BakeMasks,
+    ExportGlyphSvg,
     /// The grid's order, as the GPUI build's View menu has it.
     SortByName,
     SortByUnicode,
