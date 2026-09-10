@@ -454,3 +454,7 @@ This section is not at full parity: the navigation strip still needs GPUI active
 ### Navigation tab styling
 
 Matched GPUI 32/28px active/inactive heights, 4px rail insets and gaps, 18px icons, muted inactive ink, and top-only selected corners with an open bottom. Uses the existing Masonry icon widget because the stock radius property is uniform. Build and all-target Clippy pass; Gray and Light headless renders inspected. Three tabs remain: Chat functionality is still absent, so widths differ from the four-tab GPUI reference.
+
+### Tab strip follow-up
+
+Replaced the white gridBorder header separator with the panel outline token. Added the whole-strip border behind the tabs, with the selected face covering its baseline. Restored the fourth text-icon Chat tab; it honestly reports that chat is not connected, rather than submitting requests. Gray/Light 1200x800 headless captures inspected and build/all-target Clippy passed. Chat backend parity remains outstanding.

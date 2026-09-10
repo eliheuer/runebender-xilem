@@ -17,6 +17,8 @@ pub(crate) enum Rail {
     Axes,
     /// Local models: the same panel the GPUI build keeps on this rail.
     LocalAi,
+    /// Chat availability, until the conversation backend is connected.
+    Chat,
 }
 
 /// Shared search controls keep filtering identical in overview and the editor rail.
@@ -145,12 +147,18 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
         ))
     };
     let has_axes = !app.font.axes.is_empty();
-    sized_box(
+    sized_box(xilem::view::zstack((
+        sized_box(label(""))
+            .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
+            .background_color(pal.tab_rail)
+            .border_color(pal.outline)
+            .border_width(Stroke::Hairline.length()),
         flex_row((
             tab("glyph-grid", Rail::Glyphs).flex(1.0),
             editing.then(|| tab("shapes", Rail::Shapes).flex(1.0)),
             has_axes.then(|| tab("measure", Rail::Axes).flex(1.0)),
             tab("preview", Rail::LocalAi).flex(1.0),
+            tab("text", Rail::Chat).flex(1.0),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::Sm)
@@ -159,9 +167,8 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
             right: Space::Sm.length(),
             top: Space::Sm.length(),
             bottom: Space::None.length(),
-        })
-        .background_color(pal.tab_rail),
-    )
+        }),
+    )))
     .dims(Dimensions::new(
         Dim::Stretch,
         Dim::Fixed(Length::px(RAIL_TAB_HEIGHT)),
@@ -184,6 +191,7 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     .flatten(),
                 (app.rail == Rail::LocalAi).then(|| local_ai_panel(app)),
                 (app.rail == Rail::Shapes).then(|| shapes_panel(app)),
+                (app.rail == Rail::Chat).then(|| chat_panel(app)),
                 (app.rail == Rail::Glyphs).then(|| glyph_search(app)),
                 // The grid scrolls itself, so no portal here: nesting the two
                 // gave the rail a dead area below the third row.
@@ -411,16 +419,27 @@ where
 }
 
 pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use xilem::core::one_of::OneOf3;
     let content = match app.rail {
-        Rail::Axes if !app.font.axes.is_empty() => OneOf3::A(flex_col((axes_section(app),))),
-        Rail::LocalAi => OneOf3::B(local_ai_panel(app)),
-        _ => OneOf3::C(category_sidebar(app)),
+        Rail::Axes if !app.font.axes.is_empty() => flex_col((axes_section(app),)).boxed(),
+        Rail::LocalAi => local_ai_panel(app).boxed(),
+        Rail::Chat => chat_panel(app).boxed(),
+        _ => category_sidebar(app).boxed(),
     };
     flex_col((rail_tabs(app, false), content.flex(1.0)))
         .cross_axis_alignment(CrossAxisAlignment::Stretch)
         .gap(Space::None)
         .background_color(app.palette.panel)
+}
+
+/// Honest availability state: this tab does not claim to run chat requests.
+fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    xcolumn(
+        Region::Panel,
+        (
+            label("Chat").color(app.palette.text),
+            label("Chat is not connected in Xilem yet.").color(app.palette.text_muted),
+        ),
+    )
 }
 
 fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {

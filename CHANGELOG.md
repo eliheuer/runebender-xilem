@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Correct the header separator and outline the navigation strip; restore the Chat tab with an explicit unavailable state.
+
 - Match navigation tab heights, top-only selected corners, and icon sizing to GPUI.
 
 - Remove the extra titlebar icon and tighten category sidebar rows to the GPUI reference.

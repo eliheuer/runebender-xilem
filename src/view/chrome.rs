@@ -83,7 +83,7 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         bar,
         sized_box(label(""))
             .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(1.0))))
-            .background_color(pal.role("gridBorder")),
+            .background_color(pal.outline),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Space::None)
