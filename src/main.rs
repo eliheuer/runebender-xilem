@@ -21,7 +21,16 @@ use crate::view::design::{column as xcolumn, row as xrow};
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use masonry::properties::types::CrossAxisAlignment;
-use masonry::theme::default_property_set;
+/// Keep native scroll containers, but give their overlay bars no visible area.
+/// Wheel and trackpad input is handled by Portal independently of these bars.
+fn default_property_set() -> masonry::core::DefaultProperties {
+    let mut properties = masonry::theme::default_property_set();
+    properties.insert::<masonry::widgets::ScrollBar, _>(Dimensions::new(
+        Dim::Fixed(Length::ZERO),
+        Dim::Fixed(Length::ZERO),
+    ));
+    properties
+}
 use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::style::Style;
@@ -66,4 +75,29 @@ pub(crate) fn label(text: impl Into<masonry::core::ArcStr>) -> xilem::view::Labe
 
 fn main() -> Result<(), EventLoopError> {
     run(EventLoop::with_user_event())
+}
+
+#[cfg(test)]
+mod scrollbar_tests {
+    use super::default_property_set;
+    use masonry::core::Widget;
+    use masonry::kurbo::Vec2;
+    use masonry::layout::AsUnit;
+    use masonry::widgets::{Portal, SizedBox};
+    use masonry_testing::TestHarness;
+
+    #[test]
+    fn hidden_bars_preserve_wheel_scrolling() {
+        let content = SizedBox::empty().size(300.px(), 1000.px()).prepare();
+        let mut harness = TestHarness::create_with_size(
+            default_property_set(),
+            Portal::new(content).prepare(),
+            (200, 200),
+        );
+        harness.mouse_move((100., 100.));
+        harness.mouse_wheel(Vec2::new(0., -100.));
+        let y = harness.edit_root_widget(|portal| portal.widget.get_viewport_pos().y);
+        assert!(y > 0., "wheel input must still move the viewport");
+        let _ = harness.render();
+    }
 }

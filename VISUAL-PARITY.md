@@ -458,3 +458,7 @@ Matched GPUI 32/28px active/inactive heights, 4px rail insets and gaps, 18px ico
 ### Tab strip follow-up
 
 Replaced the white gridBorder header separator with the panel outline token. Added the whole-strip border behind the tabs, with the selected face covering its baseline. Restored the fourth text-icon Chat tab; it honestly reports that chat is not connected, rather than submitting requests. Gray/Light 1200x800 headless captures inspected and build/all-target Clippy passed. Chat backend parity remains outstanding.
+
+### Hidden scrollbars
+
+Application defaults give Masonry ScrollBar widgets zero dimensions while retaining Portal scroll handling. Applies to native and headless launches and all existing panels. Gray and Light screenshots inspected. Build and all-target Clippy pass; hidden_bars_preserve_wheel_scrolling verifies wheel input moves an overflowing Portal and renders afterward. Native trackpad input was not exercised.
