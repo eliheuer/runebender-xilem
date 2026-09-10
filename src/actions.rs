@@ -57,32 +57,42 @@ impl Entry {
     /// Whether a visual group begins before this row.
     pub(crate) fn separator_before(&self) -> bool {
         use AppAction as A;
-        matches!(
-            self.action,
-            A::Save
-                | A::NodesRun
-                | A::Copy
-                | A::SelectAll
-                | A::Decompose
-                | A::RemoveOverlap
-                | A::FlipHorizontal
-                | A::Harmonize
-                | A::SortByName
-                | A::NextMaster
-                | A::Theme(_)
-                | A::MeasurePopcount
-                | A::MeasureAllOn
-        )
+        (self.menu == "Filter" && self.action == A::AddExtremes)
+            || matches!(
+                self.action,
+                A::Save
+                    | A::NodesRun
+                    | A::Copy
+                    | A::SelectAll
+                    | A::Decompose
+                    | A::CorrectPathDirection
+                    | A::RemoveOverlap
+                    | A::FlipHorizontal
+                    | A::Harmonize
+                    | A::HyperToCubic
+                    | A::SortByName
+                    | A::NextMaster
+                    | A::ShowAllMasters
+                    | A::NextSampleString
+                    | A::GridDots
+                    | A::MeasureColorize
+                    | A::Theme(_)
+                    | A::MeasurePopcount
+                    | A::MeasureAllOn
+            )
     }
 
     /// Nested menu shared by native and in-window renderers.
     pub(crate) fn submenu(&self) -> Option<&'static str> {
         use AppAction as A;
         match self.action {
+            A::GridDots | A::GridLines => Some("Grid"),
             A::Theme(_) => Some("Theme"),
             A::MeasureColorize
             | A::MeasureHandles
             | A::MeasureSegments
+            | A::MeasureSizes
+            | A::MeasureSpans
             | A::MeasureSideBearings
             | A::MeasurePopcount
             | A::MeasureAllOn
@@ -122,15 +132,24 @@ impl Entry {
             | A::RotateRight
             | A::Rotate180
             | A::RemoveOverlap
+            | A::BooleanUnion
             | A::BooleanSubtract
             | A::BooleanIntersect
             | A::BooleanExclude
             | A::Decompose
             | A::Duplicate
             | A::ReverseContours
+            | A::TidyPaths
+            | A::AddExtremes
+            | A::RoundCoordinates
+            | A::CorrectPathDirection
+            | A::HyperToCubic
+            | A::QuadsToCubics
+            | A::CubicsToQuads
             | A::ZoomToFit => editor,
             A::GenerateMissing => matches!(app.sel, crate::Sel::Filter(_)),
             A::NextMaster | A::PreviousMaster => app.font.master_count() > 1,
+            A::ShowAllMasters | A::NextSampleString | A::PreviousSampleString => editor,
             A::NodesSave => app.nodes.graph.is_some(),
             _ => true,
         }
@@ -144,9 +163,14 @@ impl Entry {
             A::SortByName => workspace.map(|app| app.sort == crate::Sort::Name),
             A::SortByUnicode => workspace.map(|app| app.sort == crate::Sort::Unicode),
             A::Theme(id) => Some(app.theme_id == id),
+            A::ShowAllMasters => workspace.map(|app| app.show_all_masters),
+            A::GridDots => workspace.map(|app| !app.view.grid_lines),
+            A::GridLines => workspace.map(|app| app.view.grid_lines),
             A::MeasureColorize => workspace.map(|app| app.view.colorize),
             A::MeasureHandles => workspace.map(|app| app.view.handles),
             A::MeasureSegments => workspace.map(|app| app.view.segments),
+            A::MeasureSizes => workspace.map(|app| app.view.sizes),
+            A::MeasureSpans => workspace.map(|app| app.view.spans),
             A::MeasureSideBearings => workspace.map(|app| app.view.bearings),
             A::MeasurePopcount => workspace.map(|app| app.view.popcount),
             A::Tool(tool) => workspace.map(|app| app.tool == tool),
@@ -256,6 +280,30 @@ pub(crate) const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "Path",
+        title: "Tidy Up Paths",
+        accelerator: Some("CmdOrCtrl+Shift+T"),
+        action: AppAction::TidyPaths,
+    },
+    Entry {
+        menu: "Path",
+        title: "Add Extremes",
+        accelerator: None,
+        action: AppAction::AddExtremes,
+    },
+    Entry {
+        menu: "Path",
+        title: "Round Coordinates",
+        accelerator: None,
+        action: AppAction::RoundCoordinates,
+    },
+    Entry {
+        menu: "Path",
+        title: "Correct Path Direction",
+        accelerator: Some("CmdOrCtrl+Shift+R"),
+        action: AppAction::CorrectPathDirection,
+    },
+    Entry {
+        menu: "Path",
         title: "Reverse Contours",
         accelerator: Some("CmdOrCtrl+Alt+Shift+R"),
         action: AppAction::ReverseContours,
@@ -271,6 +319,12 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "Remove Overlap",
         accelerator: Some("CmdOrCtrl+Shift+O"),
         action: AppAction::RemoveOverlap,
+    },
+    Entry {
+        menu: "Path",
+        title: "Union",
+        accelerator: None,
+        action: AppAction::BooleanUnion,
     },
     Entry {
         menu: "Path",
@@ -345,10 +399,34 @@ pub(crate) const ACTIONS: &[Entry] = &[
         action: AppAction::Optimize,
     },
     Entry {
+        menu: "Path",
+        title: "Hyperbezier to Cubic",
+        accelerator: None,
+        action: AppAction::HyperToCubic,
+    },
+    Entry {
+        menu: "Path",
+        title: "Quadratic to Cubic",
+        accelerator: None,
+        action: AppAction::QuadsToCubics,
+    },
+    Entry {
+        menu: "Path",
+        title: "Cubic to Quadratic",
+        accelerator: None,
+        action: AppAction::CubicsToQuads,
+    },
+    Entry {
         menu: "Filter",
         title: "Round Corners",
         accelerator: None,
         action: AppAction::RoundCorners,
+    },
+    Entry {
+        menu: "Filter",
+        title: "Add Extremes",
+        accelerator: None,
+        action: AppAction::AddExtremes,
     },
     Entry {
         menu: "Filter",
@@ -361,6 +439,12 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "Zoom to Fit",
         accelerator: Some("CmdOrCtrl+0"),
         action: AppAction::ZoomToFit,
+    },
+    Entry {
+        menu: "View",
+        title: "Show All Masters",
+        accelerator: None,
+        action: AppAction::ShowAllMasters,
     },
     Entry {
         menu: "View",
@@ -388,21 +472,27 @@ pub(crate) const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "View",
-        title: "Dark",
+        title: "Next Sample String",
         accelerator: None,
-        action: AppAction::Theme("dark"),
+        action: AppAction::NextSampleString,
     },
     Entry {
         menu: "View",
-        title: "Gray",
+        title: "Previous Sample String",
         accelerator: None,
-        action: AppAction::Theme("gray"),
+        action: AppAction::PreviousSampleString,
     },
     Entry {
         menu: "View",
-        title: "Light",
+        title: "Dots",
         accelerator: None,
-        action: AppAction::Theme("light"),
+        action: AppAction::GridDots,
+    },
+    Entry {
+        menu: "View",
+        title: "Lines",
+        accelerator: None,
+        action: AppAction::GridLines,
     },
     Entry {
         menu: "View",
@@ -421,6 +511,18 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "Segment Lengths",
         accelerator: None,
         action: AppAction::MeasureSegments,
+    },
+    Entry {
+        menu: "View",
+        title: "Segment Sizes",
+        accelerator: None,
+        action: AppAction::MeasureSizes,
+    },
+    Entry {
+        menu: "View",
+        title: "Stems & Counters",
+        accelerator: None,
+        action: AppAction::MeasureSpans,
     },
     Entry {
         menu: "View",
@@ -445,6 +547,24 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "All Off",
         accelerator: None,
         action: AppAction::MeasureAllOff,
+    },
+    Entry {
+        menu: "View",
+        title: "Dark",
+        accelerator: None,
+        action: AppAction::Theme("dark"),
+    },
+    Entry {
+        menu: "View",
+        title: "Gray",
+        accelerator: None,
+        action: AppAction::Theme("gray"),
+    },
+    Entry {
+        menu: "View",
+        title: "Light",
+        accelerator: None,
+        action: AppAction::Theme("light"),
     },
     // Shortcut-only commands. GPUI exposes tools in the chrome rather than a
     // top-level Tools menu, and Escape returns to the overview without a row.
@@ -641,9 +761,44 @@ mod tests {
             .map(|entry| (entry.title, entry.submenu()))
             .collect();
         assert_eq!(view[0], ("Zoom to Fit", None));
-        assert_eq!(view[5], ("Dark", Some("Theme")));
-        assert_eq!(view[8], ("Colorize Outline", Some("Measure")));
-        assert_eq!(view.last(), Some(&("All Off", Some("Measure"))));
+        assert_eq!(view[8], ("Dots", Some("Grid")));
+        assert_eq!(view[10], ("Colorize Outline", Some("Measure")));
+        assert_eq!(view[19], ("Dark", Some("Theme")));
+        assert_eq!(view.last(), Some(&("Light", Some("Theme"))));
+
+        let path: Vec<_> = ACTIONS
+            .iter()
+            .filter(|entry| entry.menu == "Path")
+            .map(|entry| entry.title)
+            .collect();
+        assert_eq!(
+            path,
+            [
+                "Tidy Up Paths",
+                "Add Extremes",
+                "Round Coordinates",
+                "Correct Path Direction",
+                "Reverse Contours",
+                "Set Start Point",
+                "Remove Overlap",
+                "Union",
+                "Subtract",
+                "Intersect",
+                "Exclude",
+                "Flip Horizontal",
+                "Flip Vertical",
+                "Rotate 90° Left",
+                "Rotate 90° Right",
+                "Rotate 180°",
+                "Duplicate Selection",
+                "Harmonize",
+                "Balance",
+                "Optimize",
+                "Hyperbezier to Cubic",
+                "Quadratic to Cubic",
+                "Cubic to Quadratic",
+            ]
+        );
     }
 
     #[test]

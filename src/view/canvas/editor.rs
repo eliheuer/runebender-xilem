@@ -666,7 +666,7 @@ impl Widget for EditorWidget {
                 .draw();
         }
 
-        // The design grid, as the GPUI build draws it: a dot at each
+        // The design grid, as dots or lines according to View > Grid.
         // 8-unit intersection once the zoom passes 0.8x, and a finer
         // 2-unit dot past 8x. The dots grow with the pitch, a fifth of
         // the coarse one and an eighth of the fine one, within limits.
@@ -684,7 +684,7 @@ impl Widget for EditorWidget {
                 let (min_x, max_x) = (a.x.min(b.x), a.x.max(b.x));
                 let (min_y, max_y) = (a.y.min(b.y), a.y.max(b.y));
                 let mut level = |spacing: f64, skip_every: i64, size: f64, alpha: f64| {
-                    let mut dots = kurbo::BezPath::new();
+                    let mut marks = kurbo::BezPath::new();
                     let h = size / 2.0;
                     let (ix0, ix1) = (
                         grid_index((min_x / spacing).floor()),
@@ -694,25 +694,44 @@ impl Widget for EditorWidget {
                         grid_index((min_y / spacing).floor()),
                         grid_index((max_y / spacing).ceil()),
                     );
-                    for ix in ix0..=ix1 {
-                        for iy in iy0..=iy1 {
-                            if skip_every > 0 && ix % skip_every == 0 && iy % skip_every == 0 {
-                                continue;
+                    if self.view.grid_lines {
+                        for ix in ix0..=ix1 {
+                            if skip_every == 0 || ix % skip_every != 0 {
+                                let x = (affine * Point::new(ix as f64 * spacing, 0.0)).x;
+                                marks.move_to(Point::new(x, 0.0));
+                                marks.line_to(Point::new(x, self.size.height));
                             }
-                            let at = affine * Point::new(ix as f64 * spacing, iy as f64 * spacing);
-                            dots.extend(kurbo::Shape::to_path(
-                                &Rect::new(at.x - h, at.y - h, at.x + h, at.y + h),
-                                0.1,
-                            ));
+                        }
+                        for iy in iy0..=iy1 {
+                            if skip_every == 0 || iy % skip_every != 0 {
+                                let y = (affine * Point::new(0.0, iy as f64 * spacing)).y;
+                                marks.move_to(Point::new(0.0, y));
+                                marks.line_to(Point::new(self.size.width, y));
+                            }
+                        }
+                    } else {
+                        for ix in ix0..=ix1 {
+                            for iy in iy0..=iy1 {
+                                if skip_every > 0 && ix % skip_every == 0 && iy % skip_every == 0 {
+                                    continue;
+                                }
+                                let at =
+                                    affine * Point::new(ix as f64 * spacing, iy as f64 * spacing);
+                                marks.extend(kurbo::Shape::to_path(
+                                    &Rect::new(at.x - h, at.y - h, at.x + h, at.y + h),
+                                    0.1,
+                                ));
+                            }
                         }
                     }
-                    painter
-                        .fill(
-                            &dots,
-                            pal.role("designGridCoarse")
-                                .with_alpha(crate::view::render::px32(alpha)),
-                        )
-                        .draw();
+                    let color = pal
+                        .role("designGridCoarse")
+                        .with_alpha(crate::view::render::px32(alpha));
+                    if self.view.grid_lines {
+                        painter.stroke(&marks, &Stroke::new(0.5), color).draw();
+                    } else {
+                        painter.fill(&marks, color).draw();
+                    }
                 };
                 let coarse = (8.0 * zoom * 0.2).clamp(1.5, 5.0);
                 level(8.0, 0, coarse, mid);
@@ -957,7 +976,7 @@ impl Widget for EditorWidget {
                 let wanted = match m.kind {
                     MeasureKind::Handle => self.view.handles,
                     MeasureKind::Segment => self.view.segments,
-                    _ => self.view.segments,
+                    MeasureKind::Horizontal | MeasureKind::Vertical => self.view.spans,
                 };
                 if !wanted {
                     continue;
@@ -975,6 +994,30 @@ impl Widget for EditorWidget {
                 let mid = Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
                 let text = self.view.label(m.length);
                 text_label::draw(painter, mid, &text, 11.0, color, Anchor::Middle);
+            }
+            if self.view.sizes {
+                use kurbo::Shape as _;
+                for hit in runebender_core::outline::segment_ops::segments(&self.session.glyph) {
+                    let bounds = hit.seg.bounding_box();
+                    if bounds.width() < 1.0 && bounds.height() < 1.0 {
+                        continue;
+                    }
+                    let a = affine * Point::new(bounds.x0, bounds.y0);
+                    let b = affine * Point::new(bounds.x1, bounds.y1);
+                    let screen = Rect::from_points(a, b);
+                    painter
+                        .stroke(screen, &Stroke::new(1.0), pal.role("metricQuiet"))
+                        .draw();
+                    let label = format!("{:.0}×{:.0}", bounds.width(), bounds.height());
+                    text_label::draw(
+                        painter,
+                        screen.center(),
+                        &label,
+                        11.0,
+                        pal.text,
+                        Anchor::Middle,
+                    );
+                }
             }
             if let Some(sb) = self.session.side_bearings().filter(|_| self.view.bearings) {
                 let quiet = pal.role("metricQuiet");
@@ -1604,6 +1647,8 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
 /// what a kink or a stem is.
 #[derive(Clone, Copy, Default, PartialEq)]
 pub(crate) struct ViewOptions {
+    /// Draw design-grid lines instead of dots.
+    pub grid_lines: bool,
     /// The curvature comb.
     pub comb: bool,
     /// A dot per on-curve node, colored by continuity level.
@@ -1614,6 +1659,10 @@ pub(crate) struct ViewOptions {
     pub handles: bool,
     /// Label straight segment lengths.
     pub segments: bool,
+    /// Draw bounding boxes and width×height labels for every segment.
+    pub sizes: bool,
+    /// Draw horizontal and vertical stem/counter spans.
+    pub spans: bool,
     /// Draw and label the side bearings.
     pub bearings: bool,
     /// Spell lengths as sums of powers of two: 96 = 64+32.
@@ -1634,7 +1683,7 @@ impl ViewOptions {
 
     /// Whether anything in the measure group is on.
     pub(crate) fn measures(self) -> bool {
-        self.colorize || self.handles || self.segments || self.bearings
+        self.colorize || self.handles || self.segments || self.sizes || self.spans || self.bearings
     }
 
     /// A length, spelled the way the options ask for.

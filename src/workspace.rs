@@ -138,6 +138,10 @@ pub(crate) struct Workspace {
     /// Masters drawn as ghost outlines under the active one. The Layers
     /// section toggles these, one per thumbnail click (gpui's eye).
     pub(crate) reference_layers: std::collections::HashSet<usize>,
+    /// Whether every non-active master is shown as a reference outline.
+    pub(crate) show_all_masters: bool,
+    /// Current built-in proof string selected from the View menu.
+    pub(crate) sample_index: usize,
     /// The nodes file, the files beside the font, and a run.
     pub(crate) nodes: nodes::NodesState,
     /// The Local AI panel: models, tasks, a run, proposals.

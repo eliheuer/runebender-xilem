@@ -23,6 +23,7 @@ use runebender_core::ui::editing::viewport::ViewPort;
 /// Boolean operation kinds, mapped to `linesweeper::BinaryOp` internally.
 #[derive(Clone, Copy)]
 pub(crate) enum BoolOp {
+    Union,
     Subtract,
     Intersect,
     Exclude,
@@ -558,6 +559,7 @@ impl Session {
 
     pub(crate) fn boolean(&mut self, op: BoolOp) -> bool {
         let op = match op {
+            BoolOp::Union => linesweeper::BinaryOp::Union,
             BoolOp::Subtract => linesweeper::BinaryOp::Difference,
             BoolOp::Intersect => linesweeper::BinaryOp::Intersection,
             BoolOp::Exclude => linesweeper::BinaryOp::Xor,
@@ -704,6 +706,45 @@ impl Session {
             }
             None => false,
         }
+    }
+
+    pub(crate) fn tidy_paths(&mut self) -> bool {
+        self.record(EditType::Normal);
+        runebender_core::outline::cleanup::tidy_contours(&mut self.glyph) > 0
+    }
+
+    pub(crate) fn add_extremes(&mut self) -> bool {
+        self.record(EditType::Normal);
+        runebender_core::outline::cleanup::add_extreme_points(&mut self.glyph, &self.selection)
+    }
+
+    pub(crate) fn round_coordinates(&mut self) -> bool {
+        self.record(EditType::Normal);
+        runebender_core::outline::cleanup::round_glyph_coordinates(&mut self.glyph) > 0
+    }
+
+    pub(crate) fn correct_path_direction(&mut self) -> bool {
+        self.record(EditType::Normal);
+        runebender_core::outline::cleanup::correct_path_directions(&mut self.glyph) > 0
+    }
+
+    pub(crate) fn hyper_to_cubic(&mut self) -> bool {
+        self.record(EditType::Normal);
+        let changed = glyph_ops::convert_hyper_to_cubic(&mut self.glyph, &self.selection);
+        if changed {
+            self.selection.clear();
+        }
+        changed
+    }
+
+    pub(crate) fn quads_to_cubics(&mut self) -> bool {
+        self.record(EditType::Normal);
+        runebender_core::outline::convert::quads_to_cubics(&mut self.glyph)
+    }
+
+    pub(crate) fn cubics_to_quads(&mut self) -> bool {
+        self.record(EditType::Normal);
+        runebender_core::outline::convert::cubics_to_quads(&mut self.glyph, 1.0)
     }
 
     /// Index of the anchor near `p` (design space), if within `tol`.
@@ -1025,6 +1066,11 @@ impl Workspace {
             return;
         }
         self.font.set_active(index);
+        if self.show_all_masters {
+            self.reference_layers = (0..self.font.master_count())
+                .filter(|master| *master != index)
+                .collect();
+        }
         self.axis_values = self.font.master_axis_values(index);
         self.cells = Arc::new(cells_of(&self.font, &self.palette));
         // Reopen the current glyph in the new master, keeping the viewport.
@@ -1207,5 +1253,15 @@ mod tests {
         let mut session = two_squares();
         assert!(!session.paste_contours(&[]));
         assert_eq!(session.glyph.contours.len(), 2);
+    }
+
+    #[test]
+    fn cleanup_command_records_an_edit_and_changes_the_glyph() {
+        let mut session = two_squares();
+        session.glyph.contours[0].points[0].x = 0.4;
+
+        assert!(session.round_coordinates());
+        assert_eq!(session.glyph.contours[0].points[0].x, 0.0);
+        assert!(matches!(session.pending.last(), Some(HistoryOp::Record(_))));
     }
 }

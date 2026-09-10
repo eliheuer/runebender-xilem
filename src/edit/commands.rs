@@ -5,6 +5,16 @@
 
 use crate::*;
 
+const SAMPLE_STRINGS: &[&str] = &[
+    "HHOHOHOO",
+    "nnonoonoo",
+    "hamburgefonstiv",
+    "HAMBURGEFONSTIV",
+    "0123456789",
+    "AVATAR Wave Toy Vy",
+    "((\"quoted\")) [j] {f}!?",
+];
+
 impl Workspace {
     pub(crate) fn new_glyph(&mut self) {
         let name = self.filter.trim().to_string();
@@ -101,6 +111,7 @@ impl Workspace {
             }
             A::Rotate180 => self.apply_op(|s| s.transform(kurbo::Affine::scale(-1.0))),
             A::RemoveOverlap => self.apply_op(|s| s.remove_overlap()),
+            A::BooleanUnion => self.apply_op(|s| s.boolean(session::BoolOp::Union)),
             A::BooleanSubtract => self.apply_op(|s| s.boolean(session::BoolOp::Subtract)),
             A::BooleanIntersect => self.apply_op(|s| s.boolean(session::BoolOp::Intersect)),
             A::BooleanExclude => self.apply_op(|s| s.boolean(session::BoolOp::Exclude)),
@@ -108,6 +119,13 @@ impl Workspace {
             A::Duplicate => self.apply_op(|s| s.duplicate()),
             A::ReverseContours => self.apply_op(|s| s.reverse()),
             A::SetStartPoint => self.apply_op(|s| s.set_start()),
+            A::TidyPaths => self.apply_op(|s| s.tidy_paths()),
+            A::AddExtremes => self.apply_op(|s| s.add_extremes()),
+            A::RoundCoordinates => self.apply_op(|s| s.round_coordinates()),
+            A::CorrectPathDirection => self.apply_op(|s| s.correct_path_direction()),
+            A::HyperToCubic => self.apply_op(|s| s.hyper_to_cubic()),
+            A::QuadsToCubics => self.apply_op(|s| s.quads_to_cubics()),
+            A::CubicsToQuads => self.apply_op(|s| s.cubics_to_quads()),
             A::RoundCorners => self.apply_op(|s| s.round_corners()),
             A::Harmonize => self.apply_op(|s| s.harmonize()),
             A::Balance => self.apply_op(|s| s.balance()),
@@ -124,6 +142,20 @@ impl Workspace {
                 session.fitted = false;
                 self.session = Arc::new(session);
             }
+            A::ShowAllMasters => {
+                self.show_all_masters = !self.show_all_masters;
+                self.reference_layers.clear();
+                if self.show_all_masters {
+                    self.reference_layers.extend(
+                        (0..self.font.master_count()).filter(|index| *index != self.font.active()),
+                    );
+                }
+                self.note = if self.show_all_masters {
+                    "showing all masters".into()
+                } else {
+                    "showing selected reference masters".into()
+                };
+            }
             A::NextMaster | A::PreviousMaster => {
                 let count = self.font.master_count();
                 if count > 1 {
@@ -136,21 +168,39 @@ impl Workspace {
                     self.set_master(next);
                 }
             }
+            A::NextSampleString | A::PreviousSampleString => {
+                let count = SAMPLE_STRINGS.len();
+                self.sample_index = if matches!(action, A::NextSampleString) {
+                    (self.sample_index + 1) % count
+                } else {
+                    (self.sample_index + count - 1) % count
+                };
+                self.preview_text = SAMPLE_STRINGS[self.sample_index].into();
+                self.note = format!("Sample: {}", self.preview_text);
+            }
             A::MeasureColorize => self.view.colorize = !self.view.colorize,
             A::MeasureHandles => self.view.handles = !self.view.handles,
             A::MeasureSegments => self.view.segments = !self.view.segments,
+            A::MeasureSizes => self.view.sizes = !self.view.sizes,
+            A::MeasureSpans => self.view.spans = !self.view.spans,
+            A::GridDots => self.view.grid_lines = false,
+            A::GridLines => self.view.grid_lines = true,
             A::MeasureSideBearings => self.view.bearings = !self.view.bearings,
             A::MeasurePopcount => self.view.popcount = !self.view.popcount,
             A::MeasureAllOn => {
                 self.view.colorize = true;
                 self.view.handles = true;
                 self.view.segments = true;
+                self.view.sizes = true;
+                self.view.spans = true;
                 self.view.bearings = true;
             }
             A::MeasureAllOff => {
                 self.view.colorize = false;
                 self.view.handles = false;
                 self.view.segments = false;
+                self.view.sizes = false;
+                self.view.spans = false;
                 self.view.bearings = false;
             }
             A::GenerateMissing => match self.sel {

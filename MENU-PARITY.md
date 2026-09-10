@@ -34,7 +34,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
   Balance; Optimize; Hyperbezier to Cubic; Quadratic to Cubic; Cubic to Quadratic.
 - [ ] **Filter:** Offset Curve; Extrude; Roughen; Round Corners; Slanter; Add
   Extremes; Remove Overlap.
-- [ ] **View:** Zoom to Fit; Show All Masters; Sort Glyphs by Name; Sort Glyphs by
+- [x] **View:** Zoom to Fit; Show All Masters; Sort Glyphs by Name; Sort Glyphs by
   Unicode; Next/Previous Master; Next/Previous Sample String; Grid, Measure, and
   Theme submenus with current values checked.
 
@@ -94,6 +94,11 @@ framework-integration work.
 - Existing Xilem operations are wired for Undo/Redo, selection, transforms,
   booleans, curve operations, fit/master navigation, explicit themes, and
   measure toggles. Unimplemented GPUI commands remain absent rather than inert.
+- Path cleanup, extrema insertion, coordinate rounding, direction correction,
+  Union, and all three curve conversions now call the pinned core operations
+  through the same undo-aware session path as the canvas tools.
+- View parity includes all-master references, sample-string cycling, checked
+  dot/line grid modes, segment-size boxes, and stem/counter spans.
 - `docs/screenshots/menu-parity/view-gray.png`, `view-light.png`, and
   `welcome-gray.png` are matched 1100x720 headless captures of the View and
   application menus. The headless driver processes real layer lifecycle signals
@@ -102,7 +107,7 @@ framework-integration work.
   screen, and disable document commands when there is no workspace. The
   in-window Quit row and Ctrl-Q issue Masonry's real driver exit signal; macOS
   retains its predefined application-menu Quit behavior.
-- Verified locally on macOS: 53 tests pass serially and all-target Clippy passes
+- Verified locally on macOS: 55 tests pass serially and all-target Clippy passes
   with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
   filename race; the unfiltered suite can intermittently fail in parallel and
   passes with `--test-threads=1`. Linux and Windows have not been run yet.
@@ -127,9 +132,7 @@ framework-integration work.
 - [ ] Port the remaining working GPUI handlers: Copy Selected Glyphs as Text;
   New/Duplicate/Remove Glyph; Update Metrics; Reinterpolate; Check Joining;
   Compose from Anchors; Bake Masks; Export Glyph as SVG; image/model commands;
-  Tidy/Add Extremes/Round/Correct Direction/Union/Duplicate Repeat/curve
-  conversion; parameterized filters; Show All Masters; sample navigation; Grid;
-  Segment Sizes; Stems & Counters.
+  Duplicate Repeat; and parameterized filters.
 - [x] Add the in-window Runebender/Quit command through the Xilem driver rather
   than pretending a workspace mutation can exit the process.
 - [ ] Finish focused-field precedence for native macOS accelerators, including a
