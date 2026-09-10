@@ -102,6 +102,9 @@ pub(crate) enum AppAction {
     NodesRun,
     /// Add every glyph the selected coverage filter is missing.
     GenerateMissing,
+    NewGlyph,
+    DuplicateGlyph,
+    RemoveGlyph,
     /// The grid's order, as the GPUI build's View menu has it.
     SortByName,
     SortByUnicode,

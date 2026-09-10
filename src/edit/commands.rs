@@ -16,6 +16,79 @@ const SAMPLE_STRINGS: &[&str] = &[
 ];
 
 impl Workspace {
+    /// Add an empty glyph with the first free `glyph(.NNN)` name and open it.
+    pub(crate) fn command_new_glyph(&mut self) {
+        let mut name = "glyph".to_string();
+        let mut counter = 0;
+        while self.font.index_of(&name).is_some() {
+            counter += 1;
+            name = format!("glyph.{counter:03}");
+        }
+        let upm = self.font.units_per_em();
+        if self.font.add_glyph(&name, (upm * 0.5).round(), None) {
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+            self.modified = true;
+            self.note = format!("added {name}");
+            if let Some(index) = self.font.index_of(&name) {
+                self.open_glyph(index);
+            }
+        }
+    }
+
+    /// Duplicate the selected glyph in every master and open the new copy.
+    pub(crate) fn command_duplicate_glyph(&mut self) {
+        let Some(index) = self.selected else {
+            self.note = "select a glyph to duplicate".into();
+            return;
+        };
+        let Some(source) = self.font.glyphs.get(index).map(|glyph| glyph.name.clone()) else {
+            return;
+        };
+        let Some(name) = self.font.duplicate_glyph(&source) else {
+            return;
+        };
+        self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        self.modified = true;
+        self.note = format!("duplicated {source} as {name}");
+        if let Some(index) = self.font.index_of(&name) {
+            self.open_glyph(index);
+        }
+    }
+
+    /// Remove the selected glyph from every master and discard its open tabs.
+    pub(crate) fn command_remove_glyph(&mut self) {
+        let Some(index) = self.selected else {
+            self.note = "select a glyph to remove".into();
+            return;
+        };
+        let Some(name) = self.font.glyphs.get(index).map(|glyph| glyph.name.clone()) else {
+            return;
+        };
+        if !self.font.remove_glyph(&name) {
+            return;
+        }
+
+        let removed_active =
+            matches!(self.mode, Mode::Editor(_)) && self.session.glyph_name == name;
+        self.tabs.retain(|tab| tab.session.glyph_name != name);
+        self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        self.multi_selected = Arc::new(std::collections::HashSet::new());
+        self.selected = None;
+        self.modified = true;
+        self.note = format!("removed {name}");
+
+        if removed_active {
+            if self.tabs.is_empty() {
+                self.mode = Mode::Overview;
+                self.active_tab = 0;
+            } else {
+                let next = self.active_tab.min(self.tabs.len() - 1);
+                self.active_tab = usize::MAX;
+                self.activate_tab(next);
+            }
+        }
+    }
+
     pub(crate) fn new_glyph(&mut self) {
         let name = self.filter.trim().to_string();
         let upm = self.font.units_per_em();
@@ -215,6 +288,9 @@ impl Workspace {
                 }
                 _ => self.note = "select a coverage filter in the sidebar first".into(),
             },
+            A::NewGlyph => self.command_new_glyph(),
+            A::DuplicateGlyph => self.command_duplicate_glyph(),
+            A::RemoveGlyph => self.command_remove_glyph(),
             A::SortByName => self.sort = Sort::Name,
             A::SortByUnicode => self.sort = Sort::Unicode,
             A::NodesTab => self.enter_nodes_mode(),

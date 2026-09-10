@@ -335,6 +335,63 @@ impl FontModel {
         added
     }
 
+    /// Duplicate `source` into the first free `stem.NNN` name in every master.
+    ///
+    /// The copy carries the editable glyph data used by the GPUI command but is
+    /// deliberately unencoded. Returns the new name, or `None` when the source
+    /// is absent from the active master.
+    pub(crate) fn duplicate_glyph(&mut self, source: &str) -> Option<String> {
+        self.font().get_glyph(source)?;
+        let taken: std::collections::HashSet<String> = self
+            .project
+            .masters
+            .iter()
+            .flat_map(|master| master.name_map.keys().cloned())
+            .collect();
+        let stem = source.split('.').next().unwrap_or(source);
+        let mut counter = 1;
+        let mut name = format!("{stem}.{counter:03}");
+        while taken.contains(&name) {
+            counter += 1;
+            name = format!("{stem}.{counter:03}");
+        }
+
+        for master in &mut self.project.masters {
+            let Some(original) = master.font.get_glyph(source).cloned() else {
+                continue;
+            };
+            master.add_glyph(&name, original.width);
+            if let Some(copy) = master.font.get_glyph_mut(&name) {
+                copy.contours = original.contours;
+                copy.components = original.components;
+                copy.anchors = original.anchors;
+                copy.width = original.width;
+                copy.lib = original.lib;
+            }
+            master.dirty = true;
+            master.modified_glyphs.insert(name.clone());
+            master.refresh_from_font();
+        }
+        self.project.recheck_compat(&name);
+        self.rebuild_cache();
+        Some(name)
+    }
+
+    /// Remove `name` from every master and refresh the active-master cache.
+    pub(crate) fn remove_glyph(&mut self, name: &str) -> bool {
+        let mut removed = false;
+        for master in &mut self.project.masters {
+            if master.font.get_glyph(name).is_some() {
+                master.remove_glyph(name);
+                removed = true;
+            }
+        }
+        if removed {
+            self.rebuild_cache();
+        }
+        removed
+    }
+
     /// Rename a glyph, in every master.
     ///
     /// `runebender_core` does the work inside one font: the glyph, the
@@ -801,5 +858,83 @@ impl FontModel {
         self.refresh_entry(index);
         let name = self.glyphs[index].name.clone();
         self.project.recheck_compat(&name);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn two_master_model() -> (PathBuf, FontModel) {
+        let dir = std::env::temp_dir().join(format!(
+            "runebender-xilem-glyph-commands-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        std::fs::create_dir_all(&dir).expect("the fixture directory is created");
+        for (file, width) in [("Regular.ufo", 500.0), ("Bold.ufo", 620.0)] {
+            let mut font = norad::Font::new();
+            let mut glyph = norad::Glyph::new("A");
+            glyph.width = width;
+            let mut contour = norad::Contour::default();
+            contour.points.push(norad::ContourPoint::new(
+                width,
+                0.0,
+                norad::PointType::Move,
+                false,
+                None,
+                None,
+            ));
+            glyph.contours.push(contour);
+            glyph.codepoints = norad::Codepoints::new(['A']);
+            font.default_layer_mut().insert_glyph(glyph);
+            font.save(dir.join(file)).expect("the master saves");
+        }
+        let designspace = dir.join("Test.designspace");
+        std::fs::write(
+            &designspace,
+            r#"<?xml version='1.0' encoding='UTF-8'?>
+<designspace format="4.0">
+  <axes><axis name="Weight" tag="wght" minimum="400" default="400" maximum="700"/></axes>
+  <sources>
+    <source familyname="Test" stylename="Regular" filename="Regular.ufo">
+      <location><dimension name="Weight" xvalue="400"/></location>
+    </source>
+    <source familyname="Test" stylename="Bold" filename="Bold.ufo">
+      <location><dimension name="Weight" xvalue="700"/></location>
+    </source>
+  </sources>
+</designspace>"#,
+        )
+        .expect("the designspace saves");
+        let model = FontModel::open(&designspace).expect("the designspace opens");
+        (dir, model)
+    }
+
+    #[test]
+    fn duplicate_and_remove_glyph_apply_to_every_master() {
+        let (dir, mut model) = two_master_model();
+
+        let copy = model.duplicate_glyph("A").expect("A duplicates");
+        assert_eq!(copy, "A.001");
+        for (master, width) in model.project.masters.iter().zip([500.0, 620.0]) {
+            let glyph = master.font.get_glyph(&copy).expect("the copy exists");
+            assert_eq!(glyph.width, width);
+            assert_eq!(glyph.contours.len(), 1);
+            assert!(glyph.codepoints.is_empty());
+        }
+        assert!(model.remove_glyph(&copy));
+        assert!(
+            model
+                .project
+                .masters
+                .iter()
+                .all(|master| master.font.get_glyph(&copy).is_none())
+        );
+
+        std::fs::remove_dir_all(dir).expect("the fixture is removed");
     }
 }

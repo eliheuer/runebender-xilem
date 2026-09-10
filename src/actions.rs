@@ -149,6 +149,7 @@ impl Entry {
             | A::CubicsToQuads
             | A::ZoomToFit => editor,
             A::GenerateMissing => matches!(app.sel, crate::Sel::Filter(_)),
+            A::DuplicateGlyph | A::RemoveGlyph => app.selected.is_some(),
             A::NextMaster | A::PreviousMaster => app.font.master_count() > 1,
             A::ShowAllMasters | A::NextSampleString | A::PreviousSampleString => editor,
             A::NodesSave => app.nodes.graph.is_some(),
@@ -266,6 +267,24 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "Invert Selection",
         accelerator: Some("CmdOrCtrl+Alt+Shift+I"),
         action: AppAction::InvertSelection,
+    },
+    Entry {
+        menu: "Glyph",
+        title: "New Glyph",
+        accelerator: None,
+        action: AppAction::NewGlyph,
+    },
+    Entry {
+        menu: "Glyph",
+        title: "Duplicate Glyph",
+        accelerator: None,
+        action: AppAction::DuplicateGlyph,
+    },
+    Entry {
+        menu: "Glyph",
+        title: "Remove Glyph",
+        accelerator: None,
+        action: AppAction::RemoveGlyph,
     },
     Entry {
         menu: "Glyph",
@@ -772,6 +791,21 @@ mod tests {
         assert_eq!(view[10], ("Colorize Outline", Some("Measure")));
         assert_eq!(view[19], ("Dark", Some("Theme")));
         assert_eq!(view.last(), Some(&("Light", Some("Theme"))));
+
+        let glyph: Vec<_> = ACTIONS
+            .iter()
+            .filter(|entry| entry.menu == "Glyph")
+            .map(|entry| entry.title)
+            .collect();
+        assert_eq!(
+            &glyph[..4],
+            [
+                "New Glyph",
+                "Duplicate Glyph",
+                "Remove Glyph",
+                "Generate Missing Glyphs",
+            ]
+        );
 
         let path: Vec<_> = ACTIONS
             .iter()
