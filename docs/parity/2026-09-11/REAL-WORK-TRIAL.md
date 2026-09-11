@@ -96,11 +96,13 @@ reference fitting.
 
 ## Evidence and limits
 
-Implementation commits are `588b605` (disposable edit/save safety), `1d96364`
+Implementation commits are `a40808b` (Latin/Arabic navigation and metadata),
+`588b605` (disposable edit/save safety), `1d96364`
 (real Arabic and local-model proof with explicit install), and `dd0159a`
 (proposal comparison), plus `ce75e3b` (review-only node route). Headless inspected captures are
-`r03-mixed-text-{gray,light}.png` and `r04-ai-compare-{gray,light}.png` in this
-directory; `r05-nodes-review-{gray,light}.png` shows the five-node graph. They use
+`r01-arabic-beh-{gray,light}.png`, `r03-mixed-text-{gray,light}.png`, and
+`r04-ai-compare-{gray,light}.png` in this directory;
+`r05-nodes-review-{gray,light}.png` shows the five-node graph. They use
 the CPU renderer and do not prove native GPU, input method, pointer, cancellation,
 or platform-menu behavior.
 

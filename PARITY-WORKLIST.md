@@ -16,7 +16,7 @@ parity must not delay a dependable desktop workflow.
 
 The next delivery is **ready for a supervised real-work trial**, with these gates:
 
-- [ ] R01 — Open the Virtua Grotesk designspace, choose the intended master/glyph,
+- [x] R01 — Open the Virtua Grotesk designspace, choose the intended master/glyph,
   navigate/search Latin and Arabic, and see accurate outlines and metadata.
 - [x] R02 — Make representative outline, metrics and anchor edits; undo/redo;
   save a disposable copy and reopen it without losing unrelated font data.
@@ -358,6 +358,13 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   overwrite unsaved work. The existing unwritable-source test proves save failure
   remains dirty and reports `Save failed`. All passed in the 70-test normal suite
   plus the three-test real-fixture run.
+- R01 — verified in `a40808b`: the real designspace integration opens both
+  Regular and Bold, exercises the Arabic script filter and name search, opens R,
+  beh-ar, kasra-ar and unencoded lam_alef-ar, and compares the full session glyph,
+  Unicode field and advance with the active source before switching Bold and back.
+  The same test continues into R02's disposable save/reopen proof. Individually
+  inspected editor evidence is `r01-arabic-beh-{gray,light}.png`; native pointer
+  interaction remains part of the supervised trial, not this data-path gate.
 - R03 / T02 / T03 — in progress in `1d96364`: the real Virtua integration test
   shapes `R لا 123 بِ`, verifies source coverage, lam-alef substitution, mark
   ordering, finite outline paths, and bidi layout. Canvas Up/Down/Home/End now use

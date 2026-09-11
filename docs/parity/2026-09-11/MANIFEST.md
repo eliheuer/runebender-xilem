@@ -50,6 +50,8 @@ or otherwise mutates it.
 | `v07-editor-r-gray.png` | Gray | corrected editor rail | glyph R; fitted 44 px target; captions deliberately omitted |
 | `r03-mixed-text-gray.png` | Gray | text tool and preview | `R لا 123 بِ`; automatic direction; caret at logical end |
 | `r03-mixed-text-light.png` | Light | text tool and preview | same state |
+| `r01-arabic-beh-gray.png` | Gray | Arabic editor | Regular `beh-ar`; U+0628; advance 944; fitted outline |
+| `r01-arabic-beh-light.png` | Light | Arabic editor | same state |
 | `r04-ai-compare-gray.png` | Gray | Local AI review | disposable Regular UFO; R foreground with amber `bolden` proposal; Local AI rail |
 | `r04-ai-compare-light.png` | Light | Local AI review | same state |
 | `r05-nodes-review-gray.png` | Gray | review-only nodes | five-node Bolden → Compare graph; no Install node |
@@ -131,6 +133,11 @@ The real integration run uses `RUNEBENDER_AI_DEVICE=cpu` semantics on a copied
 designspace, not this read-only screenshot command. It selects R and S, reports
 progress, runs Compare, and hands the proposal to explicit review without an
 Install node.
+
+The R01 Arabic editor evidence uses the normal editor command with
+`RUNEBENDER_GLYPH=beh-ar` and the read-only designspace. Both files were
+individually inspected; the header, mini-cell and status agree on `beh-ar`,
+U+0628 and advance 944.
 
 ## GPUI reference metrics
 
