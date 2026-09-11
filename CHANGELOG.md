@@ -38,6 +38,10 @@ releases begin.
   model and verify mixed Latin, Arabic, digits, lam-alef, and kasra against the
   real Virtua Grotesk inventory and feature file.
 
+- Make node runs target the open or explicitly selected glyphs, resolve sibling
+  designspace masters, preserve model-device choice, and return proposal-only
+  graph output to the same Compare, Install, Discard, and Undo review workflow.
+
 - Align the navigation, grid and inspector top edges with one shared separator below the title bar.
 
 - Align search and inspector inputs with shared insets and optical baseline positioning; route inspector text and labels through the bundled UI-font helpers.

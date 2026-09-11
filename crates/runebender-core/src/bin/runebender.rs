@@ -1025,6 +1025,7 @@ fn nodes_run(
         models_dir: models
             .map(Path::to_path_buf)
             .or_else(nodes_run::default_models_dir),
+        device: None,
         force,
         cache: (!no_cache).then(|| nodes_run::cache_path(file)),
         on_event: &mut on_event,

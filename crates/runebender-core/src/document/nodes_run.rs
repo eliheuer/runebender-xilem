@@ -342,6 +342,9 @@ pub struct RunContext<'a> {
     pub tools: BTreeMap<String, PathBuf>,
     /// Where models live, for a Model node given a bare name.
     pub models_dir: Option<PathBuf>,
+    /// Device passed to model tools that support it, such as
+    /// `font-ml` (`auto`, `cpu`, `metal`, or `cuda[:n]`).
+    pub device: Option<String>,
     /// Run every node, cache or not.
     pub force: bool,
     /// Where the cache lives. None keeps nothing.
@@ -358,6 +361,7 @@ impl fmt::Debug for RunContext<'_> {
             .field("glyphs", &self.glyphs.len())
             .field("tools", &self.tools)
             .field("models_dir", &self.models_dir)
+            .field("device", &self.device)
             .field("force", &self.force)
             .field("cache", &self.cache)
             .finish_non_exhaustive()
@@ -631,6 +635,9 @@ pub fn run(graph: &NodeGraph, registry: &Registry, ctx: &mut RunContext<'_>) -> 
         let mut blocked = false;
         let mut hasher = std::hash::DefaultHasher::new();
         node.type_name.hash(&mut hasher);
+        if node.type_name.starts_with("font-ml.") {
+            ctx.device.hash(&mut hasher);
+        }
         for port in &node_type.inputs {
             let value = if let Some(link) = graph.link_into(id, &port.name) {
                 match results.get(&link.from()) {
@@ -1164,6 +1171,11 @@ fn run_tool_node(
             }
             RunValue::Rows { .. } => {}
         }
+    }
+    if tool == "font-ml"
+        && let Some(device) = &ctx.device
+    {
+        cmd.arg("--device").arg(device);
     }
     cmd.arg("--write").arg("--json");
     cmd.stdout(std::process::Stdio::piped());

@@ -17,6 +17,7 @@ use std::sync::{Arc, Mutex};
 
 use runebender_core::document::nodes::{NodeGraph, Problem, Registry};
 use runebender_core::document::nodes_run::{self, Event, RunReport, Status};
+use runebender_core::document::proposal;
 
 use crate::{Mode, Workspace};
 
@@ -73,6 +74,9 @@ pub(crate) struct NodesState {
     pub(crate) tasks_json: Option<serde_json::Value>,
     /// Where font-ml is, or None when it is not installed.
     pub(crate) font_ml: Option<PathBuf>,
+    /// Device passed to model-backed nodes. `auto` in the app; real
+    /// integration tests select `cpu` for deterministic headless runs.
+    pub(crate) device: String,
     /// The run going on, if one is.
     pub(crate) job: Option<NodeJob>,
     /// The selected node, mirrored from the canvas so the strip can
@@ -111,9 +115,32 @@ fn font_ml_binary() -> Option<PathBuf> {
 }
 
 impl Workspace {
+    /// Glyphs offered to a graph. An explicit overview multi-selection
+    /// wins; in the editor, an otherwise empty selection means only
+    /// the open glyph. An empty overview selection retains the graph
+    /// runner's documented meaning of every drawn glyph.
+    fn node_glyphs(&self) -> Vec<String> {
+        let mut indices: Vec<usize> = self.multi_selected.iter().copied().collect();
+        if indices.is_empty()
+            && let Mode::Editor(index) = self.mode
+        {
+            indices.push(index);
+        }
+        indices.sort_unstable();
+        indices
+            .into_iter()
+            .filter_map(|index| self.font.glyphs.get(index))
+            .map(|glyph| glyph.name.clone())
+            .collect()
+    }
+
     /// Asks font-ml what it can do, once, and finds the files beside
     /// the font. Called when the font opens.
     pub(crate) fn init_nodes(&mut self) {
+        if self.nodes.device.is_empty() {
+            self.nodes.device =
+                std::env::var("RUNEBENDER_AI_DEVICE").unwrap_or_else(|_| "auto".to_string());
+        }
         self.nodes.font_ml = font_ml_binary();
         self.nodes.tasks_json = self.nodes.font_ml.as_ref().and_then(|font_ml| {
             let output = std::process::Command::new(font_ml)
@@ -324,20 +351,20 @@ impl Workspace {
         if self.modified && !self.save() {
             return;
         }
-        let font = self.font.source().to_path_buf();
+        // Give Core the project source so `core.master` can resolve a
+        // sibling designspace master. The job identity remains the
+        // active UFO path below.
+        let font = self.font.document_source().to_path_buf();
+        let master_path = self.font.source().to_path_buf();
         let master = self.font.master_names().get(self.font.active()).cloned();
-        let glyphs: Vec<String> = self
-            .multi_selected
-            .iter()
-            .filter_map(|&i| self.font.glyphs.get(i))
-            .map(|g| g.name.clone())
-            .collect();
+        let device = self.nodes.device.clone();
+        let glyphs = self.node_glyphs();
         let mut tools = BTreeMap::new();
         if let Some(font_ml) = self.nodes.font_ml.clone() {
             tools.insert("font-ml".to_string(), font_ml);
         }
         let job = NodeJob {
-            master_path: font.clone(),
+            master_path,
             document_id: self.document_id,
             ..NodeJob::default()
         };
@@ -360,6 +387,7 @@ impl Workspace {
                 glyphs,
                 tools,
                 models_dir: nodes_run::default_models_dir(),
+                device: Some(device),
                 force: false,
                 cache: Some(nodes_run::cache_path(&path)),
                 on_event: &mut on_event,
@@ -435,6 +463,17 @@ impl Workspace {
             .nodes
             .iter()
             .any(|n| n.type_name == "core.install" && n.status == Status::Ran);
+        let proposal_outputs: std::collections::BTreeSet<_> = report
+            .nodes
+            .iter()
+            .flat_map(|node| node.outputs.values())
+            .filter_map(|output| match output {
+                nodes_run::RunValue::Layer { source, name } => {
+                    Some((source.clone(), proposal::task_of_layer(name)?.to_string()))
+                }
+                _ => None,
+            })
+            .collect();
         if let Some(state) = self.nodes.graph.as_mut() {
             let mut rows = (*state.rows).clone();
             for n in &report.nodes {
@@ -452,18 +491,35 @@ impl Workspace {
             }
             state.rows = Arc::new(rows);
         }
-        if installed && self.document_id == job.document_id && self.font.source() == job.master_path
-        {
+        let current = self.document_id == job.document_id && self.font.source() == job.master_path;
+        if installed && current {
             self.reload_from_disk();
+        }
+        let mut reviewed = 0;
+        if !installed && current {
+            for (source, task) in &proposal_outputs {
+                if source != self.font.source() {
+                    continue;
+                }
+                if let Ok(summary) = self.adopt_proposal_from_disk(task, source) {
+                    reviewed += 1;
+                    if summary
+                        .glyphs
+                        .iter()
+                        .any(|glyph| glyph == &self.session.glyph_name)
+                    {
+                        self.ai.preview_task = Some(task.clone());
+                    }
+                }
+            }
+            self.refresh_proposals();
         }
         let failed = report
             .nodes
             .iter()
             .filter(|n| n.status == Status::Failed)
             .count();
-        self.note = if installed
-            && (self.document_id != job.document_id || self.font.source() != job.master_path)
-        {
+        self.note = if (installed || !proposal_outputs.is_empty()) && !current {
             "Node result is stale after a document or master switch".into()
         } else if report.ok {
             let ran = report
@@ -471,7 +527,12 @@ impl Workspace {
                 .iter()
                 .filter(|n| n.status == Status::Ran)
                 .count();
-            format!("Ran {ran} nodes, {} unchanged", report.nodes.len() - ran)
+            let base = format!("Ran {ran} nodes, {} unchanged", report.nodes.len() - ran);
+            if reviewed == 0 {
+                base
+            } else {
+                format!("{base}. Review {reviewed} proposal before installing")
+            }
         } else {
             format!("{failed} nodes failed")
         };
@@ -521,6 +582,24 @@ fn summary_line(n: &nodes_run::NodeResult) -> String {
 mod tests {
     use super::*;
 
+    fn copy_tree(source: &Path, destination: &Path) {
+        std::fs::create_dir_all(destination).expect("the destination directory is created");
+        for entry in std::fs::read_dir(source).expect("the source directory is readable") {
+            let entry = entry.expect("the source entry is readable");
+            let from = entry.path();
+            let to = destination.join(entry.file_name());
+            if entry
+                .file_type()
+                .expect("the source type is readable")
+                .is_dir()
+            {
+                copy_tree(&from, &to);
+            } else {
+                std::fs::copy(&from, &to).expect("the source file is copied");
+            }
+        }
+    }
+
     #[test]
     fn completed_install_does_not_reload_a_replacement_document() {
         let path = std::env::temp_dir().join(format!(
@@ -561,5 +640,207 @@ mod tests {
             "Node result is stale after a document or master switch"
         );
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
+    }
+
+    #[test]
+    fn proposal_only_graph_hands_the_result_to_explicit_review() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-node-review-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        let mut original = norad::Glyph::new("A");
+        original.width = 500.0;
+        font.default_layer_mut().insert_glyph(original.clone());
+        let mut proposed = original.clone();
+        proposed.width = 620.0;
+        proposal::write(&mut font, "bolden", vec![proposed]).expect("the proposal is valid");
+        font.save(&path).expect("the proposal fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        assert!(workspace.node_glyphs().is_empty());
+        workspace.open_glyph(0);
+        assert_eq!(workspace.node_glyphs(), vec!["A"]);
+        let job = NodeJob {
+            master_path: path.clone(),
+            document_id: workspace.document_id,
+            ..NodeJob::default()
+        };
+        let report = RunReport {
+            ok: true,
+            nodes: vec![nodes_run::NodeResult {
+                id: 1,
+                type_name: "font-ml.bolden".into(),
+                status: Status::Ran,
+                hash: String::new(),
+                outputs: BTreeMap::from([(
+                    "layer".into(),
+                    nodes_run::RunValue::Layer {
+                        source: path.clone(),
+                        name: proposal::layer_name("bolden"),
+                    },
+                )]),
+                report: serde_json::Value::Null,
+                seconds: 0.0,
+            }],
+        };
+
+        workspace.nodes_finished(&job, &report);
+
+        assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
+        assert_eq!(workspace.ai.proposals.len(), 1);
+        assert_eq!(
+            workspace.ai.preview_task.as_deref(),
+            Some("bolden"),
+            "note: {}; rows: {:?}",
+            workspace.note,
+            workspace
+                .nodes
+                .graph
+                .as_ref()
+                .map(|graph| graph.rows.as_ref())
+        );
+        assert!(workspace.note.contains("Review 1 proposal"));
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    #[ignore = "runs the review-only bolden graph over a disposable Virtua designspace"]
+    fn real_review_graph_proposes_selected_glyphs_then_installs_and_undoes() {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../virtua-grotesk/sources");
+        assert!(
+            source.is_dir(),
+            "clone Virtua Grotesk beside this repository"
+        );
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("docs/parity/2026-09-11/bolden-review.nodes.json");
+        let root = std::env::temp_dir().join(format!(
+            "runebender-xilem-real-nodes-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let sources = root.join("sources");
+        copy_tree(&source, &sources);
+        let graph_path = root.join("nodes/bolden-review.nodes.json");
+        std::fs::create_dir_all(graph_path.parent().expect("the graph has a parent"))
+            .expect("the nodes directory is created");
+        std::fs::copy(&fixture, &graph_path).expect("the review graph is copied");
+
+        let designspace = sources.join("VirtuaGrotesk.designspace");
+        let mut workspace = Workspace::open(&designspace).expect("the disposable project opens");
+        workspace.nodes.device = "cpu".into();
+        workspace.open_nodes_file(&graph_path);
+        let graph = workspace.nodes.graph.as_ref().expect("the graph opens");
+        assert!(graph.problems.is_empty());
+        assert!(
+            graph
+                .graph
+                .nodes
+                .iter()
+                .all(|node| node.type_name != "core.install"),
+            "the review graph must not install before comparison"
+        );
+        workspace.nodes_set_value(3, "strength", serde_json::json!(1.0));
+        workspace.save_nodes_file();
+        let saved = NodeGraph::load(&graph_path).expect("the edited graph reopens");
+        assert_eq!(
+            saved.node(3).and_then(|node| node.values.get("strength")),
+            Some(&serde_json::json!(1.0))
+        );
+
+        let r = workspace.font.index_of("R").expect("Virtua contains R");
+        let s = workspace.font.index_of("S").expect("Virtua contains S");
+        workspace.open_glyph(r);
+        workspace.multi_selected = Arc::new(std::collections::HashSet::from([r, s]));
+        assert_eq!(workspace.node_glyphs(), vec!["R", "S"]);
+        let original = workspace
+            .font
+            .font()
+            .get_glyph("R")
+            .expect("the Regular master contains R")
+            .clone();
+        workspace.run_nodes();
+        let started = std::time::Instant::now();
+        while workspace.nodes.job.as_ref().is_some_and(|job| {
+            job.finished
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_none()
+        }) && started.elapsed().as_secs() < 60
+        {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let events = workspace
+            .nodes
+            .job
+            .as_ref()
+            .expect("the job remains until the pump adopts it")
+            .events
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, Event::Start { id: 3, .. }))
+        );
+        assert!(events.iter().any(|event| matches!(
+            event,
+            Event::End {
+                id: 3,
+                status: Status::Ran,
+                ..
+            }
+        )));
+        assert!(events.iter().any(
+            |event| matches!(event, Event::Progress { label, .. } if label == "R" || label == "S")
+        ));
+        workspace.nodes_pump();
+
+        assert!(workspace.nodes.job.is_none(), "the bounded graph finishes");
+        assert_eq!(
+            workspace.font.font().get_glyph("R"),
+            Some(&original),
+            "the proposal-only graph must not change the foreground"
+        );
+        assert_eq!(
+            workspace.ai.preview_task.as_deref(),
+            Some("bolden"),
+            "note: {}; rows: {:?}",
+            workspace.note,
+            workspace
+                .nodes
+                .graph
+                .as_ref()
+                .map(|graph| graph.rows.as_ref())
+        );
+        assert!(workspace.note.contains("Review 1 proposal"));
+        let rows = workspace
+            .nodes
+            .graph
+            .as_ref()
+            .expect("the graph remains open")
+            .rows
+            .clone();
+        assert!(
+            rows.values()
+                .all(|row| matches!(row, RowState::Done(Status::Ran | Status::Skipped, _)))
+        );
+        assert!(matches!(
+            rows.get(&5),
+            Some(RowState::Done(_, Some(summary))) if summary.contains("model")
+        ));
+        workspace.install_proposal("bolden", Some(vec!["R".into()]));
+        assert_ne!(workspace.font.font().get_glyph("R"), Some(&original));
+        workspace.undo_install();
+        assert_eq!(workspace.font.font().get_glyph("R"), Some(&original));
+
+        std::fs::remove_dir_all(root).expect("the disposable node fixture is removed");
     }
 }

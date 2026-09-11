@@ -335,7 +335,7 @@ impl Workspace {
 
     /// Pull a proposal layer from the UFO on disk into the open font,
     /// replacing any earlier proposal for the task.
-    fn adopt_proposal_from_disk(
+    pub(crate) fn adopt_proposal_from_disk(
         &mut self,
         task: &str,
         source: &Path,
@@ -477,16 +477,11 @@ impl Workspace {
         if glyph.is_some() && glyph_name.is_none() {
             return;
         }
-        // The other master, where it says what weight it carries.
-        let reference = (self.font.master_paths().len() > 1).then(|| {
-            let other = if self.font.active() == 0 {
-                self.font.master_paths().len() - 1
-            } else {
-                0
-            };
-            self.font.master_paths()[other].clone()
-        });
+        // Reference fitting remains an explicit Nodes input. The
+        // direct rail uses the visible strength control, which is the
+        // dependable bounded workflow for a draft model.
         let strength = self.ai.strength;
+        let device = self.nodes.device.clone();
         self.ai.busy = Some(match &glyph_name {
             Some(name) => format!("Running {task} on {name}…"),
             None => format!("Running {task} on every glyph…"),
@@ -509,8 +504,8 @@ impl Workspace {
                 &source,
                 glyph_name.as_deref(),
                 strength,
-                reference.as_deref(),
-                "auto",
+                None,
+                &device,
                 &job,
             );
             *job.finished.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
@@ -792,32 +787,28 @@ mod tests {
             .get_glyph("R")
             .expect("Virtua contains R")
             .clone();
-        let job = AiJob {
-            task: "bolden".into(),
-            source: disposable.clone(),
-            master_path: disposable.clone(),
-            glyph: Some("R".into()),
-            ..AiJob::default()
-        };
+        let mut workspace = Workspace::open(&disposable).expect("the disposable UFO opens");
+        workspace.load_model(&model);
+        workspace.nodes.device = "cpu".into();
+        let index = workspace.font.index_of("R").expect("Virtua contains R");
+        workspace.open_glyph(index);
+        workspace.run_task("bolden", Some(index));
+        let started = std::time::Instant::now();
+        while workspace.ai.job.as_ref().is_some_and(|job| {
+            job.finished
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_none()
+        }) && started.elapsed().as_secs() < 60
+        {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        workspace.ai_pump();
+        assert!(workspace.ai.job.is_none(), "the bounded model run finishes");
+        assert!(workspace.note.contains("points moved"));
+        assert_eq!(workspace.ai.preview_task.as_deref(), Some("bolden"));
+        assert_eq!(workspace.ai.proposals.len(), 1);
 
-        let report = run_font_ml(
-            Path::new("font-ml"),
-            "bolden",
-            &model,
-            &disposable,
-            Some("R"),
-            1.0,
-            None,
-            "cpu",
-            &job,
-        )
-        .expect("the installed model runs on one glyph");
-        assert!(
-            report
-                .get("moved")
-                .and_then(|value| value.as_u64())
-                .is_some_and(|moved| moved > 0)
-        );
         let on_disk = norad::Font::load(&disposable).expect("the proposal UFO reopens");
         assert_eq!(
             on_disk.get_glyph("R").expect("foreground R remains"),
@@ -833,9 +824,6 @@ mod tests {
             .clone();
         assert_ne!(proposed, original);
 
-        let mut workspace = Workspace::open(&disposable).expect("the proposal UFO opens in Xilem");
-        workspace.refresh_proposals();
-        assert_eq!(workspace.ai.proposals.len(), 1);
         workspace.install_proposal("bolden", Some(vec!["R".into()]));
         assert_eq!(
             workspace.font.font().get_glyph("R").expect("installed R"),

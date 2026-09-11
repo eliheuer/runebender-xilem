@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "core.source",
+      "pos": [32, 128]
+    },
+    {
+      "id": 2,
+      "type": "core.model",
+      "pos": [32, 256],
+      "values": {
+        "name": "virtua-12m-bolden"
+      }
+    },
+    {
+      "id": 3,
+      "type": "font-ml.bolden",
+      "pos": [320, 160],
+      "values": {
+        "strength": 1.0
+      }
+    },
+    {
+      "id": 4,
+      "type": "core.master",
+      "pos": [320, 336],
+      "values": {
+        "name": "Bold"
+      }
+    },
+    {
+      "id": 5,
+      "type": "core.compare",
+      "pos": [608, 128]
+    }
+  ],
+  "links": [
+    [1, "source", 3, "source"],
+    [1, "glyphs", 3, "glyphs"],
+    [2, "model", 3, "model"],
+    [3, "layer", 5, "layer"],
+    [4, "source", 5, "against"]
+  ]
+}
