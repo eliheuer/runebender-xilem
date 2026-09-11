@@ -238,7 +238,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | [x] | A02 | Run/cancel/progress/failure lifecycle with fake or tiny fixture subprocess; UI stays responsive and processes terminate. Verified with deterministic worker tests in `a7630e5`; native pointer verification remains in R04. |
 | [x] | A03 | Proposal review/install/discard: audit current immediate install and Undo install behavior; preserve explicit user-controlled install semantics and original layer. Verified in `1d96364` and `dd0159a`; native pointer verification remains part of R04. |
 | [x] | A04 | Stale result safety: document/master/glyph/revision changes, close and reload cannot apply output to another target. Verified in `4dd2518` for direct tasks and node `core.install`, including edited targets, editor glyph switches, replacement documents, and changed all-glyph inventories. |
-| [ ] | A05 | Graph new/open/save/run, port type validation, parameter edits, graph tabs and failure location; round trip bolden and train-adapter fixtures without expensive training. |
+| [x] | A05 | Graph new/open/save/run, port type validation, parameter edits, graph tabs and failure location; round trip bolden and train-adapter fixtures without expensive training. Verified in `6d7cc51` plus the real review graph in `ce75e3b`; the toolbar uses the native Open picker, and a disposable train-adapter graph is saved, reopened, edited, validated, and given a node-local failure without starting training. |
 | [ ] | A06 | Live automation interface and headless Core: same operations/undo semantics, scoped authorization, conflict errors and discoverability; no disk writer bypass over live font root. |
 | [ ] | A07 | Chat panel parity: currently unconnected. Trace GPUI behavior and implement its local workflow or clearly record dependency; never claim the panel is functional. |
 | [x] | A08 | Talk/demo path: disposable Virtua sample → graph proposal → comparison → explicit install → undo. Verified in `ce75e3b` with the checked-in review-only graph and real CPU integration test. |
@@ -415,6 +415,12 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   installed tool's optional fitted-reference path panicked during investigation;
   the fixture records that blocker by leaving Bolden's reference port disconnected
   while keeping the separate Bold-master Compare node.
+- A05 — verified in `6d7cc51` and `ce75e3b`: New creates a collision-safe graph
+  beside the font, Open invokes the existing native `.nodes.json` picker, Save
+  rescans graph tabs, and the real review graph exercises parameters, progress,
+  proposal output, and reopening. A normal disposable train-adapter graph test
+  validates typed ports, edits and persists parameters, reopens it, and retains
+  the exact failing-node diagnostic without running training.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the

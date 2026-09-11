@@ -100,6 +100,11 @@ Compare node still compares the proposal with the Bold master. The direct Local
 AI rail likewise uses its explicit Strength control rather than hidden automatic
 reference fitting.
 
+Commit `6d7cc51` also wires the Nodes toolbar Open button to the native graph
+picker. A normal disposable test covers New, Save, graph-tab rescan, parameter
+editing, typed validation, reopen, and exact node-local failure reporting for a
+train-adapter graph without invoking training.
+
 ## Evidence and limits
 
 Implementation commits are `a40808b` (Latin/Arabic navigation and metadata),
