@@ -144,6 +144,7 @@ mod tests {
     use masonry::properties::{ContentColor, PlaceholderColor};
     use masonry::widgets::TextArea;
     use masonry_testing::TestHarness;
+    use xilem::style::Style;
 
     #[test]
     fn placeholder_and_typed_text_have_identical_ink_bounds() {
@@ -221,6 +222,39 @@ mod tests {
             clipped,
             harness.render(),
             "selection, caret, ascenders, and descenders fit without vertical clipping"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn ui_input_font_fallback_distinguishes_arabic_glyphs() {
+        let render = |contents: &str, suffix: &str| {
+            let path = std::env::temp_dir().join(format!(
+                "runebender-arabic-input-{}-{suffix}.png",
+                std::process::id()
+            ));
+            let path_string = path.to_string_lossy().into_owned();
+            crate::platform::screenshot::render_to(
+                contents.to_owned(),
+                xilem::Color::BLACK,
+                |state| {
+                    xilem::view::sized_box(crate::text_input(state.clone(), |_, _| ()))
+                        .width(Length::px(170.0))
+                        .height(Length::px(28.0))
+                },
+                (170, 28),
+                1.0,
+                &path_string,
+            );
+            let image = std::fs::read(&path).expect("Arabic input screenshot should exist");
+            std::fs::remove_file(path).expect("Arabic input screenshot should be removable");
+            image
+        };
+
+        assert_ne!(
+            render("\u{0628}", "beh"),
+            render("\u{0627}", "alef"),
+            "Arabic beh and alef need distinct fallback glyphs, not one tofu box"
         );
     }
 }
