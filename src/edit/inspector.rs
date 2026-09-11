@@ -7,6 +7,79 @@ use crate::*;
 use runebender_core::outline::glyph_paths::round_units;
 
 impl Workspace {
+    fn font_data_snapshot(&self) -> Vec<FontDataSnapshot> {
+        self.font
+            .project
+            .masters
+            .iter()
+            .map(|master| FontDataSnapshot {
+                groups: master.font.groups.clone(),
+                kerning: master.font.kerning.clone(),
+                features: master.font.features.clone(),
+            })
+            .collect()
+    }
+
+    fn font_data_history_context(&self) -> Option<(String, usize, Vec<FontDataSnapshot>)> {
+        let glyph = match self.mode {
+            Mode::Editor(_) => self.session.glyph_name.clone(),
+            Mode::Overview => self
+                .selected
+                .and_then(|index| self.font.glyphs.get(index))?
+                .name
+                .clone(),
+            Mode::Nodes => return None,
+        };
+        let undo_depth = self
+            .font
+            .index_of(&glyph)
+            .map_or(0, |index| self.font.master().undo_depth(index));
+        Some((glyph, undo_depth, self.font_data_snapshot()))
+    }
+
+    fn finish_font_data_history(
+        &mut self,
+        context: Option<(String, usize, Vec<FontDataSnapshot>)>,
+        label: &str,
+    ) {
+        let Some((glyph, undo_depth, before)) = context else {
+            return;
+        };
+        let after = self.font_data_snapshot();
+        if before == after {
+            return;
+        }
+        self.metadata_undo.push(MetadataEdit::FontData {
+            glyph,
+            before,
+            after,
+            label: label.into(),
+            undo_depth,
+        });
+        self.metadata_redo.clear();
+    }
+
+    fn apply_font_data_snapshot(&mut self, values: &[FontDataSnapshot]) -> bool {
+        if values.len() != self.font.project.masters.len() {
+            return false;
+        }
+        for (master, value) in self.font.project.masters.iter_mut().zip(values) {
+            if master.font.groups != value.groups || master.font.kerning != value.kerning {
+                master.kerning_dirty = true;
+                master.dirty = true;
+            }
+            if master.font.features != value.features {
+                master.dirty = true;
+            }
+            master.font.groups = value.groups.clone();
+            master.font.kerning = value.kerning.clone();
+            master.font.features = value.features.clone();
+        }
+        self.refresh_metric_bufs();
+        self.modified = true;
+        true
+    }
+
     /// What sits under the drawing: the background layer if it is turned
     /// on, and the reference glyph if one is named.
     pub(crate) fn underlay(&self) -> canvas::editor::Underlay {
@@ -140,8 +213,10 @@ impl Workspace {
             self.kern2_buf = value.clone();
         }
         let name = self.session.glyph_name.clone();
+        let history = self.font_data_history_context();
         if self.font.set_kern_group(&name, first_side, value.trim()) {
             self.modified = true;
+            self.finish_font_data_history(history, "kerning group");
         }
     }
 
@@ -337,6 +412,9 @@ impl Workspace {
             MetadataEdit::Unicode {
                 glyph, undo_depth, ..
             } => (glyph, *undo_depth),
+            MetadataEdit::FontData {
+                glyph, undo_depth, ..
+            } => (glyph, *undo_depth),
         };
         let current_name = match self.mode {
             Mode::Editor(_) => Some(self.session.glyph_name.as_str()),
@@ -385,6 +463,18 @@ impl Workspace {
                     if redo { "Redid" } else { "Undid" }
                 )
             }
+            MetadataEdit::FontData {
+                before,
+                after,
+                label,
+                ..
+            } => {
+                let values = if redo { after } else { before };
+                if !self.apply_font_data_snapshot(values) {
+                    return false;
+                }
+                format!("{} {label}", if redo { "Redid" } else { "Undid" })
+            }
         };
         if redo {
             self.metadata_redo.pop();
@@ -413,6 +503,9 @@ impl Workspace {
                 undo_depth,
             } => (if redo { before } else { after }, *undo_depth),
             MetadataEdit::Unicode {
+                glyph, undo_depth, ..
+            } => (glyph, *undo_depth),
+            MetadataEdit::FontData {
                 glyph, undo_depth, ..
             } => (glyph, *undo_depth),
         };
@@ -560,6 +653,7 @@ impl Workspace {
 
     /// Drop one kerning pair from the active master.
     pub(crate) fn delete_kern_pair(&mut self, first: &str, second: &str) {
+        let history = self.font_data_history_context();
         let master = self.font.master_mut();
         let Some(seconds) = master.font.kerning.get_mut(first) else {
             return;
@@ -576,11 +670,13 @@ impl Workspace {
         master.kerning_dirty = true;
         self.modified = true;
         self.note = format!("Removed {first} · {second}");
+        self.finish_font_data_history(history, "kerning pair deletion");
     }
 
     /// Set the pair in the Kerning section's editor row, on the
     /// active master. Enter in any of its three fields.
     pub(crate) fn set_kern_pair_from_bufs(&mut self) {
+        let history = self.font_data_history_context();
         let first = self.kern_first_buf.trim().to_string();
         let second = self.kern_second_buf.trim().to_string();
         let Ok(value) = self.kern_value_buf.trim().parse::<f64>() else {
@@ -611,10 +707,12 @@ impl Workspace {
         master.kerning_dirty = true;
         self.modified = true;
         self.note = format!("{first} \u{00b7} {second} = {value}");
+        self.finish_font_data_history(history, "kerning pair");
     }
 
     /// Add the grid selection to a kerning group, on every master.
     pub(crate) fn add_selection_to_group(&mut self, first_side: bool, group: &str) {
+        let history = self.font_data_history_context();
         let names = self.selection_names();
         if names.is_empty() {
             self.note = "Select glyphs in the grid first".into();
@@ -651,11 +749,13 @@ impl Workspace {
         }
         self.modified = true;
         self.note = format!("@{group}: {added} membership(s) added");
+        self.finish_font_data_history(history, "kerning group membership");
     }
 
     /// Drop one glyph from a kerning group, on every master. An
     /// emptied group is removed.
     pub(crate) fn remove_from_group(&mut self, full_group: &str, member: &str) {
+        let history = self.font_data_history_context();
         let mut removed = 0_usize;
         for master in &mut self.font.project.masters {
             let mut emptied = false;
@@ -680,6 +780,7 @@ impl Workspace {
         }
         self.modified = true;
         self.note = format!("Removed {member} from {removed} group membership(s)");
+        self.finish_font_data_history(history, "kerning group membership");
     }
 
     /// A new left-side group from the Groups field, holding the grid
@@ -700,6 +801,7 @@ impl Workspace {
     /// Replace the generated mark and mkmk lookups in the feature
     /// file with what core derives from the anchors now.
     pub(crate) fn generate_features(&mut self) {
+        let history = self.font_data_history_context();
         let fea = runebender_core::text::features::with_generated(self.font.font());
         if fea == self.font.font().features {
             self.features_status = Some("Nothing to generate from anchors".into());
@@ -708,6 +810,7 @@ impl Workspace {
         self.font.font_mut().features = fea;
         self.modified = true;
         self.features_status = Some("Generated mark and mkmk from anchors".into());
+        self.finish_font_data_history(history, "generated features");
     }
 
     /// Compile-check the feature file that shaping currently reads.
@@ -874,6 +977,10 @@ mod size_tests {
         assert_eq!(app.font.kern_group("A", true), "public.kern1.A");
         assert!(app.font.master().dirty);
         assert!(app.font.master().kerning_dirty);
+        app.undo_active_edit(false);
+        assert_eq!(app.font.kern_group("A", true), "");
+        app.undo_active_edit(true);
+        assert_eq!(app.font.kern_group("A", true), "public.kern1.A");
 
         app.kern_first_buf = "public.kern1.A".into();
         app.kern_second_buf = "V".into();
@@ -881,11 +988,19 @@ mod size_tests {
         app.set_kern_pair_from_bufs();
         let state = TextState::new(&TextInputs::new(&app.font).with_text("AV"));
         assert_eq!(state.buffer.layout(state.line_height).items[1].x, 420.0);
+        app.undo_active_edit(false);
+        let state = TextState::new(&TextInputs::new(&app.font).with_text("AV"));
+        assert_eq!(state.buffer.layout(state.line_height).items[1].x, 500.0);
+        app.undo_active_edit(true);
+        let state = TextState::new(&TextInputs::new(&app.font).with_text("AV"));
+        assert_eq!(state.buffer.layout(state.line_height).items[1].x, 420.0);
 
+        let history_len = app.metadata_undo.len();
         app.kern_value_buf = "NaN".into();
         app.set_kern_pair_from_bufs();
         assert_eq!(app.note, "kerning value must be finite");
         assert_eq!(app.font.font().kerning["public.kern1.A"]["V"], -80.0);
+        assert_eq!(app.metadata_undo.len(), history_len);
 
         assert!(app.save());
         assert!(!app.modified);
@@ -904,6 +1019,10 @@ mod size_tests {
         reopened.delete_kern_pair("public.kern1.A", "V");
         assert!(reopened.modified);
         assert!(reopened.font.master().kerning_dirty);
+        reopened.undo_active_edit(false);
+        assert_eq!(reopened.font.font().kerning["public.kern1.A"]["V"], -80.0);
+        reopened.undo_active_edit(true);
+        assert!(reopened.font.font().kerning.is_empty());
         assert!(reopened.save());
         let reopened = Workspace::open(&path).expect("reopen after pair deletion");
         assert!(reopened.font.font().kerning.is_empty());
@@ -929,6 +1048,42 @@ mod size_tests {
         );
         assert!(!app.modified);
         assert!(!app.font.master().dirty);
+        std::fs::remove_dir_all(path).expect("remove disposable font");
+    }
+
+    #[test]
+    fn generated_features_are_undoable() {
+        let path = disposable_font("feature-history");
+        let mut font = norad::Font::new();
+        let mut base = norad::Glyph::new("A");
+        base.anchors.push(norad::Anchor::new(
+            250.0,
+            700.0,
+            Some(norad::Name::new("top").expect("anchor name")),
+            None,
+            None,
+        ));
+        let mut mark = norad::Glyph::new("acutecomb");
+        mark.anchors.push(norad::Anchor::new(
+            0.0,
+            0.0,
+            Some(norad::Name::new("_top").expect("anchor name")),
+            None,
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(base);
+        font.default_layer_mut().insert_glyph(mark);
+        font.save(&path).expect("save disposable test font");
+        let mut app = Workspace::open(&path).expect("open test font");
+        app.open_glyph(app.font.index_of("A").expect("A"));
+
+        app.generate_features();
+        let generated = app.font.font().features.clone();
+        assert!(generated.contains("feature mark"));
+        app.undo_active_edit(false);
+        assert!(app.font.font().features.is_empty());
+        app.undo_active_edit(true);
+        assert_eq!(app.font.font().features, generated);
         std::fs::remove_dir_all(path).expect("remove disposable font");
     }
 }
