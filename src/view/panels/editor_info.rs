@@ -448,16 +448,10 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     )
 }
 
-/// Features: the font's feature file, with Generate (the mark and
-/// mkmk lookups core derives from anchors) and a compile check. Text
-/// remains read-only until Xilem has an editable multiline text area.
+/// Features: an editable `features.fea` draft, with explicit Apply/Revert and
+/// generation of mark and mkmk lookups from anchors.
 pub(crate) fn features_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    let text = if app.font.font().features.trim().is_empty() {
-        "No feature file".to_string()
-    } else {
-        app.font.font().features.clone()
-    };
     section(
         app,
         "Features",
@@ -465,7 +459,16 @@ pub(crate) fn features_section(app: &Workspace) -> impl WidgetView<Workspace> + 
             Region::List,
             (
                 sized_box(portal(
-                    label(text).text_size(TextSize::Body.px()).color(pal.text),
+                    text_input(app.features_buf.clone(), |app: &mut Workspace, value| {
+                        app.edit_features(value);
+                    })
+                    .insert_newline(masonry::widgets::InsertNewline::OnEnter)
+                    .text_color(pal.text)
+                    .clip(true)
+                    .background_color(pal.field())
+                    .border_color(pal.field_outline)
+                    .border_width(Stroke::Hairline.length())
+                    .corner_radius(Radius::Sm.length()),
                 ))
                 .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(260.0))))
                 .background_color(pal.field())
@@ -477,6 +480,12 @@ pub(crate) fn features_section(app: &Workspace) -> impl WidgetView<Workspace> + 
                     (
                         chip(pal, "Generate".into(), |app: &mut Workspace| {
                             app.generate_features();
+                        }),
+                        chip(pal, "Apply".into(), |app: &mut Workspace| {
+                            app.apply_features();
+                        }),
+                        chip(pal, "Revert".into(), |app: &mut Workspace| {
+                            app.revert_features();
                         }),
                         chip(pal, "Check".into(), |app: &mut Workspace| {
                             app.check_features();

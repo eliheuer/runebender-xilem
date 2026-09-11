@@ -218,6 +218,10 @@ pub(crate) struct Workspace {
     pub(crate) kern_value_buf: String,
     /// The Groups section's name field.
     pub(crate) group_name_buf: String,
+    /// The editable `features.fea` draft for the active master.
+    pub(crate) features_buf: String,
+    /// Whether `features_buf` differs from the active master's applied text.
+    pub(crate) features_edited: bool,
     /// What the Features section last did.
     pub(crate) features_status: Option<String>,
 }

@@ -1240,7 +1240,13 @@ impl Workspace {
         if index == self.font.active() {
             return;
         }
+        if self.features_edited {
+            self.note = "Apply or Revert feature edits before switching masters".into();
+            return;
+        }
         self.font.set_active(index);
+        self.features_buf = self.font.font().features.clone();
+        self.features_status = None;
         if self.show_all_masters {
             self.reference_layers = (0..self.font.master_count())
                 .filter(|master| *master != index)

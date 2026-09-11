@@ -18,6 +18,7 @@ pub(crate) static NEXT_TEXT_CONTEXT_ID: AtomicU64 = AtomicU64::new(1);
 impl Workspace {
     pub(crate) fn open(path: &FsPath) -> Result<Self, String> {
         let font = FontModel::open(path)?;
+        let features_buf = font.font().features.clone();
         let theme_id: &'static str = match std::env::var("RUNEBENDER_THEME").ok().as_deref() {
             Some("dark") => "dark",
             Some("light") => "light",
@@ -265,6 +266,8 @@ impl Workspace {
             kern_second_buf: String::new(),
             kern_value_buf: String::new(),
             group_name_buf: String::new(),
+            features_buf,
+            features_edited: false,
             features_status: None,
             #[cfg(unix)]
             live: runebender_core::document::live_socket::Server::start()
@@ -310,6 +313,10 @@ impl Workspace {
 
     /// Saves the live document and reports whether the disk now matches it.
     pub(crate) fn save(&mut self) -> bool {
+        if self.features_edited {
+            self.note = "Apply or Revert feature edits before saving".into();
+            return false;
+        }
         match self.font.save() {
             Ok(()) => {
                 self.modified = false;
@@ -1156,6 +1163,29 @@ mod tests {
         assert_eq!(workspace.font.master_names().len(), 2);
         assert_eq!(workspace.font.active(), 1);
         assert_eq!(workspace.font.master_name(1), "Bold");
+        std::fs::remove_dir_all(dir).expect("the designspace fixture is removed");
+    }
+
+    #[test]
+    fn feature_draft_blocks_master_switch_reload_and_save() {
+        let (dir, designspace) = two_master_designspace("feature-draft-safety");
+        let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
+        let original = workspace.features_buf.clone();
+        workspace.edit_features(format!("{original}\n# pending review\n"));
+
+        workspace.set_master(1);
+        assert_eq!(workspace.font.active(), 0);
+        assert!(workspace.note.contains("Apply or Revert"));
+        workspace.reload_from_disk();
+        assert!(workspace.features_buf.ends_with("# pending review\n"));
+        assert!(workspace.note.contains("save or discard"));
+        assert!(!workspace.save());
+        assert!(workspace.note.contains("Apply or Revert"));
+
+        workspace.revert_features();
+        workspace.set_master(1);
+        assert_eq!(workspace.font.active(), 1);
+        assert_eq!(workspace.features_buf, workspace.font.font().features);
         std::fs::remove_dir_all(dir).expect("the designspace fixture is removed");
     }
 

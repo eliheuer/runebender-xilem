@@ -75,6 +75,8 @@ impl Workspace {
             master.font.kerning = value.kerning.clone();
             master.font.features = value.features.clone();
         }
+        self.features_buf = self.font.font().features.clone();
+        self.features_edited = false;
         self.refresh_metric_bufs();
         self.modified = true;
         true
@@ -798,26 +800,36 @@ impl Workspace {
         self.group_name_buf.clear();
     }
 
-    /// Replace the generated mark and mkmk lookups in the feature
-    /// file with what core derives from the anchors now.
+    /// Update the active master's feature draft without applying it.
+    pub(crate) fn edit_features(&mut self, value: String) {
+        self.features_buf = value;
+        self.features_edited = self.features_buf != self.font.font().features;
+        self.modified |= self.features_edited;
+        self.features_status = None;
+    }
+
+    /// Discard the feature draft and restore the active master's applied text.
+    pub(crate) fn revert_features(&mut self) {
+        self.features_buf = self.font.font().features.clone();
+        self.features_edited = false;
+        self.modified = self.font.project.masters.iter().any(|master| master.dirty);
+        self.features_status = Some("Reverted feature draft".into());
+    }
+
+    /// Put generated mark and mkmk lookups in the feature draft for review.
     pub(crate) fn generate_features(&mut self) {
-        let history = self.font_data_history_context();
-        let fea = runebender_core::text::features::with_generated(self.font.font());
-        if fea == self.font.font().features {
+        let mut draft = self.font.font().clone();
+        draft.features = self.features_buf.clone();
+        let fea = runebender_core::text::features::with_generated(&draft);
+        if fea == self.features_buf {
             self.features_status = Some("Nothing to generate from anchors".into());
             return;
         }
-        self.font.font_mut().features = fea;
-        self.modified = true;
-        self.features_status = Some("Generated mark and mkmk from anchors".into());
-        self.finish_font_data_history(history, "generated features");
+        self.edit_features(fea);
+        self.features_status = Some("Generated mark and mkmk · review and Apply".into());
     }
 
-    /// Compile-check the feature file that shaping currently reads.
-    ///
-    /// Feature text is still read-only in this frontend, so this must not
-    /// claim to apply a change or dirty the document.
-    pub(crate) fn check_features(&mut self) {
+    fn feature_compile_verdict(&self, features: &str) -> Result<(), String> {
         use runebender_core::text::shape::{ShapingFont, ShapingGlyph, ShapingSource};
 
         let master = self.font.master();
@@ -838,21 +850,46 @@ impl Workspace {
                 }),
         )
         .collect();
-        let verdict = ShapingFont::build(&ShapingSource {
+        ShapingFont::build(&ShapingSource {
             units_per_em: master.units_per_em,
             glyphs,
-            features: master.font.features.clone(),
-        });
-        self.features_status = Some(match verdict {
-            Ok(_) => "Compiled clean · shaping is current".into(),
+            features: features.into(),
+        })
+        .map(|_| ())
+    }
+
+    fn feature_verdict_status(prefix: &str, verdict: Result<(), String>) -> String {
+        match verdict {
+            Ok(()) => format!("{prefix} · compiled clean · shaping updated"),
             Err(error) => {
                 let first = error
                     .lines()
                     .find(|line| !line.trim().is_empty())
                     .unwrap_or("feature compile error");
-                format!("Does not compile: {first}")
+                format!("{prefix}, but does not compile: {first}")
             }
-        });
+        }
+    }
+
+    /// Compile-check the current draft without applying or dirtying it further.
+    pub(crate) fn check_features(&mut self) {
+        let verdict = self.feature_compile_verdict(&self.features_buf);
+        self.features_status = Some(Self::feature_verdict_status("Checked", verdict));
+    }
+
+    /// Apply the feature draft to the active master and refresh shaping data.
+    pub(crate) fn apply_features(&mut self) {
+        let verdict = self.feature_compile_verdict(&self.features_buf);
+        if !self.features_edited {
+            self.features_status = Some(Self::feature_verdict_status("Already applied", verdict));
+            return;
+        }
+        let history = self.font_data_history_context();
+        self.font.font_mut().features = self.features_buf.clone();
+        self.features_edited = false;
+        self.modified = true;
+        self.finish_font_data_history(history, "feature text");
+        self.features_status = Some(Self::feature_verdict_status("Applied", verdict));
     }
 }
 
@@ -1044,7 +1081,7 @@ mod size_tests {
         assert!(
             app.features_status
                 .as_deref()
-                .is_some_and(|status| status.starts_with("Does not compile:"))
+                .is_some_and(|status| status.starts_with("Checked, but does not compile:"))
         );
         assert!(!app.modified);
         assert!(!app.font.master().dirty);
@@ -1078,12 +1115,46 @@ mod size_tests {
         app.open_glyph(app.font.index_of("A").expect("A"));
 
         app.generate_features();
-        let generated = app.font.font().features.clone();
+        let generated = app.features_buf.clone();
         assert!(generated.contains("feature mark"));
+        assert!(app.font.font().features.is_empty());
+        assert!(app.features_edited);
+        assert!(!app.save(), "an unapplied draft cannot be silently skipped");
+        app.apply_features();
+        assert_eq!(app.font.font().features, generated);
+        assert!(!app.features_edited);
         app.undo_active_edit(false);
         assert!(app.font.font().features.is_empty());
+        assert!(app.features_buf.is_empty());
         app.undo_active_edit(true);
         assert_eq!(app.font.font().features, generated);
+        assert_eq!(app.features_buf, generated);
+        assert!(app.save());
+        let reopened = Workspace::open(&path).expect("reopen generated features");
+        assert_eq!(reopened.font.font().features, generated);
+        assert_eq!(reopened.features_buf, generated);
+        std::fs::remove_dir_all(path).expect("remove disposable font");
+    }
+
+    #[test]
+    fn feature_draft_reverts_without_dirtying_the_font() {
+        let path = disposable_font("feature-revert");
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("A"));
+        font.features = "languagesystem DFLT dflt;\n".into();
+        font.save(&path).expect("save disposable test font");
+        let mut app = Workspace::open(&path).expect("open test font");
+
+        app.edit_features("feature liga { sub A A by A; } liga;\n".into());
+        assert!(app.features_edited);
+        assert!(app.modified);
+        assert!(!app.font.master().dirty);
+        app.revert_features();
+        assert_eq!(app.features_buf, "languagesystem DFLT dflt;\n");
+        assert!(!app.features_edited);
+        assert!(!app.modified);
+        assert!(!app.font.master().dirty);
         std::fs::remove_dir_all(path).expect("remove disposable font");
     }
 }
