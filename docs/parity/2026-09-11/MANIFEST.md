@@ -62,6 +62,8 @@ or otherwise mutates it.
 | `r05-nodes-review-light.png` | Light | review-only nodes | same state |
 | `a07-chat-gray.png` | Gray | Local Chat | R open; three discovered GGUF models; qwen3-4b selected; prompt and Send visible |
 | `a07-chat-light.png` | Light | Local Chat | same state |
+| `e08-features-check-gray.png` | Gray | Features inspector | read-only Virtua feature text; honest Generate and Check actions |
+| `e08-features-check-light.png` | Light | Features inspector | same state |
 
 Build first:
 
@@ -149,6 +151,23 @@ Replace `gray` with `light` for the paired capture. Both were inspected at
 1100×720: model names, selected state, prompt, and Send fit the 244 px rail.
 Their SHA-256 hashes are `0fc4bd17388b4ce60781f1f60a6b528aab0eb99e79909ee31b33c72716088b02`
 and `b3d75716f452e0ab1a3054c96386c58bca0b5d004627d14541c3be620937ebb9`.
+
+The E08 files expand the Features section over the read-only Virtua source:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/e08-features-check-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray \
+RUNEBENDER_SELECTED=beh-ar RUNEBENDER_EXPAND=Features \
+target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+```
+
+Replace `gray` with `light` for the paired capture. Both were individually
+inspected: the feature source stays inside its portal and the Generate and Check
+actions remain visible. The renamed Check action accurately reflects that this
+frontend does not yet edit multiline feature text. Their SHA-256 hashes are
+`a4f8234bcdd43a3bd077faafee93ce3fc490356607c7ebb1d7dc8766d5bde58b` and
+`690abff7180d1b22969b1352aded31d3b1afa0943da6f8b62e8f10111a66d158`.
 
 The real integration run uses `RUNEBENDER_AI_DEVICE=cpu` semantics on a copied
 designspace, not this read-only screenshot command. It selects R and S, reports
