@@ -1157,4 +1157,61 @@ mod size_tests {
         assert!(!app.font.master().dirty);
         std::fs::remove_dir_all(path).expect("remove disposable font");
     }
+
+    #[test]
+    fn anchor_drag_delete_undo_and_reopen() {
+        let path = disposable_font("anchor-history");
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("beh-ar");
+        glyph.anchors.push(norad::Anchor::new(
+            300.0,
+            500.0,
+            Some(norad::Name::new("top").expect("anchor name")),
+            None,
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(glyph);
+        font.save(&path).expect("save disposable test font");
+        let mut app = Workspace::open(&path).expect("open test font");
+        app.open_glyph(app.font.index_of("beh-ar").expect("beh-ar"));
+
+        let mut session = (*app.session).clone();
+        session.selected_anchor = Some(0);
+        session.move_anchor(0, 340.0, 560.0);
+        session.move_anchor(0, 360.0, 580.0);
+        session.end_metric_drag();
+        app.session = Arc::new(session);
+        app.refresh_open_glyph();
+        assert_eq!(app.font.master().undo_depth(0), 1);
+        app.undo_open_glyph(false);
+        assert_eq!(
+            (
+                app.session.glyph.anchors[0].x,
+                app.session.glyph.anchors[0].y
+            ),
+            (300.0, 500.0)
+        );
+        app.undo_open_glyph(true);
+        assert_eq!(
+            (
+                app.session.glyph.anchors[0].x,
+                app.session.glyph.anchors[0].y
+            ),
+            (360.0, 580.0)
+        );
+
+        let mut session = (*app.session).clone();
+        session.selected_anchor = Some(0);
+        assert!(session.delete_selected_anchor());
+        app.session = Arc::new(session);
+        app.refresh_open_glyph();
+        assert!(app.session.glyph.anchors.is_empty());
+        app.undo_open_glyph(false);
+        assert_eq!(app.session.glyph.anchors.len(), 1);
+        assert!(app.save());
+        let reopened = Workspace::open(&path).expect("reopen saved anchor");
+        let anchor = &reopened.font.font().get_glyph("beh-ar").unwrap().anchors[0];
+        assert_eq!((anchor.x, anchor.y), (360.0, 580.0));
+        std::fs::remove_dir_all(path).expect("remove disposable font");
+    }
 }

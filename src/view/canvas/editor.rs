@@ -1342,7 +1342,7 @@ impl Widget for EditorWidget {
                 match &mut self.drag {
                     Drag::AdvanceLine => {
                         let d = self.session.viewport.screen_to_design(at);
-                        self.session.set_advance(d.x.round());
+                        self.session.drag_advance(d.x.round());
                         ctx.request_render();
                     }
                     Drag::LeftLine { last_x } => {
@@ -1431,6 +1431,7 @@ impl Widget for EditorWidget {
                     self.emit(ctx, false);
                 }
                 Drag::Anchor { .. } | Drag::AdvanceLine | Drag::LeftLine { .. } => {
+                    self.session.end_metric_drag();
                     self.drag = Drag::None;
                     self.emit(ctx, true);
                 }

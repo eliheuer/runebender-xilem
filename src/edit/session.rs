@@ -195,6 +195,21 @@ impl Session {
         self.glyph.width = width;
     }
 
+    /// Set advance during a pointer gesture, grouped into one undo step.
+    pub(crate) fn drag_advance(&mut self, w: f64) {
+        let width = w.max(0.0);
+        if !w.is_finite() || self.glyph.width == width {
+            return;
+        }
+        self.record(EditType::Drag);
+        self.glyph.width = width;
+    }
+
+    /// Close an anchor, advance, or sidebearing pointer transaction.
+    pub(crate) fn end_metric_drag(&mut self) {
+        self.record(EditType::DragUp);
+    }
+
     pub(crate) fn outline_arc(&self) -> Arc<BezPath> {
         Arc::new(self.outline())
     }
@@ -249,11 +264,16 @@ impl Session {
 
     /// Take the glyph as the master now has it, after an undo or a
     /// redo there, keeping the selection where it still fits.
-    pub(crate) fn reload_glyph(&mut self, glyph: norad::Glyph) {
+    pub(crate) fn reload_glyph(&mut self, font: &norad::Font, glyph: norad::Glyph) {
+        self.components = glyph_paths::components_to_bezpath(&glyph, font);
+        self.component_contours = resolve_components(font, &glyph);
         self.glyph = glyph;
         self.pen.clear();
         self.active_contour = None;
         self.in_drag = false;
+        self.selected_anchor = self
+            .selected_anchor
+            .filter(|index| *index < self.glyph.anchors.len());
         self.prune_selection();
     }
 
@@ -836,10 +856,16 @@ impl Session {
     }
 
     pub(crate) fn move_anchor(&mut self, idx: usize, x: f64, y: f64) {
-        if let Some(a) = self.glyph.anchors.get_mut(idx) {
-            a.x = x;
-            a.y = y;
+        let Some(anchor) = self.glyph.anchors.get(idx) else {
+            return;
+        };
+        if !x.is_finite() || !y.is_finite() || (anchor.x == x && anchor.y == y) {
+            return;
         }
+        self.record(EditType::Drag);
+        let anchor = &mut self.glyph.anchors[idx];
+        anchor.x = x;
+        anchor.y = y;
     }
 
     pub(crate) fn delete_selected_anchor(&mut self) -> bool {
@@ -1171,7 +1197,7 @@ impl Workspace {
             return;
         };
         let mut session = (*self.session).clone();
-        session.reload_glyph(glyph);
+        session.reload_glyph(self.font.font(), glyph);
         self.session = Arc::new(session);
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             tab.session = self.session.clone();
@@ -1416,13 +1442,19 @@ mod tests {
         assert_eq!(master.undo_depth(index), 2);
         assert!(master.undo(index));
         let back = master.font.get_glyph("test").expect("still there").clone();
-        session.reload_glyph(back);
+        session.reload_glyph(&master.font, back);
         assert_eq!(x(&session), 50.0);
         assert!(master.undo(index));
-        session.reload_glyph(master.font.get_glyph("test").expect("still there").clone());
+        session.reload_glyph(
+            &master.font,
+            master.font.get_glyph("test").expect("still there").clone(),
+        );
         assert_eq!(x(&session), 0.0);
         assert!(master.redo(index));
-        session.reload_glyph(master.font.get_glyph("test").expect("still there").clone());
+        session.reload_glyph(
+            &master.font,
+            master.font.get_glyph("test").expect("still there").clone(),
+        );
         assert_eq!(x(&session), 50.0);
     }
 
@@ -1497,5 +1529,116 @@ mod tests {
         assert!(session.duplicate_repeat());
         assert_eq!(session.glyph.contours.len(), 3);
         assert!(session.selection.iter().all(|(contour, _)| *contour == 2));
+    }
+
+    #[test]
+    fn anchor_and_metric_drags_record_one_closed_transaction() {
+        let mut session = two_squares();
+        session.glyph.width = 500.0;
+        session.glyph.anchors.push(norad::Anchor::new(
+            100.0,
+            200.0,
+            Some(norad::Name::new("top").expect("anchor name")),
+            None,
+            None,
+        ));
+
+        session.move_anchor(0, 120.0, 220.0);
+        session.move_anchor(0, 140.0, 240.0);
+        assert_eq!(session.pending.len(), 1);
+        assert!(session.gesture_in_progress());
+        let HistoryOp::Record(before) = &session.pending[0] else {
+            panic!("anchor drag records its starting glyph");
+        };
+        assert_eq!((before.anchors[0].x, before.anchors[0].y), (100.0, 200.0));
+        session.end_metric_drag();
+        assert!(!session.gesture_in_progress());
+
+        session.pending.clear();
+        session.drag_advance(520.0);
+        session.drag_advance(540.0);
+        assert_eq!(session.pending.len(), 1);
+        session.end_metric_drag();
+        assert!(!session.gesture_in_progress());
+        let HistoryOp::Record(before) = &session.pending[0] else {
+            panic!("advance drag records its starting glyph");
+        };
+        assert_eq!(before.width, 500.0);
+        assert_eq!(session.advance(), 540.0);
+
+        session.pending.clear();
+        session.move_anchor(0, f64::NAN, 10.0);
+        session.drag_advance(f64::INFINITY);
+        assert!(session.pending.is_empty());
+    }
+
+    #[test]
+    fn decompose_undo_rebuilds_nested_transformed_component_preview() {
+        use masonry::kurbo::Shape as _;
+        use runebender_core::document::project::Master;
+
+        let mut font = norad::Font::new();
+        let mut base = norad::Glyph::new("base");
+        let mut contour = norad::Contour::default();
+        for (x, y) in [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)] {
+            contour.points.push(norad::ContourPoint::new(
+                x,
+                y,
+                norad::PointType::Line,
+                false,
+                None,
+                None,
+            ));
+        }
+        base.contours.push(contour);
+        font.default_layer_mut().insert_glyph(base);
+        let mut nested = norad::Glyph::new("nested");
+        nested.components.push(norad::Component::new(
+            norad::Name::new("base").expect("base name"),
+            norad::AffineTransform {
+                x_scale: 2.0,
+                y_scale: 2.0,
+                x_offset: 40.0,
+                y_offset: 60.0,
+                ..norad::AffineTransform::default()
+            },
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(nested);
+        let mut composite = norad::Glyph::new("composite");
+        composite.components.push(norad::Component::new(
+            norad::Name::new("nested").expect("nested name"),
+            norad::AffineTransform {
+                x_offset: 20.0,
+                y_offset: 30.0,
+                ..norad::AffineTransform::default()
+            },
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(composite);
+        let mut master = Master::from_font(font, std::path::PathBuf::new());
+        let index = master.name_map["composite"];
+        let mut session = Session::new(&master.font, "composite").expect("composite exists");
+        let before_bounds = session.components.bounding_box();
+
+        assert!(session.decompose());
+        for op in session.pending.drain(..) {
+            if let HistoryOp::Record(glyph) = op {
+                master.history.record("composite", &glyph);
+            }
+        }
+        master.edit_glyph(index, |glyph| *glyph = session.glyph.clone());
+        assert!(session.components.elements().is_empty());
+        assert!(master.undo(index));
+        session.reload_glyph(
+            &master.font,
+            master
+                .font
+                .get_glyph("composite")
+                .expect("component restored")
+                .clone(),
+        );
+        assert_eq!(session.glyph.components.len(), 1);
+        assert_eq!(session.components.bounding_box(), before_bounds);
     }
 }

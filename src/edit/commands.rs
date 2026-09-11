@@ -211,7 +211,7 @@ impl Workspace {
                 && let Some(glyph) = self.font.font().get_glyph(&self.session.glyph_name)
             {
                 let mut session = (*self.session).clone();
-                session.reload_glyph(glyph.clone());
+                session.reload_glyph(self.font.font(), glyph.clone());
                 self.session = Arc::new(session);
                 self.refresh_metric_bufs();
             }
@@ -342,7 +342,7 @@ impl Workspace {
                 && let Some(glyph) = self.font.font().get_glyph(&name)
             {
                 let mut session = (*self.session).clone();
-                session.reload_glyph(glyph.clone());
+                session.reload_glyph(self.font.font(), glyph.clone());
                 self.session = Arc::new(session);
                 self.selected_points = 0;
             }
