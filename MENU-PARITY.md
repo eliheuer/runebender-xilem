@@ -47,7 +47,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
   current checked state.
 - [x] Mouse click opens a menu; moving across titles switches it; choosing a row
   dispatches once; clicking outside dismisses it.
-- [ ] Alt/F10 focuses the bar on Windows/Linux. Left/Right changes the top-level
+- [x] Alt/F10 focuses the bar on Windows/Linux. Left/Right changes the top-level
   menu; Up/Down changes the row; Enter/Space activates; Escape closes one level
   and then restores the previous focus.
 - [x] Submenus open by pointer or Right/Enter, stay inside the window, return with
@@ -87,7 +87,9 @@ framework-integration work.
 - The non-macOS shell is a full-window Masonry widget whose dropdown and nested
   Theme/Measure menus are real layers. F10/Alt enters it, arrows/Home/End
   navigate, Enter/Space dispatch once, Escape dismisses, pointer hover switches
-  titles, and prior focus is restored.
+  titles, and prior focus is restored. These platform-neutral widget interactions
+  pass with the in-window shell forced on macOS; a Linux runtime run remains a
+  separate evidence item below.
 - The command table now owns accelerator matching, enabled state, and checked
   state. macOS `muda` items update those states on rebuild; the in-window menu
   draws and exposes them through AccessKit menu-item nodes.
