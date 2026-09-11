@@ -15,7 +15,7 @@ use runebender_core::document::proposal;
 fn fixture() -> PathBuf {
     let dir = match std::env::var_os("RUNEBENDER_TEST_FONTS") {
         Some(dir) => PathBuf::from(dir),
-        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../virtua-grotesk/sources"),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../virtua-grotesk/sources"),
     };
     let ufo = dir.join("VirtuaGrotesk-Regular.ufo");
     assert!(

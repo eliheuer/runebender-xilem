@@ -24,6 +24,12 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: eliheuer/virtua-grotesk
+          path: test-fonts
+      - name: Set font fixtures
+        run: echo "RUNEBENDER_TEST_FONTS=$GITHUB_WORKSPACE/test-fonts/sources" >> "$GITHUB_ENV"
       - name: Linux system libraries
         if: runner.os == 'Linux'
         run: |
@@ -39,15 +45,15 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: fmt
-        run: cargo fmt --check
+        run: cargo fmt --all --check
       - name: clippy
-        run: cargo clippy --all-targets
+        run: cargo clippy --workspace --all-targets
       - name: doc
-        run: cargo doc --no-deps
+        run: cargo doc --workspace --no-deps
       - name: test
-        run: cargo test
+        run: cargo test --workspace -- --test-threads=1
       - name: build
-        run: cargo build --release
+        run: cargo build --workspace --release
 
   vet:
     name: supply chain

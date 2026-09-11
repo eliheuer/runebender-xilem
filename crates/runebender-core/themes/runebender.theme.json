@@ -299,9 +299,9 @@
         "buttonHover": "neutral.81",
         "field": "neutral.81",
         "outline": "neutral.23",
-        "fieldOutline": "neutral.55",
+        "fieldOutline": "neutral.23",
         "divider": "neutral.23",
-        "canvas": "neutral.81"
+        "canvas": "neutral.76"
       },
       "text": {
         "primary": "neutral.23",

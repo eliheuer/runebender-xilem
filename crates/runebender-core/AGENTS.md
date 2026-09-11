@@ -133,3 +133,11 @@ with `cargo install --git` at the tag.
 
 Both editors pin this crate by git revision in their `Cargo.toml`.
 After pushing a change here, bump both pins.
+
+## Workspace migration
+
+This crate now lives in the primary Runebender Xilem workspace. The root
+AGENTS.md takes precedence for development and releases. Do not push changes
+to the legacy Core or GPUI repositories or maintain their revision pins.
+Run workspace checks from the repository root. Fixture fonts can be supplied
+with RUNEBENDER_TEST_FONTS; the default is next to the workspace repository.

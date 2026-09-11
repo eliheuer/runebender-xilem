@@ -12,7 +12,7 @@ Runebender is a Linebender-native font editor built with Xilem. This
 repository is the primary application; new product work targets Xilem.
 GPUI is retained as a visual/behavioral reference and fallback, not a
 second frontend to develop in parallel. Font operations remain in the
-independent core library so the GUI and headless tools share behavior.
+independent `crates/runebender-core` library so the GUI and headless tools share behavior.
 
 It builds against upstream Xilem pinned to a revision, not a fork.
 Where Xilem has no answer for something the editor needs, the answer
@@ -193,3 +193,12 @@ to crates.io. A release is a git tag, and users install with
 - Commit messages say why. The diff shows what.
 - No `Co-Authored-By` trailers for agents.
 - Stage explicit paths. Never `git add -A`.
+
+## Unified workspace
+
+This repository owns Core and the Xilem application together. Edit font operations
+in `crates/runebender-core`; do not update the legacy sibling Core repository
+or its GPUI consumer for new work. The root package remains the editor so
+`cargo run --release -- <font>` keeps working. Use `cargo run -p runebender-core
+-- <arguments>` for the headless CLI. Validate with `cargo test --workspace
+-- --test-threads=1` and `cargo clippy --workspace --all-targets`.
