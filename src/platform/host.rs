@@ -274,7 +274,6 @@ impl Workspace {
 
     /// Saves the live document and reports whether the disk now matches it.
     pub(crate) fn save(&mut self) -> bool {
-        self.refresh_open_glyph();
         match self.font.save() {
             Ok(()) => {
                 self.modified = false;
@@ -425,6 +424,24 @@ impl Workspace {
 mod tests {
     use super::*;
 
+    fn copy_tree(source: &std::path::Path, destination: &std::path::Path) {
+        std::fs::create_dir_all(destination).expect("the destination directory is created");
+        for entry in std::fs::read_dir(source).expect("the source directory is readable") {
+            let entry = entry.expect("the source entry is readable");
+            let from = entry.path();
+            let to = destination.join(entry.file_name());
+            if entry
+                .file_type()
+                .expect("the source type is readable")
+                .is_dir()
+            {
+                copy_tree(&from, &to);
+            } else {
+                std::fs::copy(&from, &to).expect("the source file is copied");
+            }
+        }
+    }
+
     fn two_master_designspace(label: &str) -> (std::path::PathBuf, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!(
             "runebender-xilem-{label}-{}-{}",
@@ -554,6 +571,113 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "copies and edits the adjacent 13 MB Virtua Grotesk sources"]
+    fn disposable_virtua_edit_undo_save_reopen_preserves_unrelated_data() {
+        let source =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../virtua-grotesk/sources");
+        assert!(
+            source.is_dir(),
+            "clone Virtua Grotesk beside this repository"
+        );
+        let root = std::env::temp_dir().join(format!(
+            "runebender-xilem-virtua-trial-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let copied = root.join("sources");
+        copy_tree(&source, &copied);
+        let designspace = copied.join("VirtuaGrotesk.designspace");
+        let designspace_before = std::fs::read(&designspace).expect("the designspace is readable");
+
+        let mut workspace =
+            Workspace::open(&designspace).expect("the disposable designspace opens");
+        assert_eq!(workspace.font.master_count(), 2);
+        assert_eq!(workspace.font.master_name(0), "Regular");
+        assert_eq!(workspace.font.master_name(1), "Bold");
+        let original_fonts: Vec<norad::Font> = workspace
+            .font
+            .project
+            .masters
+            .iter()
+            .map(|master| master.font.clone())
+            .collect();
+
+        let index = workspace.font.index_of("R").expect("Virtua contains R");
+        workspace.open_glyph(index);
+        let original_x = workspace.session.glyph.contours[0].points[0].x;
+        let original_width = workspace.session.advance();
+        let original_anchor_count = workspace.session.glyph.anchors.len();
+
+        workspace.apply_op(|session| {
+            session.selection.insert((0, 0));
+            session.nudge(2.0, 0.0)
+        });
+        workspace.set_advance_from_buf(format!("{}", original_width + 4.0));
+        workspace.apply_op(|session| {
+            session.add_anchor(123.0, 456.0);
+            true
+        });
+        assert!(workspace.modified);
+
+        for _ in 0..3 {
+            workspace.undo_active_edit(false);
+        }
+        assert_eq!(workspace.session.glyph.contours[0].points[0].x, original_x);
+        assert_eq!(workspace.session.advance(), original_width);
+        assert_eq!(workspace.session.glyph.anchors.len(), original_anchor_count);
+        for _ in 0..3 {
+            workspace.undo_active_edit(true);
+        }
+        assert_eq!(
+            workspace.session.glyph.contours[0].points[0].x,
+            original_x + 2.0
+        );
+        assert_eq!(workspace.session.advance(), original_width + 4.0);
+        assert_eq!(
+            workspace.session.glyph.anchors.len(),
+            original_anchor_count + 1
+        );
+
+        assert!(workspace.save());
+        assert!(!workspace.modified);
+        assert_eq!(
+            std::fs::read(&designspace).expect("the designspace remains readable"),
+            designspace_before,
+            "saving masters must not rewrite their relative designspace paths"
+        );
+
+        let reopened = Workspace::open(&designspace).expect("the saved designspace reopens");
+        let reopened_r = reopened
+            .font
+            .font()
+            .get_glyph("R")
+            .expect("R survives reopening");
+        assert_eq!(reopened_r.contours[0].points[0].x, original_x + 2.0);
+        assert_eq!(reopened_r.width, original_width + 4.0);
+        assert_eq!(reopened_r.anchors.len(), original_anchor_count + 1);
+
+        for (master_index, original) in original_fonts.into_iter().enumerate() {
+            let mut normalized = reopened.font.project.masters[master_index].font.clone();
+            if master_index == 0 {
+                let original_r = original
+                    .get_glyph("R")
+                    .expect("the original Regular R exists")
+                    .clone();
+                normalized.default_layer_mut().insert_glyph(original_r);
+            }
+            assert_eq!(
+                normalized, original,
+                "only the edited Regular R may differ after the round trip"
+            );
+        }
+
+        std::fs::remove_dir_all(root).expect("the disposable Virtua copy is removed");
+    }
+
+    #[test]
     fn reload_keeps_open_tabs_and_their_viewports() {
         let path = std::env::temp_dir().join(format!(
             "runebender-xilem-tabs-reload-{}-{}.ufo",
@@ -601,6 +725,51 @@ mod tests {
         assert_eq!(workspace.session.viewport.zoom, 2.0);
 
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
+    }
+
+    #[test]
+    fn navigation_stays_clean_and_external_reload_never_overwrites_unsaved_work() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-external-reload-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("A"));
+        font.save(&path).expect("the fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let index = workspace.font.index_of("A").expect("A exists");
+        workspace.open_glyph(index);
+        workspace.back_to_overview();
+        assert!(!workspace.modified, "navigation alone is not an edit");
+
+        workspace.open_glyph(index);
+        workspace.set_advance_from_buf("604".into());
+        assert!(workspace.modified);
+        let unsaved_width = workspace.session.advance();
+
+        let mut external = norad::Font::load(&path).expect("the fixture reloads externally");
+        external
+            .default_layer_mut()
+            .get_glyph_mut("A")
+            .expect("external A exists")
+            .width = 712.0;
+        external.save(&path).expect("the external change saves");
+        workspace.reload_from_disk();
+
+        assert_eq!(workspace.session.advance(), unsaved_width);
+        assert_eq!(
+            workspace.note,
+            "sources changed on disk; save or discard first"
+        );
+        assert!(workspace.modified);
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 
     #[test]

@@ -26,6 +26,10 @@ releases begin.
   geometry, and source-derived padding; render square cells as true rectangles so
   CPU evidence retains Gray-theme outlines and labels.
 
+- Keep document navigation clean, refuse external reload while unsaved edits are
+  present, and exercise outline, metrics, anchor, undo/redo, save, and reopen on a
+  disposable full Virtua Grotesk designspace without changing unrelated font data.
+
 - Align the navigation, grid and inspector top edges with one shared separator below the title bar.
 
 - Align search and inspector inputs with shared insets and optical baseline positioning; route inspector text and labels through the bundled UI-font helpers.

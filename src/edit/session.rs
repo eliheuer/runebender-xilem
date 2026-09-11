@@ -1258,7 +1258,6 @@ impl Workspace {
     }
 
     pub(crate) fn back_to_overview(&mut self) {
-        self.refresh_open_glyph();
         self.mode = Mode::Overview;
     }
 }
