@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Apply the bundled Virtua Grotesk at 13px consistently to UI labels and editable fields.
+
 - Complete the desktop menu system: shared command metadata, native macOS and
   accessible in-window menus, working file/glyph/path/filter/view commands,
   stateful submenus, keyboard navigation, and focused-text shortcut precedence.

@@ -36,7 +36,6 @@ use winit::error::EventLoopError;
 use xilem::style::Style;
 use xilem::view::{
     FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, portal, sized_box, text_button,
-    text_input,
 };
 use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
 
@@ -70,7 +69,23 @@ pub(crate) const UI_FONT_FAMILY: &str = "Virtua Grotesk";
 /// A label in the interface font. Every label goes through here so
 /// the family is set in one place.
 pub(crate) fn label(text: impl Into<masonry::core::ArcStr>) -> xilem::view::Label {
-    xilem::view::label(text).font(UI_FONT_FAMILY)
+    xilem::view::label(text)
+        .font(UI_FONT_FAMILY)
+        .text_size(TextSize::Body.px())
+}
+
+/// Editable interface text uses the same family and size as labels.
+fn text_input<F, State, Action: 'static>(
+    contents: String,
+    on_changed: F,
+) -> xilem::view::TextInput<State, Action>
+where
+    F: Fn(&mut State, String) -> Action + Send + Sync + 'static,
+    State: 'static,
+{
+    xilem::view::text_input(contents, on_changed)
+        .font(UI_FONT_FAMILY)
+        .text_size(TextSize::Body.px())
 }
 
 fn main() -> Result<(), EventLoopError> {

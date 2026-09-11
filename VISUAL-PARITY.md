@@ -462,3 +462,7 @@ Replaced the white gridBorder header separator with the panel outline token. Add
 ### Hidden scrollbars
 
 Application defaults give Masonry ScrollBar widgets zero dimensions while retaining Portal scroll handling. Applies to native and headless launches and all existing panels. Gray and Light screenshots inspected. Build and all-target Clippy pass; hidden_bars_preserve_wheel_scrolling verifies wheel input moves an overflowing Portal and renders afterward. Native trackpad input was not exercised.
+
+### UI typography
+
+Verified bundled Virtua Grotesk TTF SHA-256 matches GPUI exactly. Label helper now specifies 13px; text_input helper now specifies Virtua Grotesk and 13px instead of SystemUi and Masonry default 15px. Build and all-target Clippy pass; Gray/Light headless renders with VirtuaGrotesk.designspace inspected. This aligns family and nominal size; field baseline/clipping and native rasterization still need matched-scale review before claiming complete typography parity.
