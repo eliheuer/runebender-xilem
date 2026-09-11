@@ -107,6 +107,21 @@ impl EditHistory {
         self.stacks.remove(name);
     }
 
+    /// Move one glyph's undo and redo stacks after the glyph is renamed.
+    ///
+    /// Returns false when `new` already has history. The caller must make the
+    /// same collision check as the font rename before calling this method.
+    pub fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
+        if old == new || self.stacks.contains_key(new) {
+            return false;
+        }
+        let Some(stack) = self.stacks.remove(old) else {
+            return true;
+        };
+        self.stacks.insert(new.to_string(), stack);
+        true
+    }
+
     /// Forgets everything, after a reload from disk.
     pub fn clear(&mut self) {
         self.stacks.clear();
@@ -207,6 +222,19 @@ mod tests {
         assert!(!history.undo("b", &mut b));
         assert_eq!(b.width, 2.0);
         history.clear_glyph("a");
+        assert!(!history.can_undo("a"));
+    }
+
+    #[test]
+    fn rename_keeps_both_undo_directions() {
+        let mut history = EditHistory::new();
+        let mut current = glyph(600.0);
+        history.record("a", &glyph(500.0));
+        assert!(history.rename_glyph("a", "a.alt"));
+        assert!(history.undo("a.alt", &mut current));
+        assert_eq!(current.width, 500.0);
+        assert!(history.redo("a.alt", &mut current));
+        assert_eq!(current.width, 600.0);
         assert!(!history.can_undo("a"));
     }
 }

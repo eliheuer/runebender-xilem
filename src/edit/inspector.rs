@@ -192,11 +192,73 @@ impl Workspace {
 
     pub(crate) fn set_unicode_from_buf(&mut self, v: String) {
         self.unicode_buf = v;
-        let mut sess = (*self.session).clone();
-        if sess.set_unicode(self.unicode_buf.trim()) {
-            self.session = Arc::new(sess);
-            self.refresh_open_glyph();
+        let name = self.session.glyph_name.clone();
+        self.set_unicode_across_masters(&name);
+    }
+
+    fn set_unicode_across_masters(&mut self, name: &str) {
+        let Some(before) = self.font.glyph_codepoints(name) else {
+            return;
+        };
+        let Some(glyph) = self.font.font().get_glyph(name) else {
+            return;
+        };
+        let mut parsed = glyph.clone();
+        if !runebender_core::document::font_ops::set_glyph_unicode(
+            &mut parsed,
+            self.unicode_buf.trim(),
+        ) {
+            return;
         }
+        let codepoints: Vec<char> = parsed.codepoints.iter().collect();
+        let after = vec![codepoints; before.len()];
+        if before == after {
+            return;
+        }
+        let undo_depth = self
+            .font
+            .index_of(name)
+            .map_or(0, |index| self.font.master().undo_depth(index));
+        if self.apply_unicode_snapshot(name, &after) {
+            self.metadata_undo.push(MetadataEdit::Unicode {
+                glyph: name.into(),
+                before,
+                after,
+                undo_depth,
+            });
+            self.metadata_redo.clear();
+            self.note = format!("Updated Unicode for {name}");
+        }
+    }
+
+    fn apply_unicode_snapshot(&mut self, name: &str, values: &[Vec<char>]) -> bool {
+        if !self.font.set_glyph_codepoints(name, values) {
+            return false;
+        }
+        let active = values.get(self.font.active()).cloned().unwrap_or_default();
+        if self.session.glyph_name == name {
+            Arc::make_mut(&mut self.session).glyph.codepoints =
+                norad::Codepoints::new(active.iter().copied());
+        }
+        for tab in &mut self.tabs {
+            if tab.session.glyph_name == name {
+                Arc::make_mut(&mut tab.session).glyph.codepoints =
+                    norad::Codepoints::new(active.iter().copied());
+            }
+        }
+        self.selected = self.font.index_of(name);
+        if matches!(self.mode, Mode::Editor(_))
+            && let Some(index) = self.selected
+        {
+            self.mode = Mode::Editor(index);
+        }
+        self.unicode_buf = active
+            .first()
+            .map(|codepoint| format!("{:04X}", *codepoint as u32))
+            .unwrap_or_default();
+        self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        self.modified = true;
+        true
     }
 
     pub(crate) fn commit_rename(&mut self) {
@@ -210,10 +272,26 @@ impl Workspace {
         if new.is_empty() || new == old {
             return;
         }
+        let undo_depth = self
+            .font
+            .index_of(old)
+            .map_or(0, |index| self.font.master().undo_depth(index));
+        if self.rename_without_history(old, new) {
+            self.metadata_undo.push(MetadataEdit::Rename {
+                before: old.into(),
+                after: new.into(),
+                undo_depth,
+            });
+            self.metadata_redo.clear();
+        }
+    }
+
+    /// Apply an already validated rename without creating another rename step.
+    fn rename_without_history(&mut self, old: &str, new: &str) -> bool {
         if !self.font.rename_glyph(old, new) {
             self.name_buf = old.to_string();
             self.note = format!("Cannot rename {old} to {new}");
-            return;
+            return false;
         }
         // Tabs address their glyph by name, so every tab showing the
         // old one has to learn the new one or it points at nothing.
@@ -236,6 +314,121 @@ impl Workspace {
         }
         self.modified = true;
         self.note = format!("Renamed {old} to {new}");
+        true
+    }
+
+    /// Undo or redo metadata when it is next in the active glyph's history.
+    pub(crate) fn metadata_history_step(&mut self, redo: bool) -> bool {
+        let candidate = if redo {
+            self.metadata_redo.last()
+        } else {
+            self.metadata_undo.last()
+        }
+        .cloned();
+        let Some(edit) = candidate else {
+            return false;
+        };
+        let (expected, undo_depth) = match &edit {
+            MetadataEdit::Rename {
+                before,
+                after,
+                undo_depth,
+            } => (if redo { before } else { after }, *undo_depth),
+            MetadataEdit::Unicode {
+                glyph, undo_depth, ..
+            } => (glyph, *undo_depth),
+        };
+        let current_name = match self.mode {
+            Mode::Editor(_) => Some(self.session.glyph_name.as_str()),
+            Mode::Overview => self
+                .selected
+                .and_then(|index| self.font.glyphs.get(index))
+                .map(|glyph| glyph.name.as_str()),
+            Mode::Nodes => None,
+        };
+        if current_name != Some(expected.as_str()) {
+            return false;
+        }
+        let Some(index) = self.font.index_of(expected) else {
+            return false;
+        };
+        let depth = self.font.master().undo_depth(index);
+        if depth != undo_depth {
+            // A lower depth means an older glyph edit must redo first; a
+            // higher depth means a later edit must undo first.
+            return false;
+        }
+        let note = match &edit {
+            MetadataEdit::Rename { before, after, .. } => {
+                let (old, new) = if redo {
+                    (before, after)
+                } else {
+                    (after, before)
+                };
+                if !self.rename_without_history(old, new) {
+                    return false;
+                }
+                format!("{} rename to {new}", if redo { "Redid" } else { "Undid" })
+            }
+            MetadataEdit::Unicode {
+                glyph,
+                before,
+                after,
+                ..
+            } => {
+                let values = if redo { after } else { before };
+                if !self.apply_unicode_snapshot(glyph, values) {
+                    return false;
+                }
+                format!(
+                    "{} Unicode for {glyph}",
+                    if redo { "Redid" } else { "Undid" }
+                )
+            }
+        };
+        if redo {
+            self.metadata_redo.pop();
+            self.metadata_undo.push(edit);
+        } else {
+            self.metadata_undo.pop();
+            self.metadata_redo.push(edit);
+        }
+        self.note = note;
+        true
+    }
+
+    pub(crate) fn can_metadata_history_step(&self, redo: bool) -> bool {
+        let candidate = if redo {
+            self.metadata_redo.last()
+        } else {
+            self.metadata_undo.last()
+        };
+        let Some(edit) = candidate else {
+            return false;
+        };
+        let (expected, undo_depth) = match edit {
+            MetadataEdit::Rename {
+                before,
+                after,
+                undo_depth,
+            } => (if redo { before } else { after }, *undo_depth),
+            MetadataEdit::Unicode {
+                glyph, undo_depth, ..
+            } => (glyph, *undo_depth),
+        };
+        let current_name = match self.mode {
+            Mode::Editor(_) => Some(self.session.glyph_name.as_str()),
+            Mode::Overview => self
+                .selected
+                .and_then(|index| self.font.glyphs.get(index))
+                .map(|glyph| glyph.name.as_str()),
+            Mode::Nodes => None,
+        };
+        current_name == Some(expected.as_str())
+            && self
+                .font
+                .index_of(expected)
+                .is_some_and(|index| self.font.master().undo_depth(index) == undo_depth)
     }
 
     /// The overview panel writes to the highlighted cell, not to a
@@ -256,11 +449,12 @@ impl Workspace {
 
     pub(crate) fn overview_set_unicode(&mut self, v: String) {
         self.unicode_buf = v;
-        if let Some(i) = self.selected
-            && self.font.set_glyph_unicode(i, &self.unicode_buf)
-        {
-            self.cells = Arc::new(cells_of(&self.font, &self.palette));
-            self.modified = true;
+        let name = self
+            .selected
+            .and_then(|index| self.font.glyphs.get(index))
+            .map(|glyph| glyph.name.clone());
+        if let Some(name) = name {
+            self.set_unicode_across_masters(&name);
         }
     }
 
@@ -271,9 +465,19 @@ impl Workspace {
         };
         if width.is_finite()
             && let Some(i) = self.selected
-            && self.font.set_glyph_advance(i, width)
         {
-            self.modified = true;
+            let glyph = self.font.glyphs[i].name.clone();
+            self.font.master_mut().record_undo(i);
+            if self.font.set_glyph_advance(i, width) {
+                self.overview_undo.push(OverviewEditBatch {
+                    master: self.font.active(),
+                    glyphs: vec![glyph],
+                });
+                self.overview_redo.clear();
+                self.modified = true;
+            } else {
+                self.font.master_mut().discard_last_undo(i);
+            }
         }
     }
 

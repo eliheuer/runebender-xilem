@@ -413,7 +413,7 @@ impl FontModel {
         for master in &mut self.project.masters {
             if runebender_core::document::font_ops::rename_glyph(&mut master.font, old, new) {
                 master.dirty = true;
-                master.history.clear_glyph(old);
+                let _ = master.history.rename_glyph(old, new);
                 master.refresh_from_font();
                 renamed = true;
             }
@@ -835,40 +835,49 @@ impl FontModel {
         true
     }
 
-    /// Set the codepoints of a glyph, in every master.
-    ///
-    /// Unlike the advance, a codepoint is not a per-master measurement.
-    /// Masters that disagree about which character a glyph encodes
-    /// produce a family that does not build.
-    pub(crate) fn set_glyph_unicode(&mut self, index: usize, text: &str) -> bool {
-        let Some(entry) = self.glyphs.get(index) else {
-            return false;
-        };
-        let name = entry.name.clone();
-        let Some(active) = self.master().font.get_glyph(&name) else {
-            return false;
-        };
-        let mut parsed = active.clone();
-        if !runebender_core::document::font_ops::set_glyph_unicode(&mut parsed, text) {
-            // Not a complete codepoint yet. Typing "U+062" on the way to
-            // "U+0628" must not clear the glyph's encoding.
+    /// Exact codepoint lists for `name`, one per master.
+    pub(crate) fn glyph_codepoints(&self, name: &str) -> Option<Vec<Vec<char>>> {
+        self.project
+            .masters
+            .iter()
+            .map(|master| {
+                master
+                    .font
+                    .get_glyph(name)
+                    .map(|glyph| glyph.codepoints.iter().collect())
+            })
+            .collect()
+    }
+
+    /// Replace `name`'s codepoints in every master from an exact snapshot.
+    pub(crate) fn set_glyph_codepoints(&mut self, name: &str, values: &[Vec<char>]) -> bool {
+        if values.len() != self.project.masters.len()
+            || self
+                .project
+                .masters
+                .iter()
+                .any(|master| !master.name_map.contains_key(name))
+        {
             return false;
         }
-        let codepoints: Vec<char> = parsed.codepoints.iter().collect();
-        if active.codepoints == parsed.codepoints {
-            return false;
-        }
-        for master in &mut self.project.masters {
-            if let Some(&i) = master.name_map.get(&name) {
-                master.edit_glyph(i, |g| {
-                    g.codepoints = norad::Codepoints::new(codepoints.iter().copied());
+        let mut changed = false;
+        for (master, codepoints) in self.project.masters.iter_mut().zip(values) {
+            let index = master.name_map[name];
+            let different = master
+                .font
+                .get_glyph(name)
+                .is_some_and(|glyph| glyph.codepoints.iter().ne(codepoints.iter().copied()));
+            if different {
+                master.edit_glyph(index, |glyph| {
+                    glyph.codepoints = norad::Codepoints::new(codepoints.iter().copied());
                 });
+                changed = true;
             }
         }
-        if let Some(entry) = self.glyphs.get_mut(index) {
-            entry.codepoint = codepoints.first().copied();
+        if changed {
+            self.rebuild_cache();
         }
-        true
+        changed
     }
 
     /// Replace the glyph at `index` in the active master after an edit,

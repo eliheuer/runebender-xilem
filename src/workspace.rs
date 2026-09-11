@@ -48,6 +48,23 @@ pub(crate) struct OverviewEditBatch {
     pub(crate) glyphs: Vec<String>,
 }
 
+/// A cross-master metadata edit and the active glyph-history depth immediately
+/// before it. The depth keeps metadata Undo ordered with outline edits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum MetadataEdit {
+    Rename {
+        before: String,
+        after: String,
+        undo_depth: usize,
+    },
+    Unicode {
+        glyph: String,
+        before: Vec<Vec<char>>,
+        after: Vec<Vec<char>>,
+        undo_depth: usize,
+    },
+}
+
 pub(crate) struct Workspace {
     /// Identity of this particular in-memory document session. Reopening or
     /// reloading the same path creates a new session, so background work can
@@ -68,6 +85,9 @@ pub(crate) struct Workspace {
     /// one user action so a multi-selection mark change undoes once.
     pub(crate) overview_undo: Vec<OverviewEditBatch>,
     pub(crate) overview_redo: Vec<OverviewEditBatch>,
+    /// Cross-master metadata changes, ordered with the active glyph's Core pile.
+    pub(crate) metadata_undo: Vec<MetadataEdit>,
+    pub(crate) metadata_redo: Vec<MetadataEdit>,
     pub(crate) filter: String,
     /// The grid's Detail view: cells carry their category and advance.
     pub(crate) detail: bool,

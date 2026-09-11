@@ -119,13 +119,21 @@ impl Entry {
             A::Save => app.modified && app.font.is_writable(),
             A::ExportFont => app.export_job.is_none(),
             A::Undo => match app.mode {
-                crate::Mode::Editor(index) => app.font.master().can_undo(index),
-                crate::Mode::Overview => !app.overview_undo.is_empty(),
+                crate::Mode::Editor(index) => {
+                    app.font.master().can_undo(index) || app.can_metadata_history_step(false)
+                }
+                crate::Mode::Overview => {
+                    !app.overview_undo.is_empty() || app.can_metadata_history_step(false)
+                }
                 _ => false,
             },
             A::Redo => match app.mode {
-                crate::Mode::Editor(index) => app.font.master().can_redo(index),
-                crate::Mode::Overview => !app.overview_redo.is_empty(),
+                crate::Mode::Editor(index) => {
+                    app.font.master().can_redo(index) || app.can_metadata_history_step(true)
+                }
+                crate::Mode::Overview => {
+                    !app.overview_redo.is_empty() || app.can_metadata_history_step(true)
+                }
                 _ => false,
             },
             A::Copy | A::SelectAll => editor,

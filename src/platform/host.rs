@@ -128,6 +128,8 @@ impl Workspace {
             multi_selected: Arc::new(std::collections::HashSet::new()),
             overview_undo: Vec::new(),
             overview_redo: Vec::new(),
+            metadata_undo: Vec::new(),
+            metadata_redo: Vec::new(),
             filter: String::new(),
             detail: false,
             list: std::env::var("RUNEBENDER_VIEW_MODE").as_deref() == Ok("list"),
@@ -993,6 +995,20 @@ mod tests {
         workspace.commit_rename();
         assert_eq!(workspace.session.glyph_name, "A.alt");
         assert_eq!(workspace.note, "Renamed A to A.alt");
+        workspace.undo_active_edit(false);
+        assert_eq!(workspace.session.glyph_name, "A");
+        assert_eq!(workspace.note, "Undid rename to A");
+        workspace.undo_active_edit(false);
+        assert_eq!(
+            workspace.session.advance(),
+            620.0,
+            "the older RSB edit follows the rename"
+        );
+        workspace.undo_active_edit(true);
+        assert_eq!(workspace.session.advance(), 650.0);
+        workspace.undo_active_edit(true);
+        assert_eq!(workspace.session.glyph_name, "A.alt");
+        assert_eq!(workspace.note, "Redid rename to A.alt");
         assert!(workspace.modified);
         assert!(workspace.save());
 
@@ -1006,6 +1022,126 @@ mod tests {
         assert_eq!(glyph.width, 650.0);
         assert_eq!(glyph.codepoints.iter().collect::<Vec<_>>(), ['\u{0628}']);
         std::fs::remove_dir_all(path).expect("the metadata fixture is removed");
+    }
+
+    #[test]
+    fn unicode_and_rename_undo_atomically_across_masters() {
+        let (dir, designspace) = two_master_designspace("metadata-masters");
+        for source in [dir.join("Regular.ufo"), dir.join("Bold.ufo")] {
+            let mut font = norad::Font::load(&source).expect("the master reloads");
+            let mut glyph = norad::Glyph::new("A");
+            glyph.width = 500.0;
+            font.default_layer_mut().insert_glyph(glyph);
+            font.save(&source).expect("the master with A saves");
+        }
+        let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
+        let index = workspace.font.index_of("A").expect("A exists");
+        workspace.open_glyph(index);
+
+        workspace.set_unicode_from_buf("U+0628".into());
+        for master in &workspace.font.project.masters {
+            assert_eq!(
+                master
+                    .font
+                    .get_glyph("A")
+                    .expect("A exists in every master")
+                    .codepoints
+                    .iter()
+                    .collect::<Vec<_>>(),
+                ['\u{0628}']
+            );
+        }
+        workspace.undo_active_edit(false);
+        assert!(workspace.font.project.masters.iter().all(|master| {
+            master
+                .font
+                .get_glyph("A")
+                .expect("A exists")
+                .codepoints
+                .is_empty()
+        }));
+        workspace.undo_active_edit(true);
+        assert!(workspace.font.project.masters.iter().all(|master| {
+            master
+                .font
+                .get_glyph("A")
+                .expect("A exists")
+                .codepoints
+                .contains('\u{0628}')
+        }));
+
+        workspace.name_buf = "beh.test".into();
+        workspace.commit_rename();
+        assert!(
+            workspace
+                .font
+                .project
+                .masters
+                .iter()
+                .all(|master| master.font.get_glyph("beh.test").is_some())
+        );
+        workspace.undo_active_edit(false);
+        assert!(
+            workspace
+                .font
+                .project
+                .masters
+                .iter()
+                .all(|master| master.font.get_glyph("A").is_some())
+        );
+        workspace.undo_active_edit(true);
+        assert!(
+            workspace
+                .font
+                .project
+                .masters
+                .iter()
+                .all(|master| master.font.get_glyph("beh.test").is_some())
+        );
+
+        workspace.back_to_overview();
+        workspace.overview_set_unicode("0041".into());
+        assert!(workspace.font.project.masters.iter().all(|master| {
+            master
+                .font
+                .get_glyph("beh.test")
+                .expect("renamed glyph exists")
+                .codepoints
+                .contains('A')
+        }));
+        workspace.undo_active_edit(false);
+        assert!(workspace.font.project.masters.iter().all(|master| {
+            master
+                .font
+                .get_glyph("beh.test")
+                .expect("renamed glyph exists")
+                .codepoints
+                .contains('\u{0628}')
+        }));
+        workspace.undo_active_edit(true);
+        workspace.overview_set_advance("700".into());
+        assert_eq!(
+            workspace.font.font().get_glyph("beh.test").unwrap().width,
+            700.0
+        );
+        workspace.undo_active_edit(false);
+        assert_eq!(
+            workspace.font.font().get_glyph("beh.test").unwrap().width,
+            500.0
+        );
+        workspace.undo_active_edit(true);
+        assert_eq!(
+            workspace.font.font().get_glyph("beh.test").unwrap().width,
+            700.0
+        );
+
+        assert!(workspace.save());
+        let reopened = Workspace::open(&designspace).expect("saved masters reopen");
+        for master in &reopened.font.project.masters {
+            let glyph = master.font.get_glyph("beh.test").expect("rename persisted");
+            assert!(glyph.codepoints.contains('A'));
+        }
+        std::fs::remove_dir_all(dir).expect("the fixture is removed");
     }
 
     #[test]

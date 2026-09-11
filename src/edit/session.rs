@@ -161,18 +161,6 @@ impl Session {
         self.glyph.width
     }
 
-    pub(crate) fn set_unicode(&mut self, u: &str) -> bool {
-        let mut changed = self.glyph.clone();
-        if !runebender_core::document::font_ops::set_glyph_unicode(&mut changed, u)
-            || changed.codepoints == self.glyph.codepoints
-        {
-            return false;
-        }
-        self.record(EditType::Normal);
-        self.glyph.codepoints = changed.codepoints;
-        true
-    }
-
     /// Whether a gesture currently owns the session's undo transaction.
     #[cfg_attr(
         not(unix),
@@ -1123,10 +1111,19 @@ impl Workspace {
     /// editor event so save/preview see interactive edits).
     pub(crate) fn sync_session_from(&mut self, session: &mut Session) {
         let name = session.glyph_name.clone();
+        if session
+            .pending
+            .iter()
+            .any(|operation| matches!(operation, HistoryOp::Record(_)))
+        {
+            self.metadata_redo.clear();
+        }
         let master = self.font.master_mut();
         for op in session.pending.drain(..) {
             match op {
-                HistoryOp::Record(glyph) => master.history.record(&name, &glyph),
+                HistoryOp::Record(glyph) => {
+                    master.history.record(&name, &glyph);
+                }
                 HistoryOp::DiscardLast => {
                     master.history.discard_last(&name);
                 }
@@ -1146,6 +1143,9 @@ impl Workspace {
         let Mode::Editor(index) = self.mode else {
             return;
         };
+        if self.metadata_history_step(redo) {
+            return;
+        }
         let master = self.font.master_mut();
         let done = if redo {
             master.redo(index)
@@ -1192,6 +1192,9 @@ impl Workspace {
             return;
         }
         if !matches!(self.mode, Mode::Overview) {
+            return;
+        }
+        if self.metadata_history_step(redo) {
             return;
         }
         let batch = if redo {
@@ -1316,10 +1319,19 @@ impl Workspace {
             // `sync_session_from` does for pointer and keyboard edits.
             let mut session = (*self.session).clone();
             let name = session.glyph_name.clone();
+            if session
+                .pending
+                .iter()
+                .any(|operation| matches!(operation, HistoryOp::Record(_)))
+            {
+                self.metadata_redo.clear();
+            }
             let master = self.font.master_mut();
             for op in session.pending.drain(..) {
                 match op {
-                    HistoryOp::Record(glyph) => master.history.record(&name, &glyph),
+                    HistoryOp::Record(glyph) => {
+                        master.history.record(&name, &glyph);
+                    }
                     HistoryOp::DiscardLast => {
                         master.history.discard_last(&name);
                     }

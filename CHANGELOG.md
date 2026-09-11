@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Make Unicode and glyph-name changes atomic across designspace masters and
+  Undo/Redo them in order with surrounding outline and metric edits; preserve
+  each renamed glyph's existing Core history and add overview-width Undo/Redo.
+
 - Preserve Core Undo/Redo for inspector Unicode, width, and sidebearing edits;
   reject non-finite metrics, keep advance fixed when changing LSB, and report
   rejected glyph-name collisions without leaving a stale field value.
