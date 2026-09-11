@@ -52,6 +52,8 @@ or otherwise mutates it.
 | `r03-mixed-text-light.png` | Light | text tool and preview | same state |
 | `r03-text-selection-gray.png` | Gray | text tool and preview | same text; selected logical beh after the kasra, with visible bidi selection |
 | `r03-text-selection-light.png` | Light | text tool and preview | same state |
+| `t04-shaping-options-gray.png` | Gray | text tool and preview | `R لا 123 بِ`; Urdu locale; `rlig` disabled and lam-alef separated |
+| `t04-shaping-options-light.png` | Light | text tool and preview | same state |
 | `r01-arabic-beh-gray.png` | Gray | Arabic editor | Regular `beh-ar`; U+0628; advance 944; fitted outline |
 | `r01-arabic-beh-light.png` | Light | Arabic editor | same state |
 | `r04-ai-compare-gray.png` | Gray | Local AI review | disposable Regular UFO; R foreground with amber `bolden` proposal; Local AI rail |
@@ -157,6 +159,18 @@ Replace `gray` with `light` for the paired capture. Both were individually
 inspected: the beh selection is visible, the caret sits at its bidi edge, and
 the text and preview remain legible. This proves rendering, not native key or
 pointer delivery.
+
+The T04 files add these variables to the same read-only text command:
+
+```sh
+RUNEBENDER_TEXT_FEATURES_DISABLED=rlig \
+RUNEBENDER_TEXT_SCRIPT=arab RUNEBENDER_TEXT_LANGUAGE=ur
+```
+
+Both captures were individually inspected. The second control row fits at
+1100×720, Urdu and every feature except `rlig` have unambiguous selected state,
+and the separated lam-alef is visible in both the editor and preview. The real
+Virtua integration test independently asserts that shaping change.
 
 ## GPUI reference metrics
 

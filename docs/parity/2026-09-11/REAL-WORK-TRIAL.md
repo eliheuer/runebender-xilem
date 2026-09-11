@@ -35,6 +35,9 @@ is the Regular master in `VirtuaGrotesk.designspace`.
    Backspace/Delete and typed replacement, and confirm joining reshapes around
    the edit. Click on both sides of the lam-alef and confirm the caret follows
    the visible cluster.
+   Toggle `rlig` and confirm lam-alef separates and rejoins; toggle `mark` and
+   `mkmk` while watching the kasra. Compare Auto, Arabic, and Urdu locale choices,
+   then return all features and locale to their intended working state.
    Also replace text through the system input method so native preedit, cancel,
    and commit behavior is exercised.
 

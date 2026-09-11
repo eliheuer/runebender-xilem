@@ -226,7 +226,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | [ ] | T01 | Native IME composition and committed input in canvas text tool; preserve preedit/cancel and avoid duplicate insertion. Implemented in `793c3f9`; native runtime verification pending. |
 | [x] | T02 | Arabic joining/marks/ligatures and mixed Latin/Arabic/digits/punctuation with live font changes. Verified in `1d96364` and `2acb9b3`: real Virtua shaping covers lam-alef, kasra placement and bidi runs, and existing text now reshapes immediately from a live Arabic glyph/metric/feature refresh without losing editing state. |
 | [x] | T03 | RTL caret, selection, arrows, deletion and pointer hit mapping across ligatures/clusters. Verified in `1de39f6`: Core and UI share logical ranges while the canvas merges absorbed ligature sorts into visible selection geometry. |
-| [ ] | T04 | Shaping options/script/language/features and kerning refresh after glyph/feature edits. Distinguish compiled-font shaping from fallback outline preview. |
+| [x] | T04 | Shaping options/script/language/features and kerning refresh after glyph/feature edits. Verified in `2acb9b3` and `7063a0b`: text and preview share `liga`/`rlig`/`kern`/`mark`/`mkmk` plus Auto/Arabic/Urdu controls, and real Virtua proves disabling `rlig` changes lam-alef shaping while live refresh preserves the compiled-font path. |
 | [ ] | T05 | Preview text and editor text state, per-tab context and direction controls: no stale initial-only binding or cross-document contamination. |
 | [ ] | T06 | Arabic UI-input fallback, combining marks and clipboard round trip in search/metadata/preview. Do not confuse incomplete source-font coverage with editor bugs. |
 
@@ -381,6 +381,12 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   test proves updated positional-form width plus selection/manual-kern retention;
   the real Virtua test changes the shaped beh form and observes the existing
   mixed line update by exactly 17 units.
+- T04 — verified in `7063a0b`: a second preview row now exposes common OpenType
+  feature toggles and Auto/Arabic/Urdu script-language choices to both the text
+  tool and specimen preview. The real Virtua test proves `rlig` off separates
+  lam-alef into two editable sorts. Inspected Gray/Light evidence is
+  `t04-shaping-options-{gray,light}.png`; Urdu and all features except `rlig` are
+  visibly selected without clipping.
 - A03 — verified in `1d96364` and `dd0159a`: completed single-glyph jobs remain
   proposals until explicit Install or Discard. The Local AI panel now toggles a
   warm on-canvas proposal overlay; Install/Discard clear review state and Undo
