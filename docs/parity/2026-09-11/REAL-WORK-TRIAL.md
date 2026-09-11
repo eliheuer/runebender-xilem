@@ -102,6 +102,23 @@ No model was downloaded, installed, or trained during implementation. The real
 CPU integration test moved 40/40 R points, reported advance delta +18, left the
 foreground intact, installed explicitly, and restored the original with Undo.
 
+### Local chat
+
+Open the **Chat** rail and keep the default `qwen3-4b` selection. Ask it to read
+the open R and report its advance and contour count. Confirm the transcript shows
+the user message, a `read_glyph` tool row, and an answer consistent with the
+visible glyph. Ask a follow-up using “it” to exercise retained conversation
+context. Then request a proposal for R: the proposal must appear in the Local AI
+review controls when the turn ends, while the foreground remains unchanged.
+Install or discard only from those explicit review controls. Finally, start a
+turn, press **Cancel**, and confirm it stops without changing the foreground.
+
+The Chat rail requires a local GGUF plus `tokenizer.json`, `font-ml`,
+`runebender-core`, and the native Unix live endpoint. It never loads a remote
+service. Static Gray/Light captures and a deterministic fake-process test verify
+the panel and streaming protocol; the actual 4B exchange above remains part of
+the supervised trial because no model was run merely to generate screenshots.
+
 ## Review-only node graph
 
 The copied `bolden-review.nodes.json` is a five-node, five-link demo: Font and
@@ -137,11 +154,14 @@ Implementation commits are `a40808b` (Latin/Arabic navigation and metadata),
 `e070f24` (Arabic UI-input fallback proof), and `6ac0f14` (per-tab text context).
 Commit `824d3ea` adds machine-checked authorization for live foreground changes
 and a real CLI/MCP socket test proving the shared document remains unsaved.
+Commit `7dc5fab` connects the Local Chat rail and adds its deterministic process
+test plus inspected Gray/Light panel captures.
 Headless inspected captures are
 `r01-arabic-beh-{gray,light}.png`, `r03-mixed-text-{gray,light}.png`,
 `r03-text-selection-{gray,light}.png`, and
 `r04-ai-compare-{gray,light}.png` in this directory;
-`r05-nodes-review-{gray,light}.png` shows the five-node graph. They use
+`r05-nodes-review-{gray,light}.png` shows the five-node graph, and
+`a07-chat-{gray,light}.png` shows local model discovery and prompt controls. They use
 the CPU renderer and do not prove native GPU, input method, pointer, cancellation,
 or platform-menu behavior.
 

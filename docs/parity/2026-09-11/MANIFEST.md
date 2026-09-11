@@ -60,6 +60,8 @@ or otherwise mutates it.
 | `r04-ai-compare-light.png` | Light | Local AI review | same state |
 | `r05-nodes-review-gray.png` | Gray | review-only nodes | five-node Bolden → Compare graph; no Install node |
 | `r05-nodes-review-light.png` | Light | review-only nodes | same state |
+| `a07-chat-gray.png` | Gray | Local Chat | R open; three discovered GGUF models; qwen3-4b selected; prompt and Send visible |
+| `a07-chat-light.png` | Light | Local Chat | same state |
 
 Build first:
 
@@ -132,6 +134,21 @@ RUNEBENDER_NODES=docs/parity/2026-09-11/bolden-review.nodes.json \
 RUNEBENDER_MODE=nodes target/debug/runebender-xilem \
 ../virtua-grotesk/sources/VirtuaGrotesk.designspace
 ```
+
+The A07 files use the read-only designspace and scan only local model metadata;
+they do not load weights or start a chat turn:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/a07-chat-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray RUNEBENDER_GLYPH=R \
+RUNEBENDER_RAIL=chat target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+```
+
+Replace `gray` with `light` for the paired capture. Both were inspected at
+1100×720: model names, selected state, prompt, and Send fit the 244 px rail.
+Their SHA-256 hashes are `0fc4bd17388b4ce60781f1f60a6b528aab0eb99e79909ee31b33c72716088b02`
+and `b3d75716f452e0ab1a3054c96386c58bca0b5d004627d14541c3be620937ebb9`.
 
 The real integration run uses `RUNEBENDER_AI_DEVICE=cpu` semantics on a copied
 designspace, not this read-only screenshot command. It selects R and S, reports

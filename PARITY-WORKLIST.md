@@ -240,7 +240,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | [x] | A04 | Stale result safety: document/master/glyph/revision changes, close and reload cannot apply output to another target. Verified in `4dd2518` for direct tasks and node `core.install`, including edited targets, editor glyph switches, replacement documents, and changed all-glyph inventories. |
 | [x] | A05 | Graph new/open/save/run, port type validation, parameter edits, graph tabs and failure location; round trip bolden and train-adapter fixtures without expensive training. Verified in `6d7cc51` plus the real review graph in `ce75e3b`; the toolbar uses the native Open picker, and a disposable train-adapter graph is saved, reopened, edited, validated, and given a node-local failure without starting training. |
 | [x] | A06 | Live automation interface and headless Core: same operations/undo semantics, scoped authorization, conflict errors and discoverability; no disk writer bypass over live font root. Verified in `824d3ea`: CLI and MCP share the editor-owned unsaved `Project`; foreground mutations require `authorization=user-approved`; revisions, private endpoints, Core undo, and no-disk-write behavior are tested. |
-| [ ] | A07 | Chat panel parity: currently unconnected. Trace GPUI behavior and implement its local workflow or clearly record dependency; never claim the panel is functional. |
+| [x] | A07 | Chat panel parity: local GGUF selection, prompt/transcript/tool rows, streaming status, multi-turn context, cancellation, clearing, and live proposal refresh. Verified in `7dc5fab` with a deterministic `font-ml chat` process-contract test and inspected Gray/Light panel captures; an actual model turn remains a supervised trial step. |
 | [x] | A08 | Talk/demo path: disposable Virtua sample → graph proposal → comparison → explicit install → undo. Verified in `ce75e3b` with the checked-in review-only graph and real CPU integration test. |
 
 ## Browser workstream
@@ -466,6 +466,16 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   undo semantics. The focused live tests pass 5/5, the Unix-socket integration
   passes 1/1 when allowed to create its private endpoint, and workspace clippy
   passes with warnings denied.
+- A07 — verified in `7dc5fab`: the placeholder is replaced by the GPUI-shaped
+  local workflow over `font-ml chat` and the editor's private live endpoint.
+  It discovers GGUF plus tokenizer folders, prefers the 4B model, keeps multi-turn
+  messages, streams prose and tool-result rows, exposes Cancel and Clear, kills a
+  child when its workspace closes, and refreshes proposal review state when a turn
+  finishes. A deterministic fake process verifies JSON-line events and exact
+  conversation transfer; transcript markup tests and the complete 89-test Xilem
+  suite pass, as does workspace clippy. Inspected 1100×720 evidence is
+  `a07-chat-{gray,light}.png`. No model ran for the captures, so the real 4B turn
+  remains in the supervised trial rather than being claimed from static evidence.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
