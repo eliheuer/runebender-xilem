@@ -34,7 +34,7 @@ use masonry::dpi::PhysicalSize;
 use masonry::imaging::Painter;
 use masonry::imaging::record::{Scene, replay_transformed};
 use masonry::imaging::render::ImageRenderer as _;
-use masonry::kurbo::Rect;
+use masonry::kurbo::{Affine, Rect};
 use xilem::core::{ProxyError, RawProxy, SendMessage, ViewId};
 use xilem::{ViewCtx, WidgetView};
 
@@ -88,6 +88,7 @@ pub(crate) fn render_to<State, V, F>(
     background: Color,
     logic: F,
     size: (u32, u32),
+    scale: f64,
     path: &str,
 ) where
     State: 'static,
@@ -107,6 +108,18 @@ pub(crate) fn render_to<State, V, F>(
 
     let signals = Rc::new(RefCell::new(Vec::new()));
     let signal_sink = signals.clone();
+    let physical = |logical: u32| {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "rounded and clamped screenshot pixel extent"
+        )]
+        {
+            (f64::from(logical) * scale)
+                .round()
+                .clamp(1.0, f64::from(u32::MAX)) as u32
+        }
+    };
+    let physical_size = PhysicalSize::new(physical(size.0), physical(size.1));
     let mut root = RenderRoot::new(
         pod.new_widget.erased(),
         move |signal| signal_sink.borrow_mut().push(signal),
@@ -115,8 +128,8 @@ pub(crate) fn render_to<State, V, F>(
             // The setting this file exists for.
             use_system_fonts: true,
             size_policy: WindowSizePolicy::User,
-            size: PhysicalSize::new(size.0, size.1),
-            scale_factor: 1.0,
+            size: physical_size,
+            scale_factor: scale,
             test_font: None,
         },
     );
@@ -145,19 +158,28 @@ pub(crate) fn render_to<State, V, F>(
     {
         let mut painter = Painter::new(&mut scene);
         painter.fill_rect(
-            Rect::new(0.0, 0.0, f64::from(size.0), f64::from(size.1)),
+            Rect::new(
+                0.0,
+                0.0,
+                f64::from(physical_size.width),
+                f64::from(physical_size.height),
+            ),
             background,
         );
         for layer in &layers.layers {
             if let VisualLayerKind::Scene(layer_scene) = &layer.kind {
-                replay_transformed(layer_scene, &mut scene, layer.transform);
+                replay_transformed(
+                    layer_scene,
+                    &mut scene,
+                    Affine::scale(scale) * layer.transform,
+                );
             }
         }
     }
 
     let mut renderer = imaging_vello_cpu::VelloCpuRenderer::new(1, 1);
     let rendered = renderer
-        .render_source(&mut scene, size.0, size.1)
+        .render_source(&mut scene, physical_size.width, physical_size.height)
         .expect("screenshot: render failed");
     let image = image::RgbaImage::from_vec(rendered.width, rendered.height, rendered.data)
         .expect("screenshot: bad image buffer");

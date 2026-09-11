@@ -29,9 +29,13 @@ pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspac
             };
             sized_box(
                 button(
-                    label(format!("◉ {name}"))
-                        .text_size(TextSize::Body.px())
-                        .color(fg),
+                    xrow(
+                        Region::Inline,
+                        (
+                            recipes::marker(recipes::Marker::Bullet, fg),
+                            label(name).text_size(TextSize::Body.px()).color(fg),
+                        ),
+                    ),
                     move |app: &mut Workspace| {
                         if !app.reference_layers.remove(&i) {
                             app.reference_layers.insert(i);

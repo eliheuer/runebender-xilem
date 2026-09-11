@@ -7,6 +7,12 @@ releases begin.
 
 ## [Unreleased]
 
+- Paint disclosure and leaf markers as theme-aware vector geometry so the
+  bundled interface font cannot turn sidebar and inspector state into missing-glyph boxes.
+
+- Add reproducible 1x and 2x headless parity captures with fixed logical sizing,
+  device scale, fixture hashes, and renderer metadata.
+
 - Align the navigation, grid and inspector top edges with one shared separator below the title bar.
 
 - Align search and inspector inputs with shared insets and optical baseline positioning; route inspector text and labels through the bundled UI-font helpers.

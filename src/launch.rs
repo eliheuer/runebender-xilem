@@ -49,7 +49,7 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
 
         // The harness needs a root widget with a concrete type, so wrap
         // the app's root view in a sized box.
-        // RUNEBENDER_SIZE=1000x680 renders at a chosen size, so a shot
+        // RUNEBENDER_SIZE=1000x680 renders at a chosen logical size, so a shot
         // can be matched against the GPUI build's window for comparison.
         let size = std::env::var("RUNEBENDER_SIZE")
             .ok()
@@ -58,12 +58,20 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
                 Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
             })
             .unwrap_or((1100, 720));
+        // Keep the logical layout fixed while exercising device-pixel scaling.
+        // This produces a true 2x proof rather than a larger, reflowed window.
+        let scale = std::env::var("RUNEBENDER_SCALE")
+            .ok()
+            .and_then(|value| value.parse::<f64>().ok())
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .unwrap_or(1.0);
         let background = app.background();
         screenshot::render_to(
             app,
             background,
             |app: &mut AppState| sized_box(root_logic(app)),
             size,
+            scale,
             &path,
         );
         return Ok(());

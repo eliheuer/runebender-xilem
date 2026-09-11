@@ -13,14 +13,17 @@
 
 use crate::widgets::input_typography;
 
-use crate::view::design::{ControlSize, Radius, Region, Space, Stroke, TextSize};
+use crate::view::design::{
+    ControlSize, ROW_MARKER_BULLET_RADIUS, ROW_MARKER_CHEVRON_LONG, ROW_MARKER_CHEVRON_SHORT,
+    ROW_MARKER_CHEVRON_TIP, ROW_MARKER_SIZE, Radius, Region, Space, Stroke, TextSize,
+};
 use crate::view::design::{column, row};
 use crate::{label, text_input};
-use masonry::layout::Dim;
+use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use xilem::WidgetView;
 use xilem::style::Style;
-use xilem::view::{FlexSpacer, button, sized_box};
+use xilem::view::{FlexSpacer, button, canvas, sized_box};
 
 use crate::Workspace;
 use crate::view::theme::Palette;
@@ -40,9 +43,6 @@ where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
     let muted = pal.text_muted;
-    // The small triangles, as the GPUI build paints them; the large
-    // ones read as buttons.
-    let mark = if open { "\u{25be}" } else { "\u{25b8}" };
     // A stretched row inside the button, because the stock button
     // centres its child and a section header has to sit at the left edge
     // with the rows it heads.
@@ -51,9 +51,8 @@ where
             row(
                 Region::Inline,
                 (
-                    label(format!("{mark} {text}"))
-                        .text_size(TextSize::Caption.px())
-                        .color(muted),
+                    marker(if open { Marker::Open } else { Marker::Closed }, muted),
+                    label(text).text_size(TextSize::Caption.px()).color(muted),
                     FlexSpacer::Flex(1.0),
                 ),
             ),
@@ -229,31 +228,70 @@ pub(crate) enum Marker {
 }
 
 impl Marker {
-    fn text(self) -> &'static str {
-        match self {
-            Self::Bullet => "\u{2022}",
-            Self::Closed => "\u{25b8}",
-            Self::Open => "\u{25be}",
-        }
+    fn is_open(self) -> bool {
+        matches!(self, Self::Open)
     }
+}
+
+/// A painted row marker. The bundled UI font deliberately does not carry
+/// disclosure characters, so geometry is both deterministic and identical
+/// to the GPUI reference at every theme and scale.
+pub(crate) fn marker(marker: Marker, color: xilem::Color) -> impl WidgetView<Workspace> + use<> {
+    sized_box(canvas(move |_: &mut Workspace, _, scene, size| {
+        use masonry::imaging::Painter;
+        use masonry::kurbo::{BezPath, Circle};
+
+        let mut painter = Painter::new(scene);
+        let center = (size.width / 2.0, size.height / 2.0);
+        if marker == Marker::Bullet {
+            painter
+                .fill(Circle::new(center, ROW_MARKER_BULLET_RADIUS), color)
+                .draw();
+            return;
+        }
+
+        let mut path = BezPath::new();
+        if marker.is_open() {
+            path.move_to((
+                center.0 - ROW_MARKER_CHEVRON_LONG,
+                center.1 - ROW_MARKER_CHEVRON_SHORT,
+            ));
+            path.line_to((
+                center.0 + ROW_MARKER_CHEVRON_LONG,
+                center.1 - ROW_MARKER_CHEVRON_SHORT,
+            ));
+            path.line_to((center.0, center.1 + ROW_MARKER_CHEVRON_TIP));
+        } else {
+            path.move_to((
+                center.0 - ROW_MARKER_CHEVRON_SHORT,
+                center.1 - ROW_MARKER_CHEVRON_LONG,
+            ));
+            path.line_to((center.0 + ROW_MARKER_CHEVRON_TIP, center.1));
+            path.line_to((
+                center.0 - ROW_MARKER_CHEVRON_SHORT,
+                center.1 + ROW_MARKER_CHEVRON_LONG,
+            ));
+        }
+        path.close_path();
+        painter.fill(&path, color).draw();
+    }))
+    .dims(Dimensions::fixed(
+        Length::px(ROW_MARKER_SIZE),
+        Length::px(ROW_MARKER_SIZE),
+    ))
 }
 
 /// A list row with a chosen marker, indented when it sits under
 /// another row.
 pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
-    marker: Marker,
+    row_marker: Marker,
     indent: bool,
     text: String,
     trailing: String,
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    let text = if indent {
-        format!("      {}  {text}", marker.text())
-    } else {
-        format!("{}  {text}", marker.text())
-    };
     let (fg, border, bg) = if active {
         (
             pal.selected_content_ink(),
@@ -273,6 +311,8 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             row(
                 Region::Inline,
                 (
+                    indent.then_some(FlexSpacer::Fixed(Space::Lg.length())),
+                    marker(row_marker, if active { fg } else { pal.text_muted }),
                     label(text).text_size(TextSize::Body.px()).color(fg),
                     FlexSpacer::Flex(1.0),
                     label(trailing)
@@ -286,9 +326,9 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             ),
             move |app: &mut Workspace| on_click(app),
         )
-        .padding(masonry::properties::Padding::horizontal(
-            masonry::layout::Length::px(crate::view::design::SIDEBAR_ROW_INSET),
-        ))
+        .padding(masonry::properties::Padding::horizontal(Length::px(
+            crate::view::design::SIDEBAR_ROW_INSET,
+        )))
         .background_color(bg)
         .border_color(border)
         .border_width(Stroke::Hairline.length())

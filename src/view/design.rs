@@ -40,6 +40,12 @@ pub(crate) const INPUT_HORIZONTAL_INSET: f64 = 6.0;
 pub(crate) const DOCK_WIDTH: f64 = 246.0;
 /// GPUI category rows inset their marker and count by 14 logical pixels.
 pub(crate) const SIDEBAR_ROW_INSET: f64 = 14.0;
+/// Painted sidebar marker geometry, shared with the GPUI reference.
+pub(crate) const ROW_MARKER_SIZE: f64 = 10.0;
+pub(crate) const ROW_MARKER_BULLET_RADIUS: f64 = 1.8;
+pub(crate) const ROW_MARKER_CHEVRON_SHORT: f64 = 1.5;
+pub(crate) const ROW_MARKER_CHEVRON_LONG: f64 = 3.5;
+pub(crate) const ROW_MARKER_CHEVRON_TIP: f64 = 2.5;
 /// GPUI navigation strip geometry, in logical pixels.
 pub(crate) const RAIL_TAB_ACTIVE_HEIGHT: f64 = 32.0;
 pub(crate) const RAIL_TAB_INACTIVE_HEIGHT: f64 = 28.0;
