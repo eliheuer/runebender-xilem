@@ -32,17 +32,20 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         (
             // A field, not a well: one step darker than the
             // panel with a quiet outline, as every field is.
-            text_input(app.filter.clone(), |app: &mut Workspace, v| {
-                app.filter = v;
-                app.rebuild_search_regex();
-            })
-            .placeholder("Search glyphs")
-            .text_color(pal.text)
-            .placeholder_color(pal.text_muted)
-            .background_color(pal.field())
-            .border_color(pal.field_outline)
-            .border_width(Stroke::Hairline.length())
-            .corner_radius(Radius::None.length())
+            input_typography::input_typography(
+                text_input(app.filter.clone(), |app: &mut Workspace, v| {
+                    app.filter = v;
+                    app.rebuild_search_regex();
+                })
+                .placeholder("Search glyphs")
+                .text_color(pal.text)
+                .placeholder_color(pal.text_muted)
+                .background_color(pal.field())
+                .border_color(pal.field_outline)
+                .border_width(Stroke::Hairline.length())
+                .corner_radius(Radius::None.length())
+                .padding(Space::Sm),
+            )
             .flex(1.0),
             toggle(
                 match app.search_mode {
