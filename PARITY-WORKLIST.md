@@ -239,7 +239,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | [x] | A03 | Proposal review/install/discard: audit current immediate install and Undo install behavior; preserve explicit user-controlled install semantics and original layer. Verified in `1d96364` and `dd0159a`; native pointer verification remains part of R04. |
 | [x] | A04 | Stale result safety: document/master/glyph/revision changes, close and reload cannot apply output to another target. Verified in `4dd2518` for direct tasks and node `core.install`, including edited targets, editor glyph switches, replacement documents, and changed all-glyph inventories. |
 | [x] | A05 | Graph new/open/save/run, port type validation, parameter edits, graph tabs and failure location; round trip bolden and train-adapter fixtures without expensive training. Verified in `6d7cc51` plus the real review graph in `ce75e3b`; the toolbar uses the native Open picker, and a disposable train-adapter graph is saved, reopened, edited, validated, and given a node-local failure without starting training. |
-| [ ] | A06 | Live automation interface and headless Core: same operations/undo semantics, scoped authorization, conflict errors and discoverability; no disk writer bypass over live font root. |
+| [x] | A06 | Live automation interface and headless Core: same operations/undo semantics, scoped authorization, conflict errors and discoverability; no disk writer bypass over live font root. Verified in `824d3ea`: CLI and MCP share the editor-owned unsaved `Project`; foreground mutations require `authorization=user-approved`; revisions, private endpoints, Core undo, and no-disk-write behavior are tested. |
 | [ ] | A07 | Chat panel parity: currently unconnected. Trace GPUI behavior and implement its local workflow or clearly record dependency; never claim the panel is functional. |
 | [x] | A08 | Talk/demo path: disposable Virtua sample → graph proposal → comparison → explicit install → undo. Verified in `ce75e3b` with the checked-in review-only graph and real CPU integration test. |
 
@@ -403,6 +403,13 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   uses the same system-font-enabled renderer as the real window and renders beh
   and alef distinctly through the shared search/metadata/preview input style.
   Native OS clipboard delivery remains a supervised R03/R06 interaction check.
+- M04 — native-menu blocker recorded after source audit: focused Masonry text
+  widgets correctly consume keyboard Undo/Redo/Copy/Cut/Paste/Select All before
+  canvas commands, but macOS `muda` menu clicks arrive outside the widget event
+  tree and dispatch `AppAction` directly. Masonry inputs are canvas-rendered, so
+  AppKit predefined edit selectors cannot target them. This remains unchecked
+  pending a window-command hook or focused-widget command proxy; no native-menu
+  behavior is inferred from the keyboard tests.
 - A03 — verified in `1d96364` and `dd0159a`: completed single-glyph jobs remain
   proposals until explicit Install or Discard. The Local AI panel now toggles a
   warm on-canvas proposal overlay; Install/Discard clear review state and Undo
@@ -450,6 +457,15 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   proposal output, and reopening. A normal disposable train-adapter graph test
   validates typed ports, edits and persists parameters, reopens it, and retains
   the exact failing-node diagnostic without running training.
+- A06 — verified in `824d3ea`: the real CLI and MCP adapters connect to the same
+  editor-owned, unsaved `Project`, read its current revision, create a proposal,
+  reject an install without explicit `authorization=user-approved`, install only
+  with that authorization, and reread the changed advance without ever creating
+  the project UFO path. The live schemas advertise this required enum for proposal
+  install and experiment apply/undo; Core retains atomic revision conflicts and
+  undo semantics. The focused live tests pass 5/5, the Unix-socket integration
+  passes 1/1 when allowed to create its private endpoint, and workspace clippy
+  passes with warnings denied.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the

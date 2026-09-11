@@ -82,6 +82,13 @@ finishes:
 5. Start one more bounded R run and press **Cancel**; confirm progress stops and
    no proposal is silently installed.
 
+For a live CLI or MCP session, connect to the endpoint advertised by the open
+editor and read the glyph revision before proposing edits. `proposal_install`,
+`experiment_apply`, and `experiment_undo_apply` reject calls unless the arguments
+contain `"authorization":"user-approved"`; set that value only after the user
+has explicitly requested the corresponding mutation. These calls update the
+editor-owned in-memory document and Core undo history. They do not save the UFO.
+
 The model is a local draft trained 2026-07-16 and promoted 2026-09-01. Its
 recorded MAE is 16.8 against a 19.0 baseline; fitted strength rarely converges
 and advance deltas skew narrow. Review its output as a suggestion, not an
@@ -128,6 +135,8 @@ Implementation commits are `a40808b` (Latin/Arabic navigation and metadata),
 (proposal comparison), `ce75e3b` (review-only node route), and `1de39f6`
 (bidi text selection), `efae328` (logical Unicode clipboard round trip), and
 `e070f24` (Arabic UI-input fallback proof), and `6ac0f14` (per-tab text context).
+Commit `824d3ea` adds machine-checked authorization for live foreground changes
+and a real CLI/MCP socket test proving the shared document remains unsaved.
 Headless inspected captures are
 `r01-arabic-beh-{gray,light}.png`, `r03-mixed-text-{gray,light}.png`,
 `r03-text-selection-{gray,light}.png`, and
