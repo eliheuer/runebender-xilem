@@ -425,3 +425,9 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
   supervised native trial is completed.
+- R06 — the retained 1100×720 Gray/Light pairs for Arabic editing, text
+  selection, Local AI comparison, and the review-only node graph were reinspected
+  after `6d7cc51`. Essential text and actions remain legible, selection/caret and
+  proposal/foreground states are distinguishable, and no new headless visual
+  blocker was found. Native menus, input delivery, and pointer behavior remain
+  trial work, so R06 stays unchecked.

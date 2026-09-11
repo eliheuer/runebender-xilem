@@ -132,7 +132,7 @@ normal tests cover reload, glyph switching, edited target glyphs, and changed
 all-glyph inventories. This safety check does not replace the native interaction
 steps above.
 
-Validation through `1de39f6`:
+Validation through `6d7cc51`:
 
 ```sh
 cargo test --locked --bin runebender-xilem -- --test-threads=1
@@ -140,7 +140,7 @@ cargo test --locked --bin runebender-xilem -- --ignored --test-threads=1
 cargo clippy --locked --workspace --all-targets -- -D warnings
 ```
 
-Results: all 441 normal workspace tests passed; all four ignored real
+Results: all 448 normal workspace tests passed; all four ignored real
 Virtua/model tests passed; clippy passed. Report any mismatch with the disposable
 path, master, glyph, action, expected result, and whether it reproduced after
 reopening.
