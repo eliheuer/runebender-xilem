@@ -327,8 +327,18 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
 - V04 — in progress in `793c3f9`: a focused Masonry input test verifies the
   shared 28 px control does not vertically clip selected `gyp` descenders or
   signed decimal text, in addition to the existing placeholder/typed-text ink
-  equivalence test. Arabic fallback, long-name horizontal clipping, and a live
-  native caret/selection pass remain before verification.
+  equivalence test. A macOS system-font test resolves Arabic beh and alef to
+  distinct glyphs. `docs/parity/2026-09-11/V04-LONG-INPUT-REPRO.md` records the
+  remaining horizontal-caret blocker: pinned Masonry revision `b81d8d7a` clips
+  an unwrapped long value but explicitly does not scroll its viewport to the
+  cursor. V04 remains open pending that upstream behavior and a supervised
+  native caret/selection pass.
+- Q03 — candidate documented in
+  `docs/parity/2026-09-11/V04-LONG-INPUT-REPRO.md`: a 170 × 28 unwrapped
+  `TextInput` containing `lam_alefH_amzabelow-ar.fina` keeps its row bounded but
+  cannot reveal the end caret because Masonry `TextArea` has no scroll-to-cursor
+  support. This is a reproducer and scoped upstream opportunity, not a completed
+  framework patch; Q03 remains open for the other listed platform gaps.
 - T01 — implemented / native verification pending in `793c3f9`: the canvas text
   tool now treats `Ime::Preedit` as visible uncommitted state, clears it on
   cancellation/disable, inserts `Ime::Commit` exactly once, and consumes the
