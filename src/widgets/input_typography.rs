@@ -141,7 +141,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use masonry::properties::{ContentColor, Padding, PlaceholderColor};
+    use masonry::properties::{ContentColor, PlaceholderColor};
     use masonry::widgets::TextArea;
     use masonry_testing::TestHarness;
 
@@ -156,7 +156,6 @@ mod tests {
             .with_placeholder("Search glyphs")
             .with_clip(true)
             .prepare()
-            .with_props(Padding::all(crate::Space::Sm.length()))
             .with_props(PlaceholderColor::new(masonry::peniko::Color::BLACK));
         let mut harness = TestHarness::create_with_size(
             crate::default_property_set(),
@@ -164,7 +163,7 @@ mod tests {
                 child: input.to_pod(),
             }
             .prepare(),
-            (170, 26),
+            (170, 28),
         );
         let placeholder = harness.render();
         harness.edit_root_widget(|mut wrapper| {

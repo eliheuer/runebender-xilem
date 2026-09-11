@@ -35,6 +35,18 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
     }
     // Headless: render one frame and exit. No window, no event loop.
     if let Ok(path) = std::env::var("RUNEBENDER_SCREENSHOT") {
+        if let Ok(name) = std::env::var("RUNEBENDER_SELECTED")
+            && let Some(workspace) = app.workspace.as_mut()
+            && let Some(index) = workspace.font.index_of(&name)
+        {
+            workspace.grid_select(index, false, false);
+        }
+        if let Ok(section) = std::env::var("RUNEBENDER_EXPAND")
+            && let Some(workspace) = app.workspace.as_mut()
+        {
+            workspace.collapsed.remove(section.as_str());
+        }
+
         // The harness needs a root widget with a concrete type, so wrap
         // the app's root view in a sized box.
         // RUNEBENDER_SIZE=1000x680 renders at a chosen size, so a shot

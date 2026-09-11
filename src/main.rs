@@ -23,7 +23,15 @@ use masonry::properties::Dimensions;
 use masonry::properties::types::CrossAxisAlignment;
 /// Native and headless rendering share the same property defaults.
 fn default_property_set() -> masonry::core::DefaultProperties {
-    masonry::theme::default_property_set()
+    let mut properties = masonry::theme::default_property_set();
+    use crate::view::design::{INPUT_BASELINE_OFFSET, INPUT_HORIZONTAL_INSET, INPUT_INSET};
+    properties.insert::<masonry::widgets::TextInput, _>(masonry::properties::Padding {
+        left: Length::px(INPUT_HORIZONTAL_INSET),
+        right: Length::px(INPUT_HORIZONTAL_INSET),
+        top: Length::px(INPUT_INSET + INPUT_BASELINE_OFFSET),
+        bottom: Length::px(INPUT_INSET - INPUT_BASELINE_OFFSET),
+    });
+    properties
 }
 use crate::widgets::scroll_viewport::portal;
 use winit::dpi::LogicalSize;

@@ -30,6 +30,12 @@ pub(crate) const MARK_SWATCH_DIAMETER: f64 = 18.0;
 pub(crate) const MARK_SWATCH_GAP: f64 = 6.0;
 pub(crate) const MARK_CLEAR_CROSS_HALF: f64 = 16.0 * 0.28;
 
+/// Shared single-line input inset. Virtua's line box needs a one-pixel
+/// downward optical correction to balance the visible capitals/descenders.
+pub(crate) const INPUT_INSET: f64 = 4.0;
+pub(crate) const INPUT_BASELINE_OFFSET: f64 = 1.0;
+pub(crate) const INPUT_HORIZONTAL_INSET: f64 = 6.0;
+
 /// Initial dock width shared by the glyph rail and inspector.
 pub(crate) const DOCK_WIDTH: f64 = 246.0;
 /// GPUI category rows inset their marker and count by 14 logical pixels.

@@ -11,13 +11,16 @@
 //! are candidates for the framework's parts list. Each graduates when a
 //! second application needs the same one.
 
-pub(crate) use crate::view::design::{ControlSize, Radius, Region, Space, Stroke, TextSize};
+use crate::widgets::input_typography;
+
+use crate::view::design::{ControlSize, Radius, Region, Space, Stroke, TextSize};
 use crate::view::design::{column, row};
+use crate::{label, text_input};
 use masonry::layout::Dim;
 use masonry::properties::Dimensions;
 use xilem::WidgetView;
 use xilem::style::Style;
-use xilem::view::{FlexSpacer, button, label, sized_box, text_input};
+use xilem::view::{FlexSpacer, button, sized_box};
 
 use crate::Workspace;
 use crate::view::theme::Palette;
@@ -112,7 +115,7 @@ where
     F: Fn(&mut Workspace, String) + Send + Sync + 'static,
     G: Fn(&mut Workspace, String) + Send + Sync + 'static,
 {
-    sized_box(
+    sized_box(input_typography::input_typography(
         text_input(value, move |app: &mut Workspace, v| on_change(app, v))
             .on_enter(move |app: &mut Workspace, v| on_enter(app, v))
             .placeholder(placeholder)
@@ -122,7 +125,7 @@ where
             .border_color(pal.field_outline)
             .border_width(Stroke::Hairline.length())
             .corner_radius(Radius::None.length()),
-    )
+    ))
     .dims(Dimensions::new(
         Dim::Stretch,
         Dim::from(ControlSize::Control),
@@ -145,7 +148,7 @@ where
             label(name)
                 .text_size(TextSize::Caption.px())
                 .color(pal.text_muted),
-            sized_box(
+            sized_box(input_typography::input_typography(
                 text_input(value, move |app: &mut Workspace, v| on_change(app, v))
                     .text_color(pal.text)
                     .placeholder_color(pal.text_muted)
@@ -153,7 +156,7 @@ where
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())
                     .corner_radius(Radius::None.length()),
-            )
+            ))
             .dims(Dimensions::new(
                 Dim::Stretch,
                 Dim::from(ControlSize::Control),
@@ -186,7 +189,7 @@ where
             label(name)
                 .text_size(TextSize::Caption.px())
                 .color(pal.text_muted),
-            sized_box(
+            sized_box(input_typography::input_typography(
                 text_input(value, move |app: &mut Workspace, v| on_change(app, v))
                     .on_enter(move |app: &mut Workspace, v| on_enter(app, v))
                     .text_color(pal.text)
@@ -195,7 +198,7 @@ where
                     .border_color(pal.field_outline)
                     .border_width(Stroke::Hairline.length())
                     .corner_radius(Radius::None.length()),
-            )
+            ))
             .dims(Dimensions::new(
                 Dim::Stretch,
                 Dim::from(ControlSize::Control),

@@ -44,7 +44,10 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 .border_color(pal.field_outline)
                 .border_width(Stroke::Hairline.length())
                 .corner_radius(Radius::None.length())
-                .padding(Space::Sm),
+                .dims(Dimensions::new(
+                    Dim::Stretch,
+                    Dim::from(ControlSize::Control),
+                )),
             )
             .flex(1.0),
             toggle(
