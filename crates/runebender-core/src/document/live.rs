@@ -51,7 +51,7 @@ pub fn tools() -> Vec<agent::Tool> {
     });
     result.push(agent::Tool {
         name: "proposal_install".into(),
-        description: "Install a reviewed proposal into the unsaved foreground, with one undo step per glyph. Only call when the user asks to apply it. Set keep_structure=false explicitly for a redraw; this can break interpolation with other masters. New glyph names must first exist in the editor. Re-proof after installation.".into(),
+        description: "Install a reviewed proposal into the unsaved foreground, with one undo step per glyph. Only set authorization=user-approved after the user asks to apply it. Set keep_structure=false explicitly for a redraw; this can break interpolation with other masters. New glyph names must first exist in the editor. Re-proof after installation.".into(),
         parameters: json!({"type":"object", "properties":{
             "master":{"type":"integer","minimum":0},
             "task":{"type":"string"},
@@ -74,13 +74,13 @@ pub fn tools() -> Vec<agent::Tool> {
         ),
         (
             "experiment_apply",
-            "Apply explicitly selected experiment glyphs and/or kerning to the root after review. Atomic conflict checks; never saves. Use experiment_undo_apply to undo the transaction.",
+            "Apply explicitly selected experiment glyphs and/or kerning to the root after review. Set authorization=user-approved only after the user asks. Atomic conflict checks; never saves. Use experiment_undo_apply to undo the transaction.",
             json!({"branch":{"type":"string"},"glyphs":{"type":"array","items":{"type":"string"}},"kerning":{"type":"boolean"},"keep_structure":{"type":"boolean"}}),
             json!(["branch", "glyphs", "kerning", "keep_structure"]),
         ),
         (
             "experiment_undo_apply",
-            "Undo the last experiment application without overwriting subsequent edits.",
+            "Undo the last experiment application without overwriting subsequent edits. Set authorization=user-approved only after the user asks.",
             json!({}),
             json!([]),
         ),
@@ -101,6 +101,20 @@ pub fn tools() -> Vec<agent::Tool> {
     }
     result.push(agent::Tool {name:"specimen".into(),description:"Designbot scene for a one-page live Latin text proof at 18,24,36,48 pt. Harfrust shaping plus current UFO kerning. Use identical text for A/B experiments. Does not save files.".into(),parameters:json!({"type":"object","properties":{"text":{"type":"string","maxLength":256}},"required":["text"],"additionalProperties":false})});
     for tool in &mut result {
+        if matches!(
+            tool.name.as_str(),
+            "proposal_install" | "experiment_apply" | "experiment_undo_apply"
+        ) {
+            tool.parameters["properties"]["authorization"] = json!({
+                "type":"string",
+                "enum":["user-approved"],
+                "description":"Explicit confirmation that the user requested this foreground mutation."
+            });
+            tool.parameters["required"]
+                .as_array_mut()
+                .expect("tool required list")
+                .push(json!("authorization"));
+        }
         if !matches!(
             tool.name.as_str(),
             "design_context" | "project_info" | "experiment_list" | "experiment_undo_apply"
@@ -137,6 +151,16 @@ pub fn call(project: &mut Project, name: &str, args: &Value) -> Value {
 
 fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, String> {
     let object = args.as_object().ok_or("arguments must be an object")?;
+    if matches!(
+        name,
+        "proposal_install" | "experiment_apply" | "experiment_undo_apply"
+    ) && object.get("authorization").and_then(Value::as_str) != Some("user-approved")
+    {
+        return Err(
+            "explicit user authorization required: set authorization to user-approved only after the user asks"
+                .into(),
+        );
+    }
     if name == "project_info" {
         return Ok(
             json!({"ok": true, "live": true, "project": project.export_source,
@@ -520,16 +544,36 @@ mod tests {
             }]}),
         );
         assert_eq!(result["ok"], true);
+        let unauthorized = call(
+            &mut project,
+            "proposal_install",
+            &json!({"task":"drawing","keep_structure":false}),
+        );
+        assert_eq!(unauthorized["ok"], false);
+        assert!(
+            unauthorized["error"]
+                .as_str()
+                .is_some_and(|error| error.contains("explicit user authorization"))
+        );
+        assert!(
+            project.masters[0]
+                .font
+                .get_glyph("draft")
+                .unwrap()
+                .contours
+                .is_empty(),
+            "a missing authorization cannot change the foreground"
+        );
         let guarded = call(
             &mut project,
             "proposal_install",
-            &json!({"task":"drawing","keep_structure":true}),
+            &json!({"task":"drawing","keep_structure":true,"authorization":"user-approved"}),
         );
         assert_eq!(guarded["installed"]["installed"], json!([]));
         let applied = call(
             &mut project,
             "proposal_install",
-            &json!({"task":"drawing","keep_structure":false}),
+            &json!({"task":"drawing","keep_structure":false,"authorization":"user-approved"}),
         );
         assert_eq!(applied["installed"]["installed"], json!(["draft"]));
         assert_eq!(
@@ -597,5 +641,28 @@ mod tests {
         );
         assert_eq!(result["ok"], false);
         assert!(proposal::list(&project.masters[0].font).is_empty());
+    }
+
+    #[test]
+    fn foreground_mutation_tools_require_explicit_user_authorization() {
+        for name in [
+            "proposal_install",
+            "experiment_apply",
+            "experiment_undo_apply",
+        ] {
+            let tool = tools()
+                .into_iter()
+                .find(|tool| tool.name == name)
+                .expect("foreground tool is discoverable");
+            assert!(
+                tool.parameters["required"]
+                    .as_array()
+                    .is_some_and(|required| required.iter().any(|item| item == "authorization"))
+            );
+            assert_eq!(
+                tool.parameters["properties"]["authorization"]["enum"],
+                json!(["user-approved"])
+            );
+        }
     }
 }

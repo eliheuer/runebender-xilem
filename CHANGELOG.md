@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Require an explicit user-authorization argument before live automation can
+  install proposals or apply and undo experiments; keep socket operations on
+  the editor-owned unsaved document without writing its UFO source.
+
 - Paint disclosure and leaf markers as theme-aware vector geometry so the
   bundled interface font cannot turn sidebar and inspector state into missing-glyph boxes.
 
