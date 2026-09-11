@@ -50,6 +50,8 @@ or otherwise mutates it.
 | `v07-editor-r-gray.png` | Gray | corrected editor rail | glyph R; fitted 44 px target; captions deliberately omitted |
 | `r03-mixed-text-gray.png` | Gray | text tool and preview | `R لا 123 بِ`; automatic direction; caret at logical end |
 | `r03-mixed-text-light.png` | Light | text tool and preview | same state |
+| `r04-ai-compare-gray.png` | Gray | Local AI review | disposable Regular UFO; R foreground with amber `bolden` proposal; Local AI rail |
+| `r04-ai-compare-light.png` | Light | Local AI review | same state |
 
 Build first:
 
@@ -96,6 +98,22 @@ RUNEBENDER_NODES=../virtua-grotesk/nodes/bolden.nodes.json \
 RUNEBENDER_MODE=nodes target/debug/runebender-xilem \
 ../virtua-grotesk/sources/VirtuaGrotesk.designspace
 ```
+
+The R04 comparison captures use a disposable copy after the verified local CPU
+`bolden` command has written its proposal layer. With that copy at
+`$trial_root/Regular.ufo`, reproduce either theme with:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/r04-ai-compare-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray RUNEBENDER_GLYPH=R \
+RUNEBENDER_RAIL=ai RUNEBENDER_MODEL=/Users/eli/.runebender/models/virtua-12m-bolden \
+RUNEBENDER_PROPOSAL_PREVIEW=bolden target/debug/runebender-xilem \
+"$trial_root/Regular.ufo"
+```
+
+These files were individually inspected at 1100×720. They prove that the pending
+proposal and foreground are visually distinguishable and that the proposal row
+does not clip its status or decisions; they do not prove a native button click.
 
 ## GPUI reference metrics
 

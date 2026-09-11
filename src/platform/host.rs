@@ -871,9 +871,11 @@ mod tests {
             .save(&path)
             .expect("the empty UFO fixture saves");
         let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.modified = true;
         workspace.font.master_mut().source_path = "/dev/null/runebender-test.ufo".into();
 
         assert!(!workspace.save());
+        assert!(workspace.modified, "a failed save must remain dirty");
         assert!(workspace.note.starts_with("Save failed:"));
 
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");

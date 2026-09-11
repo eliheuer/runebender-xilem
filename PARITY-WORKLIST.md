@@ -18,7 +18,7 @@ The next delivery is **ready for a supervised real-work trial**, with these gate
 
 - [ ] R01 — Open the Virtua Grotesk designspace, choose the intended master/glyph,
   navigate/search Latin and Arabic, and see accurate outlines and metadata.
-- [ ] R02 — Make representative outline, metrics and anchor edits; undo/redo;
+- [x] R02 — Make representative outline, metrics and anchor edits; undo/redo;
   save a disposable copy and reopen it without losing unrelated font data.
   Dirty-state, failed-save and external-change behavior must be trustworthy.
 - [ ] R03 — Enter and preview representative Arabic and mixed Latin/Arabic text;
@@ -236,7 +236,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 |---|---|---|
 | [ ] | A01 | Compare installed `font-ml tasks --json` registry with UI task list and node types; expose missing-binary/model errors clearly without downloads. |
 | [ ] | A02 | Run/cancel/progress/failure lifecycle with fake or tiny fixture subprocess; UI stays responsive and processes terminate. |
-| [ ] | A03 | Proposal review/install/discard: audit current immediate install and Undo install behavior; preserve explicit user-controlled install semantics and original layer. |
+| [x] | A03 | Proposal review/install/discard: audit current immediate install and Undo install behavior; preserve explicit user-controlled install semantics and original layer. Verified in `1d96364` and `dd0159a`; native pointer verification remains part of R04. |
 | [ ] | A04 | Stale result safety: document/master/glyph/revision changes, close and reload cannot apply output to another target. Test both single task and node core.install path. |
 | [ ] | A05 | Graph new/open/save/run, port type validation, parameter edits, graph tabs and failure location; round trip bolden and train-adapter fixtures without expensive training. |
 | [ ] | A06 | Live automation interface and headless Core: same operations/undo semantics, scoped authorization, conflict errors and discoverability; no disk writer bypass over live font root. |
@@ -350,3 +350,34 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   commit refits the text viewport after every IME transition so a cancelled or
   rejected composition cannot leave stale composition geometry. Native GPU and
   trackpad interaction remain covered by the later platform trial, not this row.
+- R02 — verified in `588b605`: an ignored integration test copies the full
+  adjacent 13 MB Virtua source tree, edits a point, advance and anchor on Regular
+  R, exercises Undo/Redo, saves and reopens, keeps the designspace bytes intact,
+  and compares the complete reopened font after normalizing only R. Navigation
+  no longer dirties the document; a normal test proves an external reload cannot
+  overwrite unsaved work. The existing unwritable-source test proves save failure
+  remains dirty and reports `Save failed`. All passed in the 70-test normal suite
+  plus the three-test real-fixture run.
+- R03 / T02 / T03 — in progress in `1d96364`: the real Virtua integration test
+  shapes `R لا 123 بِ`, verifies source coverage, lam-alef substitution, mark
+  ordering, finite outline paths, and bidi layout. Canvas Up/Down/Home/End now use
+  Core's logical/visual cursor model. Gray and Light evidence is
+  `r03-mixed-text-{gray,light}.png`. Native IME verification, text-range selection,
+  deletion and pointer mapping across RTL clusters remain open, so R03 is not
+  checked.
+- A03 — verified in `1d96364` and `dd0159a`: completed single-glyph jobs remain
+  proposals until explicit Install or Discard. The Local AI panel now toggles a
+  warm on-canvas proposal overlay; Install/Discard clear review state and Undo
+  restores the foreground. The real CPU test over disposable Virtua R moved
+  40/40 points with advance delta +18, left the original foreground untouched,
+  installed explicitly, and undid to byte-equivalent glyph data. Individually
+  inspected Gray/Light captures are `r04-ai-compare-{gray,light}.png`.
+- R04 — in progress through `1d96364` and `dd0159a`: installed task discovery,
+  a bounded real model run, pending proposal, comparison, explicit install and
+  Undo are verified. Stale document switching is covered by normal tests and
+  full subprocess diagnostics are retained. Native progress/Cancel and failure
+  interaction still require the supervised trial, so R04 remains unchecked.
+- R07 — trial instructions, exact local runtime/model hashes, warnings, capture
+  commands, commits, validation, and remaining native/RTL limits are recorded in
+  `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
+  supervised native trial is completed.
