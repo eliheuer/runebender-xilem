@@ -61,6 +61,7 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
                     Some((start.parse().ok()?, end.parse().ok()?))
                 });
             text_tool::TextInputs::new(&app.font)
+                .with_context(app.text_context_id())
                 .with_text(&app.initial_text)
                 .with_direction(app.text_dir)
                 .with_selection(selection)
@@ -78,6 +79,7 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
             canvas::editor::EditorEvent::Edited => app.refresh_open_glyph(),
             canvas::editor::EditorEvent::Undo => app.undo_open_glyph(false),
             canvas::editor::EditorEvent::Redo => app.undo_open_glyph(true),
+            canvas::editor::EditorEvent::TextChanged(text) => app.set_editor_text(text),
             canvas::editor::EditorEvent::EditGlyph(name) => {
                 if let Some(index) = app.font.index_of(&name) {
                     app.open_glyph(index);

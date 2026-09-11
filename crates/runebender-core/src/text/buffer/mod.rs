@@ -539,19 +539,26 @@ impl TextBuffer {
         (anchor != self.cursor).then_some(anchor.min(self.cursor)..anchor.max(self.cursor))
     }
 
+    /// The complete logical text, preserving line breaks and typed Unicode
+    /// rather than shaped glyph names.
+    pub fn text(&self) -> String {
+        self.text_in_range(0..self.sorts.len())
+    }
+
     /// The selected logical text, preserving line breaks and typed Unicode
     /// rather than shaped glyph names. Returns `None` without a selection.
     pub fn selected_text(&self) -> Option<String> {
-        let range = self.selection_range()?;
-        Some(
-            self.sorts[range]
-                .iter()
-                .filter_map(|sort| match &sort.kind {
-                    TextSortKind::Glyph { codepoint, .. } => *codepoint,
-                    TextSortKind::LineBreak => Some('\n'),
-                })
-                .collect(),
-        )
+        Some(self.text_in_range(self.selection_range()?))
+    }
+
+    fn text_in_range(&self, range: std::ops::Range<usize>) -> String {
+        self.sorts[range]
+            .iter()
+            .filter_map(|sort| match &sort.kind {
+                TextSortKind::Glyph { codepoint, .. } => *codepoint,
+                TextSortKind::LineBreak => Some('\n'),
+            })
+            .collect()
     }
 
     /// Drop the text selection without moving the caret.

@@ -402,6 +402,46 @@ mod tab_tests {
         );
     }
 
+    #[test]
+    fn tabs_keep_independent_text_and_preview_contexts() {
+        use runebender_core::text::buffer::TextDirection;
+
+        let mut app = app();
+        let a = app.font.index_of("A").expect("A");
+        app.open_glyph(a);
+        app.set_editor_text("first editor".into());
+        app.preview_text = "first preview".into();
+        app.text_dir = Some(TextDirection::RightToLeft);
+        app.text_features_disabled.insert("rlig".into());
+        app.text_script = Some("arab".into());
+        app.text_language = Some("ur".into());
+
+        app.new_tab();
+        assert_ne!(app.tabs[0].text_context_id, app.tabs[1].text_context_id);
+        app.set_editor_text("second editor".into());
+        app.preview_text = "second preview".into();
+        app.text_dir = Some(TextDirection::LeftToRight);
+        app.text_features_disabled.clear();
+        app.text_script = None;
+        app.text_language = None;
+
+        app.activate_tab(0);
+        assert_eq!(app.initial_text, "first editor");
+        assert_eq!(app.preview_text, "first preview");
+        assert_eq!(app.text_dir, Some(TextDirection::RightToLeft));
+        assert!(app.text_features_disabled.contains("rlig"));
+        assert_eq!(app.text_script.as_deref(), Some("arab"));
+        assert_eq!(app.text_language.as_deref(), Some("ur"));
+
+        app.activate_tab(1);
+        assert_eq!(app.initial_text, "second editor");
+        assert_eq!(app.preview_text, "second preview");
+        assert_eq!(app.text_dir, Some(TextDirection::LeftToRight));
+        assert!(app.text_features_disabled.is_empty());
+        assert_eq!(app.text_script, None);
+        assert_eq!(app.text_language, None);
+    }
+
     /// Renaming used to rebuild the model from the active master, which
     /// dropped the other masters, the axes and their locations. In a
     /// designspace that meant losing interpolation and saving one UFO.

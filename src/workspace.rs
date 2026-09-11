@@ -337,8 +337,22 @@ pub(crate) enum Mode {
 
 /// One editing tab: a parked session and the tool it was left on.
 pub(crate) struct Tab {
+    /// Stable widget-state identity, distinct even for two tabs on one glyph.
+    pub(crate) text_context_id: u64,
     pub(crate) session: Arc<Session>,
     pub(crate) tool: Tool,
+    pub(crate) text_context: TextContext,
+}
+
+/// Plain-data text and preview state parked with an editor tab.
+#[derive(Clone, Default)]
+pub(crate) struct TextContext {
+    pub(crate) editor_text: String,
+    pub(crate) preview_text: String,
+    pub(crate) direction: Option<runebender_core::text::buffer::TextDirection>,
+    pub(crate) features_disabled: std::collections::HashSet<String>,
+    pub(crate) script: Option<String>,
+    pub(crate) language: Option<String>,
 }
 
 #[cfg(test)]

@@ -132,6 +132,8 @@ pub(crate) enum EditorEvent {
     Selection(usize),
     /// The text tool activated a sort: open that glyph for editing.
     EditGlyph(String),
+    /// The committed logical text changed; park it with the active tab.
+    TextChanged(String),
     /// Cmd+Z: the app undoes on the master's pile.
     Undo,
     /// Cmd+Shift+Z or Cmd+Y.
@@ -530,6 +532,12 @@ impl EditorWidget {
         }
         ctx.submit_action::<EditorEvent>(EditorEvent::Selection(self.session.selection.len()));
         ctx.request_render();
+    }
+
+    fn emit_text_changed(&self, ctx: &mut EventCtx<'_>) {
+        if let Some(text) = &self.text {
+            ctx.submit_action::<EditorEvent>(EditorEvent::TextChanged(text.buffer.text()));
+        }
     }
 }
 
@@ -1468,17 +1476,20 @@ impl Widget for EditorWidget {
             && let Some(text) = self.text.as_mut()
             && let TextEvent::Ime(ime) = event
         {
-            match ime {
+            let changed = match ime {
                 masonry::core::Ime::Preedit(value, _) => {
                     text.set_preedit(value.clone());
+                    false
                 }
-                masonry::core::Ime::Commit(value) => {
-                    text.commit_preedit(value);
-                }
+                masonry::core::Ime::Commit(value) => text.commit_preedit(value),
                 masonry::core::Ime::Disabled => {
                     text.set_preedit(String::new());
+                    false
                 }
-                masonry::core::Ime::Enabled => {}
+                masonry::core::Ime::Enabled => false,
+            };
+            if changed {
+                self.emit_text_changed(ctx);
             }
             // Composition can change the visible run even when the commit
             // contains no glyph the document can place. Refit after every
@@ -1496,6 +1507,7 @@ impl Widget for EditorWidget {
             if text.commit_preedit(value) {
                 self.fit_text();
                 ctx.request_render();
+                self.emit_text_changed(ctx);
             }
             ctx.set_handled();
             return;
@@ -1529,6 +1541,7 @@ impl Widget for EditorWidget {
                         text.buffer.shape_arabic_if_rtl();
                         self.fit_text();
                         ctx.request_render();
+                        self.emit_text_changed(ctx);
                     }
                 }
                 ctx.set_handled();
@@ -1560,7 +1573,7 @@ impl Widget for EditorWidget {
             && let Some(text) = self.text.as_mut()
             && !cmd
         {
-            let handled = match &key.key {
+            let (handled, changed_text) = match &key.key {
                 // Text arrives through `Ime::Commit`, including ordinary
                 // keyboard input. Consume the logical character key here so
                 // it neither inserts twice nor triggers an application tool.
@@ -1573,18 +1586,18 @@ impl Widget for EditorWidget {
                     if changed {
                         text.buffer.shape_arabic_if_rtl();
                     }
-                    changed
+                    (changed, changed)
                 }
                 Key::Named(NamedKey::Delete) => {
                     let changed = text.buffer.delete_after_cursor().is_some();
                     if changed {
                         text.buffer.shape_arabic_if_rtl();
                     }
-                    changed
+                    (changed, changed)
                 }
                 Key::Named(NamedKey::Enter) => {
                     text.buffer.insert_line_break();
-                    true
+                    (true, true)
                 }
                 Key::Named(NamedKey::ArrowLeft) => {
                     if shift {
@@ -1592,7 +1605,7 @@ impl Widget for EditorWidget {
                     } else {
                         text.buffer.move_cursor_visual_left();
                     }
-                    true
+                    (true, false)
                 }
                 Key::Named(NamedKey::ArrowRight) => {
                     if shift {
@@ -1600,7 +1613,7 @@ impl Widget for EditorWidget {
                     } else {
                         text.buffer.move_cursor_visual_right();
                     }
-                    true
+                    (true, false)
                 }
                 Key::Named(NamedKey::ArrowUp) => {
                     if shift {
@@ -1609,7 +1622,7 @@ impl Widget for EditorWidget {
                     } else {
                         text.buffer.move_cursor_vertically(-1, text.line_height);
                     }
-                    true
+                    (true, false)
                 }
                 Key::Named(NamedKey::ArrowDown) => {
                     if shift {
@@ -1617,7 +1630,7 @@ impl Widget for EditorWidget {
                     } else {
                         text.buffer.move_cursor_vertically(1, text.line_height);
                     }
-                    true
+                    (true, false)
                 }
                 Key::Named(NamedKey::Home) => {
                     if shift {
@@ -1625,7 +1638,7 @@ impl Widget for EditorWidget {
                     } else {
                         text.buffer.move_cursor_to_line_edge(false);
                     }
-                    true
+                    (true, false)
                 }
                 Key::Named(NamedKey::End) => {
                     if shift {
@@ -1633,9 +1646,9 @@ impl Widget for EditorWidget {
                     } else {
                         text.buffer.move_cursor_to_line_edge(true);
                     }
-                    true
+                    (true, false)
                 }
-                _ => false,
+                _ => (false, false),
             };
             if handled {
                 // A longer line needs more room; refit only while the
@@ -1644,6 +1657,9 @@ impl Widget for EditorWidget {
                 let at_end = text.buffer.cursor() == text.buffer.len();
                 if at_end {
                     self.fit_text();
+                }
+                if changed_text {
+                    self.emit_text_changed(ctx);
                 }
                 ctx.request_render();
                 ctx.set_handled();
@@ -1933,6 +1949,19 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
         // master, a reopened glyph, or the tool being picked up.
         if self.text != element.widget.text_inputs {
             match (&self.text, element.widget.text.as_mut()) {
+                // A document/tab switch restores that tab's parked text rather
+                // than carrying the previous widget-owned buffer across.
+                (Some(inputs), Some(_))
+                    if element
+                        .widget
+                        .text_inputs
+                        .as_ref()
+                        .is_some_and(|old| !inputs.same_context(old)) =>
+                {
+                    element.widget.text = Some(crate::edit::text_tool::TextState::new(inputs));
+                    element.widget.fit_text();
+                    element.ctx.request_layout();
+                }
                 // Same tool, new master or edited glyph: keep what has
                 // been typed and re-read the metrics.
                 (Some(inputs), Some(state)) => state.refresh(inputs),
@@ -2092,6 +2121,13 @@ mod tests {
         );
         harness.process_text_event(TextEvent::Ime(Ime::Preedit("B".into(), Some((0, 1)))));
         harness.process_text_event(TextEvent::Ime(Ime::Commit("B".into())));
+        let (event, _) = harness
+            .pop_action::<EditorEvent>()
+            .expect("a committed edit reports its logical text");
+        assert!(
+            matches!(event, EditorEvent::TextChanged(text) if text == "AB"),
+            "the view receives the complete committed buffer"
+        );
         assert_eq!(
             harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
             2

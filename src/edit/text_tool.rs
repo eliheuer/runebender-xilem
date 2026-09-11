@@ -30,6 +30,9 @@ use crate::model::FontModel;
 /// editing happens, which is where it wanted to live anyway.
 #[derive(Clone, PartialEq)]
 pub(crate) struct TextInputs {
+    /// Document and tab identity. A change means the widget must restore a
+    /// different parked buffer instead of refreshing the current one.
+    context_id: (u64, u64),
     inventory: TextGlyphInventory,
     kerning: TextKerningModel,
     outlines: Arc<Vec<(String, Arc<BezPath>)>>,
@@ -54,6 +57,7 @@ impl TextInputs {
     /// Read a master: glyph advances, kerning, outlines, metrics.
     pub(crate) fn new(font: &FontModel) -> Self {
         Self {
+            context_id: (0, 0),
             inventory: TextGlyphInventory::from_font(font.font()),
             kerning: TextKerningModel::from_font(font.font()),
             outlines: Arc::new(
@@ -72,6 +76,16 @@ impl TextInputs {
             script: None,
             language: None,
         }
+    }
+
+    /// Associate these inputs with one document tab's parked text buffer.
+    pub(crate) fn with_context(mut self, context_id: (u64, u64)) -> Self {
+        self.context_id = context_id;
+        self
+    }
+
+    pub(crate) fn same_context(&self, other: &Self) -> bool {
+        self.context_id == other.context_id
     }
 
     /// Set the writing direction, or clear it back to automatic.
@@ -135,6 +149,7 @@ impl TextState {
             font.default_layer_mut().insert_glyph(glyph);
         }
         Self::new(&TextInputs {
+            context_id: (0, 0),
             inventory: TextGlyphInventory::from_font(&font),
             kerning: TextKerningModel::from_font(&font),
             outlines: Arc::new(Vec::new()),
@@ -360,6 +375,7 @@ mod tests {
     fn shaping_options_reach_the_widget_buffer() {
         let disabled = std::collections::HashSet::from(["liga".to_string(), "kern".to_string()]);
         let inputs = TextInputs {
+            context_id: (0, 0),
             inventory: TextGlyphInventory::default(),
             kerning: TextKerningModel::default(),
             outlines: Arc::new(Vec::new()),

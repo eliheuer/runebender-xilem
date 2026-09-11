@@ -12,6 +12,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// This is deliberately process-local: background jobs only need to tell a
 /// replacement workspace from the one that launched them.
 static NEXT_DOCUMENT_ID: AtomicU64 = AtomicU64::new(1);
+/// Stable identities for widget-owned text buffers parked in editor tabs.
+pub(crate) static NEXT_TEXT_CONTEXT_ID: AtomicU64 = AtomicU64::new(1);
 
 impl Workspace {
     pub(crate) fn open(path: &FsPath) -> Result<Self, String> {
@@ -206,8 +208,10 @@ impl Workspace {
             unicode_buf: first_uni,
             tabs: first
                 .map(|_| Tab {
+                    text_context_id: NEXT_TEXT_CONTEXT_ID.fetch_add(1, Ordering::Relaxed),
                     session: session.clone(),
                     tool: Tool::Select,
+                    text_context: TextContext::default(),
                 })
                 .into_iter()
                 .collect(),
@@ -264,6 +268,7 @@ impl Workspace {
                 .map_err(|e| eprintln!("Live tools unavailable: {e}"))
                 .ok(),
         };
+        app.park();
         app.init_nodes();
         app.rescan_models();
         app.refresh_proposals();
@@ -333,10 +338,12 @@ impl Workspace {
             .enumerate()
             .map(|(index, tab)| {
                 (
+                    tab.text_context_id,
                     tab.session.glyph_name.clone(),
                     tab.session.viewport.clone(),
                     tab.session.fitted,
                     tab.tool,
+                    tab.text_context.clone(),
                     index == self.active_tab,
                 )
             })
@@ -368,15 +375,19 @@ impl Workspace {
                 fresh.rebuild_search_regex();
                 fresh.tabs.clear();
                 let mut active_tab = None;
-                for (name, viewport, fitted, tool, was_active) in tabs {
+                for (text_context_id, name, viewport, fitted, tool, text_context, was_active) in
+                    tabs
+                {
                     let Some(mut session) = Session::new(fresh.font.font(), &name) else {
                         continue;
                     };
                     session.viewport = viewport;
                     session.fitted = fitted;
                     fresh.tabs.push(Tab {
+                        text_context_id,
                         session: Arc::new(session),
                         tool,
+                        text_context,
                     });
                     if was_active {
                         active_tab = Some(fresh.tabs.len() - 1);
@@ -386,9 +397,13 @@ impl Workspace {
                 if was_editor {
                     if let Some(index) = active_tab {
                         self.active_tab = index;
-                        let tab = &self.tabs[index];
-                        self.session = tab.session.clone();
-                        self.tool = tab.tool;
+                        let (session, tool, text_context) = {
+                            let tab = &self.tabs[index];
+                            (tab.session.clone(), tab.tool, tab.text_context.clone())
+                        };
+                        self.session = session;
+                        self.tool = tool;
+                        self.restore_text_context(text_context);
                         self.selected = self.font.index_of(&self.session.glyph_name);
                         if let Some(selected) = self.selected {
                             self.mode = Mode::Editor(selected);
@@ -782,6 +797,12 @@ mod tests {
         session.viewport.offset = kurbo::Vec2::new(40.0, 50.0);
         session.viewport.zoom = 2.0;
         workspace.session = Arc::new(session);
+        workspace.set_editor_text("B beside beh \u{0628}".into());
+        workspace.preview_text = "B preview \u{0628}".into();
+        workspace.text_dir = Some(runebender_core::text::buffer::TextDirection::RightToLeft);
+        workspace.text_features_disabled.insert("rlig".into());
+        workspace.text_script = Some("arab".into());
+        workspace.text_language = Some("ur".into());
         workspace.park();
         workspace.activate_tab(0);
         let mut session = (*workspace.session).clone();
@@ -805,6 +826,15 @@ mod tests {
         assert_eq!(workspace.session.viewport.offset.x, 40.0);
         assert_eq!(workspace.session.viewport.offset.y, 50.0);
         assert_eq!(workspace.session.viewport.zoom, 2.0);
+        assert_eq!(workspace.initial_text, "B beside beh \u{0628}");
+        assert_eq!(workspace.preview_text, "B preview \u{0628}");
+        assert_eq!(
+            workspace.text_dir,
+            Some(runebender_core::text::buffer::TextDirection::RightToLeft)
+        );
+        assert!(workspace.text_features_disabled.contains("rlig"));
+        assert_eq!(workspace.text_script.as_deref(), Some("arab"));
+        assert_eq!(workspace.text_language.as_deref(), Some("ur"));
 
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }

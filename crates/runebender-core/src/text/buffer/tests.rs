@@ -907,6 +907,7 @@ fn selected_text_preserves_unicode_marks_and_line_breaks() {
     buffer.insert_glyph("A", Some('A'), 500.0);
     buffer.select_range(0, buffer.len());
 
+    assert_eq!(buffer.text(), "\u{0628}\u{0650}\nA");
     assert_eq!(
         buffer.selected_text().as_deref(),
         Some("\u{0628}\u{0650}\nA")

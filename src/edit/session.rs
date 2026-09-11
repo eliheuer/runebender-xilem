@@ -945,12 +945,52 @@ impl Workspace {
     /// The OKLCH themes in menu order (matches runebender-gpui).
     pub(crate) const THEMES: [&'static str; 3] = ["dark", "gray", "light"];
 
+    fn text_context(&self) -> TextContext {
+        TextContext {
+            editor_text: self.initial_text.clone(),
+            preview_text: self.preview_text.clone(),
+            direction: self.text_dir,
+            features_disabled: self.text_features_disabled.clone(),
+            script: self.text_script.clone(),
+            language: self.text_language.clone(),
+        }
+    }
+
+    pub(crate) fn restore_text_context(&mut self, context: TextContext) {
+        self.initial_text = context.editor_text;
+        self.preview_text = context.preview_text;
+        self.text_dir = context.direction;
+        self.text_features_disabled = context.features_disabled;
+        self.text_script = context.script;
+        self.text_language = context.language;
+    }
+
+    /// Stable identity of the active tab's widget-owned text buffer.
+    pub(crate) fn text_context_id(&self) -> (u64, u64) {
+        (
+            self.document_id,
+            self.tabs
+                .get(self.active_tab)
+                .map_or(u64::MAX, |tab| tab.text_context_id),
+        )
+    }
+
+    /// Keep the active tab's plain text copy in step with the editor widget.
+    pub(crate) fn set_editor_text(&mut self, text: String) {
+        self.initial_text = text.clone();
+        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            tab.text_context.editor_text = text;
+        }
+    }
+
     /// Write the live session back into its tab, so switching away from
     /// it does not lose the edit, the selection, or the undo stack.
     pub(crate) fn park(&mut self) {
+        let text_context = self.text_context();
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             tab.session = self.session.clone();
             tab.tool = self.tool;
+            tab.text_context = text_context;
         }
     }
 
@@ -959,11 +999,13 @@ impl Workspace {
         let Some(tab) = self.tabs.get(index) else {
             return;
         };
-        let (session, tool) = (tab.session.clone(), tab.tool);
+        let (session, tool, text_context) =
+            (tab.session.clone(), tab.tool, tab.text_context.clone());
         self.park();
         self.active_tab = index;
         self.session = session;
         self.tool = tool;
+        self.restore_text_context(text_context);
         let name = self.session.glyph_name.clone();
         if let Some(glyph) = self.font.index_of(&name) {
             self.selected = Some(glyph);
@@ -988,8 +1030,11 @@ impl Workspace {
         };
         self.park();
         self.tabs.push(Tab {
+            text_context_id: host::NEXT_TEXT_CONTEXT_ID
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             session: Arc::new(session),
             tool: self.tool,
+            text_context: self.text_context(),
         });
         self.activate_tab(self.tabs.len() - 1);
     }
@@ -1045,8 +1090,11 @@ impl Workspace {
                 tab.session = self.session.clone();
             } else {
                 self.tabs.push(Tab {
+                    text_context_id: host::NEXT_TEXT_CONTEXT_ID
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                     session: self.session.clone(),
                     tool: self.tool,
+                    text_context: self.text_context(),
                 });
                 self.active_tab = self.tabs.len() - 1;
             }

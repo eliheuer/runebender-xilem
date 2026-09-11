@@ -34,6 +34,10 @@ releases begin.
 - Support system clipboard copy, cut, paste, and select-all in the canvas text
   tool using logical Unicode text, normalized line breaks, and Arabic reshaping.
 
+- Keep editor text, preview text, direction, language, and feature choices with
+  each editor tab, without carrying a widget-owned text buffer into another tab
+  or replacement document.
+
 - Match GPUI's overview and editor-rail grid sizing, selection extension, caption
   geometry, and source-derived padding; render square cells as true rectangles so
   CPU evidence retains Gray-theme outlines and labels.
