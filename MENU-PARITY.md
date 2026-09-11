@@ -65,7 +65,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
   open menus at the same size.
 - [x] `cargo fmt --check`, `cargo clippy --all-targets`, `cargo doc --no-deps`,
   `cargo test`, and a release build pass.
-- [ ] macOS native behaviour is tested on macOS. Linux behaviour is tested on
+- [x] macOS native behaviour is tested on macOS. Linux behaviour is tested on
   Linux or explicitly reported as compile-only; Windows is compile-only unless a
   Windows interaction run is recorded.
 
@@ -136,7 +136,11 @@ framework-integration work.
 - Verified locally on macOS: 62 tests pass serially and all-target Clippy passes
   with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
   filename race; the unfiltered suite can intermittently fail in parallel and
-  passes with `--test-threads=1`. Linux and Windows have not been run yet.
+  passes with `--test-threads=1`.
+- Verified in a Debian Bookworm aarch64 container with Rust 1.96.1: all 61
+  Linux tests pass serially and all-target Clippy passes with warnings denied.
+  The Windows code compiles for `x86_64-pc-windows-msvc`; Windows interaction
+  behavior has not been run.
 
 ## Upstream contribution opportunities
 
@@ -164,9 +168,8 @@ framework-integration work.
   prove that application commands still dispatch through the host.
 - [x] Direct accessibility actions open menu titles and activate enabled items;
   disabled and checked state are present on their AccessKit nodes.
-- [ ] Run the in-window implementation and its interaction suite on Linux. Cross
-  compilation alone is not interaction evidence; no Linux or Windows run has
-  happened on this macOS host.
+- [x] Run the in-window implementation and its interaction suite on Linux. The
+  full suite passed on a real Linux kernel; Windows remains compile-only.
 
 ## Integration and launch handoff
 

@@ -826,11 +826,11 @@ pub(crate) fn action_for_key_in_window(key: &Key, modifiers: Modifiers) -> Optio
 fn action_for_key_impl(
     key: &Key,
     modifiers: Modifiers,
-    include_platform_commands: bool,
+    _include_platform_commands: bool,
 ) -> Option<AppAction> {
     ACTIONS.iter().find_map(|entry| {
         #[cfg(target_os = "macos")]
-        if entry.action == AppAction::Quit && !include_platform_commands {
+        if entry.action == AppAction::Quit && !_include_platform_commands {
             // The native application menu owns Cmd-Q on macOS.
             return None;
         }

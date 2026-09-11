@@ -141,6 +141,10 @@ impl ShortcutHost {
         }
     }
 
+    #[cfg_attr(
+        not(target_os = "macos"),
+        allow(dead_code, reason = "the reactive wrapper is used by the macOS root")
+    )]
     pub(crate) fn child_mut<'t>(this: &'t mut WidgetMut<'_, Self>) -> WidgetMut<'t, dyn Widget> {
         this.ctx.get_mut(&mut this.widget.inner)
     }
@@ -216,10 +220,18 @@ impl Widget for ShortcutHost {
 // ---------------------------------------------------------------------------
 // View wrapper (single reactive child, following `sized_box`).
 
+#[cfg_attr(
+    not(target_os = "macos"),
+    allow(dead_code, reason = "the in-window menu is the non-macOS root wrapper")
+)]
 pub(crate) struct ShortcutHostView<V> {
     inner: V,
 }
 
+#[cfg_attr(
+    not(target_os = "macos"),
+    allow(dead_code, reason = "the in-window menu is the non-macOS root wrapper")
+)]
 pub(crate) fn shortcut_host<V: WidgetView<AppState>>(inner: V) -> ShortcutHostView<V> {
     ShortcutHostView { inner }
 }
@@ -363,6 +375,8 @@ mod tests {
 
         harness.process_text_event(key(Key::Character("a".into()), true));
 
-        assert!(harness.pop_action::<AppAction>().is_none());
+        while let Some((action, _)) = harness.pop_action_erased() {
+            assert!(action.downcast_ref::<AppAction>().is_none());
+        }
     }
 }

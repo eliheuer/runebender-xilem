@@ -167,6 +167,10 @@ impl Session {
     }
 
     /// Whether a gesture currently owns the session's undo transaction.
+    #[cfg_attr(
+        not(unix),
+        allow(dead_code, reason = "the live document mailbox is Unix-only")
+    )]
     pub(crate) fn gesture_in_progress(&self) -> bool {
         self.in_drag
     }
