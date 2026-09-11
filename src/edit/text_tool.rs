@@ -45,6 +45,9 @@ pub(crate) struct TextInputs {
     /// binding: the direction chips live in the title bar, which is
     /// view-land, so the setting has to travel in with the inputs.
     direction: Option<TextDirection>,
+    feature_overrides: Vec<(String, bool)>,
+    script: Option<String>,
+    language: Option<String>,
 }
 
 impl TextInputs {
@@ -65,6 +68,9 @@ impl TextInputs {
             initial: String::new(),
             initial_selection: None,
             direction: None,
+            feature_overrides: Vec::new(),
+            script: None,
+            language: None,
         }
     }
 
@@ -84,6 +90,20 @@ impl TextInputs {
     /// Start with a logical text range selected.
     pub(crate) fn with_selection(mut self, selection: Option<(usize, usize)>) -> Self {
         self.initial_selection = selection;
+        self
+    }
+
+    /// Apply preview-only OpenType feature and locale choices.
+    pub(crate) fn with_shaping_options(
+        mut self,
+        disabled: &std::collections::HashSet<String>,
+        script: Option<&str>,
+        language: Option<&str>,
+    ) -> Self {
+        self.feature_overrides = disabled.iter().map(|tag| (tag.clone(), false)).collect();
+        self.feature_overrides.sort();
+        self.script = script.map(str::to_string);
+        self.language = language.map(str::to_string);
         self
     }
 }
@@ -124,6 +144,9 @@ impl TextState {
             initial: "A".into(),
             initial_selection: None,
             direction: None,
+            feature_overrides: Vec::new(),
+            script: None,
+            language: None,
         })
     }
 
@@ -132,6 +155,8 @@ impl TextState {
         let mut buffer = TextBuffer::new();
         buffer.set_glyph_inventory(inputs.inventory.clone());
         buffer.set_kerning_model(inputs.kerning.clone());
+        buffer.set_feature_overrides(inputs.feature_overrides.clone());
+        buffer.set_shaping_locale(inputs.script.clone(), inputs.language.clone());
         match inputs.direction {
             Some(direction) => buffer.set_direction(direction),
             None => buffer.set_auto_direction(),
@@ -159,6 +184,10 @@ impl TextState {
     pub(crate) fn refresh(&mut self, inputs: &TextInputs) {
         self.buffer.set_glyph_inventory(inputs.inventory.clone());
         self.buffer.set_kerning_model(inputs.kerning.clone());
+        self.buffer
+            .set_feature_overrides(inputs.feature_overrides.clone());
+        self.buffer
+            .set_shaping_locale(inputs.script.clone(), inputs.language.clone());
         let direction_changed = match inputs.direction {
             Some(direction) => {
                 let changed =
@@ -322,6 +351,34 @@ mod tests {
     use masonry::kurbo::Shape;
 
     #[test]
+    fn shaping_options_reach_the_widget_buffer() {
+        let disabled = std::collections::HashSet::from(["liga".to_string(), "kern".to_string()]);
+        let inputs = TextInputs {
+            inventory: TextGlyphInventory::default(),
+            kerning: TextKerningModel::default(),
+            outlines: Arc::new(Vec::new()),
+            line_height: 1000.0,
+            ascender: 800.0,
+            descender: -200.0,
+            initial: String::new(),
+            initial_selection: None,
+            direction: None,
+            feature_overrides: Vec::new(),
+            script: None,
+            language: None,
+        }
+        .with_shaping_options(&disabled, Some("arab"), Some("ur"));
+
+        let state = TextState::new(&inputs);
+
+        assert_eq!(
+            state.buffer.feature_overrides(),
+            &[("kern".into(), false), ("liga".into(), false)]
+        );
+        assert_eq!(state.buffer.shaping_locale(), (Some("arab"), Some("ur")));
+    }
+
+    #[test]
     #[ignore = "loads the adjacent full Virtua Grotesk designspace"]
     fn virtua_mixed_text_uses_real_arabic_forms_marks_and_bidi_layout() {
         let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -353,6 +410,23 @@ mod tests {
                 .and_then(|sort| sort.glyph_name())
                 .is_some_and(|name| name.contains("kasra")),
             "the kasra remains an addressable shaped sort"
+        );
+        let disabled = std::collections::HashSet::from(["rlig".to_string()]);
+        let no_rlig = TextState::new(
+            &TextInputs::new(&font)
+                .with_text(sample)
+                .with_shaping_options(&disabled, Some("arab"), Some("ur")),
+        );
+        assert!(
+            no_rlig
+                .buffer
+                .iter()
+                .all(|sort| sort.glyph_name() != Some("lam_alef-ar")),
+            "the real required-ligature override changes existing shaping"
+        );
+        assert!(
+            !no_rlig.buffer.sort(3).unwrap().is_absorbed(),
+            "disabled rlig leaves the alef independently editable"
         );
         let placed = state.placed();
         assert!(

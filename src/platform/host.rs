@@ -131,6 +131,22 @@ impl Workspace {
             list: std::env::var("RUNEBENDER_VIEW_MODE").as_deref() == Ok("list"),
             rail: Rail::Glyphs,
             text_dir: None,
+            text_features_disabled: std::env::var("RUNEBENDER_TEXT_FEATURES_DISABLED")
+                .map(|value| {
+                    value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|tag| !tag.is_empty())
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            text_script: std::env::var("RUNEBENDER_TEXT_SCRIPT")
+                .ok()
+                .filter(|value| !value.is_empty()),
+            text_language: std::env::var("RUNEBENDER_TEXT_LANGUAGE")
+                .ok()
+                .filter(|value| !value.is_empty()),
             left_collapsed: false,
             // Headless frames can start with sections folded:
             // `RUNEBENDER_COLLAPSED=Kerning,Groups`.

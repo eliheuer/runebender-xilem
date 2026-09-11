@@ -40,7 +40,12 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
     } else {
         let inputs = text_tool::TextInputs::new(&app.font)
             .with_direction(app.text_dir)
-            .with_text(&app.preview_text);
+            .with_text(&app.preview_text)
+            .with_shaping_options(
+                &app.text_features_disabled,
+                app.text_script.as_deref(),
+                app.text_language.as_deref(),
+            );
         text_tool::TextState::new(&inputs)
             .placed()
             .into_iter()
@@ -133,6 +138,7 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
             ),
         )
         .padding(Space::Sm),
+        shaping_chips(app),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(Space::None)

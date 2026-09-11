@@ -28,6 +28,9 @@ releases begin.
 - Reshape existing text immediately after live glyph, metric, or feature refresh
   while preserving its caret, selection, active glyph, and manual kerning state.
 
+- Add shared text-tool and preview controls for common OpenType features and
+  automatic, Arabic, or Urdu shaping locale selection.
+
 - Match GPUI's overview and editor-rail grid sizing, selection extension, caption
   geometry, and source-derived padding; render square cells as true rectangles so
   CPU evidence retains Gray-theme outlines and labels.

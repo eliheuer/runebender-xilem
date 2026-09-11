@@ -119,6 +119,59 @@ pub(crate) fn direction_chips(app: &Workspace) -> impl WidgetView<Workspace> + u
     )
 }
 
+/// OpenType and language choices shared by the text tool and preview.
+pub(crate) fn shaping_chips(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    let feature = |tag: &'static str| {
+        tab_chip(
+            pal,
+            tag.into(),
+            !app.text_features_disabled.contains(tag),
+            false,
+            move |app: &mut Workspace| {
+                if !app.text_features_disabled.remove(tag) {
+                    app.text_features_disabled.insert(tag.into());
+                }
+            },
+        )
+    };
+    let locale =
+        |label: &'static str, script: Option<&'static str>, language: Option<&'static str>| {
+            let active =
+                app.text_script.as_deref() == script && app.text_language.as_deref() == language;
+            tab_chip(
+                pal,
+                label.into(),
+                active,
+                false,
+                move |app: &mut Workspace| {
+                    app.text_script = script.map(str::to_string);
+                    app.text_language = language.map(str::to_string);
+                },
+            )
+        };
+    xrow(
+        Region::Inline,
+        (
+            label("Features")
+                .text_size(TextSize::Caption.px())
+                .color(pal.text_muted),
+            feature("liga"),
+            feature("rlig"),
+            feature("kern"),
+            feature("mark"),
+            feature("mkmk"),
+            label("Language")
+                .text_size(TextSize::Caption.px())
+                .color(pal.text_muted),
+            locale("Auto", None, None),
+            locale("Arabic", Some("arab"), Some("ar")),
+            locale("Urdu", Some("arab"), Some("ur")),
+        ),
+    )
+    .padding(Space::Sm)
+}
+
 /// The tools as a horizontal row for the header (gpui puts them there,
 /// not in a left column).
 pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<> {

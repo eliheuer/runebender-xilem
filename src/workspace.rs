@@ -79,6 +79,11 @@ pub(crate) struct Workspace {
     /// The chips that set it are in the title bar, which is why this is
     /// application state and not the buffer's.
     pub(crate) text_dir: Option<runebender_core::text::buffer::TextDirection>,
+    /// OpenType features disabled for text-tool and preview shaping.
+    pub(crate) text_features_disabled: std::collections::HashSet<String>,
+    /// Optional shaping script and language selected in the preview controls.
+    pub(crate) text_script: Option<String>,
+    pub(crate) text_language: Option<String>,
     /// Whether the left column is folded away, as the GPUI build's
     /// grid-icon button in the title bar does it.
     pub(crate) left_collapsed: bool,

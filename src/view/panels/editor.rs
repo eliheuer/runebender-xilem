@@ -64,6 +64,11 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
                 .with_text(&app.initial_text)
                 .with_direction(app.text_dir)
                 .with_selection(selection)
+                .with_shaping_options(
+                    &app.text_features_disabled,
+                    app.text_script.as_deref(),
+                    app.text_language.as_deref(),
+                )
         }),
         |app: &mut Workspace, ev| match ev {
             canvas::editor::EditorEvent::Selection(n) => {
