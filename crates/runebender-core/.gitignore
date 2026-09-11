@@ -1,0 +1,10 @@
+/target
+.DS_Store
+.idea/
+.vscode/
+
+# Agent worktrees
+.claude/worktrees/
+
+# Local lockfile experiments
+Cargo.lock.user

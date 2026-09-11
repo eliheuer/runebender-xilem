@@ -1,0 +1,463 @@
+{
+  "$comment": [
+    "The one place colour is decided. `pnpm run theme` turns this into",
+    "src/themeTokens.generated.ts, which the app reads at startup and on",
+    "every theme switch \u2014 both for the CSS custom properties and for the",
+    "colours handed to the wasm renderer.",
+    "",
+    "Everything is authored in OKLCH, where lightness and chroma mean the",
+    "same thing at every hue. That is what makes a set of colours read as",
+    "one family instead of a pile: the palette this replaced ran from",
+    "L 0.56 to L 0.94 and from C 0.11 to C 0.30, with three greens and two",
+    "purples nobody had compared.",
+    "",
+    "The character is poster paint \u2014 Bauhaus blocks, kindergarten",
+    "primaries. Sampling those references in OKLCH says what that means",
+    "in numbers, and it is not a flat ramp:",
+    "",
+    "  warm hues carry high chroma      red C 0.20-0.24, orange C 0.19",
+    "  yellow is light, not just yellow L 0.86 at C 0.17",
+    "  cool hues sit lower in chroma    blue C 0.10-0.15, green C 0.10",
+    "  lightness follows the hue        yellow 0.86, red 0.63, blue 0.55",
+    "",
+    "So each hue gets its own lightness and chroma rather than a shared",
+    "pair. A flat ramp is what made the last attempt look washed out: it",
+    "held every hue to the chroma only blue and green wanted.",
+    "",
+    "The one place we leave the references: cool hues are lifted for a",
+    "dark background. A blue at L 0.55 is a poster colour on white and a",
+    "smudge on near-black.",
+    "",
+    "Against the dark editor the poster values read as lit from inside,",
+    "so every hue is pulled down together: chroma to 0.9 of the",
+    "reference, lightness by 0.01 (0.02 for yellow, the brightest). One",
+    "factor for all eight keeps the family intact, which is the reason",
+    "for authoring in OKLCH in the first place. 0.8 was a step too far:",
+    "the palette went chalky."
+  ],
+  "hues": {
+    "red": {
+      "hue": 27,
+      "lightness": 0.61,
+      "chroma": 0.167
+    },
+    "orange": {
+      "hue": 46,
+      "lightness": 0.68,
+      "chroma": 0.15
+    },
+    "yellow": {
+      "hue": 96,
+      "lightness": 0.82,
+      "chroma": 0.135
+    },
+    "green": {
+      "hue": 152,
+      "lightness": 0.69,
+      "chroma": 0.126
+    },
+    "teal": {
+      "hue": 186,
+      "lightness": 0.7,
+      "chroma": 0.095
+    },
+    "blue": {
+      "hue": 248,
+      "lightness": 0.64,
+      "chroma": 0.119
+    },
+    "purple": {
+      "hue": 292,
+      "lightness": 0.61,
+      "chroma": 0.15
+    },
+    "pink": {
+      "hue": 350,
+      "lightness": 0.68,
+      "chroma": 0.15
+    }
+  },
+  "$comment_steps": [
+    "Three steps per hue, as offsets from the hue's own pair. `dim` is",
+    "for light backgrounds and quiet states, `bright` for the few things",
+    "that have to jump off a dark one. Chroma eases off at both ends:",
+    "sRGB has less of it to give away from mid lightness, and forcing it",
+    "there is what produces a colour that looks lit from inside."
+  ],
+  "steps": {
+    "dim": {
+      "lightness": -0.17,
+      "chroma": -0.02
+    },
+    "base": {
+      "lightness": 0.0,
+      "chroma": 0.0
+    },
+    "bright": {
+      "lightness": 0.13,
+      "chroma": -0.03
+    },
+    "deep": {
+      "lightness": -0.26,
+      "chroma": 0.0
+    }
+  },
+  "$comment_neutral": [
+    "Grey, and actually grey: chroma 0. An earlier version carried a",
+    "trace of blue on the theory that it would sit better beside the",
+    "hues. On a near-black panel it reads as a colour, which is the one",
+    "thing a neutral must not do.",
+    "",
+    "The steps are lightness in percent, chosen so the ramp lands on the",
+    "greys the editor was drawn around \u2014 15 is #0c0c0c, 37 is #404040,",
+    "65 is #909090. They mean the same in every theme: a light theme",
+    "takes its surfaces from the other end, it does not renumber them."
+  ],
+  "neutral": {
+    "hue": 255,
+    "chroma": 0,
+    "steps": [
+      15,
+      17,
+      18,
+      21,
+      23,
+      26,
+      31,
+      37,
+      43,
+      49,
+      55,
+      60,
+      65,
+      71,
+      74,
+      76,
+      81,
+      91,
+      94,
+      96,
+      99
+    ]
+  },
+  "themes": {
+    "dark": {
+      "name": "Dark",
+      "surfaces": {
+        "app": "neutral.15",
+        "panel": "neutral.18",
+        "titlebar": "neutral.15",
+        "control": "neutral.31",
+        "button": "neutral.23",
+        "buttonHover": "neutral.26",
+        "field": "neutral.17",
+        "outline": "neutral.37",
+        "fieldOutline": "neutral.23",
+        "divider": "neutral.26",
+        "canvas": "neutral.15"
+      },
+      "text": {
+        "primary": "neutral.65",
+        "secondary": "neutral.60",
+        "muted": "neutral.60",
+        "subdued": "neutral.43",
+        "overlay": "neutral.96",
+        "glyph": "neutral.60"
+      },
+      "markStep": "bright",
+      "markStyle": "fill",
+      "markOutline": "neutral.15",
+      "markInk": "neutral.15",
+      "roles": {
+        "gridSelected": "neutral.81",
+        "cellSelectedFill": "neutral.26",
+        "cellSelectedInk": "neutral.81",
+        "controlSelected": "neutral.65",
+        "controlSelectedInk": "neutral.18",
+        "designGridFine": "neutral.28",
+        "designGridCoarse": "neutral.34",
+        "accent": "green.base",
+        "warning": "yellow.base",
+        "danger": "red.base",
+        "selection": "orange.base",
+        "component": "purple.base",
+        "componentSelected": "pink.base",
+        "pointSmooth": "blue.base",
+        "pointCorner": "green.base",
+        "pointOffcurve": "purple.base",
+        "pointHyper": "teal.base",
+        "pointSelected": "yellow.bright",
+        "pointInner": "neutral.18",
+        "startNode": "orange.base",
+        "textCursor": "orange.base",
+        "kernActive": "teal.base",
+        "kernPrevious": "orange.base",
+        "pathStroke": "neutral.76",
+        "previewFill": "neutral.60",
+        "background": "neutral.37",
+        "reference": "neutral.26",
+        "halo": "neutral.15",
+        "metricQuiet": "neutral.26",
+        "outlineFill": "neutral.31",
+        "metricsLine": "neutral.37",
+        "readonlyPoint": "neutral.60",
+        "continuityG2": "teal.base",
+        "continuityG1": "yellow.base",
+        "continuityLine": "neutral.55",
+        "continuityKink": "red.base",
+        "popcount1": "green.base",
+        "popcount2": "yellow.base",
+        "popcount3": "orange.base",
+        "popcount4": "red.base"
+      }
+    },
+    "light": {
+      "name": "Light",
+      "$comment": "Surfaces come from the other end of the same ramp; the hues drop to their dim step so they hold up on white.",
+      "surfaces": {
+        "app": "neutral.91",
+        "panel": "neutral.96",
+        "titlebar": "neutral.85",
+        "control": "neutral.91",
+        "button": "neutral.96",
+        "buttonHover": "neutral.91",
+        "field": "neutral.94",
+        "outline": "neutral.71",
+        "fieldOutline": "neutral.89",
+        "divider": "neutral.81",
+        "canvas": "neutral.96"
+      },
+      "text": {
+        "primary": "neutral.31",
+        "secondary": "neutral.43",
+        "muted": "neutral.43",
+        "subdued": "neutral.55",
+        "overlay": "neutral.18",
+        "glyph": "neutral.31"
+      },
+      "markStep": "base",
+      "markStyle": "fill",
+      "markOutline": "neutral.31",
+      "markInk": "neutral.15",
+      "roles": {
+        "gridSelected": "neutral.31",
+        "cellSelectedFill": "neutral.31",
+        "cellSelectedInk": "neutral.99",
+        "controlSelected": "neutral.31",
+        "controlSelectedInk": "neutral.99",
+        "designGridFine": "neutral.86",
+        "designGridCoarse": "neutral.80",
+        "accent": "green.dim",
+        "warning": "orange.dim",
+        "danger": "red.dim",
+        "selection": "orange.dim",
+        "component": "purple.dim",
+        "componentSelected": "pink.dim",
+        "pointSmooth": "blue.dim",
+        "pointCorner": "green.dim",
+        "pointOffcurve": "purple.dim",
+        "pointHyper": "teal.dim",
+        "pointSelected": "orange.dim",
+        "pointInner": "neutral.99",
+        "startNode": "orange.dim",
+        "textCursor": "orange.dim",
+        "kernActive": "teal.dim",
+        "kernPrevious": "orange.dim",
+        "pathStroke": "neutral.26",
+        "previewFill": "neutral.49",
+        "background": "neutral.55",
+        "reference": "neutral.81",
+        "halo": "neutral.96",
+        "metricQuiet": "neutral.81",
+        "outlineFill": "neutral.76",
+        "metricsLine": "neutral.76",
+        "readonlyPoint": "neutral.55",
+        "continuityG2": "teal.dim",
+        "continuityG1": "yellow.dim",
+        "continuityLine": "neutral.55",
+        "continuityKink": "red.dim",
+        "popcount1": "green.dim",
+        "popcount2": "yellow.dim",
+        "popcount3": "orange.dim",
+        "popcount4": "red.dim"
+      }
+    },
+    "gray": {
+      "name": "Gray",
+      "$comment": "Mid grey with dark ink, after runebender.org: square corners, and rules drawn in the text colour rather than a lighter tint, so the borders draw the layout instead of tints doing it. It takes the colour of the site's rules and not their weight: 2px reads as structure on a web page with room around it, and as heavy at editor density. The role hues stay coloured, since a point type you cannot tell apart is a usability cost the website never has to pay.",
+      "markStep": "base",
+      "geometry": {
+        "radius": 0.0,
+        "radiusControl": 0.0
+      },
+      "surfaces": {
+        "app": "neutral.71",
+        "panel": "neutral.73",
+        "titlebar": "neutral.60",
+        "control": "neutral.71",
+        "button": "neutral.76",
+        "buttonHover": "neutral.81",
+        "field": "neutral.81",
+        "outline": "neutral.23",
+        "fieldOutline": "neutral.55",
+        "divider": "neutral.23",
+        "canvas": "neutral.81"
+      },
+      "text": {
+        "primary": "neutral.23",
+        "secondary": "neutral.31",
+        "muted": "neutral.37",
+        "subdued": "neutral.43",
+        "overlay": "neutral.15",
+        "glyph": "neutral.23"
+      },
+      "roles": {
+        "gridSelected": "neutral.23",
+        "cellSelectedFill": "neutral.37",
+        "cellSelectedInk": "neutral.76",
+        "controlSelected": "neutral.37",
+        "controlSelectedInk": "neutral.76",
+        "designGridFine": "neutral.46",
+        "designGridCoarse": "neutral.52",
+        "accent": "green.deep",
+        "warning": "orange.base",
+        "danger": "red.deep",
+        "selection": "orange.base",
+        "component": "purple.deep",
+        "componentSelected": "pink.deep",
+        "pointSmooth": "blue.base",
+        "pointCorner": "green.base",
+        "pointOffcurve": "purple.base",
+        "pointHyper": "teal.base",
+        "pointSelected": "yellow.base",
+        "pointInner": "neutral.23",
+        "startNode": "orange.base",
+        "textCursor": "orange.base",
+        "kernActive": "teal.deep",
+        "kernPrevious": "orange.base",
+        "pathStroke": "neutral.23",
+        "previewFill": "neutral.43",
+        "background": "neutral.49",
+        "reference": "neutral.71",
+        "halo": "neutral.91",
+        "metricQuiet": "neutral.71",
+        "outlineFill": "neutral.65",
+        "metricsLine": "neutral.60",
+        "readonlyPoint": "neutral.49",
+        "continuityG2": "teal.deep",
+        "continuityG1": "yellow.deep",
+        "continuityLine": "neutral.49",
+        "continuityKink": "red.deep",
+        "popcount1": "green.deep",
+        "popcount2": "yellow.deep",
+        "popcount3": "orange.deep",
+        "popcount4": "red.deep"
+      },
+      "markStyle": "fill",
+      "markOutline": "neutral.23",
+      "markInk": "neutral.15",
+      "pointStyle": "fill",
+      "pointOutline": "neutral.23",
+      "pointHalo": false
+    }
+  },
+  "$comment_marks": [
+    "How a glyph mark is drawn, not just which colour it is. On a near",
+    "black or near white canvas a hue can simply be lighter or darker",
+    "than the ground, so tinting the cell's border is enough. On a mid",
+    "grey there is nowhere to go: a colour saturated enough to read as a",
+    "hue sits at mid lightness too, and mid on mid is invisible. Gray's",
+    "yellow against its panel measured 1.00 contrast, which is not dim,",
+    "it is the same luminance.",
+    "",
+    "So the treatment is a theme's decision:",
+    "",
+    "  style   border  tint the cell's rule, leave the fill alone",
+    "          fill    fill the cell with the hue and key it with a rule",
+    "  outline the keyline colour, for style fill",
+    "  ink     the label colour drawn on top of a filled mark",
+    "",
+    "Fill works on any ground because the hue stops competing with the",
+    "background and becomes it, and the dark keyline separates the cell",
+    "regardless of what the two luminances are doing."
+  ],
+  "$comment_ufoMarkColors": [
+    "What `public.markColor` gets in the UFO, frozen. These came from",
+    "the original hue values and must not follow later tuning of the",
+    "palette: they are file contents, shared with runebender-web, and a",
+    "font full of marked glyphs must not churn because a colour was",
+    "made quieter on screen. `mark_label_for_glyph` snaps a stored",
+    "colour to the nearest label by hue, so a mark written years ago",
+    "still resolves after the display palette moves."
+  ],
+  "ufoMarkColors": {
+    "red": "0.88,0.3,0.27,1",
+    "orange": "0.93,0.45,0.2,1",
+    "yellow": "0.91,0.79,0.27,1",
+    "green": "0.31,0.72,0.45,1",
+    "blue": "0.27,0.58,0.86,1",
+    "purple": "0.54,0.44,0.88,1",
+    "pink": "0.9,0.42,0.67,1"
+  },
+  "markColors": [
+    {
+      "name": "red",
+      "step": "red.base"
+    },
+    {
+      "name": "orange",
+      "step": "orange.base"
+    },
+    {
+      "name": "yellow",
+      "step": "yellow.base"
+    },
+    {
+      "name": "green",
+      "step": "green.base"
+    },
+    {
+      "name": "blue",
+      "step": "blue.base"
+    },
+    {
+      "name": "purple",
+      "step": "purple.base"
+    },
+    {
+      "name": "pink",
+      "step": "pink.base"
+    }
+  ],
+  "$comment_geometry": [
+    "Shape, not colour. A theme decides its corner radii and its rule",
+    "weights the same way it decides its greys, because those carry as",
+    "much of a UI's character as hue does: the same palette at radius 0",
+    "with a 2px rule reads as a drawing tool, and at radius 6 with a",
+    "hairline as a document app.",
+    "",
+    "The tokens are named for what they are used on, not for their size,",
+    "so a theme that disagrees about the sizes still knows what each one",
+    "is for:",
+    "",
+    "  radius          the default corner, on small chrome",
+    "  radiusControl   pressable tiles: toolbar tiles, tabs, toggles",
+    "  stroke          the ordinary rule, on panels and chrome",
+    "  strokeEmphasis  rings that mark a thing selected or grabbable",
+    "",
+    "strokeEmphasis is its own token rather than stroke doubled. Doubling",
+    "works from a 1px base and breaks from a 2px one: a 4px ring on an",
+    "18px swatch leaves 10px of colour.",
+    "",
+    "Values are in px. A theme names only what it changes; anything it",
+    "leaves out falls back to `default` below."
+  ],
+  "geometry": {
+    "default": {
+      "radius": 3.0,
+      "radiusControl": 6.0,
+      "stroke": 1.0,
+      "strokeEmphasis": 2.0
+    }
+  }
+}
