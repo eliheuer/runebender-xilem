@@ -499,17 +499,18 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   overview Unicode, rename, and width Undo/Redo followed by save/reopen. The full
   workspace suite passes 459 tests with four expensive tests ignored, and
   workspace clippy passes with warnings denied.
-- E08 — in progress in `f7f8442`: pair edits now reject NaN and infinities,
+- E08 — in progress in `f7f8442` and `d713657`: pair edits now reject NaN and infinities,
   preserve no-op cleanliness, mark the active master's kerning data dirty, and
   save/reopen into the text shaper with the expected spacing. Cross-master group
   membership changes mark only masters they actually change, including the
   partial-save kerning flag. A misleading read-only Features “Apply” action is
   now an honest compile Check that reports the first error without dirtying the
-  document. The focused disposable-font tests and all 89 normal Xilem tests pass;
+  document. Kerning pairs, cross-master groups, and generated feature text now
+  share the ordered metadata history with glyph edits; focused tests prove Undo,
+  Redo, shaping refresh, and save/reopen. All 90 normal Xilem tests pass and
   package clippy passes with warnings denied. Inspected Gray/Light evidence is
   `e08-features-check-{gray,light}.png`. E08 remains open because editable
-  multiline feature text, feature/group/pair Undo, and a supervised interaction
-  pass are not implemented.
+  multiline feature text and a supervised interaction pass are not implemented.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
