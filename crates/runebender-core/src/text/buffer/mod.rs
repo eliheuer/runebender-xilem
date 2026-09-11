@@ -539,6 +539,21 @@ impl TextBuffer {
         (anchor != self.cursor).then_some(anchor.min(self.cursor)..anchor.max(self.cursor))
     }
 
+    /// The selected logical text, preserving line breaks and typed Unicode
+    /// rather than shaped glyph names. Returns `None` without a selection.
+    pub fn selected_text(&self) -> Option<String> {
+        let range = self.selection_range()?;
+        Some(
+            self.sorts[range]
+                .iter()
+                .filter_map(|sort| match &sort.kind {
+                    TextSortKind::Glyph { codepoint, .. } => *codepoint,
+                    TextSortKind::LineBreak => Some('\n'),
+                })
+                .collect(),
+        )
+    }
+
     /// Drop the text selection without moving the caret.
     pub fn clear_selection(&mut self) {
         self.selection_anchor = None;

@@ -1489,6 +1489,17 @@ impl Widget for EditorWidget {
             ctx.set_handled();
             return;
         }
+        if self.tool == Tool::Text
+            && let Some(text) = self.text.as_mut()
+            && let TextEvent::ClipboardPaste(value) = event
+        {
+            if text.commit_preedit(value) {
+                self.fit_text();
+                ctx.request_render();
+            }
+            ctx.set_handled();
+            return;
+        }
         let TextEvent::Keyboard(key) = event else {
             return;
         };
@@ -1503,6 +1514,33 @@ impl Widget for EditorWidget {
         let cmd = key.modifiers.meta() || key.modifiers.ctrl();
         let shift = key.modifiers.shift();
         let step = if shift { 10.0 } else { 1.0 };
+
+        if self.tool == Tool::Text
+            && let Some(text) = self.text.as_mut()
+            && cmd
+            && let Key::Character(character) = &key.key
+        {
+            if character.eq_ignore_ascii_case("c") || character.eq_ignore_ascii_case("x") {
+                if let Some(selected) = text.buffer.selected_text().filter(|text| !text.is_empty())
+                {
+                    ctx.set_clipboard(selected);
+                    if character.eq_ignore_ascii_case("x") {
+                        text.buffer.delete_after_cursor();
+                        text.buffer.shape_arabic_if_rtl();
+                        self.fit_text();
+                        ctx.request_render();
+                    }
+                }
+                ctx.set_handled();
+                return;
+            }
+            if character.eq_ignore_ascii_case("a") {
+                text.buffer.select_range(0, text.buffer.len());
+                ctx.request_render();
+                ctx.set_handled();
+                return;
+            }
+        }
 
         // A focused metric box takes the keys first. Everything below
         // this point would otherwise read a digit as a nudge or a tool.
@@ -2019,6 +2057,15 @@ mod tests {
                 ..KeyboardEvent::default()
             })
         };
+        let command = |character: &'static str| {
+            TextEvent::Keyboard(KeyboardEvent {
+                state: KeyState::Down,
+                key: Key::Character(character.into()),
+                code: Code::Unidentified,
+                modifiers: Modifiers::META,
+                ..KeyboardEvent::default()
+            })
+        };
         harness.process_text_event(typed());
         assert_eq!(
             harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
@@ -2112,6 +2159,29 @@ mod tests {
         assert_eq!(
             harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
             4
+        );
+        harness.edit_root_widget(|root| {
+            root.widget.tool = Tool::Text;
+            let buffer = &mut root.widget.text.as_mut().unwrap().buffer;
+            buffer.select_range(0, buffer.len());
+        });
+        harness.process_text_event(command("c"));
+        assert_eq!(harness.clipboard_contents(), "AB\nA");
+        harness.process_text_event(command("x"));
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
+            0,
+            "cut removes exactly the copied logical selection"
+        );
+        harness.process_text_event(TextEvent::ClipboardPaste("A\r\nB".into()));
+        assert_eq!(
+            harness.edit_root_widget(|root| {
+                let buffer = &mut root.widget.text.as_mut().unwrap().buffer;
+                buffer.select_range(0, buffer.len());
+                buffer.selected_text()
+            }),
+            Some("A\nB".into()),
+            "paste normalizes platform newlines and preserves text"
         );
     }
 

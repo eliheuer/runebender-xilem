@@ -899,6 +899,21 @@ fn typing_replaces_the_keyboard_selection() {
 }
 
 #[test]
+fn selected_text_preserves_unicode_marks_and_line_breaks() {
+    let mut buffer = TextBuffer::new();
+    buffer.insert_glyph("beh-ar", Some('\u{0628}'), 500.0);
+    buffer.insert_glyph("kasra-ar", Some('\u{0650}'), 0.0);
+    buffer.insert_line_break();
+    buffer.insert_glyph("A", Some('A'), 500.0);
+    buffer.select_range(0, buffer.len());
+
+    assert_eq!(
+        buffer.selected_text().as_deref(),
+        Some("\u{0628}\u{0650}\nA")
+    );
+}
+
+#[test]
 fn hit_test_activates_clicked_ltr_sort() {
     let mut buffer = TextBuffer::new();
     buffer.insert_glyph("A", Some('A'), 500.0);

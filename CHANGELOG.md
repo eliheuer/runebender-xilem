@@ -31,6 +31,9 @@ releases begin.
 - Add shared text-tool and preview controls for common OpenType features and
   automatic, Arabic, or Urdu shaping locale selection.
 
+- Support system clipboard copy, cut, paste, and select-all in the canvas text
+  tool using logical Unicode text, normalized line breaks, and Arabic reshaping.
+
 - Match GPUI's overview and editor-rail grid sizing, selection extension, caption
   geometry, and source-derived padding; render square cells as true rectangles so
   CPU evidence retains Gray-theme outlines and labels.

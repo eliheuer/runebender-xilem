@@ -238,8 +238,14 @@ impl TextState {
     pub(crate) fn commit_preedit(&mut self, committed: &str) -> bool {
         self.preedit.clear();
         let mut changed = false;
-        for character in committed.chars() {
-            changed |= self.insert(character);
+        let normalized = committed.replace("\r\n", "\n").replace('\r', "\n");
+        for character in normalized.chars() {
+            if character == '\n' {
+                self.buffer.insert_line_break();
+                changed = true;
+            } else {
+                changed |= self.insert(character);
+            }
         }
         changed
     }
@@ -520,5 +526,21 @@ mod tests {
         state.buffer.shape_arabic_if_rtl();
         assert_eq!(state.buffer.len(), 10);
         assert_eq!(state.buffer.selection_range(), None);
+
+        let mut pasted = TextState::new(&TextInputs::new(&font));
+        assert!(pasted.commit_preedit("\u{0628}\u{0650}"));
+        pasted.buffer.select_range(0, pasted.buffer.len());
+        assert_eq!(
+            pasted.buffer.selected_text().as_deref(),
+            Some("\u{0628}\u{0650}"),
+            "real Virtua combining-mark input round-trips as Unicode text"
+        );
+        assert!(
+            pasted
+                .buffer
+                .iter()
+                .any(|sort| sort.glyph_name().is_some_and(|name| name.contains("kasra"))),
+            "the pasted combining mark remains a shaped sort"
+        );
     }
 }
