@@ -40,7 +40,9 @@ is the Regular master in `VirtuaGrotesk.designspace`.
 
 Automated proof covers the real Virtua designspace, lam-alef substitution, mark
 ordering, mixed bidi layout, logical cursor movement, selection and deletion,
-replacement, and pointer hit mapping through the lam-alef cluster. Native
+replacement, pointer hit mapping through the lam-alef cluster, and immediate
+reshaping of existing Arabic text after a live glyph/metric/feature refresh.
+Native
 input-method and pointer delivery still need this supervised pass, so production
 Arabic readiness remains a trial result rather than an automated claim.
 

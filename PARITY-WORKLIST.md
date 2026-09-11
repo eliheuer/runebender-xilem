@@ -224,7 +224,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | Done | ID | Work and acceptance |
 |---|---|---|
 | [ ] | T01 | Native IME composition and committed input in canvas text tool; preserve preedit/cancel and avoid duplicate insertion. Implemented in `793c3f9`; native runtime verification pending. |
-| [ ] | T02 | Arabic joining/marks/ligatures and mixed Latin/Arabic/digits/punctuation with live font changes. Compare actual shaping output, not character reversal. |
+| [x] | T02 | Arabic joining/marks/ligatures and mixed Latin/Arabic/digits/punctuation with live font changes. Verified in `1d96364` and `2acb9b3`: real Virtua shaping covers lam-alef, kasra placement and bidi runs, and existing text now reshapes immediately from a live Arabic glyph/metric/feature refresh without losing editing state. |
 | [x] | T03 | RTL caret, selection, arrows, deletion and pointer hit mapping across ligatures/clusters. Verified in `1de39f6`: Core and UI share logical ranges while the canvas merges absorbed ligature sorts into visible selection geometry. |
 | [ ] | T04 | Shaping options/script/language/features and kerning refresh after glyph/feature edits. Distinguish compiled-font shaping from fallback outline preview. |
 | [ ] | T05 | Preview text and editor text state, per-tab context and direction controls: no stale initial-only binding or cross-document contamination. |
@@ -365,7 +365,8 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   The same test continues into R02's disposable save/reopen proof. Individually
   inspected editor evidence is `r01-arabic-beh-{gray,light}.png`; native pointer
   interaction remains part of the supervised trial, not this data-path gate.
-- R03 / T02 / T03 — in progress in `1d96364` and `1de39f6`: the real Virtua integration test
+- R03 in progress / T02 and T03 verified — `1d96364`, `1de39f6`, and
+  `2acb9b3`: the real Virtua integration test
   shapes `R لا 123 بِ`, verifies source coverage, lam-alef substitution, mark
   ordering, finite outline paths, bidi layout, logical pointer mapping through
   lam-alef, merged visible selection geometry, and Arabic reshaping after deleting
@@ -374,6 +375,12 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   `r03-mixed-text-{gray,light}.png` and `r03-text-selection-{gray,light}.png`.
   T03 is verified. Native IME and pointer-gesture verification remain for the
   supervised trial, so R03 is not checked.
+- T02 — completed in `2acb9b3`: refreshing the live font inventory now rebuilds
+  base sorts and reruns the complete shaper immediately, instead of leaving old
+  substitutions and advances visible until another keystroke. A normal Arabic
+  test proves updated positional-form width plus selection/manual-kern retention;
+  the real Virtua test changes the shaped beh form and observes the existing
+  mixed line update by exactly 17 units.
 - A03 — verified in `1d96364` and `dd0159a`: completed single-glyph jobs remain
   proposals until explicit Install or Discard. The Local AI panel now toggles a
   warm on-canvas proposal overlay; Install/Discard clear review state and Undo
