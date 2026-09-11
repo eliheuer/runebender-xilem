@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Match the mark strip to GPUI with equal slots, smaller circles, selection rings, and a centered drawn clear cross; restore vertical panel dividers.
+- Use the native application properties for headless visual captures.
+
 - Apply the bundled Virtua Grotesk at 13px consistently to UI labels and editable fields.
 
 - Complete the desktop menu system: shared command metadata, native macOS and
@@ -17,7 +20,7 @@ releases begin.
 
 - Make the main checkout the primary Xilem development location; retain GPUI as a reference and fallback.
 
-- Hide scrollbar overlays throughout the editor while preserving wheel and trackpad scrolling.
+- Reduce scrollbar overlay dimensions while preserving wheel and trackpad scrolling; a cursor remnant during interaction remains unresolved.
 
 - Correct the header separator and outline the navigation strip; restore the Chat tab with an explicit unavailable state.
 

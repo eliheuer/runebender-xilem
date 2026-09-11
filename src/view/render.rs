@@ -80,6 +80,12 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
                 Dim::Stretch,
             ))
             .background_color(pal.panel),
+        sized_box(label(""))
+            .dims(Dimensions::new(
+                Dim::Fixed(Stroke::Hairline.length()),
+                Dim::Stretch,
+            ))
+            .background_color(pal.outline),
         sized_box(middle)
             .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
             .background_color(pal.app)
@@ -103,6 +109,12 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
             sized_box(left_and_middle)
                 .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
                 .flex(1.0),
+            sized_box(label(""))
+                .dims(Dimensions::new(
+                    Dim::Fixed(Stroke::Hairline.length()),
+                    Dim::Stretch,
+                ))
+                .background_color(pal.outline),
             sized_box(
                 portal(sized_box(info_panel(app)).dims(Dimensions::new(Dim::Stretch, Dim::Auto)))
                     .constrain_horizontal(true)

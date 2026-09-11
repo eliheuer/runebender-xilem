@@ -25,6 +25,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{cell::RefCell, rc::Rc};
 
+use crate::default_property_set;
 use masonry::app::{
     RenderRoot, RenderRootOptions, RenderRootSignal, VisualLayerKind, WindowSizePolicy,
 };
@@ -34,7 +35,6 @@ use masonry::imaging::Painter;
 use masonry::imaging::record::{Scene, replay_transformed};
 use masonry::imaging::render::ImageRenderer as _;
 use masonry::kurbo::Rect;
-use masonry::theme::default_property_set;
 use xilem::core::{ProxyError, RawProxy, SendMessage, ViewId};
 use xilem::{ViewCtx, WidgetView};
 

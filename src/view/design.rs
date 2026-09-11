@@ -25,6 +25,11 @@ use masonry::properties::{Gap, Padding};
 use xilem::style::Style;
 use xilem::view::{Flex, FlexSequence, Prop, flex_col, flex_row};
 
+/// GPUI mark controls: 24px slots, 18px circles, and a uniform 6px gutter.
+pub(crate) const MARK_SWATCH_DIAMETER: f64 = 18.0;
+pub(crate) const MARK_SWATCH_GAP: f64 = 6.0;
+pub(crate) const MARK_CLEAR_CROSS_HALF: f64 = 16.0 * 0.28;
+
 /// Initial dock width shared by the glyph rail and inspector.
 pub(crate) const DOCK_WIDTH: f64 = 246.0;
 /// GPUI category rows inset their marker and count by 14 logical pixels.

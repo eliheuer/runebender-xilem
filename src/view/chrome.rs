@@ -3,6 +3,7 @@
 
 //! The bars around the canvas: the titlebar, the header tools, the status bar.
 
+use crate::view::design::{MARK_CLEAR_CROSS_HALF, MARK_SWATCH_DIAMETER, MARK_SWATCH_GAP};
 use crate::*;
 
 /// The title bar, laid out like the GPUI build's header.
@@ -158,46 +159,83 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
 /// clear mark last, as the GPUI build draws it under its sidebar.
 pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    let swatch = |mark: Option<String>, color: xilem::Color| {
-        sized_box(
-            text_button("", move |app: &mut Workspace| app.set_mark(mark.clone()))
-                .background_color(color)
-                .border_color(pal.outline)
-                .border_width(Stroke::Hairline.length())
-                .padding(Space::None)
-                .corner_radius(Radius::Full.length()),
-        )
-        .dims(Dimensions::fixed(
-            ControlSize::Swatch.length(),
-            ControlSize::Swatch.length(),
-        ))
-    };
-    let marks: Vec<_> = app
-        .palette
+    let current = app
+        .selected
+        .and_then(|i| app.font.glyphs.get(i))
+        .and_then(|g| g.mark.clone());
+    let mut marks = pal
         .mark_list()
         .into_iter()
-        .map(|(name, color)| swatch(Some(name), color))
-        .collect();
+        .map(|(name, color)| (Some(name), color))
+        .collect::<Vec<_>>();
+    marks.push((None, pal.panel));
+    let outline = pal.mark_outline.unwrap_or(pal.outline);
+    let selected_ring = pal.outline;
+    let swatches = marks
+        .into_iter()
+        .map(|(mark, color)| {
+            let selected = mark == current;
+            let clear = mark.is_none();
+            let face = sized_box(canvas(move |_: &mut Workspace, _, scene, _| {
+                use masonry::imaging::Painter;
+                use masonry::kurbo::{Circle, Line, Stroke as Pen};
+                let mut painter = Painter::new(scene);
+                let half = ControlSize::Swatch.px() / 2.0;
+                let center = (half, half);
+                painter
+                    .fill(Circle::new(center, MARK_SWATCH_DIAMETER / 2.0), color)
+                    .draw();
+                painter
+                    .stroke(
+                        Circle::new(center, (MARK_SWATCH_DIAMETER - Stroke::Hairline.px()) / 2.0),
+                        &Pen::new(Stroke::Hairline.px()),
+                        outline,
+                    )
+                    .draw();
+                if selected {
+                    painter
+                        .stroke(
+                            Circle::new(center, half - Stroke::Hairline.px() / 2.0),
+                            &Pen::new(Stroke::Hairline.px()),
+                            selected_ring,
+                        )
+                        .draw();
+                }
+                if clear {
+                    let d = MARK_CLEAR_CROSS_HALF;
+                    for (a, b) in [
+                        ((half - d, half - d), (half + d, half + d)),
+                        ((half + d, half - d), (half - d, half + d)),
+                    ] {
+                        painter
+                            .stroke(Line::new(a, b), &Pen::new(Stroke::Hairline.px()), outline)
+                            .draw();
+                    }
+                }
+            }))
+            .dims(Dimensions::fixed(
+                ControlSize::Swatch.length(),
+                ControlSize::Swatch.length(),
+            ));
+            button(face, move |app: &mut Workspace| app.set_mark(mark.clone()))
+                .padding(Space::None)
+                .border_width(Space::None.length())
+                .background_color(xilem::Color::TRANSPARENT)
+        })
+        .collect::<Vec<_>>();
     sized_box(
-        xrow(
-            Region::Toolbar,
-            (
-                xrow(Region::List, marks),
-                // Clears the mark, like the GPUI build's crossed swatch.
-                sized_box(
-                    text_button("\u{00d7}", |app: &mut Workspace| app.set_mark(None))
-                        .background_color(pal.panel)
-                        .border_color(pal.outline)
-                        .border_width(Stroke::Hairline.length())
-                        .padding(Space::None)
-                        .corner_radius(Radius::Full.length()),
-                )
-                .dims(Dimensions::fixed(
-                    ControlSize::Swatch.length(),
-                    ControlSize::Swatch.length(),
-                )),
+        flex_col((
+            sized_box(label(""))
+                .dims(Dimensions::new(
+                    Dim::Stretch,
+                    Dim::Fixed(Stroke::Hairline.length()),
+                ))
+                .background_color(outline),
+            flex_row(swatches).gap(Length::px(MARK_SWATCH_GAP)).padding(
+                masonry::properties::Padding::horizontal(Length::px(MARK_SWATCH_GAP)),
             ),
-        )
+        ))
+        .gap(Space::None)
         .background_color(pal.panel),
     )
     .dims(Dimensions::new(
