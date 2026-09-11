@@ -820,6 +820,10 @@ impl FontModel {
     /// from an index rather than from a session. Only the active master
     /// changes: an advance is a per-master measurement.
     pub(crate) fn set_glyph_advance(&mut self, index: usize, width: f64) -> bool {
+        if !width.is_finite() {
+            return false;
+        }
+        let width = width.max(0.0);
         let Some(entry) = self.glyphs.get(index) else {
             return false;
         };
@@ -841,20 +845,19 @@ impl FontModel {
             return false;
         };
         let name = entry.name.clone();
-        let trimmed = text.trim();
-        let codepoints: Vec<char> = if trimmed.is_empty() {
-            Vec::new()
-        } else {
-            match u32::from_str_radix(trimmed, 16)
-                .ok()
-                .and_then(char::from_u32)
-            {
-                Some(c) => vec![c],
-                // Not a hex codepoint yet. Typing "004" on the way to
-                // "0041" should not clear the glyph's encoding.
-                None => return false,
-            }
+        let Some(active) = self.master().font.get_glyph(&name) else {
+            return false;
         };
+        let mut parsed = active.clone();
+        if !runebender_core::document::font_ops::set_glyph_unicode(&mut parsed, text) {
+            // Not a complete codepoint yet. Typing "U+062" on the way to
+            // "U+0628" must not clear the glyph's encoding.
+            return false;
+        }
+        let codepoints: Vec<char> = parsed.codepoints.iter().collect();
+        if active.codepoints == parsed.codepoints {
+            return false;
+        }
         for master in &mut self.project.masters {
             if let Some(&i) = master.name_map.get(&name) {
                 master.edit_glyph(i, |g| {

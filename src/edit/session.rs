@@ -162,8 +162,15 @@ impl Session {
     }
 
     pub(crate) fn set_unicode(&mut self, u: &str) -> bool {
+        let mut changed = self.glyph.clone();
+        if !runebender_core::document::font_ops::set_glyph_unicode(&mut changed, u)
+            || changed.codepoints == self.glyph.codepoints
+        {
+            return false;
+        }
         self.record(EditType::Normal);
-        runebender_core::document::font_ops::set_glyph_unicode(&mut self.glyph, u)
+        self.glyph.codepoints = changed.codepoints;
+        true
     }
 
     /// Whether a gesture currently owns the session's undo transaction.
@@ -177,6 +184,9 @@ impl Session {
 
     /// Shift all points and anchors horizontally (left-sidebearing drag).
     pub(crate) fn shift_glyph(&mut self, dx: f64) {
+        if !dx.is_finite() || dx == 0.0 {
+            return;
+        }
         self.record(EditType::Drag);
         for contour in &mut self.glyph.contours {
             for p in &mut contour.points {
@@ -186,12 +196,15 @@ impl Session {
         for a in &mut self.glyph.anchors {
             a.x += dx;
         }
-        self.glyph.width = (self.glyph.width + dx).max(0.0);
     }
 
     pub(crate) fn set_advance(&mut self, w: f64) {
+        let width = w.max(0.0);
+        if !w.is_finite() || self.glyph.width == width {
+            return;
+        }
         self.record(EditType::Normal);
-        self.glyph.width = w.max(0.0);
+        self.glyph.width = width;
     }
 
     pub(crate) fn outline_arc(&self) -> Arc<BezPath> {
@@ -1297,7 +1310,23 @@ impl Workspace {
 
     pub(crate) fn refresh_open_glyph(&mut self) {
         if let Mode::Editor(index) = self.mode {
-            let glyph = self.session.glyph.clone();
+            // Inspector fields edit a cloned `Session` directly rather than
+            // travelling through the canvas rebuild hook. Move their pending
+            // history into Core before replacing the live glyph, just as
+            // `sync_session_from` does for pointer and keyboard edits.
+            let mut session = (*self.session).clone();
+            let name = session.glyph_name.clone();
+            let master = self.font.master_mut();
+            for op in session.pending.drain(..) {
+                match op {
+                    HistoryOp::Record(glyph) => master.history.record(&name, &glyph),
+                    HistoryOp::DiscardLast => {
+                        master.history.discard_last(&name);
+                    }
+                }
+            }
+            let glyph = session.glyph.clone();
+            self.session = Arc::new(session);
             self.font.replace_glyph(index, glyph);
             self.cells = Arc::new(cells_of(&self.font, &self.palette));
             self.modified = true;

@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Preserve Core Undo/Redo for inspector Unicode, width, and sidebearing edits;
+  reject non-finite metrics, keep advance fixed when changing LSB, and report
+  rejected glyph-name collisions without leaving a stale field value.
+
 - Connect the Chat rail to local GGUF models through `font-ml chat` and the
   editor's private live endpoint, with streamed transcript/tool rows, model
   choice, multi-turn context, cancellation, clearing, and proposal refresh.

@@ -149,10 +149,16 @@ impl Workspace {
     /// `v` (advance unchanged, so the right sidebearing moves).
     pub(crate) fn set_lsb_from_buf(&mut self, v: String) {
         self.lsb_buf = v;
-        if let Ok(t) = self.lsb_buf.trim().parse::<f64>() {
+        if let Ok(t) = self.lsb_buf.trim().parse::<f64>()
+            && t.is_finite()
+        {
             let mut sess = (*self.session).clone();
             if let Some(sb) = sess.side_bearings() {
-                sess.shift_glyph(t - sb.min_x);
+                let delta = t - sb.min_x;
+                if delta == 0.0 {
+                    return;
+                }
+                sess.shift_glyph(delta);
                 self.session = Arc::new(sess);
                 self.refresh_open_glyph();
                 self.advance_buf = format!("{}", round_units(self.session.advance()));
@@ -167,10 +173,16 @@ impl Workspace {
     /// right edge equals `v` (left sidebearing unchanged).
     pub(crate) fn set_rsb_from_buf(&mut self, v: String) {
         self.rsb_buf = v;
-        if let Ok(t) = self.rsb_buf.trim().parse::<f64>() {
+        if let Ok(t) = self.rsb_buf.trim().parse::<f64>()
+            && t.is_finite()
+        {
             let mut sess = (*self.session).clone();
             if let Some(sb) = sess.side_bearings() {
-                sess.set_advance(sb.max_x + t);
+                let advance = (sb.max_x + t).max(0.0);
+                if advance == sess.advance() {
+                    return;
+                }
+                sess.set_advance(advance);
                 self.session = Arc::new(sess);
                 self.refresh_open_glyph();
                 self.advance_buf = format!("{}", round_units(self.session.advance()));
@@ -199,6 +211,8 @@ impl Workspace {
             return;
         }
         if !self.font.rename_glyph(old, new) {
+            self.name_buf = old.to_string();
+            self.note = format!("Cannot rename {old} to {new}");
             return;
         }
         // Tabs address their glyph by name, so every tab showing the
@@ -221,6 +235,7 @@ impl Workspace {
             }
         }
         self.modified = true;
+        self.note = format!("Renamed {old} to {new}");
     }
 
     /// The overview panel writes to the highlighted cell, not to a
@@ -254,7 +269,8 @@ impl Workspace {
         let Ok(width) = self.advance_buf.trim().parse::<f64>() else {
             return;
         };
-        if let Some(i) = self.selected
+        if width.is_finite()
+            && let Some(i) = self.selected
             && self.font.set_glyph_advance(i, width)
         {
             self.modified = true;
@@ -306,7 +322,10 @@ impl Workspace {
 
     pub(crate) fn set_advance_from_buf(&mut self, v: String) {
         self.advance_buf = v;
-        if let Ok(w) = self.advance_buf.trim().parse::<f64>() {
+        if let Ok(w) = self.advance_buf.trim().parse::<f64>()
+            && w.is_finite()
+            && w.max(0.0) != self.session.advance()
+        {
             let mut sess = (*self.session).clone();
             sess.set_advance(w);
             self.session = Arc::new(sess);

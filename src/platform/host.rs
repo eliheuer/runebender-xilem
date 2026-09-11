@@ -888,6 +888,127 @@ mod tests {
     }
 
     #[test]
+    fn glyph_metadata_validates_undoes_and_survives_save_reopen() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-metadata-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 500.0;
+        let mut contour = norad::Contour::default();
+        for (x, y) in [(50.0, 0.0), (450.0, 0.0), (450.0, 700.0), (50.0, 700.0)] {
+            contour.points.push(norad::ContourPoint::new(
+                x,
+                y,
+                norad::PointType::Line,
+                false,
+                None,
+                None,
+            ));
+        }
+        glyph.contours.push(contour);
+        font.default_layer_mut().insert_glyph(glyph);
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("B"));
+        font.save(&path).expect("the metadata fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the metadata fixture opens");
+        let index = workspace.font.index_of("A").expect("A exists");
+        workspace.open_glyph(index);
+        let original = workspace.session.glyph.clone();
+
+        workspace.set_advance_from_buf("NaN".into());
+        workspace.set_lsb_from_buf("inf".into());
+        workspace.set_rsb_from_buf("-inf".into());
+        workspace.set_unicode_from_buf("not hex".into());
+        workspace.name_buf = "B".into();
+        workspace.commit_rename();
+        assert_eq!(workspace.session.glyph, original);
+        assert!(!workspace.modified, "invalid fields do not dirty the font");
+        assert_eq!(workspace.name_buf, "A");
+        assert_eq!(workspace.note, "Cannot rename A to B");
+
+        workspace.set_unicode_from_buf("U+0628".into());
+        assert_eq!(
+            workspace
+                .session
+                .glyph
+                .codepoints
+                .iter()
+                .collect::<Vec<_>>(),
+            ['\u{0628}']
+        );
+        workspace.undo_active_edit(false);
+        assert!(workspace.session.glyph.codepoints.is_empty());
+        workspace.undo_active_edit(true);
+        assert_eq!(
+            workspace
+                .session
+                .glyph
+                .codepoints
+                .iter()
+                .collect::<Vec<_>>(),
+            ['\u{0628}']
+        );
+
+        workspace.set_advance_from_buf("620".into());
+        assert_eq!(workspace.session.advance(), 620.0);
+        workspace.undo_active_edit(false);
+        assert_eq!(workspace.session.advance(), 500.0);
+        workspace.undo_active_edit(true);
+        assert_eq!(workspace.session.advance(), 620.0);
+
+        let before = workspace.session.side_bearings().expect("A has ink");
+        workspace.set_lsb_from_buf("80".into());
+        let shifted = workspace
+            .session
+            .side_bearings()
+            .expect("shifted A has ink");
+        assert_eq!(shifted.lsb, 80);
+        assert_eq!(
+            shifted.advance, before.advance,
+            "LSB keeps the advance fixed"
+        );
+        assert_eq!(shifted.rsb, before.rsb - 30);
+        workspace.undo_active_edit(false);
+        let restored = workspace
+            .session
+            .side_bearings()
+            .expect("restored A has ink");
+        assert_eq!(restored.lsb, before.lsb);
+        assert_eq!(restored.rsb, before.rsb);
+        assert_eq!(restored.advance, before.advance);
+
+        workspace.set_rsb_from_buf("200".into());
+        assert_eq!(
+            workspace.session.side_bearings().expect("A has ink").rsb,
+            200
+        );
+        workspace.name_buf = "A.alt".into();
+        workspace.commit_rename();
+        assert_eq!(workspace.session.glyph_name, "A.alt");
+        assert_eq!(workspace.note, "Renamed A to A.alt");
+        assert!(workspace.modified);
+        assert!(workspace.save());
+
+        let reopened = Workspace::open(&path).expect("the saved metadata fixture reopens");
+        assert!(reopened.font.font().get_glyph("A").is_none());
+        let glyph = reopened
+            .font
+            .font()
+            .get_glyph("A.alt")
+            .expect("the renamed glyph survives reopening");
+        assert_eq!(glyph.width, 650.0);
+        assert_eq!(glyph.codepoints.iter().collect::<Vec<_>>(), ['\u{0628}']);
+        std::fs::remove_dir_all(path).expect("the metadata fixture is removed");
+    }
+
+    #[test]
     fn reload_keeps_the_active_master_of_a_designspace() {
         let (dir, designspace) = two_master_designspace("designspace-reload");
         let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
