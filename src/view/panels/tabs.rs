@@ -165,7 +165,6 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
                     .fill(Rect::new(0.0, 0.0, size.width, size.height), background)
                     .draw();
                 for edge in [
-                    Rect::new(0.0, 0.0, size.width, stroke),
                     Rect::new(0.0, 0.0, stroke, size.height),
                     Rect::new(0.0, size.height - stroke, size.width, size.height),
                 ] {

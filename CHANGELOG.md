@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Align the navigation, grid and inspector top edges with one shared separator below the title bar.
+
 - Align search and inspector inputs with shared insets and optical baseline positioning; route inspector text and labels through the bundled UI-font helpers.
 
 - Preserve the native macOS editor menus at startup by disabling winit's replacement default menu.

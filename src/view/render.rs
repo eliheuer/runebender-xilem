@@ -104,6 +104,14 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     // Erasing the type here cuts the chain.
     let content = flex_col((
         titlebar(app),
+        // One shared top rule keeps all three columns on the same boundary.
+        // The navigation rail must not paint another top edge of its own.
+        sized_box(label(""))
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::Fixed(Stroke::Hairline.length()),
+            ))
+            .background_color(pal.outline),
         flex_row((
             sized_box(left_and_middle)
                 .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
