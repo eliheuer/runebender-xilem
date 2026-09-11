@@ -52,6 +52,8 @@ or otherwise mutates it.
 | `r03-mixed-text-light.png` | Light | text tool and preview | same state |
 | `r04-ai-compare-gray.png` | Gray | Local AI review | disposable Regular UFO; R foreground with amber `bolden` proposal; Local AI rail |
 | `r04-ai-compare-light.png` | Light | Local AI review | same state |
+| `r05-nodes-review-gray.png` | Gray | review-only nodes | five-node Bolden → Compare graph; no Install node |
+| `r05-nodes-review-light.png` | Light | review-only nodes | same state |
 
 Build first:
 
@@ -114,6 +116,21 @@ RUNEBENDER_PROPOSAL_PREVIEW=bolden target/debug/runebender-xilem \
 These files were individually inspected at 1100×720. They prove that the pending
 proposal and foreground are visually distinguishable and that the proposal row
 does not clip its status or decisions; they do not prove a native button click.
+
+The R05 files use the checked-in review-only graph and the read-only source font:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/r05-nodes-review-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray \
+RUNEBENDER_NODES=docs/parity/2026-09-11/bolden-review.nodes.json \
+RUNEBENDER_MODE=nodes target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+```
+
+The real integration run uses `RUNEBENDER_AI_DEVICE=cpu` semantics on a copied
+designspace, not this read-only screenshot command. It selects R and S, reports
+progress, runs Compare, and hands the proposal to explicit review without an
+Install node.
 
 ## GPUI reference metrics
 

@@ -11,7 +11,10 @@ From the `runebender-xilem` checkout:
 ```sh
 trial_root="$(mktemp -d /private/tmp/runebender-virtua-trial.XXXXXX)"
 cp -R ../virtua-grotesk/sources "$trial_root/sources"
-cargo run --locked -- "$trial_root/sources/VirtuaGrotesk.designspace"
+mkdir -p "$trial_root/nodes"
+cp docs/parity/2026-09-11/bolden-review.nodes.json "$trial_root/nodes/"
+RUNEBENDER_AI_DEVICE=cpu cargo run --locked -- \
+  "$trial_root/sources/VirtuaGrotesk.designspace"
 ```
 
 Keep the terminal open. The disposable path printed by `printf '%s\n'
@@ -71,16 +74,37 @@ No model was downloaded, installed, or trained during implementation. The real
 CPU integration test moved 40/40 R points, reported advance delta +18, left the
 foreground intact, installed explicitly, and restored the original with Undo.
 
+## Review-only node graph
+
+The copied `bolden-review.nodes.json` is a five-node, five-link demo: Font and
+Model feed Bolden, the Bold master feeds Compare, and there is deliberately no
+Install node. In the overview, select R and Cmd-click S, open **Nodes**, choose
+**bolden-review**, change Strength if desired, Save, then Run. Both selected
+glyphs—not the whole font—must report progress. When it finishes, return to R
+and the Local AI rail: the graph proposal must be pending in the same Compare →
+Install/Discard → Undo workflow described above.
+
+The integration test copies the full designspace, edits and reopens the graph,
+runs R and S through the real CPU model, observes start/progress/end and Compare
+output, proves neither foreground changed, then explicitly installs and undoes
+R. The fixture leaves Bolden's optional `reference` input disconnected because
+the current installed `font-ml` panicked in its fitted-reference path during
+this trial (`swap_remove index (is 0) should be < len (is 0)`). The separate
+Compare node still compares the proposal with the Bold master. The direct Local
+AI rail likewise uses its explicit Strength control rather than hidden automatic
+reference fitting.
+
 ## Evidence and limits
 
 Implementation commits are `588b605` (disposable edit/save safety), `1d96364`
 (real Arabic and local-model proof with explicit install), and `dd0159a`
-(proposal comparison). Headless inspected captures are
+(proposal comparison), plus `ce75e3b` (review-only node route). Headless inspected captures are
 `r03-mixed-text-{gray,light}.png` and `r04-ai-compare-{gray,light}.png` in this
-directory. They use the CPU renderer and do not prove native GPU, input method,
-pointer, cancellation, or platform-menu behavior.
+directory; `r05-nodes-review-{gray,light}.png` shows the five-node graph. They use
+the CPU renderer and do not prove native GPU, input method, pointer, cancellation,
+or platform-menu behavior.
 
-Validation at `dd0159a`:
+Validation through `ce75e3b`:
 
 ```sh
 cargo test --locked --bin runebender-xilem -- --test-threads=1
@@ -88,6 +112,7 @@ cargo test --locked --bin runebender-xilem -- --ignored --test-threads=1
 cargo clippy --locked --workspace --all-targets -- -D warnings
 ```
 
-Results: 70 normal tests passed; all three ignored real Virtua/model tests
-passed; clippy passed. Report any mismatch with the disposable path, master,
-glyph, action, expected result, and whether it reproduced after reopening.
+Results: all 437 normal workspace tests passed; all four ignored real
+Virtua/model tests passed; clippy passed. Report any mismatch with the disposable
+path, master, glyph, action, expected result, and whether it reproduced after
+reopening.

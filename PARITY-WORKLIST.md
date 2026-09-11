@@ -29,7 +29,7 @@ The next delivery is **ready for a supervised real-work trial**, with these gate
   Verify cancellation, clear failures and stale document/master/glyph protection.
   If a required model is unavailable, name the exact missing dependency; UI-only
   or fake-worker tests do not complete the real local-AI trial gate.
-- [ ] R05 — Exercise the node-editor route for that local workflow, including
+- [x] R05 — Exercise the node-editor route for that local workflow, including
   graph open/save, parameters, run/progress and output comparison. Provide a
   reproducible small demo rather than starting expensive training.
 - [ ] R06 — Menus, text inputs, panels and canvas are clear and usable for these
@@ -241,7 +241,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | [ ] | A05 | Graph new/open/save/run, port type validation, parameter edits, graph tabs and failure location; round trip bolden and train-adapter fixtures without expensive training. |
 | [ ] | A06 | Live automation interface and headless Core: same operations/undo semantics, scoped authorization, conflict errors and discoverability; no disk writer bypass over live font root. |
 | [ ] | A07 | Chat panel parity: currently unconnected. Trace GPUI behavior and implement its local workflow or clearly record dependency; never claim the panel is functional. |
-| [ ] | A08 | Talk/demo path: disposable Virtua sample → graph proposal → comparison → explicit install → undo. Record reproducible setup and missing model blockers. |
+| [x] | A08 | Talk/demo path: disposable Virtua sample → graph proposal → comparison → explicit install → undo. Verified in `ce75e3b` with the checked-in review-only graph and real CPU integration test. |
 
 ## Browser workstream
 
@@ -377,6 +377,18 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   Undo are verified. Stale document switching is covered by normal tests and
   full subprocess diagnostics are retained. Native progress/Cancel and failure
   interaction still require the supervised trial, so R04 remains unchecked.
+- R05 / A08 — verified in `ce75e3b`: the checked-in five-node
+  `bolden-review.nodes.json` has no Install node. Node runs now give Core the
+  designspace source so sibling masters resolve, target the open or explicitly
+  selected glyphs instead of accidentally treating an empty editor selection as
+  every glyph, and preserve the configured model device in cache identity. A real
+  ignored integration test copies Virtua, edits/saves/reopens the graph, runs R
+  and S through the CPU model, observes start/progress/end and Compare output,
+  adopts the proposal without changing foregrounds, then explicitly installs and
+  undoes R. Gray/Light captures are `r05-nodes-review-{gray,light}.png`. The
+  installed tool's optional fitted-reference path panicked during investigation;
+  the fixture records that blocker by leaving Bolden's reference port disconnected
+  while keeping the separate Bold-master Compare node.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the

@@ -798,9 +798,13 @@ mod tests {
                 ..
             }
         )));
-        assert!(events.iter().any(
-            |event| matches!(event, Event::Progress { label, .. } if label == "R" || label == "S")
-        ));
+        for glyph in ["R", "S"] {
+            assert!(
+                events
+                    .iter()
+                    .any(|event| matches!(event, Event::Progress { label, .. } if label == glyph))
+            );
+        }
         workspace.nodes_pump();
 
         assert!(workspace.nodes.job.is_none(), "the bounded graph finishes");
