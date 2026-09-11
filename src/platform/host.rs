@@ -607,6 +607,62 @@ mod tests {
         assert_eq!(workspace.font.master_count(), 2);
         assert_eq!(workspace.font.master_name(0), "Regular");
         assert_eq!(workspace.font.master_name(1), "Bold");
+        let arabic = runebender_core::ui::sidebar::language_groups()
+            .iter()
+            .position(|group| group.label == "Arabic")
+            .expect("the Arabic script filter exists");
+        assert!(workspace.language_count(arabic) >= 300);
+        workspace.sel = Sel::Language(arabic);
+        let arabic_cells = workspace.filtered_cells();
+        assert!(
+            arabic_cells
+                .iter()
+                .any(|cell| cell.name.as_ref() == "beh-ar")
+        );
+        assert!(
+            arabic_cells
+                .iter()
+                .any(|cell| cell.name.as_ref() == "beh-ar.init")
+        );
+        assert!(!arabic_cells.iter().any(|cell| cell.name.as_ref() == "R"));
+        workspace.sel = Sel::Category(GlyphCategory::All);
+
+        for (name, unicode) in [
+            ("R", Some('R')),
+            ("beh-ar", Some('\u{0628}')),
+            ("kasra-ar", Some('\u{0650}')),
+            ("lam_alef-ar", None),
+        ] {
+            workspace.filter = name.into();
+            let cells = workspace.filtered_cells();
+            assert!(cells.iter().any(|cell| cell.name.as_ref() == name));
+            let index = workspace.font.index_of(name).expect("the glyph is indexed");
+            let source_glyph = workspace
+                .font
+                .font()
+                .get_glyph(name)
+                .expect("the source glyph exists")
+                .clone();
+            workspace.open_glyph(index);
+            assert_eq!(workspace.session.glyph, source_glyph);
+            assert_eq!(workspace.name_buf, name);
+            assert_eq!(
+                workspace.unicode_buf,
+                unicode
+                    .map(|character| format!("{:04X}", character as u32))
+                    .unwrap_or_default()
+            );
+            assert_eq!(workspace.session.advance(), source_glyph.width);
+        }
+        workspace.filter.clear();
+        workspace.set_master(1);
+        assert_eq!(workspace.font.master_name(workspace.font.active()), "Bold");
+        assert_eq!(workspace.session.glyph_name, "lam_alef-ar");
+        workspace.set_master(0);
+        assert_eq!(
+            workspace.font.master_name(workspace.font.active()),
+            "Regular"
+        );
         let original_fonts: Vec<norad::Font> = workspace
             .font
             .project
