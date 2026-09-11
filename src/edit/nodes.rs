@@ -76,6 +76,8 @@ pub(crate) struct NodesState {
     pub(crate) files: Vec<PathBuf>,
     /// What `font-ml tasks --json` answered, for the registry.
     pub(crate) tasks_json: Option<serde_json::Value>,
+    /// Why the installed task registry could not be read.
+    pub(crate) tasks_error: Option<String>,
     /// Where font-ml is, or None when it is not installed.
     pub(crate) font_ml: Option<PathBuf>,
     /// Device passed to model-backed nodes. `auto` in the app; real
@@ -118,6 +120,36 @@ fn font_ml_binary() -> Option<PathBuf> {
     cargo_bin.is_file().then_some(cargo_bin)
 }
 
+fn font_ml_tasks(font_ml: &Path) -> Result<serde_json::Value, String> {
+    let output = std::process::Command::new(font_ml)
+        .arg("tasks")
+        .arg("--json")
+        .output()
+        .map_err(|error| format!("font-ml tasks --json: {error}"))?;
+    if !output.status.success() {
+        let diagnostic = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if diagnostic.is_empty() {
+            format!("font-ml tasks --json exited with {}", output.status)
+        } else {
+            format!("font-ml tasks --json: {diagnostic}")
+        });
+    }
+    parse_tasks_json(&output.stdout)
+}
+
+fn parse_tasks_json(bytes: &[u8]) -> Result<serde_json::Value, String> {
+    let json: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|error| format!("font-ml tasks --json returned invalid JSON: {error}"))?;
+    if json
+        .get("tasks")
+        .and_then(serde_json::Value::as_array)
+        .is_none()
+    {
+        return Err("font-ml tasks --json returned no tasks array".into());
+    }
+    Ok(json)
+}
+
 impl Workspace {
     /// Glyphs offered to a graph. An explicit overview multi-selection
     /// wins; in the editor, an otherwise empty selection means only
@@ -146,14 +178,21 @@ impl Workspace {
                 std::env::var("RUNEBENDER_AI_DEVICE").unwrap_or_else(|_| "auto".to_string());
         }
         self.nodes.font_ml = font_ml_binary();
-        self.nodes.tasks_json = self.nodes.font_ml.as_ref().and_then(|font_ml| {
-            let output = std::process::Command::new(font_ml)
-                .arg("tasks")
-                .arg("--json")
-                .output()
-                .ok()?;
-            serde_json::from_slice(&output.stdout).ok()
-        });
+        let tasks = self.nodes.font_ml.as_deref().map(font_ml_tasks).transpose();
+        match tasks {
+            Ok(tasks_json) => {
+                self.nodes.tasks_json = tasks_json;
+                self.nodes.tasks_error = self.nodes.font_ml.is_none().then(|| {
+                    "font-ml not found. cargo install --git https://github.com/eliheuer/font-ml, \
+                     or set RUNEBENDER_FONT_ML"
+                        .into()
+                });
+            }
+            Err(error) => {
+                self.nodes.tasks_json = None;
+                self.nodes.tasks_error = Some(error);
+            }
+        }
         self.scan_nodes_files();
     }
 
@@ -598,6 +637,49 @@ fn summary_line(n: &nodes_run::NodeResult) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn task_rows_and_node_types_share_the_declared_registry() {
+        let json = serde_json::json!({"tasks": [
+            {
+                "name": "bolden", "title": "Bolden", "implemented": true,
+                "inputs": [{"name": "glyph", "kind": "glyphs"}], "outputs": []
+            },
+            {
+                "name": "spacing", "title": "Spacing", "implemented": false,
+                "inputs": [{"name": "glyph", "kind": "glyph"}], "outputs": []
+            }
+        ]});
+        let rows: Vec<_> = json["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(crate::edit::local_ai::TaskRow::from_value)
+            .collect();
+        let mut registry = Registry::core();
+        assert_eq!(registry.add_tool("font-ml", &json), rows.len());
+
+        for row in rows {
+            let node = registry
+                .get(&format!("font-ml.{}", row.name))
+                .expect("every panel task has a node type");
+            assert_eq!(node.title, row.title);
+            assert_eq!(node.implemented, row.implemented);
+        }
+    }
+
+    #[test]
+    fn malformed_task_registry_reports_why_it_is_unavailable() {
+        assert!(
+            parse_tasks_json(b"not json")
+                .unwrap_err()
+                .contains("invalid JSON")
+        );
+        assert_eq!(
+            parse_tasks_json(br#"{"schema": {}}"#).unwrap_err(),
+            "font-ml tasks --json returned no tasks array"
+        );
+    }
 
     fn copy_tree(source: &Path, destination: &Path) {
         std::fs::create_dir_all(destination).expect("the destination directory is created");

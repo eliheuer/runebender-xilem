@@ -40,6 +40,9 @@ releases begin.
 - Reject completed local-AI and node results after document, master, glyph, or
   foreground-revision changes, including all-glyph runs whose inventory changed.
 
+- Surface `font-ml tasks --json` launch, exit, schema, and JSON errors in the
+  Local AI rail while keeping panel task availability aligned with node types.
+
 - Route multiline text-tool Up/Down/Home/End keys through Core's bidi-aware caret
   model and verify mixed Latin, Arabic, digits, lam-alef, and kasra against the
   real Virtua Grotesk inventory and feature file.

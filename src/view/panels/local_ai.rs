@@ -106,13 +106,7 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
             )
         })
         .collect();
-    let no_tool = app.nodes.font_ml.is_none().then(|| {
-        muted(
-            "font-ml not found. cargo install --git https://github.com/eliheuer/font-ml, \
-             or set RUNEBENDER_FONT_ML"
-                .into(),
-        )
-    });
+    let no_tool = app.nodes.tasks_error.clone().map(muted);
 
     // What is running, and a way to stop it.
     let busy = app.ai.busy.clone().map(|note| {
