@@ -6,6 +6,50 @@ their checked boxes are not current cross-platform acceptance. Update this file
 as work lands. The objective is one polished Linebender-native application,
 including headless Core, not continued development of two frontends.
 
+## Immediate milestone: real Virtua Grotesk work
+
+Updated by the user September 11: prioritize reaching the point where this editor
+can be used for real Virtua Grotesk Latin/Arabic editing and local AI work.
+Daily use should then drive bug discovery and fixes. Full GPUI parity remains the
+long-term target, but exhaustive cosmetic, browser, Chat, and less-used feature
+parity must not delay a dependable desktop workflow.
+
+The next delivery is **ready for a supervised real-work trial**, with these gates:
+
+- [ ] R01 — Open the Virtua Grotesk designspace, choose the intended master/glyph,
+  navigate/search Latin and Arabic, and see accurate outlines and metadata.
+- [ ] R02 — Make representative outline, metrics and anchor edits; undo/redo;
+  save a disposable copy and reopen it without losing unrelated font data.
+  Dirty-state, failed-save and external-change behavior must be trustworthy.
+- [ ] R03 — Enter and preview representative Arabic and mixed Latin/Arabic text;
+  verify joining, marks, direction, caret/selection and relevant shaping options.
+  Explicitly identify any limitations preventing the user's actual Arabic work.
+- [ ] R04 — Discover available local AI tasks/models, run a bounded disposable
+  example, inspect/compare its proposal, explicitly install it, and undo it.
+  Verify cancellation, clear failures and stale document/master/glyph protection.
+  If a required model is unavailable, name the exact missing dependency; UI-only
+  or fake-worker tests do not complete the real local-AI trial gate.
+- [ ] R05 — Exercise the node-editor route for that local workflow, including
+  graph open/save, parameters, run/progress and output comparison. Provide a
+  reproducible small demo rather than starting expensive training.
+- [ ] R06 — Menus, text inputs, panels and canvas are clear and usable for these
+  steps: no missing icons, clipped essential text, inaccessible controls or
+  misleading enabled actions. Preserve the GPUI visual target while fixing
+  workflow-blocking defects ahead of minor cosmetic differences.
+- [ ] R07 — Deliver exact launch/trial steps, tested fixture and model details,
+  screenshots, commits, validation and remaining limitations. Distinguish
+  headless proof from native interactive verification. Invite user feedback
+  through real use; do not label this milestone full parity.
+
+Map work to existing D/E/T/A/M/V IDs and record evidence for both those IDs and
+these trial gates. Prioritize data safety first, then an end-to-end editing and
+AI workflow, then polish and bugs exposed by those workflows. Continue useful
+independent work if one gate is blocked. Do not defer Arabic as optional polish.
+This goal does not authorize modifying the user's real font sources: implement
+and validate against disposable copies until the user begins the real trial.
+The current scheduled workday still ends at 8 PM September 11; a multi-day goal
+is not an extension of the runner's authorization.
+
 ## Baseline and findings
 
 Reviewed Xilem main `e9553fcdbabb6bc5dd7addc60a0125c469ff533d` and GPUI
@@ -64,11 +108,13 @@ headless captures and available nonintrusive test infrastructure; record native
 interaction gates as pending when they cannot be exercised. Never call a build,
 a screenshot, or source presence full behavioral parity.
 
-Implement several bounded items per run while useful work remains. Start with
-V01–V08, M01–M06, D01–D04, then editing/Arabic and node workflows. Do not spend the
-whole day on one unavailable platform, rewrite the app, or repeatedly run the
-same passing checks. A blocked item must name the exact blocker, evidence, and
-next action; move to another independent item. No placeholder controls presented
+Implement several bounded items per run while useful work remains. Follow the
+immediate real-work milestone above: prioritize D01–D04 and workflow-critical M/V
+fixes, then the E/T/A items needed for R01–R07. Do not finish all visual rows
+before beginning Arabic and local AI workflow validation. Do not spend the whole
+day on one unavailable platform, rewrite the app, or repeatedly run the same
+passing checks. A blocked item must name the exact blocker, evidence, and next
+action; move to another independent item. No placeholder controls presented
 as finished features. Preserve focus, accessibility, undo, and document identity.
 
 Each row begins unchecked. Status may be `open`, `in progress`, `implemented /
@@ -120,7 +166,7 @@ Build the binary first after source edits. Headless output is CPU rendering.
 | [ ] | V04 | Search and all inspector inputs: shared font/size, equal intended inset, unclipped ascenders/descenders, caret/selection, placeholder and typed text. Include gyp, Arabic marks, long names, numeric values and focused state. |
 | [ ] | V05 | Panel edges and scrolling: no white remnant during hover, wheel, idle, resize or nested scroll. Retain wheel/trackpad and keyboard reachability. Check grid, both sidebars, menus, node panels. |
 | [x] | V06 | Swatches: match palette values, diameter, uniform centers, selected ring, clear swatch centered dark X and hit boxes. Verify mark-color changes undo and update selected cells. |
-| [ ] | V07 | Grid: match cell aspect/zoom, outline scale/baseline, labels/Unicode, selection colors, strokes/shadows and spacing. At small size use deliberate clipping/ellipsis; never accidental descender loss. |
+| [x] | V07 | Grid: match cell aspect/zoom, outline scale/baseline, labels/Unicode, selection colors, strokes/shadows and spacing. At small size use deliberate clipping/ellipsis; never accidental descender loss. |
 | [x] | V08 | Sidebar density: category/script/filter row heights, counts, disclosure indentation, full-width separators and selected highlight. Ensure lower filters remain reachable at short window sizes. |
 | [ ] | V09 | Right panels: section order/default expansion, header heights, field alignment, Masters list and preview fit. Large and tiny glyph bounds must remain inside preview. |
 | [ ] | V10 | Footer: grid/list icons, count, zoom slider, swatch row and dividers align with GPUI. All icons resolve; click/keyboard states work. |
@@ -177,7 +223,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 
 | Done | ID | Work and acceptance |
 |---|---|---|
-| [ ] | T01 | Native IME composition and committed input in canvas text tool; preserve preedit/cancel and avoid duplicate insertion. Source Keyboard-only path is an audit priority. |
+| [ ] | T01 | Native IME composition and committed input in canvas text tool; preserve preedit/cancel and avoid duplicate insertion. Implemented in `793c3f9`; native runtime verification pending. |
 | [ ] | T02 | Arabic joining/marks/ligatures and mixed Latin/Arabic/digits/punctuation with live font changes. Compare actual shaping output, not character reversal. |
 | [ ] | T03 | RTL caret, selection, arrows, deletion and pointer hit mapping across ligatures/clusters. Core buffer and UI must agree on logical versus visual positions. |
 | [ ] | T04 | Shaping options/script/language/features and kerning refresh after glyph/feature edits. Distinguish compiled-font shaping from fallback outline preview. |
@@ -230,8 +276,10 @@ regression baseline. The image visibly confirms missing icon glyphs; it does not
 prove a native window state. Capture logged sandbox-denied live-tool startup,
 which is not an application networking regression.
 
-First worker action: read current git status and this checklist, build current
-binary, reproduce V01, implement and inspect the correction, then continue V02–V08.
+Resume action: read current git status and the evidence ledger, finish any
+current bounded fix, then select the next blocker to R01–R07. V01 is already
+recorded below; do not restart completed work or follow the superseded
+visual-only order.
 Add dated ledger entries with IDs, before/after image paths, commits, commands and
 honest remaining gates. Never check all rows based on a generic test suite pass.
 
@@ -276,3 +324,29 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   `snapshot_restore_roundtrip` tests pass. Full Xilem tests pass 64/64; full
   Core library tests pass 343/343 when allowed to create their temporary Unix
   socket (the sandboxed run passed 342 and denied that one socket operation).
+- V04 — in progress in `793c3f9`: a focused Masonry input test verifies the
+  shared 28 px control does not vertically clip selected `gyp` descenders or
+  signed decimal text, in addition to the existing placeholder/typed-text ink
+  equivalence test. Arabic fallback, long-name horizontal clipping, and a live
+  native caret/selection pass remain before verification.
+- T01 — implemented / native verification pending in `793c3f9`: the canvas text
+  tool now treats `Ime::Preedit` as visible uncommitted state, clears it on
+  cancellation/disable, inserts `Ime::Commit` exactly once, and consumes the
+  corresponding logical character key so application shortcuts cannot duplicate
+  or steal it. The focused widget test covers preedit, cancellation, commit,
+  duplicate avoidance, and parked state; the 65-test Xilem binary suite and
+  workspace clippy pass. A real macOS/Linux input-method session is still required
+  before checking T01.
+- V07 — verified in `a8f8268`: source comparison corrected overview padding to
+  GPUI's 8×8 px, restored the editor rail's 44 px target with 6 px padding, and
+  made Cmd/Shift selection preserve its primary and extend existing selections.
+  Caption thresholds now reserve stable 0/1/2/3-line blocks at the same 48/90 px
+  boundaries for encoded and unencoded glyphs. Square tiles are encoded as true
+  rectangles; this fixes Vello CPU dropping Gray-theme outline and label draws
+  after a zero-radius rounded rectangle. Fresh inspected evidence is
+  `v07-overview-{gray,light,dark}.png`, `v07-overview-gray-2x.png`, and
+  `v07-editor-r-gray.png`. Three focused grid tests plus the modifier-selection
+  test pass in the 68-test Xilem binary suite; workspace clippy passes. The same
+  commit refits the text viewport after every IME transition so a cancelled or
+  rejected composition cannot leave stale composition geometry. Native GPU and
+  trackpad interaction remain covered by the later platform trial, not this row.
