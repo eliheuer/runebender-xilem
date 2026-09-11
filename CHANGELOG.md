@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Preserve the native macOS editor menus at startup by disabling winit's replacement default menu.
+
 - Give glyph search equal padding and matching Virtua Grotesk typography for placeholder and typed text, preventing clipped descenders.
 
 - Remove the doubled right edge on the navigation tabs and keep scrollbar overlays outside the viewport clip during scrolling, preserving Masonry scrolling behavior.

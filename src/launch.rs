@@ -71,6 +71,16 @@ pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
             .with_fullsize_content_view(true)
             .with_title_hidden(true)
     };
+    // Xilem builds our first view (and installs the muda menu) before winit
+    // starts its AppKit launch callback. Winit's default application-only menu
+    // would then replace ours. Runebender owns the complete native menu bar.
+    #[cfg(target_os = "macos")]
+    let event_loop = {
+        use winit::platform::macos::EventLoopBuilderExtMacOS as _;
+        let mut event_loop = event_loop;
+        event_loop.with_default_menu(false);
+        event_loop
+    };
     Xilem::new_simple(app, root_logic, window_options)
         .with_font(xilem::Blob::new(Arc::new(UI_FONT)))
         .with_default_properties(default_property_set())
