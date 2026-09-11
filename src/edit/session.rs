@@ -1123,6 +1123,55 @@ impl Workspace {
         self.note.clear();
     }
 
+    /// Undo in the active editing context. Overview actions may change a
+    /// multi-selection, so their per-glyph Core snapshots travel as one batch.
+    pub(crate) fn undo_active_edit(&mut self, redo: bool) {
+        if matches!(self.mode, Mode::Editor(_)) {
+            self.undo_open_glyph(redo);
+            return;
+        }
+        if !matches!(self.mode, Mode::Overview) {
+            return;
+        }
+        let batch = if redo {
+            self.overview_redo.pop()
+        } else {
+            self.overview_undo.pop()
+        };
+        let Some(batch) = batch else {
+            self.note = if redo {
+                "Nothing to redo"
+            } else {
+                "Nothing to undo"
+            }
+            .into();
+            return;
+        };
+        let Some(master) = self.font.project.masters.get_mut(batch.master) else {
+            self.note = "Undo target is no longer available".into();
+            return;
+        };
+        for glyph in &batch.glyphs {
+            if let Some(&index) = master.name_map.get(glyph) {
+                if redo {
+                    master.redo(index);
+                } else {
+                    master.undo(index);
+                }
+            }
+        }
+        if batch.master == self.font.active() {
+            self.font.rebuild_cache();
+        }
+        if redo {
+            self.overview_undo.push(batch);
+        } else {
+            self.overview_redo.push(batch);
+        }
+        self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        self.modified = true;
+    }
+
     pub(crate) fn set_master(&mut self, index: usize) {
         if index == self.font.active() {
             return;

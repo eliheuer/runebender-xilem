@@ -39,6 +39,15 @@ pub(crate) enum Tool {
     Text,
 }
 
+/// The Core history entries which make up one overview action. Glyph names
+/// remain stable across per-master sort orders, and `master` keeps an Undo
+/// after a master switch attached to the source the user actually changed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct OverviewEditBatch {
+    pub(crate) master: usize,
+    pub(crate) glyphs: Vec<String>,
+}
+
 pub(crate) struct Workspace {
     /// Identity of this particular in-memory document session. Reopening or
     /// reloading the same path creates a new session, so background work can
@@ -54,6 +63,11 @@ pub(crate) struct Workspace {
     pub(crate) mode: Mode,
     pub(crate) selected: Option<usize>,
     pub(crate) multi_selected: Arc<std::collections::HashSet<usize>>,
+    /// Atomic glyph batches edited from the overview, newest at the end.
+    /// Core still owns each glyph snapshot; this records which snapshots make
+    /// one user action so a multi-selection mark change undoes once.
+    pub(crate) overview_undo: Vec<OverviewEditBatch>,
+    pub(crate) overview_redo: Vec<OverviewEditBatch>,
     pub(crate) filter: String,
     /// The grid's Detail view: cells carry their category and advance.
     pub(crate) detail: bool,

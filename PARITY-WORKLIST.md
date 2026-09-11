@@ -114,14 +114,14 @@ Build the binary first after source edits. Headless output is CPU rendering.
 
 | Done | ID | Work and acceptance |
 |---|---|---|
-| [ ] | V01 | Repair missing disclosure/status glyphs. Compare `view/recipes.rs`, `widgets/input_typography.rs`, sidebar/inspector labels and GPUI icons. Use vector icons or deliberate font fallback; no tofu in all three themes. |
-| [ ] | V02 | Create matched-state overview/editor/nodes proof manifest and reference metrics from GPUI `view/` and DESIGN. Record exact sizes, not approximate impressions. |
-| [ ] | V03 | Header and sidebar tabs: align common top boundary, active outline joins, four expected overview icons, conditional editor icons, radii and gap. Verify at 1×/2×; no duplicate dark stroke or light seam. |
+| [x] | V01 | Repair missing disclosure/status glyphs. Compare `view/recipes.rs`, `widgets/input_typography.rs`, sidebar/inspector labels and GPUI icons. Use vector icons or deliberate font fallback; no tofu in all three themes. |
+| [x] | V02 | Create matched-state overview/editor/nodes proof manifest and reference metrics from GPUI `view/` and DESIGN. Record exact sizes, not approximate impressions. |
+| [x] | V03 | Header and sidebar tabs: align common top boundary, active outline joins, four expected overview icons, conditional editor icons, radii and gap. Verify at 1×/2×; no duplicate dark stroke or light seam. |
 | [ ] | V04 | Search and all inspector inputs: shared font/size, equal intended inset, unclipped ascenders/descenders, caret/selection, placeholder and typed text. Include gyp, Arabic marks, long names, numeric values and focused state. |
 | [ ] | V05 | Panel edges and scrolling: no white remnant during hover, wheel, idle, resize or nested scroll. Retain wheel/trackpad and keyboard reachability. Check grid, both sidebars, menus, node panels. |
 | [ ] | V06 | Swatches: match palette values, diameter, uniform centers, selected ring, clear swatch centered dark X and hit boxes. Verify mark-color changes undo and update selected cells. |
 | [ ] | V07 | Grid: match cell aspect/zoom, outline scale/baseline, labels/Unicode, selection colors, strokes/shadows and spacing. At small size use deliberate clipping/ellipsis; never accidental descender loss. |
-| [ ] | V08 | Sidebar density: category/script/filter row heights, counts, disclosure indentation, full-width separators and selected highlight. Ensure lower filters remain reachable at short window sizes. |
+| [x] | V08 | Sidebar density: category/script/filter row heights, counts, disclosure indentation, full-width separators and selected highlight. Ensure lower filters remain reachable at short window sizes. |
 | [ ] | V09 | Right panels: section order/default expansion, header heights, field alignment, Masters list and preview fit. Large and tiny glyph bounds must remain inside preview. |
 | [ ] | V10 | Footer: grid/list icons, count, zoom slider, swatch row and dividers align with GPUI. All icons resolve; click/keyboard states work. |
 | [ ] | V11 | Editor: point shapes/colors, selected rings, handles, anchors, metrics/guides, glyph info overlay and neighboring glyphs. Capture the same R/sample/zoom as reference. |
@@ -240,3 +240,28 @@ Review validation: `cargo test --workspace --locked -- --test-threads=1` passed
 zero failures). Full log retained locally at `/private/tmp/xilem-parity-audit-tests.log`.
 `git diff --check` passed. This review did not rerun release/clippy or certify
 native/Linux/browser interaction. Those remain phase gates for implementation.
+
+### 2026-09-11 implementation ledger
+
+- V01 — verified in `5a5adfc`: the bundled font-dependent triangles, bullets,
+  and Layers marker were replaced by theme-colored vector geometry matching the
+  GPUI 10×10 marker source. Fresh Gray, Light, and Dark captures are
+  `v01-overview-{gray,light,dark}.png`; visual inspection found no tofu.
+  `cargo test --locked --bin runebender-xilem -- --test-threads=1` passed 63/63.
+- V02 — verified in `5a5adfc`: `docs/parity/2026-09-11/MANIFEST.md` records
+  the exact 1100×720 overview, editor-R, and bolden-node states, source-derived
+  GPUI metrics, font/graph hashes, renderer, theme, commands, and limitations.
+  Gray and Light state captures are retained beside it.
+- V03 — verified by `e9553fc` and fresh captures from `5a5adfc`: the common
+  top rule, four overview tabs, five conditional editor tabs, selected tab join,
+  18 px icons, 6 px top radius, and 4 px gap were inspected at 1× and at a true
+  fixed-logical-size 2×. Evidence: `v01-overview-gray.png`,
+  `v01-overview-gray-2x.png`, `editor-r-gray.png`, and
+  `editor-r-gray-2x.png`. No duplicate top rule or open-edge seam was visible.
+- V08 — verified by current source plus `5a5adfc`: GPUI's 19 px rows, 14 px
+  inset, 10 px painted markers, right-aligned counts, full-width group rules,
+  and inverted selected row are present in the fresh overview captures.
+  `v08-overview-short-gray.png` records the 1100×480 layout with a fixed mark
+  bar; `widgets::scroll_viewport::tests::active_scroll_and_resize_never_paint_bars`
+  exercised two-axis wheel scrolling and resize while the groups remain in the
+  Masonry portal. Native trackpad behavior remains part of the later platform gate.

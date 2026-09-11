@@ -124,6 +124,8 @@ impl Workspace {
             mode,
             selected: open.or(first),
             multi_selected: Arc::new(std::collections::HashSet::new()),
+            overview_undo: Vec::new(),
+            overview_redo: Vec::new(),
             filter: String::new(),
             detail: false,
             list: std::env::var("RUNEBENDER_VIEW_MODE").as_deref() == Ok("list"),

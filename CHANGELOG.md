@@ -13,6 +13,12 @@ releases begin.
 - Add reproducible 1x and 2x headless parity captures with fixed logical sizing,
   device scale, fixture hashes, and renderer metadata.
 
+- Make overview mark-color changes update the visible grid immediately and
+  undo a multi-glyph selection as one source- and glyph-identified edit.
+
+- Include glyph metadata and lib data in Core undo snapshots, so mark colors,
+  Unicode, notes, images, and guidelines restore with outlines and metrics.
+
 - Align the navigation, grid and inspector top edges with one shared separator below the title bar.
 
 - Align search and inspector inputs with shared insets and optical baseline positioning; route inspector text and labels through the bundled UI-font helpers.

@@ -720,8 +720,8 @@ impl Workspace {
             A::OpenFont => unreachable!("Open belongs to AppState"),
             A::SaveAs => self.command_save_as(),
             A::ExportFont => self.command_export(),
-            A::Undo => self.undo_open_glyph(false),
-            A::Redo => self.undo_open_glyph(true),
+            A::Undo => self.undo_active_edit(false),
+            A::Redo => self.undo_active_edit(true),
             A::Overview => {
                 if matches!(self.mode, Mode::Editor(_) | Mode::Nodes) {
                     self.back_to_overview();

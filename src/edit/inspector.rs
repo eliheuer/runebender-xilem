@@ -255,27 +255,46 @@ impl Workspace {
     }
 
     pub(crate) fn set_mark(&mut self, label: Option<String>) {
-        if !self.multi_selected.is_empty() {
-            self.apply_mark_to_selection(label);
+        if matches!(self.mode, Mode::Overview) {
+            let mut indices: Vec<usize> = if self.multi_selected.is_empty() {
+                self.selected.into_iter().collect()
+            } else {
+                self.multi_selected.iter().copied().collect()
+            };
+            indices.sort_unstable();
+            indices.retain(|index| {
+                self.font
+                    .glyphs
+                    .get(*index)
+                    .is_some_and(|glyph| glyph.mark.as_deref() != label.as_deref())
+            });
+            if indices.is_empty() {
+                return;
+            }
+            for &index in &indices {
+                self.font.master_mut().record_undo(index);
+                self.font.master_mut().edit_glyph(index, |glyph| {
+                    runebender_core::ui::theme::set_glyph_mark(glyph, label.as_deref());
+                });
+                self.font.refresh_entry(index);
+            }
+            self.overview_undo.push(OverviewEditBatch {
+                master: self.font.active(),
+                glyphs: indices
+                    .iter()
+                    .filter_map(|index| self.font.glyphs.get(*index))
+                    .map(|glyph| glyph.name.clone())
+                    .collect(),
+            });
+            self.overview_redo.clear();
+            self.cells = Arc::new(cells_of(&self.font, &self.palette));
+            self.modified = true;
             return;
         }
         let mut sess = (*self.session).clone();
         sess.set_mark(label.as_deref());
         self.session = Arc::new(sess);
         self.refresh_open_glyph();
-    }
-
-    pub(crate) fn apply_mark_to_selection(&mut self, label: Option<String>) {
-        let indices: Vec<usize> = self.multi_selected.iter().copied().collect();
-        for i in indices {
-            if let Some(entry) = self.font.glyphs.get(i)
-                && let Some(mut g) = self.font.font().get_glyph(&entry.name).cloned()
-            {
-                runebender_core::ui::theme::set_glyph_mark(&mut g, label.as_deref());
-                self.font.replace_glyph(i, g);
-            }
-        }
-        self.modified = true;
     }
 
     pub(crate) fn set_advance_from_buf(&mut self, v: String) {
@@ -429,6 +448,46 @@ impl Workspace {
 #[cfg(test)]
 mod size_tests {
     use super::*;
+
+    #[test]
+    fn overview_mark_batch_updates_cells_and_undoes_once() {
+        let path =
+            std::env::temp_dir().join(format!("runebender-mark-test-{}.ufo", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        let mut font = norad::Font::new();
+        for name in ["mark_a", "mark_b"] {
+            font.default_layer_mut()
+                .insert_glyph(norad::Glyph::new(name));
+        }
+        font.save(&path).expect("save disposable test font");
+        let mut app = Workspace::open(&path).expect("open test font");
+        let a = app.font.index_of("mark_a").expect("mark_a");
+        let b = app.font.index_of("mark_b").expect("mark_b");
+        app.selected = Some(a);
+        app.multi_selected = Arc::new([a, b].into_iter().collect());
+
+        app.set_mark(Some("blue".into()));
+        assert_eq!(app.font.glyphs[a].mark.as_deref(), Some("blue"));
+        assert_eq!(app.font.glyphs[b].mark.as_deref(), Some("blue"));
+        assert!(app.cells[a].mark.is_some() && app.cells[b].mark.is_some());
+        assert_eq!(app.overview_undo[0].master, app.font.active());
+        assert_eq!(app.overview_undo[0].glyphs, vec!["mark_a", "mark_b"]);
+
+        app.undo_active_edit(false);
+        assert!(app.font.glyphs[a].mark.is_none());
+        assert!(app.font.glyphs[b].mark.is_none());
+        assert!(app.cells[a].mark.is_none() && app.cells[b].mark.is_none());
+        assert_eq!(app.overview_redo[0].glyphs, vec!["mark_a", "mark_b"]);
+
+        app.undo_active_edit(true);
+        assert_eq!(app.font.glyphs[a].mark.as_deref(), Some("blue"));
+        assert_eq!(app.font.glyphs[b].mark.as_deref(), Some("blue"));
+        assert_eq!(app.overview_undo[0].glyphs, vec!["mark_a", "mark_b"]);
+
+        app.set_mark(Some("blue".into()));
+        assert_eq!(app.overview_undo.len(), 1, "a no-op adds no undo step");
+        std::fs::remove_dir_all(path).expect("remove disposable font");
+    }
 
     #[test]
     fn dimensions_keep_reference_and_support_undo() {

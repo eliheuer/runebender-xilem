@@ -39,6 +39,7 @@ or otherwise mutates it.
 | `v01-overview-gray-2x.png` | Gray | post-V01 overview | same 1100×720 logical state, rendered at 2200×1440 pixels |
 | `v08-overview-short-gray.png` | Gray | short overview | 1100×480; scrollable groups extend behind the fixed mark bar |
 | `editor-r-gray.png` | Gray | editor | glyph R; fitted initial viewport; default sample `Runebender`; no point selection |
+| `editor-r-gray-2x.png` | Gray | editor | same 1100×720 logical state, rendered at 2200×1440 pixels |
 | `editor-r-light.png` | Light | editor | same state |
 | `nodes-bolden-gray.png` | Gray | nodes | bolden graph; stored graph viewport; six nodes and seven links |
 | `nodes-bolden-light.png` | Light | nodes | same state |

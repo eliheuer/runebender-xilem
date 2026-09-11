@@ -120,10 +120,12 @@ impl Entry {
             A::ExportFont => app.export_job.is_none(),
             A::Undo => match app.mode {
                 crate::Mode::Editor(index) => app.font.master().can_undo(index),
+                crate::Mode::Overview => !app.overview_undo.is_empty(),
                 _ => false,
             },
             A::Redo => match app.mode {
                 crate::Mode::Editor(index) => app.font.master().can_redo(index),
+                crate::Mode::Overview => !app.overview_redo.is_empty(),
                 _ => false,
             },
             A::Copy | A::SelectAll => editor,

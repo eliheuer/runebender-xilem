@@ -33,6 +33,18 @@ pub struct GlyphSnapshot {
     pub anchors: Vec<norad::Anchor>,
     /// The advance width in font units.
     pub width: f64,
+    /// The vertical advance where a format uses it.
+    pub height: f64,
+    /// Encoded Unicode values.
+    pub codepoints: norad::Codepoints,
+    /// The glyph note.
+    pub note: Option<String>,
+    /// Glyph-local guidelines.
+    pub guidelines: Vec<norad::Guideline>,
+    /// A placed background image.
+    pub image: Option<norad::Image>,
+    /// Arbitrary glyph data, including the mark color.
+    pub lib: norad::Plist,
 }
 
 /// Clone a glyph's editable state for undo snapshots.
@@ -42,6 +54,12 @@ pub fn snapshot(glyph: &Glyph) -> GlyphSnapshot {
         components: glyph.components.clone(),
         anchors: glyph.anchors.clone(),
         width: glyph.width,
+        height: glyph.height,
+        codepoints: glyph.codepoints.clone(),
+        note: glyph.note.clone(),
+        guidelines: glyph.guidelines.clone(),
+        image: glyph.image.clone(),
+        lib: glyph.lib.clone(),
     }
 }
 
@@ -51,6 +69,12 @@ pub fn restore(glyph: &mut Glyph, snapshot: GlyphSnapshot) {
     glyph.components = snapshot.components;
     glyph.anchors = snapshot.anchors;
     glyph.width = snapshot.width;
+    glyph.height = snapshot.height;
+    glyph.codepoints = snapshot.codepoints;
+    glyph.note = snapshot.note;
+    glyph.guidelines = snapshot.guidelines;
+    glyph.image = snapshot.image;
+    glyph.lib = snapshot.lib;
 }
 
 /// Set several points at once (multi-point drag).
@@ -1636,11 +1660,29 @@ mod tests {
         let mut g = bare_glyph();
         add_shape_contour(&mut g, kurbo::Rect::new(0.0, 0.0, 10.0, 10.0), false);
         g.width = 250.0;
+        g.height = 700.0;
+        g.codepoints = norad::Codepoints::new(['A']);
+        g.note = Some("before".into());
+        g.lib.insert(
+            "com.runebender.markColor".into(),
+            plist::Value::String("blue".into()),
+        );
         let snap = snapshot(&g);
         shift_ink(&mut g, 50.0);
         g.width = 999.0;
+        g.height = 999.0;
+        g.codepoints = norad::Codepoints::new(['B']);
+        g.note = Some("after".into());
+        g.lib.clear();
         restore(&mut g, snap);
         assert_eq!(g.width, 250.0);
+        assert_eq!(g.height, 700.0);
+        assert_eq!(g.codepoints.iter().collect::<Vec<_>>(), vec!['A']);
+        assert_eq!(g.note.as_deref(), Some("before"));
+        assert_eq!(
+            g.lib.get("com.runebender.markColor"),
+            Some(&plist::Value::String("blue".into()))
+        );
         assert_eq!(g.contours[0].points[0].x, 0.0);
     }
 }
