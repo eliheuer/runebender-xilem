@@ -252,7 +252,8 @@ impl Workspace {
         app.rescan_models();
         app.refresh_proposals();
         // Headless: RUNEBENDER_RAIL=ai starts the editor's rail on the
-        // Local AI panel, and RUNEBENDER_MODEL=<dir> chooses a model.
+        // Local AI panel, RUNEBENDER_MODEL=<dir> chooses a model, and
+        // RUNEBENDER_PROPOSAL_PREVIEW=<task> shows its review overlay.
         match std::env::var("RUNEBENDER_RAIL").as_deref() {
             Ok("ai") => app.rail = Rail::LocalAi,
             Ok("shapes") => app.rail = Rail::Shapes,
@@ -260,6 +261,15 @@ impl Workspace {
         }
         if let Some(dir) = std::env::var_os("RUNEBENDER_MODEL").filter(|d| !d.is_empty()) {
             app.load_model(FsPath::new(&dir));
+        }
+        if let Ok(task) = std::env::var("RUNEBENDER_PROPOSAL_PREVIEW")
+            && app
+                .ai
+                .proposals
+                .iter()
+                .any(|proposal| proposal.task == task)
+        {
+            app.ai.preview_task = Some(task);
         }
         // Headless overrides: RUNEBENDER_NODES=<file> opens a nodes
         // file, and RUNEBENDER_MODE=nodes starts on the canvas.

@@ -24,9 +24,16 @@ impl Workspace {
                 .then(|| self.font.glyph_outline(name))
                 .flatten()
         };
+        let proposal = self
+            .ai
+            .preview_task
+            .as_deref()
+            .and_then(|task| self.font.proposal_outline(task, &self.session.glyph_name))
+            .map(Arc::new);
         canvas::editor::Underlay {
             background,
             reference,
+            proposal,
         }
     }
 

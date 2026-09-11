@@ -134,17 +134,28 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
         .proposals
         .iter()
         .map(|p| {
+            let compare_task = p.task.clone();
             let install_task = p.task.clone();
             let discard_task = p.task.clone();
+            let comparing = app.ai.preview_task.as_deref() == Some(p.task.as_str());
             xcolumn(
                 Region::List,
                 (
                     plain(format!(
-                        "{} proposed: {} glyphs, {} keep structure",
+                        "{}: {} glyph proposal{}",
                         p.task,
                         p.glyphs.len(),
-                        p.compatible.len()
+                        if p.glyphs.len() == 1 { "" } else { "s" }
                     )),
+                    muted(format!("{} structurally compatible", p.compatible.len())),
+                    recipes::toggle(
+                        pal,
+                        "Compare on canvas".into(),
+                        comparing,
+                        move |app: &mut Workspace| {
+                            app.toggle_proposal_preview(&compare_task);
+                        },
+                    ),
                     xrow(
                         Region::Inline,
                         (

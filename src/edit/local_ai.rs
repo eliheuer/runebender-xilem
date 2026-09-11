@@ -130,6 +130,8 @@ pub(crate) struct LocalAiState {
     pub(crate) job: Option<AiJob>,
     /// Proposals waiting in the active master, one per task.
     pub(crate) proposals: Vec<ProposalSummary>,
+    /// The proposal drawn over the active glyph for comparison.
+    pub(crate) preview_task: Option<String>,
     /// Glyphs installed, most recent last, so Undo install knows the
     /// order.
     pub(crate) installed_order: Vec<String>,
@@ -309,6 +311,26 @@ impl Workspace {
             .into_iter()
             .filter(|p| !p.glyphs.is_empty())
             .collect();
+        if self
+            .ai
+            .preview_task
+            .as_ref()
+            .is_some_and(|task| !self.ai.proposals.iter().any(|p| p.task == *task))
+        {
+            self.ai.preview_task = None;
+        }
+    }
+
+    /// Show or hide one proposal over the active glyph. This changes
+    /// only review state; it never installs the proposed outline.
+    pub(crate) fn toggle_proposal_preview(&mut self, task: &str) {
+        if self.ai.preview_task.as_deref() == Some(task) {
+            self.ai.preview_task = None;
+            self.note = "Proposal comparison hidden".into();
+        } else {
+            self.ai.preview_task = Some(task.to_string());
+            self.note = format!("Comparing {task} proposal with the current glyph");
+        }
     }
 
     /// Pull a proposal layer from the UFO on disk into the open font,
@@ -361,6 +383,9 @@ impl Workspace {
             }
             Err(e) => self.note = format!("{e}"),
         }
+        if self.ai.preview_task.as_deref() == Some(task) {
+            self.ai.preview_task = None;
+        }
         self.refresh_proposals();
     }
 
@@ -388,6 +413,9 @@ impl Workspace {
                 self.note = format!("Discarded {n} proposed glyphs");
             }
             Err(e) => self.note = format!("{e}"),
+        }
+        if self.ai.preview_task.as_deref() == Some(task) {
+            self.ai.preview_task = None;
         }
         self.refresh_proposals();
     }
@@ -566,6 +594,7 @@ impl Workspace {
                     job.task, name
                 );
                 self.refresh_proposals();
+                self.ai.preview_task = Some(job.task.clone());
             }
             None => {
                 self.note = format!(
@@ -574,6 +603,13 @@ impl Workspace {
                     summary.compatible.len()
                 );
                 self.refresh_proposals();
+                if summary
+                    .glyphs
+                    .iter()
+                    .any(|glyph| glyph == &self.session.glyph_name)
+                {
+                    self.ai.preview_task = Some(job.task.clone());
+                }
             }
         }
     }
@@ -662,10 +698,24 @@ mod tests {
         let mut font = norad::Font::new();
         let mut original = norad::Glyph::new("A");
         original.width = 500.0;
+        let mut contour = norad::Contour::default();
+        for (x, y) in [(0.0, 0.0), (400.0, 0.0), (400.0, 700.0), (0.0, 700.0)] {
+            contour.points.push(norad::ContourPoint::new(
+                x,
+                y,
+                norad::PointType::Line,
+                false,
+                None,
+                None,
+            ));
+        }
+        original.contours.push(contour);
         font.default_layer_mut().insert_glyph(original.clone());
         let mut proposed = original.clone();
         proposed.width = 620.0;
-        proposal::write(&mut font, "bolden", vec![proposed]).expect("the proposal is valid");
+        proposed.contours[0].points[1].x += 20.0;
+        proposal::write(&mut font, "bolden", vec![proposed.clone()])
+            .expect("the proposal is valid");
         font.save(&path).expect("the proposal fixture saves");
 
         let mut workspace = Workspace::open(&path).expect("the fixture opens");
@@ -685,7 +735,27 @@ mod tests {
         assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
         assert!(workspace.ai.installed_order.is_empty());
         assert_eq!(workspace.ai.proposals.len(), 1);
+        assert_eq!(workspace.ai.preview_task.as_deref(), Some("bolden"));
         assert!(workspace.note.contains("Review the proposal"));
+
+        workspace.open_glyph(0);
+        let underlay = workspace.underlay();
+        assert!(underlay.proposal.is_some());
+        assert_ne!(
+            underlay.proposal,
+            workspace.font.glyph_outline("A"),
+            "comparison must show the proposed, not current, outline"
+        );
+        workspace.toggle_proposal_preview("bolden");
+        assert!(workspace.underlay().proposal.is_none());
+        workspace.toggle_proposal_preview("bolden");
+        assert!(workspace.underlay().proposal.is_some());
+
+        workspace.install_proposal("bolden", Some(vec!["A".into()]));
+        assert_eq!(workspace.font.font().get_glyph("A"), Some(&proposed));
+        assert!(workspace.ai.preview_task.is_none());
+        workspace.undo_install();
+        assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }

@@ -654,6 +654,19 @@ impl Widget for EditorWidget {
                 )
                 .draw();
         }
+        if let Some(proposal) = &self.underlay.proposal {
+            let path = affine * (**proposal).clone();
+            painter
+                .fill(&path, pal.role("warning").with_alpha(0.12))
+                .draw();
+            painter
+                .stroke(
+                    &path,
+                    &Stroke::new(1.75),
+                    pal.role("warning").with_alpha(0.95),
+                )
+                .draw();
+        }
 
         // Interpolation ghosts: the other masters' outlines, faint.
         for ghost in self.ghosts.iter() {
@@ -1737,15 +1750,18 @@ impl ViewOptions {
     }
 }
 
-/// What is drawn under the outline: the UFO background layer, and a
-/// reference glyph. Both are read-only and quiet on purpose; they are
-/// there to trace against, not to compete with the drawing.
+/// What is drawn under the outline: the UFO background layer, a
+/// reference glyph, and an optional proposal comparison. All are
+/// read-only; the warm proposal is stronger so it remains legible
+/// against the editable foreground.
 #[derive(Clone, Default, PartialEq)]
 pub(crate) struct Underlay {
     /// The glyph's contours in the UFO's background layer.
     pub background: Option<Arc<kurbo::BezPath>>,
     /// Another glyph, shown behind this one.
     pub reference: Option<Arc<kurbo::BezPath>>,
+    /// A waiting proposal for this glyph, shown in warm amber.
+    pub proposal: Option<Arc<kurbo::BezPath>>,
 }
 
 impl<F> ViewMarker for EditorView<F> {}

@@ -13,6 +13,7 @@ use std::sync::Arc;
 use kurbo::{BezPath, Rect};
 use runebender_core::analysis::category::GlyphCategory;
 use runebender_core::document::project::{Master, Project};
+use runebender_core::document::proposal;
 use runebender_core::outline::glyph_paths;
 
 /// One designspace axis, in user coordinates with its map into design
@@ -659,6 +660,17 @@ impl FontModel {
         let layer = Self::background_layer(font)?;
         let background = font.layers.get(&layer)?.get_glyph(glyph)?;
         Some(glyph_paths::glyph_to_bezpath(background, font))
+    }
+
+    /// A glyph from a waiting proposal layer, as a path for the
+    /// read-only comparison overlay.
+    pub(crate) fn proposal_outline(&self, task: &str, glyph: &str) -> Option<BezPath> {
+        let font = self.font();
+        let proposed = font
+            .layers
+            .get(&proposal::layer_name(task))?
+            .get_glyph(glyph)?;
+        Some(glyph_paths::glyph_to_bezpath(proposed, font))
     }
 
     /// Copy contours into the glyph's background layer, creating the
