@@ -158,6 +158,7 @@ fn run_font_ml(
     glyph: Option<&str>,
     strength: f64,
     reference: Option<&Path>,
+    device: &str,
     job: &AiJob,
 ) -> Result<serde_json::Value, String> {
     use std::io::BufRead as _;
@@ -170,6 +171,8 @@ fn run_font_ml(
         .arg(source)
         .arg("--strength")
         .arg(format!("{strength}"))
+        .arg("--device")
+        .arg(device)
         .arg("--write")
         .arg("--json")
         .stdin(std::process::Stdio::null())
@@ -195,7 +198,7 @@ fn run_font_ml(
         let _ = std::io::Read::read_to_string(&mut std::io::BufReader::new(stdout), &mut text);
         text
     });
-    let mut last_error = String::new();
+    let mut errors = Vec::new();
     for line in std::io::BufReader::new(stderr)
         .lines()
         .map_while(Result::ok)
@@ -205,7 +208,7 @@ fn run_font_ml(
                 *job.progress.lock().unwrap_or_else(|e| e.into_inner()) =
                     Some((done, total, glyph.to_string()));
             }
-            None if !line.trim().is_empty() => last_error = line,
+            None if !line.trim().is_empty() => errors.push(line),
             None => {}
         }
     }
@@ -227,11 +230,18 @@ fn run_font_ml(
     } else if status.code().is_none() {
         Err("cancelled".into())
     } else {
-        Err(report
+        let report_error = report
             .get("error")
             .and_then(|e| e.as_str())
-            .map(str::to_string)
-            .unwrap_or(last_error))
+            .map(str::to_string);
+        Err(report_error.unwrap_or_else(|| {
+            let diagnostics = errors.join("\n");
+            if diagnostics.is_empty() {
+                format!("font-ml exited with {status}")
+            } else {
+                diagnostics
+            }
+        }))
     }
 }
 
@@ -407,8 +417,8 @@ impl Workspace {
     }
 
     /// Run the task with font-ml over the open master. `glyph` names
-    /// one glyph, installed as soon as it arrives; None runs every
-    /// drawn glyph and leaves the result waiting in the panel.
+    /// one glyph; `None` runs every drawn glyph. Every result remains a
+    /// proposal until the user explicitly installs or discards it.
     pub(crate) fn run_task(&mut self, task: &str, glyph: Option<usize>) {
         let Some(model) = self.ai.dir.clone() else {
             self.note = "Choose a model first".into();
@@ -472,6 +482,7 @@ impl Workspace {
                 glyph_name.as_deref(),
                 strength,
                 reference.as_deref(),
+                "auto",
                 &job,
             );
             *job.finished.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
@@ -518,8 +529,8 @@ impl Workspace {
         }
     }
 
-    /// What happens when font-ml comes back: the proposal layer is
-    /// adopted from disk, and a single glyph is installed at once.
+    /// What happens when font-ml comes back: adopt its proposal layer
+    /// from disk and leave it pending for explicit review.
     fn task_finished(&mut self, job: &AiJob, report: &serde_json::Value) {
         if self.document_id != job.document_id
             || self.font.source() != job.master_path
@@ -549,12 +560,12 @@ impl Workspace {
                     .get("advance_delta")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0);
-                self.install_proposal(&job.task, Some(vec![name.clone()]));
                 self.note = format!(
                     "{} on {}: {moved}/{points} points moved, advance {advance:+}. \
-                     Undo install to reject.",
+                     Review the proposal, then Install or Discard.",
                     job.task, name
                 );
+                self.refresh_proposals();
             }
             None => {
                 self.note = format!(
@@ -571,6 +582,24 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn copy_tree(source: &Path, destination: &Path) {
+        std::fs::create_dir_all(destination).expect("the destination directory is created");
+        for entry in std::fs::read_dir(source).expect("the source directory is readable") {
+            let entry = entry.expect("the source entry is readable");
+            let from = entry.path();
+            let to = destination.join(entry.file_name());
+            if entry
+                .file_type()
+                .expect("the source type is readable")
+                .is_dir()
+            {
+                copy_tree(&from, &to);
+            } else {
+                std::fs::copy(&from, &to).expect("the source file is copied");
+            }
+        }
+    }
 
     #[test]
     fn progress_lines_parse() {
@@ -618,5 +647,139 @@ mod tests {
             "font-ml result is stale after a document or master switch"
         );
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
+    }
+
+    #[test]
+    fn completed_single_glyph_task_waits_for_explicit_install() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-ai-review-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        let mut original = norad::Glyph::new("A");
+        original.width = 500.0;
+        font.default_layer_mut().insert_glyph(original.clone());
+        let mut proposed = original.clone();
+        proposed.width = 620.0;
+        proposal::write(&mut font, "bolden", vec![proposed]).expect("the proposal is valid");
+        font.save(&path).expect("the proposal fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let job = AiJob {
+            task: "bolden".into(),
+            source: path.clone(),
+            master_path: path.clone(),
+            document_id: workspace.document_id,
+            glyph: Some("A".into()),
+            ..AiJob::default()
+        };
+        workspace.task_finished(
+            &job,
+            &serde_json::json!({"moved": 1, "points": 1, "advance_delta": 120}),
+        );
+
+        assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
+        assert!(workspace.ai.installed_order.is_empty());
+        assert_eq!(workspace.ai.proposals.len(), 1);
+        assert!(workspace.note.contains("Review the proposal"));
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    #[ignore = "runs the installed bolden model over a disposable Virtua UFO"]
+    fn real_bolden_proposal_waits_for_install_and_undo_restores_the_glyph() {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../virtua-grotesk/sources/VirtuaGrotesk-Regular.ufo");
+        assert!(
+            source.is_dir(),
+            "clone Virtua Grotesk beside this repository"
+        );
+        let model = Workspace::models_dir()
+            .expect("the Runebender model directory is configured")
+            .join("virtua-12m-bolden");
+        assert!(
+            model.join("config.json").is_file(),
+            "missing model dependency: {}",
+            model.display()
+        );
+        let root = std::env::temp_dir().join(format!(
+            "runebender-xilem-real-ai-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let disposable = root.join("Regular.ufo");
+        copy_tree(&source, &disposable);
+        let original = norad::Font::load(&disposable)
+            .expect("the disposable UFO opens")
+            .get_glyph("R")
+            .expect("Virtua contains R")
+            .clone();
+        let job = AiJob {
+            task: "bolden".into(),
+            source: disposable.clone(),
+            master_path: disposable.clone(),
+            glyph: Some("R".into()),
+            ..AiJob::default()
+        };
+
+        let report = run_font_ml(
+            Path::new("font-ml"),
+            "bolden",
+            &model,
+            &disposable,
+            Some("R"),
+            1.0,
+            None,
+            "cpu",
+            &job,
+        )
+        .expect("the installed model runs on one glyph");
+        assert!(
+            report
+                .get("moved")
+                .and_then(|value| value.as_u64())
+                .is_some_and(|moved| moved > 0)
+        );
+        let on_disk = norad::Font::load(&disposable).expect("the proposal UFO reopens");
+        assert_eq!(
+            on_disk.get_glyph("R").expect("foreground R remains"),
+            &original,
+            "inference must not auto-install into the foreground"
+        );
+        let layer_name = proposal::layer_name("bolden");
+        let proposed = on_disk
+            .layers
+            .get(&layer_name)
+            .and_then(|layer| layer.get_glyph("R"))
+            .expect("the proposal layer contains R")
+            .clone();
+        assert_ne!(proposed, original);
+
+        let mut workspace = Workspace::open(&disposable).expect("the proposal UFO opens in Xilem");
+        workspace.refresh_proposals();
+        assert_eq!(workspace.ai.proposals.len(), 1);
+        workspace.install_proposal("bolden", Some(vec!["R".into()]));
+        assert_eq!(
+            workspace.font.font().get_glyph("R").expect("installed R"),
+            &proposed
+        );
+        assert_eq!(workspace.ai.installed_order, vec!["R"]);
+
+        workspace.undo_install();
+        assert_eq!(
+            workspace.font.font().get_glyph("R").expect("restored R"),
+            &original
+        );
+        assert!(workspace.ai.installed_order.is_empty());
+
+        std::fs::remove_dir_all(root).expect("the disposable AI fixture is removed");
     }
 }

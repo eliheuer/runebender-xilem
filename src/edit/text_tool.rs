@@ -292,3 +292,73 @@ pub(crate) struct PlacedSort {
     pub advance: f64,
     pub active: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use masonry::kurbo::Shape;
+
+    #[test]
+    #[ignore = "loads the adjacent full Virtua Grotesk designspace"]
+    fn virtua_mixed_text_uses_real_arabic_forms_marks_and_bidi_layout() {
+        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../virtua-grotesk/sources/VirtuaGrotesk.designspace");
+        assert!(
+            source.is_file(),
+            "clone Virtua Grotesk beside this repository"
+        );
+        let font = FontModel::open(&source).expect("Virtua Grotesk opens");
+        let sample = "R لا 123 بِ";
+        let state = TextState::new(&TextInputs::new(&font).with_text(sample));
+
+        assert_eq!(
+            state.buffer.len(),
+            sample.chars().count(),
+            "the actual Regular master covers every sample character"
+        );
+        assert!(
+            state
+                .buffer
+                .iter()
+                .any(|sort| sort.glyph_name() == Some("lam_alef-ar")),
+            "the real feature file substitutes lam-alef"
+        );
+        assert!(
+            state
+                .buffer
+                .sort(10)
+                .and_then(|sort| sort.glyph_name())
+                .is_some_and(|name| name.contains("kasra")),
+            "the kasra remains an addressable shaped sort"
+        );
+        let placed = state.placed();
+        assert!(
+            placed.len() < state.buffer.len(),
+            "the absorbed alef remains logical text but is not painted twice"
+        );
+        assert!(placed.iter().all(|sort| {
+            let bounds = sort.path.bounding_box();
+            bounds.x0.is_finite()
+                && bounds.y0.is_finite()
+                && bounds.x1.is_finite()
+                && bounds.y1.is_finite()
+        }));
+
+        let layout = state.buffer.layout(state.line_height);
+        let latin = layout
+            .items
+            .iter()
+            .find(|item| item.index == 0)
+            .expect("the Latin run is laid out");
+        let arabic = layout
+            .items
+            .iter()
+            .filter(|item| [2, 3, 9, 10].contains(&item.index))
+            .collect::<Vec<_>>();
+        assert!(!arabic.is_empty());
+        assert!(
+            arabic.iter().any(|item| item.x > latin.x),
+            "the Arabic run occupies its bidi-resolved visual position"
+        );
+    }
+}

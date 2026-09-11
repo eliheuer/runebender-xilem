@@ -30,6 +30,14 @@ releases begin.
   present, and exercise outline, metrics, anchor, undo/redo, save, and reopen on a
   disposable full Virtua Grotesk designspace without changing unrelated font data.
 
+- Keep every local-AI result as a reviewable proposal, including single-glyph
+  runs; preserve complete worker diagnostics and require an explicit Install or
+  Discard before the foreground changes.
+
+- Route multiline text-tool Up/Down/Home/End keys through Core's bidi-aware caret
+  model and verify mixed Latin, Arabic, digits, lam-alef, and kasra against the
+  real Virtua Grotesk inventory and feature file.
+
 - Align the navigation, grid and inspector top edges with one shared separator below the title bar.
 
 - Align search and inspector inputs with shared insets and optical baseline positioning; route inspector text and labels through the bundled UI-font helpers.

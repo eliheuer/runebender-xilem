@@ -1527,6 +1527,22 @@ impl Widget for EditorWidget {
                     text.buffer.move_cursor_visual_right();
                     true
                 }
+                Key::Named(NamedKey::ArrowUp) => {
+                    text.buffer.move_cursor_vertically(-1, text.line_height);
+                    true
+                }
+                Key::Named(NamedKey::ArrowDown) => {
+                    text.buffer.move_cursor_vertically(1, text.line_height);
+                    true
+                }
+                Key::Named(NamedKey::Home) => {
+                    text.buffer.move_cursor_to_line_edge(false);
+                    true
+                }
+                Key::Named(NamedKey::End) => {
+                    text.buffer.move_cursor_to_line_edge(true);
+                    true
+                }
                 _ => false,
             };
             if handled {
@@ -1929,6 +1945,14 @@ mod tests {
                 ..KeyboardEvent::default()
             })
         };
+        let named = |key| {
+            TextEvent::Keyboard(KeyboardEvent {
+                state: KeyState::Down,
+                key: Key::Named(key),
+                code: Code::Unidentified,
+                ..KeyboardEvent::default()
+            })
+        };
         harness.process_text_event(typed());
         assert_eq!(
             harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
@@ -1964,11 +1988,35 @@ mod tests {
             "",
             "commit clears the composition preview"
         );
+        harness.process_text_event(named(NamedKey::Enter));
+        harness.process_text_event(TextEvent::Ime(Ime::Commit("A".into())));
+        harness.process_text_event(named(NamedKey::ArrowUp));
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.cursor()),
+            1,
+            "up preserves the caret column on the preceding line"
+        );
+        harness.process_text_event(named(NamedKey::End));
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.cursor()),
+            2
+        );
+        harness.process_text_event(named(NamedKey::Home));
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.cursor()),
+            0
+        );
+        harness.process_text_event(named(NamedKey::ArrowDown));
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.cursor()),
+            3,
+            "down reaches the same column on the following line"
+        );
         harness.edit_root_widget(|root| root.widget.tool = Tool::Select);
         harness.process_text_event(typed());
         assert_eq!(
             harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
-            2
+            4
         );
     }
 

@@ -48,6 +48,8 @@ or otherwise mutates it.
 | `v07-overview-dark.png` | Dark | corrected overview grid | same state |
 | `v07-overview-gray-2x.png` | Gray | corrected overview grid | same 1100×720 logical state, rendered at 2200×1440 pixels |
 | `v07-editor-r-gray.png` | Gray | corrected editor rail | glyph R; fitted 44 px target; captions deliberately omitted |
+| `r03-mixed-text-gray.png` | Gray | text tool and preview | `R لا 123 بِ`; automatic direction; caret at logical end |
+| `r03-mixed-text-light.png` | Light | text tool and preview | same state |
 
 Build first:
 
