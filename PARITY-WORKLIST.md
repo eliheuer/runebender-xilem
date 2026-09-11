@@ -119,7 +119,7 @@ Build the binary first after source edits. Headless output is CPU rendering.
 | [x] | V03 | Header and sidebar tabs: align common top boundary, active outline joins, four expected overview icons, conditional editor icons, radii and gap. Verify at 1×/2×; no duplicate dark stroke or light seam. |
 | [ ] | V04 | Search and all inspector inputs: shared font/size, equal intended inset, unclipped ascenders/descenders, caret/selection, placeholder and typed text. Include gyp, Arabic marks, long names, numeric values and focused state. |
 | [ ] | V05 | Panel edges and scrolling: no white remnant during hover, wheel, idle, resize or nested scroll. Retain wheel/trackpad and keyboard reachability. Check grid, both sidebars, menus, node panels. |
-| [ ] | V06 | Swatches: match palette values, diameter, uniform centers, selected ring, clear swatch centered dark X and hit boxes. Verify mark-color changes undo and update selected cells. |
+| [x] | V06 | Swatches: match palette values, diameter, uniform centers, selected ring, clear swatch centered dark X and hit boxes. Verify mark-color changes undo and update selected cells. |
 | [ ] | V07 | Grid: match cell aspect/zoom, outline scale/baseline, labels/Unicode, selection colors, strokes/shadows and spacing. At small size use deliberate clipping/ellipsis; never accidental descender loss. |
 | [x] | V08 | Sidebar density: category/script/filter row heights, counts, disclosure indentation, full-width separators and selected highlight. Ensure lower filters remain reachable at short window sizes. |
 | [ ] | V09 | Right panels: section order/default expansion, header heights, field alignment, Masters list and preview fit. Large and tiny glyph bounds must remain inside preview. |
@@ -265,3 +265,14 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   bar; `widgets::scroll_viewport::tests::active_scroll_and_resize_never_paint_bars`
   exercised two-axis wheel scrolling and resize while the groups remain in the
   Masonry portal. Native trackpad behavior remains part of the later platform gate.
+- V06 — verified in `dd9257a`: the existing 24 px slots, 18 px circles,
+  uniform 6 px gutters, selected ring, and painted clear X are visible in the
+  retained Gray/Light/Dark overview captures. The mark action now targets the
+  actual overview selection, records one source-identified batch for a
+  multi-selection, refreshes glyph and cell caches, and supports Undo/Redo.
+  Core `GlyphSnapshot` now includes the glyph lib and the rest of glyph metadata,
+  rather than silently restoring outlines while leaving the mark behind.
+  `overview_mark_batch_updates_cells_and_undoes_once` and both Core
+  `snapshot_restore_roundtrip` tests pass. Full Xilem tests pass 64/64; full
+  Core library tests pass 343/343 when allowed to create their temporary Unix
+  socket (the sandboxed run passed 342 and denied that one socket operation).
