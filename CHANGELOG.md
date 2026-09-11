@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Connect the Chat rail to local GGUF models through `font-ml chat` and the
+  editor's private live endpoint, with streamed transcript/tool rows, model
+  choice, multi-turn context, cancellation, clearing, and proposal refresh.
+
 - Require an explicit user-authorization argument before live automation can
   install proposals or apply and undo experiments; keep socket operations on
   the editor-owned unsaved document without writing its UFO source.

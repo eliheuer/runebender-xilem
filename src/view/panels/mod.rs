@@ -3,6 +3,7 @@
 
 //! The panels either side of the canvas, one file per region.
 
+pub(crate) mod chat;
 pub(crate) mod editor;
 pub(crate) mod editor_info;
 pub(crate) mod info;

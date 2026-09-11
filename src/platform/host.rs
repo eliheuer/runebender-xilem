@@ -257,6 +257,7 @@ impl Workspace {
             nodes: nodes::NodesState::default(),
             export_job: None,
             ai: local_ai::LocalAiState::default(),
+            chat: chat::ChatState::default(),
             kern_filter_buf: String::new(),
             kern_first_buf: String::new(),
             kern_second_buf: String::new(),
@@ -271,12 +272,14 @@ impl Workspace {
         app.park();
         app.init_nodes();
         app.rescan_models();
+        app.scan_chat_models();
         app.refresh_proposals();
-        // Headless: RUNEBENDER_RAIL=ai starts the editor's rail on the
-        // Local AI panel, RUNEBENDER_MODEL=<dir> chooses a model, and
+        // Headless: RUNEBENDER_RAIL=ai or chat starts the corresponding
+        // local-model panel, RUNEBENDER_MODEL=<dir> chooses an outline model, and
         // RUNEBENDER_PROPOSAL_PREVIEW=<task> shows its review overlay.
         match std::env::var("RUNEBENDER_RAIL").as_deref() {
             Ok("ai") => app.rail = Rail::LocalAi,
+            Ok("chat") => app.rail = Rail::Chat,
             Ok("shapes") => app.rail = Rail::Shapes,
             _ => {}
         }

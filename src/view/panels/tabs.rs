@@ -451,17 +451,6 @@ pub(crate) fn sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         .background_color(app.palette.panel)
 }
 
-/// Honest availability state: this tab does not claim to run chat requests.
-fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    xcolumn(
-        Region::Panel,
-        (
-            label("Chat").color(app.palette.text),
-            label("Chat is not connected in Xilem yet.").color(app.palette.text_muted),
-        ),
-    )
-}
-
 fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::Either;
     let pal = &app.palette;

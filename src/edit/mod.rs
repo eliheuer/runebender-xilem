@@ -4,6 +4,7 @@
 //! What the user does: commands, sessions, the sidebar's filters, the
 //! inspector's fields, and the text tool.
 
+pub(crate) mod chat;
 pub(crate) mod commands;
 pub(crate) mod inspector;
 pub(crate) mod local_ai;

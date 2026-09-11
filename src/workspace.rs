@@ -173,6 +173,8 @@ pub(crate) struct Workspace {
     pub(crate) export_job: Option<export::ExportJob>,
     /// The Local AI panel: models, tasks, a run, proposals.
     pub(crate) ai: local_ai::LocalAiState,
+    /// Local chat transcript, model choice, and current process.
+    pub(crate) chat: chat::ChatState,
     /// The Kerning section's fields: filter, then the pair being
     /// edited.
     pub(crate) kern_filter_buf: String,

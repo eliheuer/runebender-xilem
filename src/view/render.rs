@@ -146,9 +146,12 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     let content = live::with_live(content);
     watch::with_watch(
         ai_pump(
-            export_pump(
-                nodes_pump(content, app.nodes.job.clone()),
-                app.export_job.clone(),
+            chat_pump(
+                export_pump(
+                    nodes_pump(content, app.nodes.job.clone()),
+                    app.export_job.clone(),
+                ),
+                app.chat.job.clone(),
             ),
             app.ai.job.clone(),
         ),
@@ -217,6 +220,47 @@ fn welcome(app: &mut AppState) -> impl WidgetView<AppState> + use<> {
     )
     .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
     .background_color(palette.app)
+}
+
+/// Drain streamed local-chat events while its child process is running.
+fn chat_pump<V: WidgetView<Workspace>>(
+    view: V,
+    job: Option<chat::ChatJob>,
+) -> impl WidgetView<Workspace> + use<V> {
+    use xilem::core::{MessageProxy, fork};
+    use xilem::view::task_raw;
+    fork(
+        view,
+        job.map(|job| {
+            task_raw(
+                move |proxy: MessageProxy<chat::ChatProgress>, _: &mut Workspace| {
+                    let job = job.clone();
+                    async move {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                            let pending = !job
+                                .events
+                                .lock()
+                                .unwrap_or_else(|error| error.into_inner())
+                                .is_empty();
+                            let done = job
+                                .finished
+                                .lock()
+                                .unwrap_or_else(|error| error.into_inner())
+                                .is_some();
+                            if (pending || done) && proxy.message(chat::ChatProgress).is_err() {
+                                return;
+                            }
+                            if done {
+                                return;
+                            }
+                        }
+                    }
+                },
+                |app: &mut Workspace, _: chat::ChatProgress| app.chat_pump(),
+            )
+        }),
+    )
 }
 
 /// The same pump for a font-ml run from the Local AI panel: while one
