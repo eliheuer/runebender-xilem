@@ -1,3 +1,9 @@
+[workspace]
+members = [".", "crates/runebender-core"]
+default-members = ["."]
+exclude = [".worktrees/visual-parity", ".worktrees/menu-parity", ".claude/worktrees/vigilant-beaver"]
+resolver = "2"
+
 [package]
 name = "runebender-xilem"
 version = "0.1.0"
@@ -69,10 +75,8 @@ wildcard_dependencies = "warn"
 # comparing it against runebender-gpui measures Xilem and not a fork.
 xilem = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
 masonry = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
-# Pinned, like every other git dependency here. A floating branch makes
-# `cargo install --git` need --locked and makes two checkouts of the same
-# source possible if anything else names it by bare URL.
-runebender-core = { git = "https://github.com/eliheuer/runebender-core", rev = "3f49be8", default-features = false }
+# The GUI and headless tools share this workspace library.
+runebender-core = { path = "crates/runebender-core", default-features = false }
 norad = "0.18"
 # Typed values in a nodes file, which core keeps as JSON.
 regex = "1"

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "runebender": {
+      "type": "stdio",
+      "command": "runebender-core",
+      "args": [
+        "mcp",
+        "--live"
+      ]
+    }
+  }
+}

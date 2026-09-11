@@ -2,14 +2,20 @@
 
 [![CI](https://github.com/eliheuer/runebender-xilem/actions/workflows/ci.yml/badge.svg)](https://github.com/eliheuer/runebender-xilem/actions/workflows/ci.yml)
 
-An alternative [Runebender](https://runebender.org) frontend GUI,
-built on [Xilem](https://github.com/linebender/xilem). Everything
-else is in
-[Runebender-Core](https://github.com/eliheuer/runebender-core).
+A Linebender-native font editor built on [Xilem](https://github.com/linebender/xilem).
+This repository contains the application and its independent font library in
+one Cargo workspace. GPUI is retained separately as a reference and fallback.
 
-This one is behind
-[Runebender-GPUI](https://github.com/eliheuer/runebender-gpui), the
-primary frontend.
+## Workspace
+
+- Root package: the Xilem editor. `cargo run --release -- <font>` opens it.
+- `crates/runebender-core`: font operations and a headless CLI, with no GUI dependency.
+- `cargo run -p runebender-core -- --help`: discover headless commands.
+- `cargo test --workspace -- --test-threads=1`: test both packages.
+
+Core tests use `RUNEBENDER_TEST_FONTS`, or the `virtua-grotesk/sources`
+directory beside this repository. New font-library work belongs in this
+workspace, not the legacy standalone Core repository.
 
 ## Use
 

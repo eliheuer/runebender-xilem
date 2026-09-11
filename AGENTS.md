@@ -8,14 +8,11 @@ submit a change.
 
 ## What this is
 
-The Runebender font editor's front-end on Xilem, the Linebender UI
-stack. It is the other half of a controlled comparison with
-[runebender-gpui](https://github.com/eliheuer/runebender-gpui): the
-same editor, the same core, built twice, so that what differs is the
-framework. It owns the window, the input, and the drawing, and calls
-[runebender-core](https://github.com/eliheuer/runebender-core) for
-everything that changes a font or reads one. If a change you are
-making does font work with no Xilem in it, it belongs in core.
+Runebender is a Linebender-native font editor built with Xilem. This
+repository is the primary application; new product work targets Xilem.
+GPUI is retained as a visual/behavioral reference and fallback, not a
+second frontend to develop in parallel. Font operations remain in the
+independent `crates/runebender-core` library so the GUI and headless tools share behavior.
 
 It builds against upstream Xilem pinned to a revision, not a fork.
 Where Xilem has no answer for something the editor needs, the answer
@@ -23,8 +20,12 @@ lives here in application code, and `docs/XILEM-GAPS.md` records it.
 
 ## Which shell is which
 
-runebender-gpui is the current shell. This one is the long-term
-target. The rule that keeps the switch cheap is:
+Work directly on `main` in the main checkout unless a task explicitly
+requires isolation. The old visual-parity worktree is historical; do not
+start new work there. Preserve in-progress isolated menu work until it
+is reviewed and integrated.
+
+The application boundaries are:
 
 - No local-AI or task logic lives in a shell. Models, proposals, undo,
   and the task list live in runebender-core and in font-ml.
@@ -37,8 +38,8 @@ target. The rule that keeps the switch cheap is:
   add the state to core first.
 - Full GPUI parity is the current target. `GPUI-PARITY.md` in the
   repository root records the baseline, work order, and acceptance
-  checks. Keep both shells while that work proceeds; retiring GPUI
-  is a separate decision after verification.
+  checks. Implement those behaviors in Xilem; do not mirror new features
+  into GPUI unless the user explicitly requests a fallback fix.
 - GPUI is the behavioral reference; Linebender is the architectural
   target. Prefer Linebender APIs and conventions, and record reusable
   gaps as contribution opportunities in the appropriate ecosystem
@@ -192,3 +193,12 @@ to crates.io. A release is a git tag, and users install with
 - Commit messages say why. The diff shows what.
 - No `Co-Authored-By` trailers for agents.
 - Stage explicit paths. Never `git add -A`.
+
+## Unified workspace
+
+This repository owns Core and the Xilem application together. Edit font operations
+in `crates/runebender-core`; do not update the legacy sibling Core repository
+or its GPUI consumer for new work. The root package remains the editor so
+`cargo run --release -- <font>` keeps working. Use `cargo run -p runebender-core
+-- <arguments>` for the headless CLI. Validate with `cargo test --workspace
+-- --test-threads=1` and `cargo clippy --workspace --all-targets`.

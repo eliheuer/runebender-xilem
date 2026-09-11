@@ -1,0 +1,123 @@
+[package]
+name = "runebender-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "Apache-2.0 OR MIT"
+description = "The font library behind the Runebender font editor, with a command-line tool"
+repository = "https://github.com/eliheuer/runebender-core"
+keywords = ["font", "ufo", "typography", "bezier", "opentype"]
+categories = ["graphics", "text-processing"]
+
+[[bin]]
+name = "runebender-core"
+path = "src/bin/runebender.rs"
+required-features = ["cli"]
+
+[features]
+# The command line. On by default, so `cargo install` builds it.
+# The editors depend on this crate with default-features = false,
+# which keeps clap and its tree out of their builds: nothing in the
+# library uses it.
+default = ["cli"]
+cli = ["dep:clap", "dep:base64"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+# LINEBENDER LINT SET - Cargo.toml - v8
+# See https://linebender.org/wiki/canonical-lints/
+keyword_idents_2024 = "forbid"
+non_ascii_idents = "forbid"
+non_local_definitions = "forbid"
+unsafe_op_in_unsafe_fn = "forbid"
+
+elided_lifetimes_in_paths = "warn"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+trivial_numeric_casts = "warn"
+unnameable_types = "warn"
+unreachable_pub = "warn"
+unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+too_many_arguments = "allow"
+
+allow_attributes_without_reason = "warn"
+cast_possible_truncation = "warn"
+cast_possible_wrap = "warn"
+collection_is_never_read = "warn"
+default_trait_access = "warn"
+dbg_macro = "warn"
+debug_assert_with_mut_call = "warn"
+doc_markdown = "warn"
+fn_to_numeric_cast_any = "warn"
+infinite_loop = "warn"
+large_stack_arrays = "warn"
+mismatching_type_param_order = "warn"
+missing_assert_message = "warn"
+missing_fields_in_debug = "warn"
+same_functions_in_if_condition = "warn"
+semicolon_if_nothing_returned = "warn"
+should_panic_without_expect = "warn"
+todo = "warn"
+unseparated_literal_suffix = "warn"
+use_self = "warn"
+
+cargo_common_metadata = "warn"
+negative_feature_names = "warn"
+redundant_feature_names = "warn"
+wildcard_dependencies = "warn"
+# END LINEBENDER LINT SET
+
+[lib]
+name = "runebender_core"
+path = "src/lib.rs"
+
+[dependencies]
+# MCP proofs are rasterized in the CLI process, never on the editor thread.
+base64 = { version = "0.22.1", optional = true }
+glyphslib = "0.2.7"
+linesweeper = "0.4"
+clap = { version = "4", features = ["derive"], optional = true }
+norad = "0.18"
+# Reads compiled TTF/OTF outlines for `binary_import`.
+skrifa = "0.44"
+# The web editor's autotracer, pinned to git like runebender-web.
+img2bez = { git = "https://github.com/eliheuer/img2bez", rev = "23073ca08ecdac61ad0e838bfae49a590bc2c7cc", default-features = false }
+plist = { version = "1.4", features = ["serde"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
+# Structured metadata shared over serde_json between core and UI hosts.
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.151"
+# JSON Schema for every result type a tool or agent reads back, so the
+# contract is published, not guessed.
+schemars = "1.2"
+
+# Unicode general-category lookup, used by `category::GlyphCategory`.
+# Same crate as runebender-xilem, just hoisted here so both editors
+# share the categorization.
+unicode-general-category = "0.6"
+# Canonical decompositions, so a precomposed glyph knows its base
+# and marks (`document::compose`).
+unicode-normalization = "0.1"
+# The text engine (text.rs): bidi runs, and real OpenType shaping of a
+# minimal font compiled on the fly from the UFO's own features.fea.
+unicode-bidi = { version = "0.3.18", default-features = false, features = ["hardcoded-data"] }
+fea-rs = "0.22"
+harfrust = "0.5"
+write-fonts = "0.44"
+# The hyperbezier path type. spline solves on kurbo 0.9; both kurbo
+# versions live side by side and hyper.rs converts between them.
+kurbo_09 = { package = "kurbo", version = "0.9.5" }
+spline = { git = "https://github.com/linebender/spline", rev = "83f46cbfebb1f5d6042059c867719c0010073d42" }
+sha2 = "0.10"
+
+# 2D geometry for the shared curve/measure modules. All consumers
+# (web, xilem, gpui) are on kurbo 0.13 now, so the old "kurbo-free
+# core" rule (from the masonry-0.4/kurbo-0.12 era) no longer applies.
+[dependencies.kurbo]
+version = "0.13"
