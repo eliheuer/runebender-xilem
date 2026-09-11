@@ -43,6 +43,11 @@ or otherwise mutates it.
 | `editor-r-light.png` | Light | editor | same state |
 | `nodes-bolden-gray.png` | Gray | nodes | bolden graph; stored graph viewport; six nodes and seven links |
 | `nodes-bolden-light.png` | Light | nodes | same state |
+| `v07-overview-gray.png` | Gray | corrected overview grid | ampersand; 8 px grid padding; fitted 96 px target; full captions |
+| `v07-overview-light.png` | Light | corrected overview grid | same state |
+| `v07-overview-dark.png` | Dark | corrected overview grid | same state |
+| `v07-overview-gray-2x.png` | Gray | corrected overview grid | same 1100×720 logical state, rendered at 2200×1440 pixels |
+| `v07-editor-r-gray.png` | Gray | corrected editor rail | glyph R; fitted 44 px target; captions deliberately omitted |
 
 Build first:
 
@@ -59,6 +64,11 @@ RUNEBENDER_SELECTED=ampersand RUNEBENDER_EXPAND=Glyph \
 target/debug/runebender-xilem \
 ../virtua-grotesk/sources/VirtuaGrotesk.designspace
 ```
+
+The V07 overview files use the same commands with `v07-overview-<theme>.png` as
+the output path. `v07-editor-r-gray.png` uses the editor command below. These
+captures were inspected individually; the Gray capture specifically proves the
+CPU renderer no longer drops same-colour paths after a zero-radius rounded cell.
 
 Matched logical size at 2× device scale:
 

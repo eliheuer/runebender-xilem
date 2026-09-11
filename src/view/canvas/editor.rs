@@ -1451,21 +1451,23 @@ impl Widget for EditorWidget {
             && let Some(text) = self.text.as_mut()
             && let TextEvent::Ime(ime) = event
         {
-            let committed = match ime {
+            match ime {
                 masonry::core::Ime::Preedit(value, _) => {
                     text.set_preedit(value.clone());
-                    false
                 }
-                masonry::core::Ime::Commit(value) => text.commit_preedit(value),
+                masonry::core::Ime::Commit(value) => {
+                    text.commit_preedit(value);
+                }
                 masonry::core::Ime::Disabled => {
                     text.set_preedit(String::new());
-                    false
                 }
-                masonry::core::Ime::Enabled => false,
-            };
-            if committed || !text.preedit.is_empty() {
-                self.fit_text();
+                masonry::core::Ime::Enabled => {}
             }
+            // Composition can change the visible run even when the commit
+            // contains no glyph the document can place. Refit after every
+            // IME transition so cancelling or rejecting a preedit cannot
+            // leave the viewport sized for stale composition text.
+            self.fit_text();
             ctx.request_render();
             ctx.set_handled();
             return;

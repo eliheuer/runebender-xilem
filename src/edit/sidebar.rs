@@ -197,8 +197,8 @@ impl Workspace {
     pub(crate) fn cell_metrics(&self, cell: f64) -> CellMetrics {
         CellMetrics {
             cell,
-            padding: 10.0,
-            padding_y: 4.0,
+            padding: 8.0,
+            padding_y: 8.0,
             captions_below: true,
             ascender: self.font.ascender(),
             descender: self.font.descender(),
@@ -210,9 +210,9 @@ impl Workspace {
     /// Metrics for the editor's compact glyph rail.
     pub(crate) fn rail_cell_metrics(&self) -> CellMetrics {
         CellMetrics {
-            cell: 32.0,
+            cell: 44.0,
             padding: 6.0,
-            padding_y: 2.0,
+            padding_y: 6.0,
             captions_below: false,
             ascender: self.font.ascender(),
             descender: self.font.descender(),
@@ -237,6 +237,9 @@ impl Workspace {
         use std::collections::HashSet;
         if cmd {
             let mut m: HashSet<usize> = (*self.multi_selected).clone();
+            if let Some(primary) = self.selected {
+                m.insert(primary);
+            }
             if !m.remove(&index) {
                 m.insert(index);
             }
@@ -251,7 +254,8 @@ impl Workspace {
             let b = order.iter().position(|&i| i == index);
             if let (Some(a), Some(b)) = (a, b) {
                 let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
-                let m: HashSet<usize> = order[lo..=hi].iter().copied().collect();
+                let mut m: HashSet<usize> = (*self.multi_selected).clone();
+                m.extend(order[lo..=hi].iter().copied());
                 self.multi_selected = Arc::new(m);
             }
         } else {

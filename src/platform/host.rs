@@ -513,6 +513,47 @@ mod tests {
     }
 
     #[test]
+    fn grid_modifiers_preserve_the_primary_and_extend_the_selection() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-grid-selection-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        norad::Font::new()
+            .save(&path)
+            .expect("the empty UFO fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        for name in ["A", "B", "C"] {
+            workspace.mode = Mode::Overview;
+            workspace.filter = name.into();
+            workspace.new_glyph();
+        }
+        workspace.mode = Mode::Overview;
+        workspace.filter.clear();
+
+        workspace.grid_select(0, false, false);
+        workspace.grid_select(2, true, false);
+        assert_eq!(workspace.selected, Some(2));
+        assert_eq!(
+            *workspace.multi_selected,
+            std::collections::HashSet::from([0, 2])
+        );
+
+        workspace.grid_select(1, false, true);
+        assert_eq!(workspace.selected, Some(1));
+        assert_eq!(
+            *workspace.multi_selected,
+            std::collections::HashSet::from([0, 1, 2]),
+            "shift-click extends rather than discards an existing multi-selection"
+        );
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
     fn reload_keeps_open_tabs_and_their_viewports() {
         let path = std::env::temp_dir().join(format!(
             "runebender-xilem-tabs-reload-{}-{}.ufo",

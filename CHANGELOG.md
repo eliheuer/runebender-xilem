@@ -22,6 +22,10 @@ releases begin.
 - Route text-tool input through native IME composition and commit events,
   preview preedit text without changing the buffer, and prevent key/IME duplicates.
 
+- Match GPUI's overview and editor-rail grid sizing, selection extension, caption
+  geometry, and source-derived padding; render square cells as true rectangles so
+  CPU evidence retains Gray-theme outlines and labels.
+
 - Align the navigation, grid and inspector top edges with one shared separator below the title bar.
 
 - Align search and inspector inputs with shared insets and optical baseline positioning; route inspector text and labels through the bundled UI-font helpers.

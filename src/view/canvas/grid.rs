@@ -22,7 +22,6 @@ use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
 use crate::model::FontModel;
-use crate::view::design::Radius;
 use crate::view::render::px32;
 use crate::view::theme::Palette;
 use crate::widgets::text_label::{self, Anchor};
@@ -37,6 +36,28 @@ const RAIL_ROW_FACTOR: f64 = 1.18;
 const LABEL_TOP: f64 = 5.0;
 const LABEL_BOTTOM: f64 = 5.0;
 const LABEL_GAP: f64 = 0.0;
+
+/// Caption size, line count, and total height for a base-width cell.
+///
+/// This is intentionally independent of a particular glyph: GPUI reserves
+/// the same two-line block for every full-size cell, leaving the Unicode line
+/// empty for an unencoded glyph, so outlines do not jump between neighbours.
+fn cell_label_metrics(width: f64, captions: bool, detail: bool) -> (f64, usize, f64) {
+    let (size, lines) = if !captions || width < 48.0 {
+        (0.0, 0)
+    } else if width < 90.0 {
+        (13.0, 1)
+    } else {
+        (13.0, if detail { 3 } else { 2 })
+    };
+    let line = (size * 1.10_f64).ceil();
+    let height = if lines == 0 {
+        0.0
+    } else {
+        LABEL_TOP + line * lines as f64 + LABEL_GAP * (lines - 1) as f64 + LABEL_BOTTOM
+    };
+    (size, lines, height)
+}
 
 /// Column span for a glyph, from name length and advance/upm (matches gpui).
 fn column_span(name: &str, advance: f64, upm: f64) -> usize {
@@ -203,18 +224,12 @@ impl GridWidget {
     /// the thumbnail, as GPUI's grid fit does. The editor rail is a
     /// thumbnail index, so its short cells do not carry that band.
     fn cell_height(&self) -> f64 {
-        let caption = if self.metrics.captions_below && self.cell_width(1) >= 48.0 {
-            let lines = if self.cell_width(1) < 90.0 {
-                1.0
-            } else if self.metrics.detail {
-                3.0
-            } else {
-                2.0
-            };
-            LABEL_TOP + 15.0 * lines + LABEL_GAP * (lines - 1.0) + LABEL_BOTTOM
-        } else {
-            0.0
-        };
+        let caption = cell_label_metrics(
+            self.cell_width(1),
+            self.metrics.captions_below,
+            self.metrics.detail,
+        )
+        .2;
         let factor = if self.metrics.captions_below {
             1.0
         } else {
@@ -349,8 +364,10 @@ impl Widget for GridWidget {
                 painter
                     .fill(rect + kurbo::Vec2::new(-offset, offset), pal.cell_shadow())
                     .draw();
-                let radius = Radius::None.px();
-                painter.fill(rect.to_rounded_rect(radius), bg).draw();
+                // The reference cells are square. Encoding the square as a
+                // zero-radius `RoundedRect` made Vello CPU lose later
+                // same-colour outline/text draws in the Gray theme.
+                painter.fill(rect, bg).draw();
                 let border = if picked {
                     pal.selected_bg()
                 } else if cell.mark.is_some() {
@@ -358,9 +375,7 @@ impl Widget for GridWidget {
                 } else {
                     cell_border
                 };
-                painter
-                    .stroke(rect.to_rounded_rect(radius), &Stroke::new(1.0), border)
-                    .draw();
+                painter.stroke(rect, &Stroke::new(1.0), border).draw();
 
                 // The label block, sized from what it draws. Same rule as
                 // the GPUI build: under 34px wide a cell is a thumbnail
@@ -369,27 +384,12 @@ impl Widget for GridWidget {
                 // One type size, the interface's: a cell too narrow to
                 // carry a name at it carries none. The GPUI build's
                 // thresholds.
-                let (label_size, label_lines): (f64, usize) =
-                    if !self.metrics.captions_below || self.cell_width(1) < 48.0 {
-                        (0.0, 0)
-                    } else if self.cell_width(1) < 90.0 {
-                        (13.0, 1)
-                    } else {
-                        let mut lines = if cell.codepoint.is_some() { 2 } else { 1 };
-                        if self.metrics.detail {
-                            lines += 1;
-                        }
-                        (13.0, lines)
-                    };
+                let (label_size, label_lines, block) = cell_label_metrics(
+                    self.cell_width(1),
+                    self.metrics.captions_below,
+                    self.metrics.detail,
+                );
                 let line = (label_size * 1.10).ceil();
-                let block = if label_lines == 0 {
-                    0.0
-                } else {
-                    LABEL_TOP
-                        + line * label_lines as f64
-                        + LABEL_GAP * (label_lines - 1) as f64
-                        + LABEL_BOTTOM
-                };
 
                 let preview_rect = Rect::new(rect.x0, rect.y0, rect.x1, rect.y1 - block);
                 if !cell.outline.elements().is_empty() {
@@ -695,5 +695,27 @@ mod thumbnail_tests {
         let period = fit_transform(cell, Rect::new(0.0, 0.0, 100.0, 100.0), 1000.0)
             .transform_rect_bbox(Rect::new(0.0, 0.0, 100.0, 100.0));
         assert!(period.height() < cell.height() * 0.1);
+    }
+
+    #[test]
+    fn caption_thresholds_match_the_gpui_grid() {
+        assert_eq!(cell_label_metrics(47.0, true, false), (0.0, 0, 0.0));
+        assert_eq!(cell_label_metrics(48.0, true, false), (13.0, 1, 25.0));
+        assert_eq!(cell_label_metrics(89.0, true, false), (13.0, 1, 25.0));
+        assert_eq!(cell_label_metrics(90.0, true, false), (13.0, 2, 40.0));
+        assert_eq!(cell_label_metrics(90.0, true, true), (13.0, 3, 55.0));
+        assert_eq!(cell_label_metrics(200.0, false, true), (0.0, 0, 0.0));
+    }
+
+    #[test]
+    fn spanning_and_row_packing_match_the_reference_rules() {
+        assert_eq!(column_span("short", 500.0, 1000.0), 1);
+        assert_eq!(column_span("fifteen-letters!", 500.0, 1000.0), 2);
+        assert_eq!(column_span("short", 3000.0, 1000.0), 3);
+        assert_eq!(column_span("short", 5000.0, 1000.0), 4);
+        assert_eq!(
+            pack_spans(&[(0, 1), (1, 2), (2, 2), (3, 1)], 4),
+            vec![vec![(0, 1), (1, 3)], vec![(2, 2), (3, 2)]]
+        );
     }
 }
