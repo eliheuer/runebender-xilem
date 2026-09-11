@@ -15,6 +15,7 @@
 //! panel takes the most recent one back; Cmd+Z over the open glyph
 //! does the same through the editor.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -109,6 +110,10 @@ pub(crate) struct AiJob {
     /// The in-memory document session that launched the task.
     pub(crate) document_id: u64,
     pub(crate) glyph: Option<String>,
+    /// The editor glyph and foreground revisions present at launch.
+    pub(crate) active_glyph: String,
+    pub(crate) foreground_revisions: BTreeMap<String, String>,
+    pub(crate) all_glyphs: bool,
 }
 
 /// Everything the panel holds.
@@ -140,6 +145,47 @@ pub(crate) struct LocalAiState {
 /// The pump's message: something arrived from the run thread.
 #[derive(Debug)]
 pub(crate) struct AiProgress;
+
+/// Capture canonical foreground revisions for named glyphs, or the whole
+/// default layer when `names` is empty.
+pub(crate) fn foreground_revisions(
+    font: &norad::Font,
+    names: &[String],
+) -> Result<BTreeMap<String, String>, String> {
+    let glyphs: Vec<_> = if names.is_empty() {
+        font.default_layer().iter().collect()
+    } else {
+        names
+            .iter()
+            .map(|name| {
+                font.get_glyph(name)
+                    .ok_or_else(|| format!("{name}: foreground glyph no longer exists"))
+            })
+            .collect::<Result<_, _>>()?
+    };
+    glyphs
+        .into_iter()
+        .map(|glyph| {
+            Ok((
+                glyph.name().to_string(),
+                runebender_core::document::edit_batch::glyph_revision(glyph)?,
+            ))
+        })
+        .collect()
+}
+
+pub(crate) fn foreground_is_current(
+    font: &norad::Font,
+    expected: &BTreeMap<String, String>,
+    all_glyphs: bool,
+) -> bool {
+    let names: Vec<_> = if all_glyphs {
+        Vec::new()
+    } else {
+        expected.keys().cloned().collect()
+    };
+    foreground_revisions(font, &names).is_ok_and(|current| current == *expected)
+}
 
 /// A progress line as font-ml prints it: `progress <done>/<total> <glyph>`.
 fn parse_progress(line: &str) -> Option<(usize, usize, &str)> {
@@ -482,6 +528,14 @@ impl Workspace {
         // dependable bounded workflow for a draft model.
         let strength = self.ai.strength;
         let device = self.nodes.device.clone();
+        let target_names: Vec<_> = glyph_name.iter().cloned().collect();
+        let foreground_revisions = match foreground_revisions(self.font.font(), &target_names) {
+            Ok(revisions) => revisions,
+            Err(error) => {
+                self.note = format!("Cannot capture model target: {error}");
+                return;
+            }
+        };
         self.ai.busy = Some(match &glyph_name {
             Some(name) => format!("Running {task} on {name}…"),
             None => format!("Running {task} on every glyph…"),
@@ -492,6 +546,9 @@ impl Workspace {
             master_path: self.font.source().to_path_buf(),
             document_id: self.document_id,
             glyph: glyph_name.clone(),
+            active_glyph: self.session.glyph_name.clone(),
+            foreground_revisions,
+            all_glyphs: glyph_name.is_none(),
             ..AiJob::default()
         };
         self.ai.job = Some(job.clone());
@@ -558,8 +615,12 @@ impl Workspace {
         if self.document_id != job.document_id
             || self.font.source() != job.master_path
             || self.font.source() != job.source
+            || self.session.glyph_name != job.active_glyph
+            || !foreground_is_current(self.font.font(), &job.foreground_revisions, job.all_glyphs)
         {
-            self.note = "font-ml result is stale after a document or master switch".into();
+            self.note =
+                "font-ml result is stale after a document, master, glyph, or revision change"
+                    .into();
             return;
         }
         if let Some(name) = &job.glyph
@@ -675,7 +736,7 @@ mod tests {
 
         assert_eq!(
             workspace.note,
-            "font-ml result is stale after a document or master switch"
+            "font-ml result is stale after a document, master, glyph, or revision change"
         );
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }
@@ -714,12 +775,16 @@ mod tests {
         font.save(&path).expect("the proposal fixture saves");
 
         let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let target_names = vec!["A".to_string()];
         let job = AiJob {
             task: "bolden".into(),
             source: path.clone(),
             master_path: path.clone(),
             document_id: workspace.document_id,
             glyph: Some("A".into()),
+            active_glyph: workspace.session.glyph_name.clone(),
+            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+                .expect("the foreground revision is captured"),
             ..AiJob::default()
         };
         workspace.task_finished(
@@ -753,6 +818,114 @@ mod tests {
         assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn completed_task_rejects_a_changed_foreground_revision() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-ai-revision-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        let mut original = norad::Glyph::new("A");
+        original.width = 500.0;
+        font.default_layer_mut().insert_glyph(original);
+        let mut proposed = norad::Glyph::new("A");
+        proposed.width = 620.0;
+        proposal::write(&mut font, "bolden", vec![proposed]).expect("the proposal is valid");
+        font.save(&path).expect("the fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.open_glyph(0);
+        let target_names = vec!["A".to_string()];
+        let job = AiJob {
+            task: "bolden".into(),
+            source: path.clone(),
+            master_path: path.clone(),
+            document_id: workspace.document_id,
+            glyph: Some("A".into()),
+            active_glyph: workspace.session.glyph_name.clone(),
+            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+                .expect("the foreground revision is captured"),
+            ..AiJob::default()
+        };
+        workspace
+            .font
+            .font_mut()
+            .get_glyph_mut("A")
+            .expect("A remains loaded")
+            .width = 540.0;
+
+        workspace.task_finished(&job, &serde_json::json!({}));
+
+        assert_eq!(workspace.font.font().get_glyph("A").unwrap().width, 540.0);
+        assert_eq!(
+            workspace.note,
+            "font-ml result is stale after a document, master, glyph, or revision change"
+        );
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn completed_task_rejects_an_editor_glyph_switch() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-ai-glyph-switch-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("A"));
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("B"));
+        font.save(&path).expect("the fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let a = workspace.font.index_of("A").expect("A is indexed");
+        let b = workspace.font.index_of("B").expect("B is indexed");
+        workspace.open_glyph(a);
+        let target_names = vec!["A".to_string()];
+        let job = AiJob {
+            task: "bolden".into(),
+            source: path.clone(),
+            master_path: path.clone(),
+            document_id: workspace.document_id,
+            glyph: Some("A".into()),
+            active_glyph: workspace.session.glyph_name.clone(),
+            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+                .expect("the foreground revision is captured"),
+            ..AiJob::default()
+        };
+
+        workspace.open_glyph(b);
+        workspace.task_finished(&job, &serde_json::json!({}));
+
+        assert_eq!(workspace.session.glyph_name, "B");
+        assert_eq!(
+            workspace.note,
+            "font-ml result is stale after a document, master, glyph, or revision change"
+        );
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn whole_font_revision_capture_detects_a_new_glyph() {
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("A"));
+        let expected = foreground_revisions(&font, &[]).expect("the layer can be revised");
+
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("B"));
+
+        assert!(!foreground_is_current(&font, &expected, true));
+        assert!(foreground_is_current(&font, &expected, false));
     }
 
     #[cfg(unix)]

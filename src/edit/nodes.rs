@@ -19,6 +19,7 @@ use runebender_core::document::nodes::{NodeGraph, Problem, Registry};
 use runebender_core::document::nodes_run::{self, Event, RunReport, Status};
 use runebender_core::document::proposal;
 
+use crate::edit::local_ai::{foreground_is_current, foreground_revisions};
 use crate::{Mode, Workspace};
 
 /// How one node looks between runs.
@@ -59,6 +60,9 @@ pub(crate) struct NodeJob {
     /// The active master and in-memory document session at launch.
     pub(crate) master_path: PathBuf,
     pub(crate) document_id: u64,
+    pub(crate) active_glyph: String,
+    pub(crate) foreground_revisions: BTreeMap<String, String>,
+    pub(crate) all_glyphs: bool,
 }
 
 /// Everything nodes-related the app holds.
@@ -359,6 +363,13 @@ impl Workspace {
         let master = self.font.master_names().get(self.font.active()).cloned();
         let device = self.nodes.device.clone();
         let glyphs = self.node_glyphs();
+        let foreground_revisions = match foreground_revisions(self.font.font(), &glyphs) {
+            Ok(revisions) => revisions,
+            Err(error) => {
+                self.note = format!("Cannot capture node target: {error}");
+                return;
+            }
+        };
         let mut tools = BTreeMap::new();
         if let Some(font_ml) = self.nodes.font_ml.clone() {
             tools.insert("font-ml".to_string(), font_ml);
@@ -366,6 +377,9 @@ impl Workspace {
         let job = NodeJob {
             master_path,
             document_id: self.document_id,
+            active_glyph: self.session.glyph_name.clone(),
+            foreground_revisions,
+            all_glyphs: glyphs.is_empty(),
             ..NodeJob::default()
         };
         let events = job.events.clone();
@@ -491,7 +505,10 @@ impl Workspace {
             }
             state.rows = Arc::new(rows);
         }
-        let current = self.document_id == job.document_id && self.font.source() == job.master_path;
+        let current = self.document_id == job.document_id
+            && self.font.source() == job.master_path
+            && self.session.glyph_name == job.active_glyph
+            && foreground_is_current(self.font.font(), &job.foreground_revisions, job.all_glyphs);
         if installed && current {
             self.reload_from_disk();
         }
@@ -520,7 +537,7 @@ impl Workspace {
             .filter(|n| n.status == Status::Failed)
             .count();
         self.note = if (installed || !proposal_outputs.is_empty()) && !current {
-            "Node result is stale after a document or master switch".into()
+            "Node result is stale after a document, master, glyph, or revision change".into()
         } else if report.ok {
             let ran = report
                 .nodes
@@ -637,7 +654,7 @@ mod tests {
 
         assert_eq!(
             workspace.note,
-            "Node result is stale after a document or master switch"
+            "Node result is stale after a document, master, glyph, or revision change"
         );
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
     }
@@ -664,9 +681,13 @@ mod tests {
         assert!(workspace.node_glyphs().is_empty());
         workspace.open_glyph(0);
         assert_eq!(workspace.node_glyphs(), vec!["A"]);
+        let target_names = workspace.node_glyphs();
         let job = NodeJob {
             master_path: path.clone(),
             document_id: workspace.document_id,
+            active_glyph: workspace.session.glyph_name.clone(),
+            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+                .expect("the foreground revision is captured"),
             ..NodeJob::default()
         };
         let report = RunReport {
@@ -704,6 +725,61 @@ mod tests {
                 .map(|graph| graph.rows.as_ref())
         );
         assert!(workspace.note.contains("Review 1 proposal"));
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn completed_install_does_not_reload_over_a_newer_glyph_revision() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-nodes-revision-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 500.0;
+        font.default_layer_mut().insert_glyph(glyph);
+        font.save(&path).expect("the fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.open_glyph(0);
+        let target_names = workspace.node_glyphs();
+        let job = NodeJob {
+            master_path: path.clone(),
+            document_id: workspace.document_id,
+            active_glyph: workspace.session.glyph_name.clone(),
+            foreground_revisions: foreground_revisions(workspace.font.font(), &target_names)
+                .expect("the foreground revision is captured"),
+            ..NodeJob::default()
+        };
+        workspace
+            .font
+            .font_mut()
+            .get_glyph_mut("A")
+            .expect("A remains loaded")
+            .width = 540.0;
+        let report = RunReport {
+            ok: true,
+            nodes: vec![nodes_run::NodeResult {
+                id: 1,
+                type_name: "core.install".into(),
+                status: Status::Ran,
+                hash: String::new(),
+                outputs: BTreeMap::new(),
+                report: serde_json::Value::Null,
+                seconds: 0.0,
+            }],
+        };
+
+        workspace.nodes_finished(&job, &report);
+
+        assert_eq!(workspace.font.font().get_glyph("A").unwrap().width, 540.0);
+        assert_eq!(
+            workspace.note,
+            "Node result is stale after a document, master, glyph, or revision change"
+        );
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 
