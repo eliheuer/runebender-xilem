@@ -25,7 +25,10 @@ is the Regular master in `VirtuaGrotesk.designspace`.
 
 1. Confirm the Regular master is selected. Search for `R`, open it, change one
    point, its advance, and an anchor. Exercise Undo and Redo after each kind of
-   edit, save, close, and reopen the disposable designspace.
+   edit. Temporarily rename R to `R.trial`, Undo and Redo the rename, then Undo it
+   again. Temporarily change its Unicode from `0052` to `0053`, verify both masters
+   follow, then Undo it back to `0052`. Save, close, and reopen the disposable
+   designspace.
 2. Navigate to representative Arabic glyphs and confirm that the selected glyph,
    outline, Unicode, advance, anchors, and master agree across grid, canvas, and
    inspector.
@@ -156,6 +159,8 @@ Commit `824d3ea` adds machine-checked authorization for live foreground changes
 and a real CLI/MCP socket test proving the shared document remains unsaved.
 Commit `7dc5fab` connects the Local Chat rail and adds its deterministic process
 test plus inspected Gray/Light panel captures.
+Commits `df4891b` and `8386791` make inspector and overview metadata validation,
+sidebearing semantics, ordered Undo/Redo, and multi-master save/reopen explicit.
 Headless inspected captures are
 `r01-arabic-beh-{gray,light}.png`, `r03-mixed-text-{gray,light}.png`,
 `r03-text-selection-{gray,light}.png`, and

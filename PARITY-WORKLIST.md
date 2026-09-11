@@ -211,7 +211,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | [ ] | E02 | Drawing tools: pen, shape, knife, ruler, hand and text inventory; match modifiers, previews, commit/cancel and undo. Record absent tools instead of fake buttons. |
 | [ ] | E03 | Point/path commands: join/split/reverse/delete, curve conversions, extrema, simplify and boolean operations retain valid contours and metadata. |
 | [ ] | E04 | Coordinates/transforms: X/Y/W/H, origin matrix, flips, rotate, scale, align and distribute operate correctly on empty/single/multiple selections. |
-| [ ] | E05 | Glyph metadata/Unicode/advance and sidebearings: validation, live update, dirty state, undo and save/reload. In progress in `df4891b`: the editor path now covers Unicode/width/LSB/RSB validation, Core Undo/Redo, dirty state, rename collision feedback, and save/reopen. Atomic multi-master Undo for Unicode and glyph rename remains. |
+| [x] | E05 | Glyph metadata/Unicode/advance and sidebearings: validation, live update, dirty state, undo and save/reload. Verified in `df4891b` and `8386791`: editor and overview fields reject invalid values, preserve correct LSB/RSB semantics, and Undo/Redo Unicode and rename atomically across masters in order with glyph edits; disposable one- and two-master fixtures save and reopen exactly. |
 | [ ] | E06 | Anchors, components and composition: add/edit/delete, transformed composites, recursion/errors and attachment preview. |
 | [ ] | E07 | Layers/masters/axes: selection, edit targeting, add/rename/delete where GPUI supports them, interpolation preview and incompatible outlines. |
 | [ ] | E08 | Kerning/groups/features: inspect GPUI commands against panels; editing, validation, shaping refresh and round trip. No display-only panel counted as editing parity. |
@@ -476,15 +476,19 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   suite pass, as does workspace clippy. Inspected 1100×720 evidence is
   `a07-chat-{gray,light}.png`. No model ran for the captures, so the real 4B turn
   remains in the supervised trial rather than being claimed from static evidence.
-- E05 — advanced in `df4891b`: inspector-originated Unicode and metric changes
+- E05 — verified in `df4891b` and `8386791`: inspector-originated Unicode and metric changes
   now transfer their pending session history into Core before replacing the live
   glyph, so Undo/Redo no longer silently loses those edits. Numeric fields reject
   NaN and infinities; LSB moves ink without changing advance; a rejected rename
   restores the real glyph name and reports the collision. A disposable UFO test
   validates all of those paths and reopens the saved Unicode, RSB-derived width,
-  and successful rename. The complete 90-test Xilem suite and workspace clippy
-  pass. E05 remains unchecked until Unicode and rename have one atomic undo across
-  every master rather than only the active editor glyph.
+  and successful rename. Unicode and glyph-name changes now form one ordered,
+  invertible metadata history across every designspace master; Core moves each
+  renamed glyph's existing undo/redo pile to its new identity, and overview width
+  edits join the same command ordering. A two-master fixture proves editor and
+  overview Unicode, rename, and width Undo/Redo followed by save/reopen. The full
+  workspace suite passes 459 tests with four expensive tests ignored, and
+  workspace clippy passes with warnings denied.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
