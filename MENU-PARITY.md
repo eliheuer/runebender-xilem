@@ -141,6 +141,9 @@ framework-integration work.
   Linux tests pass serially and all-target Clippy passes with warnings denied.
   The Windows code compiles for `x86_64-pc-windows-msvc`; Windows interaction
   behavior has not been run.
+- Merged the unified workspace from `main` and verified it as one tree: 428
+  tests pass serially, workspace Clippy and docs pass, the Core CLI help runs,
+  and the full workspace release build succeeds.
 
 ## Upstream contribution opportunities
 
@@ -173,10 +176,11 @@ framework-integration work.
 
 ## Integration and launch handoff
 
-The isolated checkout is
+The work was verified in the isolated checkout at
 `/Users/eli/GH/repos/runebender-xilem/.worktrees/menu-parity` on
-`codex/xilem-menu-parity`. On Linux the menu shell is automatic. On macOS it can
-be forced without replacing the native bar for headless proof or review:
+`codex/xilem-menu-parity`, with the unified workspace from `main` incorporated.
+On Linux the menu shell is automatic. On macOS it can be forced without
+replacing the native bar for headless proof or review:
 
 ```sh
 RUNEBENDER_IN_WINDOW_MENU=1 cargo run -- \

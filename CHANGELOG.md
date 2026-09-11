@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Complete the desktop menu system: shared command metadata, native macOS and
+  accessible in-window menus, working file/glyph/path/filter/view commands,
+  stateful submenus, keyboard navigation, and focused-text shortcut precedence.
+
 - Consolidate Core and its headless CLI into the Xilem Cargo workspace, preserving Core history and the existing theme.
 
 - Make the main checkout the primary Xilem development location; retain GPUI as a reference and fallback.
