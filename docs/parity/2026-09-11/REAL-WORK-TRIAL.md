@@ -42,6 +42,10 @@ is the Regular master in `VirtuaGrotesk.designspace`.
    and commit behavior is exercised. Select `بِ` with Cmd/Ctrl+A, copy it, cut
    it, and paste it back. Then paste a two-line Latin/Arabic sample and confirm
    its line break and combining mark survive the round trip.
+4. Open a second editor tab. Give each tab different editor text, preview text,
+   direction, language, and feature choices, then switch between them. Confirm
+   each tab restores its own values. Reload the unchanged disposable document
+   and confirm the active tab keeps that context.
 
 Automated proof covers the real Virtua designspace, lam-alef substitution, mark
 ordering, mixed bidi layout, logical cursor movement, selection and deletion,
@@ -123,7 +127,8 @@ Implementation commits are `a40808b` (Latin/Arabic navigation and metadata),
 (real Arabic and local-model proof with explicit install), and `dd0159a`
 (proposal comparison), `ce75e3b` (review-only node route), and `1de39f6`
 (bidi text selection), `efae328` (logical Unicode clipboard round trip), and
-`e070f24` (Arabic UI-input fallback proof). Headless inspected captures are
+`e070f24` (Arabic UI-input fallback proof), and `6ac0f14` (per-tab text context).
+Headless inspected captures are
 `r01-arabic-beh-{gray,light}.png`, `r03-mixed-text-{gray,light}.png`,
 `r03-text-selection-{gray,light}.png`, and
 `r04-ai-compare-{gray,light}.png` in this directory;
@@ -156,3 +161,7 @@ Results: all 448 normal workspace tests passed; all four ignored real
 Virtua/model tests passed; clippy passed. Report any mismatch with the disposable
 path, master, glyph, action, expected result, and whether it reproduced after
 reopening.
+
+Validation through `6ac0f14` reran the full normal workspace suite: 453 tests
+passed, with four expensive real Virtua/model tests still ignored in that run.
+Workspace clippy with warnings denied and `git diff --check` also passed.

@@ -227,7 +227,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | [x] | T02 | Arabic joining/marks/ligatures and mixed Latin/Arabic/digits/punctuation with live font changes. Verified in `1d96364` and `2acb9b3`: real Virtua shaping covers lam-alef, kasra placement and bidi runs, and existing text now reshapes immediately from a live Arabic glyph/metric/feature refresh without losing editing state. |
 | [x] | T03 | RTL caret, selection, arrows, deletion and pointer hit mapping across ligatures/clusters. Verified in `1de39f6`: Core and UI share logical ranges while the canvas merges absorbed ligature sorts into visible selection geometry. |
 | [x] | T04 | Shaping options/script/language/features and kerning refresh after glyph/feature edits. Verified in `2acb9b3` and `7063a0b`: text and preview share `liga`/`rlig`/`kern`/`mark`/`mkmk` plus Auto/Arabic/Urdu controls, and real Virtua proves disabling `rlig` changes lam-alef shaping while live refresh preserves the compiled-font path. |
-| [ ] | T05 | Preview text and editor text state, per-tab context and direction controls: no stale initial-only binding or cross-document contamination. |
+| [x] | T05 | Preview text and editor text state, per-tab context and direction controls. Verified in `6ac0f14`: each tab parks committed editor text, preview text, direction, language, and feature choices under a stable document/tab identity; switching tabs or replacing/reloading the document restores the intended buffer instead of carrying stale widget state across contexts. |
 | [x] | T06 | Arabic UI-input fallback, combining marks and clipboard round trip in search/metadata/preview. Verified in `efae328` and `e070f24`: canvas copy/cut/paste preserves logical Unicode, marks, and normalized line breaks while reshaping Arabic; the real-window-equivalent renderer proves distinct Arabic fallback glyphs in the shared search/metadata/preview input style on macOS. Incomplete source-font coverage remains a separate font-data issue. |
 
 ## Local AI and nodes checklist
@@ -387,6 +387,13 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   lam-alef into two editable sorts. Inspected Gray/Light evidence is
   `t04-shaping-options-{gray,light}.png`; Urdu and all features except `rlig` are
   visibly selected without clipping.
+- T05 — verified in `6ac0f14`: the canvas reports every committed logical-text
+  mutation back to plain application state, while each editor tab parks its own
+  editor text, preview text, direction, language, and feature choices behind a
+  stable document/tab identity. Focused tests switch between two distinct
+  contexts and preserve the active context through disk reload; the full normal
+  workspace suite passes 453 tests. Native tab clicks remain part of R06 rather
+  than a condition of this state-isolation row.
 - T06 — verified in `efae328` and `e070f24`: the canvas text tool now routes
   system clipboard copy, cut, paste, and select-all through logical Unicode text,
   normalizes CRLF/CR to line breaks, and reshapes after every cut or paste. Core
