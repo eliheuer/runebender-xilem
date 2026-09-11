@@ -31,14 +31,18 @@ is the Regular master in `VirtuaGrotesk.designspace`.
    inspector.
 3. Choose the Text tool and enter `R لا 123 بِ`. Confirm lam-alef joining, the
    kasra placement, mixed-direction ordering, and Left/Right/Up/Down/Home/End.
+   Hold Shift with those movement keys to select through the Arabic run; use
+   Backspace/Delete and typed replacement, and confirm joining reshapes around
+   the edit. Click on both sides of the lam-alef and confirm the caret follows
+   the visible cluster.
    Also replace text through the system input method so native preedit, cancel,
    and commit behavior is exercised.
 
 Automated proof covers the real Virtua designspace, lam-alef substitution, mark
-ordering, mixed bidi layout, and logical cursor movement. Native input-method
-behavior still needs this supervised pass. Text-range selection and pointer hit
-mapping across RTL clusters are not implemented, so this trial must not treat
-the text tool as ready for production Arabic editing yet.
+ordering, mixed bidi layout, logical cursor movement, selection and deletion,
+replacement, and pointer hit mapping through the lam-alef cluster. Native
+input-method and pointer delivery still need this supervised pass, so production
+Arabic readiness remains a trial result rather than an automated claim.
 
 ## Local AI check
 
@@ -99,8 +103,10 @@ reference fitting.
 Implementation commits are `a40808b` (Latin/Arabic navigation and metadata),
 `588b605` (disposable edit/save safety), `1d96364`
 (real Arabic and local-model proof with explicit install), and `dd0159a`
-(proposal comparison), plus `ce75e3b` (review-only node route). Headless inspected captures are
-`r01-arabic-beh-{gray,light}.png`, `r03-mixed-text-{gray,light}.png`, and
+(proposal comparison), `ce75e3b` (review-only node route), and `1de39f6`
+(bidi text selection). Headless inspected captures are
+`r01-arabic-beh-{gray,light}.png`, `r03-mixed-text-{gray,light}.png`,
+`r03-text-selection-{gray,light}.png`, and
 `r04-ai-compare-{gray,light}.png` in this directory;
 `r05-nodes-review-{gray,light}.png` shows the five-node graph. They use
 the CPU renderer and do not prove native GPU, input method, pointer, cancellation,
@@ -112,7 +118,7 @@ multi-line failure diagnostics. The native Cancel step above remains in the
 trial because background correctness does not prove its pointer interaction or
 visible timing.
 
-Validation through `ce75e3b`:
+Validation through `1de39f6`:
 
 ```sh
 cargo test --locked --bin runebender-xilem -- --test-threads=1
@@ -120,7 +126,7 @@ cargo test --locked --bin runebender-xilem -- --ignored --test-threads=1
 cargo clippy --locked --workspace --all-targets -- -D warnings
 ```
 
-Results: all 437 normal workspace tests passed; all four ignored real
+Results: all 441 normal workspace tests passed; all four ignored real
 Virtua/model tests passed; clippy passed. Report any mismatch with the disposable
 path, master, glyph, action, expected result, and whether it reproduced after
 reopening.

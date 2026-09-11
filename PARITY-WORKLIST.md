@@ -225,7 +225,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 |---|---|---|
 | [ ] | T01 | Native IME composition and committed input in canvas text tool; preserve preedit/cancel and avoid duplicate insertion. Implemented in `793c3f9`; native runtime verification pending. |
 | [ ] | T02 | Arabic joining/marks/ligatures and mixed Latin/Arabic/digits/punctuation with live font changes. Compare actual shaping output, not character reversal. |
-| [ ] | T03 | RTL caret, selection, arrows, deletion and pointer hit mapping across ligatures/clusters. Core buffer and UI must agree on logical versus visual positions. |
+| [x] | T03 | RTL caret, selection, arrows, deletion and pointer hit mapping across ligatures/clusters. Verified in `1de39f6`: Core and UI share logical ranges while the canvas merges absorbed ligature sorts into visible selection geometry. |
 | [ ] | T04 | Shaping options/script/language/features and kerning refresh after glyph/feature edits. Distinguish compiled-font shaping from fallback outline preview. |
 | [ ] | T05 | Preview text and editor text state, per-tab context and direction controls: no stale initial-only binding or cross-document contamination. |
 | [ ] | T06 | Arabic UI-input fallback, combining marks and clipboard round trip in search/metadata/preview. Do not confuse incomplete source-font coverage with editor bugs. |
@@ -365,13 +365,15 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   The same test continues into R02's disposable save/reopen proof. Individually
   inspected editor evidence is `r01-arabic-beh-{gray,light}.png`; native pointer
   interaction remains part of the supervised trial, not this data-path gate.
-- R03 / T02 / T03 — in progress in `1d96364`: the real Virtua integration test
+- R03 / T02 / T03 — in progress in `1d96364` and `1de39f6`: the real Virtua integration test
   shapes `R لا 123 بِ`, verifies source coverage, lam-alef substitution, mark
-  ordering, finite outline paths, and bidi layout. Canvas Up/Down/Home/End now use
-  Core's logical/visual cursor model. Gray and Light evidence is
-  `r03-mixed-text-{gray,light}.png`. Native IME verification, text-range selection,
-  deletion and pointer mapping across RTL clusters remain open, so R03 is not
-  checked.
+  ordering, finite outline paths, bidi layout, logical pointer mapping through
+  lam-alef, merged visible selection geometry, and Arabic reshaping after deleting
+  the selected beh. Shift+arrows/Home/End extend bidi-aware logical ranges; typing
+  and IME commits replace them. Gray and Light evidence is
+  `r03-mixed-text-{gray,light}.png` and `r03-text-selection-{gray,light}.png`.
+  T03 is verified. Native IME and pointer-gesture verification remain for the
+  supervised trial, so R03 is not checked.
 - A03 — verified in `1d96364` and `dd0159a`: completed single-glyph jobs remain
   proposals until explicit Install or Discard. The Local AI panel now toggles a
   warm on-canvas proposal overlay; Install/Discard clear review state and Undo
