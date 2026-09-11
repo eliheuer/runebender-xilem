@@ -755,6 +755,131 @@ mod tests {
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn cancelled_task_stops_and_never_leaves_a_proposal() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let root = std::env::temp_dir().join(format!(
+            "runebender-xilem-ai-cancel-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let source = root.join("Cancel.ufo");
+        let tool = root.join("font-ml-fake");
+        let model = root.join("model");
+        std::fs::create_dir_all(&model).expect("the fake model directory is created");
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("A"));
+        font.save(&source).expect("the fixture saves");
+        std::fs::write(
+            &tool,
+            "#!/bin/sh\nwhile true; do printf 'progress 1/2 A\\n' >&2; sleep 0.05; done\n",
+        )
+        .expect("the fake worker is written");
+        let mut permissions = std::fs::metadata(&tool)
+            .expect("the fake worker has metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&tool, permissions).expect("the fake worker is executable");
+
+        let mut workspace = Workspace::open(&source).expect("the fixture opens");
+        workspace.ai.dir = Some(model);
+        workspace.nodes.font_ml = Some(tool);
+        let index = workspace.font.index_of("A").expect("A is indexed");
+        workspace.run_task("bolden", Some(index));
+        let started = std::time::Instant::now();
+        while workspace.ai.job.as_ref().is_some_and(|job| {
+            job.progress
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_none()
+        }) && started.elapsed().as_secs() < 5
+        {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(workspace.ai.job.as_ref().is_some_and(|job| {
+            job.progress
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_some()
+        }));
+        workspace.cancel_task();
+        let cancelled = std::time::Instant::now();
+        while workspace.ai.job.as_ref().is_some_and(|job| {
+            job.finished
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_none()
+        }) && cancelled.elapsed().as_secs() < 5
+        {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        workspace.ai_pump();
+
+        assert!(workspace.ai.job.is_none());
+        assert!(workspace.ai.proposals.is_empty());
+        assert!(
+            workspace
+                .font
+                .font()
+                .layers
+                .iter()
+                .all(|layer| { !layer.name().as_str().starts_with(proposal::LAYER_PREFIX) })
+        );
+        assert_eq!(workspace.note, "font-ml: cancelled");
+        std::fs::remove_dir_all(root).expect("the cancellation fixture is removed");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_task_keeps_all_worker_diagnostics() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let root = std::env::temp_dir().join(format!(
+            "runebender-xilem-ai-failure-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        std::fs::create_dir_all(&root).expect("the fixture directory is created");
+        let tool = root.join("font-ml-fake");
+        std::fs::write(
+            &tool,
+            "#!/bin/sh\nprintf 'first failure\\nsecond detail\\n' >&2\nexit 7\n",
+        )
+        .expect("the fake worker is written");
+        let mut permissions = std::fs::metadata(&tool)
+            .expect("the fake worker has metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&tool, permissions).expect("the fake worker is executable");
+        let job = AiJob::default();
+
+        let error = run_font_ml(
+            &tool,
+            "bolden",
+            &root,
+            &root,
+            Some("A"),
+            1.0,
+            None,
+            "cpu",
+            &job,
+        )
+        .expect_err("the fake worker fails");
+
+        assert!(error.contains("first failure"));
+        assert!(error.contains("second detail"));
+        std::fs::remove_dir_all(root).expect("the failure fixture is removed");
+    }
+
     #[test]
     #[ignore = "runs the installed bolden model over a disposable Virtua UFO"]
     fn real_bolden_proposal_waits_for_install_and_undo_restores_the_glyph() {
