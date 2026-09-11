@@ -228,7 +228,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | [x] | T03 | RTL caret, selection, arrows, deletion and pointer hit mapping across ligatures/clusters. Verified in `1de39f6`: Core and UI share logical ranges while the canvas merges absorbed ligature sorts into visible selection geometry. |
 | [x] | T04 | Shaping options/script/language/features and kerning refresh after glyph/feature edits. Verified in `2acb9b3` and `7063a0b`: text and preview share `liga`/`rlig`/`kern`/`mark`/`mkmk` plus Auto/Arabic/Urdu controls, and real Virtua proves disabling `rlig` changes lam-alef shaping while live refresh preserves the compiled-font path. |
 | [ ] | T05 | Preview text and editor text state, per-tab context and direction controls: no stale initial-only binding or cross-document contamination. |
-| [ ] | T06 | Arabic UI-input fallback, combining marks and clipboard round trip in search/metadata/preview. Do not confuse incomplete source-font coverage with editor bugs. |
+| [x] | T06 | Arabic UI-input fallback, combining marks and clipboard round trip in search/metadata/preview. Verified in `efae328` and `e070f24`: canvas copy/cut/paste preserves logical Unicode, marks, and normalized line breaks while reshaping Arabic; the real-window-equivalent renderer proves distinct Arabic fallback glyphs in the shared search/metadata/preview input style on macOS. Incomplete source-font coverage remains a separate font-data issue. |
 
 ## Local AI and nodes checklist
 
@@ -387,6 +387,15 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   lam-alef into two editable sorts. Inspected Gray/Light evidence is
   `t04-shaping-options-{gray,light}.png`; Urdu and all features except `rlig` are
   visibly selected without clipping.
+- T06 — verified in `efae328` and `e070f24`: the canvas text tool now routes
+  system clipboard copy, cut, paste, and select-all through logical Unicode text,
+  normalizes CRLF/CR to line breaks, and reshapes after every cut or paste. Core
+  preserves beh plus kasra and multiline selections; the focused widget test
+  covers clipboard signals and round trip; the ignored real Virtua test confirms
+  pasted beh plus kasra survives shaping and selection. A macOS headless test
+  uses the same system-font-enabled renderer as the real window and renders beh
+  and alef distinctly through the shared search/metadata/preview input style.
+  Native OS clipboard delivery remains a supervised R03/R06 interaction check.
 - A03 — verified in `1d96364` and `dd0159a`: completed single-glyph jobs remain
   proposals until explicit Install or Discard. The Local AI panel now toggles a
   warm on-canvas proposal overlay; Install/Discard clear review state and Undo

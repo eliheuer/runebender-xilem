@@ -39,15 +39,21 @@ is the Regular master in `VirtuaGrotesk.designspace`.
    `mkmk` while watching the kasra. Compare Auto, Arabic, and Urdu locale choices,
    then return all features and locale to their intended working state.
    Also replace text through the system input method so native preedit, cancel,
-   and commit behavior is exercised.
+   and commit behavior is exercised. Select `بِ` with Cmd/Ctrl+A, copy it, cut
+   it, and paste it back. Then paste a two-line Latin/Arabic sample and confirm
+   its line break and combining mark survive the round trip.
 
 Automated proof covers the real Virtua designspace, lam-alef substitution, mark
 ordering, mixed bidi layout, logical cursor movement, selection and deletion,
 replacement, pointer hit mapping through the lam-alef cluster, and immediate
 reshaping of existing Arabic text after a live glyph/metric/feature refresh.
-Native
-input-method and pointer delivery still need this supervised pass, so production
-Arabic readiness remains a trial result rather than an automated claim.
+Clipboard tests cover copy/cut/paste/select-all signals, logical Unicode rather
+than shaped glyph names, normalized CRLF/CR line breaks, and beh plus kasra in
+the real Virtua font. The system-font-enabled headless renderer also proves that
+the shared search/metadata/preview input style renders distinct Arabic glyphs on
+macOS. Native input-method, OS clipboard, and pointer delivery still need this
+supervised pass, so production Arabic readiness remains a trial result rather
+than an automated claim.
 
 ## Local AI check
 
@@ -116,7 +122,8 @@ Implementation commits are `a40808b` (Latin/Arabic navigation and metadata),
 `588b605` (disposable edit/save safety), `1d96364`
 (real Arabic and local-model proof with explicit install), and `dd0159a`
 (proposal comparison), `ce75e3b` (review-only node route), and `1de39f6`
-(bidi text selection). Headless inspected captures are
+(bidi text selection), `efae328` (logical Unicode clipboard round trip), and
+`e070f24` (Arabic UI-input fallback proof). Headless inspected captures are
 `r01-arabic-beh-{gray,light}.png`, `r03-mixed-text-{gray,light}.png`,
 `r03-text-selection-{gray,light}.png`, and
 `r04-ai-compare-{gray,light}.png` in this directory;
