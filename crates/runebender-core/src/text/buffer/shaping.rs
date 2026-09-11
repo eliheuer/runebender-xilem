@@ -186,6 +186,42 @@ impl TextBuffer {
         changed || absorbed_changed
     }
 
+    /// Rebuild every glyph sort from the current Unicode inventory, then shape
+    /// the complete buffer again. Hosts call this after a live font or feature
+    /// edit so existing text cannot retain an obsolete substitution or width.
+    /// The caret, selection, active sort, and manual kerning session survive.
+    pub fn refresh_shaping(&mut self) -> bool {
+        let mut updates = Vec::new();
+        for (index, sort) in self.sorts.iter().enumerate() {
+            let TextSortKind::Glyph {
+                codepoint: Some(character),
+                ..
+            } = sort.kind
+            else {
+                continue;
+            };
+            let Some(name) = self.glyph_inventory.unicode.get(&(character as u32)) else {
+                continue;
+            };
+            let advance = self
+                .glyph_inventory
+                .widths
+                .get(name)
+                .copied()
+                .unwrap_or_else(|| self.sort_advance(index));
+            updates.push((index, name.clone(), advance));
+        }
+        let mut changed = self.apply_shape_updates(updates);
+        self.shaped_offsets.0.clear();
+        for sort in &mut self.sorts {
+            if sort.absorbed {
+                sort.absorbed = false;
+                changed = true;
+            }
+        }
+        changed | self.shape_arabic_if_rtl()
+    }
+
     /// Shape the whole buffer: through the font's `features.fea` when it compiles, otherwise with the built-in Arabic joining rules on RTL lines.
     /// Updates glyph names and advance widths in place. Returns true when any sort changed.
     pub fn shape_arabic(&mut self) -> bool {

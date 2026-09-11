@@ -1452,6 +1452,43 @@ fn update_glyph_keeps_manual_kerning_like_xilem_width_edit() {
 }
 
 #[test]
+fn refresh_shaping_uses_live_arabic_widths_without_losing_selection() {
+    let inventory = |beh_init: f64| {
+        serde_json::from_value(serde_json::json!({
+            "unicode": { "1576": "beh-ar", "1607": "heh-ar" },
+            "widths": {
+                "beh-ar": 500, "beh-ar.init": beh_init,
+                "heh-ar": 510, "heh-ar.fina": 490
+            }
+        }))
+        .expect("valid glyph inventory")
+    };
+    let mut buffer = TextBuffer::new();
+    buffer.set_direction(TextDirection::RightToLeft);
+    buffer.set_glyph_inventory(inventory(480.0));
+    assert!(buffer.insert_character('\u{0628}'));
+    assert!(buffer.insert_character('\u{0647}'));
+    buffer.select_range(0, 1);
+    assert!(buffer.begin_manual_kerning(1, 0.0));
+
+    buffer.set_glyph_inventory(inventory(517.0));
+    assert!(buffer.refresh_shaping());
+
+    let TextSortKind::Glyph {
+        name,
+        advance_width,
+        ..
+    } = &buffer.sort(0).expect("the beh sort remains").kind
+    else {
+        panic!("expected glyph sort");
+    };
+    assert_eq!(name, "beh-ar.init");
+    assert_eq!(*advance_width, 517.0);
+    assert_eq!(buffer.selection_range(), Some(0..1));
+    assert_eq!(buffer.manual_kerning_sort(), Some(1));
+}
+
+#[test]
 fn layout_positions_ltr_lines_and_cursor() {
     let mut buffer = TextBuffer::new();
     buffer.insert_glyph("A", Some('A'), 500.0);

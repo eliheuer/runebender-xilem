@@ -175,6 +175,7 @@ impl TextState {
         if direction_changed {
             self.buffer.shape_arabic_if_rtl();
         }
+        self.buffer.refresh_shaping();
         self.outlines = inputs.outlines.clone();
         self.line_height = inputs.line_height;
         self.ascender = inputs.ascender;
@@ -329,7 +330,7 @@ mod tests {
             source.is_file(),
             "clone Virtua Grotesk beside this repository"
         );
-        let font = FontModel::open(&source).expect("Virtua Grotesk opens");
+        let mut font = FontModel::open(&source).expect("Virtua Grotesk opens");
         let sample = "R لا 123 بِ";
         let mut state = TextState::new(&TextInputs::new(&font).with_text(sample));
 
@@ -381,6 +382,40 @@ mod tests {
         assert!(
             arabic.iter().any(|item| item.x > latin.x),
             "the Arabic run occupies its bidi-resolved visual position"
+        );
+
+        let beh_name = state
+            .buffer
+            .sort(9)
+            .and_then(|sort| sort.glyph_name())
+            .expect("the shaped beh has a glyph name")
+            .to_string();
+        let before_advance = state
+            .buffer
+            .layout(state.line_height)
+            .items
+            .iter()
+            .find(|item| item.index == 9)
+            .expect("the beh remains visible")
+            .advance_width;
+        let beh_index = font.index_of(&beh_name).expect("the shaped beh is indexed");
+        font.font_mut()
+            .get_glyph_mut(&beh_name)
+            .expect("the shaped beh remains in the live master")
+            .width += 17.0;
+        font.refresh_entry(beh_index);
+        state.refresh(&TextInputs::new(&font));
+        assert_eq!(
+            state
+                .buffer
+                .layout(state.line_height)
+                .items
+                .iter()
+                .find(|item| item.index == 9)
+                .expect("the refreshed beh remains visible")
+                .advance_width,
+            before_advance + 17.0,
+            "existing Arabic text reshapes immediately from a live glyph edit"
         );
 
         let lam = layout
