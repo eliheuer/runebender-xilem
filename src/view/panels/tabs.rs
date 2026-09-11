@@ -6,7 +6,6 @@
 
 use crate::view::design::{RAIL_TAB_ACTIVE_HEIGHT, RAIL_TAB_HEIGHT, RAIL_TAB_INACTIVE_HEIGHT};
 use crate::*;
-use masonry::properties::AutoHideScrollBar;
 use xilem::Color;
 
 /// The editor rail's implemented navigation panels.
@@ -148,11 +147,27 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
     };
     let has_axes = !app.font.axes.is_empty();
     sized_box(xilem::view::zstack((
-        sized_box(label(""))
-            .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
-            .background_color(pal.tab_rail)
-            .border_color(pal.outline)
-            .border_width(Stroke::Hairline.length()),
+        sized_box(canvas({
+            let background = pal.tab_rail;
+            let outline = pal.outline;
+            move |_: &mut Workspace, _, scene, size| {
+                use masonry::imaging::Painter;
+                use masonry::kurbo::Rect;
+                let mut painter = Painter::new(scene);
+                let stroke = Stroke::Hairline.px();
+                painter
+                    .fill(Rect::new(0.0, 0.0, size.width, size.height), background)
+                    .draw();
+                for edge in [
+                    Rect::new(0.0, 0.0, size.width, stroke),
+                    Rect::new(0.0, 0.0, stroke, size.height),
+                    Rect::new(0.0, size.height - stroke, size.width, size.height),
+                ] {
+                    painter.fill(edge, outline).draw();
+                }
+            }
+        }))
+        .dims(Dimensions::new(Dim::Stretch, Dim::Stretch)),
         flex_row((
             tab("glyph-grid", Rail::Glyphs).flex(1.0),
             editing.then(|| tab("shapes", Rail::Shapes).flex(1.0)),
@@ -631,7 +646,6 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             .gap(Space::None),
         )
         .constrain_horizontal(true)
-        .prop(AutoHideScrollBar(true))
         .flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)

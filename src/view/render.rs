@@ -5,7 +5,6 @@
 
 use crate::view::design::{DOCK_WIDTH, PROOF_DRAWING_HEIGHT};
 use crate::*;
-use masonry::properties::AutoHideScrollBar;
 use xilem::core::lens;
 
 /// A kurbo value as the `f32` a Vello text size or stroke width
@@ -117,8 +116,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
                 .background_color(pal.outline),
             sized_box(
                 portal(sized_box(info_panel(app)).dims(Dimensions::new(Dim::Stretch, Dim::Auto)))
-                    .constrain_horizontal(true)
-                    .prop(AutoHideScrollBar(true)),
+                    .constrain_horizontal(true),
             )
             .dims(Dimensions::new(
                 Dim::Fixed(Length::px(DOCK_WIDTH)),

@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Remove the doubled right edge on the navigation tabs and keep scrollbar overlays outside the viewport clip during scrolling, preserving Masonry scrolling behavior.
+
 - Match the mark strip to GPUI with equal slots, smaller circles, selection rings, and a centered drawn clear cross; restore vertical panel dividers.
 - Use the native application properties for headless visual captures.
 
@@ -20,7 +22,7 @@ releases begin.
 
 - Make the main checkout the primary Xilem development location; retain GPUI as a reference and fallback.
 
-- Reduce scrollbar overlay dimensions while preserving wheel and trackpad scrolling; a cursor remnant during interaction remains unresolved.
+- Keep wheel and trackpad scrolling without visible scrollbar overlays; verified during pointer movement, two-axis scrolling, and resizing.
 
 - Correct the header separator and outline the navigation strip; restore the Chat tab with an explicit unavailable state.
 

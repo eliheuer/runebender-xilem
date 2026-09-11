@@ -12,3 +12,5 @@ pub(crate) mod shortcuts;
 pub(crate) mod text_label;
 
 pub(crate) mod preview_blur;
+
+pub(crate) mod scroll_viewport;

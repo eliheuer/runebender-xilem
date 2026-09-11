@@ -11,7 +11,6 @@
 //! a text area.
 
 use crate::*;
-use masonry::properties::AutoHideScrollBar;
 
 /// A folding section header with its body, the way `info.rs` builds
 /// the Glyph section.
@@ -243,7 +242,7 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                     |_: &mut Workspace, _| {},
                 ),
                 editor_row,
-                sized_box(portal(xcolumn(Region::List, rows)).prop(AutoHideScrollBar(true)))
+                sized_box(portal(xcolumn(Region::List, rows)))
                     .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(220.0)))),
                 label(if hidden > 0 {
                     format!("{total} pairs \u{00b7} showing {CAP}")
@@ -465,10 +464,9 @@ pub(crate) fn features_section(app: &Workspace) -> impl WidgetView<Workspace> + 
         xcolumn(
             Region::List,
             (
-                sized_box(
-                    portal(label(text).text_size(TextSize::Body.px()).color(pal.text))
-                        .prop(AutoHideScrollBar(true)),
-                )
+                sized_box(portal(
+                    label(text).text_size(TextSize::Body.px()).color(pal.text),
+                ))
                 .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(260.0))))
                 .background_color(pal.field())
                 .border_color(pal.field_outline)

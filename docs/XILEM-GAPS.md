@@ -5,6 +5,24 @@
 > Several features listed below now exist, and GPUI no longer uses gpui-component.
 > Preserve these notes as history, not as a current blocker inventory.
 
+## Current scrollbar visibility gap (2026-09-10)
+
+The pinned upstream Masonry `Portal` offers auto-hide but no always-hidden
+scrollbar policy. Zero-sized scrollbar dimensions are insufficient: cursor
+painting applies a minimum length and insets and can still leave visible pixels.
+
+`src/widgets/scroll_viewport.rs` retains the upstream Portal and its wheel,
+focus-pan and accessibility-scroll implementation. After layout, the adapter
+translates only the two scrollbar overlays beyond the Portal clip and disables
+those overlay controls. It leaves the content and viewport transforms alone.
+This is an application workaround, not an upstream fix. A useful contribution is
+an explicit `ScrollBarVisibility::Hidden` policy that excludes bars from painting,
+hit testing and the accessibility tree while preserving scrolling. That would
+let us delete this adapter. No dependency fork or cache edits are required here.
+
+A pixel regression checks both edges during pointer movement and two-axis wheel
+input, before and after viewport resizing, and asserts that content still scrolls.
+
 <!-- Copyright 2026 the Runebender Authors -->
 <!-- SPDX-License-Identifier: Apache-2.0 OR MIT -->
 
