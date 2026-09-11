@@ -681,6 +681,114 @@ mod tests {
         );
     }
 
+    #[test]
+    fn train_adapter_graph_round_trips_without_running_training() {
+        let root = std::env::temp_dir().join(format!(
+            "runebender-xilem-train-graph-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let font_path = root.join("font.ufo");
+        std::fs::create_dir_all(&root).expect("the fixture root is created");
+        norad::Font::new()
+            .save(&font_path)
+            .expect("the empty font fixture saves");
+        let mut workspace = Workspace::open(&font_path).expect("the fixture opens");
+        workspace.nodes.tasks_json = Some(serde_json::json!({"tasks": [{
+            "name": "train", "title": "Train bolden", "implemented": true,
+            "inputs": [
+                {"name":"source", "kind":"source", "required":true, "help":"Light master"},
+                {"name":"target", "kind":"source", "required":true, "help":"Bold master"},
+                {"name":"out", "kind":"text", "required":true, "help":"Model output"},
+                {"name":"steps", "kind":"number", "required":false, "help":"Steps", "default":2000.0},
+                {"name":"init", "kind":"model", "required":false, "help":"Base model"},
+                {"name":"adapter_out", "kind":"text", "required":false, "help":"Adapter output"}
+            ],
+            "outputs": [
+                {"name":"model", "kind":"model", "help":"Model"},
+                {"name":"adapter", "kind":"adapter", "help":"Adapter"}
+            ]
+        }]}));
+        workspace.new_nodes_file();
+        let path = workspace.nodes.graph.as_ref().unwrap().path.clone();
+        let mut graph = NodeGraph::default();
+        let source = graph.add("core.source", [0.0, 0.0]);
+        let target = graph.add("core.master", [0.0, 120.0]);
+        let model = graph.add("core.model", [0.0, 240.0]);
+        let train = graph.add("font-ml.train", [280.0, 80.0]);
+        graph
+            .node_mut(target)
+            .unwrap()
+            .values
+            .insert("name".into(), "Bold".into());
+        graph
+            .node_mut(model)
+            .unwrap()
+            .values
+            .insert("name".into(), "virtua-12m-bolden".into());
+        let values = &mut graph.node_mut(train).unwrap().values;
+        values.insert("out".into(), "choose-disposable-model-output".into());
+        values.insert(
+            "adapter_out".into(),
+            "choose-disposable-adapter-output".into(),
+        );
+        values.insert("steps".into(), 1.into());
+        graph.connect(source, "source", train, "source");
+        graph.connect(target, "source", train, "target");
+        graph.connect(model, "model", train, "init");
+        workspace.nodes_changed(graph);
+        assert!(workspace.nodes.graph.as_ref().unwrap().problems.is_empty());
+
+        workspace.nodes_set_value(train, "steps", serde_json::json!(12.0));
+        workspace.save_nodes_file();
+        assert!(workspace.nodes.files.contains(&path));
+        workspace.open_nodes_file(&path);
+        let reopened = workspace.nodes.graph.as_ref().expect("the graph reopens");
+        assert!(reopened.problems.is_empty());
+        assert_eq!(
+            reopened
+                .graph
+                .node(train)
+                .and_then(|node| node.values.get("steps")),
+            Some(&serde_json::json!(12.0))
+        );
+
+        let job = NodeJob {
+            master_path: font_path,
+            document_id: workspace.document_id,
+            active_glyph: workspace.session.glyph_name.clone(),
+            foreground_revisions: foreground_revisions(workspace.font.font(), &[])
+                .expect("the empty foreground can be revised"),
+            all_glyphs: true,
+            ..NodeJob::default()
+        };
+        let report = RunReport {
+            ok: false,
+            nodes: vec![nodes_run::NodeResult {
+                id: train,
+                type_name: "font-ml.train".into(),
+                status: Status::Failed,
+                hash: String::new(),
+                outputs: BTreeMap::new(),
+                report: serde_json::json!({"error": "training deliberately not run"}),
+                seconds: 0.0,
+            }],
+        };
+        workspace.nodes_finished(&job, &report);
+        assert_eq!(
+            workspace.nodes.graph.as_ref().unwrap().rows.get(&train),
+            Some(&RowState::Done(
+                Status::Failed,
+                Some("training deliberately not run".into())
+            ))
+        );
+        assert_eq!(workspace.note, "1 nodes failed");
+        std::fs::remove_dir_all(root).expect("the graph fixture is removed");
+    }
+
     fn copy_tree(source: &Path, destination: &Path) {
         std::fs::create_dir_all(destination).expect("the destination directory is created");
         for entry in std::fs::read_dir(source).expect("the source directory is readable") {

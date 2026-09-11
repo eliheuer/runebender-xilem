@@ -64,9 +64,7 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 app.new_nodes_file();
             }),
             recipes::toggle(pal, "Open\u{2026}".into(), false, |app: &mut Workspace| {
-                app.note = "Open\u{2026}: this shell has no file dialog yet; nodes files beside \
-                            the font are the tabs at the left"
-                    .into();
+                app.command_open_nodes();
             }),
             recipes::toggle(pal, "Save".into(), false, |app: &mut Workspace| {
                 app.save_nodes_file();

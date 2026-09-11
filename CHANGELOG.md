@@ -43,6 +43,9 @@ releases begin.
 - Surface `font-ml tasks --json` launch, exit, schema, and JSON errors in the
   Local AI rail while keeping panel task availability aligned with node types.
 
+- Wire the Nodes toolbar Open action to the existing native graph picker and
+  cover new/save/reopen, parameter, validation, and failure-state round trips.
+
 - Route multiline text-tool Up/Down/Home/End keys through Core's bidi-aware caret
   model and verify mixed Latin, Arabic, digits, lam-alef, and kasra against the
   real Virtua Grotesk inventory and feature file.
