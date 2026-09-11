@@ -66,6 +66,8 @@ or otherwise mutates it.
 | `e08-features-check-light.png` | Light | Features inspector | same state |
 | `e08-features-edit-gray.png` | Gray | editable Features inspector | Virtua feature draft with Generate, Apply, Revert and Check |
 | `e08-features-edit-light.png` | Light | editable Features inspector | same state |
+| `e06-arabic-anchors-gray.png` | Gray | Arabic anchor editor | Regular `zero-ar`; four named mark anchors at two positions |
+| `e06-arabic-anchors-light.png` | Light | Arabic anchor editor | same state |
 
 Build first:
 
@@ -177,6 +179,23 @@ text is legible and contained in Gray and Light, while Generate, Apply, Revert,
 and Check remain visible below the editor. Their SHA-256 hashes are
 `afb0aa39e8efe3abbb2a8caeb66727e70b5bfcae0f87023487d0bd9a0b5c3b9f` and
 `ef3b1b4f4a8c0c8bf6d2cdea0a2bac73824a48eb04426993929e0a36442ab7f0`.
+
+The E06 anchor captures open a real Arabic glyph whose Regular source contains
+`bottom`, `top`, `bottomDots`, and `topDots` anchors:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/e06-arabic-anchors-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray RUNEBENDER_OPEN=zero-ar \
+target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+```
+
+Replace `gray` with `light` for the paired capture. Both were individually
+inspected: all four anchors render as paired diamonds at the source's two shared
+positions, the header/status agree on `zero-ar`, U+0660 and advance 320, and the
+font stays read-only. Their SHA-256 hashes are
+`756d1c9fd9c8ac9589362d459855e6e39ef6f802ef8b6dbd67d789ea11d4c47b` and
+`3936a2f7960b6e321417447446e79145c879dcf7eeaa88fca68029fec73a51e0`.
 
 The real integration run uses `RUNEBENDER_AI_DEVICE=cpu` semantics on a copied
 designspace, not this read-only screenshot command. It selects R and S, reports
