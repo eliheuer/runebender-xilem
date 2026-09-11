@@ -444,6 +444,9 @@ impl PartialEq for BidiRunCache {
 pub struct TextBuffer {
     sorts: Vec<TextSort>,
     cursor: usize,
+    /// Fixed boundary of a keyboard-extended selection. The cursor is
+    /// its moving boundary; equal boundaries mean no selection.
+    selection_anchor: Option<usize>,
     active_sort: Option<usize>,
     /// Base direction when the user has picked one explicitly.
     direction: TextDirection,
@@ -480,6 +483,7 @@ impl Default for TextBuffer {
         Self {
             sorts: Vec::new(),
             cursor: 0,
+            selection_anchor: None,
             active_sort: None,
             direction: TextDirection::default(),
             // Detect per line until the toolbar pins a direction.
@@ -527,6 +531,27 @@ impl TextBuffer {
     /// Caret position as a boundary index: `0` is before the first sort, `len()` is after the last.
     pub fn cursor(&self) -> usize {
         self.cursor
+    }
+
+    /// Selected logical sort range, independent of its visual bidi order.
+    pub fn selection_range(&self) -> Option<std::ops::Range<usize>> {
+        let anchor = self.selection_anchor?;
+        (anchor != self.cursor).then_some(anchor.min(self.cursor)..anchor.max(self.cursor))
+    }
+
+    /// Drop the text selection without moving the caret.
+    pub fn clear_selection(&mut self) {
+        self.selection_anchor = None;
+    }
+
+    /// Select a logical sort range, clamped to the buffer. Equal or
+    /// reversed endpoints clear the selection and leave the caret at
+    /// the clamped end.
+    pub fn select_range(&mut self, start: usize, end: usize) {
+        let start = start.min(self.sorts.len());
+        let end = end.min(self.sorts.len());
+        self.cursor = end;
+        self.selection_anchor = (start < end).then_some(start);
     }
 
     /// Index of the sort open in the glyph editor, if any.
@@ -658,6 +683,7 @@ impl TextBuffer {
         let Some(glyph_name) = self.glyph_inventory.unicode.get(&(char as u32)).cloned() else {
             return false;
         };
+        self.delete_selected_sorts();
         let use_active_advance =
             self.cursor_direction() != TextDirection::RightToLeft || !joining::is_arabic(char);
         let advance_width = active_advance_width
@@ -674,6 +700,7 @@ impl TextBuffer {
     pub fn clear(&mut self) {
         self.sorts.clear();
         self.cursor = 0;
+        self.selection_anchor = None;
         self.active_sort = None;
         self.manual_kerning = None;
         self.direction = TextDirection::default();
@@ -688,6 +715,7 @@ impl TextBuffer {
         codepoint: Option<char>,
         advance_width: f64,
     ) {
+        self.delete_selected_sorts();
         self.manual_kerning = None;
         if let Some(active) = self.active_sort
             && let Some(sort) = self.sorts.get_mut(active)
@@ -716,6 +744,7 @@ impl TextBuffer {
     /// Insert a line break at the cursor and advance the cursor past it.
     /// The active sort index shifts right when it sits at or after the cursor. Ends any manual kerning session.
     pub fn insert_line_break(&mut self) {
+        self.delete_selected_sorts();
         self.manual_kerning = None;
         let index = self.cursor;
         self.sorts.insert(self.cursor, TextSort::line_break());
@@ -730,6 +759,9 @@ impl TextBuffer {
     /// Backspace: remove the sort before the cursor and move the cursor back.
     /// Returns the removed sort, or `None` at the start of the buffer. Clears the active sort if it was removed, and ends any manual kerning session.
     pub fn delete_before_cursor(&mut self) -> Option<TextSort> {
+        if let Some(deleted) = self.delete_selected_sorts() {
+            return Some(deleted);
+        }
         if self.cursor == 0 {
             return None;
         }
@@ -744,6 +776,9 @@ impl TextBuffer {
     /// Forward delete: remove the sort at the cursor, leaving the cursor in place.
     /// Returns the removed sort, or `None` at the end of the buffer. Clears the active sort if it was removed, and ends any manual kerning session.
     pub fn delete_after_cursor(&mut self) -> Option<TextSort> {
+        if let Some(deleted) = self.delete_selected_sorts() {
+            return Some(deleted);
+        }
         if self.cursor >= self.sorts.len() {
             return None;
         }
@@ -755,27 +790,69 @@ impl TextBuffer {
 
     /// Move the cursor one sort back in logical order, stopping at `0`.
     pub fn move_cursor_left(&mut self) {
-        self.cursor = self.cursor.saturating_sub(1);
+        self.selection_anchor = None;
+        self.step_cursor_left();
     }
 
     /// Move the cursor one sort forward in logical order, stopping at `len()`.
     pub fn move_cursor_right(&mut self) {
-        self.cursor = (self.cursor + 1).min(self.sorts.len());
+        self.selection_anchor = None;
+        self.step_cursor_right();
     }
 
     /// Move the cursor one sort toward the left of the screen: back on an LTR line, forward on an RTL line.
     pub fn move_cursor_visual_left(&mut self) {
+        if let Some(range) = self.selection_range() {
+            self.cursor = match self.cursor_direction() {
+                TextDirection::LeftToRight => range.start,
+                TextDirection::RightToLeft => range.end,
+            };
+            self.selection_anchor = None;
+            return;
+        }
+        self.selection_anchor = None;
+        self.step_cursor_visual_left();
+    }
+
+    /// Extend the selection one sort toward the left of the screen.
+    pub fn extend_selection_visual_left(&mut self) {
+        self.begin_selection_extension();
+        self.step_cursor_visual_left();
+        self.finish_selection_extension();
+    }
+
+    fn step_cursor_visual_left(&mut self) {
         match self.cursor_direction() {
-            TextDirection::LeftToRight => self.move_cursor_left(),
-            TextDirection::RightToLeft => self.move_cursor_right(),
+            TextDirection::LeftToRight => self.step_cursor_left(),
+            TextDirection::RightToLeft => self.step_cursor_right(),
         }
     }
 
     /// Move the cursor one sort toward the right of the screen: forward on an LTR line, back on an RTL line.
     pub fn move_cursor_visual_right(&mut self) {
+        if let Some(range) = self.selection_range() {
+            self.cursor = match self.cursor_direction() {
+                TextDirection::LeftToRight => range.end,
+                TextDirection::RightToLeft => range.start,
+            };
+            self.selection_anchor = None;
+            return;
+        }
+        self.selection_anchor = None;
+        self.step_cursor_visual_right();
+    }
+
+    /// Extend the selection one sort toward the right of the screen.
+    pub fn extend_selection_visual_right(&mut self) {
+        self.begin_selection_extension();
+        self.step_cursor_visual_right();
+        self.finish_selection_extension();
+    }
+
+    fn step_cursor_visual_right(&mut self) {
         match self.cursor_direction() {
-            TextDirection::LeftToRight => self.move_cursor_right(),
-            TextDirection::RightToLeft => self.move_cursor_left(),
+            TextDirection::LeftToRight => self.step_cursor_right(),
+            TextDirection::RightToLeft => self.step_cursor_left(),
         }
     }
 
@@ -783,6 +860,19 @@ impl TextBuffer {
     /// as possible to the x it is at now, the way arrow keys work in
     /// any text editor. Returns false when there is no line that way.
     pub fn move_cursor_vertically(&mut self, delta: i32, line_height: f64) -> bool {
+        self.selection_anchor = None;
+        self.move_cursor_vertically_inner(delta, line_height)
+    }
+
+    /// Extend the selection to the nearest visual caret on another line.
+    pub fn extend_selection_vertically(&mut self, delta: i32, line_height: f64) -> bool {
+        self.begin_selection_extension();
+        let moved = self.move_cursor_vertically_inner(delta, line_height);
+        self.finish_selection_extension();
+        moved
+    }
+
+    fn move_cursor_vertically_inner(&mut self, delta: i32, line_height: f64) -> bool {
         let current_line = self.line_number_for_sort(self.cursor);
         let Ok(current) = i64::try_from(current_line) else {
             return false;
@@ -804,6 +894,18 @@ impl TextBuffer {
 
     /// Home / End: the logical start or end of the caret's own line.
     pub fn move_cursor_to_line_edge(&mut self, to_end: bool) {
+        self.selection_anchor = None;
+        self.step_cursor_to_line_edge(to_end);
+    }
+
+    /// Extend the selection to the logical start or end of the caret's line.
+    pub fn extend_selection_to_line_edge(&mut self, to_end: bool) {
+        self.begin_selection_extension();
+        self.step_cursor_to_line_edge(to_end);
+        self.finish_selection_extension();
+    }
+
+    fn step_cursor_to_line_edge(&mut self, to_end: bool) {
         let line = self.line_number_for_sort(self.cursor);
         let (line_start, line_end) = self.line_range_for_number(line);
         self.cursor = if to_end { line_end } else { line_start };
@@ -821,6 +923,7 @@ impl TextBuffer {
         ascender: f64,
         descender: f64,
     ) -> usize {
+        self.selection_anchor = None;
         let line_height = line_height.max(1.0);
         let layout = self.layout(line_height);
         let line = self.line_number_for_y(y, line_height, ascender, descender);
@@ -831,6 +934,7 @@ impl TextBuffer {
 
     /// Move the cursor to a boundary index, clamped to `len()`.
     pub fn set_cursor(&mut self, cursor: usize) {
+        self.selection_anchor = None;
         self.cursor = cursor.min(self.sorts.len());
     }
 
@@ -925,6 +1029,7 @@ impl TextBuffer {
         codepoint: Option<char>,
         advance_width: f64,
     ) {
+        self.delete_selected_sorts();
         self.manual_kerning = None;
         let index = self.cursor;
         self.sorts
@@ -935,6 +1040,44 @@ impl TextBuffer {
         {
             self.active_sort = Some(active + 1);
         }
+    }
+
+    fn step_cursor_left(&mut self) {
+        self.cursor = self.cursor.saturating_sub(1);
+    }
+
+    fn step_cursor_right(&mut self) {
+        self.cursor = (self.cursor + 1).min(self.sorts.len());
+    }
+
+    fn begin_selection_extension(&mut self) {
+        self.selection_anchor.get_or_insert(self.cursor);
+    }
+
+    fn finish_selection_extension(&mut self) {
+        if self.selection_anchor == Some(self.cursor) {
+            self.selection_anchor = None;
+        }
+    }
+
+    /// Remove the selected sorts and put the caret at the logical start.
+    /// The first removed sort is returned so Backspace/Delete retain
+    /// their existing changed/no-change contract.
+    fn delete_selected_sorts(&mut self) -> Option<TextSort> {
+        let range = self.selection_range()?;
+        let first = self.sorts.get(range.start)?.clone();
+        self.manual_kerning = None;
+        if let Some(active) = self.active_sort {
+            if range.contains(&active) {
+                self.set_active_sort(None);
+            } else if active >= range.end {
+                self.active_sort = Some(active - range.len());
+            }
+        }
+        self.sorts.drain(range.clone());
+        self.cursor = range.start;
+        self.selection_anchor = None;
+        Some(first)
     }
 
     fn adjust_active_after_delete(&mut self, deleted_index: usize) {

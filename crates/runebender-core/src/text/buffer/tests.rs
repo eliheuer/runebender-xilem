@@ -839,6 +839,66 @@ fn visual_cursor_movement_respects_direction() {
 }
 
 #[test]
+fn keyboard_selection_tracks_logical_sorts_in_both_directions() {
+    let mut buffer = TextBuffer::new();
+    for name in ["A", "B", "C"] {
+        buffer.insert_glyph(name, name.chars().next(), 500.0);
+    }
+
+    buffer.extend_selection_visual_left();
+    buffer.extend_selection_visual_left();
+    assert_eq!(buffer.selection_range(), Some(1..3));
+    assert_eq!(
+        buffer
+            .delete_after_cursor()
+            .as_ref()
+            .and_then(TextSort::glyph_name),
+        Some("B")
+    );
+    assert_eq!(buffer.cursor(), 1);
+    assert_eq!(buffer.selection_range(), None);
+    assert_eq!(
+        buffer
+            .iter()
+            .filter_map(TextSort::glyph_name)
+            .collect::<Vec<_>>(),
+        vec!["A"]
+    );
+
+    buffer.insert_glyph("B", Some('B'), 500.0);
+    buffer.set_direction(TextDirection::RightToLeft);
+    buffer.set_cursor(0);
+    buffer.extend_selection_visual_left();
+    buffer.extend_selection_visual_left();
+    assert_eq!(buffer.selection_range(), Some(0..2));
+    buffer.move_cursor_visual_right();
+    assert_eq!(buffer.selection_range(), None);
+    assert_eq!(buffer.cursor(), 0);
+}
+
+#[test]
+fn typing_replaces_the_keyboard_selection() {
+    let mut buffer = TextBuffer::new();
+    for name in ["A", "B", "C"] {
+        buffer.insert_glyph(name, name.chars().next(), 500.0);
+    }
+    buffer.extend_selection_visual_left();
+    buffer.extend_selection_visual_left();
+
+    buffer.insert_glyph("D", Some('D'), 500.0);
+
+    assert_eq!(buffer.selection_range(), None);
+    assert_eq!(buffer.cursor(), 2);
+    assert_eq!(
+        buffer
+            .iter()
+            .filter_map(TextSort::glyph_name)
+            .collect::<Vec<_>>(),
+        vec!["A", "D"]
+    );
+}
+
+#[test]
 fn hit_test_activates_clicked_ltr_sort() {
     let mut buffer = TextBuffer::new();
     buffer.insert_glyph("A", Some('A'), 500.0);

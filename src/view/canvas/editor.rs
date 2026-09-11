@@ -606,14 +606,18 @@ impl Widget for EditorWidget {
             let ink = pal.text;
             let quiet = pal.text.with_alpha(0.55);
             for sort in text.placed() {
+                let box_ = Rect::from_points(
+                    affine * Point::new(sort.origin.x, m.descender + sort.origin.y),
+                    affine * Point::new(sort.origin.x + sort.advance, m.ascender + sort.origin.y),
+                );
+                if sort.selected {
+                    painter
+                        .fill(box_, pal.role("selection").with_alpha(0.32))
+                        .draw();
+                }
                 let color = if sort.active { ink } else { quiet };
                 painter.fill(&(affine * sort.path), color).draw();
                 if sort.active {
-                    let box_ = Rect::from_points(
-                        affine * Point::new(sort.origin.x, m.descender + sort.origin.y),
-                        affine
-                            * Point::new(sort.origin.x + sort.advance, m.ascender + sort.origin.y),
-                    );
                     painter
                         .stroke(box_, &Stroke::new(1.0), pal.role("metricQuiet"))
                         .draw();
@@ -1526,34 +1530,71 @@ impl Widget for EditorWidget {
                     ctx.set_handled();
                     return;
                 }
-                Key::Named(NamedKey::Backspace) => text.buffer.delete_before_cursor().is_some(),
-                Key::Named(NamedKey::Delete) => text.buffer.delete_after_cursor().is_some(),
+                Key::Named(NamedKey::Backspace) => {
+                    let changed = text.buffer.delete_before_cursor().is_some();
+                    if changed {
+                        text.buffer.shape_arabic_if_rtl();
+                    }
+                    changed
+                }
+                Key::Named(NamedKey::Delete) => {
+                    let changed = text.buffer.delete_after_cursor().is_some();
+                    if changed {
+                        text.buffer.shape_arabic_if_rtl();
+                    }
+                    changed
+                }
                 Key::Named(NamedKey::Enter) => {
                     text.buffer.insert_line_break();
                     true
                 }
                 Key::Named(NamedKey::ArrowLeft) => {
-                    text.buffer.move_cursor_visual_left();
+                    if shift {
+                        text.buffer.extend_selection_visual_left();
+                    } else {
+                        text.buffer.move_cursor_visual_left();
+                    }
                     true
                 }
                 Key::Named(NamedKey::ArrowRight) => {
-                    text.buffer.move_cursor_visual_right();
+                    if shift {
+                        text.buffer.extend_selection_visual_right();
+                    } else {
+                        text.buffer.move_cursor_visual_right();
+                    }
                     true
                 }
                 Key::Named(NamedKey::ArrowUp) => {
-                    text.buffer.move_cursor_vertically(-1, text.line_height);
+                    if shift {
+                        text.buffer
+                            .extend_selection_vertically(-1, text.line_height);
+                    } else {
+                        text.buffer.move_cursor_vertically(-1, text.line_height);
+                    }
                     true
                 }
                 Key::Named(NamedKey::ArrowDown) => {
-                    text.buffer.move_cursor_vertically(1, text.line_height);
+                    if shift {
+                        text.buffer.extend_selection_vertically(1, text.line_height);
+                    } else {
+                        text.buffer.move_cursor_vertically(1, text.line_height);
+                    }
                     true
                 }
                 Key::Named(NamedKey::Home) => {
-                    text.buffer.move_cursor_to_line_edge(false);
+                    if shift {
+                        text.buffer.extend_selection_to_line_edge(false);
+                    } else {
+                        text.buffer.move_cursor_to_line_edge(false);
+                    }
                     true
                 }
                 Key::Named(NamedKey::End) => {
-                    text.buffer.move_cursor_to_line_edge(true);
+                    if shift {
+                        text.buffer.extend_selection_to_line_edge(true);
+                    } else {
+                        text.buffer.move_cursor_to_line_edge(true);
+                    }
                     true
                 }
                 _ => false,
@@ -1947,7 +1988,7 @@ mod tests {
     #[test]
     fn parked_text_does_not_consume_outline_tool_typing() {
         use masonry::core::Ime;
-        use masonry::core::keyboard::{Code, KeyboardEvent};
+        use masonry::core::keyboard::{Code, KeyboardEvent, Modifiers};
         let mut editor = widget();
         editor.text = Some(crate::edit::text_tool::TextState::test_buffer());
         let mut harness =
@@ -1966,6 +2007,15 @@ mod tests {
                 state: KeyState::Down,
                 key: Key::Named(key),
                 code: Code::Unidentified,
+                ..KeyboardEvent::default()
+            })
+        };
+        let shifted = |key| {
+            TextEvent::Keyboard(KeyboardEvent {
+                state: KeyState::Down,
+                key: Key::Named(key),
+                code: Code::Unidentified,
+                modifiers: Modifiers::SHIFT,
                 ..KeyboardEvent::default()
             })
         };
@@ -2028,6 +2078,35 @@ mod tests {
             3,
             "down reaches the same column on the following line"
         );
+        harness.process_text_event(shifted(NamedKey::End));
+        assert_eq!(
+            harness.edit_root_widget(|root| root
+                .widget
+                .text
+                .as_ref()
+                .unwrap()
+                .buffer
+                .selection_range()),
+            Some(3..4),
+            "Shift+End selects the final sort"
+        );
+        harness.process_text_event(named(NamedKey::Backspace));
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
+            3,
+            "Backspace removes the selection"
+        );
+        assert_eq!(
+            harness.edit_root_widget(|root| root
+                .widget
+                .text
+                .as_ref()
+                .unwrap()
+                .buffer
+                .selection_range()),
+            None
+        );
+        harness.process_text_event(TextEvent::Ime(Ime::Commit("A".into())));
         harness.edit_root_widget(|root| root.widget.tool = Tool::Select);
         harness.process_text_event(typed());
         assert_eq!(

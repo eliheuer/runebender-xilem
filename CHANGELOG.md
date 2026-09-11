@@ -22,6 +22,9 @@ releases begin.
 - Route text-tool input through native IME composition and commit events,
   preview preedit text without changing the buffer, and prevent key/IME duplicates.
 
+- Add bidi-aware keyboard text selection, replacement, and deletion, with visible
+  selection and logical pointer mapping across Arabic ligatures.
+
 - Match GPUI's overview and editor-rail grid sizing, selection extension, caption
   geometry, and source-derived padding; render square cells as true rectangles so
   CPU evidence retains Gray-theme outlines and labels.

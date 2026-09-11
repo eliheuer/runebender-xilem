@@ -39,6 +39,8 @@ pub(crate) struct TextInputs {
     /// Text to start with. Only used when the buffer is created, so it
     /// is a starting state and not a binding.
     initial: String,
+    /// Initial logical range for deterministic visual evidence.
+    initial_selection: Option<(usize, usize)>,
     /// Writing direction, or `None` for automatic. This one *is* a
     /// binding: the direction chips live in the title bar, which is
     /// view-land, so the setting has to travel in with the inputs.
@@ -61,6 +63,7 @@ impl TextInputs {
             ascender: font.ascender(),
             descender: font.descender(),
             initial: String::new(),
+            initial_selection: None,
             direction: None,
         }
     }
@@ -75,6 +78,12 @@ impl TextInputs {
     /// a headless render can show a shaped line without typing.
     pub(crate) fn with_text(mut self, text: &str) -> Self {
         self.initial = text.to_string();
+        self
+    }
+
+    /// Start with a logical text range selected.
+    pub(crate) fn with_selection(mut self, selection: Option<(usize, usize)>) -> Self {
+        self.initial_selection = selection;
         self
     }
 }
@@ -113,6 +122,7 @@ impl TextState {
             ascender: 800.0,
             descender: -200.0,
             initial: "A".into(),
+            initial_selection: None,
             direction: None,
         })
     }
@@ -130,6 +140,9 @@ impl TextState {
             buffer.insert_character(character);
         }
         buffer.shape_arabic_if_rtl();
+        if let Some((start, end)) = inputs.initial_selection {
+            buffer.select_range(start, end);
+        }
         Self {
             buffer,
             preedit: String::new(),
@@ -223,6 +236,7 @@ impl TextState {
         };
         let layout = buffer.layout(self.line_height);
         let active = buffer.active_sort();
+        let selection = buffer.selection_range();
         layout
             .items
             .iter()
@@ -234,11 +248,18 @@ impl TextState {
                 let name = sort.glyph_name()?;
                 let outline = self.outline(name)?;
                 let placed = Affine::translate((item.x, item.y)) * (**outline).clone();
+                let cluster_end = ((item.index + 1)..buffer.len())
+                    .find(|index| !buffer.sort(*index).is_some_and(|sort| sort.is_absorbed()))
+                    .unwrap_or(buffer.len());
+                let selected = selection
+                    .as_ref()
+                    .is_some_and(|range| range.start < cluster_end && range.end > item.index);
                 Some(PlacedSort {
                     path: placed,
                     origin: Point::new(item.x, item.y),
                     advance: item.advance_width,
                     active: active == Some(item.index),
+                    selected,
                 })
             })
             .collect()
@@ -291,6 +312,7 @@ pub(crate) struct PlacedSort {
     pub origin: Point,
     pub advance: f64,
     pub active: bool,
+    pub selected: bool,
 }
 
 #[cfg(test)]
@@ -309,7 +331,7 @@ mod tests {
         );
         let font = FontModel::open(&source).expect("Virtua Grotesk opens");
         let sample = "R لا 123 بِ";
-        let state = TextState::new(&TextInputs::new(&font).with_text(sample));
+        let mut state = TextState::new(&TextInputs::new(&font).with_text(sample));
 
         assert_eq!(
             state.buffer.len(),
@@ -360,5 +382,34 @@ mod tests {
             arabic.iter().any(|item| item.x > latin.x),
             "the Arabic run occupies its bidi-resolved visual position"
         );
+
+        let lam = layout
+            .items
+            .iter()
+            .find(|item| item.index == 2)
+            .expect("the lam-alef ligature has one visible item");
+        assert_eq!(
+            state.click(Point::new(lam.x + lam.advance_width / 2.0, lam.y)),
+            Some(2),
+            "pointer hit mapping resolves the visible ligature to its logical lam"
+        );
+        state.buffer.select_range(2, 4);
+        assert_eq!(
+            state.placed().iter().filter(|sort| sort.selected).count(),
+            1,
+            "lam and absorbed alef share one visible selection box"
+        );
+
+        state.buffer.set_cursor(9);
+        state.buffer.extend_selection_visual_right();
+        assert_eq!(state.buffer.selection_range(), Some(9..10));
+        assert!(
+            state.placed().iter().any(|sort| sort.selected),
+            "the real Arabic selection has visible geometry"
+        );
+        assert!(state.buffer.delete_after_cursor().is_some());
+        state.buffer.shape_arabic_if_rtl();
+        assert_eq!(state.buffer.len(), 10);
+        assert_eq!(state.buffer.selection_range(), None);
     }
 }

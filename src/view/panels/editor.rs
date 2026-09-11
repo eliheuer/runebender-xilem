@@ -52,9 +52,18 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
         interp,
         app.underlay(),
         (app.tool == Tool::Text).then(|| {
+            // Headless evidence can start with one logical range
+            // selected; live selection remains widget-owned.
+            let selection = std::env::var("RUNEBENDER_TEXT_SELECTION")
+                .ok()
+                .and_then(|value| {
+                    let (start, end) = value.split_once(':')?;
+                    Some((start.parse().ok()?, end.parse().ok()?))
+                });
             text_tool::TextInputs::new(&app.font)
                 .with_text(&app.initial_text)
                 .with_direction(app.text_dir)
+                .with_selection(selection)
         }),
         |app: &mut Workspace, ev| match ev {
             canvas::editor::EditorEvent::Selection(n) => {
