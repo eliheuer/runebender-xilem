@@ -82,6 +82,9 @@ impl TextInputs {
 /// The buffer plus everything the editor needs to draw it.
 pub(crate) struct TextState {
     pub buffer: TextBuffer,
+    /// Native IME composition shown in the line but not committed to the
+    /// document text until the platform sends `Ime::Commit`.
+    pub preedit: String,
     /// Line height in design units, from the master's metrics.
     pub line_height: f64,
     /// The master's ascender and descender, which the engine needs to
@@ -129,6 +132,7 @@ impl TextState {
         buffer.shape_arabic_if_rtl();
         Self {
             buffer,
+            preedit: String::new(),
             line_height: inputs.line_height,
             ascender: inputs.ascender,
             descender: inputs.descender,
@@ -181,19 +185,49 @@ impl TextState {
         inserted
     }
 
+    /// Replace the native IME composition without changing the committed
+    /// buffer. An empty preedit is cancellation.
+    pub(crate) fn set_preedit(&mut self, text: String) {
+        self.preedit = text;
+    }
+
+    /// Commit one native IME result exactly once and clear its preview.
+    pub(crate) fn commit_preedit(&mut self, committed: &str) -> bool {
+        self.preedit.clear();
+        let mut changed = false;
+        for character in committed.chars() {
+            changed |= self.insert(character);
+        }
+        changed
+    }
+
     /// Every sort to draw, as a path already placed on the line.
     ///
     /// Absorbed sorts (a character folded into a ligature drawn by an
     /// earlier sort) contribute nothing, which is what `is_absorbed` is
     /// for.
     pub(crate) fn placed(&self) -> Vec<PlacedSort> {
-        let layout = self.buffer.layout(self.line_height);
-        let active = self.buffer.active_sort();
+        let display;
+        let buffer = if self.preedit.is_empty() {
+            &self.buffer
+        } else {
+            display = {
+                let mut buffer = self.buffer.clone();
+                for character in self.preedit.chars() {
+                    buffer.insert_character(character);
+                }
+                buffer.shape_arabic_if_rtl();
+                buffer
+            };
+            &display
+        };
+        let layout = buffer.layout(self.line_height);
+        let active = buffer.active_sort();
         layout
             .items
             .iter()
             .filter_map(|item| {
-                let sort = self.buffer.sort(item.index)?;
+                let sort = buffer.sort(item.index)?;
                 if sort.is_absorbed() {
                     return None;
                 }
@@ -212,7 +246,21 @@ impl TextState {
 
     /// Where the caret sits, in design space.
     pub(crate) fn caret(&self) -> Point {
-        let layout = self.buffer.layout(self.line_height);
+        let display;
+        let buffer = if self.preedit.is_empty() {
+            &self.buffer
+        } else {
+            display = {
+                let mut buffer = self.buffer.clone();
+                for character in self.preedit.chars() {
+                    buffer.insert_character(character);
+                }
+                buffer.shape_arabic_if_rtl();
+                buffer
+            };
+            &display
+        };
+        let layout = buffer.layout(self.line_height);
         Point::new(layout.cursor_x, layout.cursor_y)
     }
 

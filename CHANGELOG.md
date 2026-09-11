@@ -19,6 +19,9 @@ releases begin.
 - Include glyph metadata and lib data in Core undo snapshots, so mark colors,
   Unicode, notes, images, and guidelines restore with outlines and metrics.
 
+- Route text-tool input through native IME composition and commit events,
+  preview preedit text without changing the buffer, and prevent key/IME duplicates.
+
 - Align the navigation, grid and inspector top edges with one shared separator below the title bar.
 
 - Align search and inspector inputs with shared insets and optical baseline positioning; route inspector text and labels through the bundled UI-font helpers.

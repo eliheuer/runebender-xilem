@@ -184,4 +184,43 @@ mod tests {
             "placeholder typography and typed text must render identically"
         );
     }
+
+    #[test]
+    fn focused_descenders_and_numeric_text_fit_the_shared_control_height() {
+        let contents = "gyp -123.45";
+        let text = TextArea::new_editable(contents)
+            .with_style(StyleProperty::FontFamily(crate::UI_FONT_FAMILY.into()))
+            .with_style(StyleProperty::FontSize(crate::TextSize::Body.px()))
+            .prepare()
+            .with_props(ContentColor::new(masonry::peniko::Color::BLACK));
+        let input = TextInput::from_text_area(text)
+            .with_clip(true)
+            .prepare()
+            .with_props(PlaceholderColor::new(masonry::peniko::Color::BLACK));
+        let mut harness = TestHarness::create_with_size(
+            crate::default_property_set(),
+            InputTypography {
+                child: input.to_pod(),
+            }
+            .prepare(),
+            (170, 28),
+        );
+        let mut text_id = None;
+        harness.edit_root_widget(|mut wrapper| {
+            let mut input = InputTypography::child_mut(&mut wrapper);
+            let mut text = TextInput::text_mut(&mut input);
+            text_id = Some(text.ctx.widget_id());
+            TextArea::select_text(&mut text, contents);
+        });
+        harness.focus_on(text_id);
+        let clipped = harness.render();
+        harness.edit_root_widget(|mut wrapper| {
+            TextInput::set_clip(&mut InputTypography::child_mut(&mut wrapper), false);
+        });
+        assert_eq!(
+            clipped,
+            harness.render(),
+            "selection, caret, ascenders, and descenders fit without vertical clipping"
+        );
+    }
 }

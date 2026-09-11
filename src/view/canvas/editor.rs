@@ -1447,6 +1447,29 @@ impl Widget for EditorWidget {
         _props: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
+        if self.tool == Tool::Text
+            && let Some(text) = self.text.as_mut()
+            && let TextEvent::Ime(ime) = event
+        {
+            let committed = match ime {
+                masonry::core::Ime::Preedit(value, _) => {
+                    text.set_preedit(value.clone());
+                    false
+                }
+                masonry::core::Ime::Commit(value) => text.commit_preedit(value),
+                masonry::core::Ime::Disabled => {
+                    text.set_preedit(String::new());
+                    false
+                }
+                masonry::core::Ime::Enabled => false,
+            };
+            if committed || !text.preedit.is_empty() {
+                self.fit_text();
+            }
+            ctx.request_render();
+            ctx.set_handled();
+            return;
+        }
         let TextEvent::Keyboard(key) = event else {
             return;
         };
@@ -1481,12 +1504,12 @@ impl Widget for EditorWidget {
             && !cmd
         {
             let handled = match &key.key {
-                Key::Character(typed) => {
-                    let mut any = false;
-                    for character in typed.chars() {
-                        any |= text.insert(character);
-                    }
-                    any
+                // Text arrives through `Ime::Commit`, including ordinary
+                // keyboard input. Consume the logical character key here so
+                // it neither inserts twice nor triggers an application tool.
+                Key::Character(_) => {
+                    ctx.set_handled();
+                    return;
                 }
                 Key::Named(NamedKey::Backspace) => text.buffer.delete_before_cursor().is_some(),
                 Key::Named(NamedKey::Delete) => text.buffer.delete_after_cursor().is_some(),
@@ -1889,6 +1912,7 @@ mod tests {
 
     #[test]
     fn parked_text_does_not_consume_outline_tool_typing() {
+        use masonry::core::Ime;
         use masonry::core::keyboard::{Code, KeyboardEvent};
         let mut editor = widget();
         editor.text = Some(crate::edit::text_tool::TextState::test_buffer());
@@ -1912,7 +1936,31 @@ mod tests {
         harness.process_text_event(typed());
         assert_eq!(
             harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
+            1,
+            "logical key text waits for the IME commit"
+        );
+        harness.process_text_event(TextEvent::Ime(Ime::Preedit("B".into(), Some((0, 1)))));
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
+            1,
+            "preedit is visible state, not committed text"
+        );
+        harness.process_text_event(TextEvent::Ime(Ime::Preedit(String::new(), None)));
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().preedit.clone()),
+            "",
+            "empty preedit cancels composition"
+        );
+        harness.process_text_event(TextEvent::Ime(Ime::Preedit("B".into(), Some((0, 1)))));
+        harness.process_text_event(TextEvent::Ime(Ime::Commit("B".into())));
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
             2
+        );
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().preedit.clone()),
+            "",
+            "commit clears the composition preview"
         );
         harness.edit_root_widget(|root| root.widget.tool = Tool::Select);
         harness.process_text_event(typed());
