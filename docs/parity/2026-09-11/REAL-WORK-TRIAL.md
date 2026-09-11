@@ -106,6 +106,12 @@ Implementation commits are `a40808b` (Latin/Arabic navigation and metadata),
 the CPU renderer and do not prove native GPU, input method, pointer, cancellation,
 or platform-menu behavior.
 
+Commit `a7630e5` adds a deterministic worker proof for progress, cancellation,
+process termination, absence of proposal/foreground changes, and complete
+multi-line failure diagnostics. The native Cancel step above remains in the
+trial because background correctness does not prove its pointer interaction or
+visible timing.
+
 Validation through `ce75e3b`:
 
 ```sh

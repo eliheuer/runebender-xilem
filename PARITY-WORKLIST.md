@@ -235,7 +235,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | Done | ID | Work and acceptance |
 |---|---|---|
 | [ ] | A01 | Compare installed `font-ml tasks --json` registry with UI task list and node types; expose missing-binary/model errors clearly without downloads. |
-| [ ] | A02 | Run/cancel/progress/failure lifecycle with fake or tiny fixture subprocess; UI stays responsive and processes terminate. |
+| [x] | A02 | Run/cancel/progress/failure lifecycle with fake or tiny fixture subprocess; UI stays responsive and processes terminate. Verified with deterministic worker tests in `a7630e5`; native pointer verification remains in R04. |
 | [x] | A03 | Proposal review/install/discard: audit current immediate install and Undo install behavior; preserve explicit user-controlled install semantics and original layer. Verified in `1d96364` and `dd0159a`; native pointer verification remains part of R04. |
 | [ ] | A04 | Stale result safety: document/master/glyph/revision changes, close and reload cannot apply output to another target. Test both single task and node core.install path. |
 | [ ] | A05 | Graph new/open/save/run, port type validation, parameter edits, graph tabs and failure location; round trip bolden and train-adapter fixtures without expensive training. |
@@ -379,11 +379,18 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   40/40 points with advance delta +18, left the original foreground untouched,
   installed explicitly, and undid to byte-equivalent glyph data. Individually
   inspected Gray/Light captures are `r04-ai-compare-{gray,light}.png`.
-- R04 — in progress through `1d96364` and `dd0159a`: installed task discovery,
+- R04 — in progress through `1d96364`, `dd0159a`, and `a7630e5`: installed task discovery,
   a bounded real model run, pending proposal, comparison, explicit install and
-  Undo are verified. Stale document switching is covered by normal tests and
-  full subprocess diagnostics are retained. Native progress/Cancel and failure
+  Undo are verified. Stale document switching is covered by normal tests. A
+  deterministic subprocess test observes progress, kills the worker, waits for
+  termination, and proves no proposal layer remains; another preserves every
+  stderr diagnostic from a failing worker. Native progress/Cancel and failure
   interaction still require the supervised trial, so R04 remains unchecked.
+- A02 — verified in `a7630e5`: model work remains on a background thread; the
+  deterministic fake worker proves progress reaches shared state, Cancel kills
+  and joins the child promptly, the job clears, and no proposal or foreground
+  mutation survives. A separate failing worker proves multi-line diagnostics
+  are not reduced to the last line. Both focused tests and workspace clippy pass.
 - R05 / A08 — verified in `ce75e3b`: the checked-in five-node
   `bolden-review.nodes.json` has no Install node. Node runs now give Core the
   designspace source so sibling masters resolve, target the open or explicitly
