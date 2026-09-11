@@ -125,6 +125,12 @@ pub(crate) struct Workspace {
     pub(crate) coord_y_buf: String,
     pub(crate) coord_w_buf: String,
     pub(crate) coord_h_buf: String,
+    /// Typed parameters shared by the Path Operations fields and Filter menu.
+    pub(crate) slant_buf: String,
+    pub(crate) offset_buf: String,
+    pub(crate) extrude_buf: String,
+    pub(crate) roughen_buf: String,
+    pub(crate) roughen_seed: u64,
     /// Text rendered in the proof strip; empty shows the current glyph.
     pub(crate) preview_text: String,
     /// Gaussian blur radius for the proof strip in logical pixels.

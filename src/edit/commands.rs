@@ -563,6 +563,27 @@ impl Workspace {
         self.note = format!("Placed {file_name} · {width}×{height}px");
     }
 
+    /// Pick a local model and run its structure-preserving bolden task.
+    pub(crate) fn command_bolden_with_model(&mut self) {
+        let Mode::Editor(index) = self.mode else {
+            return;
+        };
+        let start = Self::models_dir().unwrap_or_else(|| {
+            self.font
+                .document_source()
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .to_path_buf()
+        });
+        let Some(directory) = dialogs::folder(&start) else {
+            return;
+        };
+        self.load_model(&directory);
+        if self.ai.dir.as_deref() == Some(directory.as_path()) {
+            self.run_task("bolden", Some(index));
+        }
+    }
+
     /// Unlink the open glyph's background image, preserving the stored file.
     pub(crate) fn command_remove_image(&mut self) {
         if !matches!(self.mode, Mode::Editor(_)) || self.session.glyph.image.is_none() {
@@ -632,6 +653,59 @@ impl Workspace {
         self.cells = Arc::new(cells_of(&self.font, &self.palette));
     }
 
+    pub(crate) fn command_filter_offset(&mut self) {
+        if let Ok(delta) = self.offset_buf.trim().parse::<f64>() {
+            self.apply_op(|session| session.offset(delta));
+        }
+    }
+
+    pub(crate) fn command_filter_extrude(&mut self) {
+        let text = self.extrude_buf.trim();
+        let keep_front = text.starts_with(['k', 'K']);
+        let mut parts = text
+            .trim_start_matches(['k', 'K'])
+            .trim()
+            .split(',')
+            .map(str::trim);
+        let Some(offset) = parts.next().and_then(|value| value.parse::<f64>().ok()) else {
+            return;
+        };
+        let angle = parts
+            .next()
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap_or(30.0);
+        self.apply_op(|session| session.extrude(offset, angle, keep_front));
+    }
+
+    pub(crate) fn command_filter_roughen(&mut self) {
+        let mut parts = self.roughen_buf.trim().split(',').map(str::trim);
+        let Some(segment) = parts.next().and_then(|value| value.parse::<f64>().ok()) else {
+            return;
+        };
+        let horizontal = parts
+            .next()
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap_or(segment);
+        let vertical = parts
+            .next()
+            .and_then(|value| value.parse::<f64>().ok())
+            .unwrap_or(segment / 2.0);
+        self.roughen_seed = self.roughen_seed.wrapping_add(1);
+        let seed = self.roughen_seed;
+        self.apply_op(|session| session.roughen(segment, horizontal, vertical, seed));
+    }
+
+    pub(crate) fn command_filter_slant(&mut self) {
+        if let Ok(degrees) = self.slant_buf.trim().parse::<f64>()
+            && degrees != 0.0
+            && degrees.abs() < 89.0
+        {
+            self.apply_op(|session| {
+                session.transform(kurbo::Affine::skew(degrees.to_radians().tan(), 0.0))
+            });
+        }
+    }
+
     pub(crate) fn dispatch(&mut self, action: shortcuts::AppAction) {
         use shortcuts::AppAction as A;
         match action {
@@ -694,6 +768,10 @@ impl Workspace {
             A::Harmonize => self.apply_op(|s| s.harmonize()),
             A::Balance => self.apply_op(|s| s.balance()),
             A::Optimize => self.apply_op(|s| s.optimize()),
+            A::FilterOffset => self.command_filter_offset(),
+            A::FilterExtrude => self.command_filter_extrude(),
+            A::FilterRoughen => self.command_filter_roughen(),
+            A::FilterSlant => self.command_filter_slant(),
             A::NewFont => self.new_font(),
             A::CycleTheme => self.cycle_theme(),
             A::Theme(id) => {
@@ -788,6 +866,7 @@ impl Workspace {
             A::BakeMasks => self.command_bake_masks(),
             A::ExportGlyphSvg => self.command_export_glyph_svg(),
             A::TraceImage => self.command_trace_image(),
+            A::BoldenWithModel => self.command_bolden_with_model(),
             A::PlaceImage => self.command_place_image(),
             A::ImportSvg => self.command_import_svg(),
             A::RemoveImage => self.command_remove_image(),

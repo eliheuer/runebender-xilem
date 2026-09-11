@@ -10,9 +10,9 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
 
 - [x] One command table supplies native macOS menus, the Windows/Linux in-window
   bar, accelerator labels, shortcut matching, enabled state, and checked state.
-- [ ] Every visible item dispatches a working command. Commands unavailable in
+- [x] Every visible item dispatches a working command. Commands unavailable in
   the Xilem shell are recorded below and are not presented as working.
-- [ ] Focused text input consumes Copy, Paste, Select All, Undo, and Redo before
+- [x] Focused text input consumes Copy, Paste, Select All, Undo, and Redo before
   the document command scope. Native accelerators do not dispatch twice.
 
 ### Menu inventory
@@ -23,7 +23,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
 - [x] **Nodes:** New Nodes; Open Nodes…; Save Nodes; Run Nodes.
 - [x] **Edit:** Undo; Redo; Copy; Paste; Copy Selected Glyphs as Text; Select All;
   Deselect All; Invert Selection.
-- [ ] **Glyph:** New Glyph; Duplicate Glyph; Remove Glyph; Update Metrics;
+- [x] **Glyph:** New Glyph; Duplicate Glyph; Remove Glyph; Update Metrics;
   Reinterpolate; Decompose Components; Check Joining; Compose from Anchors; Bake
   Masks; Export Glyph as SVG; Trace Image…; Bolden With Model…; Place Image…;
   Import SVG…; Remove Image.
@@ -32,7 +32,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
   Intersect; Exclude; Flip Horizontal; Flip Vertical; Rotate 90° Left; Rotate 90°
   Right; Rotate 180°; Duplicate Selection; Duplicate + Repeat; Harmonize;
   Balance; Optimize; Hyperbezier to Cubic; Quadratic to Cubic; Cubic to Quadratic.
-- [ ] **Filter:** Offset Curve; Extrude; Roughen; Round Corners; Slanter; Add
+- [x] **Filter:** Offset Curve; Extrude; Roughen; Round Corners; Slanter; Add
   Extremes; Remove Overlap.
 - [x] **View:** Zoom to Fit; Show All Masters; Sort Glyphs by Name; Sort Glyphs by
   Unicode; Next/Previous Master; Next/Previous Sample String; Grid, Measure, and
@@ -40,7 +40,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
 
 ### State and interaction
 
-- [ ] Undo/Redo reflect history; document edits require a document; selection
+- [x] Undo/Redo reflect history; document edits require a document; selection
   commands require a compatible editor selection; Save reflects dirty/writeable
   state; document-only navigation is disabled without a document.
 - [x] Tool, sort, grid, measure, theme, and Show All Masters choices expose their
@@ -57,7 +57,7 @@ reference; the implementation here remains a Xilem/Masonry application adapter.
 
 ### Evidence
 
-- [ ] Pure command-table tests cover ordering, titles, shortcuts, duplicate
+- [x] Pure command-table tests cover ordering, titles, shortcuts, duplicate
   accelerators, state predicates, and native/in-window conversion.
 - [x] Masonry interaction tests cover keyboard traversal, submenu traversal,
   dispatch, outside dismissal, Escape, and focus restoration.
@@ -106,16 +106,17 @@ framework-integration work.
   and Export Glyph as SVG now call the same core operations and preserve the
   active editing session where applicable.
 - `docs/screenshots/menu-parity/view-gray.png`, `view-light.png`,
-  `file-gray.png`, `glyph-gray.png`, and `welcome-gray.png` are matched 1100x720
-  headless captures of representative document and application menus. The
-  headless driver processes real layer lifecycle signals instead of dropping
-  them.
+  `file-gray.png`, `filter-gray.png`, `glyph-gray.png`, and `welcome-gray.png`
+  are matched 1100x720 headless captures of representative document and
+  application menus. The headless driver processes real layer lifecycle
+  signals instead of dropping them.
 - The menu and shortcut scopes now wrap `AppState`, remain present on the welcome
   screen, and disable document commands when there is no workspace. The
   in-window Quit row and Ctrl-Q issue Masonry's real driver exit signal; macOS
   retains its predefined application-menu Quit behavior.
 - New Font works from the welcome screen as well as an open document, and Save
-  is enabled only while the document is dirty.
+  is enabled only while the document is dirty and all master sources are
+  writable.
 - A single cross-platform dialog adapter now backs Open, Save As, Open Nodes,
   Trace Image, Place Image, and Import SVG. Remove Image is undoable through the
   same editing-session history as outline commands.
@@ -124,7 +125,13 @@ framework-integration work.
   back through the Xilem task pump.
 - Copy Selected Glyphs as Text preserves GPUI's name ordering, skips unencoded
   selections, and writes the result to the system clipboard.
-- Verified locally on macOS: 58 tests pass serially and all-target Clippy passes
+- Bolden With Model uses the existing guarded `font-ml` task/install path. The
+  Filter menu reads the same Slant, Offset, Extrude, and Roughen parameter
+  fields shown in Path Operations; each effect is undoable and core-backed.
+- Focused text fields consume editing shortcuts in Masonry before the document
+  scope. Those five accelerators are deliberately not duplicated in the native
+  menu scope, while application shortcuts such as Save remain native.
+- Verified locally on macOS: 62 tests pass serially and all-target Clippy passes
   with warnings denied. The three tab tests have a pre-existing parallel temp-UFO
   filename race; the unfiltered suite can intermittently fail in parallel and
   passes with `--test-threads=1`. Linux and Windows have not been run yet.
@@ -146,13 +153,13 @@ framework-integration work.
   exist on the welcome screen as well as inside a loaded `Workspace`.
 - [x] Open, Save As, Export, and Open Nodes use real platform or background
   workflows; none of their menu rows are inert.
-- [ ] Port the remaining working GPUI handlers: Bolden With Model and
+- [x] Port the working GPUI handlers, including Bolden With Model and the
   parameterized filters.
 - [x] Add the in-window Runebender/Quit command through the Xilem driver rather
   than pretending a workspace mutation can exit the process.
-- [ ] Finish focused-field precedence for native macOS accelerators, including a
-  regression proving one dispatch. The Masonry shortcut scope already runs only
-  after a focused descendant declines the key.
+- [x] Keep editing accelerators out of the native macOS accelerator scope so a
+  focused field receives them first; focused-field and native-scope regressions
+  prove that application commands still dispatch through the host.
 - [x] Direct accessibility actions open menu titles and activate enabled items;
   disabled and checked state are present on their AccessKit nodes.
 - [ ] Run the in-window implementation and its interaction suite on Linux. Cross

@@ -232,6 +232,14 @@ impl FontModel {
             .unwrap_or_else(|| self.source())
     }
 
+    /// Whether every master source is writable according to its filesystem mode.
+    pub(crate) fn is_writable(&self) -> bool {
+        self.project
+            .masters
+            .iter()
+            .all(|master| save_target_is_writable(&master.source_path))
+    }
+
     pub(crate) fn active(&self) -> usize {
         self.project.active
     }
@@ -861,6 +869,19 @@ impl FontModel {
     }
 }
 
+/// Whether an existing save target, or the directory for a new one, is writable.
+fn save_target_is_writable(target: &FsPath) -> bool {
+    if target.exists() {
+        return std::fs::metadata(target)
+            .map(|metadata| !metadata.permissions().readonly())
+            .unwrap_or(false);
+    }
+    target
+        .parent()
+        .and_then(|parent| std::fs::metadata(parent).ok())
+        .is_some_and(|metadata| metadata.is_dir() && !metadata.permissions().readonly())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -934,6 +955,22 @@ mod tests {
                 .iter()
                 .all(|master| master.font.get_glyph(&copy).is_none())
         );
+
+        std::fs::remove_dir_all(dir).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn save_targets_require_a_writable_directory() {
+        let (dir, mut model) = two_master_model();
+        assert!(model.is_writable());
+
+        model.master_mut().source_path = dir.join("New.ufo");
+        assert!(model.is_writable());
+
+        let file = dir.join("not-a-directory");
+        std::fs::write(&file, "fixture").expect("the ordinary file is created");
+        model.master_mut().source_path = file.join("New.ufo");
+        assert!(!model.is_writable());
 
         std::fs::remove_dir_all(dir).expect("the fixture is removed");
     }

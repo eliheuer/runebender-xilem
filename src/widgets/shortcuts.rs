@@ -73,6 +73,10 @@ pub(crate) enum AppAction {
     Harmonize,
     Balance,
     Optimize,
+    FilterOffset,
+    FilterExtrude,
+    FilterRoughen,
+    FilterSlant,
     Copy,
     Paste,
     CopySelectedGlyphs,
@@ -117,6 +121,7 @@ pub(crate) enum AppAction {
     BakeMasks,
     ExportGlyphSvg,
     TraceImage,
+    BoldenWithModel,
     PlaceImage,
     ImportSvg,
     RemoveImage,
@@ -292,7 +297,7 @@ mod tests {
     use masonry::core::{NewWidget, TextEvent};
     use masonry::properties::Dimensions;
     use masonry::theme::default_property_set;
-    use masonry::widgets::{Button, Label};
+    use masonry::widgets::{Button, Label, TextArea};
     use masonry_testing::TestHarness;
 
     fn key(k: Key, cmd: bool) -> TextEvent {
@@ -344,5 +349,20 @@ mod tests {
         harness.process_text_event(key(Key::Named(NamedKey::Escape), false));
         let action = harness.pop_action::<AppAction>();
         assert_eq!(action.map(|(a, _)| a), Some(AppAction::Overview));
+    }
+
+    #[test]
+    fn focused_text_area_consumes_editing_shortcuts_before_the_host() {
+        let area = NewWidget::new(TextArea::new_editable("hello"));
+        let area_id = area.id();
+        let host = ShortcutHost::new(area)
+            .prepare()
+            .with_props(Dimensions::MAX);
+        let mut harness = TestHarness::create_with_size(default_property_set(), host, (160, 40));
+        harness.focus_on(Some(area_id));
+
+        harness.process_text_event(key(Key::Character("a".into()), true));
+
+        assert!(harness.pop_action::<AppAction>().is_none());
     }
 }

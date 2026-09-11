@@ -280,6 +280,60 @@ pub(crate) fn path_operations_section(app: &Workspace) -> impl WidgetView<Worksp
             }),
             (!app.collapsed.contains("Path Operations"))
                 .then(|| xrow(Region::Inline, (tbtn(pal, "Reverse", |s| s.reverse()),))),
+            (!app.collapsed.contains("Path Operations")).then(|| {
+                xrow(
+                    Region::Form,
+                    (
+                        recipes::field_enter(
+                            pal,
+                            "Slant °",
+                            app.slant_buf.clone(),
+                            |app: &mut Workspace, value| app.slant_buf = value,
+                            |app: &mut Workspace, value| {
+                                app.slant_buf = value;
+                                app.command_filter_slant();
+                            },
+                        ),
+                        recipes::field_enter(
+                            pal,
+                            "Offset ±",
+                            app.offset_buf.clone(),
+                            |app: &mut Workspace, value| app.offset_buf = value,
+                            |app: &mut Workspace, value| {
+                                app.offset_buf = value;
+                                app.command_filter_offset();
+                            },
+                        ),
+                    ),
+                )
+            }),
+            (!app.collapsed.contains("Path Operations")).then(|| {
+                xrow(
+                    Region::Form,
+                    (
+                        recipes::field_enter(
+                            pal,
+                            "Extrude d,°",
+                            app.extrude_buf.clone(),
+                            |app: &mut Workspace, value| app.extrude_buf = value,
+                            |app: &mut Workspace, value| {
+                                app.extrude_buf = value;
+                                app.command_filter_extrude();
+                            },
+                        ),
+                        recipes::field_enter(
+                            pal,
+                            "Roughen s,h,v",
+                            app.roughen_buf.clone(),
+                            |app: &mut Workspace, value| app.roughen_buf = value,
+                            |app: &mut Workspace, value| {
+                                app.roughen_buf = value;
+                                app.command_filter_roughen();
+                            },
+                        ),
+                    ),
+                )
+            }),
         ),
     )
 }

@@ -549,6 +549,45 @@ impl Session {
         self.transform(kurbo::Affine::new([0.0, 1.0, -1.0, 0.0, 0.0, 0.0]))
     }
 
+    /// Apply a whole-glyph outline effect under one undo record.
+    fn effect(&mut self, operation: impl FnOnce(&mut norad::Glyph) -> bool) -> bool {
+        let mut changed = self.glyph.clone();
+        if !operation(&mut changed) {
+            return false;
+        }
+        self.record(EditType::Normal);
+        self.glyph = changed;
+        self.selection.clear();
+        true
+    }
+
+    pub(crate) fn offset(&mut self, delta: f64) -> bool {
+        self.effect(|glyph| runebender_core::outline::effects::offset_glyph_contours(glyph, delta))
+    }
+
+    pub(crate) fn extrude(&mut self, offset: f64, angle: f64, keep_front: bool) -> bool {
+        self.effect(|glyph| {
+            runebender_core::outline::effects::extrude_glyph_contours(
+                glyph, offset, angle, keep_front,
+            )
+        })
+    }
+
+    pub(crate) fn roughen(
+        &mut self,
+        segment: f64,
+        horizontal: f64,
+        vertical: f64,
+        seed: u64,
+    ) -> bool {
+        let selected = self.selection.iter().map(|(contour, _)| *contour).collect();
+        self.effect(|glyph| {
+            runebender_core::outline::effects::roughen_glyph_contours(
+                glyph, &selected, segment, horizontal, vertical, seed,
+            )
+        })
+    }
+
     pub(crate) fn reverse(&mut self) -> bool {
         self.record(EditType::Normal);
         glyph_ops::reverse_contours(&mut self.glyph, &self.selection)
@@ -1272,6 +1311,25 @@ mod tests {
         let mut session = two_squares();
         assert!(!session.paste_contours(&[]));
         assert_eq!(session.glyph.contours.len(), 2);
+    }
+
+    #[test]
+    fn parameterized_filters_record_only_real_edits() {
+        let mut unchanged = two_squares();
+        assert!(!unchanged.offset(0.0));
+        assert!(unchanged.pending.is_empty());
+
+        let mut offset = two_squares();
+        assert!(offset.offset(10.0));
+        assert_eq!(offset.pending.len(), 1);
+
+        let mut extrude = two_squares();
+        assert!(extrude.extrude(20.0, 30.0, false));
+        assert_eq!(extrude.pending.len(), 1);
+
+        let mut rough = two_squares();
+        assert!(rough.roughen(10.0, 4.0, 4.0, 7));
+        assert_eq!(rough.pending.len(), 1);
     }
 
     #[test]

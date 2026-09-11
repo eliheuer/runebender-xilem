@@ -213,6 +213,11 @@ impl Workspace {
             coord_y_buf: String::new(),
             coord_w_buf: String::new(),
             coord_h_buf: String::new(),
+            slant_buf: String::new(),
+            offset_buf: String::new(),
+            extrude_buf: String::new(),
+            roughen_buf: String::new(),
+            roughen_seed: 0,
             preview_text: std::env::var("RUNEBENDER_PREVIEW_TEXT")
                 .unwrap_or_else(|_| "Runebender".into()),
             preview_blur: std::env::var("RUNEBENDER_PREVIEW_BLUR")

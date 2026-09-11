@@ -116,7 +116,7 @@ impl Entry {
         };
         let editor = matches!(app.mode, crate::Mode::Editor(_));
         match self.action {
-            A::Save => app.modified,
+            A::Save => app.modified && app.font.is_writable(),
             A::ExportFont => app.export_job.is_none(),
             A::Undo => match app.mode {
                 crate::Mode::Editor(index) => app.font.master().can_undo(index),
@@ -158,11 +158,13 @@ impl Entry {
             | A::QuadsToCubics
             | A::CubicsToQuads
             | A::ZoomToFit => editor,
+            A::FilterOffset | A::FilterExtrude | A::FilterRoughen | A::FilterSlant => editor,
             A::GenerateMissing => matches!(app.sel, crate::Sel::Filter(_)),
             A::DuplicateGlyph | A::RemoveGlyph | A::BakeMasks | A::ExportGlyphSvg => {
                 app.selected.is_some()
             }
             A::TraceImage | A::PlaceImage | A::ImportSvg => editor,
+            A::BoldenWithModel => editor && app.ai.job.is_none(),
             A::RemoveImage => editor && app.session.glyph.image.is_some(),
             A::Reinterpolate => app.selected.is_some() && app.font.master_count() > 1,
             A::NextMaster | A::PreviousMaster => app.font.master_count() > 1,
@@ -387,6 +389,12 @@ pub(crate) const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "Glyph",
+        title: "Bolden With Model…",
+        accelerator: None,
+        action: AppAction::BoldenWithModel,
+    },
+    Entry {
+        menu: "Glyph",
         title: "Place Image…",
         accelerator: None,
         action: AppAction::PlaceImage,
@@ -546,6 +554,30 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "Cubic to Quadratic",
         accelerator: None,
         action: AppAction::CubicsToQuads,
+    },
+    Entry {
+        menu: "Filter",
+        title: "Offset Curve",
+        accelerator: None,
+        action: AppAction::FilterOffset,
+    },
+    Entry {
+        menu: "Filter",
+        title: "Extrude",
+        accelerator: None,
+        action: AppAction::FilterExtrude,
+    },
+    Entry {
+        menu: "Filter",
+        title: "Roughen",
+        accelerator: None,
+        action: AppAction::FilterRoughen,
+    },
+    Entry {
+        menu: "Filter",
+        title: "Slanter",
+        accelerator: None,
+        action: AppAction::FilterSlant,
     },
     Entry {
         menu: "Filter",
@@ -917,6 +949,7 @@ mod tests {
                 "Bake Masks",
                 "Export Glyph as SVG",
                 "Trace Image…",
+                "Bolden With Model…",
                 "Place Image…",
                 "Import SVG…",
                 "Remove Image",
@@ -946,6 +979,34 @@ mod tests {
                 "Select All",
                 "Deselect All",
                 "Invert Selection",
+            ]
+        );
+
+        let nodes: Vec<_> = ACTIONS
+            .iter()
+            .filter(|entry| entry.menu == "Nodes")
+            .map(|entry| entry.title)
+            .collect();
+        assert_eq!(
+            nodes,
+            ["New Nodes", "Open Nodes…", "Save Nodes", "Run Nodes"]
+        );
+
+        let filter: Vec<_> = ACTIONS
+            .iter()
+            .filter(|entry| entry.menu == "Filter")
+            .map(|entry| entry.title)
+            .collect();
+        assert_eq!(
+            filter,
+            [
+                "Offset Curve",
+                "Extrude",
+                "Roughen",
+                "Slanter",
+                "Round Corners",
+                "Add Extremes",
+                "Remove Overlap",
             ]
         );
 
@@ -1028,6 +1089,26 @@ mod platform {
     /// strings, so the event pump on another thread can read them.
     static IDS: OnceLock<Vec<MenuId>> = OnceLock::new();
 
+    /// Text-editing accelerators stay in Masonry's event path so the focused
+    /// `TextArea` gets first refusal. Installing the same equivalents on the
+    /// native items would make `AppKit` consume them before `winit` sees the key.
+    fn accelerator(entry: &super::Entry) -> Option<Accelerator> {
+        if matches!(
+            entry.action,
+            AppAction::Undo
+                | AppAction::Redo
+                | AppAction::Copy
+                | AppAction::Paste
+                | AppAction::SelectAll
+        ) {
+            None
+        } else {
+            entry
+                .accelerator
+                .and_then(|text| text.parse::<Accelerator>().ok())
+        }
+    }
+
     /// Builds the menu bar and attaches it to the application.
     ///
     /// Must run on the main thread, which is where the view function runs.
@@ -1086,9 +1167,7 @@ mod platform {
                             let _ = nested.append(&muda::PredefinedMenuItem::separator());
                         }
                         first = false;
-                        let accelerator = entry
-                            .accelerator
-                            .and_then(|text| text.parse::<Accelerator>().ok());
+                        let accelerator = accelerator(entry);
                         let item = CheckMenuItem::new(
                             entry.title,
                             entry.enabled(app),
@@ -1106,9 +1185,7 @@ mod platform {
                 if entry.separator_before() {
                     let _ = submenu.append(&muda::PredefinedMenuItem::separator());
                 }
-                let accelerator = entry
-                    .accelerator
-                    .and_then(|text| text.parse::<Accelerator>().ok());
+                let accelerator = accelerator(entry);
                 let item = if let Some(checked) = entry.checked(app) {
                     MenuItemKind::Check(CheckMenuItem::new(
                         entry.title,
@@ -1159,6 +1236,31 @@ mod platform {
             }
         }
         None
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn focused_editing_shortcuts_stay_out_of_the_native_accelerator_scope() {
+            let entry = |action| {
+                ACTIONS
+                    .iter()
+                    .find(|entry| entry.action == action)
+                    .expect("the action has a menu row")
+            };
+            for action in [
+                AppAction::Undo,
+                AppAction::Redo,
+                AppAction::Copy,
+                AppAction::Paste,
+                AppAction::SelectAll,
+            ] {
+                assert!(accelerator(entry(action)).is_none());
+            }
+            assert!(accelerator(entry(AppAction::Save)).is_some());
+        }
     }
 }
 
