@@ -64,6 +64,8 @@ or otherwise mutates it.
 | `a07-chat-light.png` | Light | Local Chat | same state |
 | `e08-features-check-gray.png` | Gray | Features inspector | read-only Virtua feature text; honest Generate and Check actions |
 | `e08-features-check-light.png` | Light | Features inspector | same state |
+| `e08-features-edit-gray.png` | Gray | editable Features inspector | Virtua feature draft with Generate, Apply, Revert and Check |
+| `e08-features-edit-light.png` | Light | editable Features inspector | same state |
 
 Build first:
 
@@ -164,10 +166,17 @@ target/debug/runebender-xilem \
 
 Replace `gray` with `light` for the paired capture. Both were individually
 inspected: the feature source stays inside its portal and the Generate and Check
-actions remain visible. The renamed Check action accurately reflects that this
-frontend does not yet edit multiline feature text. Their SHA-256 hashes are
+actions remain visible. These pre-editor captures record the intermediate state
+before the later editable E08 files. Their SHA-256 hashes are
 `a4f8234bcdd43a3bd077faafee93ce3fc490356607c7ebb1d7dc8766d5bde58b` and
 `690abff7180d1b22969b1352aded31d3b1afa0943da6f8b62e8f10111a66d158`.
+
+The later E08 editable captures use the same command with
+`e08-features-edit-<theme>.png`. Both were individually inspected: the feature
+text is legible and contained in Gray and Light, while Generate, Apply, Revert,
+and Check remain visible below the editor. Their SHA-256 hashes are
+`afb0aa39e8efe3abbb2a8caeb66727e70b5bfcae0f87023487d0bd9a0b5c3b9f` and
+`ef3b1b4f4a8c0c8bf6d2cdea0a2bac73824a48eb04426993929e0a36442ab7f0`.
 
 The real integration run uses `RUNEBENDER_AI_DEVICE=cpu` semantics on a copied
 designspace, not this read-only screenshot command. It selects R and S, reports

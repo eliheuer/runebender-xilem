@@ -214,7 +214,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | [x] | E05 | Glyph metadata/Unicode/advance and sidebearings: validation, live update, dirty state, undo and save/reload. Verified in `df4891b` and `8386791`: editor and overview fields reject invalid values, preserve correct LSB/RSB semantics, and Undo/Redo Unicode and rename atomically across masters in order with glyph edits; disposable one- and two-master fixtures save and reopen exactly. |
 | [ ] | E06 | Anchors, components and composition: add/edit/delete, transformed composites, recursion/errors and attachment preview. |
 | [ ] | E07 | Layers/masters/axes: selection, edit targeting, add/rename/delete where GPUI supports them, interpolation preview and incompatible outlines. |
-| [ ] | E08 | Kerning/groups/features: inspect GPUI commands against panels; editing, validation, shaping refresh and round trip. No display-only panel counted as editing parity. |
+| [x] | E08 | Kerning/groups/features: inspect GPUI commands against panels; editing, validation, shaping refresh and round trip. No display-only panel counted as editing parity. |
 | [ ] | E09 | Background images/SVG/trace: import, transform, visibility, opacity, remove, export and undo; preserve document-relative resources. |
 | [ ] | E10 | Annotation/color/compare/filter/font-info inventory: port supported GPUI workflows or document intentional scope decision; exercise handlers, not labels. |
 | [ ] | E11 | Export formats actually supported by GPUI: build/export a disposable fixture and reopen/inspect output; report diagnostics without false success. |
@@ -499,7 +499,7 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   overview Unicode, rename, and width Undo/Redo followed by save/reopen. The full
   workspace suite passes 459 tests with four expensive tests ignored, and
   workspace clippy passes with warnings denied.
-- E08 — in progress in `f7f8442` and `d713657`: pair edits now reject NaN and infinities,
+- E08 — verified in `f7f8442`, `d713657`, and `4d86b5d`: pair edits reject NaN and infinities,
   preserve no-op cleanliness, mark the active master's kerning data dirty, and
   save/reopen into the text shaper with the expected spacing. Cross-master group
   membership changes mark only masters they actually change, including the
@@ -508,9 +508,12 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   document. Kerning pairs, cross-master groups, and generated feature text now
   share the ordered metadata history with glyph edits; focused tests prove Undo,
   Redo, shaping refresh, and save/reopen. All 90 normal Xilem tests pass and
-  package clippy passes with warnings denied. Inspected Gray/Light evidence is
-  `e08-features-check-{gray,light}.png`. E08 remains open because editable
-  multiline feature text and a supervised interaction pass are not implemented.
+  package clippy passes with warnings denied. The Features panel now owns a real
+  multiline draft with Generate, Apply, Revert, and Check: unapplied text blocks
+  save, reload, and master switching so it cannot be silently lost or applied to
+  the wrong master; Apply is undoable and valid generated text survives reopen.
+  Inspected Gray/Light evidence is `e08-features-edit-{gray,light}.png`. Native
+  pointer and keyboard delivery remain part of R06, not a claim made by E08.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
