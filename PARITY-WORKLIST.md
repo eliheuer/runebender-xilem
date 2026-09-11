@@ -237,7 +237,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | [ ] | A01 | Compare installed `font-ml tasks --json` registry with UI task list and node types; expose missing-binary/model errors clearly without downloads. |
 | [x] | A02 | Run/cancel/progress/failure lifecycle with fake or tiny fixture subprocess; UI stays responsive and processes terminate. Verified with deterministic worker tests in `a7630e5`; native pointer verification remains in R04. |
 | [x] | A03 | Proposal review/install/discard: audit current immediate install and Undo install behavior; preserve explicit user-controlled install semantics and original layer. Verified in `1d96364` and `dd0159a`; native pointer verification remains part of R04. |
-| [ ] | A04 | Stale result safety: document/master/glyph/revision changes, close and reload cannot apply output to another target. Test both single task and node core.install path. |
+| [x] | A04 | Stale result safety: document/master/glyph/revision changes, close and reload cannot apply output to another target. Verified in `4dd2518` for direct tasks and node `core.install`, including edited targets, editor glyph switches, replacement documents, and changed all-glyph inventories. |
 | [ ] | A05 | Graph new/open/save/run, port type validation, parameter edits, graph tabs and failure location; round trip bolden and train-adapter fixtures without expensive training. |
 | [ ] | A06 | Live automation interface and headless Core: same operations/undo semantics, scoped authorization, conflict errors and discoverability; no disk writer bypass over live font root. |
 | [ ] | A07 | Chat panel parity: currently unconnected. Trace GPUI behavior and implement its local workflow or clearly record dependency; never claim the panel is functional. |
@@ -381,9 +381,12 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   40/40 points with advance delta +18, left the original foreground untouched,
   installed explicitly, and undid to byte-equivalent glyph data. Individually
   inspected Gray/Light captures are `r04-ai-compare-{gray,light}.png`.
-- R04 — in progress through `1d96364`, `dd0159a`, and `a7630e5`: installed task discovery,
+- R04 — in progress through `1d96364`, `dd0159a`, `a7630e5`, and `4dd2518`:
+  installed task discovery,
   a bounded real model run, pending proposal, comparison, explicit install and
-  Undo are verified. Stale document switching is covered by normal tests. A
+  Undo are verified. Direct and node jobs now capture the document, master,
+  editor glyph, and canonical target revisions; completed work is rejected after
+  reload, target edits or switches, and all-glyph inventory changes. A
   deterministic subprocess test observes progress, kills the worker, waits for
   termination, and proves no proposal layer remains; another preserves every
   stderr diagnostic from a failing worker. Native progress/Cancel and failure

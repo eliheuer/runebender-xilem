@@ -118,6 +118,13 @@ multi-line failure diagnostics. The native Cancel step above remains in the
 trial because background correctness does not prove its pointer interaction or
 visible timing.
 
+Commit `4dd2518` captures the document, master, editor glyph, and canonical
+foreground revisions when direct and node jobs start. Completion refuses to
+adopt a proposal or reload an installed node result after any target changed;
+normal tests cover reload, glyph switching, edited target glyphs, and changed
+all-glyph inventories. This safety check does not replace the native interaction
+steps above.
+
 Validation through `1de39f6`:
 
 ```sh
