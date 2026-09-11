@@ -574,15 +574,6 @@ impl FontModel {
         self.project.masters.get(index).map(|m| &m.font)
     }
 
-    /// Runs `f` over every master's font, for a write that has to land
-    /// on all of them (groups, kerning).
-    pub(crate) fn for_each_master(&mut self, mut f: impl FnMut(&mut norad::Font)) {
-        for master in &mut self.project.masters {
-            f(&mut master.font);
-            master.dirty = true;
-        }
-    }
-
     /// Short display names for the masters: the common family prefix is
     /// dropped, so "Bricolage Grotesque 96pt `ExtraBold`" reads as
     /// "96pt `ExtraBold`" in a narrow inspector.
@@ -731,10 +722,18 @@ impl FontModel {
     /// writes all of them rather than only the active one.
     pub(crate) fn set_kern_group(&mut self, glyph: &str, first_side: bool, group: &str) -> bool {
         let mut changed = false;
-        self.for_each_master(|font| {
-            changed |=
-                runebender_core::document::font_ops::set_kern_group(font, glyph, first_side, group);
-        });
+        for master in &mut self.project.masters {
+            if runebender_core::document::font_ops::set_kern_group(
+                &mut master.font,
+                glyph,
+                first_side,
+                group,
+            ) {
+                master.dirty = true;
+                master.kerning_dirty = true;
+                changed = true;
+            }
+        }
         changed
     }
 

@@ -558,19 +558,24 @@ impl Workspace {
         names
     }
 
-    /// Drop one kerning pair, on every master.
+    /// Drop one kerning pair from the active master.
     pub(crate) fn delete_kern_pair(&mut self, first: &str, second: &str) {
-        self.font.for_each_master(|font| {
-            let mut emptied = false;
-            if let Some(seconds) = font.kerning.get_mut(first) {
-                seconds.retain(|name, _| name.as_str() != second);
-                emptied = seconds.is_empty();
-            }
-            if emptied {
-                font.kerning.retain(|name, _| name.as_str() != first);
-            }
-        });
+        let master = self.font.master_mut();
+        let Some(seconds) = master.font.kerning.get_mut(first) else {
+            return;
+        };
+        let before = seconds.len();
+        seconds.retain(|name, _| name.as_str() != second);
+        if seconds.len() == before {
+            return;
+        }
+        if seconds.is_empty() {
+            master.font.kerning.retain(|name, _| name.as_str() != first);
+        }
+        master.dirty = true;
+        master.kerning_dirty = true;
         self.modified = true;
+        self.note = format!("Removed {first} · {second}");
     }
 
     /// Set the pair in the Kerning section's editor row, on the
@@ -582,12 +587,28 @@ impl Workspace {
             self.note = "kerning value is not a number".into();
             return;
         };
+        if !value.is_finite() {
+            self.note = "kerning value must be finite".into();
+            return;
+        }
         let (Ok(f), Ok(s)) = (norad::Name::new(&first), norad::Name::new(&second)) else {
             self.note = "a kerning pair needs two names".into();
             return;
         };
-        let font = self.font.font_mut();
-        font.kerning.entry(f).or_default().insert(s, value);
+        let master = self.font.master_mut();
+        if master
+            .font
+            .kerning
+            .get(&f)
+            .and_then(|seconds| seconds.get(&s))
+            == Some(&value)
+        {
+            self.note = format!("{first} · {second} already equals {value}");
+            return;
+        }
+        master.font.kerning.entry(f).or_default().insert(s, value);
+        master.dirty = true;
+        master.kerning_dirty = true;
         self.modified = true;
         self.note = format!("{first} \u{00b7} {second} = {value}");
     }
@@ -608,8 +629,9 @@ impl Workspace {
             return;
         };
         let mut added = 0_usize;
-        self.font.for_each_master(|font| {
-            let members = font.groups.entry(group_name.clone()).or_default();
+        for master in &mut self.font.project.masters {
+            let members = master.font.groups.entry(group_name.clone()).or_default();
+            let before = members.len();
             for name in &names {
                 if let Ok(member) = norad::Name::new(name)
                     && !members.contains(&member)
@@ -618,7 +640,15 @@ impl Workspace {
                     added += 1;
                 }
             }
-        });
+            if members.len() != before {
+                master.dirty = true;
+                master.kerning_dirty = true;
+            }
+        }
+        if added == 0 {
+            self.note = format!("@{group}: selection already present");
+            return;
+        }
         self.modified = true;
         self.note = format!("@{group}: {added} membership(s) added");
     }
@@ -626,17 +656,30 @@ impl Workspace {
     /// Drop one glyph from a kerning group, on every master. An
     /// emptied group is removed.
     pub(crate) fn remove_from_group(&mut self, full_group: &str, member: &str) {
-        self.font.for_each_master(|font| {
+        let mut removed = 0_usize;
+        for master in &mut self.font.project.masters {
             let mut emptied = false;
-            if let Some(members) = font.groups.get_mut(full_group) {
+            let mut changed = false;
+            if let Some(members) = master.font.groups.get_mut(full_group) {
+                let before = members.len();
                 members.retain(|m| m.as_str() != member);
+                changed = members.len() != before;
                 emptied = members.is_empty();
             }
             if emptied {
-                font.groups.retain(|k, _| k.as_str() != full_group);
+                master.font.groups.retain(|k, _| k.as_str() != full_group);
             }
-        });
+            if changed {
+                removed += 1;
+                master.dirty = true;
+                master.kerning_dirty = true;
+            }
+        }
+        if removed == 0 {
+            return;
+        }
         self.modified = true;
+        self.note = format!("Removed {member} from {removed} group membership(s)");
     }
 
     /// A new left-side group from the Groups field, holding the grid
@@ -667,17 +710,63 @@ impl Workspace {
         self.features_status = Some("Generated mark and mkmk from anchors".into());
     }
 
-    /// The feature file as it stands is what shaping reads; here that
-    /// means noting it, since the text is not edited in place yet.
-    pub(crate) fn apply_features(&mut self) {
-        self.features_status = Some("Applied".into());
-        self.modified = true;
+    /// Compile-check the feature file that shaping currently reads.
+    ///
+    /// Feature text is still read-only in this frontend, so this must not
+    /// claim to apply a change or dirty the document.
+    pub(crate) fn check_features(&mut self) {
+        use runebender_core::text::shape::{ShapingFont, ShapingGlyph, ShapingSource};
+
+        let master = self.font.master();
+        let glyphs = std::iter::once(ShapingGlyph {
+            name: ".notdef".into(),
+            advance: 0.0,
+            unicodes: Vec::new(),
+        })
+        .chain(
+            master
+                .glyphs
+                .iter()
+                .filter(|glyph| glyph.name.as_ref() != ".notdef")
+                .map(|glyph| ShapingGlyph {
+                    name: glyph.name.to_string(),
+                    advance: glyph.advance,
+                    unicodes: glyph.codepoint.map(|c| c as u32).into_iter().collect(),
+                }),
+        )
+        .collect();
+        let verdict = ShapingFont::build(&ShapingSource {
+            units_per_em: master.units_per_em,
+            glyphs,
+            features: master.font.features.clone(),
+        });
+        self.features_status = Some(match verdict {
+            Ok(_) => "Compiled clean · shaping is current".into(),
+            Err(error) => {
+                let first = error
+                    .lines()
+                    .find(|line| !line.trim().is_empty())
+                    .unwrap_or("feature compile error");
+                format!("Does not compile: {first}")
+            }
+        });
     }
 }
 
 #[cfg(test)]
 mod size_tests {
     use super::*;
+
+    fn disposable_font(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "runebender-{name}-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ))
+    }
 
     #[test]
     fn overview_mark_batch_updates_cells_and_undoes_once() {
@@ -760,6 +849,86 @@ mod size_tests {
         app.undo_open_glyph(false);
         let points = &app.session.glyph.contours[0].points;
         assert_eq!(points[2].y - points[0].y, 200.0);
+        std::fs::remove_dir_all(path).expect("remove disposable font");
+    }
+
+    #[test]
+    fn kerning_and_groups_validate_refresh_shaping_and_roundtrip() {
+        use crate::edit::text_tool::{TextInputs, TextState};
+
+        let path = disposable_font("kerning-roundtrip");
+        let mut font = norad::Font::new();
+        for (name, codepoint) in [("A", 'A'), ("V", 'V')] {
+            let mut glyph = norad::Glyph::new(name);
+            glyph.width = 500.0;
+            glyph.codepoints.insert(codepoint);
+            font.default_layer_mut().insert_glyph(glyph);
+        }
+        font.save(&path).expect("save disposable test font");
+        let mut app = Workspace::open(&path).expect("open test font");
+        let a = app.font.index_of("A").expect("A");
+        app.selected = Some(a);
+
+        app.open_glyph(a);
+        app.set_kern_group(true, "A".into());
+        assert_eq!(app.font.kern_group("A", true), "public.kern1.A");
+        assert!(app.font.master().dirty);
+        assert!(app.font.master().kerning_dirty);
+
+        app.kern_first_buf = "public.kern1.A".into();
+        app.kern_second_buf = "V".into();
+        app.kern_value_buf = "-80".into();
+        app.set_kern_pair_from_bufs();
+        let state = TextState::new(&TextInputs::new(&app.font).with_text("AV"));
+        assert_eq!(state.buffer.layout(state.line_height).items[1].x, 420.0);
+
+        app.kern_value_buf = "NaN".into();
+        app.set_kern_pair_from_bufs();
+        assert_eq!(app.note, "kerning value must be finite");
+        assert_eq!(app.font.font().kerning["public.kern1.A"]["V"], -80.0);
+
+        assert!(app.save());
+        assert!(!app.modified);
+        app.kern_value_buf = "-80".into();
+        app.set_kern_pair_from_bufs();
+        assert!(!app.modified, "setting the existing value is a no-op");
+        app.remove_from_group("public.kern1.A", "missing");
+        assert!(!app.modified, "removing a missing member is a no-op");
+
+        let mut reopened = Workspace::open(&path).expect("reopen saved test font");
+        assert_eq!(reopened.font.kern_group("A", true), "public.kern1.A");
+        assert_eq!(reopened.font.font().kerning["public.kern1.A"]["V"], -80.0);
+        let state = TextState::new(&TextInputs::new(&reopened.font).with_text("AV"));
+        assert_eq!(state.buffer.layout(state.line_height).items[1].x, 420.0);
+
+        reopened.delete_kern_pair("public.kern1.A", "V");
+        assert!(reopened.modified);
+        assert!(reopened.font.master().kerning_dirty);
+        assert!(reopened.save());
+        let reopened = Workspace::open(&path).expect("reopen after pair deletion");
+        assert!(reopened.font.font().kerning.is_empty());
+        std::fs::remove_dir_all(path).expect("remove disposable font");
+    }
+
+    #[test]
+    fn feature_check_reports_errors_without_dirtying_the_font() {
+        let path = disposable_font("feature-check");
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("A"));
+        font.features = "feature liga { nonsense ; } liga;".into();
+        font.save(&path).expect("save disposable test font");
+        let mut app = Workspace::open(&path).expect("open test font");
+
+        app.check_features();
+
+        assert!(
+            app.features_status
+                .as_deref()
+                .is_some_and(|status| status.starts_with("Does not compile:"))
+        );
+        assert!(!app.modified);
+        assert!(!app.font.master().dirty);
         std::fs::remove_dir_all(path).expect("remove disposable font");
     }
 }

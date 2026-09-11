@@ -449,8 +449,8 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
 }
 
 /// Features: the font's feature file, with Generate (the mark and
-/// mkmk lookups core derives from anchors) and Apply. Read-only text
-/// until Xilem has a text area.
+/// mkmk lookups core derives from anchors) and a compile check. Text
+/// remains read-only until Xilem has an editable multiline text area.
 pub(crate) fn features_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let text = if app.font.font().features.trim().is_empty() {
@@ -478,8 +478,8 @@ pub(crate) fn features_section(app: &Workspace) -> impl WidgetView<Workspace> + 
                         chip(pal, "Generate".into(), |app: &mut Workspace| {
                             app.generate_features();
                         }),
-                        chip(pal, "Apply".into(), |app: &mut Workspace| {
-                            app.apply_features();
+                        chip(pal, "Check".into(), |app: &mut Workspace| {
+                            app.check_features();
                         }),
                         app.features_status.clone().map(|s| {
                             label(s)
