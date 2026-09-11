@@ -1,3 +1,5 @@
+> Current execution checklist: [PARITY-WORKLIST.md](PARITY-WORKLIST.md), reviewed September 11, 2026. This document retains earlier scope and evidence.
+
 <!-- Copyright 2026 the Runebender Authors -->
 <!-- SPDX-License-Identifier: Apache-2.0 OR MIT -->
 

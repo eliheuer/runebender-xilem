@@ -1,3 +1,5 @@
+> Current execution checklist: [PARITY-WORKLIST.md](PARITY-WORKLIST.md), reviewed September 11, 2026. This document retains earlier scope and evidence.
+
 # Menu parity
 
 Audited 2026-09-10 against `runebender-gpui`'s `src/actions.rs`,
