@@ -50,7 +50,9 @@ The tested local runtime is `/Users/eli/.cargo/bin/font-ml`, SHA-256
 `7d7c15a6e36d6cb6175e95971de3665eb657c6ed150026cbac33faf5a35ab`.
 It does not expose a version flag. `font-ml tasks --json` reported `bolden` and
 `train` implemented; complete, generate, spacing, kerning, and field were not
-implemented.
+implemented. Commit `9221fc8` verifies that the Local AI task rows and generated
+node types preserve this installed declaration and makes task-registry launch,
+exit, schema, and JSON failures visible in the rail.
 
 Choose `virtua-12m-bolden` in the Local AI rail, open `R`, and run **Bolden: this
 glyph**. Do not run every glyph or training during this trial. When the run

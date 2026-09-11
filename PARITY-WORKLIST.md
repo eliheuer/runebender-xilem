@@ -234,7 +234,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 
 | Done | ID | Work and acceptance |
 |---|---|---|
-| [ ] | A01 | Compare installed `font-ml tasks --json` registry with UI task list and node types; expose missing-binary/model errors clearly without downloads. |
+| [x] | A01 | Compare installed `font-ml tasks --json` registry with UI task list and node types; expose missing-binary/model errors clearly without downloads. Verified in `9221fc8`: the installed registry reports `bolden` and `train` implemented and `complete`, `generate`, `spacing`, `kerning`, and `field` unavailable; panel rows and node types share that declaration, and runtime/exit/schema/JSON failures are visible. |
 | [x] | A02 | Run/cancel/progress/failure lifecycle with fake or tiny fixture subprocess; UI stays responsive and processes terminate. Verified with deterministic worker tests in `a7630e5`; native pointer verification remains in R04. |
 | [x] | A03 | Proposal review/install/discard: audit current immediate install and Undo install behavior; preserve explicit user-controlled install semantics and original layer. Verified in `1d96364` and `dd0159a`; native pointer verification remains part of R04. |
 | [x] | A04 | Stale result safety: document/master/glyph/revision changes, close and reload cannot apply output to another target. Verified in `4dd2518` for direct tasks and node `core.install`, including edited targets, editor glyph switches, replacement documents, and changed all-glyph inventories. |
@@ -396,6 +396,13 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   and joins the child promptly, the job clears, and no proposal or foreground
   mutation survives. A separate failing worker proves multi-line diagnostics
   are not reduced to the last line. Both focused tests and workspace clippy pass.
+- A01 — verified in `9221fc8` against the installed `font-ml tasks --json`:
+  `bolden` and `train` are implemented; `complete`, `generate`, `spacing`,
+  `kerning`, and `field` are unavailable. The Local AI rows and generated node
+  types retain the same names, titles, ports, and availability. A missing binary
+  keeps the install/path instruction; command failure, nonzero exit, malformed
+  JSON, and a missing tasks array now remain visible instead of producing an
+  unexplained empty rail. No model was downloaded or changed.
 - R05 / A08 — verified in `ce75e3b`: the checked-in five-node
   `bolden-review.nodes.json` has no Install node. Node runs now give Core the
   designspace source so sibling masters resolve, target the open or explicitly
