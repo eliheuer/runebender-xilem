@@ -624,13 +624,17 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   non-empty `period`; its scaled outline remains padded and visibly distinct
   from the blank `space` control. V09 remains open for native inspector
   scrolling and the outstanding Shaping placement comparison.
-- E07 — advanced in `8000b3b`: master locations stored normalized by Core are
+- E07 — advanced in `8000b3b` and `202e09a`: master locations stored normalized by Core are
   now converted back to user coordinates for axis controls, and slider values
   are normalized exactly once for active-master detection and interpolation.
   Unit coverage checks both the real 400/700 fixture boundary and a mapped axis;
   the V09 Gray/Light captures independently show Regular as `wght 400`. E07
-  remains open because axis/master add, rename, and delete are not implemented,
-  and incompatible-outline behavior still needs a dedicated visual proof.
+  A tested off-master status now distinguishes a valid `interpolated` instance
+  from the active-outline fallback and includes Core's master-by-master contour
+  and point detail when the glyph is incompatible. Inspected Gray/Light `R`
+  captures prove the valid `wght 500` path. E07 remains open because
+  axis/master add, rename, and delete are not implemented, and the incompatible
+  warning still needs a dedicated visual proof.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
