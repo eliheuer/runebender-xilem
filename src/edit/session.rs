@@ -1474,13 +1474,16 @@ impl Workspace {
     }
 
     pub(crate) fn set_master(&mut self, index: usize) {
-        if index == self.font.active() {
+        if index == self.font.active() || index >= self.font.master_count() {
             return;
         }
         if self.features_edited {
             self.note = "Apply or Revert feature edits before switching masters".into();
             return;
         }
+        self.park();
+        let active_name =
+            matches!(self.mode, Mode::Editor(_)).then(|| self.session.glyph_name.clone());
         self.font.set_active(index);
         self.features_buf = self.font.font().features.clone();
         self.features_status = None;
@@ -1491,21 +1494,46 @@ impl Workspace {
         }
         self.axis_values = self.font.master_axis_values(index);
         self.cells = Arc::new(cells_of(&self.font, &self.palette));
-        // Reopen the current glyph in the new master, keeping the viewport.
-        if let Mode::Editor(i) = self.mode {
-            if let Some(entry) = self.font.glyphs.get(i) {
-                if let Some(sess) = Session::new(self.font.font(), &entry.name) {
-                    self.session = Arc::new(sess);
-                }
-            } else if let Some(idx) = self
-                .selected
-                .and_then(|_| self.font.index_of(&self.session.glyph_name))
-            {
-                self.mode = Mode::Editor(idx);
-                if let Some(sess) = Session::new(self.font.font(), &self.session.glyph_name.clone())
-                {
-                    self.session = Arc::new(sess);
-                }
+        // A parked session contains one master's glyph data. Rebuild every tab
+        // by glyph name so activating another tab cannot write the old master
+        // into the new one. Viewports and text contexts remain tab-local.
+        let font = self.font.font();
+        self.tabs.retain_mut(|tab| {
+            let name = tab.session.glyph_name.clone();
+            let Some(mut session) = Session::new(font, &name) else {
+                return false;
+            };
+            session.viewport = tab.session.viewport.clone();
+            session.fitted = tab.session.fitted;
+            tab.session = Arc::new(session);
+            true
+        });
+        if let Some(name) = active_name {
+            let tab = self
+                .tabs
+                .iter()
+                .position(|tab| tab.session.glyph_name == name);
+            let glyph = self.font.index_of(&name);
+            if let (Some(tab), Some(glyph)) = (tab, glyph) {
+                self.active_tab = tab;
+                self.session = self.tabs[tab].session.clone();
+                self.selected = Some(glyph);
+                self.mode = Mode::Editor(glyph);
+                self.name_buf = name;
+                self.unicode_buf = self
+                    .session
+                    .glyph
+                    .codepoints
+                    .iter()
+                    .next()
+                    .map(|codepoint| format!("{:04X}", codepoint as u32))
+                    .unwrap_or_default();
+                self.refresh_metric_bufs();
+                self.refresh_coord_bufs();
+                self.selected_points = 0;
+            } else {
+                self.mode = Mode::Overview;
+                self.selected = None;
             }
         }
     }

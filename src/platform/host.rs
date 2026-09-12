@@ -1201,6 +1201,75 @@ mod tests {
     }
 
     #[test]
+    fn master_switch_rebuilds_all_tabs_and_keeps_undo_on_its_origin() {
+        let (dir, designspace) = two_master_designspace("master-tab-undo");
+        for (file, widths) in [
+            ("Regular.ufo", [500.0, 600.0]),
+            ("Bold.ufo", [700.0, 800.0]),
+        ] {
+            let path = dir.join(file);
+            let mut font = norad::Font::load(&path).expect("the fixture master loads");
+            for (name, width) in ["A", "B"].into_iter().zip(widths) {
+                let mut glyph = norad::Glyph::new(name);
+                glyph.width = width;
+                font.default_layer_mut().insert_glyph(glyph);
+            }
+            font.save(&path)
+                .expect("the populated fixture master saves");
+        }
+
+        let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
+        let a = workspace.font.index_of("A").unwrap();
+        workspace.open_glyph(a);
+        workspace.set_advance_from_buf("510".into());
+        workspace.new_tab();
+        let b = workspace.font.index_of("B").unwrap();
+        workspace.open_glyph(b);
+        workspace.set_advance_from_buf("610".into());
+        let a_tab = workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.session.glyph_name == "A")
+            .unwrap();
+        workspace.activate_tab(a_tab);
+        assert_eq!(workspace.session.advance(), 510.0);
+
+        workspace.set_master(1);
+        assert_eq!(workspace.session.glyph_name, "A");
+        assert_eq!(workspace.session.advance(), 700.0);
+        let b_tab = workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.session.glyph_name == "B")
+            .unwrap();
+        workspace.activate_tab(b_tab);
+        assert_eq!(workspace.session.advance(), 800.0);
+        workspace.set_advance_from_buf("820".into());
+        workspace.undo_active_edit(false);
+        assert_eq!(workspace.session.advance(), 800.0);
+
+        workspace.set_master(0);
+        assert_eq!(workspace.session.glyph_name, "B");
+        assert_eq!(workspace.session.advance(), 610.0);
+        workspace.undo_active_edit(false);
+        assert_eq!(workspace.session.advance(), 600.0);
+        workspace.set_master(1);
+        assert_eq!(workspace.session.advance(), 800.0);
+
+        workspace.set_master(0);
+        let a_tab = workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.session.glyph_name == "A")
+            .unwrap();
+        workspace.activate_tab(a_tab);
+        assert_eq!(workspace.session.advance(), 510.0);
+        workspace.undo_active_edit(false);
+        assert_eq!(workspace.session.advance(), 500.0);
+        std::fs::remove_dir_all(dir).expect("the designspace fixture is removed");
+    }
+
+    #[test]
     fn save_reopen_keeps_a_new_glyph_in_every_master() {
         let (dir, designspace) = two_master_designspace("designspace-save");
         let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
