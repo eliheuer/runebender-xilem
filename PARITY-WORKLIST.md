@@ -204,7 +204,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | Done | ID | Work and acceptance |
 |---|---|---|
 | [ ] | D01 | Open/save/save-as/reopen designspace and UFO round trip preserves layers, masters, lib data and relative paths; failure surfaces and dirty state are accurate. |
-| [ ] | D02 | External reload and unsaved edits: no watcher overwrite, stale cache, duplicate save loop or target change. Verify document/master identity and conflict handling. |
+| [x] | D02 | External reload and unsaved edits: no watcher overwrite, stale cache, duplicate save loop or target change. Verified in `b192d55`: source-tree fingerprints block stale saves, self-save watcher events preserve undo, confirmed Revert accepts disk changes, and Save As refuses existing or duplicate targets. |
 | [x] | D03 | Undo grouping across drag, numeric edit, paste, path operation, master/glyph switch and AI install. Undo targets the originating document and remains reversible. Verified in `9800f3b`, `c711e93`, `bce9bf9`, `8386791`, and `dd0159a`: pointer gestures group once; parked tabs rebuild per master; metadata and AI installs remain ordered and reversible. |
 | [ ] | D04 | Tabs/session/selection: active glyph, master, title, preview and status agree; close/reopen behavior matches. Investigate persistence/journal differences explicitly. |
 | [ ] | E01 | Selection: point/path/marquee/additive, hit tolerance across zoom, keyboard navigation and cancel restore. Compare GPUI interactions with disposable glyphs. |
@@ -552,6 +552,20 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   metadata, proposal-install, and replacement-document tests, D03 is complete.
   The latest full package run passes all 102 normal tests; clippy passes with
   warnings denied.
+- D02 — verified in `b192d55`: each open document retains a content fingerprint
+  over its designspace and master source trees. A watcher event reloads only a
+  genuine disk change; an event caused by the editor's own save is a no-op, so it
+  cannot replace the document or erase its undo history. Unsaved work wins when
+  disk content changes, and Save itself refuses to overwrite that external edit.
+  The File menu now exposes a confirmed Revert to Saved path which deliberately
+  accepts disk state, while Save As refuses any existing destination or duplicate
+  generated master target before retargeting the document. Disposable regressions
+  prove external width 712 survives a conflicting in-memory width 604, explicit
+  Revert adopts 712, and an editor save at width 620 retains an undo back to 500
+  until an explicit Revert. The full package run passes all 103 normal tests with
+  four expensive real-font/model tests ignored; package clippy and
+  `git diff --check` pass. Native watcher timing remains part of the supervised
+  trial, but D02's document-identity and conflict behavior is complete.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
