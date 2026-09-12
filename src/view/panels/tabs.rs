@@ -72,8 +72,7 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     )
 }
 
-/// Contour rows select real points; components remain informational until
-/// the editor supports component selection and transforms.
+/// Contour and component selection for the editor canvas.
 fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let contours = app
@@ -107,13 +106,67 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         .glyph
         .components
         .iter()
-        .map(|component| recipes::kv(pal, component.base.to_string(), "component".into()).boxed())
+        .enumerate()
+        .map(|(index, component)| {
+            recipes::toggle(
+                pal,
+                format!("{} · component", component.base),
+                app.session.selected_component == Some(index),
+                move |app: &mut Workspace| {
+                    Arc::make_mut(&mut app.session).select_component(index);
+                    app.selected_points = 0;
+                    app.refresh_coord_bufs();
+                },
+            )
+            .boxed()
+        })
         .collect::<Vec<_>>();
     xcolumn(
         Region::Panel,
         (
             contours,
             components,
+            xrow(
+                Region::Inline,
+                (
+                    input_typography::input_typography(
+                        text_input(
+                            app.component_base_buf.clone(),
+                            |app: &mut Workspace, value| {
+                                app.component_base_buf = value;
+                            },
+                        )
+                        .placeholder("Base glyph")
+                        .text_color(pal.text)
+                        .placeholder_color(pal.text_muted)
+                        .background_color(pal.field())
+                        .border_color(pal.field_outline)
+                        .border_width(Stroke::Hairline.length())
+                        .corner_radius(Radius::None.length())
+                        .dims(Dimensions::new(
+                            Dim::Stretch,
+                            Dim::from(ControlSize::Control),
+                        )),
+                    )
+                    .flex(1.0),
+                    recipes::action(pal, "Add".into(), |app: &mut Workspace| {
+                        app.command_add_component();
+                    }),
+                ),
+            ),
+            app.session.selected_component.map(|_| {
+                xrow(
+                    Region::Inline,
+                    (
+                        recipes::action(pal, "Duplicate".into(), |app: &mut Workspace| {
+                            app.apply_op(|session| session.duplicate());
+                        }),
+                        recipes::action(pal, "Delete".into(), |app: &mut Workspace| {
+                            app.apply_op(|session| session.delete_selected());
+                        }),
+                    ),
+                )
+            }),
             (app.session.glyph.contours.is_empty() && app.session.glyph.components.is_empty())
                 .then(|| label("No contours or components").color(pal.text_muted)),
         ),

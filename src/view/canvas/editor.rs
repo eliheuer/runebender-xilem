@@ -168,6 +168,10 @@ enum Drag {
     Anchor {
         idx: usize,
     },
+    /// Dragging one top-level component; `last` is in design space.
+    Component {
+        last: Point,
+    },
     /// Dragging the advance (right sidebearing) line.
     AdvanceLine,
     /// Dragging the left sidebearing line; carries the last cursor x (screen).
@@ -803,6 +807,15 @@ impl Widget for EditorWidget {
                         pal.role("component").with_alpha(0.5),
                     )
                     .draw();
+                if let Some(selected) = self.session.selected_component_path() {
+                    painter
+                        .stroke(
+                            &(affine * selected.clone()),
+                            &Stroke::new(2.0),
+                            pal.role("selection"),
+                        )
+                        .draw();
+                }
             }
             let outline = affine * self.session.outline();
             painter
@@ -1293,6 +1306,7 @@ impl Widget for EditorWidget {
                             HIT_RADIUS_PX / self.session.viewport.zoom,
                         ) {
                             self.session.selected_anchor = Some(ai);
+                            self.session.selected_component = None;
                             self.session.selection.clear();
                             self.drag = Drag::Anchor { idx: ai };
                             self.emit(ctx, false);
@@ -1310,13 +1324,23 @@ impl Widget for EditorWidget {
                                     self.session.selection.clear();
                                     self.session.selection.insert(id);
                                 }
+                                self.session.selected_component = None;
                                 self.session.begin_point_drag();
                                 self.drag = Drag::Points { start: at };
                                 self.emit(ctx, false);
                             }
                             None => {
+                                let design = self.session.viewport.screen_to_design(at);
+                                if let Some(index) = self.session.component_at(design) {
+                                    self.session.select_component(index);
+                                    self.drag = Drag::Component { last: design };
+                                    self.emit(ctx, false);
+                                    ctx.set_handled();
+                                    return;
+                                }
                                 if !shift {
                                     self.session.selection.clear();
+                                    self.session.selected_component = None;
                                     self.emit(ctx, false);
                                 }
                                 self.drag = Drag::Marquee {
@@ -1359,6 +1383,14 @@ impl Widget for EditorWidget {
                         let d = self.session.viewport.screen_to_design(at);
                         self.session.move_anchor(idx, d.x.round(), d.y.round());
                         ctx.request_render();
+                    }
+                    Drag::Component { last } => {
+                        let design = self.session.viewport.screen_to_design(at);
+                        let delta = design - *last;
+                        *last = design;
+                        if self.session.drag_component_by(delta.x, delta.y) {
+                            ctx.request_render();
+                        }
                     }
                     Drag::Pen { origin, dragging } => {
                         let origin = *origin;
@@ -1432,6 +1464,11 @@ impl Widget for EditorWidget {
                 }
                 Drag::Anchor { .. } | Drag::AdvanceLine | Drag::LeftLine { .. } => {
                     self.session.end_metric_drag();
+                    self.drag = Drag::None;
+                    self.emit(ctx, true);
+                }
+                Drag::Component { .. } => {
+                    self.session.end_component_drag();
                     self.drag = Drag::None;
                     self.emit(ctx, true);
                 }

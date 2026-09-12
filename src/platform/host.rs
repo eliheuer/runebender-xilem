@@ -207,6 +207,7 @@ impl Workspace {
             clipboard: Vec::new(),
             show_background,
             reference_buf,
+            component_base_buf: String::new(),
             name_buf: first_name,
             unicode_buf: first_uni,
             tabs: first
@@ -287,6 +288,12 @@ impl Workspace {
             Ok("chat") => app.rail = Rail::Chat,
             Ok("shapes") => app.rail = Rail::Shapes,
             _ => {}
+        }
+        if let Some(index) = std::env::var("RUNEBENDER_COMPONENT")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+        {
+            Arc::make_mut(&mut app.session).select_component(index);
         }
         if let Some(dir) = std::env::var_os("RUNEBENDER_MODEL").filter(|d| !d.is_empty()) {
             app.load_model(FsPath::new(&dir));
@@ -1203,6 +1210,67 @@ mod tests {
         reopened.set_master(1);
         assert!(reopened.font.index_of("A").is_some());
         std::fs::remove_dir_all(dir).expect("the designspace fixture is removed");
+    }
+
+    #[test]
+    fn component_add_move_undo_and_save_reopen() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-components-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        let mut base = norad::Glyph::new("base");
+        base.contours.push(norad::Contour::new(
+            [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+                .into_iter()
+                .map(|(x, y)| {
+                    norad::ContourPoint::new(x, y, norad::PointType::Line, false, None, None)
+                })
+                .collect(),
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(base);
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("target"));
+        font.save(&path).expect("the component fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the component fixture opens");
+        let target = workspace.font.index_of("target").unwrap();
+        workspace.open_glyph(target);
+        workspace.component_base_buf = "base".into();
+        workspace.command_add_component();
+        assert_eq!(workspace.session.glyph.components.len(), 1);
+        workspace.apply_op(|session| session.nudge(30.0, 40.0));
+        assert_eq!(
+            workspace.session.glyph.components[0].transform.x_offset,
+            30.0
+        );
+        workspace.undo_active_edit(false);
+        assert_eq!(
+            workspace.session.glyph.components[0].transform.x_offset,
+            0.0
+        );
+        workspace.undo_active_edit(false);
+        assert!(workspace.session.glyph.components.is_empty());
+        workspace.undo_active_edit(true);
+        assert_eq!(workspace.session.glyph.components.len(), 1);
+        workspace.undo_active_edit(true);
+        assert_eq!(
+            workspace.session.glyph.components[0].transform.y_offset,
+            40.0
+        );
+        assert!(workspace.save());
+
+        let reopened = Workspace::open(&path).expect("the edited component fixture reopens");
+        let component = &reopened.font.font().get_glyph("target").unwrap().components[0];
+        assert_eq!(component.base.as_str(), "base");
+        assert_eq!(component.transform.x_offset, 30.0);
+        assert_eq!(component.transform.y_offset, 40.0);
+        std::fs::remove_dir_all(path).expect("the component fixture is removed");
     }
 
     #[test]

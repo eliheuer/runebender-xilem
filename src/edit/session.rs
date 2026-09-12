@@ -68,8 +68,10 @@ pub(crate) struct Session {
     pub glyph: norad::Glyph,
     /// Components, resolved against the font at session creation.
     pub components: BezPath,
+    /// Resolved path for each top-level component, for selection and feedback.
+    component_paths: Vec<BezPath>,
     /// Contours the components resolve to, precomputed for decompose.
-    component_contours: Vec<norad::Contour>,
+    component_contours: Vec<Vec<norad::Contour>>,
     pub metrics: Metrics,
     pub selection: HashSet<PointId>,
     pub viewport: ViewPort,
@@ -87,6 +89,8 @@ pub(crate) struct Session {
     pen: Vec<PenPt>,
     /// The currently selected anchor, if any.
     pub selected_anchor: Option<usize>,
+    /// The selected top-level component, if any.
+    pub selected_component: Option<usize>,
     /// Last flip or rotation, re-applied by Duplicate + Repeat.
     last_transform: Option<kurbo::Affine>,
 }
@@ -119,6 +123,7 @@ impl Session {
             glyph_name: String::new(),
             glyph: norad::Glyph::new(".notdef"),
             components: BezPath::new(),
+            component_paths: Vec::new(),
             component_contours: Vec::new(),
             metrics: Metrics::of(font),
             selection: HashSet::new(),
@@ -130,6 +135,7 @@ impl Session {
             active_contour: None,
             pen: Vec::new(),
             selected_anchor: None,
+            selected_component: None,
             last_transform: None,
         }
     }
@@ -137,11 +143,13 @@ impl Session {
     pub(crate) fn new(font: &norad::Font, name: &str) -> Option<Self> {
         let glyph = font.get_glyph(name)?.clone();
         let components = glyph_paths::components_to_bezpath(&glyph, font);
-        let component_contours = resolve_components(font, &glyph);
+        let component_paths = resolved_component_paths(font, &glyph);
+        let component_contours = resolved_component_contour_sets(font, &glyph);
         Some(Self {
             glyph_name: name.to_string(),
             glyph,
             components,
+            component_paths,
             component_contours,
             metrics: Metrics::of(font),
             selection: HashSet::new(),
@@ -153,6 +161,7 @@ impl Session {
             active_contour: None,
             pen: Vec::new(),
             selected_anchor: None,
+            selected_component: None,
             last_transform: None,
         })
     }
@@ -218,6 +227,103 @@ impl Session {
         Arc::new(self.components.clone())
     }
 
+    pub(crate) fn selected_component_path(&self) -> Option<&BezPath> {
+        self.component_paths.get(self.selected_component?)
+    }
+
+    pub(crate) fn component_at(&self, point: Point) -> Option<usize> {
+        use kurbo::Shape as _;
+        self.component_paths
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, path)| path.contains(point))
+            .map(|(index, _)| index)
+    }
+
+    pub(crate) fn select_component(&mut self, index: usize) -> bool {
+        if index >= self.glyph.components.len() {
+            return false;
+        }
+        self.selection.clear();
+        self.selected_anchor = None;
+        self.selected_component = Some(index);
+        true
+    }
+
+    fn rebuild_combined_components(&mut self) {
+        self.components = self
+            .component_paths
+            .iter()
+            .fold(BezPath::new(), |mut all, path| {
+                all.extend(path.iter());
+                all
+            });
+    }
+
+    fn rebuild_component_caches(&mut self, font: &norad::Font) {
+        self.component_paths = resolved_component_paths(font, &self.glyph);
+        self.component_contours = resolved_component_contour_sets(font, &self.glyph);
+        self.rebuild_combined_components();
+    }
+
+    pub(crate) fn add_component(&mut self, font: &norad::Font, base: &str) -> bool {
+        let mut changed = self.glyph.clone();
+        if !runebender_core::outline::component_ops::add_component(font, &mut changed, base) {
+            return false;
+        }
+        self.record(EditType::Normal);
+        self.glyph = changed;
+        self.selected_component = Some(self.glyph.components.len() - 1);
+        self.selection.clear();
+        self.selected_anchor = None;
+        self.rebuild_component_caches(font);
+        true
+    }
+
+    pub(crate) fn drag_component_by(&mut self, dx: f64, dy: f64) -> bool {
+        if self.selected_component.is_none()
+            || !dx.is_finite()
+            || !dy.is_finite()
+            || (dx == 0.0 && dy == 0.0)
+        {
+            return false;
+        }
+        self.record(EditType::Drag);
+        self.translate_selected_component(dx, dy)
+    }
+
+    fn translate_selected_component(&mut self, dx: f64, dy: f64) -> bool {
+        let Some(index) = self.selected_component else {
+            return false;
+        };
+        let changed = runebender_core::outline::component_ops::translate_component(
+            &mut self.glyph,
+            index,
+            dx,
+            dy,
+        );
+        if changed {
+            if let Some(path) = self.component_paths.get_mut(index) {
+                *path = kurbo::Affine::translate((dx, dy)) * path.clone();
+            }
+            if let Some(contours) = self.component_contours.get_mut(index) {
+                for contour in contours {
+                    for point in &mut contour.points {
+                        point.x += dx;
+                        point.y += dy;
+                    }
+                }
+            }
+            self.rebuild_combined_components();
+        }
+        changed
+    }
+
+    pub(crate) fn end_component_drag(&mut self) {
+        self.record(EditType::DragUp);
+    }
+
     pub(crate) fn outline(&self) -> BezPath {
         glyph_paths::contours_to_bezpath(&self.glyph)
     }
@@ -266,7 +372,11 @@ impl Session {
     /// redo there, keeping the selection where it still fits.
     pub(crate) fn reload_glyph(&mut self, font: &norad::Font, glyph: norad::Glyph) {
         self.components = glyph_paths::components_to_bezpath(&glyph, font);
-        self.component_contours = resolve_components(font, &glyph);
+        self.component_paths = resolved_component_paths(font, &glyph);
+        self.component_contours = resolved_component_contour_sets(font, &glyph);
+        self.selected_component = self
+            .selected_component
+            .filter(|index| *index < glyph.components.len());
         self.glyph = glyph;
         self.pen.clear();
         self.active_contour = None;
@@ -314,6 +424,13 @@ impl Session {
     }
 
     pub(crate) fn nudge(&mut self, dx: f64, dy: f64) -> bool {
+        if self.selected_component.is_some() {
+            if !dx.is_finite() || !dy.is_finite() || (dx == 0.0 && dy == 0.0) {
+                return false;
+            }
+            self.record(EditType::Normal);
+            return self.translate_selected_component(dx, dy);
+        }
         if self.selection.is_empty() {
             return false;
         }
@@ -334,6 +451,16 @@ impl Session {
     }
 
     pub(crate) fn delete_selected(&mut self) -> bool {
+        if let Some(index) = self.selected_component.take() {
+            self.record(EditType::Normal);
+            if runebender_core::outline::component_ops::delete_component(&mut self.glyph, index) {
+                self.component_paths.remove(index);
+                self.component_contours.remove(index);
+                self.rebuild_combined_components();
+                return true;
+            }
+            return false;
+        }
         if self.selection.is_empty() {
             return false;
         }
@@ -623,9 +750,13 @@ impl Session {
             return false;
         }
         self.record(EditType::Normal);
-        self.glyph.contours.append(&mut self.component_contours);
+        for contours in &mut self.component_contours {
+            self.glyph.contours.append(contours);
+        }
         self.glyph.components.clear();
         self.components = BezPath::new();
+        self.component_paths.clear();
+        self.selected_component = None;
         true
     }
 
@@ -770,6 +901,35 @@ impl Session {
     }
 
     pub(crate) fn duplicate(&mut self) -> bool {
+        if let Some(index) = self.selected_component {
+            let Some(path) = self.component_paths.get(index).cloned() else {
+                return false;
+            };
+            self.record(EditType::Normal);
+            let Some(next) = runebender_core::outline::component_ops::duplicate_component(
+                &mut self.glyph,
+                index,
+            ) else {
+                return false;
+            };
+            self.component_paths
+                .push(kurbo::Affine::translate((20.0, 20.0)) * path);
+            let mut contours = self
+                .component_contours
+                .get(index)
+                .cloned()
+                .unwrap_or_default();
+            for contour in &mut contours {
+                for point in &mut contour.points {
+                    point.x += 20.0;
+                    point.y += 20.0;
+                }
+            }
+            self.component_contours.push(contours);
+            self.selected_component = Some(next);
+            self.rebuild_combined_components();
+            return true;
+        }
         self.record(EditType::Normal);
         match glyph_ops::duplicate_selection(&mut self.glyph, &self.selection) {
             Some(next) => {
@@ -950,22 +1110,40 @@ impl Session {
     }
 
     pub(crate) fn select_all(&mut self) {
+        self.selected_component = None;
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }
 }
 
-/// Resolve a glyph's components into concrete contours (for decompose),
-/// computed once at session creation while the font is available.
-fn resolve_components(font: &norad::Font, glyph: &norad::Glyph) -> Vec<norad::Contour> {
-    let mut work = glyph.clone();
-    let before = work.contours.len();
-    while !work.components.is_empty() {
-        if !runebender_core::outline::component_ops::decompose_single_component(font, &mut work, 0)
-        {
-            break;
-        }
-    }
-    work.contours.split_off(before)
+fn resolved_component_paths(font: &norad::Font, glyph: &norad::Glyph) -> Vec<BezPath> {
+    glyph
+        .components
+        .iter()
+        .map(|component| {
+            font.get_glyph(&component.base)
+                .map_or_else(BezPath::new, |base| {
+                    glyph_paths::component_affine(&component.transform)
+                        * glyph_paths::glyph_to_bezpath(base, font)
+                })
+        })
+        .collect()
+}
+
+/// Resolve each top-level component separately so selection edits and
+/// decomposition keep the same cached geometry.
+fn resolved_component_contour_sets(
+    font: &norad::Font,
+    glyph: &norad::Glyph,
+) -> Vec<Vec<norad::Contour>> {
+    glyph
+        .components
+        .iter()
+        .map(|component| {
+            let mut wrapper = norad::Glyph::new("component-wrapper");
+            wrapper.components.push(component.clone());
+            runebender_core::outline::component_ops::resolved_component_contours(font, &wrapper)
+        })
+        .collect()
 }
 
 impl Workspace {
@@ -1483,6 +1661,85 @@ mod tests {
         // Every point of the two new contours, and nothing else.
         assert_eq!(session.selection.len(), 8);
         assert!(session.selection.iter().all(|(c, _)| *c >= 2));
+    }
+
+    #[test]
+    fn component_selection_editing_and_cache_round_trip() {
+        let mut font = norad::Font::new();
+        let mut base = norad::Glyph::new("base");
+        base.contours.push(norad::Contour::new(
+            [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+                .into_iter()
+                .map(|(x, y)| {
+                    norad::ContourPoint::new(x, y, norad::PointType::Line, false, None, None)
+                })
+                .collect(),
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(base);
+        let mut composite = norad::Glyph::new("composite");
+        composite.components.push(norad::Component::new(
+            norad::Name::new("base").unwrap(),
+            norad::AffineTransform {
+                x_offset: 30.0,
+                y_offset: 40.0,
+                ..Default::default()
+            },
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(composite);
+
+        let mut session = Session::new(&font, "composite").unwrap();
+        assert_eq!(session.component_at(Point::new(50.0, 60.0)), Some(0));
+        assert!(session.select_component(0));
+        assert!(session.drag_component_by(10.0, 0.0));
+        assert!(session.drag_component_by(5.0, 5.0));
+        assert_eq!(
+            session.pending.len(),
+            1,
+            "one pointer gesture, one undo step"
+        );
+        session.end_component_drag();
+        assert!(!session.gesture_in_progress());
+        assert_eq!(session.glyph.components[0].transform.x_offset, 45.0);
+        assert_eq!(session.glyph.components[0].transform.y_offset, 45.0);
+        assert!(session.component_at(Point::new(50.0, 50.0)).is_some());
+
+        assert!(session.duplicate());
+        assert_eq!(session.glyph.components.len(), 2);
+        assert_eq!(session.selected_component, Some(1));
+        assert!(session.delete_selected());
+        assert_eq!(session.glyph.components.len(), 1);
+        assert_eq!(session.selected_component, None);
+
+        let before_drag = match &session.pending[0] {
+            HistoryOp::Record(glyph) => (**glyph).clone(),
+            HistoryOp::DiscardLast => panic!("drag must record its original glyph"),
+        };
+        session.reload_glyph(&font, before_drag);
+        assert_eq!(session.glyph.components[0].transform.x_offset, 30.0);
+        assert_eq!(session.component_at(Point::new(50.0, 60.0)), Some(0));
+        assert!(session.select_component(0));
+        assert!(session.decompose());
+        assert_eq!(session.glyph.contours.len(), 1);
+        assert!(session.glyph.components.is_empty());
+    }
+
+    #[test]
+    fn adding_a_component_validates_before_recording() {
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("base"));
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("target"));
+        let mut session = Session::new(&font, "target").unwrap();
+
+        assert!(!session.add_component(&font, "missing"));
+        assert!(!session.add_component(&font, "target"));
+        assert!(session.pending.is_empty());
+        assert!(session.add_component(&font, "base"));
+        assert_eq!(session.pending.len(), 1);
+        assert_eq!(session.selected_component, Some(0));
     }
 
     #[test]

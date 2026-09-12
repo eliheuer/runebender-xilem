@@ -169,6 +169,8 @@ pub(crate) struct Workspace {
     pub(crate) show_background: bool,
     /// A glyph name to show behind the drawing, empty for none.
     pub(crate) reference_buf: String,
+    /// Base glyph typed in the Shapes panel when adding a component.
+    pub(crate) component_base_buf: String,
     /// Current axis location in user units, one per designspace axis.
     pub(crate) axis_values: Vec<f64>,
     /// Active OKLCH theme id (dark | gray | light).
