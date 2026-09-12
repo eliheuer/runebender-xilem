@@ -31,6 +31,33 @@ pub(crate) struct Axis {
 }
 
 impl Axis {
+    fn design_extents(&self) -> (f64, f64, f64) {
+        (
+            self.user_to_design(self.min),
+            self.user_to_design(self.default),
+            self.user_to_design(self.max),
+        )
+    }
+
+    /// Convert a user-coordinate value to the normalized coordinate Core stores.
+    pub(crate) fn user_to_normalized(&self, value: f64) -> f64 {
+        let (min, default, max) = self.design_extents();
+        runebender_core::document::var_model::normalize_value(
+            self.user_to_design(value),
+            min,
+            default,
+            max,
+        )
+    }
+
+    /// Convert Core's normalized coordinate back to the user's axis scale.
+    pub(crate) fn normalized_to_user(&self, value: f64) -> f64 {
+        let (min, default, max) = self.design_extents();
+        let design =
+            runebender_core::document::var_model::denormalize_value(value, min, default, max);
+        self.design_to_user(design)
+    }
+
     /// Map a user-coordinate value to design coordinates via the piecewise map.
     pub(crate) fn user_to_design(&self, v: f64) -> f64 {
         if self.map.len() < 2 {
@@ -448,14 +475,14 @@ impl FontModel {
         Ok(())
     }
 
-    /// The given master's axis location in USER coordinates, one per axis,
-    /// mapping its stored design-coord location back through the axis map.
+    /// The given master's axis location in user coordinates, one per axis,
+    /// mapping Core's stored normalized location back through the axis map.
     pub(crate) fn master_axis_values(&self, index: usize) -> Vec<f64> {
         let loc = self.project.master_locations.get(index);
         self.axes
             .iter()
             .map(|ax| match loc.and_then(|l| l.get(&ax.name)) {
-                Some(d) => ax.design_to_user(*d),
+                Some(value) => ax.normalized_to_user(*value),
                 None => ax.default,
             })
             .collect()
@@ -473,36 +500,17 @@ impl FontModel {
         if self.project.masters.len() < 2 || self.axes.is_empty() {
             return None;
         }
-        // Normalized master locations and target, shared by every recursion.
-        // Master locations are stored in design coords; the target arrives in
-        // user coords. Both normalize against the design-space extents so
-        // avar-mapped axes interpolate correctly.
-        use runebender_core::document::var_model::normalize_value;
-        let norm_design = |loc: &std::collections::HashMap<String, f64>| -> std::collections::HashMap<String, f64> {
-            self.axes.iter().map(|ax| {
-                let dmin = ax.user_to_design(ax.min);
-                let ddef = ax.user_to_design(ax.default);
-                let dmax = ax.user_to_design(ax.max);
-                let v = loc.get(&ax.name).copied().unwrap_or(ddef);
-                (ax.name.clone(), normalize_value(v, dmin, ddef, dmax))
-            }).collect()
-        };
-        let target_design: std::collections::HashMap<String, f64> = self
+        // Core already stores master locations normalized. Normalize the
+        // user-coordinate slider location once, preserving any axis map.
+        let target: std::collections::HashMap<String, f64> = self
             .axes
             .iter()
             .map(|ax| {
                 let v = location.get(&ax.name).copied().unwrap_or(ax.default);
-                (ax.name.clone(), ax.user_to_design(v))
+                (ax.name.clone(), ax.user_to_normalized(v))
             })
             .collect();
-        let locations: Vec<_> = self
-            .project
-            .master_locations
-            .iter()
-            .map(&norm_design)
-            .collect();
-        let target = norm_design(&target_design);
-        self.interpolate_outline_depth(glyph_name, &locations, &target, 0)
+        self.interpolate_outline_depth(glyph_name, &self.project.master_locations, &target, 0)
     }
 
     fn interpolate_outline_depth(
@@ -994,6 +1002,33 @@ mod tests {
         );
 
         std::fs::remove_dir_all(dir).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn master_locations_are_presented_on_the_user_axis_scale() {
+        let (dir, model) = two_master_model();
+
+        assert_eq!(model.master_axis_values(0), vec![400.0]);
+        assert_eq!(model.master_axis_values(1), vec![700.0]);
+
+        std::fs::remove_dir_all(dir).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn mapped_axis_coordinates_round_trip_through_normalized_space() {
+        let axis = Axis {
+            name: "Weight".into(),
+            tag: "wght".into(),
+            min: 100.0,
+            default: 400.0,
+            max: 900.0,
+            map: vec![(100.0, 0.0), (400.0, 50.0), (900.0, 100.0)],
+        };
+
+        for (user, normalized) in [(100.0, -1.0), (400.0, 0.0), (650.0, 0.5), (900.0, 1.0)] {
+            assert!((axis.user_to_normalized(user) - normalized).abs() < 1e-9);
+            assert!((axis.normalized_to_user(normalized) - user).abs() < 1e-9);
+        }
     }
 
     #[test]

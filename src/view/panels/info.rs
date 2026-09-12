@@ -226,7 +226,17 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             (!editing).then(|| recipes::inspector_group(pal, compare_section(app))),
             (!editing).then(|| recipes::inspector_group(pal, features_section(app))),
             layers_section(app).map(|body| recipes::inspector_group(pal, body)),
-            masters_section(app).map(|body| recipes::inspector_group(pal, body)),
+            xcolumn(
+                Region::List,
+                (
+                    masters_section(app).map(|body| recipes::inspector_group(pal, body)),
+                    editing
+                        .then(|| axes_section(app))
+                        .flatten()
+                        .map(|body| recipes::inspector_group(pal, body)),
+                ),
+            )
+            .gap(Space::None),
             editing.then(|| recipes::inspector_group(pal, measure_section(app))),
             (!editing).then(|| glyph_preview(app)).flatten(),
         ),

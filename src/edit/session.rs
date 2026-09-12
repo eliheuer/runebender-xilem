@@ -1570,12 +1570,10 @@ impl Workspace {
     pub(crate) fn on_active_master(&self) -> bool {
         match self.font.project.master_locations.get(self.font.active()) {
             Some(m) => self.font.axes.iter().enumerate().all(|(i, a)| {
-                // axis_values are user coords; master locations are design coords.
-                let cur = a.user_to_design(self.axis_values.get(i).copied().unwrap_or(a.default));
-                let mst = m
-                    .get(&a.name)
-                    .copied()
-                    .unwrap_or_else(|| a.user_to_design(a.default));
+                // Axis values are user coordinates; Core stores normalized locations.
+                let cur =
+                    a.user_to_normalized(self.axis_values.get(i).copied().unwrap_or(a.default));
+                let mst = m.get(&a.name).copied().unwrap_or(0.0);
                 (cur - mst).abs() < 1e-6
             }),
             None => true,

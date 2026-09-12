@@ -225,6 +225,7 @@ impl Workspace {
                     "Background",
                     "Mark",
                     "Masters",
+                    "Axes",
                 ]);
                 set
             },

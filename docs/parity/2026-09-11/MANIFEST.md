@@ -296,6 +296,27 @@ blank tile; neither requires an initial inspector scroll. Their SHA-256 hashes
 are `3716743e9db488bda03f08bfc4b87da5fc2d55e328cb4b53e7dd76faa1cc2db3`
 and `c40903a0c66716fb1950aa4e9eb94133c814448b91b61a953a1d7e2b1d3e7502`.
 
+The V09 editor pair checks the Axes section in the right inspector and the
+user-space value shown for the active Regular master:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/v09-axes-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray RUNEBENDER_GLYPH=R \
+RUNEBENDER_EXPAND=Axes target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/v09-axes-light.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=light RUNEBENDER_GLYPH=R \
+RUNEBENDER_EXPAND=Axes target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+```
+
+Both were individually inspected at 1100x720. The right inspector places Axes
+immediately after Masters and shows `wght 400` at the Regular master rather than
+leaking Core's normalized `0` coordinate. Their SHA-256 hashes are
+`9506442d987d3ddeaff191bf1f9233c1904762f16118f4788ff5b7938343fae5`
+and `acf4dad53b375fcb6c46d94a9b5738923709b84665e4b680035a33132284739c`.
+
 ## GPUI reference metrics
 
 These are source-derived metrics, not a claim that the GPUI application was
