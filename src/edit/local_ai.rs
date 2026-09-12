@@ -731,7 +731,7 @@ mod tests {
             ..AiJob::default()
         };
 
-        workspace.reload_from_disk();
+        workspace.revert_to_saved();
         workspace.task_finished(&job, &serde_json::json!({}));
 
         assert_eq!(

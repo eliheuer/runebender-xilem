@@ -5,6 +5,7 @@
 
 use crate::*;
 use runebender_core::outline::glyph_paths::round_units;
+use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The next identity for an in-memory document session.
@@ -15,9 +16,48 @@ static NEXT_DOCUMENT_ID: AtomicU64 = AtomicU64::new(1);
 /// Stable identities for widget-owned text buffers parked in editor tabs.
 pub(crate) static NEXT_TEXT_CONTEXT_ID: AtomicU64 = AtomicU64::new(1);
 
+fn source_roots(font: &FontModel) -> Vec<std::path::PathBuf> {
+    let mut roots = font.master_paths();
+    roots.push(font.document_source().to_path_buf());
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
+fn source_fingerprint(roots: &[std::path::PathBuf]) -> u64 {
+    fn hash_path(path: &FsPath, state: &mut std::collections::hash_map::DefaultHasher) {
+        path.hash(state);
+        if path.is_dir() {
+            let mut entries: Vec<_> = std::fs::read_dir(path)
+                .into_iter()
+                .flatten()
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .collect();
+            entries.sort();
+            for entry in entries {
+                hash_path(&entry, state);
+            }
+        } else {
+            match std::fs::read(path) {
+                Ok(bytes) => bytes.hash(state),
+                Err(error) => error.kind().hash(state),
+            }
+        }
+    }
+
+    let mut state = std::collections::hash_map::DefaultHasher::new();
+    for root in roots {
+        hash_path(root, &mut state);
+    }
+    state.finish()
+}
+
 impl Workspace {
     pub(crate) fn open(path: &FsPath) -> Result<Self, String> {
         let font = FontModel::open(path)?;
+        let source_roots = source_roots(&font);
+        let source_fingerprint = source_fingerprint(&source_roots);
         let features_buf = font.font().features.clone();
         let theme_id: &'static str = match std::env::var("RUNEBENDER_THEME").ok().as_deref() {
             Some("dark") => "dark",
@@ -229,6 +269,8 @@ impl Workspace {
                 _ => Tool::Select,
             },
             modified: false,
+            source_roots,
+            source_fingerprint,
             note: String::new(),
             view,
             initial_text: std::env::var("RUNEBENDER_TEXT").unwrap_or_default(),
@@ -328,8 +370,13 @@ impl Workspace {
             self.note = "Apply or Revert feature edits before saving".into();
             return false;
         }
+        if source_fingerprint(&self.source_roots) != self.source_fingerprint {
+            self.note = "Save blocked: sources changed on disk; use Save As to preserve your edits or Revert to Saved to accept disk changes".into();
+            return false;
+        }
         match self.font.save() {
             Ok(()) => {
+                self.source_fingerprint = source_fingerprint(&self.source_roots);
                 self.modified = false;
                 self.note = format!("Saved {}", self.font.source().display());
                 true
@@ -346,8 +393,15 @@ impl Workspace {
     /// Unsaved work wins: if this editor has edits that are not on disk,
     /// the reload is skipped rather than throwing them away.
     pub(crate) fn reload_from_disk(&mut self) {
-        if self.modified {
-            self.note = "sources changed on disk; save or discard first".into();
+        self.reload_from_disk_inner(false);
+    }
+
+    fn reload_from_disk_inner(&mut self, force: bool) {
+        if !force && source_fingerprint(&self.source_roots) == self.source_fingerprint {
+            return;
+        }
+        if self.modified && !force {
+            self.note = "sources changed on disk; Save As preserves your edits, or Revert to Saved accepts disk changes".into();
             return;
         }
         // Sessions hold outlines and undo state from the old core project, so
@@ -442,6 +496,18 @@ impl Workspace {
             }
             Err(e) => self.note = e,
         }
+    }
+
+    /// Deliberately discard in-memory edits and accept the current source tree.
+    pub(crate) fn revert_to_saved(&mut self) {
+        self.reload_from_disk_inner(true);
+    }
+
+    /// Establish the non-existent destinations chosen by Save As as the new
+    /// baseline before their first write.
+    pub(crate) fn prepare_save_as(&mut self) {
+        self.source_roots = source_roots(&self.font);
+        self.source_fingerprint = source_fingerprint(&self.source_roots);
     }
 
     /// A new font from the template: GF metrics and the GF Latin Core
@@ -580,7 +646,7 @@ mod tests {
         workspace.search_regex = true;
         workspace.filter = "A".into();
         workspace.rebuild_search_regex();
-        workspace.reload_from_disk();
+        workspace.revert_to_saved();
         assert_ne!(workspace.document_id, document_id);
         assert!(workspace.list);
         assert!(workspace.detail);
@@ -900,10 +966,53 @@ mod tests {
         assert_eq!(workspace.session.advance(), unsaved_width);
         assert_eq!(
             workspace.note,
-            "sources changed on disk; save or discard first"
+            "sources changed on disk; Save As preserves your edits, or Revert to Saved accepts disk changes"
         );
         assert!(workspace.modified);
+        assert!(
+            !workspace.save(),
+            "Save cannot overwrite the external change"
+        );
+        let still_external =
+            norad::Font::load(&path).expect("the external source remains readable");
+        assert_eq!(still_external.get_glyph("A").unwrap().width, 712.0);
 
+        workspace.revert_to_saved();
+        assert_eq!(workspace.session.advance(), 712.0);
+        assert!(!workspace.modified);
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn a_save_event_does_not_reload_away_undo_history() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-own-save-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 500.0;
+        font.default_layer_mut().insert_glyph(glyph);
+        font.save(&path).expect("the fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.open_glyph(0);
+        workspace.set_advance_from_buf("620".into());
+        assert!(workspace.save());
+        assert!(workspace.font.master().can_undo(0));
+        workspace.reload_from_disk();
+        assert_eq!(workspace.session.advance(), 620.0);
+        assert!(workspace.font.master().can_undo(0));
+        workspace.undo_active_edit(false);
+        assert_eq!(workspace.session.advance(), 500.0);
+        workspace.revert_to_saved();
+        assert_eq!(workspace.session.advance(), 620.0);
+        assert!(!workspace.modified);
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 
@@ -1189,7 +1298,7 @@ mod tests {
         assert!(workspace.note.contains("Apply or Revert"));
         workspace.reload_from_disk();
         assert!(workspace.features_buf.ends_with("# pending review\n"));
-        assert!(workspace.note.contains("save or discard"));
+        assert!(workspace.note.contains("Apply or Revert"));
         assert!(!workspace.save());
         assert!(workspace.note.contains("Apply or Revert"));
 

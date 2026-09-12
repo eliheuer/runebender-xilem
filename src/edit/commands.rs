@@ -426,24 +426,40 @@ impl Workspace {
         let Some(directory) = dialogs::folder(start) else {
             return;
         };
-        for master in &mut self.font.project.masters {
-            let family = master
-                .font
-                .font_info
-                .family_name
-                .clone()
-                .unwrap_or_else(|| "Untitled".into())
-                .replace(' ', "");
-            let style = master
-                .font
-                .font_info
-                .style_name
-                .clone()
-                .unwrap_or_else(|| "Regular".into())
-                .replace(' ', "");
-            master.source_path = directory.join(format!("{family}-{style}.ufo"));
+        let targets: Vec<_> = self
+            .font
+            .project
+            .masters
+            .iter()
+            .map(|master| {
+                let family = master
+                    .font
+                    .font_info
+                    .family_name
+                    .clone()
+                    .unwrap_or_else(|| "Untitled".into())
+                    .replace(' ', "");
+                let style = master
+                    .font
+                    .font_info
+                    .style_name
+                    .clone()
+                    .unwrap_or_else(|| "Regular".into())
+                    .replace(' ', "");
+                directory.join(format!("{family}-{style}.ufo"))
+            })
+            .collect();
+        let unique: std::collections::HashSet<_> = targets.iter().collect();
+        if unique.len() != targets.len() || targets.iter().any(|target| target.exists()) {
+            self.note =
+                "Save As refused: every generated master destination must be new and unique".into();
+            return;
+        }
+        for (master, target) in self.font.project.masters.iter_mut().zip(targets) {
+            master.source_path = target;
             master.dirty = true;
         }
+        self.prepare_save_as();
         self.save();
     }
 
@@ -749,6 +765,11 @@ impl Workspace {
             }
             A::OpenFont => unreachable!("Open belongs to AppState"),
             A::SaveAs => self.command_save_as(),
+            A::RevertToSaved => {
+                if dialogs::confirm_revert() {
+                    self.revert_to_saved();
+                }
+            }
             A::ExportFont => self.command_export(),
             A::Undo => self.undo_active_edit(false),
             A::Redo => self.undo_active_edit(true),

@@ -147,6 +147,10 @@ pub(crate) struct Workspace {
     pub(crate) selected_points: usize,
     pub(crate) tool: Tool,
     pub(crate) modified: bool,
+    /// Source paths whose disk contents define the conflict baseline.
+    pub(crate) source_roots: Vec<std::path::PathBuf>,
+    /// Hash of the source tree at open or last successful save.
+    pub(crate) source_fingerprint: u64,
     pub(crate) note: String,
     /// Which analysis overlays the editor draws.
     pub(crate) view: canvas::editor::ViewOptions,

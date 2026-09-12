@@ -54,3 +54,14 @@ pub(crate) fn image(directory: &Path) -> Option<PathBuf> {
 pub(crate) fn svg(directory: &Path) -> Option<PathBuf> {
     at(directory).add_filter("SVG", &["svg"]).pick_file()
 }
+
+/// Confirm replacing unsaved in-memory edits with the source tree on disk.
+pub(crate) fn confirm_revert() -> bool {
+    rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Warning)
+        .set_title("Revert to Saved")
+        .set_description("Discard all unsaved edits and reload the font sources from disk?")
+        .set_buttons(rfd::MessageButtons::OkCancel)
+        .show()
+        == rfd::MessageDialogResult::Ok
+}

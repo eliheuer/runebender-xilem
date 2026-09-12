@@ -249,6 +249,12 @@ pub(crate) const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "File",
+        title: "Revert to Saved…",
+        accelerator: None,
+        action: AppAction::RevertToSaved,
+    },
+    Entry {
+        menu: "File",
         title: "Export…",
         accelerator: Some("CmdOrCtrl+Alt+E"),
         action: AppAction::ExportFont,
@@ -971,7 +977,17 @@ mod tests {
             .filter(|entry| entry.menu == "File")
             .map(|entry| entry.title)
             .collect();
-        assert_eq!(file, ["New Font", "Open…", "Save", "Save As…", "Export…"]);
+        assert_eq!(
+            file,
+            [
+                "New Font",
+                "Open…",
+                "Save",
+                "Save As…",
+                "Revert to Saved…",
+                "Export…"
+            ]
+        );
 
         let edit: Vec<_> = ACTIONS
             .iter()

@@ -839,7 +839,7 @@ mod tests {
             }],
         };
 
-        workspace.reload_from_disk();
+        workspace.revert_to_saved();
         workspace.nodes_finished(&job, &report);
 
         assert_eq!(

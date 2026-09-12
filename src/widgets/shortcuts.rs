@@ -41,6 +41,7 @@ pub(crate) enum AppAction {
     Quit,
     OpenFont,
     SaveAs,
+    RevertToSaved,
     ExportFont,
     Save,
     Undo,
