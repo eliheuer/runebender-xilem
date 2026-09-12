@@ -488,8 +488,7 @@ impl Workspace {
                             self.refresh_coord_bufs();
                         }
                     } else {
-                        self.mode = Mode::Overview;
-                        self.selected = None;
+                        self.settle_on_overview();
                     }
                 }
                 self.note = "reloaded".into();
@@ -1501,6 +1500,50 @@ mod tests {
         workspace.undo_active_edit(false);
         assert_eq!(workspace.session.advance(), 500.0);
         std::fs::remove_dir_all(dir).expect("the designspace fixture is removed");
+    }
+
+    #[test]
+    fn missing_active_glyph_never_parks_an_old_master_session() {
+        let (dir, designspace) = two_master_designspace("master-missing-active");
+        for (file, glyphs) in [
+            ("Regular.ufo", [("A", 500.0), ("B", 600.0)]),
+            ("Bold.ufo", [("B", 800.0), ("C", 900.0)]),
+        ] {
+            let path = dir.join(file);
+            let mut font = norad::Font::load(&path).expect("the fixture master loads");
+            for (name, width) in glyphs {
+                let mut glyph = norad::Glyph::new(name);
+                glyph.width = width;
+                font.default_layer_mut().insert_glyph(glyph);
+            }
+            font.save(&path).expect("the fixture master saves");
+        }
+
+        let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
+        workspace.open_glyph(workspace.font.index_of("A").unwrap());
+        workspace.new_tab();
+        workspace.open_glyph(workspace.font.index_of("B").unwrap());
+        workspace.activate_tab(0);
+        assert_eq!(workspace.session.glyph_name, "A");
+
+        workspace.set_master(1);
+        assert!(matches!(workspace.mode, Mode::Overview));
+        assert_eq!(workspace.tabs.len(), 1);
+        assert_eq!(workspace.tabs[0].session.glyph_name, "B");
+        assert_eq!(workspace.tabs[0].session.advance(), 800.0);
+        assert_eq!(workspace.session.glyph_name, "B");
+        assert_eq!(workspace.session.advance(), 800.0);
+
+        workspace.set_master(0);
+        assert_eq!(workspace.tabs.len(), 1);
+        assert_eq!(workspace.tabs[0].session.glyph_name, "B");
+        assert_eq!(workspace.tabs[0].session.advance(), 600.0);
+        workspace.activate_tab(0);
+        assert!(matches!(workspace.mode, Mode::Editor(_)));
+        assert_eq!(workspace.session.glyph_name, "B");
+        assert_eq!(workspace.session.advance(), 600.0);
+
+        std::fs::remove_dir_all(dir).expect("the fixture is removed");
     }
 
     #[test]

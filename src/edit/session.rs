@@ -1232,6 +1232,25 @@ impl Workspace {
         }
     }
 
+    /// Leave the editor while keeping any parked session aligned to the active master.
+    pub(crate) fn settle_on_overview(&mut self) {
+        self.mode = Mode::Overview;
+        self.selected = None;
+        if self.tabs.is_empty() {
+            self.active_tab = 0;
+            self.session = Arc::new(Session::inactive(self.font.font()));
+        } else {
+            self.active_tab = self.active_tab.min(self.tabs.len() - 1);
+            let tab = &self.tabs[self.active_tab];
+            let (session, tool, text_context) =
+                (tab.session.clone(), tab.tool, tab.text_context.clone());
+            self.session = session;
+            self.tool = tool;
+            self.restore_text_context(text_context);
+        }
+        self.selected_points = 0;
+    }
+
     /// Make a tab the live one.
     pub(crate) fn activate_tab(&mut self, index: usize) {
         let Some(tab) = self.tabs.get(index) else {
@@ -1532,8 +1551,7 @@ impl Workspace {
                 self.refresh_coord_bufs();
                 self.selected_points = 0;
             } else {
-                self.mode = Mode::Overview;
-                self.selected = None;
+                self.settle_on_overview();
             }
         }
     }
