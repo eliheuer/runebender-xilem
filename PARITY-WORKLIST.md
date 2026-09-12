@@ -606,7 +606,7 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   menu shortcut test, all 107 normal package tests, package clippy, production
   debug build and `git diff --check` pass. M05 remains open until a supervised
   native pass clicks all three dialog choices and the window close button.
-- V09 — advanced in `1d78048` and `8000b3b`: the fixed 360 px overview glyph preview began
+- V09 — advanced in `1d78048`, `8000b3b`, and `7ce283f`: the fixed 360 px overview glyph preview began
   below the collapsed inspector headers and extended past the standard 720 px
   viewport, so tall glyphs appeared severely clipped until the user scrolled.
   The tile is now 260 px, retaining inspection room while fitting in the initial
@@ -622,8 +622,11 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   master switching, interpolation previews, and mapped axes. All 109 normal
   tests and package clippy pass. A second Gray/Light pair exercises the tiny,
   non-empty `period`; its scaled outline remains padded and visibly distinct
-  from the blank `space` control. V09 remains open for native inspector
-  scrolling and the outstanding Shaping placement comparison.
+  from the blank `space` control. The editor inspector now places a collapsed
+  Shaping section between Color and Related, matching GPUI, with the shared
+  direction, feature, and language state arranged in unclipped rows; inspected
+  Gray/Light mixed Latin/Arabic captures cover the expanded state. V09 remains
+  open only for native inspector scrolling.
 - E07 — advanced in `8000b3b` and `202e09a`: master locations stored normalized by Core are
   now converted back to user coordinates for axis controls, and slider values
   are normalized exactly once for active-master detection and interpolation.
