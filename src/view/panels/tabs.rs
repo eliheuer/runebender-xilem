@@ -121,6 +121,7 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             .boxed()
         })
         .collect::<Vec<_>>();
+    let component_aligned = app.session.selected_component_aligned();
     xcolumn(
         Region::Panel,
         (
@@ -154,16 +155,26 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     }),
                 ),
             ),
-            app.session.selected_component.map(|_| {
-                xrow(
-                    Region::Inline,
+            component_aligned.map(|aligned| {
+                xcolumn(
+                    Region::List,
                     (
-                        recipes::action(pal, "Duplicate".into(), |app: &mut Workspace| {
-                            app.apply_op(|session| session.duplicate());
-                        }),
-                        recipes::action(pal, "Delete".into(), |app: &mut Workspace| {
-                            app.apply_op(|session| session.delete_selected());
-                        }),
+                        recipes::action(
+                            pal,
+                            if aligned { "Unlock" } else { "Lock" }.into(),
+                            |app: &mut Workspace| app.command_toggle_component_alignment(),
+                        ),
+                        xrow(
+                            Region::Inline,
+                            (
+                                recipes::action(pal, "Duplicate".into(), |app: &mut Workspace| {
+                                    app.apply_op(|session| session.duplicate());
+                                }),
+                                recipes::action(pal, "Delete".into(), |app: &mut Workspace| {
+                                    app.apply_op(|session| session.delete_selected());
+                                }),
+                            ),
+                        ),
                     ),
                 )
             }),

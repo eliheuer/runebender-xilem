@@ -167,6 +167,8 @@ pub(crate) struct Workspace {
     pub(crate) clipboard: Vec<norad::Contour>,
     /// Draw the UFO background layer under the outline.
     pub(crate) show_background: bool,
+    /// Ghost every attachable mark on the open glyph's anchors.
+    pub(crate) show_mark_cloud: bool,
     /// A glyph name to show behind the drawing, empty for none.
     pub(crate) reference_buf: String,
     /// Base glyph typed in the Shapes panel when adding a component.

@@ -653,6 +653,7 @@ pub(crate) fn background_section(app: &Workspace) -> impl WidgetView<Workspace> 
         .background_contours(&app.session.glyph_name)
         .is_some();
     let show = app.show_background;
+    let show_mark_cloud = app.show_mark_cloud;
     xcolumn(
         Region::Section,
         (
@@ -681,6 +682,14 @@ pub(crate) fn background_section(app: &Workspace) -> impl WidgetView<Workspace> 
                                     show && has_background,
                                     |app: &mut Workspace| {
                                         app.show_background = !app.show_background;
+                                    },
+                                ),
+                                recipes::toggle(
+                                    pal,
+                                    "Mark cloud".into(),
+                                    show_mark_cloud,
+                                    |app: &mut Workspace| {
+                                        app.show_mark_cloud = !app.show_mark_cloud;
                                     },
                                 ),
                                 recipes::action(pal, "Send".into(), |app: &mut Workspace| {

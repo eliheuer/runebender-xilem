@@ -670,6 +670,14 @@ impl Widget for EditorWidget {
                 )
                 .draw();
         }
+        for mark in &self.underlay.mark_cloud {
+            painter
+                .fill(
+                    &(affine * (**mark).clone()),
+                    pal.role("component").with_alpha(0.10),
+                )
+                .draw();
+        }
         if let Some(proposal) = &self.underlay.proposal {
             let path = affine * (**proposal).clone();
             painter
@@ -1893,6 +1901,8 @@ pub(crate) struct Underlay {
     pub background: Option<Arc<kurbo::BezPath>>,
     /// Another glyph, shown behind this one.
     pub reference: Option<Arc<kurbo::BezPath>>,
+    /// Marks positioned by matching `_anchor`/`anchor` pairs.
+    pub mark_cloud: Vec<Arc<kurbo::BezPath>>,
     /// A waiting proposal for this glyph, shown in warm amber.
     pub proposal: Option<Arc<kurbo::BezPath>>,
 }

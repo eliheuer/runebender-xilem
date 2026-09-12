@@ -251,6 +251,15 @@ impl Session {
         true
     }
 
+    pub(crate) fn selected_component_aligned(&self) -> Option<bool> {
+        self.glyph
+            .components
+            .get(self.selected_component?)
+            .map(|component| {
+                !runebender_core::document::composites::component_alignment_disabled(component)
+            })
+    }
+
     fn rebuild_combined_components(&mut self) {
         self.components = self
             .component_paths
@@ -281,8 +290,29 @@ impl Session {
         true
     }
 
+    pub(crate) fn toggle_component_alignment(&mut self, font: &norad::Font) -> bool {
+        let Some(index) = self.selected_component else {
+            return false;
+        };
+        let mut changed = self.glyph.clone();
+        let Some(component) = changed.components.get_mut(index) else {
+            return false;
+        };
+        let aligned =
+            !runebender_core::document::composites::component_alignment_disabled(component);
+        runebender_core::document::composites::set_component_alignment_disabled(component, aligned);
+        if !aligned {
+            runebender_core::document::composites::realign_glyph(font, &mut changed, true);
+        }
+        self.record(EditType::Normal);
+        self.glyph = changed;
+        self.rebuild_component_caches(font);
+        true
+    }
+
     pub(crate) fn drag_component_by(&mut self, dx: f64, dy: f64) -> bool {
         if self.selected_component.is_none()
+            || self.selected_component_aligned() == Some(true)
             || !dx.is_finite()
             || !dy.is_finite()
             || (dx == 0.0 && dy == 0.0)
@@ -426,6 +456,9 @@ impl Session {
     pub(crate) fn nudge(&mut self, dx: f64, dy: f64) -> bool {
         if self.selected_component.is_some() {
             if !dx.is_finite() || !dy.is_finite() || (dx == 0.0 && dy == 0.0) {
+                return false;
+            }
+            if self.selected_component_aligned() == Some(true) {
                 return false;
             }
             self.record(EditType::Normal);
@@ -1550,6 +1583,11 @@ impl Workspace {
             let glyph = session.glyph.clone();
             self.session = Arc::new(session);
             self.font.replace_glyph(index, glyph);
+            if let Some(aligned) = self.font.font().get_glyph(&name).cloned() {
+                let mut session = (*self.session).clone();
+                session.reload_glyph(self.font.font(), aligned);
+                self.session = Arc::new(session);
+            }
             self.cells = Arc::new(cells_of(&self.font, &self.palette));
             self.modified = true;
             self.note.clear();
@@ -1692,6 +1730,12 @@ mod tests {
         let mut session = Session::new(&font, "composite").unwrap();
         assert_eq!(session.component_at(Point::new(50.0, 60.0)), Some(0));
         assert!(session.select_component(0));
+        assert_eq!(session.selected_component_aligned(), Some(true));
+        assert!(!session.drag_component_by(10.0, 0.0));
+        assert!(session.pending.is_empty());
+        assert!(session.toggle_component_alignment(&font));
+        assert_eq!(session.selected_component_aligned(), Some(false));
+        session.pending.clear();
         assert!(session.drag_component_by(10.0, 0.0));
         assert!(session.drag_component_by(5.0, 5.0));
         assert_eq!(
@@ -1740,6 +1784,52 @@ mod tests {
         assert!(session.add_component(&font, "base"));
         assert_eq!(session.pending.len(), 1);
         assert_eq!(session.selected_component, Some(0));
+    }
+
+    #[test]
+    fn locking_a_component_snaps_it_to_matching_anchors() {
+        let mut font = norad::Font::new();
+        let mut carrier = norad::Glyph::new("carrier");
+        carrier.anchors.push(norad::Anchor::new(
+            300.0,
+            500.0,
+            norad::Name::new("top").ok(),
+            None,
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(carrier);
+        let mut mark = norad::Glyph::new("mark");
+        mark.anchors.push(norad::Anchor::new(
+            20.0,
+            30.0,
+            norad::Name::new("_top").ok(),
+            None,
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(mark);
+        let mut composite = norad::Glyph::new("composite");
+        composite.components.push(norad::Component::new(
+            norad::Name::new("carrier").unwrap(),
+            norad::AffineTransform::default(),
+            None,
+        ));
+        let mut loose = norad::Component::new(
+            norad::Name::new("mark").unwrap(),
+            norad::AffineTransform::default(),
+            None,
+        );
+        runebender_core::document::composites::set_component_alignment_disabled(&mut loose, true);
+        composite.components.push(loose);
+        font.default_layer_mut().insert_glyph(composite);
+
+        let mut session = Session::new(&font, "composite").unwrap();
+        assert!(session.select_component(1));
+        assert_eq!(session.selected_component_aligned(), Some(false));
+        assert!(session.toggle_component_alignment(&font));
+        assert_eq!(session.selected_component_aligned(), Some(true));
+        assert_eq!(session.glyph.components[1].transform.x_offset, 280.0);
+        assert_eq!(session.glyph.components[1].transform.y_offset, 470.0);
+        assert_eq!(session.pending.len(), 1);
     }
 
     #[test]

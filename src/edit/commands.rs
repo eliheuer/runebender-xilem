@@ -29,6 +29,23 @@ impl Workspace {
         self.note = format!("Added component {base}");
     }
 
+    /// Toggle whether the selected component follows its matching anchors.
+    pub(crate) fn command_toggle_component_alignment(&mut self) {
+        let mut session = (*self.session).clone();
+        if !session.toggle_component_alignment(self.font.font()) {
+            return;
+        }
+        let aligned = session.selected_component_aligned() == Some(true);
+        self.sync_session_from(&mut session);
+        self.refresh_open_glyph();
+        self.note = if aligned {
+            "Component locked to anchors"
+        } else {
+            "Component unlocked for movement"
+        }
+        .into();
+    }
+
     /// Add an empty glyph with the first free `glyph(.NNN)` name and open it.
     pub(crate) fn command_new_glyph(&mut self) {
         let mut name = "glyph".to_string();

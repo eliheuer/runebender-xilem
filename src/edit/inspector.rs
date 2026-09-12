@@ -6,6 +6,46 @@
 use crate::*;
 use runebender_core::outline::glyph_paths::round_units;
 
+fn mark_cloud(font: &FontModel, base: &norad::Glyph) -> Vec<Arc<kurbo::BezPath>> {
+    let base_anchors: Vec<_> = base
+        .anchors
+        .iter()
+        .filter_map(|anchor| {
+            Some((
+                anchor.name.as_ref()?.to_string(),
+                kurbo::Point::new(anchor.x, anchor.y),
+            ))
+        })
+        .collect();
+    let mut placed = Vec::new();
+    'candidates: for entry in &font.glyphs {
+        let Some(candidate) = font.font().get_glyph(&entry.name) else {
+            continue;
+        };
+        for anchor in &candidate.anchors {
+            let Some(mark_name) = anchor.name.as_ref().and_then(|name| name.strip_prefix('_'))
+            else {
+                continue;
+            };
+            let Some((_, target)) = base_anchors.iter().find(|(name, _)| name == mark_name) else {
+                continue;
+            };
+            if entry.outline.elements().is_empty() {
+                continue;
+            }
+            placed.push(Arc::new(
+                kurbo::Affine::translate((target.x - anchor.x, target.y - anchor.y))
+                    * (*entry.outline).clone(),
+            ));
+            if placed.len() >= 60 {
+                break 'candidates;
+            }
+            continue 'candidates;
+        }
+    }
+    placed
+}
+
 impl Workspace {
     fn font_data_snapshot(&self) -> Vec<FontDataSnapshot> {
         self.font
@@ -105,9 +145,15 @@ impl Workspace {
             .as_deref()
             .and_then(|task| self.font.proposal_outline(task, &self.session.glyph_name))
             .map(Arc::new);
+        let mark_cloud = if self.show_mark_cloud {
+            mark_cloud(&self.font, &self.session.glyph)
+        } else {
+            Vec::new()
+        };
         canvas::editor::Underlay {
             background,
             reference,
+            mark_cloud,
             proposal,
         }
     }
@@ -946,6 +992,53 @@ mod size_tests {
         app.set_mark(Some("blue".into()));
         assert_eq!(app.overview_undo.len(), 1, "a no-op adds no undo step");
         std::fs::remove_dir_all(path).expect("remove disposable font");
+    }
+
+    #[test]
+    fn mark_cloud_places_only_marks_with_matching_anchors() {
+        use kurbo::Shape as _;
+
+        let path = disposable_font("mark-cloud");
+        let mut font = norad::Font::new();
+        let mut base = norad::Glyph::new("base");
+        base.anchors.push(norad::Anchor::new(
+            300.0,
+            500.0,
+            norad::Name::new("top").ok(),
+            None,
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(base);
+        for (name, anchor_name) in [("acute", "_top"), ("cedilla", "_bottom")] {
+            let mut mark = norad::Glyph::new(name);
+            mark.anchors.push(norad::Anchor::new(
+                20.0,
+                30.0,
+                norad::Name::new(anchor_name).ok(),
+                None,
+                None,
+            ));
+            mark.contours.push(norad::Contour::new(
+                vec![
+                    norad::ContourPoint::new(10.0, 20.0, norad::PointType::Line, false, None, None),
+                    norad::ContourPoint::new(30.0, 20.0, norad::PointType::Line, false, None, None),
+                    norad::ContourPoint::new(20.0, 40.0, norad::PointType::Line, false, None, None),
+                ],
+                None,
+            ));
+            font.default_layer_mut().insert_glyph(mark);
+        }
+        font.save(&path).expect("save mark-cloud fixture");
+        let mut app = Workspace::open(&path).expect("open mark-cloud fixture");
+        let base = app.font.index_of("base").unwrap();
+        app.open_glyph(base);
+        app.show_mark_cloud = true;
+
+        let cloud = app.underlay().mark_cloud;
+        assert_eq!(cloud.len(), 1);
+        let bounds = cloud[0].bounding_box();
+        assert_eq!(bounds, kurbo::Rect::new(290.0, 490.0, 310.0, 510.0));
+        std::fs::remove_dir_all(path).expect("remove mark-cloud fixture");
     }
 
     #[test]

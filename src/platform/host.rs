@@ -206,6 +206,7 @@ impl Workspace {
             kern2_buf: kern2,
             clipboard: Vec::new(),
             show_background,
+            show_mark_cloud: std::env::var("RUNEBENDER_MARK_CLOUD").as_deref() == Ok("1"),
             reference_buf,
             component_base_buf: String::new(),
             name_buf: first_name,
@@ -294,6 +295,9 @@ impl Workspace {
             .and_then(|value| value.parse::<usize>().ok())
         {
             Arc::make_mut(&mut app.session).select_component(index);
+        }
+        if app.show_mark_cloud {
+            app.collapsed.remove("Background");
         }
         if let Some(dir) = std::env::var_os("RUNEBENDER_MODEL").filter(|d| !d.is_empty()) {
             app.load_model(FsPath::new(&dir));
@@ -1244,6 +1248,9 @@ mod tests {
         workspace.component_base_buf = "base".into();
         workspace.command_add_component();
         assert_eq!(workspace.session.glyph.components.len(), 1);
+        assert_eq!(workspace.session.selected_component_aligned(), Some(true));
+        workspace.command_toggle_component_alignment();
+        assert_eq!(workspace.session.selected_component_aligned(), Some(false));
         workspace.apply_op(|session| session.nudge(30.0, 40.0));
         assert_eq!(
             workspace.session.glyph.components[0].transform.x_offset,
@@ -1255,9 +1262,17 @@ mod tests {
             0.0
         );
         workspace.undo_active_edit(false);
+        assert_eq!(workspace.session.selected_component_aligned(), Some(true));
+        workspace.undo_active_edit(false);
         assert!(workspace.session.glyph.components.is_empty());
         workspace.undo_active_edit(true);
         assert_eq!(workspace.session.glyph.components.len(), 1);
+        workspace.undo_active_edit(true);
+        assert!(
+            runebender_core::document::composites::component_alignment_disabled(
+                &workspace.session.glyph.components[0]
+            )
+        );
         workspace.undo_active_edit(true);
         assert_eq!(
             workspace.session.glyph.components[0].transform.y_offset,
@@ -1271,6 +1286,64 @@ mod tests {
         assert_eq!(component.transform.x_offset, 30.0);
         assert_eq!(component.transform.y_offset, 40.0);
         std::fs::remove_dir_all(path).expect("the component fixture is removed");
+    }
+
+    #[test]
+    fn moving_an_anchor_realigns_a_locked_mark_component() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-attachment-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        let mut mark = norad::Glyph::new("mark");
+        mark.anchors.push(norad::Anchor::new(
+            20.0,
+            30.0,
+            norad::Name::new("_top").ok(),
+            None,
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(mark);
+        let mut target = norad::Glyph::new("target");
+        target.anchors.push(norad::Anchor::new(
+            300.0,
+            500.0,
+            norad::Name::new("top").ok(),
+            None,
+            None,
+        ));
+        target.components.push(norad::Component::new(
+            norad::Name::new("mark").unwrap(),
+            norad::AffineTransform {
+                x_offset: 280.0,
+                y_offset: 470.0,
+                ..Default::default()
+            },
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(target);
+        font.save(&path).expect("the attachment fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the attachment fixture opens");
+        let target = workspace.font.index_of("target").unwrap();
+        workspace.open_glyph(target);
+        workspace.apply_op(|session| {
+            session.move_anchor(0, 400.0, 600.0);
+            session.end_metric_drag();
+            true
+        });
+        let component = &workspace.session.glyph.components[0];
+        assert_eq!(component.transform.x_offset, 380.0);
+        assert_eq!(component.transform.y_offset, 570.0);
+        workspace.undo_active_edit(false);
+        let component = &workspace.session.glyph.components[0];
+        assert_eq!(component.transform.x_offset, 280.0);
+        assert_eq!(component.transform.y_offset, 470.0);
+        std::fs::remove_dir_all(path).expect("the attachment fixture is removed");
     }
 
     #[test]
