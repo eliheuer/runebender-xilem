@@ -203,7 +203,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 
 | Done | ID | Work and acceptance |
 |---|---|---|
-| [ ] | D01 | Open/save/save-as/reopen designspace and UFO round trip preserves layers, masters, lib data and relative paths; failure surfaces and dirty state are accurate. |
+| [x] | D01 | Open/save/save-as/reopen designspace and UFO round trip preserves layers, masters, lib data and relative paths. Verified in `588b605`, `b192d55`, and `02710fb`: originals remain untouched, copied documents become current, designspace edits save, collisions refuse before retargeting, and failures remain dirty. |
 | [x] | D02 | External reload and unsaved edits: no watcher overwrite, stale cache, duplicate save loop or target change. Verified in `b192d55`: source-tree fingerprints block stale saves, self-save watcher events preserve undo, confirmed Revert accepts disk changes, and Save As refuses existing or duplicate targets. |
 | [x] | D03 | Undo grouping across drag, numeric edit, paste, path operation, master/glyph switch and AI install. Undo targets the originating document and remains reversible. Verified in `9800f3b`, `c711e93`, `bce9bf9`, `8386791`, and `dd0159a`: pointer gestures group once; parked tabs rebuild per master; metadata and AI installs remain ordered and reversible. |
 | [ ] | D04 | Tabs/session/selection: active glyph, master, title, preview and status agree; close/reopen behavior matches. Investigate persistence/journal differences explicitly. |
@@ -566,6 +566,21 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   four expensive real-font/model tests ignored; package clippy and
   `git diff --check` pass. Native watcher timing remains part of the supervised
   trial, but D02's document-identity and conflict behavior is complete.
+- D01 — verified in `588b605`, `b192d55`, and `02710fb`: Save As now copies a
+  single UFO under its existing filename or copies every designspace master plus
+  the designspace document, retargets every source to a valid relative filename,
+  and makes the copied document the current save/export identity. The original
+  UFO and designspace remain unchanged. Disposable reopen tests retain both
+  masters, axes, UFO lib data, edited font metadata, a non-default Sketch layer
+  and its glyph, and the edited foreground width. A second Save As to the same
+  location is refused before any document target changes; duplicate master names,
+  existing targets, unmappable designspace sources, unwritable saves, external
+  changes and unapplied feature drafts all surface without false success. Dirty
+  designspace documents are now written alongside dirty masters. The full package
+  run passes all 105 normal tests with four expensive real-font/model tests
+  ignored; package clippy and `git diff --check` pass. D01 is complete; native
+  dialog interaction remains a platform trial concern rather than a round-trip
+  data-path gap.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
