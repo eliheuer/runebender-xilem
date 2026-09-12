@@ -606,7 +606,7 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   menu shortcut test, all 107 normal package tests, package clippy, production
   debug build and `git diff --check` pass. M05 remains open until a supervised
   native pass clicks all three dialog choices and the window close button.
-- V09 — advanced in `1d78048`: the fixed 360 px overview glyph preview began
+- V09 — advanced in `1d78048` and `8000b3b`: the fixed 360 px overview glyph preview began
   below the collapsed inspector headers and extended past the standard 720 px
   viewport, so tall glyphs appeared severely clipped until the user scrolled.
   The tile is now 260 px, retaining inspection room while fitting in the initial
@@ -615,9 +615,21 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   complete outline and top point inside padded bounds, while `space` remains a
   deliberately blank preview rather than inventing ink. Both use the read-only
   designspace at 1100×720 and are recorded with commands and SHA-256 hashes in
-  the manifest. All 107 normal tests and package clippy pass. V09 remains open
-  for native inspector scrolling, tiny non-empty glyphs, and the outstanding
-  right-panel Axes/Shaping placement comparison.
+  the manifest. The editor's right inspector now places Axes immediately after
+  Masters, matching the GPUI section order; inspected Gray/Light captures show
+  the expanded section at `wght 400` for Regular. Fixing that capture also
+  corrected the normalized/Core to design/user coordinate boundary used by
+  master switching, interpolation previews, and mapped axes. All 109 normal
+  tests and package clippy pass. V09 remains open for native inspector
+  scrolling, tiny non-empty glyphs, and the outstanding Shaping placement
+  comparison.
+- E07 — advanced in `8000b3b`: master locations stored normalized by Core are
+  now converted back to user coordinates for axis controls, and slider values
+  are normalized exactly once for active-master detection and interpolation.
+  Unit coverage checks both the real 400/700 fixture boundary and a mapped axis;
+  the V09 Gray/Light captures independently show Regular as `wght 400`. E07
+  remains open because axis/master add, rename, and delete are not implemented,
+  and incompatible-outline behavior still needs a dedicated visual proof.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
