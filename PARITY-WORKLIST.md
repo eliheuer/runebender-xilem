@@ -205,7 +205,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 |---|---|---|
 | [ ] | D01 | Open/save/save-as/reopen designspace and UFO round trip preserves layers, masters, lib data and relative paths; failure surfaces and dirty state are accurate. |
 | [ ] | D02 | External reload and unsaved edits: no watcher overwrite, stale cache, duplicate save loop or target change. Verify document/master identity and conflict handling. |
-| [ ] | D03 | Undo grouping across drag, numeric edit, paste, path operation, master/glyph switch and AI install. Undo targets the originating document and remains reversible. |
+| [x] | D03 | Undo grouping across drag, numeric edit, paste, path operation, master/glyph switch and AI install. Undo targets the originating document and remains reversible. Verified in `9800f3b`, `c711e93`, `bce9bf9`, `8386791`, and `dd0159a`: pointer gestures group once; parked tabs rebuild per master; metadata and AI installs remain ordered and reversible. |
 | [ ] | D04 | Tabs/session/selection: active glyph, master, title, preview and status agree; close/reopen behavior matches. Investigate persistence/journal differences explicitly. |
 | [ ] | E01 | Selection: point/path/marquee/additive, hit tolerance across zoom, keyboard navigation and cancel restore. Compare GPUI interactions with disposable glyphs. |
 | [ ] | E02 | Drawing tools: pen, shape, knife, ruler, hand and text inventory; match modifiers, previews, commit/cancel and undo. Record absent tools instead of fake buttons. |
@@ -514,7 +514,7 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   the wrong master; Apply is undoable and valid generated text survives reopen.
   Inspected Gray/Light evidence is `e08-features-edit-{gray,light}.png`. Native
   pointer and keyboard delivery remain part of R06, not a claim made by E08.
-- E06 verified / D03 in progress in `9800f3b`, `119afd6`, and `c711e93`:
+- E06 / D03 — verified in `9800f3b`, `119afd6`, `c711e93`, and `bce9bf9`:
   anchor moves now open one drag
   transaction on the first actual movement, reject non-finite coordinates, and
   close that transaction on pointer-up alongside advance and sidebearing drags.
@@ -541,7 +541,17 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   The refreshed component captures show the unclipped Unlock, Add, Duplicate,
   and Delete controls. All 101 normal Xilem tests pass and package clippy passes
   with warnings denied. E06 is complete; native pointer delivery remains under
-  R06, while D03 retains its broader command and document-switch matrix.
+  R06.
+- D03 master/tab closure — `bce9bf9` fixes a cross-master ownership hazard:
+  every parked tab previously retained the old master's complete glyph snapshot,
+  so activating it after switching masters could write old-master data into the
+  current master. Master switches now rebuild every tab by stable glyph name
+  while preserving viewport, tool, and text context. A two-master/two-glyph
+  regression proves Regular and Bold histories stay independent through tab and
+  master switches. Together with the existing drag, numeric, paste/path,
+  metadata, proposal-install, and replacement-document tests, D03 is complete.
+  The latest full package run passes all 102 normal tests; clippy passes with
+  warnings denied.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
