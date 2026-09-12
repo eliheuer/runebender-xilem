@@ -514,20 +514,25 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   the wrong master; Apply is undoable and valid generated text survives reopen.
   Inspected Gray/Light evidence is `e08-features-edit-{gray,light}.png`. Native
   pointer and keyboard delivery remain part of R06, not a claim made by E08.
-- E06 / D03 — in progress in `9800f3b`: anchor moves now open one drag
+- E06 / D03 — in progress in `9800f3b` and `119afd6`: anchor moves now open one drag
   transaction on the first actual movement, reject non-finite coordinates, and
   close that transaction on pointer-up alongside advance and sidebearing drags.
   Repeated advance moves now form one undo step instead of one per event, and a
   sidebearing drag no longer leaves later edits trapped in an open gesture. A
   disposable Arabic-named glyph proves anchor drag/delete Undo/Redo and
   save/reopen. Undoing a decomposition now rebuilds the resolved nested,
-  transformed component preview instead of leaving it visually empty. All 95
-  normal Xilem tests pass and package clippy passes with warnings denied.
-  Inspected `e06-arabic-anchors-{gray,light}.png` shows the four real `zero-ar`
-  mark anchors in both themes. E06 remains open because component selection,
-  add/move/duplicate/delete controls, attachment-preview verification, and a
-  supervised pointer pass are still absent; D03 also retains its broader command
-  and document-switch matrix.
+  transformed component preview instead of leaving it visually empty. Those
+  changes passed the then-current 95 normal Xilem tests and package clippy.
+  Component rows now select top-level components on the canvas; components can
+  be added by base glyph, dragged or nudged, duplicated, and deleted with
+  cache-correct Undo/Redo and save/reopen. A drag forms one undo transaction,
+  and invalid/self references do not dirty the document. Inspected
+  `e06-arabic-anchors-{gray,light}.png` shows the four real `zero-ar` mark
+  anchors; `e06-components-{gray,light}.png` shows the real two-component
+  `beh-ar.fina`, its selected dot outline, and unclipped component controls.
+  All 98 normal Xilem tests pass and package clippy passes with warnings denied.
+  E06 remains open for attachment-preview verification and a supervised pointer
+  pass; D03 also retains its broader command and document-switch matrix.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the

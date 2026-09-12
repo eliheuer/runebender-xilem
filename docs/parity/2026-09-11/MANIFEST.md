@@ -68,6 +68,8 @@ or otherwise mutates it.
 | `e08-features-edit-light.png` | Light | editable Features inspector | same state |
 | `e06-arabic-anchors-gray.png` | Gray | Arabic anchor editor | Regular `zero-ar`; four named mark anchors at two positions |
 | `e06-arabic-anchors-light.png` | Light | Arabic anchor editor | same state |
+| `e06-components-gray.png` | Gray | Shapes rail and component editor | Regular `beh-ar.fina`; selected `dotbelow-ar` component and edit controls |
+| `e06-components-light.png` | Light | Shapes rail and component editor | same state |
 
 Build first:
 
@@ -196,6 +198,24 @@ positions, the header/status agree on `zero-ar`, U+0660 and advance 320, and the
 font stays read-only. Their SHA-256 hashes are
 `756d1c9fd9c8ac9589362d459855e6e39ef6f802ef8b6dbd67d789ea11d4c47b` and
 `3936a2f7960b6e321417447446e79145c879dcf7eeaa88fca68029fec73a51e0`.
+
+The component captures use the same read-only source with a real two-component
+Arabic glyph. The second top-level component is selected through the headless
+state hook, making both its canvas outline and Duplicate/Delete actions visible:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/e06-components-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray RUNEBENDER_OPEN=beh-ar.fina \
+RUNEBENDER_RAIL=shapes RUNEBENDER_COMPONENT=1 target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+```
+
+Replace `gray` with `light` for the paired capture. Both were individually
+inspected: the Shapes rail identifies `behDotless-ar.fina` and the offset
+`dotbelow-ar`, the selected dot has a distinct outline, and Base glyph/Add plus
+Duplicate/Delete are unclipped. Their SHA-256 hashes are
+`fd436c7b2d421b523e7c2d93e2653204a7994c5ad1c62356348c84bc3681b27c` and
+`f345f5fb02c1e90b44269ed16fa6240c9df7b5d5ad6221d9ab792fd51f479151`.
 
 The real integration run uses `RUNEBENDER_AI_DEVICE=cpu` semantics on a copied
 designspace, not this read-only screenshot command. It selects R and S, reports
