@@ -360,6 +360,30 @@ and the panel explicitly says `interpolated`. Their SHA-256 hashes are
 `521a8123838bc001e7780363f6a48b338220f1cf49fd59ed31d8df9f8493c664`
 and `9e4f68ac033c1c3b98c0bb6745fdb2fada8e19ad2a2d1ae3bc50c74802e34369`.
 
+The V09 Shaping pair opens a real Arabic glyph and the shared mixed-script
+preview while expanding the new right-inspector controls:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/v09-shaping-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray RUNEBENDER_GLYPH=beh-ar \
+RUNEBENDER_EXPAND=Shaping RUNEBENDER_PREVIEW_TEXT='R لا 123 بِ' \
+target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/v09-shaping-light.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=light RUNEBENDER_GLYPH=beh-ar \
+RUNEBENDER_EXPAND=Shaping RUNEBENDER_PREVIEW_TEXT='R لا 123 بِ' \
+target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+```
+
+Both were individually inspected at 1100x720. Shaping sits between Color and
+Related, matching the GPUI editor inspector; LTR/RTL/Auto, all five feature
+controls, and all three language choices fit without clipping. The same shared
+state is visible in the mixed Latin/Arabic preview strip. Their SHA-256 hashes
+are `0a4dcaf93f8cc0b1e2868273de2e329c553ba95e671c29340868303e3ae60845`
+and `245c914d4e74036fc059b05489b4b7f8c8f7b61d8d138113c2d3d7befa1c2b71`.
+
 ## GPUI reference metrics
 
 These are source-derived metrics, not a claim that the GPUI application was

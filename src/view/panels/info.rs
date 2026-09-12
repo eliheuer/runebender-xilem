@@ -204,7 +204,16 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             recipes::inspector_group(pal, glyph_section),
             editing.then(|| recipes::inspector_group(pal, curves_section(app))),
             editing.then(|| recipes::inspector_group(pal, background_section(app))),
-            editing.then(|| recipes::inspector_group(pal, mark_section(app))),
+            editing.then(|| {
+                xcolumn(
+                    Region::List,
+                    (
+                        recipes::inspector_group(pal, mark_section(app)),
+                        recipes::inspector_group(pal, shaping_section(app)),
+                    ),
+                )
+                .gap(Space::None)
+            }),
             editing.then(|| recipes::inspector_group(pal, related_section(app))),
             // One column for three sections: the panel's tuple is at
             // Xilem's sixteen-child limit, so the overview's first

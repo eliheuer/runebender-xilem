@@ -188,6 +188,81 @@ pub(crate) fn axes_section(app: &Workspace) -> Option<impl WidgetView<Workspace>
     ))
 }
 
+/// Shaping choices for the editor inspector, in the same right-panel position
+/// as GPUI. These mutate the shared editor/preview text state.
+pub(crate) fn shaping_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    let feature = |tag: &'static str| {
+        tab_chip(
+            pal,
+            tag.into(),
+            !app.text_features_disabled.contains(tag),
+            false,
+            move |app: &mut Workspace| {
+                if !app.text_features_disabled.remove(tag) {
+                    app.text_features_disabled.insert(tag.into());
+                }
+            },
+        )
+    };
+    let locale =
+        |label_text: &'static str, script: Option<&'static str>, language: Option<&'static str>| {
+            let active =
+                app.text_script.as_deref() == script && app.text_language.as_deref() == language;
+            tab_chip(
+                pal,
+                label_text.into(),
+                active,
+                false,
+                move |app: &mut Workspace| {
+                    app.text_script = script.map(str::to_string);
+                    app.text_language = language.map(str::to_string);
+                },
+            )
+        };
+    xcolumn(
+        Region::Section,
+        (
+            recipes::section_toggle(
+                pal,
+                "Shaping",
+                !app.collapsed.contains("Shaping"),
+                move |app: &mut Workspace| {
+                    if !app.collapsed.remove("Shaping") {
+                        app.collapsed.insert("Shaping");
+                    }
+                },
+            ),
+            (!app.collapsed.contains("Shaping")).then(|| {
+                xcolumn(
+                    Region::Form,
+                    (
+                        direction_chips(app),
+                        xcolumn(
+                            Region::List,
+                            (
+                                xrow(
+                                    Region::Inline,
+                                    (feature("liga"), feature("rlig"), feature("kern")),
+                                ),
+                                xrow(Region::Inline, (feature("mark"), feature("mkmk"))),
+                            ),
+                        ),
+                        xrow(
+                            Region::Inline,
+                            (
+                                locale("Auto", None, None),
+                                locale("Arabic", Some("arab"), Some("ar")),
+                                locale("Urdu", Some("arab"), Some("ur")),
+                            ),
+                        ),
+                    ),
+                )
+            }),
+        ),
+    )
+}
+
 pub(crate) fn path_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use crate::edit::session::BoolOp;
     use icon_button::icon_button;

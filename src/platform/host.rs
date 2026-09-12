@@ -224,6 +224,7 @@ impl Workspace {
                     "Path Operations",
                     "Background",
                     "Mark",
+                    "Shaping",
                     "Masters",
                     "Axes",
                 ]);
