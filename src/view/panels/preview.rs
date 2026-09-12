@@ -222,6 +222,9 @@ pub(crate) fn glyph_preview(app: &Workspace) -> Option<impl WidgetView<Workspace
                 }
             },
         ))
-        .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(360.0)))),
+        // The overview's collapsed section headers consume about 376 px at the
+        // standard 720 px window height. Keep the preview visible without an
+        // initial scroll while retaining enough room to inspect control points.
+        .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(260.0)))),
     )
 }

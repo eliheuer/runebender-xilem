@@ -274,6 +274,28 @@ Both captures were individually inspected. The second control row fits at
 and the separated lam-alef is visible in both the editor and preview. The real
 Virtua integration test independently asserts that shaping change.
 
+The V09 overview-preview pair exercises a tall outlined glyph and a blank glyph
+against the real, read-only Virtua designspace after reducing the preview tile to
+fit below the standard collapsed inspector headers:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/v09-preview-tall-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray RUNEBENDER_SELECTED=Aring \
+target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/v09-preview-empty-light.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=light RUNEBENDER_SELECTED=space \
+target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+```
+
+Both were individually inspected at 1100×720. `Aring` now shows its complete
+outline and top control point with padding, while `space` keeps a deliberately
+blank tile; neither requires an initial inspector scroll. Their SHA-256 hashes
+are `3716743e9db488bda03f08bfc4b87da5fc2d55e328cb4b53e7dd76faa1cc2db3`
+and `c40903a0c66716fb1950aa4e9eb94133c814448b91b61a953a1d7e2b1d3e7502`.
+
 ## GPUI reference metrics
 
 These are source-derived metrics, not a claim that the GPUI application was
