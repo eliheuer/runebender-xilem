@@ -581,6 +581,19 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   ignored; package clippy and `git diff --check` pass. D01 is complete; native
   dialog interaction remains a platform trial concern rather than a round-trip
   data-path gap.
+- D04 / D03 — advanced in `b5e769d`: switching to a master which lacks the
+  active glyph previously removed that tab but left the old master's session
+  live behind Overview. A later switch could park that stale session into a
+  surviving tab. The Overview fallback now adopts a surviving tab rebuilt from
+  the active master, or an inactive session when none survive; accepted external
+  reload uses the same invariant. A two-master fixture with asymmetric A/B and
+  B/C glyph sets switches away from missing A, verifies the surviving B is Bold
+  width 800, switches back, and verifies the same tab is Regular width 600 before
+  reopening it. Focused regression and package clippy pass. Existing tests cover
+  independent tab selections, text/preview contexts, close order, rename, reload
+  and cross-master undo. D04 remains open because Xilem has no counterpart to
+  GPUI's opt-in JSONL operation journal, and native title/status agreement still
+  needs supervised inspection; the journal is edit telemetry, not tab recovery.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
