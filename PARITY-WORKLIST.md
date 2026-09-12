@@ -620,9 +620,10 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   the expanded section at `wght 400` for Regular. Fixing that capture also
   corrected the normalized/Core to design/user coordinate boundary used by
   master switching, interpolation previews, and mapped axes. All 109 normal
-  tests and package clippy pass. V09 remains open for native inspector
-  scrolling, tiny non-empty glyphs, and the outstanding Shaping placement
-  comparison.
+  tests and package clippy pass. A second Gray/Light pair exercises the tiny,
+  non-empty `period`; its scaled outline remains padded and visibly distinct
+  from the blank `space` control. V09 remains open for native inspector
+  scrolling and the outstanding Shaping placement comparison.
 - E07 — advanced in `8000b3b`: master locations stored normalized by Core are
   now converted back to user coordinates for axis controls, and slider values
   are normalized exactly once for active-master detection and interpolation.

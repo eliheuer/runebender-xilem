@@ -317,6 +317,26 @@ leaking Core's normalized `0` coordinate. Their SHA-256 hashes are
 `9506442d987d3ddeaff191bf1f9233c1904762f16118f4788ff5b7938343fae5`
 and `acf4dad53b375fcb6c46d94a9b5738923709b84665e4b680035a33132284739c`.
 
+The remaining V09 size extreme uses Virtua's small `period` outline:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/v09-preview-tiny-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray RUNEBENDER_SELECTED=period \
+target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/v09-preview-tiny-light.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=light RUNEBENDER_SELECTED=period \
+target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+```
+
+Both were individually inspected at 1100x720. The non-empty outline scales up
+without touching the tile edges, remains visibly distinct from the blank
+`space` proof, and fits in the initial inspector viewport. Their SHA-256 hashes
+are `4db1e70b336375500cdb5599aa8ff358bdf04212feb1db7ec33e6b0eedd16982`
+and `44127180367f37ff55bbcce5eb8a218d21a182d6f2f30cc7e3d6887a6cc6d000`.
+
 ## GPUI reference metrics
 
 These are source-derived metrics, not a claim that the GPUI application was
