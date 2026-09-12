@@ -188,7 +188,7 @@ matrix of label, shortcut, context, enabled/checked state and handler result.
 | [ ] | M02 | Native macOS startup and focus: menu survives initial window, reopen and app switch. Record real runtime verification separately from headless forced-menu tests. |
 | [ ] | M03 | Menu state refresh: enabled/checked values track selection, document, tool, theme and undo. Protect ACTIONS/MENUS ordering or store action identity with menu items. |
 | [ ] | M04 | Focus routing: menu-click and shortcut Undo/Redo/Copy/Paste/Select All affect focused input first; canvas otherwise. Audit Cut against GPUI. Test search, numeric input, preview and graph text. |
-| [ ] | M05 | Quit/close/open/new with dirty document: Save/Discard/Cancel works, no native predefined Quit bypass, failed save never closes. Test isolated font. |
+| [ ] | M05 | Quit/close/open/new with dirty document: Save/Discard/Cancel works, no native predefined Quit bypass, failed save never closes. Implemented in `2d25a0b`; deterministic state/shortcut tests and production build pass, native dialog interaction pending. |
 | [ ] | M06 | In-window menu keyboard/pointer: Alt access, arrows, Enter, Escape, outside click, submenu hover, disabled entries and focus restoration. Verify shortcuts execute exactly once. |
 | [ ] | M07 | Linux dialogs can open UFO and glyphspackage directories as well as files; cancellation is harmless. Test on Linux, not just macOS cfg compilation. |
 | [ ] | M08 | Linux X11/Wayland runtime menu and clipboard smoke checks where infrastructure exists. Record distro/session and unavailable cases honestly. |
@@ -594,6 +594,18 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   and cross-master undo. D04 remains open because Xilem has no counterpart to
   GPUI's opt-in JSONL operation journal, and native title/status agreement still
   needs supervised inspection; the journal is edit telemetry, not tab recovery.
+- M05 — implemented / native verification pending in `2d25a0b`: Xilem's
+  unconditional `new_simple` close wrapper was replaced by application-owned
+  lifetime state, so a close request can now keep the window alive. Window close,
+  Cmd-Q, in-window Quit and the custom macOS application-menu Quit all route
+  through one Save/Discard/Cancel decision instead of calling the driver exit or
+  AppKit's predefined bypass. Open and New use the same decision before replacing
+  a dirty document. Cancel retains the in-memory edit, successful Save writes it
+  before exit, explicit Discard exits, and a failed Save leaves both the window
+  and dirty document alive with its error. The deterministic isolated-UFO test,
+  menu shortcut test, all 107 normal package tests, package clippy, production
+  debug build and `git diff --check` pass. M05 remains open until a supervised
+  native pass clicks all three dialog choices and the window close button.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
