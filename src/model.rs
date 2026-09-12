@@ -431,6 +431,20 @@ impl FontModel {
                 .save()
                 .map_err(|e| format!("{}: {e}", master.source_path.display()))?;
         }
+        if self.project.ds_dirty {
+            let path = self
+                .project
+                .export_source
+                .as_deref()
+                .ok_or_else(|| "designspace has no save destination".to_string())?;
+            self.project
+                .ds_doc
+                .as_ref()
+                .ok_or_else(|| "designspace document is unavailable".to_string())?
+                .save(path)
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+            self.project.ds_dirty = false;
+        }
         Ok(())
     }
 

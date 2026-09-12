@@ -1287,6 +1287,131 @@ mod tests {
     }
 
     #[test]
+    fn save_as_retargets_and_reopens_a_complete_designspace_copy() {
+        let (dir, designspace) = two_master_designspace("designspace-save-as");
+        let original_designspace = std::fs::read(&designspace).expect("the source is readable");
+        for ufo in ["Regular.ufo", "Bold.ufo"] {
+            std::fs::write(
+                dir.join(ufo).join("lib.plist"),
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>com.runebender.roundtrip</key><string>kept</string></dict></plist>"#,
+            )
+            .expect("the fixture lib is written");
+        }
+        let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
+        for master in &mut workspace.font.project.masters {
+            let layer = master
+                .font
+                .layers
+                .new_layer("Sketch")
+                .expect("the test layer is new");
+            let mut glyph = norad::Glyph::new("guide");
+            glyph.width = 321.0;
+            layer.insert_glyph(glyph);
+            master.font.font_info.note = Some("save-as metadata".into());
+            master.dirty = true;
+        }
+        workspace.modified = true;
+
+        let copy = dir.join("copy");
+        std::fs::create_dir(&copy).expect("the copy directory is created");
+        assert!(workspace.save_as_to(&copy));
+        let copied_designspace = copy.join("Test.designspace");
+        assert_eq!(workspace.font.document_source(), copied_designspace);
+        assert_eq!(
+            std::fs::read(&designspace).expect("the original remains readable"),
+            original_designspace,
+            "Save As must not rewrite the original designspace"
+        );
+
+        let copied_doc = norad::designspace::DesignSpaceDocument::load(&copied_designspace)
+            .expect("the copied designspace loads");
+        assert_eq!(
+            copied_doc
+                .sources
+                .iter()
+                .map(|source| source.filename.as_str())
+                .collect::<Vec<_>>(),
+            ["Regular.ufo", "Bold.ufo"]
+        );
+        assert!(copied_doc.sources.iter().all(|source| {
+            !std::path::Path::new(&source.filename).is_absolute()
+                && copy.join(&source.filename).exists()
+        }));
+
+        let reopened = Workspace::open(&copied_designspace).expect("the copied project reopens");
+        assert_eq!(reopened.font.master_names(), ["Regular", "Bold"]);
+        for master in &reopened.font.project.masters {
+            assert_eq!(
+                master
+                    .font
+                    .lib
+                    .get("com.runebender.roundtrip")
+                    .and_then(|v| v.as_string()),
+                Some("kept")
+            );
+            assert_eq!(
+                master.font.font_info.note.as_deref(),
+                Some("save-as metadata")
+            );
+            assert_eq!(
+                master
+                    .font
+                    .layers
+                    .get("Sketch")
+                    .and_then(|layer| layer.get_glyph("guide"))
+                    .map(|glyph| glyph.width),
+                Some(321.0)
+            );
+        }
+
+        assert!(
+            !workspace.save_as_to(&copy),
+            "an existing destination is never overwritten"
+        );
+        std::fs::remove_dir_all(dir).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn save_as_retargets_and_reopens_a_single_ufo_copy() {
+        let dir = std::env::temp_dir().join(format!(
+            "runebender-xilem-ufo-save-as-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        std::fs::create_dir(&dir).expect("the fixture directory is created");
+        let original = dir.join("Source.ufo");
+        norad::Font::new()
+            .save(&original)
+            .expect("the original UFO saves");
+        let mut workspace = Workspace::open(&original).expect("the original UFO opens");
+        workspace.filter = "A".into();
+        workspace.new_glyph();
+        workspace.set_advance_from_buf("543".into());
+
+        let copy = dir.join("copy");
+        std::fs::create_dir(&copy).expect("the copy directory is created");
+        assert!(workspace.save_as_to(&copy));
+        let target = copy.join("Source.ufo");
+        assert_eq!(workspace.font.document_source(), target);
+        assert!(
+            norad::Font::load(&original)
+                .expect("the original remains readable")
+                .get_glyph("A")
+                .is_none(),
+            "Save As must not modify the original UFO"
+        );
+        let reopened = Workspace::open(&target).expect("the copied UFO reopens");
+        assert_eq!(reopened.font.font().get_glyph("A").unwrap().width, 543.0);
+
+        std::fs::remove_dir_all(dir).expect("the fixture is removed");
+    }
+
+    #[test]
     fn feature_draft_blocks_master_switch_reload_and_save() {
         let (dir, designspace) = two_master_designspace("feature-draft-safety");
         let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
