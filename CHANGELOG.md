@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Keep the editor proof strip, including its controls, within its 140-pixel
+  initial height so the canvas has more room and the initial glyph fit is larger.
+
 - Make Unicode and glyph-name changes atomic across designspace masters and
   Undo/Redo them in order with surrounding outline and metric edits; preserve
   each renamed glyph's existing Core history and add overview-width Undo/Redo.

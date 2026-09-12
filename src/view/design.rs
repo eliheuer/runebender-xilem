@@ -53,9 +53,10 @@ pub(crate) const RAIL_TAB_HEIGHT: f64 = 36.0;
 pub(crate) const RAIL_TAB_ICON: f64 = 18.0;
 pub(crate) const RAIL_TAB_RADIUS: f64 = 6.0;
 pub(crate) const RAIL_TAB_ICON_RISE: f64 = 2.0;
-/// GPUI allocates 140 logical pixels to the proof drawing. Xilem's
-/// editable proof controls occupy an additional control row.
-pub(crate) const PROOF_DRAWING_HEIGHT: f64 = 140.0;
+/// Initial height of the entire proof strip, matching GPUI's resizable pane.
+/// The drawing shares this budget with the text and shaping controls so those
+/// controls do not take additional space away from the editing canvas.
+pub(crate) const PROOF_STRIP_HEIGHT: f64 = 140.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[expect(

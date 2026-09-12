@@ -3,7 +3,7 @@
 
 //! The render tree: how the workspace's state becomes a frame.
 
-use crate::view::design::{DOCK_WIDTH, PROOF_DRAWING_HEIGHT};
+use crate::view::design::{DOCK_WIDTH, PROOF_STRIP_HEIGHT};
 use crate::*;
 use xilem::core::lens;
 
@@ -47,9 +47,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         sized_box(preview_strip(app))
             .dims(Dimensions::new(
                 Dim::Stretch,
-                Dim::Fixed(Length::px(
-                    PROOF_DRAWING_HEIGHT + ControlSize::Control.px() + Space::Sm.px() * 2.0,
-                )),
+                Dim::Fixed(Length::px(PROOF_STRIP_HEIGHT)),
             ))
             .background_color(pal.panel)
     });
