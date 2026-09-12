@@ -212,7 +212,7 @@ Map behavior, not file count. Existing functions are verify/finish work.
 | [ ] | E03 | Point/path commands: join/split/reverse/delete, curve conversions, extrema, simplify and boolean operations retain valid contours and metadata. |
 | [ ] | E04 | Coordinates/transforms: X/Y/W/H, origin matrix, flips, rotate, scale, align and distribute operate correctly on empty/single/multiple selections. |
 | [x] | E05 | Glyph metadata/Unicode/advance and sidebearings: validation, live update, dirty state, undo and save/reload. Verified in `df4891b` and `8386791`: editor and overview fields reject invalid values, preserve correct LSB/RSB semantics, and Undo/Redo Unicode and rename atomically across masters in order with glyph edits; disposable one- and two-master fixtures save and reopen exactly. |
-| [ ] | E06 | Anchors, components and composition: add/edit/delete, transformed composites, recursion/errors and attachment preview. |
+| [x] | E06 | Anchors, components and composition: add/edit/delete, transformed composites, recursion/errors and attachment preview. Verified in `9800f3b`, `119afd6`, and `c711e93`: anchor/component edits are undoable and round-trip; nested transformed components rebuild after Undo; component locks preserve attachment; the mark cloud previews matching marks. |
 | [ ] | E07 | Layers/masters/axes: selection, edit targeting, add/rename/delete where GPUI supports them, interpolation preview and incompatible outlines. |
 | [x] | E08 | Kerning/groups/features: inspect GPUI commands against panels; editing, validation, shaping refresh and round trip. No display-only panel counted as editing parity. |
 | [ ] | E09 | Background images/SVG/trace: import, transform, visibility, opacity, remove, export and undo; preserve document-relative resources. |
@@ -514,7 +514,8 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   the wrong master; Apply is undoable and valid generated text survives reopen.
   Inspected Gray/Light evidence is `e08-features-edit-{gray,light}.png`. Native
   pointer and keyboard delivery remain part of R06, not a claim made by E08.
-- E06 / D03 — in progress in `9800f3b` and `119afd6`: anchor moves now open one drag
+- E06 verified / D03 in progress in `9800f3b`, `119afd6`, and `c711e93`:
+  anchor moves now open one drag
   transaction on the first actual movement, reject non-finite coordinates, and
   close that transaction on pointer-up alongside advance and sidebearing drags.
   Repeated advance moves now form one undo step instead of one per event, and a
@@ -530,9 +531,17 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   `e06-arabic-anchors-{gray,light}.png` shows the four real `zero-ar` mark
   anchors; `e06-components-{gray,light}.png` shows the real two-component
   `beh-ar.fina`, its selected dot outline, and unclipped component controls.
-  All 98 normal Xilem tests pass and package clippy passes with warnings denied.
-  E06 remains open for attachment-preview verification and a supervised pointer
-  pass; D03 also retains its broader command and document-switch matrix.
+  That component-control stage passed all 98 then-current normal Xilem tests.
+  Anchor-locked components now refuse movement until explicitly unlocked;
+  relocking snaps them to matching anchors, and moving an anchor realigns its
+  locked mark component through the Core edit hook without leaving the live
+  session stale. The Background panel's Mark cloud places up to 60 matching
+  marks by `_anchor`/`anchor` pairs; inspected
+  `e06-mark-cloud-{gray,light}.png` shows the real Virtua Arabic crowding view.
+  The refreshed component captures show the unclipped Unlock, Add, Duplicate,
+  and Delete controls. All 101 normal Xilem tests pass and package clippy passes
+  with warnings denied. E06 is complete; native pointer delivery remains under
+  R06, while D03 retains its broader command and document-switch matrix.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the

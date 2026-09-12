@@ -70,6 +70,8 @@ or otherwise mutates it.
 | `e06-arabic-anchors-light.png` | Light | Arabic anchor editor | same state |
 | `e06-components-gray.png` | Gray | Shapes rail and component editor | Regular `beh-ar.fina`; selected `dotbelow-ar` component and edit controls |
 | `e06-components-light.png` | Light | Shapes rail and component editor | same state |
+| `e06-mark-cloud-gray.png` | Gray | Arabic attachment preview | Regular `behDotless-ar`; matching marks ghosted at top and bottom anchors |
+| `e06-mark-cloud-light.png` | Light | Arabic attachment preview | same state |
 
 Build first:
 
@@ -213,9 +215,25 @@ RUNEBENDER_RAIL=shapes RUNEBENDER_COMPONENT=1 target/debug/runebender-xilem \
 Replace `gray` with `light` for the paired capture. Both were individually
 inspected: the Shapes rail identifies `behDotless-ar.fina` and the offset
 `dotbelow-ar`, the selected dot has a distinct outline, and Base glyph/Add plus
-Duplicate/Delete are unclipped. Their SHA-256 hashes are
-`fd436c7b2d421b523e7c2d93e2653204a7994c5ad1c62356348c84bc3681b27c` and
-`f345f5fb02c1e90b44269ed16fa6240c9df7b5d5ad6221d9ab792fd51f479151`.
+Unlock/Duplicate/Delete are unclipped. Their SHA-256 hashes are
+`e4df5e4fb278f464948bd4941658dc9e051abc56f596150ff13a28bf94683c97` and
+`3949e11ad81d764be19eab986d74fad00d6fbe8c38c02480438cb2559916dbcb`.
+
+The attachment-preview captures enable the Mark cloud on a real Arabic base:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/e06-mark-cloud-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray RUNEBENDER_OPEN=behDotless-ar \
+RUNEBENDER_MARK_CLOUD=1 target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+```
+
+Replace `gray` with `light` for the paired capture. Both were individually
+inspected: matching top and bottom marks form distinct faint clouds around the
+real outline, the source anchors remain legible, and the active Mark cloud
+control is not clipped. Their SHA-256 hashes are
+`106208f4ec686243c66af562f2a9c22c8f1f457e7645c95d053205ac50843e11` and
+`96d7b9723201dc58f4d954276aecade48ec6017fc3126ea9adcbf51ad2e0d590`.
 
 The real integration run uses `RUNEBENDER_AI_DEVICE=cpu` semantics on a copied
 designspace, not this read-only screenshot command. It selects R and S, reports
