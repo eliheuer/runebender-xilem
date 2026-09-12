@@ -249,6 +249,16 @@ pub(crate) struct AppState {
     pub(crate) theme_id: &'static str,
     /// A load failure to report on the welcome screen.
     pub(crate) notice: Option<String>,
+    /// False only after an accepted window-close or Quit request.
+    pub(crate) running: bool,
+}
+
+/// User decision when an operation would discard a dirty document.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DirtyDecision {
+    Save,
+    Discard,
+    Cancel,
 }
 
 impl AppState {
@@ -266,6 +276,7 @@ impl AppState {
                 palette,
                 theme_id,
                 notice: None,
+                running: true,
             };
         };
         let mut app = Self {
@@ -273,6 +284,7 @@ impl AppState {
             palette,
             theme_id,
             notice: None,
+            running: true,
         };
         app.open_path(path);
         app
@@ -327,8 +339,7 @@ impl AppState {
     /// welcome screen.
     pub(crate) fn dispatch(&mut self, action: shortcuts::AppAction) {
         if action == shortcuts::AppAction::Quit {
-            // MenuShell exits through its driver context; macOS uses the
-            // platform application menu. Quit is never a state mutation.
+            self.request_quit();
             return;
         }
         if let shortcuts::AppAction::Theme(id) = action {
@@ -341,7 +352,9 @@ impl AppState {
                 .as_ref()
                 .and_then(|workspace| workspace.font.document_source().parent())
                 .unwrap_or_else(|| std::path::Path::new("."));
-            if let Some(path) = dialogs::font(directory) {
+            if let Some(path) = dialogs::font(directory)
+                && self.confirm_replacement("opening another font")
+            {
                 self.open_path(&path);
             }
             return;
@@ -366,11 +379,73 @@ impl AppState {
             }
             return;
         }
+        if action == shortcuts::AppAction::NewFont
+            && !self.confirm_replacement("creating a new font")
+        {
+            return;
+        }
         if let Some(workspace) = self.workspace.as_mut() {
             workspace.dispatch(action);
             self.theme_id = workspace.theme_id;
             self.palette = workspace.palette.clone();
         }
+    }
+
+    /// Handle a close or Quit request, asking before a dirty document is lost.
+    pub(crate) fn request_quit(&mut self) {
+        let decision = if self
+            .workspace
+            .as_ref()
+            .is_some_and(|workspace| workspace.modified)
+        {
+            dialogs::dirty_decision("quitting Runebender")
+        } else {
+            DirtyDecision::Discard
+        };
+        self.request_quit_with(decision);
+    }
+
+    fn confirm_replacement(&mut self, action: &str) -> bool {
+        let decision = if self
+            .workspace
+            .as_ref()
+            .is_some_and(|workspace| workspace.modified)
+        {
+            dialogs::dirty_decision(action)
+        } else {
+            DirtyDecision::Discard
+        };
+        self.resolve_dirty(decision)
+    }
+
+    fn resolve_dirty(&mut self, decision: DirtyDecision) -> bool {
+        let Some(workspace) = self.workspace.as_mut() else {
+            return true;
+        };
+        if !workspace.modified {
+            return true;
+        }
+        match decision {
+            DirtyDecision::Save => workspace.save(),
+            DirtyDecision::Discard => {
+                workspace.modified = false;
+                true
+            }
+            DirtyDecision::Cancel => false,
+        }
+    }
+
+    /// Apply an already-collected close decision; separated for deterministic tests.
+    pub(crate) fn request_quit_with(&mut self, decision: DirtyDecision) {
+        if self.resolve_dirty(decision) {
+            self.running = false;
+        }
+    }
+}
+
+impl xilem::AppState for AppState {
+    fn keep_running(&self) -> bool {
+        self.running
     }
 }
 
@@ -513,5 +588,57 @@ mod tests {
 
         std::fs::remove_dir_all(path).expect("the source fixture is removed");
         std::fs::remove_dir_all(replacement).expect("the replacement fixture is removed");
+    }
+
+    #[test]
+    fn quit_only_exits_after_an_explicit_safe_decision() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-dirty-quit-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        norad::Font::new()
+            .save(&path)
+            .expect("the source fixture saves");
+        let mut app = AppState::open(Some(&path));
+        let workspace = app.workspace.as_mut().expect("the source fixture opens");
+        workspace.filter = "A".into();
+        workspace.new_glyph();
+
+        app.request_quit_with(DirtyDecision::Cancel);
+        assert!(app.running);
+        assert!(app.workspace.as_ref().unwrap().modified);
+        assert!(norad::Font::load(&path).unwrap().get_glyph("A").is_none());
+
+        app.request_quit_with(DirtyDecision::Save);
+        assert!(!app.running);
+        assert!(!app.workspace.as_ref().unwrap().modified);
+        assert!(norad::Font::load(&path).unwrap().get_glyph("A").is_some());
+
+        app.running = true;
+        app.workspace.as_mut().unwrap().modified = true;
+        app.request_quit_with(DirtyDecision::Discard);
+        assert!(!app.running);
+
+        let mut failed = AppState::open(Some(&path));
+        let workspace = failed.workspace.as_mut().unwrap();
+        workspace.modified = true;
+        workspace.font.master_mut().source_path = "/dev/null/runebender-test.ufo".into();
+        failed.request_quit_with(DirtyDecision::Save);
+        assert!(failed.running, "a failed save must cancel Quit");
+        assert!(failed.workspace.as_ref().unwrap().modified);
+        assert!(
+            failed
+                .workspace
+                .as_ref()
+                .unwrap()
+                .note
+                .starts_with("Save failed:")
+        );
+
+        std::fs::remove_dir_all(path).expect("the source fixture is removed");
     }
 }

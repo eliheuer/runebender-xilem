@@ -65,3 +65,26 @@ pub(crate) fn confirm_revert() -> bool {
         .show()
         == rfd::MessageDialogResult::Ok
 }
+
+/// Ask how to handle unsaved edits before a destructive application action.
+pub(crate) fn dirty_decision(action: &str) -> crate::DirtyDecision {
+    let result = rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Warning)
+        .set_title("Unsaved Changes")
+        .set_description(format!("Save changes before {action}?"))
+        .set_buttons(rfd::MessageButtons::YesNoCancelCustom(
+            "Save".into(),
+            "Discard".into(),
+            "Cancel".into(),
+        ))
+        .show();
+    match result {
+        rfd::MessageDialogResult::Yes => crate::DirtyDecision::Save,
+        rfd::MessageDialogResult::No => crate::DirtyDecision::Discard,
+        rfd::MessageDialogResult::Custom(label) if label == "Save" => crate::DirtyDecision::Save,
+        rfd::MessageDialogResult::Custom(label) if label == "Discard" => {
+            crate::DirtyDecision::Discard
+        }
+        _ => crate::DirtyDecision::Cancel,
+    }
+}

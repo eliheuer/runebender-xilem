@@ -40,7 +40,7 @@ use xilem::style::Style;
 use xilem::view::{
     FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, sized_box, text_button,
 };
-use xilem::{EventLoop, EventLoopBuilder, WidgetView, WindowOptions, Xilem};
+use xilem::{EventLoop, EventLoopBuilder, WidgetView, Xilem};
 
 use edit::session::Session;
 use edit::*;

@@ -238,11 +238,7 @@ impl MenuShell {
             MenuRow::Action(index) if self.states[index].enabled => {
                 let action = ACTIONS[index].action;
                 self.close(ctx, None);
-                if action == AppAction::Quit {
-                    ctx.exit();
-                } else {
-                    ctx.submit_action::<AppAction>(action);
-                }
+                ctx.submit_action::<AppAction>(action);
             }
             MenuRow::Submenu(name) => self.show_submenu(ctx, menu, name),
             MenuRow::Action(_) => {}
@@ -475,11 +471,7 @@ impl Widget for MenuShell {
                 .position(|entry| entry.action == action)
                 .is_some_and(|index| self.states[index].enabled)
             {
-                if action == AppAction::Quit {
-                    ctx.exit();
-                } else {
-                    ctx.submit_action::<AppAction>(action);
-                }
+                ctx.submit_action::<AppAction>(action);
             }
             ctx.set_handled();
         }
@@ -697,11 +689,7 @@ impl Widget for AccessibleMenuItem {
                     shell.widget.active_submenu = None;
                     shell.widget.focus_before = None;
                     shell.ctx.remove_layer(old_popup);
-                    if action == AppAction::Quit {
-                        shell.ctx.exit();
-                    } else {
-                        shell.ctx.submit_action::<AppAction>(action);
-                    }
+                    shell.ctx.submit_action::<AppAction>(action);
                     shell.ctx.request_render();
                 });
             }
@@ -809,11 +797,7 @@ impl MenuPopup {
             shell.widget.active_submenu = None;
             shell.widget.focus_before = None;
             shell.ctx.remove_layer(popup);
-            if action == AppAction::Quit {
-                shell.ctx.exit();
-            } else {
-                shell.ctx.submit_action::<AppAction>(action);
-            }
+            shell.ctx.submit_action::<AppAction>(action);
             shell.ctx.request_render();
         });
     }
@@ -1269,7 +1253,7 @@ mod tests {
     }
 
     #[test]
-    fn quit_shortcut_is_consumed_without_a_state_action() {
+    fn quit_shortcut_dispatches_through_application_state() {
         let (mut harness, button_id) = harness();
         harness.focus_on(Some(button_id));
         let mut modifiers = Modifiers::empty();
@@ -1277,7 +1261,10 @@ mod tests {
 
         harness.process_text_event(key_with_modifiers(Key::Character("q".into()), modifiers));
 
-        assert!(harness.pop_action::<AppAction>().is_none());
+        assert_eq!(
+            harness.pop_action::<AppAction>().map(|(action, _)| action),
+            Some(AppAction::Quit)
+        );
     }
 
     #[test]

@@ -1114,6 +1114,8 @@ mod platform {
     /// Menu item ids, in the same order as [`ACTIONS`]. These are plain
     /// strings, so the event pump on another thread can read them.
     static IDS: OnceLock<Vec<MenuId>> = OnceLock::new();
+    /// Custom Quit item id; predefined `AppKit` Quit would bypass dirty-state checks.
+    static QUIT_ID: OnceLock<MenuId> = OnceLock::new();
 
     /// Text-editing accelerators stay in Masonry's event path so the focused
     /// `TextArea` gets first refusal. Installing the same equivalents on the
@@ -1171,7 +1173,13 @@ mod platform {
         let _ = app_menu.append(&muda::PredefinedMenuItem::separator());
         let _ = app_menu.append(&muda::PredefinedMenuItem::hide(None));
         let _ = app_menu.append(&muda::PredefinedMenuItem::separator());
-        let _ = app_menu.append(&muda::PredefinedMenuItem::quit(None));
+        let quit_entry = ACTIONS
+            .iter()
+            .find(|entry| entry.action == AppAction::Quit)
+            .expect("the action table has Quit");
+        let quit = MenuItem::new(quit_entry.title, true, accelerator(quit_entry));
+        let _ = QUIT_ID.set(quit.id().clone());
+        let _ = app_menu.append(&quit);
         let _ = bar.append(&app_menu);
 
         for name in MENUS.iter().filter(|name| **name != "Runebender") {
@@ -1250,6 +1258,9 @@ mod platform {
 
     /// The action a menu id fires, if it is one of ours.
     pub(super) fn action_for(id: &MenuId) -> Option<AppAction> {
+        if QUIT_ID.get() == Some(id) {
+            return Some(AppAction::Quit);
+        }
         let ids = IDS.get()?;
         // ACTIONS and IDS are built together, in menu order.
         let mut index = 0;
