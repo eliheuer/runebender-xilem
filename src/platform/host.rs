@@ -1287,6 +1287,45 @@ mod tests {
     }
 
     #[test]
+    fn off_master_status_distinguishes_incompatible_glyphs() {
+        let (dir, designspace) = two_master_designspace("incompatible-axis-status");
+        let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
+        workspace.filter = "A".into();
+        workspace.new_glyph();
+        workspace.set_axis(0, 550.0);
+        assert_eq!(
+            workspace.interpolation_status().as_deref(),
+            Some("interpolated")
+        );
+
+        let glyph = workspace.font.project.masters[1]
+            .font
+            .get_glyph_mut("A")
+            .expect("A exists in the second master");
+        let mut contour = norad::Contour::default();
+        contour.points.push(norad::ContourPoint::new(
+            10.0,
+            20.0,
+            norad::PointType::Move,
+            false,
+            None,
+            None,
+        ));
+        glyph.contours.push(contour);
+        workspace.font.project.recheck_compat("A");
+
+        let status = workspace
+            .interpolation_status()
+            .expect("the off-master location has a status");
+        assert!(status.starts_with("Cannot interpolate:"));
+        assert!(status.contains("Regular 0c"));
+        assert!(status.contains("Bold 1c"));
+        assert!(workspace.interp_preview().is_none());
+
+        std::fs::remove_dir_all(dir).expect("the designspace fixture is removed");
+    }
+
+    #[test]
     fn save_as_retargets_and_reopens_a_complete_designspace_copy() {
         let (dir, designspace) = two_master_designspace("designspace-save-as");
         let original_designspace = std::fs::read(&designspace).expect("the source is readable");

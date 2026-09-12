@@ -162,9 +162,10 @@ pub(crate) fn axes_section(app: &Workspace) -> Option<impl WidgetView<Workspace>
             )
         })
         .collect();
-    // A short hint when the location sits off any master.
-    let hint = (!app.on_active_master()).then(|| {
-        label("interpolated")
+    // Distinguish a valid instance from the active-outline fallback used when
+    // this glyph's masters cannot interpolate.
+    let hint = app.interpolation_status().map(|status| {
+        label(status)
             .text_size(TextSize::Caption.px())
             .color(pal.role("warning"))
     });

@@ -337,6 +337,29 @@ without touching the tile edges, remains visibly distinct from the blank
 are `4db1e70b336375500cdb5599aa8ff358bdf04212feb1db7ec33e6b0eedd16982`
 and `44127180367f37ff55bbcce5eb8a218d21a182d6f2f30cc7e3d6887a6cc6d000`.
 
+The E07 interpolation pair moves the real Virtua `R` between masters and
+expands the status-bearing Axes section:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/e07-interpolated-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray RUNEBENDER_GLYPH=R \
+RUNEBENDER_EXPAND=Axes RUNEBENDER_AXIS=wght=500 \
+target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/e07-interpolated-light.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=light RUNEBENDER_GLYPH=R \
+RUNEBENDER_EXPAND=Axes RUNEBENDER_AXIS=wght=500 \
+target/debug/runebender-xilem \
+../virtua-grotesk/sources/VirtuaGrotesk.designspace
+```
+
+Both were individually inspected at 1100x720. The slider and label agree on
+`wght 500`, the canvas and preview strip show the read-only interpolated `R`,
+and the panel explicitly says `interpolated`. Their SHA-256 hashes are
+`521a8123838bc001e7780363f6a48b338220f1cf49fd59ed31d8df9f8493c664`
+and `9e4f68ac033c1c3b98c0bb6745fdb2fada8e19ad2a2d1ae3bc50c74802e34369`.
+
 ## GPUI reference metrics
 
 These are source-derived metrics, not a claim that the GPUI application was

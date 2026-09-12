@@ -1592,6 +1592,20 @@ impl Workspace {
             .map(Arc::new)
     }
 
+    /// Status shown under the axis sliders when the location is between masters.
+    pub(crate) fn interpolation_status(&self) -> Option<String> {
+        if self.on_active_master() {
+            return None;
+        }
+        Some(
+            self.font
+                .project
+                .compat_detail(&self.session.glyph_name)
+                .map(|detail| format!("Cannot interpolate: {detail}"))
+                .unwrap_or_else(|| "interpolated".into()),
+        )
+    }
+
     pub(crate) fn set_axis(&mut self, index: usize, value: f64) {
         if let Some(v) = self.axis_values.get_mut(index) {
             *v = value;
