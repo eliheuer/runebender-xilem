@@ -606,6 +606,18 @@ native/Linux/browser interaction. Those remain phase gates for implementation.
   menu shortcut test, all 107 normal package tests, package clippy, production
   debug build and `git diff --check` pass. M05 remains open until a supervised
   native pass clicks all three dialog choices and the window close button.
+- V09 — advanced in `1d78048`: the fixed 360 px overview glyph preview began
+  below the collapsed inspector headers and extended past the standard 720 px
+  viewport, so tall glyphs appeared severely clipped until the user scrolled.
+  The tile is now 260 px, retaining inspection room while fitting in the initial
+  right panel. Inspected real-Virtua evidence is
+  `v09-preview-tall-gray.png` and `v09-preview-empty-light.png`: `Aring` keeps its
+  complete outline and top point inside padded bounds, while `space` remains a
+  deliberately blank preview rather than inventing ink. Both use the read-only
+  designspace at 1100×720 and are recorded with commands and SHA-256 hashes in
+  the manifest. All 107 normal tests and package clippy pass. V09 remains open
+  for native inspector scrolling, tiny non-empty glyphs, and the outstanding
+  right-panel Axes/Shaping placement comparison.
 - R07 — trial instructions, exact local runtime/model hashes, warnings, capture
   commands, commits, validation, and remaining native/RTL limits are recorded in
   `docs/parity/2026-09-11/REAL-WORK-TRIAL.md`. It remains unchecked until the
