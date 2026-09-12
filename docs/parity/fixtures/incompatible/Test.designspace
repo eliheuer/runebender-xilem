@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<designspace format="4.0">
+  <axes>
+    <axis name="Weight" tag="wght" minimum="400" default="400" maximum="700"/>
+  </axes>
+  <sources>
+    <source familyname="Parity Fixture" stylename="Regular" filename="Regular.ufo">
+      <location><dimension name="Weight" xvalue="400"/></location>
+    </source>
+    <source familyname="Parity Fixture" stylename="Bold" filename="Bold.ufo">
+      <location><dimension name="Weight" xvalue="700"/></location>
+    </source>
+  </sources>
+</designspace>

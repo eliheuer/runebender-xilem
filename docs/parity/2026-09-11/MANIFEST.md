@@ -384,6 +384,30 @@ state is visible in the mixed Latin/Arabic preview strip. Their SHA-256 hashes
 are `0a4dcaf93f8cc0b1e2868273de2e329c553ba95e671c29340868303e3ae60845`
 and `245c914d4e74036fc059b05489b4b7f8c8f7b61d8d138113c2d3d7befa1c2b71`.
 
+The E07 incompatible control uses the checked-in minimal fixture rather than
+altering a real font. Regular's `A` is empty and Bold's has one contour:
+
+```sh
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/e07-incompatible-gray.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=gray RUNEBENDER_GLYPH=A \
+RUNEBENDER_EXPAND=Axes RUNEBENDER_AXIS=wght=550 \
+target/debug/runebender-xilem \
+docs/parity/fixtures/incompatible/Test.designspace
+
+RUNEBENDER_SCREENSHOT=docs/parity/2026-09-11/e07-incompatible-light.png \
+RUNEBENDER_SIZE=1100x720 RUNEBENDER_THEME=light RUNEBENDER_GLYPH=A \
+RUNEBENDER_EXPAND=Axes RUNEBENDER_AXIS=wght=550 \
+target/debug/runebender-xilem \
+docs/parity/fixtures/incompatible/Test.designspace
+```
+
+Both were individually inspected at 1100x720. At `wght 550`, the canvas keeps
+the editable Regular outline instead of inventing an interpolation and the Axes
+panel explicitly warns `Cannot interpolate`. The test suite separately asserts
+the structural detail (`Regular 0c` versus `Bold 1c`). Their SHA-256 hashes are
+`a655d699808ef3a72794e47790bf56fbf6ea5a629c05761302241959a00951d7`
+and `ae508135bc41d3dbe5bd8587e227d4c275c0234cae6c6b6c2e5ebf8b305a0fa8`.
+
 ## GPUI reference metrics
 
 These are source-derived metrics, not a claim that the GPUI application was

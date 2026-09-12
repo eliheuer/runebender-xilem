@@ -165,9 +165,24 @@ pub(crate) fn axes_section(app: &Workspace) -> Option<impl WidgetView<Workspace>
     // Distinguish a valid instance from the active-outline fallback used when
     // this glyph's masters cannot interpolate.
     let hint = app.interpolation_status().map(|status| {
-        label(status)
-            .text_size(TextSize::Caption.px())
-            .color(pal.role("warning"))
+        let (summary, detail) = status
+            .split_once(": ")
+            .map_or((status.clone(), None), |(summary, detail)| {
+                (summary.to_string(), Some(detail.to_string()))
+            });
+        xcolumn(
+            Region::List,
+            (
+                label(summary)
+                    .text_size(TextSize::Caption.px())
+                    .color(pal.role("warning")),
+                detail.map(|detail| {
+                    label(detail)
+                        .text_size(TextSize::Caption.px())
+                        .color(pal.text_muted)
+                }),
+            ),
+        )
     });
     Some(xcolumn(
         Region::Section,

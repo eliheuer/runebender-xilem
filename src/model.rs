@@ -1032,6 +1032,21 @@ mod tests {
     }
 
     #[test]
+    fn parity_fixture_keeps_an_incompatible_master_pair() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("docs/parity/fixtures/incompatible/Test.designspace");
+        let model = FontModel::open(&path).expect("the checked-in parity fixture opens");
+
+        assert_eq!(model.incompatible_count(), 1);
+        let detail = model
+            .project
+            .compat_detail("A")
+            .expect("A is deliberately incompatible");
+        assert!(detail.contains("Regular 0c"));
+        assert!(detail.contains("Bold 1c"));
+    }
+
+    #[test]
     fn save_targets_require_a_writable_directory() {
         let (dir, mut model) = two_master_model();
         assert!(model.is_writable());
