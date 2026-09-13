@@ -25,7 +25,7 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let status = if app.modified { "Not saved" } else { "Saved" };
-    let bar = xrow(
+    xrow(
         Region::Toolbar,
         (
             // Room for the traffic lights, which sit where AppKit puts
@@ -74,20 +74,8 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             tab_strip(app),
         ),
     )
-    .background_color(pal.header);
-    // A rule under the header, drawn as a one pixel box. Masonry's
-    // border width is one value for all four sides, so there is no
-    // bottom-only border to set; GPUI writes `border_b_1`.
-    // No region here: this pair is one thing with no gap between its
-    // halves, which is the one case a region cannot state.
-    flex_col((
-        bar,
-        sized_box(label(""))
-            .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(1.0))))
-            .background_color(pal.outline),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::None)
+    .background_color(pal.header)
+    // The shared rule in app_logic separates the header from all three docks.
 }
 
 /// LTR / RTL / Auto, as the GPUI build has them.
@@ -117,59 +105,6 @@ pub(crate) fn direction_chips(app: &Workspace) -> impl WidgetView<Workspace> + u
             chip("Auto", None),
         ),
     )
-}
-
-/// OpenType and language choices shared by the text tool and preview.
-pub(crate) fn shaping_chips(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    let pal = &app.palette;
-    let feature = |tag: &'static str| {
-        tab_chip(
-            pal,
-            tag.into(),
-            !app.text_features_disabled.contains(tag),
-            false,
-            move |app: &mut Workspace| {
-                if !app.text_features_disabled.remove(tag) {
-                    app.text_features_disabled.insert(tag.into());
-                }
-            },
-        )
-    };
-    let locale =
-        |label: &'static str, script: Option<&'static str>, language: Option<&'static str>| {
-            let active =
-                app.text_script.as_deref() == script && app.text_language.as_deref() == language;
-            tab_chip(
-                pal,
-                label.into(),
-                active,
-                false,
-                move |app: &mut Workspace| {
-                    app.text_script = script.map(str::to_string);
-                    app.text_language = language.map(str::to_string);
-                },
-            )
-        };
-    xrow(
-        Region::Inline,
-        (
-            label("Features")
-                .text_size(TextSize::Caption.px())
-                .color(pal.text_muted),
-            feature("liga"),
-            feature("rlig"),
-            feature("kern"),
-            feature("mark"),
-            feature("mkmk"),
-            label("Language")
-                .text_size(TextSize::Caption.px())
-                .color(pal.text_muted),
-            locale("Auto", None, None),
-            locale("Arabic", Some("arab"), Some("ar")),
-            locale("Urdu", Some("arab"), Some("ur")),
-        ),
-    )
-    .padding(Space::Sm)
 }
 
 /// The tools as a horizontal row for the header (gpui puts them there,
@@ -301,6 +236,7 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
 /// left, the count centred, the view boxes and the zoom at the right.
 /// The GPUI build's bottom bar, box for box.
 pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    use xilem::core::one_of::Either;
     let pal = &app.palette;
     let text = match app.mode {
         Mode::Overview => format!(
@@ -340,78 +276,116 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         format!("{}   {}", text, app.note)
     };
     let editing = matches!(app.mode, Mode::Editor(_));
+    if editing {
+        return Either::A(editor_status(app, text));
+    }
     // Small keylined boxes, the size of a swatch plus its padding.
     let bar_box = |text: String, active: bool, f: fn(&mut Workspace)| {
         recipes::toggle_sized(pal, text, active, ControlSize::Icon, f)
     };
-    let zoom = app.session.viewport.zoom;
-    xrow(
-        Region::Toolbar,
-        (
-            matches!(app.mode, Mode::Overview).then(|| {
-                xrow(
-                    Region::Inline,
-                    (
-                        bar_box("+".into(), false, |app: &mut Workspace| app.new_glyph()),
-                        bar_box("\u{2212}".into(), false, |app: &mut Workspace| {
-                            app.note = "Remove glyph: not built in this shell yet".into();
-                        }),
-                    ),
-                )
-            }),
-            FlexSpacer::Flex(1.0),
-            label(text)
-                .text_size(TextSize::Body.px())
-                .color(pal.text_muted),
-            FlexSpacer::Flex(1.0),
-            matches!(app.mode, Mode::Nodes).then(|| {
-                recipes::toggle(pal, "Fit graph".into(), false, |app: &mut Workspace| {
-                    app.nodes.fit_request = app.nodes.fit_request.wrapping_add(1);
-                })
-            }),
-            editing.then(|| {
-                xrow(
-                    Region::Inline,
-                    (
-                        recipes::neutral_slider(
-                            &app.palette,
-                            0.05,
-                            8.0,
-                            zoom,
-                            |app: &mut Workspace, v| app.zoom_to(v),
-                        )
-                        .width(Length::px(96.0)),
-                        label(format!("{:.0}%", zoom * 100.0))
-                            .text_size(TextSize::Body.px())
-                            .color(pal.text_muted),
-                    ),
-                )
-            }),
-            matches!(app.mode, Mode::Overview).then(|| {
-                xrow(
-                    Region::Inline,
-                    (
-                        // Grid or List, the GPUI build's two views.
-                        bar_box("\u{229e}".into(), !app.list, |app: &mut Workspace| {
-                            app.list = false;
-                        }),
-                        bar_box("\u{2261}".into(), app.list, |app: &mut Workspace| {
-                            app.list = true;
-                        }),
-                        recipes::neutral_slider(
-                            &app.palette,
-                            48.0,
-                            200.0,
-                            app.cell_size,
-                            |app: &mut Workspace, v| {
-                                app.cell_size = v;
-                            },
-                        )
-                        .width(Length::px(96.0)),
-                    ),
-                )
-            }),
-        ),
+    Either::B(
+        xrow(
+            Region::Toolbar,
+            (
+                matches!(app.mode, Mode::Overview).then(|| {
+                    xrow(
+                        Region::Inline,
+                        (
+                            bar_box("+".into(), false, |app: &mut Workspace| app.new_glyph()),
+                            bar_box("\u{2212}".into(), false, |app: &mut Workspace| {
+                                app.note = "Remove glyph: not built in this shell yet".into();
+                            }),
+                        ),
+                    )
+                }),
+                FlexSpacer::Flex(1.0),
+                label(text)
+                    .text_size(TextSize::Body.px())
+                    .color(pal.text_muted),
+                FlexSpacer::Flex(1.0),
+                matches!(app.mode, Mode::Nodes).then(|| {
+                    recipes::toggle(pal, "Fit graph".into(), false, |app: &mut Workspace| {
+                        app.nodes.fit_request = app.nodes.fit_request.wrapping_add(1);
+                    })
+                }),
+                matches!(app.mode, Mode::Overview).then(|| {
+                    xrow(
+                        Region::Inline,
+                        (
+                            // Grid or List, the GPUI build's two views.
+                            bar_box("\u{229e}".into(), !app.list, |app: &mut Workspace| {
+                                app.list = false;
+                            }),
+                            bar_box("\u{2261}".into(), app.list, |app: &mut Workspace| {
+                                app.list = true;
+                            }),
+                            recipes::neutral_slider(
+                                &app.palette,
+                                48.0,
+                                200.0,
+                                app.cell_size,
+                                |app: &mut Workspace, v| {
+                                    app.cell_size = v;
+                                },
+                            )
+                            .width(Length::px(96.0)),
+                        ),
+                    )
+                }),
+            ),
+        )
+        .background_color(pal.panel),
     )
+}
+
+/// Compact editor footer: proof appearance controls surround the live status.
+fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + use<> {
+    use crate::view::design::STATUS_SLIDER_WIDTH;
+    let pal = &app.palette;
+    sized_box(
+        xrow(
+            Region::Inline,
+            (
+                recipes::toggle(
+                    pal,
+                    "Invert".into(),
+                    app.preview_invert,
+                    |app: &mut Workspace| app.preview_invert = !app.preview_invert,
+                ),
+                // The readout yields width to controls; Flex still gives it
+                // the remaining space during layout. Its intrinsic text width
+                // must not widen the whole center dock in a narrow window.
+                label(text)
+                    .color(pal.text_muted)
+                    .prop(masonry::properties::LineBreaking::Clip)
+                    .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
+                    .flex(1.0),
+                label("Blur").color(pal.text_muted),
+                recipes::neutral_slider(
+                    pal,
+                    0.0,
+                    8.0,
+                    app.preview_blur,
+                    |app: &mut Workspace, value| app.preview_blur = value,
+                )
+                .width(Length::px(STATUS_SLIDER_WIDTH)),
+                label("Zoom").color(pal.text_muted),
+                recipes::neutral_slider(
+                    pal,
+                    0.05,
+                    8.0,
+                    app.session.viewport.zoom,
+                    |app: &mut Workspace, value| app.zoom_to(value),
+                )
+                .width(Length::px(STATUS_SLIDER_WIDTH)),
+                label(format!("{:.0}%", app.session.viewport.zoom * 100.0)).color(pal.text_muted),
+            ),
+        )
+        .padding(masonry::properties::Padding::horizontal(Space::Md.length())),
+    )
+    .dims(Dimensions::new(
+        Dim::Stretch,
+        Dim::from(ControlSize::Control),
+    ))
     .background_color(pal.panel)
 }

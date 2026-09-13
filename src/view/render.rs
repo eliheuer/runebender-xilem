@@ -47,7 +47,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         sized_box(preview_strip(app))
             .dims(Dimensions::new(
                 Dim::Stretch,
-                Dim::Fixed(Length::px(PROOF_STRIP_HEIGHT)),
+                Dim::Fixed(Length::px(PROOF_STRIP_HEIGHT + Stroke::Hairline.px())),
             ))
             .background_color(pal.panel)
     });

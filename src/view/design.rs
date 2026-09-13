@@ -53,10 +53,11 @@ pub(crate) const RAIL_TAB_HEIGHT: f64 = 36.0;
 pub(crate) const RAIL_TAB_ICON: f64 = 18.0;
 pub(crate) const RAIL_TAB_RADIUS: f64 = 6.0;
 pub(crate) const RAIL_TAB_ICON_RISE: f64 = 2.0;
-/// Initial height of the entire proof strip, matching GPUI's resizable pane.
-/// The drawing shares this budget with the text and shaping controls so those
-/// controls do not take additional space away from the editing canvas.
+/// Initial proof drawing height, excluding its single top divider.
+/// Proof appearance controls live in the footer; text and shaping in the inspector.
 pub(crate) const PROOF_STRIP_HEIGHT: f64 = 140.0;
+/// Width shared by the proof-blur and zoom sliders in the editor footer.
+pub(crate) const STATUS_SLIDER_WIDTH: f64 = 96.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[expect(

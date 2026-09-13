@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Give the proof drawing its full initial height: move Invert/Blur into the
+  compact editor footer and preview text into Shaping, alongside direction,
+  features, and language. Match proof fitting and the single header divider.
+
 - Keep the editor proof strip, including its controls, within its 140-pixel
   initial height so the canvas has more room and the initial glyph fit is larger.
 

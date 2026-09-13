@@ -180,3 +180,54 @@ static server on port 18321 and closes the browser/server after capturing.
 For Xilem, use `RUNEBENDER_SCREENSHOT`, `RUNEBENDER_SIZE=1280x720`,
 `RUNEBENDER_THEME=gray`, `RUNEBENDER_GLYPH=R`, and
 `RUNEBENDER_PREVIEW_TEXT=R` with `cargo run -- <designspace>`.
+
+
+## 2026-09-12 overnight: full proof drawing and compact footer
+
+Completed the pending control relocation and verified the final narrow-window
+fix. The proof drawing now gets 140 pixels, with a separate one-pixel divider.
+Invert and Blur are in the 28-pixel editor footer alongside Zoom. Preview text
+is in the existing Shaping section with direction, features, and language.
+The redundant header divider is removed. The previous section's remaining
+six-pixel canvas deficit and reduced proof drawing are now resolved.
+
+Proof fitting preserves the text advance horizontally and centers actual ink
+vertically with 16-pixel padding, matching the GPUI reference. Empty outline
+paths no longer contaminate the ink bounds. Long text fits the available width.
+The footer readout can shrink and clip so controls do not widen the center pane
+and displace the inspector at 1100 pixels.
+
+- [Xilem matching R proof, 1280 x 720](06-xilem-full-proof-r-gray.png)
+- [Preview text and shaping controls](07-xilem-proof-shaping-gray.png)
+- [Invert with blur radius 2](08-xilem-proof-invert-blur-gray.png)
+- [Narrow window with default Runebender proof](09-xilem-proof-1100-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+The reference was captured again from the real font server (3,028 files) using
+the existing bundle and was byte-identical to the saved reference. Both editors'
+repeated matching captures were byte-identical. No interactive GUI was launched.
+
+| Measurement | Xilem | GPUI |
+| --- | ---: | ---: |
+| Canvas vertical interval, end excluded | 41–551 | 41–551 |
+| Canvas height | 510 px | 510 px |
+| Proof drawing interval, end excluded | 552–692 | 552–692 |
+| Proof drawing height | 140 px | 140 px |
+| Footer interval, end excluded | 692–720 | 692–720 |
+| R proof dark-pixel bounds, inclusive | x604–677, y568–675 | x604–677, y568–675 |
+
+Canvas/proof boundaries were sampled at x=300. Proof bounds use RGB values below
+70 in the central proof region; this verifies placement and scale, not identical
+antialiasing. See [hashes, predicates, and provenance](proof-layout-evidence.json).
+
+Verification: 16 focused tests passed (proof geometry, editor widget, render/tabs,
+and real-font text shaping including the normally ignored Arabic/bidi test).
+Formatting, diff whitespace checks, and workspace all-target Clippy with warnings
+denied passed. The existing unused-patch and block future-compatibility notices
+remain. Screenshots at 1280 and 1100 pixels were visually inspected; native
+keyboard, pointer, and IME behavior are not certified by these headless checks.
+
+Next: five-column glyph-rail density, metrics-card labels and placement,
+inspector hierarchy, then Gray typography, spacing, and surface values. Canvas
+metric guides and point styling also differ. GPUI remains the reference and
+fallback; these improvements do not establish full parity or deprecation readiness.

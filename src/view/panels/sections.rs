@@ -252,6 +252,18 @@ pub(crate) fn shaping_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                 xcolumn(
                     Region::Form,
                     (
+                        if app.interp_preview().is_some() {
+                            xilem::core::one_of::Either::A(
+                                label("Instance glyph preview").color(pal.text_muted),
+                            )
+                        } else {
+                            xilem::core::one_of::Either::B(recipes::field(
+                                pal,
+                                "Preview text",
+                                app.preview_text.clone(),
+                                |app: &mut Workspace, value| app.preview_text = value,
+                            ))
+                        },
                         direction_chips(app),
                         xcolumn(
                             Region::List,

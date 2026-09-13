@@ -1,0 +1,67 @@
+{
+  "recorded_utc": "2026-09-13T02:41:42.370448+00:00",
+  "capture_size": [
+    1280,
+    720
+  ],
+  "narrow_capture_size": [
+    1100,
+    720
+  ],
+  "theme": "gray",
+  "glyph": "R",
+  "matching_proof_text": "R",
+  "xilem_parent": "6ed14307562926f014c62863ea341314aa8569b5",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "gpui_reference_note": "Existing dist bundle used without rebuilding or modifying the reference; bundle hash identifies the artifact independently of checkout HEAD.",
+  "gpui_wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "font_source_sha256": {
+    "VirtuaGrotesk.designspace": "0ac18f6e0827af3949a36b3c7043f22a50613948bcc8e8193f268f21539fedf3",
+    "VirtuaGrotesk-Bold.ufo/fontinfo.plist": "67981ebbc42195b62ce392c555c107724904737c79c83f8455ad68d847119bbb",
+    "VirtuaGrotesk-Bold.ufo/glyphs/R_.glif": "bb84cd52b528fbf6bd8632382c903f1b3ef2b6095206f7149f787e3b8ccadad4",
+    "VirtuaGrotesk-Regular.ufo/fontinfo.plist": "6cb32c37263cb5fe9679239b09f75e0124419176ed583b07dc2a48415621cf61",
+    "VirtuaGrotesk-Regular.ufo/glyphs/R_.glif": "ee9a24d4fb41d245e4f421dc8c35286d5befffb850833ef9cd63a96ee0895301"
+  },
+  "gpui_font_files_fetched": 3028,
+  "capture_sha256": {
+    "06-xilem-full-proof-r-gray.png": "49bf89377856c15467aad70466bc057debdadc32aeaf7272e698e44612ed115e",
+    "07-xilem-proof-shaping-gray.png": "fd376917067dfdcd1660abb9f9d8d075e9eb93e066211dabd6864565d4e1cabc",
+    "08-xilem-proof-invert-blur-gray.png": "c19021ab84653c695ee38b7093b70f218d754783cba18ff163830a11cc7318a4",
+    "09-xilem-proof-1100-gray.png": "349e7bcc76478744094b9c68ad9bdb81ddc57233fd72d0936e2fa22f7e145b36",
+    "04-gpui-live-font-r-gray.png": "5d89a4060eb4b4c1cc1a2bb830474ba994fe5c53359bb63831fa08db7743eff9"
+  },
+  "repeat_captures_byte_identical": {
+    "xilem": true,
+    "gpui": true
+  },
+  "matching_geometry": {
+    "canvas_y_end_excluded": [
+      41,
+      551
+    ],
+    "proof_drawing_y_end_excluded": [
+      552,
+      692
+    ],
+    "footer_y_end_excluded": [
+      692,
+      720
+    ],
+    "proof_dark_pixel_bounds_inclusive": [
+      604,
+      568,
+      677,
+      675
+    ]
+  },
+  "proof_pixel_predicate": "Within x450..849 and y552..691: max(R,G,B)<70. Bounds describe raster ink, not full renderer parity.",
+  "verification": [
+    "2 proof layout tests",
+    "5 editor widget tests",
+    "7 render/tab tests",
+    "2 text-tool tests including normally ignored real-font Arabic/bidi test",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings"
+  ]
+}

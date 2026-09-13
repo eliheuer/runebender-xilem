@@ -31,12 +31,12 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
     let blur = app.preview_blur;
     let instance_preview = interp.is_some();
     let has_preview_text = !app.preview_text.is_empty() && !instance_preview;
-    let preview_paths = if !has_preview_text {
+    let (preview_paths, advance) = if !has_preview_text {
         let mut paths = vec![(*outline).clone()];
         if has_components {
             paths.push((*components).clone());
         }
-        paths
+        (paths, app.session.advance())
     } else {
         let inputs = text_tool::TextInputs::new(&app.font)
             .with_direction(app.text_dir)
@@ -46,26 +46,25 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
                 app.text_script.as_deref(),
                 app.text_language.as_deref(),
             );
-        text_tool::TextState::new(&inputs)
-            .placed()
-            .into_iter()
-            .map(|sort| sort.path)
-            .collect::<Vec<_>>()
+        let placed = text_tool::TextState::new(&inputs).placed();
+        let advance = placed
+            .iter()
+            .map(|sort| sort.origin.x + sort.advance)
+            .fold(0.0, f64::max);
+        (
+            placed.into_iter().map(|sort| sort.path).collect::<Vec<_>>(),
+            advance,
+        )
     };
     let preview_bounds = preview_paths
         .iter()
+        .filter(|path| !path.elements().is_empty())
         .map(|path| path.bounding_box())
         .reduce(|bounds, next| bounds.union(next));
     let drawing = canvas(move |_app: &mut Workspace, _ctx, scene, size: Size| {
         let mut p = Painter::new(scene);
         if let Some(bounds) = preview_bounds {
-            let padding = Space::Md.px();
-            let scale = ((size.width - padding * 2.0) / bounds.width().max(1.0))
-                .min((size.height - padding * 2.0) / bounds.height().max(1.0))
-                .max(0.0);
-            let t = Affine::translate(-bounds.center().to_vec2())
-                .then_scale_non_uniform(scale, -scale)
-                .then_translate((size.width / 2.0, size.height / 2.0).into());
+            let t = proof_transform(bounds, advance, size);
             if blur > 0.0 {
                 let raster_scale = (4096.0 / size.width.max(1.0))
                     .min(4096.0 / size.height.max(1.0))
@@ -96,52 +95,38 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
         }
     });
     flex_col((
+        sized_box(label(""))
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::Fixed(Stroke::Hairline.length()),
+            ))
+            .background_color(app.palette.outline),
         drawing.background_color(background).flex(1.0),
-        xrow(
-            Region::Inline,
-            (
-                instance_preview.then(|| {
-                    label("Instance glyph preview")
-                        .text_size(TextSize::Body.px())
-                        .color(app.palette.text_muted)
-                }),
-                (!instance_preview).then(|| {
-                    recipes::field_bare(
-                        &app.palette,
-                        "Preview text",
-                        app.preview_text.clone(),
-                        |app: &mut Workspace, value| app.preview_text = value,
-                        |app: &mut Workspace, value| app.preview_text = value,
-                    )
-                    .flex(1.0)
-                }),
-                recipes::toggle(
-                    &app.palette,
-                    "Invert".into(),
-                    app.preview_invert,
-                    |app: &mut Workspace| app.preview_invert = !app.preview_invert,
-                ),
-                direction_chips(app),
-                label("Blur")
-                    .text_size(TextSize::Body.px())
-                    .color(app.palette.text_muted),
-                recipes::neutral_slider(
-                    &app.palette,
-                    0.0,
-                    8.0,
-                    app.preview_blur,
-                    |app: &mut Workspace, value| {
-                        app.preview_blur = value;
-                    },
-                )
-                .width(Length::px(96.0)),
-            ),
-        )
-        .padding(Space::Sm),
-        shaping_chips(app),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(Space::None)
+}
+
+/// Fit the advance horizontally and the actual ink vertically, as the GPUI
+/// proof does. Sidebearings stay meaningful; empty descender space does not
+/// displace the visible ink from the middle of the pane.
+fn proof_transform(bounds: kurbo::Rect, advance: f64, size: kurbo::Size) -> kurbo::Affine {
+    use masonry::kurbo::Affine;
+    let padding = Space::Xl.px();
+    let by_height = (size.height - padding * 2.0).max(0.0) / bounds.height().max(1.0);
+    let by_width = if advance > 0.0 {
+        (size.width - padding * 2.0).max(0.0) / advance
+    } else {
+        by_height
+    };
+    let scale = by_height.min(by_width);
+    Affine::scale_non_uniform(scale, -scale).then_translate(
+        (
+            (size.width - advance * scale) / 2.0,
+            size.height / 2.0 + bounds.center().y * scale,
+        )
+            .into(),
+    )
 }
 
 /// A large preview of the selected glyph, at the foot of the inspector in
@@ -227,4 +212,41 @@ pub(crate) fn glyph_preview(app: &Workspace) -> Option<impl WidgetView<Workspace
         // initial scroll while retaining enough room to inspect control points.
         .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(260.0)))),
     )
+}
+
+#[cfg(test)]
+mod proof_tests {
+    use super::*;
+    use masonry::kurbo::{Point, Rect, Size};
+
+    #[test]
+    fn proof_centers_ink_vertically_and_preserves_sidebearings() {
+        let t = proof_transform(
+            Rect::new(80.0, 0.0, 608.0, 760.0),
+            668.0,
+            Size::new(786.0, 140.0),
+        );
+        let top = t * Point::new(80.0, 760.0);
+        let bottom = t * Point::new(608.0, 0.0);
+        assert!((top.y - 16.0).abs() < 1e-9);
+        assert!((bottom.y - 124.0).abs() < 1e-9);
+        let advance_center = t * Point::new(334.0, 380.0);
+        assert_eq!(advance_center, Point::new(393.0, 70.0));
+        assert!((top.x + bottom.x) / 2.0 > advance_center.x);
+    }
+
+    #[test]
+    fn long_proof_fits_the_width_and_small_panes_do_not_invert_it() {
+        let t = proof_transform(
+            Rect::new(0.0, -200.0, 4000.0, 800.0),
+            4000.0,
+            Size::new(200.0, 140.0),
+        );
+        let left = t * Point::new(0.0, 300.0);
+        let right = t * Point::new(4000.0, 300.0);
+        assert_eq!(left, Point::new(16.0, 70.0));
+        assert_eq!(right, Point::new(184.0, 70.0));
+        let tiny = proof_transform(Rect::ZERO, 0.0, Size::new(20.0, 20.0));
+        assert_eq!(tiny * Point::new(10.0, 10.0), Point::new(10.0, 10.0));
+    }
 }
