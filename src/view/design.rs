@@ -36,6 +36,29 @@ pub(crate) const INPUT_INSET: f64 = 4.0;
 pub(crate) const INPUT_BASELINE_OFFSET: f64 = 1.0;
 pub(crate) const INPUT_HORIZONTAL_INSET: f64 = 6.0;
 
+/// Point geometry at unit marker scale; selection adds one pixel of radius.
+pub(crate) const POINT_CORNER_RADIUS: f64 = 3.5;
+pub(crate) const POINT_CURVE_RADIUS: f64 = 4.5;
+pub(crate) const POINT_SELECTED_GROW: f64 = 1.0;
+pub(crate) const POINT_RING_WIDTH: f64 = 1.5;
+pub(crate) const POINT_HALO_EXTRA: f64 = 2.0;
+
+/// Keep nodes compact when zoomed out and enlarge them gradually for close editing.
+/// The three smooth intervals match the reference's point-size curve.
+pub(crate) fn point_marker_scale(zoom: f64) -> f64 {
+    let smooth = |t: f64| {
+        let t = t.clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t)
+    };
+    if zoom <= 0.8 {
+        0.72 + 0.28 * smooth(zoom / 0.8)
+    } else if zoom <= 8.0 {
+        1.0 + 0.6 * smooth((zoom - 0.8) / 7.2)
+    } else {
+        1.6 + 0.8 * smooth((zoom - 8.0) / 20.0)
+    }
+}
+
 /// Initial dock width shared by the glyph rail and inspector.
 pub(crate) const DOCK_WIDTH: f64 = 246.0;
 /// GPUI category rows inset their marker and count by 14 logical pixels.

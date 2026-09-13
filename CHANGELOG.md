@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Scale outline point markers smoothly with zoom, keep selected points legible
+  with a dark keyline, and draw handle lines in the shared neutral ink.
+
 - Keep metric rules within the glyph advance and extend its frame to the full
   em height, matching the reference canvas without lines across the workspace.
 

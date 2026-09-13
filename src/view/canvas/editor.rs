@@ -31,8 +31,9 @@ use crate::widgets::text_label::{self, Anchor};
 use crate::view::design::{
     METRICS_CARD_BOTTOM, METRICS_CARD_HEADER as PANEL_HEADER, METRICS_CARD_HEIGHT as PANEL_HEIGHT,
     METRICS_CARD_INSET as PANEL_PAD, METRICS_CARD_WIDTH as PANEL_WIDTH, METRICS_FIELD_GAP,
-    METRICS_FIELD_HEIGHT as PANEL_ROW, METRICS_FIELD_START, METRICS_FIELD_WIDTH, Radius,
-    Stroke as DesignStroke, TextSize,
+    METRICS_FIELD_HEIGHT as PANEL_ROW, METRICS_FIELD_START, METRICS_FIELD_WIDTH,
+    POINT_CORNER_RADIUS, POINT_CURVE_RADIUS, POINT_HALO_EXTRA, POINT_RING_WIDTH,
+    POINT_SELECTED_GROW, Radius, Stroke as DesignStroke, TextSize, point_marker_scale,
 };
 
 const HIT_RADIUS_PX: f64 = 8.0;
@@ -876,17 +877,16 @@ impl Widget for EditorWidget {
                         if !matches!(contour.points[j].typ, norad::PointType::OffCurve) {
                             let on = affine * Point::new(contour.points[j].x, contour.points[j].y);
                             painter
-                                .stroke(
-                                    Line::new(off, on),
-                                    &handle,
-                                    pal.role("pointOffcurve").with_alpha(0.7),
-                                )
+                                .stroke(Line::new(off, on), &handle, pal.handle_line)
                                 .draw();
                         }
                     }
                 }
             }
 
+            let marker_scale = point_marker_scale(self.session.viewport.zoom);
+            let ring_width = (POINT_RING_WIDTH * marker_scale).max(DesignStroke::Hairline.px());
+            let halo_width = ring_width + POINT_HALO_EXTRA;
             for (id, sp, on_curve, smooth, start) in self.screen_points() {
                 let selected = self.session.selection.contains(&id);
                 let hue = if start {
@@ -903,7 +903,10 @@ impl Widget for EditorWidget {
                 // is far from mid grey, a hue fill with one keyline
                 // where it is not (the mark cells' treatment).
                 let (fill, interior) = if selected {
-                    (pal.point_selected_ring(), pal.role("pointSelected"))
+                    (
+                        pal.point_outline.unwrap_or(pal.text),
+                        pal.role("pointSelected"),
+                    )
                 } else if pal.points_filled {
                     (pal.point_outline.unwrap_or(pal.text), hue)
                 } else {
@@ -916,26 +919,25 @@ impl Widget for EditorWidget {
                 // constant-width ring. A solid dot loses its shape against
                 // the curve it sits on.
                 let square = on_curve && !smooth;
-                let r = if square {
-                    if selected { 4.5 } else { 3.5 }
-                } else if selected {
-                    5.5
+                let radius = if square {
+                    POINT_CORNER_RADIUS
                 } else {
-                    4.5
+                    POINT_CURVE_RADIUS
                 };
+                let r = (radius + if selected { POINT_SELECTED_GROW } else { 0.0 }) * marker_scale;
                 let halo = pal.app.with_alpha(0.85);
-                let ring = Stroke::new(1.5);
+                let ring = Stroke::new(ring_width);
                 if square {
                     let shape = Rect::new(sp.x - r, sp.y - r, sp.x + r, sp.y + r);
                     if pal.point_halo {
-                        painter.stroke(shape, &Stroke::new(3.0), halo).draw();
+                        painter.stroke(shape, &Stroke::new(halo_width), halo).draw();
                     }
                     painter.fill(shape, interior).draw();
                     painter.stroke(shape, &ring, fill).draw();
                 } else {
                     let shape = Circle::new(sp, r);
                     if pal.point_halo {
-                        painter.stroke(shape, &Stroke::new(3.0), halo).draw();
+                        painter.stroke(shape, &Stroke::new(halo_width), halo).draw();
                     }
                     painter.fill(shape, interior).draw();
                     painter.stroke(shape, &ring, fill).draw();

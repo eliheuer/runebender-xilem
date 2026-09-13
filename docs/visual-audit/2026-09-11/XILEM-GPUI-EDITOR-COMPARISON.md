@@ -534,3 +534,31 @@ byte-identically, and the narrow layout was visually inspected. See
 Next: point/handle/start-node styling, then rail shadows/tab faces and inspector
 field/header polish. This change concerns metric painting only; editable font
 and glyph guidelines are separate behavior, not removed by this change.
+
+
+## 2026-09-13 daytime: point scale and neutral handles
+
+Point markers now follow the reference's smooth zoom-dependent scale, staying
+compact at the fitted glyph view and growing for close editing. Corner and
+curve radii, selection growth, ring width and halo allowance have named design
+tokens. Hit targets are unchanged. Handle lines use the shared secondary text
+color; selected points retain a dark keyline around their yellow fill.
+
+- [Xilem point sizing, 1280 x 720](30-xilem-point-scale-gray.png)
+- [Selected points retain their keylines](31-xilem-point-scale-selected-gray.png)
+- [Xilem at 1100 x 720](32-xilem-point-scale-1100-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+The sampled purple off-curve marker has matching colored bounds in both
+captures, x689..695/y135..140. The normal, selected and narrow Xilem captures
+were visually inspected, and repeat images match byte-for-byte in each editor.
+Seven editor widget tests, formatting, whitespace checks and workspace
+all-target Clippy passed; a superseded selection-ring accessor was removed
+following its unused-code lint. See [measurements and hashes](point-scale-evidence.json).
+
+Start nodes still use orange markers rather than direction arrows, and anchors
+still differ from the reference's filled diamonds. Close-zoom grid details and
+native pointer delivery are not certified by these fitted-view screenshots.
+Those marker details are the next canvas pass, followed by rail and inspector
+polish. The GPUI bundle provenance remains the same older, independently hashed
+reference artifact.

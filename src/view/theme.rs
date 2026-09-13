@@ -34,6 +34,8 @@ pub(crate) struct Palette {
     pub field: Color,
     pub text: Color,
     pub text_muted: Color,
+    /// Neutral control-handle lines from the shared secondary text token.
+    pub handle_line: Color,
     /// The rule around a panel and a grid cell: the keyline.
     pub outline: Color,
     /// The rule around a text field, quieter than a panel's.
@@ -97,6 +99,7 @@ impl Palette {
             field: color(t.surface("field")),
             text,
             text_muted: color(t.text("muted")),
+            handle_line: color(t.text("secondary")),
             outline: color(t.surface("outline")),
             field_outline: color(t.surface("fieldOutline")),
             roles: t
@@ -161,15 +164,6 @@ impl Palette {
 
     pub(crate) fn role(&self, name: &str) -> Color {
         self.roles.get(name).copied().unwrap_or(Color::WHITE)
-    }
-
-    /// The ring around a selected point: its own role where the theme
-    /// names one, else the selection colour.
-    pub(crate) fn point_selected_ring(&self) -> Color {
-        self.roles
-            .get("pointSelectedRing")
-            .copied()
-            .unwrap_or_else(|| self.role("selection"))
     }
 
     /// Theme mark labels with their colors, in theme order.
