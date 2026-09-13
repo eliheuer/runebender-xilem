@@ -29,11 +29,12 @@ use crate::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget}
 use crate::widgets::text_label::{self, Anchor};
 
 use crate::view::design::{
-    METRICS_CARD_BOTTOM, METRICS_CARD_HEADER as PANEL_HEADER, METRICS_CARD_HEIGHT as PANEL_HEIGHT,
-    METRICS_CARD_INSET as PANEL_PAD, METRICS_CARD_WIDTH as PANEL_WIDTH, METRICS_FIELD_GAP,
-    METRICS_FIELD_HEIGHT as PANEL_ROW, METRICS_FIELD_START, METRICS_FIELD_WIDTH,
-    POINT_CORNER_RADIUS, POINT_CURVE_RADIUS, POINT_HALO_EXTRA, POINT_RING_WIDTH,
-    POINT_SELECTED_GROW, Radius, Stroke as DesignStroke, TextSize, point_marker_scale,
+    ANCHOR_DIAMOND_SCALE, METRICS_CARD_BOTTOM, METRICS_CARD_HEADER as PANEL_HEADER,
+    METRICS_CARD_HEIGHT as PANEL_HEIGHT, METRICS_CARD_INSET as PANEL_PAD,
+    METRICS_CARD_WIDTH as PANEL_WIDTH, METRICS_FIELD_GAP, METRICS_FIELD_HEIGHT as PANEL_ROW,
+    METRICS_FIELD_START, METRICS_FIELD_WIDTH, POINT_CORNER_RADIUS, POINT_CURVE_RADIUS,
+    POINT_HALO_EXTRA, POINT_RING_WIDTH, POINT_SELECTED_GROW, Radius, Stroke as DesignStroke,
+    TextSize, point_marker_scale,
 };
 
 const HIT_RADIUS_PX: f64 = 8.0;
@@ -944,17 +945,23 @@ impl Widget for EditorWidget {
                 }
             }
 
-            // Anchors: a small diamond at each, in the accent color.
-            let anchor_color = pal.text;
+            // Anchors have a dark interior and a distinct pink keyline in
+            // the inspected reference; selection retains the shared node palette.
+            let anchor_color = pal.mark("pink").unwrap_or_else(|| pal.role("danger"));
             for (ai, anchor) in self.session.glyph.anchors.iter().enumerate() {
                 let p = affine * Point::new(anchor.x, anchor.y);
                 let selected = self.session.selected_anchor == Some(ai);
-                let anchor_color = if selected {
-                    pal.role("pointSelected")
+                let (ring, inner) = if selected {
+                    (
+                        pal.point_outline.unwrap_or(pal.text),
+                        pal.role("pointSelected"),
+                    )
                 } else {
-                    anchor_color
+                    (anchor_color, pal.role("pointInner"))
                 };
-                let r = if selected { 6.5 } else { 5.0 };
+                let r = (POINT_CURVE_RADIUS + if selected { POINT_SELECTED_GROW } else { 0.0 })
+                    * marker_scale
+                    * ANCHOR_DIAMOND_SCALE;
                 let diamond = kurbo::BezPath::from_vec(vec![
                     kurbo::PathEl::MoveTo(Point::new(p.x, p.y - r)),
                     kurbo::PathEl::LineTo(Point::new(p.x + r, p.y)),
@@ -962,10 +969,15 @@ impl Widget for EditorWidget {
                     kurbo::PathEl::LineTo(Point::new(p.x - r, p.y)),
                     kurbo::PathEl::ClosePath,
                 ]);
+                if pal.point_halo {
+                    painter
+                        .stroke(&diamond, &Stroke::new(halo_width), pal.role("halo"))
+                        .draw();
+                }
+                painter.fill(&diamond, inner).draw();
                 painter
-                    .stroke(&diamond, &Stroke::new(1.5), anchor_color)
+                    .stroke(&diamond, &Stroke::new(ring_width), ring)
                     .draw();
-                painter.fill(Circle::new(p, 1.5), anchor_color).draw();
             }
         } else if let Some(interp) = &self.interp {
             // Read-only interpolated instance in warm amber, filled and

@@ -562,3 +562,30 @@ native pointer delivery are not certified by these fitted-view screenshots.
 Those marker details are the next canvas pass, followed by rail and inspector
 polish. The GPUI bundle provenance remains the same older, independently hashed
 reference artifact.
+
+
+## 2026-09-13 daytime: distinct anchor diamonds
+
+Anchors now use dark filled diamonds with pink keylines, matching the inspected
+GPUI bundle. They scale with the point-marker curve and use the named diamond
+width factor. The center dot is removed; selected anchors use the shared yellow
+fill and dark keyline. Anchor coordinates, hit testing and editing are unchanged.
+
+- [Xilem anchor diamonds, 1280 x 720](33-xilem-anchor-style-gray.png)
+- [Xilem at 1100 x 720](34-xilem-anchor-style-1100-gray.png)
+- [Arabic zero anchor fixture](35-xilem-anchor-style-zero-ar-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+The R baseline anchor center is RGB29 in both captures. Pink coverage spans
+x637..647 in both; vertical coverage is y370..380 in Xilem and y369..380 in
+GPUI, retaining a one-pixel rasterization difference. Matching R, narrow and
+Arabic zero captures were visually inspected. Sixteen session tests including
+anchor drag transactions and anchor-locked components passed, as did formatting,
+whitespace checks and workspace all-target Clippy. Both editors' repeated
+captures are byte-identical. See [measurements and hashes](anchor-style-evidence.json).
+
+Provenance matters here: current GPUI source has a newer pink-filled/dark-ring
+anchor design. The existing bundle has the dark-filled/pink-ring design above,
+confirmed by pixel sampling rather than inferred from current source. This pass
+matches that bundle. Selected-anchor native interaction was not exercised by
+these captures. Start-point direction markers remain the next canvas difference.

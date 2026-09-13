@@ -1,0 +1,76 @@
+{
+  "recorded_utc": "2026-09-13T18:55:05.111288+00:00",
+  "xilem_parent": "fde0508",
+  "capture_size": [
+    1280,
+    720
+  ],
+  "narrow_capture_size": [
+    1100,
+    720
+  ],
+  "theme": "gray",
+  "glyph": "R",
+  "proof_text": "R",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "gpui_reference_note": "Existing dist bundle used without rebuilding or modifying the reference; bundle hash identifies the artifact independently of checkout HEAD.",
+  "gpui_wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "font_source_sha256": {
+    "VirtuaGrotesk.designspace": "0ac18f6e0827af3949a36b3c7043f22a50613948bcc8e8193f268f21539fedf3",
+    "VirtuaGrotesk-Bold.ufo/fontinfo.plist": "67981ebbc42195b62ce392c555c107724904737c79c83f8455ad68d847119bbb",
+    "VirtuaGrotesk-Bold.ufo/glyphs/R_.glif": "bb84cd52b528fbf6bd8632382c903f1b3ef2b6095206f7149f787e3b8ccadad4",
+    "VirtuaGrotesk-Regular.ufo/fontinfo.plist": "6cb32c37263cb5fe9679239b09f75e0124419176ed583b07dc2a48415621cf61",
+    "VirtuaGrotesk-Regular.ufo/glyphs/R_.glif": "ee9a24d4fb41d245e4f421dc8c35286d5befffb850833ef9cd63a96ee0895301"
+  },
+  "capture_sha256": {
+    "33-xilem-anchor-style-gray.png": "1d6f2878e9df5396829d09fd5bd8702fa4210e0b21d2703fb0ac2da16b9b1254",
+    "34-xilem-anchor-style-1100-gray.png": "95d34ac669845c71d5a092c6442fff341b724bdb5962146c02d8dabe832e5795",
+    "35-xilem-anchor-style-zero-ar-gray.png": "f8af35f7193555f814ea71f711697d20fc9858935404f20a87e0b08666a24185",
+    "04-gpui-live-font-r-gray.png": "5d89a4060eb4b4c1cc1a2bb830474ba994fe5c53359bb63831fa08db7743eff9"
+  },
+  "repeat_captures_byte_identical": {
+    "xilem": true,
+    "gpui": true
+  },
+  "verification": [
+    "16 session tests passed including anchor/metric drag transaction and anchor-locked component behavior",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "Matching1280R captures plus Xilem1100 and zero-ar inspected",
+    "Repeat captures byte-identical both; GPUI fresh3028files and04referencehash"
+  ],
+  "gpui_font_files_fetched": 3028,
+  "anchor_sample": {
+    "center_xy": [
+      642,
+      375
+    ],
+    "center_rgb_both": [
+      29,
+      29,
+      29
+    ],
+    "pink_mask": "red-green>30 and blue-green>20",
+    "roi": [
+      635,
+      368,
+      650,
+      382
+    ],
+    "inclusive_pink_bounds": {
+      "xilem": [
+        637,
+        370,
+        647,
+        380
+      ],
+      "gpui": [
+        637,
+        369,
+        647,
+        380
+      ]
+    }
+  }
+}

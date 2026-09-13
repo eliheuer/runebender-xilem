@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Distinguish anchors with filled diamonds and pink keylines, scaled with zoom
+  alongside outline points and retaining a clear selected state.
+
 - Scale outline point markers smoothly with zoom, keep selected points legible
   with a dark keyline, and draw handle lines in the shared neutral ink.
 
