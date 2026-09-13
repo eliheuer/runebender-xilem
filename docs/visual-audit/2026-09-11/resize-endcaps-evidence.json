@@ -1,0 +1,30 @@
+{
+  "recorded_utc": "2026-09-13T23:24:10.004109+00:00",
+  "cause": "Masonry Split expands its focus rectangle beyond the panel bounds; it is opaque during pointer capture and half-opacity while focused after release",
+  "fix": "Native Portal clips Split at the panel boundary; both axes constrained, content must fill, no scrollbars or scroll interaction",
+  "captures": {
+    "97-resize-endcaps-before.png": "ba803af088d794eaf9ca70ab40d97385818fdc1d18256775d7a49e1662189597",
+    "98-resize-dock-drag-fixed.png": "d67e70036cd08030db7c2e902ee78489f7f70aa4fe667883926480b2ceca284f",
+    "99-resize-dock-released-fixed.png": "d67e70036cd08030db7c2e902ee78489f7f70aa4fe667883926480b2ceca284f",
+    "100-resize-proof-released-fixed.png": "8e0a29838cb3798936f36de1a13f870329ace5b65b4d10afe0ba272566630ef2"
+  },
+  "validation": [
+    "New pixel regression failed against the original view during dock dragging",
+    "New regression passes for both split orientations during dragging, release, pointer-away and blur",
+    "Regression explicitly checks focus remains before blur",
+    "Three existing dock/proof drag, keyboard, rebuild, window resize and minimum size tests pass",
+    "cargo fmt --check passed",
+    "git diff --check passed",
+    "cargo clippy --workspace --all-targets -- -D warnings passed",
+    "Debug and optimized release builds passed; release headless smoke test matches reference66",
+    "Normal 1280 editor remains byte-identical to66;1100 screenshot visually inspected"
+  ],
+  "limits": [
+    "Native app relaunch is left to the user",
+    "No live-font edits, saves or foreground GUI launched"
+  ],
+  "outside_panel_pixels": {
+    "before_dragging": 36,
+    "after_each_drag_release_pointer_away_blur": 0
+  }
+}

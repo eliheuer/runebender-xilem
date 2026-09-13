@@ -1110,3 +1110,35 @@ all-target Clippy checks passed. A narrowly documented lint expectation covers
 the exactly representable control-height token's conversion to Parley's f32 API.
 No live-font edit/save, graph Run or foreground GUI occurred. These comparisons
 do not establish native interaction parity.
+
+
+## 2026-09-13 user report: white/gray resize end caps
+
+The user observed white squares at panel ends during dragging, turning gray on
+release and disappearing after clicking away. Masonry Split draws an expanded
+focus rectangle: opaque during pointer capture, half-opacity while focused.
+Neighboring panel backgrounds cover its sides, but the end caps escape the
+splitter container. Kurbo's positive `inset(2)` expands the rectangle.
+
+A focused harness reproduces the actual cap pixels against a padded gray
+background. Its margin-pixel assertion fails before the fix. The application
+now puts each splitter region inside a native Portal, constrained on both axes
+with content required to fill it. This clips paint at the panel boundary and
+cannot scroll or show scrollbars. The native Split continues to own focus,
+dragging, keyboard and accessibility resizing, retained lengths and limits.
+
+- [White end caps reproduced](97-resize-endcaps-before.png)
+- [Dock while dragging, fixed](98-resize-dock-drag-fixed.png)
+- [Dock after release, fixed](99-resize-dock-released-fixed.png)
+- [Proof divider after release, fixed](100-resize-proof-released-fixed.png)
+- [Validation evidence](resize-endcaps-evidence.json)
+
+The new regression checks both orientations during drag, release, pointer-away
+and blur; it also asserts that focus is retained before blur. It passes along
+with the three existing panel-resize interaction tests. Formatting, whitespace
+and workspace all-target Clippy pass. The standard editor is byte-identical to 66;
+the narrow editor was inspected. No live font or foreground app was modified.
+
+Both debug and optimized release builds passed. The rebuilt release executable
+also reproduces the standard editor screenshot exactly. The user can relaunch
+the release app to load this change.

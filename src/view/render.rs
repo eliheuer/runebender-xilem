@@ -31,7 +31,7 @@ fn workspace_columns<State, A, B, C>(
     middle: B,
     right: C,
     collapsed: bool,
-) -> xilem::view::Split<xilem::view::Split<A, B, State>, C, State>
+) -> impl WidgetView<State, Widget: Sized> + use<State, A, B, C>
 where
     State: 'static,
     A: WidgetView<State>,
@@ -49,7 +49,7 @@ where
         .min_bar_area(Length::px(SPLITTER_HIT_WIDTH))
         .solid_bar(true)
         .draggable(!collapsed);
-    xilem::view::split(columns, right)
+    let columns = xilem::view::split(columns, right)
         .split_point_from_end(Length::px(DOCK_WIDTH))
         .min_lengths(
             Length::px(CENTER_MIN_WIDTH + if collapsed { 0.0 } else { DOCK_MIN_WIDTH } + 1.0),
@@ -57,17 +57,34 @@ where
         )
         .bar_thickness(Stroke::Hairline.length())
         .min_bar_area(Length::px(SPLITTER_HIT_WIDTH))
-        .solid_bar(true)
+        .solid_bar(true);
+    clip_split(columns)
+}
+
+/// Clip the native splitter's expanded focus outline at the panel boundary.
+/// Both axes are constrained, so this Portal cannot scroll or show scrollbars.
+fn clip_split<State, V>(content: V) -> xilem::view::Portal<V, State, ()>
+where
+    State: 'static,
+    V: WidgetView<State>,
+{
+    xilem::view::portal(content)
+        .constrain_horizontal(true)
+        .constrain_vertical(true)
+        .must_fill(true)
 }
 
 /// Keep proof height in pixels while allowing its top divider to be dragged.
-fn proof_split<State, A, B>(editor: A, proof: B) -> xilem::view::Split<A, B, State>
+fn proof_split<State, A, B>(
+    editor: A,
+    proof: B,
+) -> impl WidgetView<State, Widget: Sized> + use<State, A, B>
 where
     State: 'static,
     A: WidgetView<State>,
     B: WidgetView<State>,
 {
-    xilem::view::split(editor, proof)
+    let split = xilem::view::split(editor, proof)
         .split_axis(kurbo::Axis::Vertical)
         .split_point_from_end(Length::px(PROOF_STRIP_HEIGHT))
         .min_lengths(
@@ -76,7 +93,8 @@ where
         )
         .bar_thickness(Stroke::Hairline.length())
         .min_bar_area(Length::px(design::SPLITTER_HIT_WIDTH))
-        .solid_bar(true)
+        .solid_bar(true);
+    clip_split(split)
 }
 
 pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -606,7 +624,8 @@ mod panel_resize_tests {
         );
         fn widths<W: masonry::core::Widget>(h: &TestHarness<W>) -> (f64, f64, f64) {
             let root = h.root_widget();
-            let children = root.children();
+            let clip_children = root.children();
+            let children = clip_children[0].children();
             let nested = children[0].children();
             (
                 nested[0].ctx().border_box().width(),
@@ -654,7 +673,7 @@ mod panel_resize_tests {
             (1280, 650),
         );
         assert_eq!(
-            h.root_widget().children()[0].children()[0]
+            h.root_widget().children()[0].children()[0].children()[0]
                 .ctx()
                 .border_box()
                 .width(),
@@ -665,20 +684,26 @@ mod panel_resize_tests {
         h.mouse_move(Point::new(953.5, 100.0));
         h.mouse_button_release(None);
         assert_eq!(
-            h.root_widget().children()[1].ctx().border_box().width(),
+            h.root_widget().children()[0].children()[1]
+                .ctx()
+                .border_box()
+                .width(),
             326.0
         );
         let again = logic(false);
         h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
         assert_eq!(
-            h.root_widget().children()[0].children()[0]
+            h.root_widget().children()[0].children()[0].children()[0]
                 .ctx()
                 .border_box()
                 .width(),
             246.0
         );
         assert_eq!(
-            h.root_widget().children()[1].ctx().border_box().width(),
+            h.root_widget().children()[0].children()[1]
+                .ctx()
+                .border_box()
+                .width(),
             326.0
         );
     }
@@ -698,7 +723,8 @@ mod panel_resize_tests {
         );
         fn heights<W: masonry::core::Widget>(h: &TestHarness<W>) -> (f64, f64) {
             let root = h.root_widget();
-            let children = root.children();
+            let clip_children = root.children();
+            let children = clip_children[0].children();
             (
                 children[0].ctx().border_box().height(),
                 children[1].ctx().border_box().height(),
@@ -715,7 +741,8 @@ mod panel_resize_tests {
         assert_eq!(heights(&h), (450.0, 200.0));
         h.process_window_event(WindowEvent::Resize(PhysicalSize::new(800, 751)));
         assert_eq!(heights(&h), (550.0, 200.0));
-        h.focus_on(Some(h.root_id()));
+        let split_id = h.root_widget().children()[0].id();
+        h.focus_on(Some(split_id));
         h.process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowDown)));
         assert!(heights(&h).1 < 200.0);
         h.mouse_move(Point::new(400.0, heights(&h).0 + 0.5));
@@ -723,5 +750,84 @@ mod panel_resize_tests {
         h.mouse_move(Point::new(400.0, 748.0));
         h.mouse_button_release(None);
         assert_eq!(heights(&h).1, crate::view::design::PROOF_MIN_HEIGHT);
+    }
+
+    #[test]
+    fn splitter_focus_never_paints_end_caps_outside_the_panels() {
+        use masonry::layout::{Dim, Length};
+        use masonry::properties::Dimensions;
+        use xilem::core::View;
+        use xilem::style::Style;
+        use xilem::view::{label, sized_box};
+        let fill = masonry::peniko::Color::from_rgb8(177, 177, 177);
+        let pane = || {
+            sized_box(label(""))
+                .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
+                .background_color(fill)
+        };
+        fn check<V: xilem::WidgetView<()>>(
+            view: V,
+            size: (u32, u32),
+            start: Point,
+            end: Point,
+            name: &str,
+        ) {
+            let mut ctx = context();
+            let view = sized_box(view)
+                .padding(Length::px(8.0))
+                .background_color(masonry::peniko::Color::from_rgb8(177, 177, 177));
+            let (pod, _) = view.build(&mut ctx, &mut ());
+            let mut h =
+                TestHarness::create_with_size(crate::default_property_set(), pod.new_widget, size);
+            let baseline = h.render();
+            h.mouse_move(start);
+            h.mouse_button_press(None);
+            h.mouse_move(end);
+            for phase in ["dragging", "released", "pointer-away", "blurred"] {
+                match phase {
+                    "released" => h.mouse_button_release(None),
+                    "pointer-away" => h.mouse_move(Point::new(40.0, 40.0)),
+                    "blurred" => h.focus_on(None),
+                    _ => {}
+                }
+                assert_eq!(
+                    h.focused_widget_id().is_some(),
+                    phase != "blurred",
+                    "the paint fix must preserve native splitter focus"
+                );
+                let rendered = h.render();
+                if let Ok(dir) = std::env::var("RUNEBENDER_RESIZE_EVIDENCE") {
+                    let dir = std::path::PathBuf::from(dir);
+                    std::fs::create_dir_all(&dir).unwrap();
+                    rendered
+                        .save(dir.join(format!("{name}-{phase}.png")))
+                        .unwrap();
+                }
+                assert!(
+                    rendered
+                        .enumerate_pixels()
+                        .filter(|(x, y, _)| *x < 8
+                            || *x >= size.0 - 8
+                            || *y < 8
+                            || *y >= size.1 - 8)
+                        .all(|(x, y, pixel)| pixel == baseline.get_pixel(x, y)),
+                    "{name} painted outside its panels while {phase}"
+                );
+            }
+        }
+        check(
+            workspace_columns(pane(), pane(), pane(), false),
+            (1296, 666),
+            Point::new(1041.5, 108.0),
+            Point::new(961.5, 108.0),
+            "dock",
+        );
+        check(
+            proof_split(pane(), pane()),
+            (816, 667),
+            Point::new(408.0, 518.5),
+            Point::new(408.0, 458.5),
+            "proof",
+        );
     }
 }

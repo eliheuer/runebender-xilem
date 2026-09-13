@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Keep resize focus outlines inside the panels so dragging leaves no white or gray end caps.
+
 - Keep master comparison summaries compact and wrap them to the inspector width.
 
 - Clarify the new-group input and align square group chips and shelf spacing.

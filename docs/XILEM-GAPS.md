@@ -5,6 +5,26 @@
 > Several features listed below now exist, and GPUI no longer uses gpui-component.
 > Preserve these notes as history, not as a current blocker inventory.
 
+## Splitter focus paint at panel edges (2026-09-13)
+
+The pinned Masonry Split paints an expanded focus rectangle: opaque white during
+pointer capture, then half-opacity while focused. With a one-pixel divider,
+neighboring panel backgrounds cover its sides, but its ends extend beyond the
+panel and remain visible until focus moves away. This is paint overflow, not
+stale document state.
+
+`view/render.rs::clip_split` puts the native Split inside a native Portal with
+both axes constrained and content required to fill it. That supplies a panel
+clip with no scrolling or visible scrollbars. Split still owns dragging, focus,
+keyboard and accessibility resizing, bounds and retained sizes. No dependency
+fork or cache edit is needed. An upstream focus-outline styling/bounds policy
+would make this application workaround unnecessary.
+
+A render regression failed on the unmodified view during dragging, then passes
+with clipping during drag, release, pointer-away and blur. It checks both split
+orientations and verifies that focus remains until explicitly moved. Existing
+dock drag/rebuild/window-resize and proof keyboard/minimum-size tests also pass.
+
 ## Current scrollbar visibility gap (2026-09-10)
 
 The pinned upstream Masonry `Portal` offers auto-hide but no always-hidden
