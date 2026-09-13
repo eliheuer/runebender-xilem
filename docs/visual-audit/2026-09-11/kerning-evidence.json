@@ -1,0 +1,63 @@
+{
+  "recorded_utc": "2026-09-13T22:44:59.454676+00:00",
+  "gpui_main": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": "Existing older GPUI dist, not a fresh main build; 3028 font files; Kerning repeat byte-identical",
+  "wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "captures": {
+    "85-gpui-kerning-gray.png": "0a4b743abe0d614816b1af2cc1f4e90c76823c145266e156952ffa803a512cb3",
+    "86-xilem-kerning-before-gray.png": "6109670da0648ccd40159cb882664d069e69add57948c6a974ad6c568f706f60",
+    "87-xilem-kerning-gray.png": "ff001a4869848d06b1d4a8c279be98b83ca3a5d5b103bf4377df7818c0a2c9b9",
+    "88-xilem-kerning-1100-gray.png": "230c98a7d6003ad0fe9025da624a336c02a5bba431862a75031e5a940da84fa3"
+  },
+  "measurements": {
+    "pairs": 124,
+    "row_height": 25,
+    "list_max_height": 220,
+    "native_header_offset": 1,
+    "gpui_section_bottom_y": 519,
+    "xilem_before_section_bottom_y": 513,
+    "xilem_after_section_bottom_y": 520,
+    "gpui_field_rects": {
+      "filter": [
+        1042,
+        204,
+        1272,
+        232
+      ],
+      "first": [
+        1042,
+        236,
+        1116,
+        264
+      ],
+      "second": [
+        1120,
+        236,
+        1194,
+        264
+      ],
+      "value": [
+        1198,
+        236,
+        1272,
+        264
+      ]
+    },
+    "field_perimeter_differences_after_header_offset": 0
+  },
+  "validation": [
+    "Both 1280 and 1100 screenshots visually inspected",
+    "Existing kerning/groups editing, shaping refresh and undo regression passed",
+    "cargo fmt --check passed",
+    "git diff --check passed",
+    "cargo clippy --workspace --all-targets -- -D warnings passed",
+    "Capture helper syntax passed",
+    "Normal editor remains byte-identical to reference66"
+  ],
+  "limits": [
+    "Headless screenshots do not certify native pointer or keyboard behavior",
+    "Older GPUI dist and current main are distinct references",
+    "No live-font saves or foreground GUI",
+    "Row labels clip long names rather than adding GPUI ellipsis; full names load into the editor fields"
+  ]
+}

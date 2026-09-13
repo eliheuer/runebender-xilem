@@ -1018,3 +1018,32 @@ occurred. These font-wide panels do not depend on the different default glyph
 selection/preview elsewhere in the window.
 
 Formatting, whitespace and workspace all-target Clippy checks also passed.
+
+
+## 2026-09-13 daytime: Kerning rows and flexible inputs
+
+Both applications show the same 124 pairs. Xilem now uses three equally flexible
+inputs, left-aligned pair names, right-aligned values and plain delete controls.
+The name and value load the pair into the editor; deleting remains a separate
+button. Rows use a 25px pitch, the list is capped at 220px and shrinks with short
+results, and the count gets a 21px line box. Horizontal scroll constraining lets
+the list fill the dock instead of sizing itself to the text's intrinsic width.
+
+After the one-pixel native-header offset, all four input perimeters match GPUI
+exactly. The section divider is y520 versus GPUI y519; before it was y513. Initial
+unconstrained flexible rows collapsed to their minimum width; the final images
+confirm that the existing scroll adapter's horizontal constraint resolves it.
+
+- [GPUI Kerning](85-gpui-kerning-gray.png)
+- [Xilem before](86-xilem-kerning-before-gray.png)
+- [Aligned Kerning](87-xilem-kerning-gray.png)
+- [Narrow Kerning](88-xilem-kerning-1100-gray.png)
+- [Measurements and validation](kerning-evidence.json)
+
+The helper now accepts `--kerning`; repeated reference output is identical.
+The existing kerning/groups editing, shaping refresh and undo regression,
+formatting, whitespace, helper syntax and workspace all-target Clippy checks
+passed. Both screenshot sizes were inspected. Normal editor output is unchanged
+from 66. No foreground GUI or live-font save occurred. Long row names clip rather
+than showing GPUI's ellipsis; clicking still loads their complete names into the
+editor fields. Native interaction remains outside these headless captures.

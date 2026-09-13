@@ -177,72 +177,92 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
             xrow(
                 Region::Inline,
                 (
-                    sized_box(
-                        button(
-                            label(format!("{} \u{00b7} {}", short(first), short(second)))
-                                .text_size(TextSize::Body.px())
-                                // No colour on an exception: the names say
-                                // which it is, as in the GPUI build.
-                                .color(pal.text),
-                            // Loads the pair into the editor row, so
-                            // adjusting one is click, type, Enter.
-                            move |app: &mut Workspace| {
-                                app.kern_first_buf = f3.clone();
-                                app.kern_second_buf = s3.clone();
-                                app.kern_value_buf = format!("{v3}");
-                            },
-                        )
-                        .background_color(pal.panel)
-                        .border_width(Stroke::None.length())
-                        .padding(Space::None),
+                    button(
+                        xrow(
+                            Region::Inline,
+                            (
+                                label(format!("{} \u{00b7} {}", short(first), short(second)))
+                                    .text_size(TextSize::Body.px())
+                                    .color(pal.text)
+                                    .prop(masonry::properties::LineBreaking::Clip)
+                                    .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
+                                    .flex(1.0),
+                                label(format!("{value:.0}"))
+                                    .text_size(TextSize::Body.px())
+                                    .color(pal.text_muted),
+                            ),
+                        ),
+                        // The name and value both load the pair into the editor.
+                        move |app: &mut Workspace| {
+                            app.kern_first_buf = f3.clone();
+                            app.kern_second_buf = s3.clone();
+                            app.kern_value_buf = format!("{v3}");
+                        },
                     )
-                    .dims(Dimensions::new(Dim::Fixed(Length::px(150.0)), Dim::Auto)),
-                    label(format!("{value:.0}"))
-                        .text_size(TextSize::Body.px())
-                        .color(pal.text_muted),
-                    chip(pal, "\u{00d7}".into(), move |app: &mut Workspace| {
-                        app.delete_kern_pair(&f2, &s2);
-                    }),
+                    .background_color(pal.panel)
+                    .border_width(Stroke::None.length())
+                    .padding(Space::None)
+                    .flex(1.0),
+                    button(
+                        label("\u{00d7}")
+                            .text_size(TextSize::Body.px())
+                            .color(pal.text_muted),
+                        move |app: &mut Workspace| app.delete_kern_pair(&f2, &s2),
+                    )
+                    .background_color(pal.panel)
+                    .border_width(Stroke::None.length())
+                    .padding(masonry::properties::Padding::from_vh(
+                        Space::None.length(),
+                        Space::Sm.length(),
+                    )),
                 ),
             )
+            .padding(masonry::properties::Padding::from_vh(
+                Space::Xs.length(),
+                Space::Sm.length(),
+            ))
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::Fixed(Length::px(design::KERN_PAIR_ROW_HEIGHT)),
+            ))
         })
         .collect();
-    // Fixed widths: a field left to size to its content pushes the
-    // whole inspector past its column, as the Glyph section found.
-    fn narrow<V: WidgetView<Workspace> + 'static>(v: V) -> impl WidgetView<Workspace> + use<V> {
-        sized_box(v).dims(Dimensions::new(Dim::Fixed(Length::px(68.0)), Dim::Auto))
-    }
+    // Equal flexible slots follow a resized dock without letting the text's
+    // intrinsic width force the inspector wider than its splitter allows.
     let editor_row = xrow(
         Region::Inline,
         (
-            narrow(recipes::field_bare(
+            recipes::field_bare(
                 pal,
                 "First",
                 app.kern_first_buf.clone(),
                 |app: &mut Workspace, v| app.kern_first_buf = v,
                 |app: &mut Workspace, _| app.set_kern_pair_from_bufs(),
-            )),
-            narrow(recipes::field_bare(
+            )
+            .flex(1.0),
+            recipes::field_bare(
                 pal,
                 "Second",
                 app.kern_second_buf.clone(),
                 |app: &mut Workspace, v| app.kern_second_buf = v,
                 |app: &mut Workspace, _| app.set_kern_pair_from_bufs(),
-            )),
-            narrow(recipes::field_bare(
+            )
+            .flex(1.0),
+            recipes::field_bare(
                 pal,
                 "Value",
                 app.kern_value_buf.clone(),
                 |app: &mut Workspace, v| app.kern_value_buf = v,
                 |app: &mut Workspace, _| app.set_kern_pair_from_bufs(),
-            )),
+            )
+            .flex(1.0),
         ),
     );
     section(
         app,
         "Kerning",
         xcolumn(
-            Region::List,
+            Region::Inline,
             (
                 recipes::field_bare(
                     pal,
@@ -254,18 +274,30 @@ pub(crate) fn kerning_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                     |_: &mut Workspace, _| {},
                 ),
                 editor_row,
-                sized_box(portal(xcolumn(Region::List, rows)))
-                    .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(220.0)))),
-                label(if hidden > 0 {
-                    format!("{total} pairs \u{00b7} showing {CAP}")
-                } else {
-                    format!("{total} pairs")
-                })
-                .text_size(TextSize::Body.px())
-                .color(pal.text_muted),
+                sized_box(
+                    portal(xcolumn(Region::List, rows).gap(Space::None)).constrain_horizontal(true),
+                )
+                .dims(Dimensions::new(
+                    Dim::Stretch,
+                    Dim::Fixed(Length::px(
+                        (pairs.len() as f64 * design::KERN_PAIR_ROW_HEIGHT)
+                            .min(design::KERN_LIST_MAX_HEIGHT),
+                    )),
+                )),
+                sized_box(
+                    label(if hidden > 0 {
+                        format!("{total} pairs \u{00b7} showing {CAP}")
+                    } else {
+                        format!("{total} pairs")
+                    })
+                    .text_size(TextSize::Body.px())
+                    .color(pal.text_muted),
+                )
+                .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row))),
             ),
         ),
     )
+    .gap(Space::Sm)
 }
 
 /// Groups: a name field, then each kerning group as chips. A chip

@@ -118,6 +118,10 @@ pub(crate) const TRANSFORM_LABEL_WIDTH: f64 = 88.0;
 
 /// Reference glyph label column in the Dimensions readout.
 pub(crate) const DIMENSIONS_GLYPH_LABEL_WIDTH: f64 = 16.0;
+/// Kerning rows have a 21px line box with two-pixel vertical insets.
+pub(crate) const KERN_PAIR_ROW_HEIGHT: f64 = 25.0;
+/// Keep the pair list scrollable without consuming the entire inspector.
+pub(crate) const KERN_LIST_MAX_HEIGHT: f64 = 220.0;
 
 /// Compact master and other read-only facts in the overview glyph inspector.
 pub(crate) const GLYPH_FACT_ROW_HEIGHT: f64 = 18.0;

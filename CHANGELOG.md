@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Align Kerning pair rows and let its three editor fields share the resized dock width.
+
 - Align the Dimensions readout row heights and column spacing.
 
 - Show the active master and align existing overview glyph identity fields.
