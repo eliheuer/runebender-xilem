@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Give glyph-grid tiles flat faces, crisp inside borders and a matching panel ground.
+
 - Show contour direction with a separate start arrow while preserving each
   point's corner or smooth color; open contours do not get start arrows.
 

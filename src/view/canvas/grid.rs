@@ -22,6 +22,7 @@ use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
 use crate::model::FontModel;
+use crate::view::design::Stroke as DesignStroke;
 use crate::view::render::px32;
 use crate::view::theme::Palette;
 use crate::widgets::text_label::{self, Anchor};
@@ -354,7 +355,7 @@ impl Widget for GridWidget {
         painter: &mut Painter<'_>,
     ) {
         let pal = &self.palette;
-        painter.fill_rect(self.size.to_rect(), pal.app);
+        painter.fill_rect(self.size.to_rect(), pal.panel);
 
         let rows = self.packed();
         let total = rows.len();
@@ -400,10 +401,6 @@ impl Widget for GridWidget {
                 } else {
                     glyph_fill
                 };
-                let offset = if picked { 3.0 } else { 2.0 };
-                painter
-                    .fill(rect + kurbo::Vec2::new(-offset, offset), pal.cell_shadow())
-                    .draw();
                 // The reference cells are square. Encoding the square as a
                 // zero-radius `RoundedRect` made Vello CPU lose later
                 // same-colour outline/text draws in the Gray theme.
@@ -415,7 +412,17 @@ impl Widget for GridWidget {
                 } else {
                     cell_border
                 };
-                painter.stroke(rect, &Stroke::new(1.0), border).draw();
+                // Keep the keyline inside the cell, like a layout border.
+                // A centered stroke at the edge blurs into the surrounding gap.
+                let width = DesignStroke::Hairline.px();
+                let half = width / 2.0;
+                let keyline = Rect::new(
+                    rect.x0 + half,
+                    rect.y0 + half,
+                    rect.x1 - half,
+                    rect.y1 - half,
+                );
+                painter.stroke(keyline, &Stroke::new(width), border).draw();
 
                 // The label block, sized from what it draws. Same rule as
                 // the GPUI build: under 34px wide a cell is a thumbnail

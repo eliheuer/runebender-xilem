@@ -1,0 +1,83 @@
+{
+  "recorded_utc": "2026-09-13T19:26:22.237801+00:00",
+  "xilem_parent": "ed7f909",
+  "capture_size": [
+    1280,
+    720
+  ],
+  "narrow_capture_size": [
+    1100,
+    720
+  ],
+  "theme": "gray",
+  "glyph": "R",
+  "proof_text": "R",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "gpui_reference_note": "Existing dist bundle used without rebuilding or modifying the reference; bundle hash identifies the artifact independently of checkout HEAD.",
+  "gpui_wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "font_source_sha256": {
+    "VirtuaGrotesk.designspace": "0ac18f6e0827af3949a36b3c7043f22a50613948bcc8e8193f268f21539fedf3",
+    "VirtuaGrotesk-Bold.ufo/fontinfo.plist": "67981ebbc42195b62ce392c555c107724904737c79c83f8455ad68d847119bbb",
+    "VirtuaGrotesk-Bold.ufo/glyphs/R_.glif": "bb84cd52b528fbf6bd8632382c903f1b3ef2b6095206f7149f787e3b8ccadad4",
+    "VirtuaGrotesk-Regular.ufo/fontinfo.plist": "6cb32c37263cb5fe9679239b09f75e0124419176ed583b07dc2a48415621cf61",
+    "VirtuaGrotesk-Regular.ufo/glyphs/R_.glif": "ee9a24d4fb41d245e4f421dc8c35286d5befffb850833ef9cd63a96ee0895301"
+  },
+  "capture_sha256": {
+    "39-xilem-flat-tiles-gray.png": "0406bd1818de9c3a4b07bdff0bf87319e597432550316a873f3b0f51c654858e",
+    "40-xilem-flat-tiles-1100-gray.png": "3c6b5ef8606c28e943ff44f0626310bfc6c18692e8850a98cf68d6b22ad32328",
+    "41-xilem-flat-tiles-overview-gray.png": "88c13a2b72a7cead152f98edafb28aadd517f36e01acfef98074cabd2ba2b53a",
+    "04-gpui-live-font-r-gray.png": "5d89a4060eb4b4c1cc1a2bb830474ba994fe5c53359bb63831fa08db7743eff9"
+  },
+  "repeat_captures_byte_identical": {
+    "xilem": true,
+    "gpui": true
+  },
+  "verification": [
+    "5 glyph-grid tests passed, including compact rail geometry, hit testing, scrolling and size changes",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "Matching 1280 editor captures and Xilem 1100 editor plus overview visually inspected",
+    "Repeat captures byte-identical both; GPUI3028files and04referencehash unchanged"
+  ],
+  "gpui_font_files_fetched": 3028,
+  "rail_comparison": {
+    "roi_half_open": [
+      0,
+      127,
+      246,
+      663
+    ],
+    "different_rgb_pixels_before": 58381,
+    "different_rgb_pixels_after": 9791,
+    "empty_tile_and_surrounding_gap_roi_half_open": [
+      0,
+      130,
+      51,
+      180
+    ],
+    "empty_tile_and_gap_different_pixels": 0,
+    "ground_rgb_both": [
+      177,
+      177,
+      177
+    ],
+    "border_rgb_both": [
+      29,
+      29,
+      29
+    ],
+    "note": "Remaining rail differences include glyph rasterization and selected-tile appearance; whole-rail pixel parity is not claimed."
+  },
+  "outline_fill_verified_without_change": {
+    "sample_xy": [
+      575,
+      300
+    ],
+    "rgb_both": [
+      143,
+      143,
+      143
+    ]
+  }
+}

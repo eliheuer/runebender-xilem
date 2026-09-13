@@ -615,3 +615,34 @@ inspected older bundle. Current GPUI source uses the start point itself as a
 triangle, so it is not the source of truth for this capture comparison. This
 pass does not certify native pointer interaction. Next: inspect outline fill,
 inspector spacing and glyph-rail styling against the same reference.
+
+
+## 2026-09-13 daytime: flat glyph tiles and crisp borders
+
+The glyph grid now uses the panel ground, flat tile faces and a one-pixel border
+painted entirely inside each tile. Removed the offset shadows; centered exterior
+strokes previously blurred into the gaps. Grid packing, selection and hit geometry
+are unchanged. The shared grid renderer also applies this treatment in overview.
+
+- [Xilem glyph rail, 1280 x 720](39-xilem-flat-tiles-gray.png)
+- [Xilem at 1100 x 720](40-xilem-flat-tiles-1100-gray.png)
+- [Overview regression check](41-xilem-flat-tiles-overview-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+The empty space tile and surrounding gap now match the reference pixel-for-pixel
+in the sampled rectangle x0..50/y130..179. The ground is RGB177 and the border
+RGB29 in both. Other rail differences remain, including glyph rasterization and
+selected-tile appearance; this is not whole-grid parity. The suspected editor
+outline-fill difference was also sampled: both already render RGB143, so no
+outline-fill change was made.
+
+Five existing grid tests passed, covering compact rail geometry, hit testing,
+size changes, scrolling, packing and thumbnail layout. Final formatting,
+whitespace checks and workspace all-target Clippy passed. Matching editor,
+narrow and overview images were inspected; repeated editor captures match
+byte-for-byte in both applications. GPUI fetched 3028 real-font files and still
+matches the same older bundle reference hash. See [measurements and hashes](flat-tiles-evidence.json).
+
+Next: inspector Coordinates geometry, Curves/Background spacing, and rail tab
+faces. Overview was checked for this shared paint change but still needs its
+own matched-state comparison before broader visual parity claims.
