@@ -308,6 +308,7 @@ pub(crate) fn path_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
             hbg,
             move |app: &mut Workspace| app.apply_op(f),
         )
+        .icon_size(design::TRANSFORM_ICON_SIZE)
     };
     xcolumn(
         Region::Section,

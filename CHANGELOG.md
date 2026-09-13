@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Draw inspector transformation icons at the measured 22-pixel reference size
+  for clearer shapes and matching visual weight.
+
 - Complete the inspector's transformation row with both rotation directions,
   Duplicate, and Duplicate Repeat. The clockwise icon now rotates clockwise.
 

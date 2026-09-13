@@ -418,3 +418,33 @@ The action set and horizontal pitch now agree. The Xilem widget still draws
 icons with an internal inset, making their ink smaller, and the rows sit slightly
 lower. Shared inspector spacing, icon scale, and Gray surface mappings are next;
 background controls and native interaction/accessibility also remain to verify.
+
+
+## 2026-09-12 overnight: measured inspector icon scale
+
+Inspector transformation actions now use a dedicated 22-pixel icon extent
+inside their existing 24-pixel tiles. The shared icon widget accepts an optional
+size; other actions retain their default inset and rail tabs retain their own
+18-pixel token. Rebuilds refresh rendering when the size changes.
+
+The screenshot comparison corrected the initial assumption that a 24-pixel
+button implied 24-pixel visible ink. The reference's first flip icon measures
+22 x 22 dark pixels; Xilem now measures the same, previously 20 x 18.
+The measured bounds are Xilem (1043,240)..(1064,261) and GPUI
+(1045,236)..(1066,257), inclusive, with max RGB below 120. Thus placement still
+differs by two pixels horizontally and four vertically; this is a scale fix,
+not a claim of full pixel parity.
+
+- [Xilem inspector icon scale, 1280 x 720](21-xilem-icon-scale-gray.png)
+- [Xilem at 1100 x 720](22-xilem-icon-scale-1100-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+Both window sizes were visually inspected. Repeated captures were byte-identical
+in each editor and the fresh GPUI capture matched the saved reference. Seven
+editor widget tests passed; formatting, whitespace checks and workspace
+all-target Clippy with warnings denied passed after the final size adjustment.
+See [measurements and artifact hashes](icon-scale-evidence.json).
+
+Next: inspector vertical spacing and Gray surface mappings. Parameter defaults,
+background controls, canvas point styling and native interaction/accessibility
+remain to verify before considering GPUI retirement.

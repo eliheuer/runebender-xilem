@@ -34,6 +34,7 @@ pub(crate) struct IconWidget {
     active_bg: Color,
     hover_bg: Color,
     rail: Option<(Color, Color)>,
+    icon_size: Option<f64>,
     size: Size,
     hovered: bool,
 }
@@ -103,6 +104,8 @@ impl Widget for IconWidget {
         let vb = icon.view_box;
         let scale = if self.rail.is_some() {
             RAIL_TAB_ICON / vb.width().max(vb.height())
+        } else if let Some(side) = self.icon_size {
+            side.min(self.size.width).min(self.size.height) / vb.width().max(vb.height())
         } else {
             ((self.size.width - pad * 2.0) / vb.width())
                 .min((self.size.height - pad * 2.0) / vb.height())
@@ -182,6 +185,7 @@ pub(crate) struct IconView<F> {
     active_bg: Color,
     hover_bg: Color,
     rail: Option<(Color, Color)>,
+    icon_size: Option<f64>,
     on_click: F,
 }
 
@@ -202,11 +206,19 @@ pub(crate) fn icon_button<State: 'static, F: Fn(&mut State) + 'static>(
         active_bg,
         hover_bg,
         rail: None,
+        icon_size: None,
         on_click,
     }
 }
 
 impl<F> IconView<F> {
+    /// Set the icon's maximum ink extent in logical pixels, clamped to its tile.
+    /// Rail tabs continue to use the rail's own icon-size token.
+    pub(crate) fn icon_size(mut self, size: f64) -> Self {
+        self.icon_size = Some(size.max(0.0));
+        self
+    }
+
     /// Paint a GPUI-style rail tab around the icon.
     pub(crate) fn rail_tab(mut self, background: Color, border: Color) -> Self {
         self.rail = Some((background, border));
@@ -228,6 +240,7 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
             active_bg: self.active_bg,
             hover_bg: self.hover_bg,
             rail: self.rail,
+            icon_size: self.icon_size,
             size: Size::ZERO,
             hovered: false,
         };
@@ -246,9 +259,11 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
             || self.rail != prev.rail
             || self.fg != prev.fg
             || self.fg_active != prev.fg_active
+            || self.icon_size != prev.icon_size
         {
             el.widget.active = self.active;
             el.widget.rail = self.rail;
+            el.widget.icon_size = self.icon_size;
             el.widget.fg = self.fg;
             el.widget.fg_active = self.fg_active;
             el.ctx.request_render();

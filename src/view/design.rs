@@ -66,6 +66,9 @@ pub(crate) const PROOF_STRIP_HEIGHT: f64 = 140.0;
 /// Width shared by the proof-blur and zoom sliders in the editor footer.
 pub(crate) const STATUS_SLIDER_WIDTH: f64 = 96.0;
 
+/// Transformation icon extent measured in the reference, inside a 24-pixel tile.
+pub(crate) const TRANSFORM_ICON_SIZE: f64 = 22.0;
+
 /// Shared label width for the inspector's single-line transformation parameters.
 pub(crate) const TRANSFORM_LABEL_WIDTH: f64 = 92.0;
 
