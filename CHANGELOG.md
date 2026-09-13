@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Label the floating spacing card's LSB and RSB fields, keep kerning groups on
+  their own row, and match the compact neutral card's canvas placement.
+
 - Fit five compact glyph columns in the editor rail, with whole-pixel thumbnails
   and an independent size slider beside the filtered glyph count.
 

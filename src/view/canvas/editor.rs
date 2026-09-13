@@ -28,11 +28,12 @@ use crate::view::theme::Palette;
 use crate::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
 use crate::widgets::text_label::{self, Anchor};
 
-/// The metrics panel's geometry, shared by its painting and its boxes.
-const PANEL_PAD: f64 = 8.0;
-const PANEL_ROW: f64 = 24.0;
-const PANEL_WIDTH: f64 = 320.0;
-const PANEL_HEADER: f64 = 22.0;
+use crate::view::design::{
+    METRICS_CARD_BOTTOM, METRICS_CARD_HEADER as PANEL_HEADER, METRICS_CARD_HEIGHT as PANEL_HEIGHT,
+    METRICS_CARD_INSET as PANEL_PAD, METRICS_CARD_WIDTH as PANEL_WIDTH, METRICS_FIELD_GAP,
+    METRICS_FIELD_HEIGHT as PANEL_ROW, METRICS_FIELD_START, METRICS_FIELD_WIDTH, Radius,
+    Stroke as DesignStroke, TextSize,
+};
 
 const HIT_RADIUS_PX: f64 = 8.0;
 
@@ -242,19 +243,21 @@ impl EditorWidget {
     fn metric_boxes(&self) -> Option<[(MetricField, Rect); 3]> {
         self.session.side_bearings()?;
         let (left, top) = self.metrics_panel_origin()?;
-        let y = top + PANEL_HEADER + PANEL_PAD;
-        let box_at = |x: f64| Rect::new(left + x, y, left + x + 56.0, y + PANEL_ROW);
+        let y = top + PANEL_HEADER + PANEL_PAD + DesignStroke::Hairline.px();
+        let box_at = |column: f64| {
+            let x = left + METRICS_FIELD_START + column * (METRICS_FIELD_WIDTH + METRICS_FIELD_GAP);
+            Rect::new(x, y, x + METRICS_FIELD_WIDTH, y + PANEL_ROW)
+        };
         Some([
-            (MetricField::Lsb, box_at(70.0)),
-            (MetricField::Width, box_at(132.0)),
-            (MetricField::Rsb, box_at(194.0)),
+            (MetricField::Lsb, box_at(0.0)),
+            (MetricField::Width, box_at(1.0)),
+            (MetricField::Rsb, box_at(2.0)),
         ])
     }
 
     /// The panel's top left corner, or `None` when it does not fit.
     fn metrics_panel_origin(&self) -> Option<(f64, f64)> {
-        let height = PANEL_HEADER + PANEL_ROW + PANEL_PAD * 2.0;
-        let top = self.size.height - height - PANEL_PAD;
+        let top = self.size.height - PANEL_HEIGHT - METRICS_CARD_BOTTOM;
         if top < 0.0 || PANEL_WIDTH + PANEL_PAD * 2.0 > self.size.width {
             return None;
         }
@@ -339,7 +342,6 @@ impl EditorWidget {
 
     fn paint_metrics(&self, painter: &mut Painter<'_>) {
         const PAD: f64 = PANEL_PAD;
-        const ROW: f64 = PANEL_ROW;
         let pal = &self.palette;
         let bearings = self.session.side_bearings();
         // Keep read-only group labels inside their end columns. Full names
@@ -355,30 +357,32 @@ impl EditorWidget {
                 name.to_owned()
             }
         };
-        let height = PANEL_HEADER + ROW + PAD * 2.0;
-        let width = PANEL_WIDTH;
-        let left = (self.size.width - width) / 2.0;
-        let top = self.size.height - height - PAD;
-        if top < 0.0 || width + PAD * 2.0 > self.size.width {
+        let Some((left, top)) = self.metrics_panel_origin() else {
             return;
-        }
-        let frame = Rect::new(left, top, left + width, top + height);
-        painter.fill(frame, pal.panel.with_alpha(0.92)).draw();
-        painter.stroke(frame, &Stroke::new(1.0), pal.outline).draw();
-        let header = Rect::new(left, top, left + width, top + PANEL_HEADER);
-        painter.fill(header, self.mark.unwrap_or(pal.header)).draw();
+        };
+        let width = PANEL_WIDTH;
+        let frame =
+            Rect::new(left, top, left + width, top + PANEL_HEIGHT).to_rounded_rect(Radius::Sm.px());
+        painter.fill(frame, pal.panel).draw();
+        painter
+            .stroke(
+                frame,
+                &Stroke::new(DesignStroke::Hairline.px()),
+                pal.outline,
+            )
+            .draw();
+        // The reference's neutral header keeps glyph marks in the navigation rail.
+        painter
+            .stroke(
+                Line::new(
+                    (left, top + PANEL_HEADER),
+                    (left + width, top + PANEL_HEADER),
+                ),
+                &Stroke::new(DesignStroke::Hairline.px()),
+                pal.outline,
+            )
+            .draw();
 
-        let text_at =
-            |painter: &mut Painter<'_>, x: f64, row: f64, s: &str, size: f32, color, anchor| {
-                text_label::draw(
-                    painter,
-                    Point::new(left + x, top + PANEL_HEADER + PAD + row * ROW + ROW / 2.0),
-                    s,
-                    size,
-                    color,
-                    anchor,
-                );
-            };
         let header_text = |painter: &mut Painter<'_>, x: f64, s: &str, size: f32, color, anchor| {
             text_label::draw(
                 painter,
@@ -393,8 +397,8 @@ impl EditorWidget {
             painter,
             PAD,
             &self.session.glyph_name,
-            13.0_f32,
-            pal.mark_ink.unwrap_or(pal.text),
+            TextSize::Body.px(),
+            pal.text,
             Anchor::Start,
         );
         // The codepoint, right aligned on the same line, as the GPUI
@@ -408,8 +412,8 @@ impl EditorWidget {
                 painter,
                 width - PAD,
                 &format!("{:04X}", codepoint as u32),
-                13.0,
-                pal.mark_ink.unwrap_or(pal.text),
+                TextSize::Body.px(),
+                pal.text,
                 Anchor::End,
             );
         }
@@ -436,11 +440,14 @@ impl EditorWidget {
                     let baseline = rect.center().y;
                     text_label::draw(
                         painter,
-                        Point::new(rect.center().x, baseline),
+                        Point::new(
+                            rect.x0 + crate::view::design::INPUT_HORIZONTAL_INSET,
+                            baseline,
+                        ),
                         &value,
-                        13.0,
+                        TextSize::Body.px(),
                         pal.text,
-                        Anchor::Middle,
+                        Anchor::Start,
                     );
                     if focused {
                         // A caret, drawn by hand, because this is a text
@@ -451,24 +458,38 @@ impl EditorWidget {
                     }
                 }
             }
-            text_at(
-                painter,
-                PAD,
-                0.0,
-                &group_label(&self.groups.0),
-                13.0,
-                pal.text,
-                Anchor::Start,
-            );
-            text_at(
-                painter,
-                width - PAD,
-                0.0,
-                &group_label(&self.groups.1),
-                13.0,
-                pal.text,
-                Anchor::End,
-            );
+            if let Some(boxes) = self.metric_boxes() {
+                let first = boxes[0].1;
+                let last = boxes[2].1;
+                for (x, label, anchor) in [
+                    (left + PAD, "LSB", Anchor::Start),
+                    (left + width - PAD, "RSB", Anchor::End),
+                ] {
+                    text_label::draw(
+                        painter,
+                        Point::new(x, first.center().y),
+                        label,
+                        TextSize::Body.px(),
+                        pal.text_muted,
+                        anchor,
+                    );
+                }
+                // Group names retain their own row rather than replacing the
+                // sidebearing labels. Full names remain in the inspector.
+                for (rect, group) in [(first, &self.groups.0), (last, &self.groups.1)] {
+                    text_label::draw(
+                        painter,
+                        Point::new(
+                            rect.center().x,
+                            rect.y1 + METRICS_FIELD_GAP + PANEL_ROW / 2.0,
+                        ),
+                        &group_label(group),
+                        TextSize::Body.px(),
+                        pal.text_muted,
+                        Anchor::Middle,
+                    );
+                }
+            }
         }
     }
 
@@ -2295,6 +2316,48 @@ mod tests {
             assert!(rect.x1 <= origin.0 + PANEL_WIDTH, "inside its right edge");
             assert!(rect.y0 >= origin.1, "below its top");
         }
+    }
+
+    #[test]
+    fn moved_metrics_fields_receive_clicks_and_commit_through_keyboard_events() {
+        use masonry::core::keyboard::KeyboardEvent;
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), widget().prepare(), (786, 510));
+        let boxes = harness.edit_root_widget(|root| root.widget.metric_boxes().unwrap());
+        for (field, rect) in boxes {
+            harness.mouse_move(rect.center());
+            harness.mouse_button_press(Some(PointerButton::Primary));
+            assert!(harness.edit_root_widget(|root| root.widget.field == Some(field)));
+        }
+        let width = boxes[1].1;
+        harness.mouse_move(width.center());
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.edit_root_widget(|root| root.widget.field_buf = "900".into());
+        harness.process_text_event(TextEvent::Keyboard(KeyboardEvent {
+            state: KeyState::Down,
+            key: Key::Named(NamedKey::Enter),
+            ..KeyboardEvent::default()
+        }));
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.session.advance()),
+            900.0
+        );
+        assert!(harness.edit_root_widget(|root| root.widget.field.is_none()));
+    }
+
+    #[test]
+    fn metrics_card_keeps_its_bottom_clearance_and_hides_when_it_cannot_fit() {
+        let mut widget = widget();
+        for width in [606.0, 786.0] {
+            widget.size = Size::new(width, 510.0);
+            let (left, top) = widget.metrics_panel_origin().unwrap();
+            assert_eq!(left + PANEL_WIDTH / 2.0, width / 2.0);
+            assert_eq!(top + PANEL_HEIGHT, 498.0);
+        }
+        widget.size = Size::new(280.0, 510.0);
+        assert!(widget.metric_boxes().is_none());
+        widget.size = Size::new(786.0, 90.0);
+        assert!(widget.metric_boxes().is_none());
     }
 
     /// A right click opens the menu as a layer, and the editor remembers

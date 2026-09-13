@@ -274,3 +274,39 @@ Next: metrics-card labels and placement, then inspector hierarchy. Rail border
 weight/shadows, tab faces, search-control widths, Gray surface values, and slider
 styling still differ. Native pointer/keyboard accessibility and full functional
 parity require further validation; this step does not establish deprecation readiness.
+
+
+## 2026-09-12 overnight: metrics-card labels and placement
+
+The card now uses a compact 288-by-88-pixel footprint, centered with 12 pixels
+above the canvas bottom. LSB and RSB labels sit beside three 64-by-20-pixel
+editable fields. Values align to the input inset. Kerning-group names remain
+available on their own second row and no longer occupy the labels' positions.
+The card has a neutral header and divider, matching the observed GPUI bundle.
+Painting and hit testing share the card origin and field rectangles; its geometry
+is named in the design tokens. The card hides when there is insufficient room.
+
+- [Xilem metrics card at 1280 x 720](12-xilem-metrics-card-gray.png)
+- [Xilem metrics card at 1100 x 720](13-xilem-metrics-card-1100-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+Both screenshots put the card's top border at y451 and bottom border at y538.
+At y530, Xilem's side borders are x496 and x783; GPUI's are x496 and x782.
+These samples use RGB channels below 100. The one-pixel right-edge difference,
+field-border weight, and Gray surface shades remain visible. We claim matched
+placement and a comparable footprint, not pixel-identical rendering.
+
+As with the rail, the current GPUI source differs from its existing reference
+bundle: its newer card is wider and mark-colored. This step follows the captured
+reference. GPUI was not edited or rebuilt; its bundle and font hashes are recorded
+in [metrics-card evidence](metrics-card-evidence.json).
+
+Seven editor-widget tests passed, including pointer clicks on all three moved
+fields, a width edit committed through a keyboard event, narrow/short-pane hiding,
+and centered placement at both tested widths. Formatting, diff whitespace checks,
+and workspace all-target Clippy with warnings denied passed. Repeated matching
+captures were byte-identical in both editors; the 1100-pixel Xilem capture was
+visually inspected. No interactive GUI or font save was used.
+
+Next: inspector grouping and default disclosure. Field accessibility, native IME
+behavior, and full editor parity remain outside this headless visual proof.

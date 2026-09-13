@@ -66,6 +66,18 @@ pub(crate) const PROOF_STRIP_HEIGHT: f64 = 140.0;
 /// Width shared by the proof-blur and zoom sliders in the editor footer.
 pub(crate) const STATUS_SLIDER_WIDTH: f64 = 96.0;
 
+/// Floating metrics-card geometry, measured against the Gray reference capture.
+pub(crate) const METRICS_CARD_WIDTH: f64 = 288.0;
+pub(crate) const METRICS_CARD_HEIGHT: f64 = 88.0;
+pub(crate) const METRICS_CARD_HEADER: f64 = 22.0;
+pub(crate) const METRICS_CARD_INSET: f64 = 8.0;
+pub(crate) const METRICS_CARD_BOTTOM: f64 = 12.0;
+pub(crate) const METRICS_FIELD_HEIGHT: f64 = 20.0;
+pub(crate) const METRICS_FIELD_WIDTH: f64 = 64.0;
+pub(crate) const METRICS_FIELD_GAP: f64 = 6.0;
+/// Leave room for the sidebearing label before the first input.
+pub(crate) const METRICS_FIELD_START: f64 = 41.0;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[expect(
     dead_code,
