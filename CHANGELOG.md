@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Keep metric rules within the glyph advance and extend its frame to the full
+  em height, matching the reference canvas without lines across the workspace.
+
 - Restore the Gray reference palette's lighter panel and canvas surfaces and
   quieter field borders using the shared OKLCH tokens.
 

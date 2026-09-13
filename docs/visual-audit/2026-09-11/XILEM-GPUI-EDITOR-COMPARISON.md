@@ -507,3 +507,30 @@ visible differences. Remaining editor differences include full-width guides and
 canvas point styles, grid shadows/tab faces, inspector headers/Coordinates and
 Curves/Background spacing. Overview and node editor comparisons follow. Runtime
 interaction and platform certification remain separate from screenshot proof.
+
+
+## 2026-09-13 daytime: glyph-local metric frame
+
+Metric rules now span only the glyph's advance width, using the neutral
+metricsLine role at its authored opacity. The sidebearing frame extends to
+max(UPM, ascender), rather than stopping at the ascender. Baseline, UPM,
+ascender, descender, x-height and cap-height levels are finite-filtered and
+deduplicated, avoiding coincident overpainting. Rules use the shared hairline
+width in screen space so zoom does not make them heavier.
+
+- [Xilem glyph metric frame, 1280 x 720](28-xilem-metric-frame-gray.png)
+- [Xilem at 1100 x 720](29-xilem-metric-frame-1100-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+Both frames now begin at y59 and the x-height rule is confined to the glyph
+at y197. The canvas outside the frame stays RGB193, including (900,197).
+Non-background coverage at y59,197,400 spans x536..744 in Xilem versus
+x537..743 in GPUI: edge antialiasing still differs by one pixel, so this is
+not an exact pixel match. Seven editor widget tests, formatting, whitespace
+checks and workspace all-target Clippy passed. Matching captures repeat
+byte-identically, and the narrow layout was visually inspected. See
+[measurements and hashes](metric-frame-evidence.json).
+
+Next: point/handle/start-node styling, then rail shadows/tab faces and inspector
+field/header polish. This change concerns metric painting only; editable font
+and glyph guidelines are separate behavior, not removed by this change.

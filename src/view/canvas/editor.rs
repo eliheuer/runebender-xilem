@@ -802,28 +802,36 @@ impl Widget for EditorWidget {
         }
 
         let m = &self.session.metrics;
-        let thin = Stroke::new(1.0);
-        // The metric lines and the em box are the accent colour, as they
-        // are in the GPUI build and the web editor. Drawn quiet they
-        // read as chrome; drawn in the accent they read as the frame the
-        // drawing is measured against, which is what they are.
-        let quiet = pal.metrics_line().with_alpha(0.55);
+        // Metrics belong to this glyph's advance, not the whole workspace.
+        // Include the full em even when its top lies above the ascender.
         let frame = pal.metrics_line();
-        let x0 = (affine * Point::new(-10_000.0, 0.0)).x;
-        let x1 = (affine * Point::new(10_000.0, 0.0)).x;
-        for y in [0.0, m.x_height, m.cap_height, m.ascender, m.descender] {
+        let rule = DesignStroke::Hairline.px();
+        let box_top = m.upm.max(m.ascender);
+        let x0 = (affine * Point::new(0.0, 0.0)).x;
+        let x1 = (affine * Point::new(self.session.advance(), 0.0)).x;
+        let mut levels = vec![
+            0.0,
+            m.upm,
+            m.ascender,
+            m.descender,
+            m.x_height,
+            m.cap_height,
+        ];
+        levels.retain(|y| y.is_finite());
+        levels.sort_by(f64::total_cmp);
+        levels.dedup_by(|a, b| (*a - *b).abs() < 0.001);
+        for y in levels {
             let sy = (affine * Point::new(0.0, y)).y;
-            painter
-                .stroke(Line::new((x0, sy), (x1, sy)), &thin, quiet)
-                .draw();
+            painter.fill_rect(Rect::new(x0.min(x1), sy, x0.max(x1), sy + rule), frame);
         }
-        // Em box: the advance width by the ascender..descender height, framing
-        // the glyph like gpui/Glyphs rather than infinite sidebearing lines.
-        let em_box = Rect::from_points(
-            affine * Point::new(0.0, m.descender),
-            affine * Point::new(self.session.advance(), m.ascender),
-        );
-        painter.stroke(em_box, &Stroke::new(1.0), frame).draw();
+        let top = (affine * Point::new(0.0, box_top)).y;
+        let bottom = (affine * Point::new(0.0, m.descender)).y;
+        for x in [x0, x1] {
+            painter.fill_rect(
+                Rect::new(x, top.min(bottom), x + rule, top.max(bottom)),
+                frame,
+            );
+        }
 
         // Editing affordances only render on a master. Off a master the view
         // shows the read-only interpolated instance instead (web/Glyphs
