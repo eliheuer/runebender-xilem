@@ -1,0 +1,33 @@
+{
+  "recorded_utc": "2026-09-13T21:26:10.474671+00:00",
+  "xilem_app_commit": "c83f135",
+  "gpui_main": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": "Existing older GPUI dist, headless browser WebGPU; not a fresh main build",
+  "wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "viewport": [
+    1280,
+    720
+  ],
+  "captures": {
+    "69-gpui-default-nodes-gray.png": "2b822f865fbe5dfb8aa99bbd8c74c94d87c74006375c0085749b18099deca6d4",
+    "70-xilem-default-nodes-gray.png": "1a792f581974de88af36ef650057c50ba1e4662cd3370bab003289c20c211269"
+  },
+  "matched_graph": false,
+  "gpui_graph": "Default unsaved live-font starter: Current font, two Font version branches and two Designbot proof nodes",
+  "xilem_graph": "Saved bolden graph discovered beside the font: 6 nodes, 7 links, not run",
+  "findings": [
+    "Xilem node_registry explicitly removes live.* types; these action controls are not a cosmetic parity task",
+    "GPUI web command_open_nodes_file reports desktop-only, so it cannot import the same saved graph through its Open control",
+    "Do not copy dimensions from live nodes to classic nodes: core uses separate 256 and 176 widths",
+    "No application code changed in this pass"
+  ],
+  "validation": [
+    "Node capture repeated with identical SHA256",
+    "Helper returns to Font before existing search/editor capture; overview and normal editor hashes still match 63 and 04",
+    "node --check capture-gpui.cjs",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --workspace --all-targets -- -D warnings"
+  ],
+  "next": "Continue sidebar visual work independently. Live-node shell integration and a matched native/current-build graph comparison remain separate parity gates."
+}

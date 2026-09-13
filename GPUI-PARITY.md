@@ -362,6 +362,10 @@ GPUI reference: `src/edit/{local_ai,nodes,chat,experiments}.rs`,
   proposal preview/install/discard and undo. Models remain external subprocesses.
 - [ ] **A02 / P** Nodes open/new/save/run, node parameter editing, canvas interaction,
   progress, errors and proposals. Compare every node/panel action, not screenshots alone.
+  - 2026-09-13 visual audit: Xilem's registry still excludes `live.*` node types.
+    Current font, Font version and Designbot proof controls in GPUI therefore
+    require shell integration, not cosmetic placeholders. Default node captures
+    show different graphs; see the [node baseline and limits](docs/visual-audit/2026-09-11/nodes-baseline-evidence.json).
 - [ ] **A03 / M** Chat pane, model choice, send/stream/cancel/clear, live mailbox and
   proposal refresh. Match GPUI process lifetime and error behavior without linking models.
 - [ ] **A04 / M** Live experiment cards and their renderer/state integration from core.

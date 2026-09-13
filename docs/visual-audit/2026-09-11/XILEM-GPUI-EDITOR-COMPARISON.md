@@ -874,3 +874,32 @@ apply a0.92 inset. GPUI commit6e25392 introduced this behavior. The older
 reference bundle's baseline alignment and larger ink are not grounds to revert
 that shared behavior. This is source agreement, not a fresh-current-GPUI
 render certification. Next compare sidebar spacing or the node editor.
+
+
+## 2026-09-13 daytime: node workspace baseline and limits
+
+The comparison helper now captures Nodes from the initial overview, then returns
+to Font before its existing editor sequence. Two node captures are byte-identical;
+normal editor and overview hashes still match04 and63.
+
+- [GPUI default Nodes](69-gpui-default-nodes-gray.png)
+- [Xilem default Nodes](70-xilem-default-nodes-gray.png)
+- [Capture provenance and limits](nodes-baseline-evidence.json)
+
+These are **different graphs, not a matched node-geometry comparison**. Xilem
+opens the saved bolden graph beside the font (six nodes, seven links). The GPUI
+web bundle opens its unsaved live-font starter with Current font, Font version
+and Designbot proof controls. GPUI's web Open action is desktop-only according
+to its current source, so the same saved graph cannot be imported by that route.
+
+Xilem's `src/edit/nodes.rs::node_registry` explicitly excludes `live.*` types
+because their canvas actions are implemented only in GPUI. This is a functional
+migration gate, not something to hide by drawing inert buttons. Core's classic
+and live node widths also differ intentionally (176 vs256 canvas units), so
+these screenshots do not justify changing that geometry. Keep A02 open.
+
+No application code changed. JavaScript syntax, formatting, whitespace and
+workspace all-target Clippy checks passed. No foreground GUI, graph run or
+font save occurred. Continue sidebar visual work independently; resolving live
+node actions and obtaining a matched native/current-build graph capture remain
+separate work before GPUI can be deprecated.

@@ -26,6 +26,14 @@ fs.mkdirSync(output,{recursive:true});
  console.log('font files fetched:',gets);
  await page.mouse.move(1279,719);
  await page.screenshot({path:path.join(output,'gpui-overview-gray.png')});
+ // Capture the default live-font graph, then restore the overview before search.
+ await page.mouse.click(1212,18);
+ await page.mouse.move(1279,719);
+ await page.waitForTimeout(500);
+ await page.screenshot({path:path.join(output,'gpui-nodes-gray.png')});
+ await page.mouse.click(1158,18);
+ await page.mouse.move(1279,719);
+ await page.waitForTimeout(500);
 
 
  await page.mouse.click(75,59);
