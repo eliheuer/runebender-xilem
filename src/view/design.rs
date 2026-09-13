@@ -66,6 +66,13 @@ pub(crate) fn point_marker_scale(zoom: f64) -> f64 {
 
 /// Initial dock width shared by the glyph rail and inspector.
 pub(crate) const DOCK_WIDTH: f64 = 246.0;
+/// Resizable panel bounds retain usable controls and a visible canvas.
+pub(crate) const DOCK_MIN_WIDTH: f64 = 220.0;
+pub(crate) const CENTER_MIN_WIDTH: f64 = 280.0;
+pub(crate) const EDITOR_MIN_HEIGHT: f64 = 160.0;
+pub(crate) const PROOF_MIN_HEIGHT: f64 = 64.0;
+/// Wide pointer target around the one-pixel divider.
+pub(crate) const SPLITTER_HIT_WIDTH: f64 = 8.0;
 /// GPUI category rows inset their marker and count by 14 logical pixels.
 pub(crate) const SIDEBAR_ROW_INSET: f64 = 14.0;
 /// Painted sidebar marker geometry, shared with the GPUI reference.

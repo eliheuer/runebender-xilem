@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Make both side panels and the proof strip resizable by dragging their dividers.
+  Dock widths remain stable when the window resizes, with usable minimum sizes.
+
 - Match editor sidebar tab spacing and faces, joining the selected tab to its panel.
 
 - Retain dark keylines on enabled toggles and use crisp field borders in the metrics card.

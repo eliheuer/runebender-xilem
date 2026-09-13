@@ -792,3 +792,32 @@ fresh GPUI normal reference hash remains unchanged. See [evidence](rail-tabs-evi
 The user reported that panels cannot be resized. Live code inspection confirms
 fixed246px dock widths and a fixed proof strip with decorative dividers. Restoring
 panel resizing is now the priority before continuing cosmetic comparison.
+
+
+## 2026-09-13 user-reported gap: panel resizing restored
+
+The user found that panels could not be resized. The render tree confirmed fixed
+246px side docks, a fixed proof height and decorative dividers. Both docks and
+the editor/proof boundary now use native Xilem Split views. Their one-pixel bars
+have eight-pixel pointer targets and native resize cursors, focus and arrow-key
+behavior. Side widths and proof height stay in pixels when the window changes size.
+The proof's duplicate decorative divider was removed.
+
+Three interaction tests build the actual production splitter views and send
+pointer/keyboard events. Both docks grow246to326px through dragging; after a
+window resize they remain326px. The proof grows140to200px and keeps its height
+through a rebuild/window resize. Tests also cover minimum sizes and collapse/
+reopen behavior. Formatting, whitespace checks, workspace all-target Clippy and
+the application build passed.
+
+- [Default editor layout](60-xilem-resizable-panels-gray.png)
+- [Narrow editor layout](61-xilem-resizable-panels-1100-gray.png)
+- [Overview layout](62-xilem-resizable-panels-overview-gray.png)
+- [Interaction evidence and limitations](panel-resizing-evidence.json)
+
+These full application screenshots were visually inspected. No foreground GUI
+was launched and no live font was saved. Splitter bars use Masonry's native
+neutral/focus colors; exact divider-color parity is deferred to preserve working
+native interaction. Sizes are currently session state rather than disk preferences;
+reopening a collapsed left dock restores its initial width. User should restart
+the rebuilt Xilem application and drag either side divider or the line above proof.

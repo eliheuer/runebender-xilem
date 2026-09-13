@@ -94,17 +94,7 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
             }
         }
     });
-    flex_col((
-        sized_box(label(""))
-            .dims(Dimensions::new(
-                Dim::Stretch,
-                Dim::Fixed(Stroke::Hairline.length()),
-            ))
-            .background_color(app.palette.outline),
-        drawing.background_color(background).flex(1.0),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Stretch)
-    .gap(Space::None)
+    drawing.background_color(background)
 }
 
 /// Fit the advance horizontally and the actual ink vertically, as the GPUI

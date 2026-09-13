@@ -1,0 +1,25 @@
+{
+  "recorded_utc": "2026-09-13T20:50:05.210736+00:00",
+  "xilem_parent": "a406470",
+  "reason": "User reported that the panels could not be resized as in GPUI.",
+  "implementation": "Replace fixed side columns and proof height with native Xilem/Masonry Split views. One-pixel visible bars with eight-pixel pointer hit regions, pixel-anchored panel sizes, resize cursors and keyboard support.",
+  "verification": [
+    "Three production-view interaction tests passed: both dock drags; stable widths on rebuild/window resize; minimum dock width; collapsed left and independently draggable right; proof drag, keyboard resize and minimum height.",
+    "Initial test layout widths246/786/246 at1280; after drags326/626/326; after window resize1100 widths326/446/326.",
+    "Proof initial510/140 at651; after drag450/200; after resize751 heights550/200.",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "Build completed; actual editor screenshots inspected at1280 and1100 plus overview."
+  ],
+  "limitations": [
+    "Interaction tests drive Masonry pointer and keyboard events headlessly; no foreground macOS session was launched.",
+    "Splitters currently use Masonry neutral bar/focus colors; exact GPUI divider-color parity is deferred.",
+    "Panel sizes are widget-session state, not persisted to disk; reopening a collapsed left dock restores its default width."
+  ],
+  "capture_sha256": {
+    "60-xilem-resizable-panels-gray.png": "aa8913070c9a6d67c46461d6ac8fc49e953d07afa777709e2ea2efe75a0520cd",
+    "61-xilem-resizable-panels-1100-gray.png": "4393228823d2518df27e3f3b97df8015a20055a6d8017f6c3b57b59f73a6ce57",
+    "62-xilem-resizable-panels-overview-gray.png": "aec4c1c0518f5de1445188f0d93f47f672369bcfbd3373cce71d3fd704319368"
+  }
+}

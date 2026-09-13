@@ -25,6 +25,60 @@ pub(crate) fn px32(value: f64) -> f32 {
     }
 }
 
+/// Native splitters retain dragged sizes across view rebuilds and window resizes.
+fn workspace_columns<State, A, B, C>(
+    left: A,
+    middle: B,
+    right: C,
+    collapsed: bool,
+) -> xilem::view::Split<xilem::view::Split<A, B, State>, C, State>
+where
+    State: 'static,
+    A: WidgetView<State>,
+    B: WidgetView<State>,
+    C: WidgetView<State>,
+{
+    use crate::view::design::{CENTER_MIN_WIDTH, DOCK_MIN_WIDTH, SPLITTER_HIT_WIDTH};
+    let columns = xilem::view::split(left, middle)
+        .split_point_from_start(Length::px(if collapsed { 0.0 } else { DOCK_WIDTH }))
+        .min_lengths(
+            Length::px(if collapsed { 0.0 } else { DOCK_MIN_WIDTH }),
+            Length::px(CENTER_MIN_WIDTH),
+        )
+        .bar_thickness(Stroke::Hairline.length())
+        .min_bar_area(Length::px(SPLITTER_HIT_WIDTH))
+        .solid_bar(true)
+        .draggable(!collapsed);
+    xilem::view::split(columns, right)
+        .split_point_from_end(Length::px(DOCK_WIDTH))
+        .min_lengths(
+            Length::px(CENTER_MIN_WIDTH + if collapsed { 0.0 } else { DOCK_MIN_WIDTH } + 1.0),
+            Length::px(DOCK_MIN_WIDTH),
+        )
+        .bar_thickness(Stroke::Hairline.length())
+        .min_bar_area(Length::px(SPLITTER_HIT_WIDTH))
+        .solid_bar(true)
+}
+
+/// Keep proof height in pixels while allowing its top divider to be dragged.
+fn proof_split<State, A, B>(editor: A, proof: B) -> xilem::view::Split<A, B, State>
+where
+    State: 'static,
+    A: WidgetView<State>,
+    B: WidgetView<State>,
+{
+    xilem::view::split(editor, proof)
+        .split_axis(kurbo::Axis::Vertical)
+        .split_point_from_end(Length::px(PROOF_STRIP_HEIGHT))
+        .min_lengths(
+            Length::px(design::EDITOR_MIN_HEIGHT),
+            Length::px(design::PROOF_MIN_HEIGHT),
+        )
+        .bar_thickness(Stroke::Hairline.length())
+        .min_bar_area(Length::px(design::SPLITTER_HIT_WIDTH))
+        .solid_bar(true)
+}
+
 pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::{Either, OneOf3};
     let pal = &app.palette;
@@ -43,18 +97,15 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         Mode::Editor(_) => OneOf3::B(editor_pane(app)),
         Mode::Nodes => OneOf3::C(nodes_pane(app)),
     };
-    let preview = matches!(app.mode, Mode::Editor(_)).then(|| {
-        sized_box(preview_strip(app))
-            .dims(Dimensions::new(
-                Dim::Stretch,
-                Dim::Fixed(Length::px(PROOF_STRIP_HEIGHT + Stroke::Hairline.px())),
-            ))
-            .background_color(pal.panel)
-    });
+    let body = if matches!(app.mode, Mode::Editor(_)) {
+        Either::A(proof_split(body, preview_strip(app)))
+    } else {
+        Either::B(body)
+    };
     // The bottom bar belongs to the middle column, so the sidebar
     // keeps the window's full height and its own marks bar, as in the
     // GPUI build.
-    let middle = flex_col((body.flex(1.0), preview, status(app)))
+    let middle = flex_col((body.flex(1.0), status(app)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::None)
         .background_color(pal.app);
@@ -68,30 +119,16 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     let left = flex_col((left.flex(1.0), marks_bar(app)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::None);
-    let left_width = if app.left_collapsed { 0.0 } else { DOCK_WIDTH };
-
-    let columns = flex_row((
-        sized_box(left)
-            .dims(Dimensions::new(
-                Dim::Fixed(Length::px(left_width)),
-                Dim::Stretch,
-            ))
-            .background_color(pal.panel),
-        sized_box(label(""))
-            .dims(Dimensions::new(
-                Dim::Fixed(Stroke::Hairline.length()),
-                Dim::Stretch,
-            ))
-            .background_color(pal.outline),
-        sized_box(middle)
-            .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
-            .background_color(pal.app)
-            .flex(1.0),
-    ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
-    .gap(Space::None);
-
-    let left_and_middle = columns;
+    let inspector =
+        portal(sized_box(info_panel(app)).dims(Dimensions::new(Dim::Stretch, Dim::Auto)))
+            .constrain_horizontal(true)
+            .background_color(pal.panel);
+    let columns = workspace_columns(
+        left.background_color(pal.panel),
+        middle,
+        inspector,
+        app.left_collapsed,
+    );
 
     // Boxed on purpose, and not for tidiness. Every wrapper here adds a
     // layer to a monomorphized view type that is already enormous, and
@@ -110,29 +147,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
                 Dim::Fixed(Stroke::Hairline.length()),
             ))
             .background_color(pal.outline),
-        flex_row((
-            sized_box(left_and_middle)
-                .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
-                .flex(1.0),
-            sized_box(label(""))
-                .dims(Dimensions::new(
-                    Dim::Fixed(Stroke::Hairline.length()),
-                    Dim::Stretch,
-                ))
-                .background_color(pal.outline),
-            sized_box(
-                portal(sized_box(info_panel(app)).dims(Dimensions::new(Dim::Stretch, Dim::Auto)))
-                    .constrain_horizontal(true),
-            )
-            .dims(Dimensions::new(
-                Dim::Fixed(Length::px(DOCK_WIDTH)),
-                Dim::Stretch,
-            ))
-            .background_color(pal.panel),
-        ))
-        .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(Space::None)
-        .flex(1.0),
+        columns.flex(1.0),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Start)
     .gap(Space::None)
@@ -540,5 +555,173 @@ mod tab_tests {
         let active = app.session.glyph_name.clone();
         app.close_tab(0);
         assert_eq!(app.session.glyph_name, active);
+    }
+}
+
+#[cfg(test)]
+mod panel_resize_tests {
+    use super::{proof_split, workspace_columns};
+    use masonry::core::keyboard::{Key, NamedKey};
+    use masonry::core::{TextEvent, WindowEvent};
+    use masonry::dpi::PhysicalSize;
+    use masonry::kurbo::Point;
+    use masonry_testing::TestHarness;
+    use std::sync::Arc;
+    use xilem::ViewCtx;
+    use xilem::core::{ProxyError, RawProxy, SendMessage, ViewId};
+
+    #[derive(Debug)]
+    struct NoProxy;
+    impl RawProxy for NoProxy {
+        fn send_message(&self, _: Arc<[ViewId]>, _: SendMessage) -> Result<(), ProxyError> {
+            Ok(())
+        }
+        fn dyn_debug(&self) -> &dyn std::fmt::Debug {
+            self
+        }
+    }
+    fn context() -> ViewCtx {
+        ViewCtx::new(
+            Arc::new(NoProxy),
+            Arc::new(
+                tokio::runtime::Builder::new_current_thread()
+                    .build()
+                    .unwrap(),
+            ),
+        )
+    }
+
+    #[test]
+    fn both_docks_drag_and_retain_widths_after_rebuild_and_window_resize() {
+        use xilem::core::View;
+        use xilem::view::label;
+        let logic = || workspace_columns(label("Left"), label("Canvas"), label("Right"), false);
+        let mut ctx = context();
+        let view = logic();
+        let (pod, mut state) = view.build(&mut ctx, &mut ());
+        let mut h = TestHarness::create_with_size(
+            crate::default_property_set(),
+            pod.new_widget,
+            (1280, 650),
+        );
+        fn widths<W: masonry::core::Widget>(h: &TestHarness<W>) -> (f64, f64, f64) {
+            let root = h.root_widget();
+            let children = root.children();
+            let nested = children[0].children();
+            (
+                nested[0].ctx().border_box().width(),
+                nested[1].ctx().border_box().width(),
+                children[1].ctx().border_box().width(),
+            )
+        }
+        assert_eq!(widths(&h), (246.0, 786.0, 246.0));
+        // Start two pixels beside the visible line, within its wider hit target.
+        h.mouse_move(Point::new(244.5, 100.0));
+        h.mouse_button_press(None);
+        h.mouse_move(Point::new(324.5, 100.0));
+        h.mouse_button_release(None);
+        assert_eq!(widths(&h), (326.0, 706.0, 246.0));
+        h.mouse_move(Point::new(1033.5, 100.0));
+        h.mouse_button_press(None);
+        h.mouse_move(Point::new(953.5, 100.0));
+        h.mouse_button_release(None);
+        assert_eq!(widths(&h), (326.0, 626.0, 326.0));
+        let again = logic();
+        h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
+        assert_eq!(widths(&h), (326.0, 626.0, 326.0));
+        h.process_window_event(WindowEvent::Resize(PhysicalSize::new(1100, 650)));
+        assert_eq!(widths(&h), (326.0, 446.0, 326.0));
+        h.mouse_move(Point::new(326.5, 100.0));
+        h.mouse_button_press(None);
+        h.mouse_move(Point::new(20.0, 100.0));
+        h.mouse_button_release(None);
+        assert_eq!(widths(&h).0, crate::view::design::DOCK_MIN_WIDTH);
+    }
+
+    #[test]
+    fn collapsed_left_panel_reopens_without_disabling_the_inspector_splitter() {
+        use xilem::core::View;
+        use xilem::view::label;
+        let logic = |collapsed| {
+            workspace_columns(label("Left"), label("Canvas"), label("Right"), collapsed)
+        };
+        let mut ctx = context();
+        let view = logic(true);
+        let (pod, mut state) = view.build(&mut ctx, &mut ());
+        let mut h = TestHarness::create_with_size(
+            crate::default_property_set(),
+            pod.new_widget,
+            (1280, 650),
+        );
+        assert_eq!(
+            h.root_widget().children()[0].children()[0]
+                .ctx()
+                .border_box()
+                .width(),
+            0.0
+        );
+        h.mouse_move(Point::new(1033.5, 100.0));
+        h.mouse_button_press(None);
+        h.mouse_move(Point::new(953.5, 100.0));
+        h.mouse_button_release(None);
+        assert_eq!(
+            h.root_widget().children()[1].ctx().border_box().width(),
+            326.0
+        );
+        let again = logic(false);
+        h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
+        assert_eq!(
+            h.root_widget().children()[0].children()[0]
+                .ctx()
+                .border_box()
+                .width(),
+            246.0
+        );
+        assert_eq!(
+            h.root_widget().children()[1].ctx().border_box().width(),
+            326.0
+        );
+    }
+
+    #[test]
+    fn proof_divider_drags_and_supports_keyboard_resizing() {
+        use xilem::core::View;
+        use xilem::view::label;
+        let logic = || proof_split(label("Editor"), label("Proof"));
+        let mut ctx = context();
+        let view = logic();
+        let (pod, mut state) = view.build(&mut ctx, &mut ());
+        let mut h = TestHarness::create_with_size(
+            crate::default_property_set(),
+            pod.new_widget,
+            (800, 651),
+        );
+        fn heights<W: masonry::core::Widget>(h: &TestHarness<W>) -> (f64, f64) {
+            let root = h.root_widget();
+            let children = root.children();
+            (
+                children[0].ctx().border_box().height(),
+                children[1].ctx().border_box().height(),
+            )
+        }
+        assert_eq!(heights(&h), (510.0, 140.0));
+        h.mouse_move(Point::new(400.0, 510.5));
+        h.mouse_button_press(None);
+        h.mouse_move(Point::new(400.0, 450.5));
+        h.mouse_button_release(None);
+        assert_eq!(heights(&h), (450.0, 200.0));
+        let again = logic();
+        h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
+        assert_eq!(heights(&h), (450.0, 200.0));
+        h.process_window_event(WindowEvent::Resize(PhysicalSize::new(800, 751)));
+        assert_eq!(heights(&h), (550.0, 200.0));
+        h.focus_on(Some(h.root_id()));
+        h.process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowDown)));
+        assert!(heights(&h).1 < 200.0);
+        h.mouse_move(Point::new(400.0, heights(&h).0 + 0.5));
+        h.mouse_button_press(None);
+        h.mouse_move(Point::new(400.0, 748.0));
+        h.mouse_button_release(None);
+        assert_eq!(heights(&h).1, crate::view::design::PROOF_MIN_HEIGHT);
     }
 }
