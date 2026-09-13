@@ -2,8 +2,8 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require('playwright');
-// Usage: NODE_PATH=<playwright modules> node capture-gpui.cjs <dist> <font server URL> <output dir> <chromium executable>
-const [dist, fontServer, output, executablePath] = process.argv.slice(2);
+// Usage: NODE_PATH=<playwright modules> node capture-gpui.cjs <dist> <font server URL> <output dir> <chromium executable> [--overview-inspector]
+const [dist, fontServer, output, executablePath, captureMode] = process.argv.slice(2);
 if (!dist || !fontServer || !output || !executablePath) throw new Error('Expected dist, font server URL, output dir, and Chromium executable');
 const root=path.resolve(dist);
 fs.mkdirSync(output,{recursive:true});
@@ -26,6 +26,23 @@ fs.mkdirSync(output,{recursive:true});
  console.log('font files fetched:',gets);
  await page.mouse.move(1279,719);
  await page.screenshot({path:path.join(output,'gpui-overview-gray.png')});
+ if(captureMode === '--overview-inspector') {
+  await page.mouse.click(1100,359); // Match Xilem's folded Masters section.
+  await page.mouse.click(75,59);
+  await page.keyboard.type('0041',{delay:100});
+  await page.waitForTimeout(500);
+  await page.mouse.click(640,365); // Select A without opening the editor.
+  await page.mouse.click(75,59);
+  for(let i=0;i<8;i++) await page.keyboard.press('Backspace');
+  for(let i=0;i<8;i++) await page.keyboard.press('Delete');
+  await page.mouse.click(730,20);
+  await page.mouse.click(1100,53);
+  await page.mouse.move(1279,719);
+  await page.waitForTimeout(500);
+  await page.screenshot({path:path.join(output,'gpui-overview-inspector-a-gray.png')});
+  await browser.close();await new Promise(r=>server.close(r));
+  return;
+ }
  // Capture the default live-font graph, then restore the overview before search.
  await page.mouse.click(1212,18);
  await page.mouse.move(1279,719);

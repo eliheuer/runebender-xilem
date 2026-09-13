@@ -116,6 +116,9 @@ pub(crate) const TRANSFORM_CONTROLS_GAP: f64 = 6.0;
 /// Shared label width for the inspector's single-line transformation parameters.
 pub(crate) const TRANSFORM_LABEL_WIDTH: f64 = 88.0;
 
+/// Compact master and other read-only facts in the overview glyph inspector.
+pub(crate) const GLYPH_FACT_ROW_HEIGHT: f64 = 18.0;
+
 /// Coordinates inspector geometry measured in the Gray reference.
 pub(crate) const COORD_PICKER_EDGE: f64 = 52.0;
 pub(crate) const COORD_PICKER_GAP: f64 = 7.0;

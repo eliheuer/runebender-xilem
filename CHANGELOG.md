@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Show the active master and align existing overview glyph identity fields.
+
 - Align sidebar counts, selected-row borders and compact filter rows.
 
 - Restore the Separator category and match sidebar section spacing.

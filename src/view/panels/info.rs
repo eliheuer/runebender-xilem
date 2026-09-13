@@ -123,27 +123,49 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     // build lets you rename a glyph, set its codepoint and set its width
     // without opening it. These write to the highlighted cell.
     let overview_fields = (!editing && app.selected.is_some()).then(|| {
+        let master = app
+            .font
+            .master_names()
+            .get(app.font.active())
+            .cloned()
+            .unwrap_or_default();
         xcolumn(
             Region::Form,
             (
-                recipes::field_enter(
+                sized_box(xrow(
+                    Region::Inline,
+                    (
+                        label("Master")
+                            .text_size(TextSize::Body.px())
+                            .color(pal.text_muted),
+                        FlexSpacer::Flex(1.0),
+                        label(master).text_size(TextSize::Body.px()).color(pal.text),
+                    ),
+                ))
+                .dims(Dimensions::new(
+                    Dim::Stretch,
+                    Dim::Fixed(Length::px(design::GLYPH_FACT_ROW_HEIGHT)),
+                )),
+                overview_identity_field(
                     pal,
-                    "Name",
+                    "Glyph name",
                     app.name_buf.clone(),
                     |app: &mut Workspace, v| app.name_buf = v,
                     |app: &mut Workspace, v| app.overview_rename(v),
                 ),
-                recipes::field(
+                overview_identity_field(
+                    pal,
+                    "Width",
+                    app.advance_buf.clone(),
+                    |app: &mut Workspace, v| app.overview_set_advance(v),
+                    |_: &mut Workspace, _| {},
+                ),
+                overview_identity_field(
                     pal,
                     "Unicode",
                     app.unicode_buf.clone(),
                     |app: &mut Workspace, v| app.overview_set_unicode(v),
-                ),
-                recipes::field(
-                    pal,
-                    "Advance",
-                    app.advance_buf.clone(),
-                    |app: &mut Workspace, v| app.overview_set_advance(v),
+                    |_: &mut Workspace, _| {},
                 ),
             ),
         )
@@ -162,24 +184,28 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     }
                 },
             ),
-            (!app.collapsed.contains("Glyph")).then(|| {
-                xcolumn(
-                    Region::List,
-                    (
-                        show_multi_mark.then(|| {
-                            row("Selected".into(), format!("{}", app.multi_selected.len()))
-                        }),
-                        (!pts.is_empty()).then(|| row("Points".into(), pts)),
-                        editing.then(|| row("Selected".into(), format!("{}", app.selected_points))),
-                    ),
-                )
-            }),
+            (!app.collapsed.contains("Glyph") && (show_multi_mark || !pts.is_empty() || editing))
+                .then(|| {
+                    xcolumn(
+                        Region::List,
+                        (
+                            show_multi_mark.then(|| {
+                                row("Selected".into(), format!("{}", app.multi_selected.len()))
+                            }),
+                            (!pts.is_empty()).then(|| row("Points".into(), pts)),
+                            editing.then(|| {
+                                row("Selected".into(), format!("{}", app.selected_points))
+                            }),
+                        ),
+                    )
+                }),
             (!app.collapsed.contains("Glyph")).then(|| show_multi_mark.then(|| mark_section(app))),
             (!app.collapsed.contains("Glyph")).then_some(name_field),
             (!app.collapsed.contains("Glyph")).then_some(advance_field),
             (!app.collapsed.contains("Glyph")).then_some(overview_fields),
         ),
-    );
+    )
+    .gap(if editing { Space::Md } else { Space::Sm });
     xcolumn(
         Region::List,
         (
@@ -238,4 +264,42 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     .gap(Space::None)
     .padding(Space::None)
     .background_color(pal.panel)
+}
+
+/// Overview identity fields use the reference's fixed label line box.
+/// Existing callbacks retain their commit rules: rename on Enter, other edits on change.
+fn overview_identity_field<F, G>(
+    pal: &Palette,
+    name: &'static str,
+    value: String,
+    on_change: F,
+    on_enter: G,
+) -> impl WidgetView<Workspace> + use<F, G>
+where
+    F: Fn(&mut Workspace, String) + Send + Sync + 'static,
+    G: Fn(&mut Workspace, String) + Send + Sync + 'static,
+{
+    xcolumn(
+        Region::List,
+        (
+            label(name)
+                .text_size(TextSize::Body.px())
+                .color(pal.text_muted)
+                .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row))),
+            sized_box(input_typography::input_typography(
+                text_input(value, on_change)
+                    .on_enter(on_enter)
+                    .text_color(pal.text)
+                    .placeholder_color(pal.text_muted)
+                    .background_color(pal.field())
+                    .border_color(pal.field_outline)
+                    .border_width(Stroke::Hairline.length())
+                    .corner_radius(Radius::None.length()),
+            ))
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::from(ControlSize::Control),
+            )),
+        ),
+    )
 }

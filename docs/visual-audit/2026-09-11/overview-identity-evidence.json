@@ -1,0 +1,61 @@
+{
+  "recorded_utc": "2026-09-13T22:13:27.872472+00:00",
+  "gpui_main": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": "Existing older GPUI dist; 3028 font files; two inspector captures byte-identical; not a fresh main build",
+  "wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "matched_state": {
+    "font": "Virtua Grotesk",
+    "master": "Regular",
+    "selected_glyph": "A",
+    "unicode": "0041",
+    "width": 716,
+    "glyph_section": "expanded",
+    "masters_section": "folded",
+    "view": "overview",
+    "theme": "gray",
+    "viewport": [
+      1280,
+      720
+    ]
+  },
+  "captures": {
+    "75-gpui-overview-inspector-a-gray.png": "3e47792dad1ee8b2decd2e994f4e1c97d04a410e12c75afbe3fc7f13c2f4a826",
+    "76-xilem-overview-inspector-before-gray.png": "4b3eda483a8a7460ca6880e4c0d7fe171af528504f034966b34c61fbff696a4e",
+    "77-xilem-overview-identity-gray.png": "3fb9ddc0000ac86eb3535132f2fb6f49703d45ee655582948b7b36e445f503cb",
+    "78-xilem-overview-identity-1100-gray.png": "b58da92d6942a373137bd7a9c883bfb55a7544c6cfb26afb8b3c29f02105461e"
+  },
+  "measurements": {
+    "gpui_name_field_half_open_rect": [
+      1042,
+      117,
+      1272,
+      145
+    ],
+    "xilem_name_field_half_open_rect": [
+      1042,
+      118,
+      1272,
+      146
+    ],
+    "normalized_perimeter_pixel_mismatches": 0,
+    "overview_fact_height": 18,
+    "overview_label_height": 21,
+    "input_height": 28
+  },
+  "validation": [
+    "2 existing overview tests passed",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "node --check capture-gpui.cjs",
+    "1280 and 1100 inspector screenshots visually inspected",
+    "Editor byte-identical to reference66"
+  ],
+  "remaining": [
+    "Overview sidebearing editing, kerning-group fields, metrics-key fields, production name, note, smart-axis and switch controls need implementation",
+    "Full-width Width remains because LSB/RSB controls are not implemented here",
+    "Xilem extra overview navigation and preview differ from reference",
+    "Text rasterization differs; only field perimeter normalized for measured match",
+    "No foreground GUI or live-font saves"
+  ]
+}

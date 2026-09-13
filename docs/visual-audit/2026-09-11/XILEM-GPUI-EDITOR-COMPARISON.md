@@ -954,3 +954,35 @@ Fresh GPUI overview equals63. No foreground GUI or live-font saves occurred.
 Next compare an expanded overview inspector with the same selected glyph, or
 other unverified control states; avoid repeatedly polishing text rasterization
 or comparing the different default node graphs.
+
+
+## 2026-09-13 daytime: matched overview identity inspector
+
+The helper's optional `--overview-inspector` argument selects A through search,
+clears the search, folds Masters and expands Glyph. Both apps show Regular,
+A,0041 and width716. Two GPUI captures match exactly. This finally compares the
+same selected glyph and panel state rather than a preview against no selection.
+
+Xilem now shows the active master and labels the existing fields Glyph name,
+Width and Unicode. Fixed21px label boxes,18px master readout and compact spacing
+align the identity controls. The empty overview summary no longer adds a blank
+row. Rename still commits on Enter; width and Unicode retain their existing
+change callbacks. The name input is x1042..1272/y118..146 versus GPUI y117..145;
+after the one-pixel native-header offset, every perimeter pixel matches.
+
+- [GPUI selected A](75-gpui-overview-inspector-a-gray.png)
+- [Xilem before](76-xilem-overview-inspector-before-gray.png)
+- [Xilem identity controls](77-xilem-overview-identity-gray.png)
+- [Narrow inspector](78-xilem-overview-identity-1100-gray.png)
+- [Measurements and remaining gaps](overview-identity-evidence.json)
+
+The larger inspector gap remains functional: sidebearings, kerning groups,
+metrics keys, production name, note, smart-axis and switch controls are present
+in GPUI and absent from this Xilem overview panel. E06 remains open. Width stays
+full-width rather than filling missing slots with inert inputs.
+
+Two existing overview tests, formatting, whitespace, workspace all-target Clippy
+and helper syntax checks passed. Both inspector sizes were visually inspected.
+The glyph editor is byte-identical to66. No live font was saved or foreground
+GUI launched. These changes align existing controls; they do not complete the
+overview inspector's behavior.
