@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Restore the Gray reference palette's lighter panel and canvas surfaces and
+  quieter field borders using the shared OKLCH tokens.
+
 - Align transformation icon rows with their heading and give inspector actions
   and parameters a consistent 32-pixel row pitch.
 

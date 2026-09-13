@@ -1,0 +1,104 @@
+{
+  "recorded_utc": "2026-09-13T18:16:54.198764+00:00",
+  "xilem_parent": "5f98d33",
+  "capture_size": [
+    1280,
+    720
+  ],
+  "narrow_capture_size": [
+    1100,
+    720
+  ],
+  "theme": "gray",
+  "glyph": "R",
+  "proof_text": "R",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "gpui_reference_note": "Existing dist bundle used without rebuilding or modifying the reference; bundle hash identifies the artifact independently of checkout HEAD.",
+  "gpui_wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "font_source_sha256": {
+    "VirtuaGrotesk.designspace": "0ac18f6e0827af3949a36b3c7043f22a50613948bcc8e8193f268f21539fedf3",
+    "VirtuaGrotesk-Bold.ufo/fontinfo.plist": "67981ebbc42195b62ce392c555c107724904737c79c83f8455ad68d847119bbb",
+    "VirtuaGrotesk-Bold.ufo/glyphs/R_.glif": "bb84cd52b528fbf6bd8632382c903f1b3ef2b6095206f7149f787e3b8ccadad4",
+    "VirtuaGrotesk-Regular.ufo/fontinfo.plist": "6cb32c37263cb5fe9679239b09f75e0124419176ed583b07dc2a48415621cf61",
+    "VirtuaGrotesk-Regular.ufo/glyphs/R_.glif": "ee9a24d4fb41d245e4f421dc8c35286d5befffb850833ef9cd63a96ee0895301"
+  },
+  "capture_sha256": {
+    "26-xilem-gray-surfaces.png": "82ebc0a34e37f50d5350bdb9e7849132aaaf4403747b194a1d1114491b9bbcd4",
+    "27-xilem-gray-surfaces-1100.png": "d35f844ef97bdc52820c8767433aaf4d3975d7ba27b281bb0636ee98ce2a8111",
+    "04-gpui-live-font-r-gray.png": "5d89a4060eb4b4c1cc1a2bb830474ba994fe5c53359bb63831fa08db7743eff9"
+  },
+  "repeat_captures_byte_identical": {
+    "xilem": true,
+    "gpui": true
+  },
+  "verification": [
+    "18 core ui::theme tests passed, including contrast checks, before cutoff",
+    "cargo fmt --check and workspace all-target Clippy -D warnings passed before cutoff",
+    "Resumed build and matching1280/narrow1100 captures visually inspected",
+    "Repeat captures byte-identical in each editor; GPUI equals saved04reference",
+    "git diff --check"
+  ],
+  "gpui_font_files_fetched": 3028,
+  "gray_reference_tokens": {
+    "panel": "neutral.76",
+    "canvas": "neutral.81",
+    "fieldOutline": "neutral.55"
+  },
+  "matching_srgb_samples": {
+    "canvas": {
+      "xy": [
+        900,
+        100
+      ],
+      "rgb": [
+        193,
+        193,
+        193
+      ]
+    },
+    "panel": {
+      "xy": [
+        1275,
+        60
+      ],
+      "rgb": [
+        177,
+        177,
+        177
+      ]
+    },
+    "proof": {
+      "xy": [
+        900,
+        600
+      ],
+      "rgb": [
+        177,
+        177,
+        177
+      ]
+    },
+    "field": {
+      "xy": [
+        1200,
+        410
+      ],
+      "rgb": [
+        193,
+        193,
+        193
+      ]
+    },
+    "field_border": {
+      "xy": [
+        1200,
+        425
+      ],
+      "rgb": [
+        113,
+        113,
+        113
+      ]
+    }
+  }
+}

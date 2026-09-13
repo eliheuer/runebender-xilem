@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Restore the Gray reference palette's lighter panel and canvas surfaces and
+  quieter field borders using the shared OKLCH tokens.
+
 - Connected live font-version nodes, guarded application, explicit new-UFO export,
   and shared canvas geometry for embedded Designbot proof controls.
 

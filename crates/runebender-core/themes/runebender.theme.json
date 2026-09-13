@@ -292,16 +292,16 @@
       },
       "surfaces": {
         "app": "neutral.71",
-        "panel": "neutral.73",
+        "panel": "neutral.76",
         "titlebar": "neutral.60",
         "control": "neutral.71",
         "button": "neutral.76",
         "buttonHover": "neutral.81",
         "field": "neutral.81",
         "outline": "neutral.23",
-        "fieldOutline": "neutral.23",
+        "fieldOutline": "neutral.55",
         "divider": "neutral.23",
-        "canvas": "neutral.76"
+        "canvas": "neutral.81"
       },
       "text": {
         "primary": "neutral.23",

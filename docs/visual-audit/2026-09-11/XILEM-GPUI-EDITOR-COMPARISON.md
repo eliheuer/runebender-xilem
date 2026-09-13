@@ -478,3 +478,32 @@ This fixes the transformation body's vertical rhythm. Section-header insets,
 the divider below this group, Curves/Background spacing and Gray surfaces still
 differ; those shared recipes need a separate pass. No native interaction,
 accessibility or GPUI retirement readiness is implied.
+
+
+## 2026-09-13 daytime: Gray surface palette
+
+The pending Gray palette correction is now visually verified. The reference
+bundle embeds panel neutral.76, canvas neutral.81 and fieldOutline neutral.55;
+Xilem's shared Core theme had .73, .76 and .23 respectively. Only those three
+Gray tokens change. The complete Gray theme object now equals the embedded
+reference object; no application RGB overrides or other theme changes were added.
+
+Matching flat samples in both captures are canvas/fields RGB193, panel/proof
+RGB177, and a parameter-field border RGB113. Precise sample locations and hashes
+are in [the evidence](gray-surfaces-evidence.json).
+
+- [Xilem Gray surfaces, 1280 x 720](26-xilem-gray-surfaces.png)
+- [Xilem Gray surfaces, 1100 x 720](27-xilem-gray-surfaces-1100.png)
+- [Verified GPUI reference](04-gpui-live-font-r-gray.png)
+
+The 18 Core theme tests, including contrast checks, formatting and workspace
+all-target Clippy passed before the overnight cutoff. The resumed build and
+both Xilem sizes were inspected; both editors repeat byte-identically. GPUI's
+existing bundle remains an older artifact than current main, independently
+identified by its hash. This comparison does not assert a current-main GPUI build.
+
+Today's user priority is autonomous visual iteration, starting with the largest
+visible differences. Remaining editor differences include full-width guides and
+canvas point styles, grid shadows/tab faces, inspector headers/Coordinates and
+Curves/Background spacing. Overview and node editor comparisons follow. Runtime
+interaction and platform certification remain separate from screenshot proof.
