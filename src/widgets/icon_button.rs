@@ -19,7 +19,7 @@ use runebender_core::ui::theme::toolbar_icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::view::design::{RAIL_TAB_ICON, RAIL_TAB_ICON_RISE, RAIL_TAB_RADIUS};
+use crate::view::design::{RAIL_TAB_ICON, RAIL_TAB_RADIUS};
 
 const TILE: f64 = 24.0;
 
@@ -33,7 +33,7 @@ pub(crate) struct IconWidget {
     fg_active: Color,
     active_bg: Color,
     hover_bg: Color,
-    rail: Option<(Color, Color)>,
+    rail: Option<(Color, Color, f64)>,
     icon_size: Option<f64>,
     size: Size,
     hovered: bool,
@@ -66,7 +66,7 @@ impl Widget for IconWidget {
         painter: &mut Painter<'_>,
     ) {
         let rect = self.size.to_rect();
-        if let Some((background, border)) = self.rail {
+        if let Some((background, border, _)) = self.rail {
             // Open at the bottom when selected, joining the panel below.
             let r = RAIL_TAB_RADIUS;
             let w = self.size.width;
@@ -113,7 +113,7 @@ impl Widget for IconWidget {
         let dx = (self.size.width - vb.width() * scale) / 2.0;
         let dy = (self.size.height - vb.height() * scale) / 2.0
             - if self.rail.is_some() && self.active {
-                RAIL_TAB_ICON_RISE
+                self.rail.map(|(_, _, rise)| rise).unwrap_or_default()
             } else {
                 0.0
             };
@@ -184,7 +184,7 @@ pub(crate) struct IconView<F> {
     fg_active: Color,
     active_bg: Color,
     hover_bg: Color,
-    rail: Option<(Color, Color)>,
+    rail: Option<(Color, Color, f64)>,
     icon_size: Option<f64>,
     on_click: F,
 }
@@ -220,8 +220,8 @@ impl<F> IconView<F> {
     }
 
     /// Paint a GPUI-style rail tab around the icon.
-    pub(crate) fn rail_tab(mut self, background: Color, border: Color) -> Self {
-        self.rail = Some((background, border));
+    pub(crate) fn rail_tab(mut self, background: Color, border: Color, icon_rise: f64) -> Self {
+        self.rail = Some((background, border, icon_rise));
         self
     }
 }

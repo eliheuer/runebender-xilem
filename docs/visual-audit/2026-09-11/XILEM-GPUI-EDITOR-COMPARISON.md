@@ -770,3 +770,25 @@ and folded reference hashes. No live font was edited or saved.
 
 Next: rail tab faces, then matched overview and node-editor views. The metric
 card's outer frame and text rendering remain smaller canvas differences.
+
+
+## 2026-09-13 daytime: editor rail tabs
+
+Editor tabs now have eight-pixel side/top insets and gaps,24px inactive faces,
+a32px active face and aligned18px icons. The selected face meets the panel at
+y80 instead of leaving a recessed gap. The rail uses the existing middle neutral
+surface and inactive tabs the field surface, matching the inspected bundle.
+Overview retains its previous geometry and surfaces. Small fractional-width
+edge rasterization differences remain.
+
+- [Editor tabs](57-xilem-rail-tabs-gray.png)
+- [Narrow editor](58-xilem-rail-tabs-1100-gray.png)
+- [Overview regression check](59-xilem-rail-tabs-overview-gray.png)
+
+Five grid tests, formatting, whitespace checks and workspace all-target Clippy
+passed. All three views were inspected; repeats match in both editors and the
+fresh GPUI normal reference hash remains unchanged. See [evidence](rail-tabs-evidence.json).
+
+The user reported that panels cannot be resized. Live code inspection confirms
+fixed246px dock widths and a fixed proof strip with decorative dividers. Restoring
+panel resizing is now the priority before continuing cosmetic comparison.

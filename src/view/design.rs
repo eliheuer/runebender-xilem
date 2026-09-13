@@ -80,6 +80,9 @@ pub(crate) const RAIL_TAB_INACTIVE_HEIGHT: f64 = 28.0;
 pub(crate) const RAIL_TAB_HEIGHT: f64 = 36.0;
 /// Editor navigation matches the reference's 40px tab band.
 pub(crate) const EDITOR_RAIL_TAB_HEIGHT: f64 = 40.0;
+/// Inactive editor tabs leave an eight-pixel gap above the panel join.
+pub(crate) const EDITOR_RAIL_TAB_INACTIVE_HEIGHT: f64 = 24.0;
+pub(crate) const EDITOR_RAIL_TAB_ICON_RISE: f64 = 4.0;
 /// Target thumbnail size and compact grid inset; the fitted cells use whole pixels.
 pub(crate) const RAIL_CELL_SIZE: f64 = 44.0;
 pub(crate) const RAIL_GRID_INSET: f64 = 6.0;
