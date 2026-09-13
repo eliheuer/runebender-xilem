@@ -1,0 +1,102 @@
+{
+  "recorded_utc": "2026-09-13T20:25:11.862904+00:00",
+  "xilem_parent": "1fa790d",
+  "capture_size": [
+    1280,
+    720
+  ],
+  "narrow_capture_size": [
+    1100,
+    720
+  ],
+  "theme": "gray",
+  "glyph": "R",
+  "proof_text": "R",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "gpui_reference_note": "Existing dist bundle used without rebuilding or modifying the reference; bundle hash identifies the artifact independently of checkout HEAD.",
+  "gpui_wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "font_source_sha256": {
+    "VirtuaGrotesk.designspace": "0ac18f6e0827af3949a36b3c7043f22a50613948bcc8e8193f268f21539fedf3",
+    "VirtuaGrotesk-Bold.ufo/fontinfo.plist": "67981ebbc42195b62ce392c555c107724904737c79c83f8455ad68d847119bbb",
+    "VirtuaGrotesk-Bold.ufo/glyphs/R_.glif": "bb84cd52b528fbf6bd8632382c903f1b3ef2b6095206f7149f787e3b8ccadad4",
+    "VirtuaGrotesk-Regular.ufo/fontinfo.plist": "6cb32c37263cb5fe9679239b09f75e0124419176ed583b07dc2a48415621cf61",
+    "VirtuaGrotesk-Regular.ufo/glyphs/R_.glif": "ee9a24d4fb41d245e4f421dc8c35286d5befffb850833ef9cd63a96ee0895301"
+  },
+  "capture_sha256": {
+    "54-xilem-keylines-gray.png": "02d07fc4b128acad1440c0252430aec2665b1c84c065f613f27cdfd0966884f4",
+    "55-xilem-keylines-folded-gray.png": "453b5cb92f4f5fb82890d00f0b4a3b48450a6d31219bb678a71ca7f7a51f5bc4",
+    "56-xilem-keylines-1100-gray.png": "9f65e4679560936489220fc6f9295dfc389d6f5cf4bb0139a8e1cf73db97277f",
+    "04-gpui-live-font-r-gray.png": "5d89a4060eb4b4c1cc1a2bb830474ba994fe5c53359bb63831fa08db7743eff9",
+    "52-gpui-background-folded-gray.png": "e9590355ad8dc546236a39fd02d0946a7c611a5e4c86f200a8bc1dc9d5c96ef8"
+  },
+  "repeat_captures_byte_identical": {
+    "xilem": true,
+    "gpui": true
+  },
+  "verification": [
+    "8 editor widget tests passed including metrics click targeting and keyboard commit",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "Matching normal/folded1280Background-on and1100Xilem visually inspected",
+    "Normal repeats identical both; GPUI3028files; saved normal and folded hashes unchanged"
+  ],
+  "gpui_font_files_fetched": 3028,
+  "background_enabled": true,
+  "keyline_measurements": {
+    "perimeter_checks": [
+      {
+        "rect_half_open": [
+          537,
+          482,
+          601,
+          502
+        ],
+        "different_perimeter_pixels": 0
+      },
+      {
+        "rect_half_open": [
+          607,
+          482,
+          671,
+          502
+        ],
+        "different_perimeter_pixels": 0
+      },
+      {
+        "rect_half_open": [
+          677,
+          482,
+          741,
+          502
+        ],
+        "different_perimeter_pixels": 0
+      },
+      {
+        "rect_half_open": [
+          1042,
+          365,
+          1155,
+          393
+        ],
+        "different_perimeter_pixels": 0
+      }
+    ],
+    "metrics_border_rgb_both": [
+      113,
+      113,
+      113
+    ],
+    "toggle_border_rgb_both": [
+      29,
+      29,
+      29
+    ],
+    "toggle_fill_rgb_both": [
+      64,
+      64,
+      64
+    ],
+    "remaining": "Text and outer metrics-card frame rasterization differ; whole-control pixel identity is not claimed."
+  }
+}

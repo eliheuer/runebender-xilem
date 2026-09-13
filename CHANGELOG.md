@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Retain dark keylines on enabled toggles and use crisp field borders in the metrics card.
+
 - Match Background control rows and inspector field alignment; the Background toggle
   now reflects the visibility setting even when the current glyph has no background.
 

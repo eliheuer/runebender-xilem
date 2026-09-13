@@ -352,7 +352,7 @@ pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
     let (fg, border, bg) = if active {
-        (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
+        (pal.selected_ink(), pal.outline, pal.selected_bg())
     } else {
         (pal.text, pal.outline, pal.panel)
     };
@@ -379,7 +379,7 @@ pub(crate) fn toggle_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
     let (fg, border, bg) = if active {
-        (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
+        (pal.selected_ink(), pal.outline, pal.selected_bg())
     } else {
         (pal.text_muted, pal.outline, pal.panel)
     };

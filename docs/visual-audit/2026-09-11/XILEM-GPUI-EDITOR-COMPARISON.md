@@ -742,3 +742,31 @@ See [measurements and hashes](background-controls-evidence.json).
 
 Next: active toggle keylines, inspector input styling and rail tab faces, then
 matched overview and node-editor views.
+
+
+## 2026-09-13 daytime: toggle and metrics-field keylines
+
+Enabled text and square toggles now retain the dark panel keyline around their
+selected fill. The metrics card's three inputs use the shared field-outline color
+and draw the hairline inside their bounds, avoiding the former dark blurred edge.
+Focused metrics inputs retain the focus color; their hit rectangles and editing
+behavior are unchanged.
+
+- [Xilem borders, 1280 x 720](54-xilem-keylines-gray.png)
+- [Enabled Background toggle, folded view](55-xilem-keylines-folded-gray.png)
+- [Xilem at 1100 x 720](56-xilem-keylines-1100-gray.png)
+- [Reverified folded GPUI reference](52-gpui-background-folded-gray.png)
+
+Sampled toggle border/fill pixels match RGB29/64; sampled metrics borders and
+interiors match RGB113/193. Full perimeter comparisons are recorded in the
+[evidence](keylines-evidence.json). Text and the outer metrics-card frame still
+have rendering differences, so these matches do not imply whole-control identity.
+
+Eight existing editor widget tests passed, including metrics click targeting and
+keyboard commit. Formatting, whitespace checks and workspace all-target Clippy
+passed. Normal, folded and narrow captures were inspected; normal repeats are
+byte-identical in each editor. GPUI loaded3028files and matches both saved normal
+and folded reference hashes. No live font was edited or saved.
+
+Next: rail tab faces, then matched overview and node-editor views. The metric
+card's outer frame and text rendering remain smaller canvas differences.

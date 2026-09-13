@@ -436,9 +436,19 @@ impl EditorWidget {
                             MetricField::Rsb => sb.rsb.to_string(),
                         }
                     };
-                    let border = if focused { pal.text } else { pal.outline };
+                    let border = if focused { pal.text } else { pal.field_outline };
                     painter.fill(rect, pal.field()).draw();
-                    painter.stroke(rect, &Stroke::new(1.0), border).draw();
+                    // Like the native inputs, the field's keyline stays inside
+                    // its bounds. A centered exterior stroke blurs the edge.
+                    let width = DesignStroke::Hairline.px();
+                    let half = width / 2.0;
+                    let keyline = Rect::new(
+                        rect.x0 + half,
+                        rect.y0 + half,
+                        rect.x1 - half,
+                        rect.y1 - half,
+                    );
+                    painter.stroke(keyline, &Stroke::new(width), border).draw();
                     let baseline = rect.center().y;
                     text_label::draw(
                         painter,
