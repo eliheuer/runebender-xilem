@@ -209,8 +209,7 @@ where
     )
 }
 
-/// A list row: label left, trailing text right, accent outline when active.
-/// This is the sidebar row, the layer row, and any future tree row.
+/// A plain filter row: label left, trailing text right, keylined when active.
 pub(crate) fn list_row<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
     text: String,
@@ -218,13 +217,15 @@ pub(crate) fn list_row<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     active: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    list_row_marked(pal, Marker::Bullet, false, text, trailing, active, on_click)
+    list_row_marked(pal, Marker::None, false, text, trailing, active, on_click)
 }
 
 /// What a sidebar row shows before its label: a chevron on a row that
 /// expands, a bullet on a leaf, as the GPUI sidebar has them.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Marker {
+    /// A plain filter row, without a disclosure or bullet.
+    None,
     Bullet,
     Closed,
     Open,
@@ -244,6 +245,9 @@ pub(crate) fn marker(marker: Marker, color: xilem::Color) -> impl WidgetView<Wor
         use masonry::imaging::Painter;
         use masonry::kurbo::{BezPath, Circle};
 
+        if marker == Marker::None {
+            return;
+        }
         let mut painter = Painter::new(scene);
         let center = (size.width / 2.0, size.height / 2.0);
         if marker == Marker::Bullet {
@@ -296,11 +300,7 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
     let (fg, border, bg) = if active {
-        (
-            pal.selected_content_ink(),
-            pal.selected_bg(),
-            pal.selected_bg(),
-        )
+        (pal.selected_content_ink(), pal.outline, pal.selected_bg())
     } else {
         (pal.text, xilem::Color::TRANSPARENT, pal.panel)
     };
@@ -315,16 +315,13 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
                 Region::Inline,
                 (
                     indent.then_some(FlexSpacer::Fixed(Space::Lg.length())),
-                    marker(row_marker, if active { fg } else { pal.text_muted }),
+                    (row_marker != Marker::None)
+                        .then(|| marker(row_marker, if active { fg } else { pal.text_muted })),
                     label(text).text_size(TextSize::Body.px()).color(fg),
                     FlexSpacer::Flex(1.0),
                     label(trailing)
                         .text_size(TextSize::Body.px())
                         .color(trailing_color),
-                    // Clear of the scroll bar, which a portal draws over
-                    // its own right edge rather than beside it. Without
-                    // this the counts in the sidebar are cut in half.
-                    FlexSpacer::Fixed(Space::Sm.length()),
                 ),
             ),
             move |app: &mut Workspace| on_click(app),
@@ -334,7 +331,14 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         )))
         .background_color(bg)
         .border_color(border)
-        .border_width(Stroke::Hairline.length())
+        .border_width(
+            if active {
+                Stroke::Hairline
+            } else {
+                Stroke::None
+            }
+            .length(),
+        )
         .corner_radius(Radius::None.length()),
     )
     .dims(Dimensions::new(

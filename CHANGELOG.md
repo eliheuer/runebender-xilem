@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Align sidebar counts, selected-row borders and compact filter rows.
+
 - Restore the Separator category and match sidebar section spacing.
 
 - Give glyph search equal-width scope, regex and case toggles and align its editor row.

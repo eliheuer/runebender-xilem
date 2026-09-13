@@ -926,3 +926,31 @@ and workspace all-target Clippy checks passed. Both overview captures were
 visually inspected; the fresh GPUI overview matches reference63. No foreground
 GUI or live-font saves occurred. Remaining sidebar differences include trailing
 count insets, filter-row markers/height, selected-row keylines and text rendering.
+
+
+## 2026-09-13 daytime: sidebar count and filter-row alignment
+
+Removed the redundant trailing spacer from marked rows. The14px row inset
+already clears the overlay scrollbar. Inactive rows no longer reserve a
+transparent border; selected rows use the outline token. The selected All row's
+full perimeter now matches GPUI after the known37px navigation offset.
+
+Coverage filters are plain rows without bullets. Exporting and incompatible
+totals share their19px height and horizontal inset; they remain read-only totals.
+GPUI makes those two entries selectable, which is a separate behavioral gap.
+No inert buttons were added to imply otherwise.
+
+- [Aligned sidebar](73-xilem-sidebar-rows-gray.png)
+- [Narrow sidebar](74-xilem-sidebar-rows-1100-gray.png)
+- [Measurements and provenance](sidebar-rows-evidence.json)
+
+For the recorded normalized crops, differing pixel counts fall from4976to3191
+for categories,6571to4607 for scripts and5780to3415 for filters. These are local
+image measurements, not full-parity scores. Text rendering still differs.
+The editor remains byte-identical to66. Both overview sizes were inspected;
+five grid tests, formatting, whitespace and workspace all-target Clippy passed.
+Fresh GPUI overview equals63. No foreground GUI or live-font saves occurred.
+
+Next compare an expanded overview inspector with the same selected glyph, or
+other unverified control states; avoid repeatedly polishing text rasterization
+or comparing the different default node graphs.

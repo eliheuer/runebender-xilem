@@ -732,19 +732,29 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         })
         .collect();
 
+    let total = |name: &'static str, value: usize| {
+        sized_box(xrow(
+            Region::Inline,
+            (
+                label(name).text_size(TextSize::Body.px()).color(pal.text),
+                FlexSpacer::Flex(1.0),
+                label(value.to_string())
+                    .text_size(TextSize::Body.px())
+                    .color(pal.text_muted),
+            ),
+        ))
+        .padding(masonry::properties::Padding::horizontal(Length::px(
+            design::SIDEBAR_ROW_INSET,
+        )))
+        .dims(Dimensions::new(
+            Dim::Stretch,
+            Dim::from(ControlSize::SidebarRow),
+        ))
+        .boxed()
+    };
     let mut filters = vec![
-        recipes::kv(
-            pal,
-            "Exporting glyphs".into(),
-            format!("{}", app.font.exporting_count()),
-        )
-        .boxed(),
-        recipes::kv(
-            pal,
-            "Incompatible masters".into(),
-            format!("{}", app.font.incompatible_count()),
-        )
-        .boxed(),
+        total("Exporting glyphs", app.font.exporting_count()),
+        total("Incompatible masters", app.font.incompatible_count()),
     ];
     filters.extend(filter_rows.into_iter().map(|row| row.boxed()));
     flex_col((

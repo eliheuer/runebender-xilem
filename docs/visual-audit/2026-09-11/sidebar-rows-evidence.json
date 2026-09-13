@@ -1,0 +1,80 @@
+{
+  "recorded_utc": "2026-09-13T21:56:24.365139+00:00",
+  "gpui_main": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": "Existing older GPUI dist; fresh overview equals reference63; 3028 font files fetched",
+  "wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "captures": {
+    "73-xilem-sidebar-rows-gray.png": "e14b272b6f734cc2d1b21669a982995ca7be8e7e70588821f0947676a81cbe1b",
+    "74-xilem-sidebar-rows-1100-gray.png": "590b1128521dba644b933424cd0b469efae49e8b4d26ff855983510c6cd2f5bd"
+  },
+  "measurements": {
+    "vertical_normalization": 37,
+    "selected_row_perimeter_pixel_mismatches": 0,
+    "gpui_selected_half_open_rect": [
+      8,
+      113,
+      238,
+      132
+    ],
+    "xilem_selected_half_open_rect": [
+      8,
+      150,
+      238,
+      169
+    ],
+    "differing_pixels_before_after": {
+      "category_rows": [
+        4976,
+        3191
+      ],
+      "script_rows": [
+        6571,
+        4607
+      ],
+      "filter_rows": [
+        5780,
+        3415
+      ]
+    },
+    "comparison_gpui_half_open_rects": {
+      "category_rows": [
+        8,
+        113,
+        238,
+        265
+      ],
+      "script_rows": [
+        8,
+        303,
+        238,
+        531
+      ],
+      "filter_rows": [
+        8,
+        569,
+        238,
+        650
+      ]
+    },
+    "overview_change_bounds": [
+      8,
+      150,
+      238,
+      692
+    ]
+  },
+  "validation": [
+    "5 existing grid tests passed",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "1280 and 1100 screenshots visually inspected",
+    "Editor byte-identical to reference66"
+  ],
+  "limitations": [
+    "Pixel counts measure these cropped rows, not overall parity; text rasterization differs",
+    "Exporting glyphs and Incompatible masters remain read-only totals in Xilem; GPUI uses selectable filters, a separate behavior gap",
+    "Retained extra navigation accounts for the37px vertical offset",
+    "No foreground GUI or live-font saves"
+  ]
+}
