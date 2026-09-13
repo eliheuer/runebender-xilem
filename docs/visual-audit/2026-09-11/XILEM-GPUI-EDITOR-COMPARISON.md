@@ -1080,3 +1080,33 @@ behavior remain outside the screenshot proof.
 
 The existing kerning/groups editing, shaping refresh and undo regression passed,
 along with formatting, whitespace, helper syntax and workspace all-target Clippy.
+
+
+## 2026-09-13 daytime: Compare paragraph wrapping
+
+Both panels report Bold versus Regular: 863 glyphs, 0 missing, 392 advance
+changes, 77 versus 124 kerning pairs and 0 structurally incompatible glyphs.
+Xilem now uses the compact summary paragraph, omitting the extra metrics-match
+line when no metric differs. Masonry WordWrap constrains the text to the dock;
+Parley's absolute line height uses the existing 21px ControlSize::Row token.
+Name and incompatibility readouts also wrap, while retaining their text colors.
+
+The section divider moves from y391 to y369, versus GPUI y368. The paragraph stays
+two lines tall in both renderers; GPUI breaks before `advance`, Xilem after it.
+That remaining word-break difference is recorded rather than forcing a newline
+that would be wrong for another dock width. Summary calculations are unchanged.
+
+- [GPUI Compare](93-gpui-compare-gray.png)
+- [Xilem before](94-xilem-compare-before-gray.png)
+- [Wrapping Compare summary](95-xilem-compare-gray.png)
+- [Narrow Compare](96-xilem-compare-1100-gray.png)
+- [Measurements and limits](compare-evidence.json)
+
+The helper adds `--compare`, and its reference repeats identically. Both sizes
+were visually inspected. The final build reproduces the verified screenshot;
+normal editor output remains identical to 66. The existing incompatible-master
+fixture regression, formatting, whitespace, helper syntax and workspace
+all-target Clippy checks passed. A narrowly documented lint expectation covers
+the exactly representable control-height token's conversion to Parley's f32 API.
+No live-font edit/save, graph Run or foreground GUI occurred. These comparisons
+do not establish native interaction parity.

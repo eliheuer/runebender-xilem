@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Keep master comparison summaries compact and wrap them to the inspector width.
+
 - Clarify the new-group input and align square group chips and shelf spacing.
 
 - Align Kerning pair rows and let its three editor fields share the resized dock width.

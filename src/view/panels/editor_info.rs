@@ -421,17 +421,30 @@ type Pick = fn(&norad::FontInfo) -> Option<f64>;
 pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     use xilem::core::one_of::Either;
+    let readout = |text: String, ink| {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the integral control-height token is exactly representable as f32"
+        )]
+        let line_height = ControlSize::Row.px() as f32;
+        label(text)
+            .text_size(TextSize::Body.px())
+            .line_height(masonry::parley::LineHeight::Absolute(line_height))
+            .color(ink)
+            .prop(masonry::properties::LineBreaking::WordWrap)
+            .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
+    };
     let masters = app.font.master_count();
     if masters < 2 {
         return section(
             app,
             "Compare",
-            Either::A(
-                label("One master \u{00b7} nothing to compare")
-                    .text_size(TextSize::Body.px())
-                    .color(pal.text_muted),
-            ),
-        );
+            Either::A(readout(
+                "One master \u{00b7} nothing to compare".into(),
+                pal.text_muted,
+            )),
+        )
+        .gap(Space::Sm);
     }
     let active = app.font.active();
     let reference = app.font.font();
@@ -470,42 +483,25 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
             Some(xcolumn(
                 Region::List,
                 (
-                    label(format!(
-                        "{} vs {}",
-                        app.font.master_name(i),
-                        app.font.master_name(active)
-                    ))
-                    .text_size(TextSize::Body.px())
-                    .color(pal.text),
-                    // One fact a line: a label does not wrap, and one
-                    // long line would push the whole inspector wide.
-                    xcolumn(
-                        Region::List,
-                        [
-                            format!(
-                                "{} glyphs \u{00b7} {} missing",
-                                master.default_layer().len(),
-                                missing
-                            ),
-                            format!("{advance_diffs} advance diffs"),
-                            format!(
-                                "kerning {} vs {}",
-                                pair_count(master),
-                                pair_count(reference)
-                            ),
+                    readout(
+                        format!("{} vs {}", app.font.master_name(i), app.font.master_name(active)),
+                        pal.text,
+                    ),
+                    readout(
+                        format!(
+                            "{} glyphs \u{00b7} {} missing \u{00b7} {} advance diffs \u{00b7} kerning {} vs {}{}",
+                            master.default_layer().len(),
+                            missing,
+                            advance_diffs,
+                            pair_count(master),
+                            pair_count(reference),
                             if diffs.is_empty() {
-                                "metrics match".to_string()
+                                String::new()
                             } else {
-                                format!("metrics differ: {}", diffs.join(", "))
+                                format!(" \u{00b7} metrics differ: {}", diffs.join(", "))
                             },
-                        ]
-                        .into_iter()
-                        .map(|line| {
-                            label(line)
-                                .text_size(TextSize::Body.px())
-                                .color(pal.text_muted)
-                        })
-                        .collect::<Vec<_>>(),
+                        ),
+                        pal.text_muted,
                     ),
                 ),
             ))
@@ -516,19 +512,21 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
         app,
         "Compare",
         Either::B(xcolumn(
-            Region::List,
+            Region::Inline,
             (
-                xcolumn(Region::List, rows),
-                label(format!("{incompatible} structurally incompatible glyph(s)"))
-                    .text_size(TextSize::Body.px())
-                    .color(if incompatible == 0 {
+                xcolumn(Region::Inline, rows),
+                readout(
+                    format!("{incompatible} structurally incompatible glyph(s)"),
+                    if incompatible == 0 {
                         pal.text_muted
                     } else {
                         pal.role("warning")
-                    }),
+                    },
+                ),
             ),
         )),
     )
+    .gap(Space::Sm)
 }
 
 /// Features: an editable `features.fea` draft, with explicit Apply/Revert and

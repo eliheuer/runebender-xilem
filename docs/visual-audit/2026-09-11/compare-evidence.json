@@ -1,0 +1,48 @@
+{
+  "recorded_utc": "2026-09-13T23:11:31.038854+00:00",
+  "gpui_main": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": "Existing older GPUI dist, not a fresh main build; 3028 font files; Compare repeat byte-identical",
+  "wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "captures": {
+    "93-gpui-compare-gray.png": "b2d1c4ccb2db50bd51a7ee2a3899f74c738c0c11812023a89b916636838e9763",
+    "94-xilem-compare-before-gray.png": "9b68b87b983797cd2cfe98be775effc6704e2995b0ecf299ea68af1db852c060",
+    "95-xilem-compare-gray.png": "c8ee4f2f0a16f9f5229aeff8fe4953dfc94721c375ed0458fbfbeb3e198493e7",
+    "96-xilem-compare-1100-gray.png": "deff51b35bb0fa691869378332407acd58d233c967b90f79439e96a60b4c45a4"
+  },
+  "measurements": {
+    "summary": {
+      "masters": "Bold vs Regular",
+      "glyphs": 863,
+      "missing": 0,
+      "advance_differences": 392,
+      "kerning_pairs": [
+        77,
+        124
+      ],
+      "structural_incompatibilities": 0
+    },
+    "gpui_section_bottom_y": 368,
+    "xilem_before_section_bottom_y": 391,
+    "xilem_after_section_bottom_y": 369,
+    "native_header_offset": 1,
+    "text_line_height": 21,
+    "paragraph_lines": 2
+  },
+  "validation": [
+    "1280 and 1100 screenshots visually inspected",
+    "GPUI reference repeated identically",
+    "Final build repeats verified Compare screenshot",
+    "Existing incompatible-master parity fixture regression passed",
+    "cargo fmt --check passed",
+    "git diff --check passed",
+    "cargo clippy --workspace --all-targets -- -D warnings passed",
+    "Capture helper JavaScript syntax check passed",
+    "Normal editor byte-identical to reference66"
+  ],
+  "limits": [
+    "Word-wrap break differs: GPUI breaks before advance, Xilem after advance",
+    "Native pointer, keyboard and dock-drag interaction are outside this headless proof",
+    "No live-font editing, save, graph Run or foreground GUI",
+    "Existing metric comparison semantics are unchanged; absent or fractional metrics were not audited"
+  ]
+}

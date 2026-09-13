@@ -2,7 +2,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require('playwright');
-// Usage: NODE_PATH=<playwright modules> node capture-gpui.cjs <dist> <font server URL> <output dir> <chromium executable> [--overview-inspector | --font-info | --dimensions | --kerning | --groups]
+// Usage: NODE_PATH=<playwright modules> node capture-gpui.cjs <dist> <font server URL> <output dir> <chromium executable> [--overview-inspector | --font-info | --dimensions | --kerning | --groups | --compare]
 const [dist, fontServer, output, executablePath, captureMode] = process.argv.slice(2);
 if (!dist || !fontServer || !output || !executablePath) throw new Error('Expected dist, font server URL, output dir, and Chromium executable');
 const root=path.resolve(dist);
@@ -26,7 +26,7 @@ fs.mkdirSync(output,{recursive:true});
  console.log('font files fetched:',gets);
  await page.mouse.move(1279,719);
  await page.screenshot({path:path.join(output,'gpui-overview-gray.png')});
- const sectionCaptures = {'--font-info': ['font-info',87], '--dimensions': ['dimensions',121], '--kerning': ['kerning',189], '--groups': ['groups',223]};
+ const sectionCaptures = {'--font-info': ['font-info',87], '--dimensions': ['dimensions',121], '--kerning': ['kerning',189], '--groups': ['groups',223], '--compare': ['compare',257]};
  if(Object.hasOwn(sectionCaptures,captureMode)) {
   const [name,headerY]=sectionCaptures[captureMode];
   await page.mouse.click(1100,359); // Fold Masters to match the native capture.
