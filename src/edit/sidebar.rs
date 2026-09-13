@@ -210,9 +210,9 @@ impl Workspace {
     /// Metrics for the editor's compact glyph rail.
     pub(crate) fn rail_cell_metrics(&self) -> CellMetrics {
         CellMetrics {
-            cell: 44.0,
-            padding: 6.0,
-            padding_y: 6.0,
+            cell: self.rail_cell_size,
+            padding: design::RAIL_GRID_INSET,
+            padding_y: design::RAIL_GRID_INSET,
             captions_below: false,
             ascender: self.font.ascender(),
             descender: self.font.descender(),

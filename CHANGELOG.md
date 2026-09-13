@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Fit five compact glyph columns in the editor rail, with whole-pixel thumbnails
+  and an independent size slider beside the filtered glyph count.
+
 - Give the proof drawing its full initial height: move Invert/Blur into the
   compact editor footer and preview text into Shaping, alongside direction,
   features, and language. Match proof fitting and the single header divider.

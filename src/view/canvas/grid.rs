@@ -28,8 +28,6 @@ use crate::widgets::text_label::{self, Anchor};
 use runebender_core::outline::glyph_paths::round_units;
 
 const GAP: f64 = 8.0;
-/// GPUI gives the compact rail extra vertical room for its outlines.
-const RAIL_ROW_FACTOR: f64 = 1.18;
 /// The label block, in the GPUI build's measurements: a little air over
 /// the first line, the lines close together, and the same inset under
 /// them as at the sides.
@@ -187,12 +185,16 @@ pub(crate) struct GridWidget {
 
 impl GridWidget {
     fn columns(&self) -> usize {
-        usize::try_from(round_units(
-            ((self.size.width - 2.0 * self.metrics.padding + GAP) / (self.metrics.cell + GAP))
-                .floor(),
-        ))
-        .unwrap_or(1)
-        .max(1)
+        let ideal =
+            (self.size.width - 2.0 * self.metrics.padding + GAP) / (self.metrics.cell + GAP);
+        // The compact rail fits the nearest count instead of dropping a column
+        // whenever its target size is a few pixels larger than the fitted size.
+        let count = if self.metrics.captions_below {
+            ideal.floor()
+        } else {
+            ideal.round()
+        };
+        usize::try_from(round_units(count)).unwrap_or(1).max(1)
     }
 
     fn cell_width(&self, span: usize) -> f64 {
@@ -202,6 +204,11 @@ impl GridWidget {
         let edge = ((self.size.width - 2.0 * self.metrics.padding - GAP * (columns - 1.0))
             / columns)
             .max(1.0);
+        let edge = if self.metrics.captions_below {
+            edge
+        } else {
+            edge.floor()
+        };
         edge * span as f64 + GAP * (span.saturating_sub(1)) as f64
     }
 
@@ -230,19 +237,40 @@ impl GridWidget {
             self.metrics.detail,
         )
         .2;
-        let factor = if self.metrics.captions_below {
-            1.0
-        } else {
-            RAIL_ROW_FACTOR
-        };
-        let target = (self.cell_width(1) + caption) * factor;
+        let target = self.cell_width(1) + caption;
         let available = (self.size.height - 2.0 * self.metrics.padding_y).max(target);
-        let rows = ((available + GAP) / (target + GAP)).floor().max(1.0);
+        let ideal_rows = (available + GAP) / (target + GAP);
+        let rows = if self.metrics.captions_below {
+            ideal_rows.floor()
+        } else {
+            ideal_rows.round()
+        }
+        .max(1.0);
         ((available - GAP * (rows - 1.0)) / rows).floor().max(1.0)
     }
 
+    fn inset_x(&self) -> f64 {
+        if self.metrics.captions_below {
+            return self.metrics.padding;
+        }
+        let width = self.columns() as f64 * (self.cell_width(1) + GAP) - GAP;
+        ((self.size.width - width) / 2.0).floor().max(0.0)
+    }
+
+    fn inset_y(&self) -> f64 {
+        if self.metrics.captions_below {
+            return self.metrics.padding_y;
+        }
+        let rows = ((self.size.height - 2.0 * self.metrics.padding_y + GAP) / self.row_pitch())
+            .round()
+            .max(1.0);
+        ((self.size.height - (rows * self.row_pitch() - GAP)) / 2.0)
+            .floor()
+            .max(0.0)
+    }
+
     fn content_height(&self, rows: usize) -> f64 {
-        2.0 * self.metrics.padding_y + rows as f64 * self.row_pitch() - GAP
+        2.0 * self.inset_y() + rows as f64 * self.row_pitch() - GAP
     }
 
     fn max_scroll(&self, rows: usize) -> f64 {
@@ -252,22 +280,24 @@ impl GridWidget {
 
 impl GridWidget {
     fn cell_index_at(&self, p: Point) -> Option<usize> {
-        if p.x < self.metrics.padding || p.y < 0.0 {
+        let outside_rail = !self.metrics.captions_below
+            && (p.y < self.inset_y() || p.y >= self.size.height - self.inset_y());
+        if p.x < self.inset_x() || p.y < 0.0 || outside_rail {
             return None;
         }
         let pitch = self.row_pitch();
-        let r = ((p.y + self.scroll - self.metrics.padding_y) / pitch).floor();
+        let r = ((p.y + self.scroll - self.inset_y()) / pitch).floor();
         if r < 0.0 {
             return None;
         }
         let rows = self.packed();
         let row_index = usize::try_from(round_units(r)).ok()?;
         let row = rows.get(row_index)?;
-        let row_y = self.metrics.padding_y + r * pitch - self.scroll;
+        let row_y = self.inset_y() + r * pitch - self.scroll;
         if p.y > row_y + self.cell_height() {
             return None;
         }
-        let mut x = self.metrics.padding;
+        let mut x = self.inset_x();
         for &(ci, span) in row {
             let w = self.cell_width(span);
             if p.x >= x && p.x <= x + w {
@@ -304,7 +334,17 @@ impl Widget for GridWidget {
 
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
         self.size = size;
-        ctx.set_clip_path(size.to_rect());
+        let inset = if self.metrics.captions_below {
+            0.0
+        } else {
+            self.inset_y()
+        };
+        ctx.set_clip_path(Rect::new(
+            0.0,
+            inset,
+            size.width,
+            (size.height - inset).max(inset),
+        ));
     }
 
     fn paint(
@@ -329,11 +369,11 @@ impl Widget for GridWidget {
         let mark_ink = pal.mark_ink.unwrap_or(glyph_fill);
 
         for (r, row) in rows.iter().enumerate() {
-            let y = self.metrics.padding_y + r as f64 * pitch - self.scroll;
+            let y = self.inset_y() + r as f64 * pitch - self.scroll;
             if y + self.cell_height() < 0.0 || y > self.size.height {
                 continue;
             }
-            let mut x = self.metrics.padding;
+            let mut x = self.inset_x();
             for &(ci, span) in row {
                 let w = self.cell_width(span);
                 let rect = Rect::new(x, y, x + w, y + self.cell_height());
@@ -632,6 +672,8 @@ where
         if self.metrics != prev.metrics {
             element.widget.metrics = self.metrics;
             element.widget.scroll = 0.0;
+            // The rail's clip inset depends on the fitted thumbnail size.
+            element.ctx.request_layout();
             changed = true;
         }
         if !Arc::ptr_eq(&self.palette, &prev.palette) {
@@ -678,6 +720,77 @@ where
 #[cfg(test)]
 mod thumbnail_tests {
     use super::*;
+
+    fn rail() -> GridWidget {
+        GridWidget {
+            cells: Arc::new(
+                (0..100)
+                    .map(|index| Cell {
+                        index,
+                        name: Arc::from(format!("glyph{index}")),
+                        codepoint: None,
+                        outline: Arc::new(kurbo::BezPath::new()),
+                        advance: 500.0,
+                        mark: None,
+                    })
+                    .collect(),
+            ),
+            metrics: CellMetrics {
+                cell: crate::view::design::RAIL_CELL_SIZE,
+                padding: crate::view::design::RAIL_GRID_INSET,
+                padding_y: crate::view::design::RAIL_GRID_INSET,
+                captions_below: false,
+                ascender: 800.0,
+                descender: -200.0,
+                upm: 1000.0,
+                detail: false,
+            },
+            palette: Arc::new(Palette::load("gray")),
+            selected: None,
+            multi: Arc::default(),
+            scroll: 0.0,
+            size: Size::new(246.0, 538.0),
+            hovered: false,
+        }
+    }
+
+    #[test]
+    fn compact_rail_fits_five_columns_and_hit_tests_every_visible_cell() {
+        let grid = rail();
+        assert_eq!(grid.columns(), 5);
+        assert_eq!(grid.cell_width(1), 40.0);
+        assert_eq!(grid.row_pitch(), 48.0);
+        assert_eq!((grid.inset_x(), grid.inset_y()), (7.0, 9.0));
+        for row in 0..11 {
+            for col in 0..5 {
+                let p = Point::new(27.0 + f64::from(col) * 48.0, 29.0 + f64::from(row) * 48.0);
+                assert_eq!(grid.cell_index_at(p), Some((row * 5 + col) as usize));
+            }
+        }
+        assert_eq!(grid.cell_index_at(Point::new(51.0, 29.0)), None);
+        assert_eq!(grid.cell_index_at(Point::new(27.0, 53.0)), None);
+        assert_eq!(grid.cell_index_at(Point::new(27.0, 535.0)), None);
+    }
+
+    #[test]
+    fn rail_size_and_scrolling_keep_painted_cells_clickable() {
+        let mut grid = rail();
+        for target in [24.0, 44.0, 96.0] {
+            grid.metrics.cell = target;
+            grid.scroll = grid.max_scroll(grid.packed().len());
+            let rows = grid.packed();
+            let mut x = grid.inset_x();
+            let y = grid.inset_y() + (rows.len() - 1) as f64 * grid.row_pitch() - grid.scroll;
+            for &(ci, span) in rows.last().unwrap() {
+                let width = grid.cell_width(span);
+                assert_eq!(
+                    grid.cell_index_at(Point::new(x + width / 2.0, y + grid.cell_height() / 2.0)),
+                    Some(ci)
+                );
+                x += width + GAP;
+            }
+        }
+    }
 
     #[test]
     fn thumbnail_ink_is_centered_and_tall_marks_stay_inside() {

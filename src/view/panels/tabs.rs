@@ -255,58 +255,95 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
     )))
     .dims(Dimensions::new(
         Dim::Stretch,
-        Dim::Fixed(Length::px(RAIL_TAB_HEIGHT)),
+        Dim::Fixed(Length::px(if editing {
+            design::EDITOR_RAIL_TAB_HEIGHT
+        } else {
+            RAIL_TAB_HEIGHT
+        })),
     ))
 }
 
-pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    let pal = &app.palette;
+/// The glyph grid owns its inset; padding the whole rail would count it twice.
+fn editor_glyph_rail(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    use crate::view::design::{RAIL_CELL_MAX, RAIL_CELL_MIN, STATUS_SLIDER_WIDTH};
+    let cells = app.filtered_cells();
+    let count = cells.len();
     let current = match app.mode {
         Mode::Editor(i) => Some(i),
         _ => None,
     };
     flex_col((
-        rail_tabs(app, true),
-        xcolumn(
-            Region::Panel,
-            (
-                (app.rail == Rail::Axes)
-                    .then(|| axes_section(app))
-                    .flatten(),
-                (app.rail == Rail::LocalAi).then(|| local_ai_panel(app)),
-                (app.rail == Rail::Shapes).then(|| shapes_panel(app)),
-                (app.rail == Rail::Chat).then(|| chat_panel(app)),
-                (app.rail == Rail::Glyphs).then(|| glyph_search(app)),
-                // The grid scrolls itself, so no portal here: nesting the two
-                // gave the rail a dead area below the third row.
-                (app.rail == Rail::Glyphs).then(|| {
-                    sized_box(grid(
-                        app.filtered_cells(),
-                        // GPUI's editor rail keeps a five-column thumbnail
-                        // index in this width. The overview remains at the
-                        // user-controlled 96px target; only this compact
-                        // navigation grid uses smaller cards and insets.
-                        app.rail_cell_metrics(),
-                        app.palette.clone(),
-                        current,
-                        app.multi_selected.clone(),
-                        |app: &mut Workspace, ev| match ev {
-                            GridEvent::Selected { index, .. } => app.open_glyph(index),
-                            GridEvent::Open(i) => app.open_glyph(i),
-                        },
-                    ))
-                    .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
-                    .flex(1.0)
-                }),
-            ),
+        sized_box(glyph_search(app))
+            .padding(Space::Md)
+            .border_color(app.palette.outline)
+            .border_width(Stroke::Hairline.length()),
+        grid(
+            cells,
+            app.rail_cell_metrics(),
+            app.palette.clone(),
+            current,
+            app.multi_selected.clone(),
+            |app: &mut Workspace, ev| match ev {
+                GridEvent::Selected { index, .. } => app.open_glyph(index),
+                GridEvent::Open(i) => app.open_glyph(i),
+            },
         )
-        .padding(Space::Md)
-        .gap(Space::Md)
         .flex(1.0),
+        sized_box(
+            xrow(
+                Region::Inline,
+                (
+                    label(format!("{count} glyphs"))
+                        .color(app.palette.text_muted)
+                        .flex(1.0),
+                    recipes::neutral_slider(
+                        &app.palette,
+                        RAIL_CELL_MIN,
+                        RAIL_CELL_MAX,
+                        app.rail_cell_size,
+                        |app: &mut Workspace, value| app.rail_cell_size = value,
+                    )
+                    .width(Length::px(STATUS_SLIDER_WIDTH)),
+                ),
+            )
+            .padding(masonry::properties::Padding::horizontal(Space::Md.length())),
+        )
+        .dims(Dimensions::new(
+            Dim::Stretch,
+            Dim::from(ControlSize::Control),
+        ))
+        .border_color(app.palette.outline)
+        .border_width(Stroke::Hairline.length()),
     ))
-    .cross_axis_alignment(CrossAxisAlignment::Start)
+    .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(Space::None)
-    .background_color(pal.panel)
+}
+
+pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    // Keep non-glyph panels' normal padding, while the grid fills the rail.
+    let content = if app.rail == Rail::Glyphs {
+        xilem::core::one_of::Either::A(editor_glyph_rail(app))
+    } else {
+        xilem::core::one_of::Either::B(
+            xcolumn(
+                Region::Panel,
+                (
+                    (app.rail == Rail::Axes)
+                        .then(|| axes_section(app))
+                        .flatten(),
+                    (app.rail == Rail::LocalAi).then(|| local_ai_panel(app)),
+                    (app.rail == Rail::Shapes).then(|| shapes_panel(app)),
+                    (app.rail == Rail::Chat).then(|| chat_panel(app)),
+                ),
+            )
+            .padding(Space::Md)
+            .gap(Space::Md),
+        )
+    };
+    flex_col((rail_tabs(app, true), content.flex(1.0)))
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .gap(Space::None)
+        .background_color(app.palette.panel)
 }
 
 /// Curves: the two analyses that are about shape quality rather than

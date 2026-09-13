@@ -231,3 +231,46 @@ Next: five-column glyph-rail density, metrics-card labels and placement,
 inspector hierarchy, then Gray typography, spacing, and surface values. Canvas
 metric guides and point styling also differ. GPUI remains the reference and
 fallback; these improvements do not establish full parity or deprecation readiness.
+
+
+## 2026-09-12 overnight: compact glyph rail
+
+Removed the extra container inset around the glyph grid and fitted its nearest
+column count to whole pixels. The default 44-pixel target now yields five
+40-pixel thumbnails across the 246-pixel dock. Compact rows target square cells
+and fit the nearest complete row count, centered in the available area.
+The editor tab band is 40 pixels. A 28-pixel footer shows the filtered glyph
+count and an independent thumbnail-size slider; overview sizing stays separate.
+
+- [Xilem compact rail at 1280 x 720](10-xilem-compact-rail-gray.png)
+- [Xilem compact rail at 1100 x 720](11-xilem-compact-rail-1100-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+Both matching 1280-pixel captures now show five columns and eleven complete
+rows through glyph V, with 48-pixel horizontal and vertical pitch. Both show
+863 glyphs in the footer at y664–692. At x15, the first ten saturated cell-fill
+runs start at y135 + 48r in Xilem and y136 + 48r in GPUI: the one-pixel interior
+inset reflects the remaining border rasterization difference. This replaces
+the four-column, roughly 69-pixel-pitch Xilem rail in capture 06.
+
+The current GPUI source has a 1.18 row multiplier, but its existing web bundle
+renders the square, 48-pixel-pitch cells shown here. The inspected bundle is the
+visual reference for this step; its hash is recorded independently of checkout
+HEAD. We did not rebuild or edit GPUI to force agreement with its current source.
+
+Grid painting, hit testing, and scroll extent share the fitted geometry.
+Changing thumbnail size resets the grid scroll and requests layout so its clip
+inset updates. Tests exercise every visible cell, reject inter-cell gutters and
+bottom padding, and reach the final row at small/default/large size settings.
+
+Verification: five grid tests and seven render/tab tests passed. Formatting,
+whitespace checks, and workspace all-target Clippy with warnings denied passed.
+The final grid tests and Clippy were rerun after the sizing-refresh adjustment.
+Fresh GPUI and Xilem repeat captures were byte-identical; the 1100-pixel capture
+was visually inspected with the inspector and footer controls still visible.
+See [artifact hashes and measurements](rail-density-evidence.json).
+
+Next: metrics-card labels and placement, then inspector hierarchy. Rail border
+weight/shadows, tab faces, search-control widths, Gray surface values, and slider
+styling still differ. Native pointer/keyboard accessibility and full functional
+parity require further validation; this step does not establish deprecation readiness.

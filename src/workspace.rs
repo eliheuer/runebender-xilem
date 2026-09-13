@@ -158,6 +158,8 @@ pub(crate) struct Workspace {
     pub(crate) initial_text: String,
     /// Grid cell size, driven by the bottom bar's zoom.
     pub(crate) cell_size: f64,
+    /// Independent thumbnail size for the editor's navigation rail.
+    pub(crate) rail_cell_size: f64,
     pub(crate) advance_buf: String,
     pub(crate) lsb_buf: String,
     pub(crate) rsb_buf: String,
