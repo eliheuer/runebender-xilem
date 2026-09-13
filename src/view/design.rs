@@ -73,6 +73,8 @@ pub(crate) const EDITOR_MIN_HEIGHT: f64 = 160.0;
 pub(crate) const PROOF_MIN_HEIGHT: f64 = 64.0;
 /// Wide pointer target around the one-pixel divider.
 pub(crate) const SPLITTER_HIT_WIDTH: f64 = 8.0;
+/// Vertical inset shared by the overview category, script and filter sections.
+pub(crate) const SIDEBAR_SECTION_VERTICAL_INSET: f64 = 6.0;
 /// GPUI category rows inset their marker and count by 14 logical pixels.
 pub(crate) const SIDEBAR_ROW_INSET: f64 = 14.0;
 /// Painted sidebar marker geometry, shared with the GPUI reference.

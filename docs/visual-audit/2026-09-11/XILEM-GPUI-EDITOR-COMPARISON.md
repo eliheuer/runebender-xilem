@@ -903,3 +903,26 @@ workspace all-target Clippy checks passed. No foreground GUI, graph run or
 font save occurred. Continue sidebar visual work independently; resolving live
 node actions and obtaining a matched native/current-build graph capture remain
 separate work before GPUI can be deprecated.
+
+
+## 2026-09-13 daytime: complete category list and section spacing
+
+The sidebar now reads Core's canonical category list instead of maintaining a
+second list that omitted Separator. Its four glyphs are visible and use the
+existing category filter callback. Category, script and filter groups use a
+named six-pixel vertical inset, matching GPUI.
+
+Measured dividers are y81/271/537 in GPUI and y118/308/574 in Xilem: a constant
+37-pixel offset for Xilem's retained navigation band. Categories are now190px
+tall and Global Scripts266px in both. The editor capture is byte-identical to66;
+overview changes are confined to the left sidebar.
+
+- [Overview sidebar](71-xilem-sidebar-sections-gray.png)
+- [Narrow sidebar](72-xilem-sidebar-sections-1100-gray.png)
+- [Measurements and provenance](sidebar-sections-evidence.json)
+
+Four existing category tests and five grid tests passed. Formatting, whitespace
+and workspace all-target Clippy checks passed. Both overview captures were
+visually inspected; the fresh GPUI overview matches reference63. No foreground
+GUI or live-font saves occurred. Remaining sidebar differences include trailing
+count insets, filter-row markers/height, selected-row keylines and text rendering.

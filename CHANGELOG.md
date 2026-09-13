@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Restore the Separator category and match sidebar section spacing.
+
 - Give glyph search equal-width scope, regex and case toggles and align its editor row.
 
 - Fit complete overview tile rows above a compact footer and keep grid margins clear.

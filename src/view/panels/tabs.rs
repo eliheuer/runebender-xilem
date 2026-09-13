@@ -569,7 +569,10 @@ where
                 open.then(|| xcolumn(Region::List, rows).gap(Space::None)),
             ),
         )
-        .padding(Space::Md)
+        .padding(masonry::properties::Padding::from_vh(
+            Length::px(design::SIDEBAR_SECTION_VERTICAL_INSET),
+            Space::Md.length(),
+        ))
         .gap(Space::Sm),
         sized_box(label(""))
             .dims(Dimensions::new(
@@ -599,20 +602,12 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::Either;
     let pal = &app.palette;
 
-    let cats = [
-        GlyphCategory::All,
-        GlyphCategory::Letter,
-        GlyphCategory::Number,
-        GlyphCategory::Punctuation,
-        GlyphCategory::Symbol,
-        GlyphCategory::Mark,
-        GlyphCategory::Other,
-    ];
+    let cats = GlyphCategory::all_categories();
     // Categories: a chevron on one with subfilters, a bullet on one
     // without. Clicking a selected expandable row folds it, as the
     // GPUI sidebar does; the rows under it are indented leaves.
     let mut cat_rows: Vec<_> = Vec::new();
-    for c in cats.into_iter().filter(|c| app.category_count(*c) > 0) {
+    for c in cats.iter().copied().filter(|c| app.category_count(*c) > 0) {
         let subs = runebender_core::ui::sidebar::category_subfilters(c.display_name());
         let key = c.display_name();
         let open = app.expanded_categories.contains(key);

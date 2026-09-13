@@ -1,0 +1,47 @@
+{
+  "recorded_utc": "2026-09-13T21:40:41.970189+00:00",
+  "gpui_main": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": "Existing older GPUI dist, headless WebGPU, 3028 font files; fresh overview equals reference63",
+  "wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "captures": {
+    "71-xilem-sidebar-sections-gray.png": "1e7f818d56fc1db3d0f6dd89caf0b3b9a5f6dbf00b1b565e6f298385ceec3c79",
+    "72-xilem-sidebar-sections-1100-gray.png": "c79274352bf08d04a019b855011c2799f911053257233bfae8367522edaf2175"
+  },
+  "measurements": {
+    "gpui_dividers_y": [
+      81,
+      271,
+      537
+    ],
+    "xilem_dividers_y": [
+      118,
+      308,
+      574
+    ],
+    "fixed_vertical_offset": 37,
+    "category_section_height": 190,
+    "script_section_height": 266,
+    "separator_count": 4,
+    "overview_changed_rectangle": [
+      0,
+      130,
+      246,
+      692
+    ]
+  },
+  "validation": [
+    "4 existing core category tests passed",
+    "5 existing grid tests passed",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "1280 and 1100 overview screenshots visually inspected",
+    "Editor screenshot SHA256 equals reference66: ee4a2049c5cb29e955e6dc82a992bfeacfdf440e884a7446e9b25eb286172c20"
+  ],
+  "limitations": [
+    "Extra navigation rail accounts for constant vertical offset; retained as a feature",
+    "Trailing count inset and filter-row markers/height still differ",
+    "Selection keyline and text rasterization remain differences",
+    "No native GUI or live-font saves"
+  ]
+}
