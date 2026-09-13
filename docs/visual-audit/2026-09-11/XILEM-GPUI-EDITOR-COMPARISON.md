@@ -821,3 +821,28 @@ neutral/focus colors; exact divider-color parity is deferred to preserve working
 native interaction. Sizes are currently session state rather than disk preferences;
 reopening a collapsed left dock restores its initial width. User should restart
 the rebuilt Xilem application and drag either side divider or the line above proof.
+
+
+## 2026-09-13 daytime: overview footer and grid fit
+
+The overview footer used the full toolbar inset, making it36px tall instead of
+the reference28px. A compact named inset restores the grid's eight missing pixels.
+Both captures now have four153px rows starting at y46,207,368,529. The grid also
+clips and rejects clicks in its vertical margins, removing the following-row
+sliver that leaked below the last complete row. Continuous scrolling is retained.
+
+- [GPUI overview reference](63-gpui-overview-gray.png)
+- [Xilem overview](64-xilem-overview-fit-gray.png)
+- [Narrow overview](65-xilem-overview-fit-1100-gray.png)
+- [Measurements and provenance](overview-fit-evidence.json)
+
+Five grid tests and three panel-resizing tests pass, along with formatting,
+whitespace and workspace all-target Clippy checks. Both overview sizes were
+visually inspected. The editor screenshot is byte-identical to capture60.
+
+This comparison covers the unselected visible grid: Xilem has A selected outside
+the viewport and shows its preview, while GPUI has no selection and Masters open.
+The existing GPUI bundle is older than main. Remaining overview gaps include
+thumbnail ink scale/placement, fractional cell edges, search-control widths and
+sidebar spacing. Extra Xilem navigation and the native titlebar need considered
+treatment, rather than deleting features to match the older web reference.

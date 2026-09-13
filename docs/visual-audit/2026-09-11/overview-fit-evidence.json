@@ -1,0 +1,38 @@
+{
+  "recorded_utc": "2026-09-13T20:58:37.505333+00:00",
+  "gpui_main": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": "Existing dist, older than main; headless WebGPU; 3028 font files fetched",
+  "wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "captures": {
+    "63-gpui-overview-gray.png": "9e1ee060612cd6246ad2a8c4940ddb36af67c5a16160e1fdd7a6af7e48543686",
+    "64-xilem-overview-fit-gray.png": "cad5df88086af4fd0755f74424f1d471022014636603426652fc9d1ec239e7ae",
+    "65-xilem-overview-fit-1100-gray.png": "68afbea438cceecb86f44f4ce5c2dec3c569ab8b454a7062eaea589996974470"
+  },
+  "geometry": {
+    "footer_height_before": 36,
+    "footer_height_after": 28,
+    "gpui_and_xilem_row_top_y": [
+      46,
+      207,
+      368,
+      529
+    ],
+    "gpui_and_xilem_row_height": 153,
+    "removed": "Following-row sliver in the bottom grid inset"
+  },
+  "validation": [
+    "5 grid tests passed",
+    "3 panel resizing interaction tests passed",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "1280 and 1100 overview visually inspected",
+    "Editor screenshot byte-identical to 60-xilem-resizable-panels-gray.png"
+  ],
+  "limitations": [
+    "Comparison matches visible unselected overview grid, not complete application state: Xilem has A selected outside viewport and its preview, GPUI no selection and Masters expanded",
+    "Existing reference bundle is not a fresh main build",
+    "Glyph ink scale/placement, fractional cell edges and text rasterization still differ",
+    "No foreground GUI or live font writes"
+  ]
+}

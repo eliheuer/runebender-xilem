@@ -334,6 +334,11 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 }),
             ),
         )
+        .padding(if matches!(app.mode, Mode::Overview) {
+            Space::Sm
+        } else {
+            Space::Md
+        })
         .background_color(pal.panel),
     )
 }

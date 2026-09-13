@@ -281,9 +281,8 @@ impl GridWidget {
 
 impl GridWidget {
     fn cell_index_at(&self, p: Point) -> Option<usize> {
-        let outside_rail = !self.metrics.captions_below
-            && (p.y < self.inset_y() || p.y >= self.size.height - self.inset_y());
-        if p.x < self.inset_x() || p.y < 0.0 || outside_rail {
+        let outside_rows = p.y < self.inset_y() || p.y >= self.size.height - self.inset_y();
+        if p.x < self.inset_x() || outside_rows {
             return None;
         }
         let pitch = self.row_pitch();
@@ -335,11 +334,9 @@ impl Widget for GridWidget {
 
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
         self.size = size;
-        let inset = if self.metrics.captions_below {
-            0.0
-        } else {
-            self.inset_y()
-        };
+        // Keep the inset clear in both grids: a sliver of the following row
+        // must not leak into the overview margin after fitting complete rows.
+        let inset = self.inset_y();
         ctx.set_clip_path(Rect::new(
             0.0,
             inset,

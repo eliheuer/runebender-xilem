@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Fit complete overview tile rows above a compact footer and keep grid margins clear.
+
 - Make both side panels and the proof strip resizable by dragging their dividers.
   Dock widths remain stable when the window resizes, with usable minimum sizes.
 

@@ -24,6 +24,8 @@ fs.mkdirSync(output,{recursive:true});
  await page.goto('http://127.0.0.1:18321/gpui/?server='+encodeURIComponent(fontServer)+'&glyph=R');
  await page.waitForTimeout(20000);
  console.log('font files fetched:',gets);
+ await page.mouse.move(1279,719);
+ await page.screenshot({path:path.join(output,'gpui-overview-gray.png')});
 
 
  await page.mouse.click(75,59);
