@@ -1,0 +1,84 @@
+{
+  "recorded_utc": "2026-09-13T04:29:46.534463+00:00",
+  "xilem_parent": "acbf907",
+  "capture_size": [
+    1280,
+    720
+  ],
+  "narrow_capture_size": [
+    1100,
+    720
+  ],
+  "theme": "gray",
+  "glyph": "R",
+  "proof_text": "R",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "gpui_reference_note": "Existing dist bundle used without rebuilding or modifying the reference; bundle hash identifies the artifact independently of checkout HEAD.",
+  "gpui_wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "font_source_sha256": {
+    "VirtuaGrotesk.designspace": "0ac18f6e0827af3949a36b3c7043f22a50613948bcc8e8193f268f21539fedf3",
+    "VirtuaGrotesk-Bold.ufo/fontinfo.plist": "67981ebbc42195b62ce392c555c107724904737c79c83f8455ad68d847119bbb",
+    "VirtuaGrotesk-Bold.ufo/glyphs/R_.glif": "bb84cd52b528fbf6bd8632382c903f1b3ef2b6095206f7149f787e3b8ccadad4",
+    "VirtuaGrotesk-Regular.ufo/fontinfo.plist": "6cb32c37263cb5fe9679239b09f75e0124419176ed583b07dc2a48415621cf61",
+    "VirtuaGrotesk-Regular.ufo/glyphs/R_.glif": "ee9a24d4fb41d245e4f421dc8c35286d5befffb850833ef9cd63a96ee0895301"
+  },
+  "capture_sha256": {
+    "23-xilem-transform-spacing-gray.png": "8fc583ed346d246ed5f483925f9e8885553d3f56f4223a10fa2c8f95b2894c39",
+    "24-xilem-transform-spacing-1100-gray.png": "c5bf2d600f49f0a632024090029960675045a1a41462e2240e5f6635b5d44549",
+    "25-xilem-transform-spacing-folded-gray.png": "fddb11e93d0f21ada49bf204543ae7dee9c3ae69e0d4e361da8c08e04156ce0b",
+    "04-gpui-live-font-r-gray.png": "5d89a4060eb4b4c1cc1a2bb830474ba994fe5c53359bb63831fa08db7743eff9"
+  },
+  "repeat_captures_byte_identical": {
+    "xilem": true,
+    "gpui": true
+  },
+  "verification": [
+    "16 session operation tests passed",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "Matching1280 captures,1100 Xilem and folded Transformations visually inspected",
+    "Repeated captures byte-identical in both editors; fresh GPUI equals saved reference"
+  ],
+  "first_flip_icon_dark_bounds_inclusive": {
+    "method": "max RGB < 120 in x1041..1069, y232..265",
+    "before": [
+      1043,
+      240,
+      1064,
+      261
+    ],
+    "xilem": [
+      1043,
+      236,
+      1064,
+      257
+    ],
+    "gpui": [
+      1045,
+      236,
+      1066,
+      257
+    ]
+  },
+  "gpui_font_files_fetched": 3028,
+  "control_horizontal_borders_y_both_editors": [
+    297,
+    324,
+    329,
+    356,
+    361,
+    388,
+    393,
+    420,
+    425,
+    452,
+    457,
+    484,
+    489,
+    516,
+    521,
+    548
+  ],
+  "border_measurement": "More than120 of130 pixels at x1140..1269 have max RGB<120; inspected y296..553."
+}

@@ -323,38 +323,47 @@ pub(crate) fn path_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
                     }
                 },
             ),
-            // Geometric transforms and duplication share the first row;
-            // Boolean operations remain together on the second.
             (!app.collapsed.contains("Transformations")).then(|| {
-                xrow(
-                    Region::List,
+                // The icon rows share a pitch; the following form has its own
+                // measured separation and a uniform control-row rhythm.
+                xcolumn(
+                    Region::Section,
                     (
-                        op("flip-h", |s| s.flip_horizontal()),
-                        op("flip-v", |s| s.flip_vertical()),
-                        op("rot-ccw", |s| s.rotate_90()),
-                        op("rot-cw", |s| s.rotate_90_clockwise()),
-                        op("duplicate", |s| s.duplicate()),
-                        op("duplicate-repeat", |s| s.duplicate_repeat()),
+                        xcolumn(
+                            Region::Section,
+                            (
+                                xrow(
+                                    Region::List,
+                                    (
+                                        op("flip-h", |s| s.flip_horizontal()),
+                                        op("flip-v", |s| s.flip_vertical()),
+                                        op("rot-ccw", |s| s.rotate_90()),
+                                        op("rot-cw", |s| s.rotate_90_clockwise()),
+                                        op("duplicate", |s| s.duplicate()),
+                                        op("duplicate-repeat", |s| s.duplicate_repeat()),
+                                    ),
+                                )
+                                .gap(Space::Md),
+                                xrow(
+                                    Region::List,
+                                    (
+                                        op("union", |s| s.remove_overlap()),
+                                        op("subtract", |s| s.boolean(BoolOp::Subtract)),
+                                        op("intersect", |s| s.boolean(BoolOp::Intersect)),
+                                        op("exclude", |s| s.boolean(BoolOp::Exclude)),
+                                    ),
+                                )
+                                .gap(Space::Md),
+                            ),
+                        ),
+                        path_operations_controls(app),
                     ),
                 )
-                .gap(Space::Md)
+                .gap(Length::px(design::TRANSFORM_CONTROLS_GAP))
             }),
-            (!app.collapsed.contains("Transformations")).then(|| {
-                xrow(
-                    Region::List,
-                    (
-                        op("union", |s| s.remove_overlap()),
-                        op("subtract", |s| s.boolean(BoolOp::Subtract)),
-                        op("intersect", |s| s.boolean(BoolOp::Intersect)),
-                        op("exclude", |s| s.boolean(BoolOp::Exclude)),
-                    ),
-                )
-                .gap(Space::Md)
-            }),
-            (!app.collapsed.contains("Transformations"))
-                .then(|| path_operations_controls(app).boxed()),
         ),
     )
+    .gap(Space::Sm)
 }
 
 /// A transformation parameter shares one row with its label; Enter applies it.
@@ -456,6 +465,7 @@ fn path_operations_controls(app: &Workspace) -> impl WidgetView<Workspace> + use
             ),
         ),
     )
+    .gap(Space::Sm)
 }
 
 /// The LSB/RSB text-buffer strings for a session.

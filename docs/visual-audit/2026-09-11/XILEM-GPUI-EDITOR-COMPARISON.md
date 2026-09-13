@@ -448,3 +448,33 @@ See [measurements and artifact hashes](icon-scale-evidence.json).
 Next: inspector vertical spacing and Gray surface mappings. Parameter defaults,
 background controls, canvas point styling and native interaction/accessibility
 remain to verify before considering GPUI retirement.
+
+
+## 2026-09-12 overnight: transformation row spacing
+
+The transformation body now groups its two icon rows and parameter form beneath
+one disclosure. A four-pixel heading gap puts the icons at the reference's
+vertical position; the icon rows retain their 32-pixel pitch. A measured
+six-pixel gap separates the icons from the form, whose 28-pixel controls now
+use four-pixel row gaps for a consistent 32-pixel pitch.
+
+All eight action/parameter row borders now have the same vertical coordinates
+as the reference: top edges at 297,329,361,393,425,457,489,521 and bottom edges
+at 324,356,388,420,452,484,516,548. The first flip icon's dark bounds now share
+y236..257 with GPUI. Its horizontal placement remains two pixels left.
+
+- [Xilem transformation spacing, 1280 x 720](23-xilem-transform-spacing-gray.png)
+- [Xilem at 1100 x 720](24-xilem-transform-spacing-1100-gray.png)
+- [Transformations folded as one group](25-xilem-transform-spacing-folded-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+Sixteen existing session tests passed, covering the transformation/filter
+operations, selection and undo behavior. Formatting, whitespace checks and
+workspace all-target Clippy with warnings denied passed. Both matching captures
+repeated byte-identically; narrow and folded Xilem layouts were visually
+inspected. See [measurements and hashes](transform-spacing-evidence.json).
+
+This fixes the transformation body's vertical rhythm. Section-header insets,
+the divider below this group, Curves/Background spacing and Gray surfaces still
+differ; those shared recipes need a separate pass. No native interaction,
+accessibility or GPUI retirement readiness is implied.

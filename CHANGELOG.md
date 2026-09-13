@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Align transformation icon rows with their heading and give inspector actions
+  and parameters a consistent 32-pixel row pitch.
+
 - Draw inspector transformation icons at the measured 22-pixel reference size
   for clearer shapes and matching visual weight.
 

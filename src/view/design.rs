@@ -68,6 +68,8 @@ pub(crate) const STATUS_SLIDER_WIDTH: f64 = 96.0;
 
 /// Transformation icon extent measured in the reference, inside a 24-pixel tile.
 pub(crate) const TRANSFORM_ICON_SIZE: f64 = 22.0;
+/// Six pixels separate the transformation icon rows from the parameter form.
+pub(crate) const TRANSFORM_CONTROLS_GAP: f64 = 6.0;
 
 /// Shared label width for the inspector's single-line transformation parameters.
 pub(crate) const TRANSFORM_LABEL_WIDTH: f64 = 92.0;
