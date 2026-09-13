@@ -183,25 +183,10 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     xcolumn(
         Region::List,
         (
-            // The GPUI build's order: Coordinates, Transformations,
-            // Curves, Background, Color, then Layers, in the editor;
-            // Font info, Layers and the preview over the grid.
-            // The GPUI build's order. Editor: Coordinates,
-            // Transformations, Curves, Background, Color, Related,
-            // Masters. Overview: Font info, Dimensions, Kerning,
-            // Groups, Compare, Features, Masters, the preview.
-            editing.then(|| recipes::inspector_group(pal, coordinates_section(app))),
-            editing.then(|| {
-                xcolumn(
-                    Region::List,
-                    (
-                        recipes::inspector_group(pal, path_section(app)),
-                        recipes::inspector_group(pal, path_operations_section(app)),
-                    ),
-                )
-                .gap(Space::None)
-            }),
+            // Keep glyph identity first, then selection geometry and its tools.
             recipes::inspector_group(pal, glyph_section),
+            editing.then(|| recipes::inspector_group(pal, coordinates_section(app))),
+            editing.then(|| recipes::inspector_group(pal, path_section(app))),
             editing.then(|| recipes::inspector_group(pal, curves_section(app))),
             editing.then(|| recipes::inspector_group(pal, background_section(app))),
             editing.then(|| {

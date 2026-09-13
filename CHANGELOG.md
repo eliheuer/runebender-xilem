@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Keep path operations visible with Transformations, with single-line parameter
+  fields and Add extremes. Put Glyph first in the inspector, show selection
+  status in Coordinates, and open Background by default.
+
 - Label the floating spacing card's LSB and RSB fields, keep kerning groups on
   their own row, and match the compact neutral card's canvas placement.
 

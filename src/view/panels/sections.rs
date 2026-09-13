@@ -322,8 +322,8 @@ pub(crate) fn path_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
                     }
                 },
             ),
-            // Two even rows of four, the way gpui lays its icon grid out. A
-            // ragged 3 / 4 / 1 grid was the panel's most visible defect.
+            // Keep the implemented icon operations in two even rows.
+            // The reference has additional operations to bring over separately.
             (!app.collapsed.contains("Transformations")).then(|| {
                 xrow(
                     Region::List,
@@ -346,101 +346,99 @@ pub(crate) fn path_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
                     ),
                 )
             }),
+            (!app.collapsed.contains("Transformations"))
+                .then(|| path_operations_controls(app).boxed()),
         ),
     )
 }
 
-/// Path operations fold independently of the geometric transform tools.
-pub(crate) fn path_operations_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+/// A transformation parameter shares one row with its label; Enter applies it.
+fn transform_parameter(
+    app: &Workspace,
+    title: &'static str,
+    value: String,
+    on_change: fn(&mut Workspace, String),
+    on_enter: fn(&mut Workspace, String),
+) -> impl WidgetView<Workspace> + use<> {
+    xrow(
+        Region::Inline,
+        (
+            sized_box(label(title).color(app.palette.text_muted)).dims(Dimensions::new(
+                Dim::Fixed(Length::px(design::TRANSFORM_LABEL_WIDTH)),
+                Dim::Auto,
+            )),
+            recipes::field_bare(&app.palette, "", value, on_change, on_enter).flex(1.0),
+        ),
+    )
+}
+
+/// Path operations belong to the same disclosure as the geometric tools.
+fn path_operations_controls(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     xcolumn(
-        Region::Section,
+        Region::List,
         (
-            recipes::section_toggle(
-                pal,
-                "Path Operations",
-                !app.collapsed.contains("Path Operations"),
-                |app: &mut Workspace| {
-                    if !app.collapsed.remove("Path Operations") {
-                        app.collapsed.insert("Path Operations");
-                    }
+            xrow(
+                Region::Inline,
+                (
+                    tbtn(pal, "Harmonize", |s| s.harmonize()).flex(1.0),
+                    tbtn(pal, "Balance", |s| s.balance()).flex(1.0),
+                ),
+            ),
+            xrow(
+                Region::Inline,
+                (
+                    tbtn(pal, "Optimize", |s| s.optimize()).flex(1.0),
+                    tbtn(pal, "Add extremes", |s| s.add_extremes()).flex(1.0),
+                ),
+            ),
+            xrow(
+                Region::Inline,
+                (
+                    tbtn(pal, "Round corners", |s| s.round_corners()).flex(1.0),
+                    tbtn(pal, "Reverse", |s| s.reverse()).flex(1.0),
+                ),
+            ),
+            transform_parameter(
+                app,
+                "Slant °",
+                app.slant_buf.clone(),
+                |app, value| app.slant_buf = value,
+                |app, value| {
+                    app.slant_buf = value;
+                    app.command_filter_slant();
                 },
             ),
-            // Labeled transform buttons, matching gpui's Transformations block.
-            (!app.collapsed.contains("Path Operations")).then(|| {
-                xrow(
-                    Region::Inline,
-                    (
-                        tbtn(pal, "Harmonize", |s| s.harmonize()).flex(1.0),
-                        tbtn(pal, "Balance", |s| s.balance()).flex(1.0),
-                    ),
-                )
-            }),
-            (!app.collapsed.contains("Path Operations")).then(|| {
-                xrow(
-                    Region::Inline,
-                    (
-                        tbtn(pal, "Optimize", |s| s.optimize()).flex(1.0),
-                        tbtn(pal, "Round Corners", |s| s.round_corners()).flex(1.0),
-                    ),
-                )
-            }),
-            (!app.collapsed.contains("Path Operations"))
-                .then(|| xrow(Region::Inline, (tbtn(pal, "Reverse", |s| s.reverse()),))),
-            (!app.collapsed.contains("Path Operations")).then(|| {
-                xrow(
-                    Region::Form,
-                    (
-                        recipes::field_enter(
-                            pal,
-                            "Slant °",
-                            app.slant_buf.clone(),
-                            |app: &mut Workspace, value| app.slant_buf = value,
-                            |app: &mut Workspace, value| {
-                                app.slant_buf = value;
-                                app.command_filter_slant();
-                            },
-                        ),
-                        recipes::field_enter(
-                            pal,
-                            "Offset ±",
-                            app.offset_buf.clone(),
-                            |app: &mut Workspace, value| app.offset_buf = value,
-                            |app: &mut Workspace, value| {
-                                app.offset_buf = value;
-                                app.command_filter_offset();
-                            },
-                        ),
-                    ),
-                )
-            }),
-            (!app.collapsed.contains("Path Operations")).then(|| {
-                xrow(
-                    Region::Form,
-                    (
-                        recipes::field_enter(
-                            pal,
-                            "Extrude d,°",
-                            app.extrude_buf.clone(),
-                            |app: &mut Workspace, value| app.extrude_buf = value,
-                            |app: &mut Workspace, value| {
-                                app.extrude_buf = value;
-                                app.command_filter_extrude();
-                            },
-                        ),
-                        recipes::field_enter(
-                            pal,
-                            "Roughen s,h,v",
-                            app.roughen_buf.clone(),
-                            |app: &mut Workspace, value| app.roughen_buf = value,
-                            |app: &mut Workspace, value| {
-                                app.roughen_buf = value;
-                                app.command_filter_roughen();
-                            },
-                        ),
-                    ),
-                )
-            }),
+            transform_parameter(
+                app,
+                "Offset ±",
+                app.offset_buf.clone(),
+                |app, value| app.offset_buf = value,
+                |app, value| {
+                    app.offset_buf = value;
+                    app.command_filter_offset();
+                },
+            ),
+            transform_parameter(
+                app,
+                "Extrude d,°",
+                app.extrude_buf.clone(),
+                |app, value| app.extrude_buf = value,
+                |app, value| {
+                    app.extrude_buf = value;
+                    app.command_filter_extrude();
+                },
+            ),
+            transform_parameter(
+                app,
+                "Roughen s,h,v",
+                app.roughen_buf.clone(),
+                |app, value| app.roughen_buf = value,
+                |app, value| {
+                    app.roughen_buf = value;
+                    app.command_filter_roughen();
+                },
+            ),
         ),
     )
 }
@@ -590,6 +588,14 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                     }
                 },
             ),
+            (!app.collapsed.contains("Coordinates")).then(|| {
+                label(match app.selected_points {
+                    0 => "nothing selected".to_string(),
+                    1 => "1 point selected".to_string(),
+                    count => format!("{count} points selected"),
+                })
+                .color(pal.text_muted)
+            }),
             (!app.collapsed.contains("Coordinates")).then(|| {
                 xrow(
                     Region::Inline,

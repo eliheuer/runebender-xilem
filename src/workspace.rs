@@ -189,7 +189,7 @@ pub(crate) struct Workspace {
     pub(crate) coord_y_buf: String,
     pub(crate) coord_w_buf: String,
     pub(crate) coord_h_buf: String,
-    /// Typed parameters shared by the Path Operations fields and Filter menu.
+    /// Typed parameters shared by the Transformations fields and Filter menu.
     pub(crate) slant_buf: String,
     pub(crate) offset_buf: String,
     pub(crate) extrude_buf: String,

@@ -1,0 +1,55 @@
+{
+  "recorded_utc": "2026-09-13T03:16:30.687866+00:00",
+  "xilem_parent": "2dacbd8",
+  "capture_size": [
+    1280,
+    720
+  ],
+  "narrow_capture_size": [
+    1100,
+    720
+  ],
+  "theme": "gray",
+  "glyph": "R",
+  "proof_text": "R",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "gpui_reference_note": "Existing dist bundle used without rebuilding or modifying the reference; bundle hash identifies the artifact independently of checkout HEAD.",
+  "gpui_wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "font_source_sha256": {
+    "VirtuaGrotesk.designspace": "0ac18f6e0827af3949a36b3c7043f22a50613948bcc8e8193f268f21539fedf3",
+    "VirtuaGrotesk-Bold.ufo/fontinfo.plist": "67981ebbc42195b62ce392c555c107724904737c79c83f8455ad68d847119bbb",
+    "VirtuaGrotesk-Bold.ufo/glyphs/R_.glif": "bb84cd52b528fbf6bd8632382c903f1b3ef2b6095206f7149f787e3b8ccadad4",
+    "VirtuaGrotesk-Regular.ufo/fontinfo.plist": "6cb32c37263cb5fe9679239b09f75e0124419176ed583b07dc2a48415621cf61",
+    "VirtuaGrotesk-Regular.ufo/glyphs/R_.glif": "ee9a24d4fb41d245e4f421dc8c35286d5befffb850833ef9cd63a96ee0895301"
+  },
+  "gpui_font_files_fetched": 3028,
+  "capture_sha256": {
+    "14-xilem-inspector-gray.png": "53085484af614c5d650f6df09e4d52c4f9c04cad52fec08f22309331642968b9",
+    "15-xilem-inspector-1100-gray.png": "38b64243b7874b43408f6d29c5d77d33e4336d950334fa40d89d9a33befafb1d",
+    "16-xilem-transformations-folded-gray.png": "6ddde68c2675b16b7af450c13dee2d6bc501d5a0c5a43ed36616a625a3fc0a43",
+    "04-gpui-live-font-r-gray.png": "5d89a4060eb4b4c1cc1a2bb830474ba994fe5c53359bb63831fa08db7743eff9"
+  },
+  "repeat_captures_byte_identical": {
+    "xilem": true,
+    "gpui": true
+  },
+  "default_top_sections": [
+    "Glyph (closed)",
+    "Coordinates (open)",
+    "Transformations (open)",
+    "Curves (open)",
+    "Background (open)"
+  ],
+  "remaining_controls": [
+    "additional transformation icons",
+    "Stroke width",
+    "Fit curve %"
+  ],
+  "verification": [
+    "cargo test --offline -p runebender-xilem edit:: -- --test-threads=1: 40 passed, 3 ignored",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "visual inspection at1280/1100 and with Transformations folded"
+  ]
+}

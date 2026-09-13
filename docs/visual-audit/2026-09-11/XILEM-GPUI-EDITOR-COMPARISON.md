@@ -310,3 +310,41 @@ visually inspected. No interactive GUI or font save was used.
 
 Next: inspector grouping and default disclosure. Field accessibility, native IME
 behavior, and full editor parity remain outside this headless visual proof.
+
+
+## 2026-09-12 overnight: inspector grouping and disclosure
+
+The inspector now begins with Glyph (closed), Coordinates, Transformations,
+Curves, and Background (open), matching the reference's main hierarchy.
+Coordinates includes the current selection count or `nothing selected`.
+Transformations owns both its icon tools and path operations; the extra closed
+Path Operations section is removed. Parameter labels and fields share one row,
+and Add extremes joins the three paired rows of existing path-operation buttons.
+These controls retain their existing operations and Enter-to-apply behavior.
+
+- [Xilem default inspector, 1280 x 720](14-xilem-inspector-gray.png)
+- [Xilem default inspector, 1100 x 720](15-xilem-inspector-1100-gray.png)
+- [Transformations folded as one group](16-xilem-transformations-folded-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+The default and folded screenshots were inspected. Folding Transformations hides
+its icon tools, buttons, and parameter fields together. At 1100 pixels the fields
+and inspector remain within the window; lower sections scroll as before.
+The canvas, proof, rail, and metrics-card allocations remain unchanged.
+
+This establishes grouping, not complete inspector parity. GPUI still exposes
+additional transform icons, Stroke width, and Fit curve %. Those missing controls
+and row-spacing differences leave the current Curves and Background sections
+higher in Xilem. Background control labeling/layout and the initial parameter
+values also differ. Do not hide these gaps with empty placeholder controls.
+
+Verification: 40 editing tests passed, including parameterized filters, geometry,
+undo, coordinates, and background operations; three existing integration tests
+were ignored (two model runs and real-font bidi). Formatting, diff checks, and
+workspace all-target Clippy with warnings denied passed. Matching GPUI and Xilem
+repeat captures were byte-identical, with GPUI loading 3,028 real font files.
+See [hashes and verification](inspector-grouping-evidence.json).
+
+Next: account for the missing inspector controls using existing core operations
+where available, then refine shared row spacing, typography, and Gray surfaces.
+Full native interaction/accessibility and deprecation readiness remain unproven.

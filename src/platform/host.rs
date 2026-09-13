@@ -221,8 +221,6 @@ impl Workspace {
                     "Features",
                     "Layers",
                     "Related",
-                    "Path Operations",
-                    "Background",
                     "Mark",
                     "Shaping",
                     "Masters",
