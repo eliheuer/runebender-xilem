@@ -44,6 +44,9 @@ pub(crate) const POINT_RING_WIDTH: f64 = 1.5;
 pub(crate) const POINT_HALO_EXTRA: f64 = 2.0;
 /// A diamond needs wider diagonals to read like the neighboring round node.
 pub(crate) const ANCHOR_DIAMOND_SCALE: f64 = 1.35;
+/// Direction arrows sit beside the first on-curve point of a closed contour.
+pub(crate) const START_ARROW_RADIUS: f64 = 5.5;
+pub(crate) const START_ARROW_OFFSET: f64 = 8.0;
 
 /// Keep nodes compact when zoomed out and enlarge them gradually for close editing.
 /// The three smooth intervals match the reference's point-size curve.

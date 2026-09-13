@@ -33,8 +33,8 @@ use crate::view::design::{
     METRICS_CARD_HEIGHT as PANEL_HEIGHT, METRICS_CARD_INSET as PANEL_PAD,
     METRICS_CARD_WIDTH as PANEL_WIDTH, METRICS_FIELD_GAP, METRICS_FIELD_HEIGHT as PANEL_ROW,
     METRICS_FIELD_START, METRICS_FIELD_WIDTH, POINT_CORNER_RADIUS, POINT_CURVE_RADIUS,
-    POINT_HALO_EXTRA, POINT_RING_WIDTH, POINT_SELECTED_GROW, Radius, Stroke as DesignStroke,
-    TextSize, point_marker_scale,
+    POINT_HALO_EXTRA, POINT_RING_WIDTH, POINT_SELECTED_GROW, Radius, START_ARROW_OFFSET,
+    START_ARROW_RADIUS, Stroke as DesignStroke, TextSize, point_marker_scale,
 };
 
 const HIT_RADIUS_PX: f64 = 8.0;
@@ -504,6 +504,32 @@ impl EditorWidget {
             .collect()
     }
 
+    /// Closed contours expose their first on-curve point and outgoing direction.
+    /// Open paths and contours without an on-curve point have no start marker.
+    fn start_markers(&self) -> Vec<(PointId, Point, Point)> {
+        let affine = self.session.viewport.affine();
+        self.session
+            .glyph
+            .contours
+            .iter()
+            .enumerate()
+            .filter_map(|(ci, contour)| {
+                if contour.points.first()?.typ == norad::PointType::Move {
+                    return None;
+                }
+                let pi = contour
+                    .points
+                    .iter()
+                    .position(|p| p.typ != norad::PointType::OffCurve)?;
+                let start = &contour.points[pi];
+                let next = &contour.points[(pi + 1) % contour.points.len()];
+                let from = affine * Point::new(start.x, start.y);
+                let to = affine * Point::new(next.x, next.y);
+                (from.distance(to) > 0.001).then_some(((ci, pi), from, to))
+            })
+            .collect()
+    }
+
     fn hit_point(&self, at: Point) -> Option<PointId> {
         self.screen_points()
             .into_iter()
@@ -888,11 +914,9 @@ impl Widget for EditorWidget {
             let marker_scale = point_marker_scale(self.session.viewport.zoom);
             let ring_width = (POINT_RING_WIDTH * marker_scale).max(DesignStroke::Hairline.px());
             let halo_width = ring_width + POINT_HALO_EXTRA;
-            for (id, sp, on_curve, smooth, start) in self.screen_points() {
+            for (id, sp, on_curve, smooth, _) in self.screen_points() {
                 let selected = self.session.selection.contains(&id);
-                let hue = if start {
-                    pal.role("startNode")
-                } else if !on_curve {
+                let hue = if !on_curve {
                     pal.role("pointOffcurve")
                 } else if smooth {
                     pal.role("pointSmooth")
@@ -943,6 +967,30 @@ impl Widget for EditorWidget {
                     painter.fill(shape, interior).draw();
                     painter.stroke(shape, &ring, fill).draw();
                 }
+            }
+
+            // A separate direction arrow preserves the ordinary point shape
+            // and its corner/smooth hue, as in the inspected reference bundle.
+            for (id, from, to) in self.start_markers() {
+                let selected = self.session.selection.contains(&id);
+                let size = (START_ARROW_RADIUS + if selected { POINT_SELECTED_GROW } else { 0.0 })
+                    * marker_scale;
+                let forward = (to - from).normalize();
+                let side = kurbo::Vec2::new(-forward.y, forward.x);
+                let center = from + side * START_ARROW_OFFSET * marker_scale;
+                let tip = center + forward * size;
+                let base = center - forward * size * 0.5;
+                let mut arrow = kurbo::BezPath::new();
+                arrow.move_to(tip);
+                arrow.line_to(base + side * size * 0.5);
+                arrow.line_to(base - side * size * 0.5);
+                arrow.close_path();
+                let color = pal.role(if selected {
+                    "pointSelected"
+                } else {
+                    "pointSmooth"
+                });
+                painter.fill(&arrow, color).draw();
             }
 
             // Anchors have a dark interior and a distinct pink keyline in
@@ -2141,6 +2189,29 @@ mod tests {
             field: None,
             field_buf: String::new(),
         }
+    }
+
+    #[test]
+    fn start_markers_use_closed_contours_and_first_on_curve_direction() {
+        let mut editor = widget();
+        let affine = editor.session.viewport.affine();
+        let initial = editor.start_markers();
+        assert_eq!(initial.len(), 1);
+        assert_eq!(initial[0].0, (0, 0));
+        assert_eq!(initial[0].1, affine * Point::new(0.0, 0.0));
+        assert_eq!(initial[0].2, affine * Point::new(400.0, 0.0));
+        editor.session.glyph.contours[0].points[0].typ = norad::PointType::OffCurve;
+        assert_eq!(editor.start_markers()[0].0, (0, 1), "skip leading handles");
+        editor.session.glyph.contours[0].points[0].typ = norad::PointType::Move;
+        assert!(
+            editor.start_markers().is_empty(),
+            "open paths have no marker"
+        );
+        editor.session.glyph.contours[0].points.clear();
+        assert!(
+            editor.start_markers().is_empty(),
+            "empty contours are harmless"
+        );
     }
 
     #[test]

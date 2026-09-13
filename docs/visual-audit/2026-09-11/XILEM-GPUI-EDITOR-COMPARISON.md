@@ -589,3 +589,29 @@ anchor design. The existing bundle has the dark-filled/pink-ring design above,
 confirmed by pixel sampling rather than inferred from current source. This pass
 matches that bundle. Selected-anchor native interaction was not exercised by
 these captures. Start-point direction markers remain the next canvas difference.
+
+
+## 2026-09-13 daytime: contour direction arrows
+
+Closed contours now show a separate direction arrow beside their first on-curve
+point. Ordinary points retain their corner or smooth color. Arrow size and offset
+use named tokens and the shared marker zoom curve; selection uses the shared
+yellow fill. Open paths, empty contours and coincident start directions produce
+no arrow.
+
+- [Xilem start arrows, 1280 x 720](36-xilem-start-arrows-gray.png)
+- [Selected points and arrows](37-xilem-start-arrows-selected-gray.png)
+- [Xilem at 1100 x 720](38-xilem-start-arrows-1100-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+Both R arrows appear in matching positions. The sampled upper arrow retains a
+one-pixel horizontal coverage difference. All four views were visually inspected;
+repeat captures are byte-identical in each editor. Eight editor widget tests,
+formatting, whitespace checks and workspace all-target Clippy passed.
+See [measurements and hashes](start-arrows-evidence.json).
+
+The geometry matches the GPUI implementation before commit 6e25392 and the
+inspected older bundle. Current GPUI source uses the start point itself as a
+triangle, so it is not the source of truth for this capture comparison. This
+pass does not certify native pointer interaction. Next: inspect outline fill,
+inspector spacing and glyph-rail styling against the same reference.

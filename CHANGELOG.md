@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Show contour direction with a separate start arrow while preserving each
+  point's corner or smooth color; open contours do not get start arrows.
+
 - Distinguish anchors with filled diamonds and pink keylines, scaled with zoom
   alongside outline points and retaining a clear selected state.
 
