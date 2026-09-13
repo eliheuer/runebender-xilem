@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Complete the inspector's transformation row with both rotation directions,
+  Duplicate, and Duplicate Repeat. The clockwise icon now rotates clockwise.
+
 - Add working Stroke width and Fit curve % inspector fields. Enter applies the
   core operation to the selection (or all contours/curves), with undo; invalid
   values and unchanged fits leave the document untouched.

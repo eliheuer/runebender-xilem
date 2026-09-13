@@ -322,18 +322,21 @@ pub(crate) fn path_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
                     }
                 },
             ),
-            // Keep the implemented icon operations in two even rows.
-            // The reference has additional operations to bring over separately.
+            // Geometric transforms and duplication share the first row;
+            // Boolean operations remain together on the second.
             (!app.collapsed.contains("Transformations")).then(|| {
                 xrow(
                     Region::List,
                     (
                         op("flip-h", |s| s.flip_horizontal()),
                         op("flip-v", |s| s.flip_vertical()),
-                        op("rot-cw", |s| s.rotate_90()),
-                        op("close", |s| s.decompose()),
+                        op("rot-ccw", |s| s.rotate_90()),
+                        op("rot-cw", |s| s.rotate_90_clockwise()),
+                        op("duplicate", |s| s.duplicate()),
+                        op("duplicate-repeat", |s| s.duplicate_repeat()),
                     ),
                 )
+                .gap(Space::Md)
             }),
             (!app.collapsed.contains("Transformations")).then(|| {
                 xrow(
@@ -345,6 +348,7 @@ pub(crate) fn path_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
                         op("exclude", |s| s.boolean(BoolOp::Exclude)),
                     ),
                 )
+                .gap(Space::Md)
             }),
             (!app.collapsed.contains("Transformations"))
                 .then(|| path_operations_controls(app).boxed()),

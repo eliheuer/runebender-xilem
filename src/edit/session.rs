@@ -730,8 +730,14 @@ impl Session {
         self.transform(kurbo::Affine::new([1.0, 0.0, 0.0, -1.0, 0.0, 0.0]))
     }
 
+    /// Rotate counterclockwise in the font's upward-Y coordinate system.
     pub(crate) fn rotate_90(&mut self) -> bool {
         self.transform(kurbo::Affine::new([0.0, 1.0, -1.0, 0.0, 0.0, 0.0]))
+    }
+
+    /// Rotate clockwise around the selected geometry's center.
+    pub(crate) fn rotate_90_clockwise(&mut self) -> bool {
+        self.transform(kurbo::Affine::new([0.0, -1.0, 1.0, 0.0, 0.0, 0.0]))
     }
 
     /// Apply a whole-glyph outline effect under one undo record.
@@ -2014,6 +2020,26 @@ mod tests {
         assert!(session.round_coordinates());
         assert_eq!(session.glyph.contours[0].points[0].x, 0.0);
         assert!(matches!(session.pending.last(), Some(HistoryOp::Record(_))));
+    }
+
+    #[test]
+    fn clockwise_and_counterclockwise_rotations_are_opposites_on_the_selection() {
+        let mut clockwise = two_squares();
+        let original = clockwise.glyph.contours.clone();
+        clockwise.selection.extend((0..4).map(|point| (0, point)));
+        let mut counterclockwise = clockwise.clone();
+        assert!(clockwise.rotate_90_clockwise());
+        assert!(counterclockwise.rotate_90());
+        let cw = &clockwise.glyph.contours[0].points[0];
+        let ccw = &counterclockwise.glyph.contours[0].points[0];
+        assert_eq!((cw.x, cw.y), (0.0, 100.0));
+        assert_eq!((ccw.x, ccw.y), (100.0, 0.0));
+        assert_eq!(clockwise.glyph.contours[1], original[1]);
+        assert_eq!(counterclockwise.glyph.contours[1], original[1]);
+        assert_eq!(clockwise.pending.len(), 1);
+        assert!(clockwise.rotate_90());
+        assert_eq!(clockwise.glyph.contours, original);
+        assert_eq!(clockwise.pending.len(), 2);
     }
 
     #[test]

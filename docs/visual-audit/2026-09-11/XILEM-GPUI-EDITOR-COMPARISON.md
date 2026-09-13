@@ -385,3 +385,36 @@ Fresh real-font captures repeated byte-identically in both editors. See
 Next: remaining transform icons and shared inspector spacing/Gray surface
 polish. Screenshots and disposable-font tests do not establish native IME,
 accessibility, GPU/platform parity, or readiness to retire GPUI.
+
+
+## 2026-09-12 overnight: transformation actions and rotation direction
+
+The first inspector icon row now contains Flip horizontal, Flip vertical,
+Rotate counterclockwise, Rotate clockwise, Duplicate, and Duplicate Repeat.
+The four Boolean actions stay on the second row. Both use 24-pixel tiles with
+8-pixel gaps, matching the reference's 32-pixel horizontal pitch. Shared core
+icon paths are reused. Decompose remains available through the existing menu
+and context-menu commands; its misleading close icon is removed from this row.
+
+The old clockwise icon invoked the positive 90-degree transform, which is
+counterclockwise in the font's upward-Y coordinates. It now invokes a separate
+negative 90-degree transform; the counterclockwise icon uses the existing action.
+Both act around the selection center and use the existing undo mechanism.
+
+- [Xilem completed icon rows, 1280 x 720](19-xilem-transform-icons-gray.png)
+- [Xilem at 1100 x 720](20-xilem-transform-icons-1100-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+Sixteen session tests passed, including a new test for opposite rotation
+directions, untouched unselected contours, inverse transforms restoring the
+original, and undo-record counts. Existing Duplicate Repeat and component tests
+also passed. Formatting, whitespace checks, and workspace all-target Clippy
+with warnings denied passed; Clippy was rerun after the spacing adjustment.
+Fresh matching captures were byte-identical on repetition in both editors,
+and the narrow layout was visually inspected. See
+[artifact hashes and validation](transform-icons-evidence.json).
+
+The action set and horizontal pitch now agree. The Xilem widget still draws
+icons with an internal inset, making their ink smaller, and the rows sit slightly
+lower. Shared inspector spacing, icon scale, and Gray surface mappings are next;
+background controls and native interaction/accessibility also remain to verify.
