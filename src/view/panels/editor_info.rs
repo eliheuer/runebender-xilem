@@ -36,15 +36,29 @@ where
     )
 }
 
+/// Group shelves use square, full-line chips; other chip consumers retain
+/// their existing compact treatment.
+#[derive(Clone, Copy)]
+enum ChipStyle {
+    Compact,
+    GroupMember,
+    GroupAdd,
+}
+
 /// Chips on as many rows as the inspector's width takes. Xilem has no
 /// wrapping row, so the rows are cut by an estimate of each chip's
 /// width at the one type size.
 fn chip_rows<F: Fn(&mut Workspace, &str) + Clone + Send + Sync + 'static>(
     pal: &Palette,
     names: &[String],
+    style: ChipStyle,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
     const WIDTH: f64 = 224.0;
+    let gap = match style {
+        ChipStyle::Compact => Space::Xs,
+        ChipStyle::GroupMember | ChipStyle::GroupAdd => Space::Sm,
+    };
     let width_of = |s: &str| 16.0 + 7.0 * s.chars().count() as f64;
     let mut rows: Vec<Vec<_>> = vec![Vec::new()];
     let mut used = 0.0;
@@ -54,19 +68,19 @@ fn chip_rows<F: Fn(&mut Workspace, &str) + Clone + Send + Sync + 'static>(
             rows.push(Vec::new());
             used = 0.0;
         }
-        used += w + Space::Xs.px();
+        used += w + gap.px();
         let on_click = on_click.clone();
         let owned = name.clone();
-        let chip = chip(pal, name.clone(), move |app: &mut Workspace| {
+        let chip = styled_chip(pal, name.clone(), style, move |app: &mut Workspace| {
             on_click(app, &owned);
         });
         rows.last_mut().expect("one row").push(chip);
     }
     let rows: Vec<_> = rows
         .into_iter()
-        .map(|row| xrow(Region::List, row))
+        .map(|row| xrow(Region::Inline, row).gap(gap))
         .collect();
-    xcolumn(Region::List, rows)
+    xcolumn(Region::List, rows).gap(gap)
 }
 
 /// A small keylined chip, the GPUI build's `px_1` rounded box.
@@ -75,18 +89,32 @@ fn chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     text: String,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
+    styled_chip(pal, text, ChipStyle::Compact, on_click)
+}
+
+fn styled_chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
+    pal: &Palette,
+    text: String,
+    style: ChipStyle,
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F> {
+    let (height, radius, ink) = match style {
+        ChipStyle::Compact => (ControlSize::Row.px(), Radius::Sm, pal.text),
+        ChipStyle::GroupMember => (design::GROUP_CHIP_HEIGHT, Radius::None, pal.text),
+        ChipStyle::GroupAdd => (design::GROUP_CHIP_HEIGHT, Radius::None, pal.text_muted),
+    };
     sized_box(
         button(
-            label(text).text_size(TextSize::Body.px()).color(pal.text),
+            label(text).text_size(TextSize::Body.px()).color(ink),
             move |app: &mut Workspace| on_click(app),
         )
         .padding(Space::Sm)
         .background_color(pal.panel)
         .border_color(pal.outline)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::Sm.length()),
+        .corner_radius(radius.length()),
     )
-    .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Row)))
+    .dims(Dimensions::new(Dim::Auto, Dim::Fixed(Length::px(height))))
 }
 
 /// Dimensions: the narrowest stem and bar of the reference glyphs.
@@ -323,9 +351,14 @@ pub(crate) fn groups_section(app: &Workspace) -> impl WidgetView<Workspace> + us
         let short_owned = short.to_string();
         let side_first = side == "L";
         let names: Vec<String> = members.iter().take(24).map(|m| m.to_string()).collect();
-        let chips = chip_rows(pal, &names, move |app: &mut Workspace, member| {
-            app.remove_from_group(&full_owned, member);
-        });
+        let chips = chip_rows(
+            pal,
+            &names,
+            ChipStyle::GroupMember,
+            move |app: &mut Workspace, member| {
+                app.remove_from_group(&full_owned, member);
+            },
+        );
         let more = (members.len() > 24).then(|| {
             label(format!("+{}", members.len() - 24))
                 .text_size(TextSize::Body.px())
@@ -340,9 +373,14 @@ pub(crate) fn groups_section(app: &Workspace) -> impl WidgetView<Workspace> + us
                         label(format!("@{short} \u{00b7} {side}"))
                             .text_size(TextSize::Body.px())
                             .color(pal.text),
-                        chip(pal, "+ sel".into(), move |app: &mut Workspace| {
-                            app.add_selection_to_group(side_first, &short_owned);
-                        }),
+                        styled_chip(
+                            pal,
+                            "+ sel".into(),
+                            ChipStyle::GroupAdd,
+                            move |app: &mut Workspace| {
+                                app.add_selection_to_group(side_first, &short_owned);
+                            },
+                        ),
                     ),
                 ),
                 chips,
@@ -354,11 +392,11 @@ pub(crate) fn groups_section(app: &Workspace) -> impl WidgetView<Workspace> + us
         app,
         "Groups",
         xcolumn(
-            Region::List,
+            Region::Section,
             (
-                recipes::field_enter(
+                recipes::field_bare(
                     pal,
-                    "",
+                    "new group · o or |o",
                     app.group_name_buf.clone(),
                     |app: &mut Workspace, v| app.group_name_buf = v,
                     |app: &mut Workspace, v| {
@@ -366,13 +404,14 @@ pub(crate) fn groups_section(app: &Workspace) -> impl WidgetView<Workspace> + us
                         app.new_group_from_buf();
                     },
                 ),
-                xcolumn(Region::List, rows),
+                xcolumn(Region::Inline, rows),
                 label("Chip removes \u{00b7} + sel adds the grid selection")
                     .text_size(TextSize::Body.px())
                     .color(pal.text_muted),
             ),
         ),
     )
+    .gap(Space::Sm)
 }
 
 /// One vertical metric off a font's info.
@@ -597,11 +636,16 @@ pub(crate) fn related_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     let rows: Vec<_> = groups
         .into_iter()
         .map(|(title, names)| {
-            let chips = chip_rows(pal, &names, |app: &mut Workspace, related| {
-                if let Some(target) = app.font.index_of(related) {
-                    app.open_glyph(target);
-                }
-            });
+            let chips = chip_rows(
+                pal,
+                &names,
+                ChipStyle::Compact,
+                |app: &mut Workspace, related| {
+                    if let Some(target) = app.font.index_of(related) {
+                        app.open_glyph(target);
+                    }
+                },
+            );
             xcolumn(
                 Region::List,
                 (

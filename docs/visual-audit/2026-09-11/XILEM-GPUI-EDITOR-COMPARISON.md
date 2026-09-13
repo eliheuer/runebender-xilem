@@ -1047,3 +1047,36 @@ passed. Both screenshot sizes were inspected. Normal editor output is unchanged
 from 66. No foreground GUI or live-font save occurred. Long row names clip rather
 than showing GPUI's ellipsis; clicking still loads their complete names into the
 editor fields. Native interaction remains outside these headless captures.
+
+
+## 2026-09-13 daytime: Groups input and shelf spacing
+
+The Groups creation field now shows `new group · o or |o`, with no empty caption
+above it. Enter retains the existing group-creation callback. Its border is
+x1042..1272/y239..267, versus GPUI y238..266; every perimeter pixel matches after
+the native one-pixel header offset. Before, the blank caption pushed it to y261.
+
+Group chips now have square keylines and a 23px height. The Add-selection chip
+uses muted text. Shelf gaps increase to 4px, and the body retains 8px between the
+input and shelves. The first eight visible member chips start at y300,352,404,
+456,508,560,612,664: exactly GPUI plus one pixel, with 52px shelf spacing instead
+of 46px. A scoped chip style preserves compact chips in Features and Related.
+
+- [GPUI Groups](89-gpui-groups-gray.png)
+- [Xilem before](90-xilem-groups-before-gray.png)
+- [Aligned Groups](91-xilem-groups-gray.png)
+- [Narrow Groups](92-xilem-groups-1100-gray.png)
+- [Measurements and limits](groups-evidence.json)
+
+The helper accepts `--groups`; its reference repeats byte-for-byte. Both window
+sizes were visually inspected, and the normal editor remains identical to 66.
+No live-font edit or save, foreground GUI, or graph run occurred.
+
+Chip wrapping remains an estimated 224px layout, not a width-aware wrapping
+container. These screenshots do not certify reflow after dragging a dock.
+Both implementations cap this font's 89 kerning groups at 40 and members at 24;
+this pass compares the visible top shelves. Native interaction and lower-list
+behavior remain outside the screenshot proof.
+
+The existing kerning/groups editing, shaping refresh and undo regression passed,
+along with formatting, whitespace, helper syntax and workspace all-target Clippy.

@@ -1,0 +1,75 @@
+{
+  "recorded_utc": "2026-09-13T22:57:00.733637+00:00",
+  "gpui_main": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": "Existing older GPUI dist, not a fresh main build; 3028 font files; Groups repeat byte-identical",
+  "wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "captures": {
+    "89-gpui-groups-gray.png": "3e35b3176b3d922dad9580f44e1e15aac71abf4cefc188578ce822ad17b6fe73",
+    "90-xilem-groups-before-gray.png": "41c1ff789668c37dddfc3109e508d8f413a0e3a7ce1f070aeb3ef57cabe9935f",
+    "91-xilem-groups-gray.png": "69b7c74a6d7a5d69806040c7e563ac8b1fbc5224ea338f1fb3d562b6f293a491",
+    "92-xilem-groups-1100-gray.png": "d9c298fc81f550d5fd03aefc5d5de502fc3aa69823160330d2832e4cb302d789"
+  },
+  "measurements": {
+    "gpui_name_field": [
+      1042,
+      238,
+      1272,
+      266
+    ],
+    "xilem_before_name_field": [
+      1042,
+      261,
+      1272,
+      289
+    ],
+    "xilem_after_name_field": [
+      1042,
+      239,
+      1272,
+      267
+    ],
+    "field_perimeter_differences_after_native_y_offset": 0,
+    "native_y_offset": 1,
+    "chip_height_before": 21,
+    "chip_height_after": 23,
+    "shelf_pitch_before": 46,
+    "shelf_pitch_after": 52,
+    "gpui_first_eight_chip_y": [
+      299,
+      351,
+      403,
+      455,
+      507,
+      559,
+      611,
+      663
+    ],
+    "xilem_after_first_eight_chip_y": [
+      300,
+      352,
+      404,
+      456,
+      508,
+      560,
+      612,
+      664
+    ]
+  },
+  "validation": [
+    "Both standard and narrow screenshots visually inspected",
+    "GPUI repeat identical",
+    "Normal editor byte-identical to reference66",
+    "Existing kerning/groups editing, shaping refresh and undo regression passed",
+    "cargo fmt --check passed",
+    "git diff --check passed",
+    "cargo clippy --workspace --all-targets -- -D warnings passed",
+    "Capture helper JavaScript syntax check passed"
+  ],
+  "limits": [
+    "Chip rows still use a fixed 224px width estimate; full reflow after dragging a dock is not established",
+    "This font has 89 kerning groups; both panels cap the list at 40 and members at 24",
+    "Visible top shelves compared; no lower-list or native interaction certification",
+    "No live-font edits or saves; reference data is font-wide despite different default glyph selection",
+    "Other consumers retain their compact chip style"
+  ]
+}

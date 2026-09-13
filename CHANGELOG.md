@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Clarify the new-group input and align square group chips and shelf spacing.
+
 - Align Kerning pair rows and let its three editor fields share the resized dock width.
 
 - Align the Dimensions readout row heights and column spacing.
