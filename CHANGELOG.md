@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Align inspector group dividers, coordinate rows and curve controls with the reference.
+
 - Match the Coordinates inspector's boxed reference picker and balanced numeric fields.
 
 - Give glyph-grid tiles flat faces, crisp inside borders and a matching panel ground.

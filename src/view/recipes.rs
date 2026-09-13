@@ -73,7 +73,10 @@ where
     column(
         Region::List,
         (
-            sized_box(body).padding(Space::Md),
+            sized_box(body).padding(masonry::properties::Padding::from_vh(
+                Length::px(crate::view::design::INSPECTOR_VERTICAL_INSET),
+                Space::Md.length(),
+            )),
             sized_box(label(""))
                 .dims(Dimensions::new(
                     Dim::Stretch,

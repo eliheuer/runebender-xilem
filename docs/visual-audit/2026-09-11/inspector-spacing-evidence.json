@@ -1,0 +1,73 @@
+{
+  "recorded_utc": "2026-09-13T19:57:09.221921+00:00",
+  "xilem_parent": "8a295fd",
+  "capture_size": [
+    1280,
+    720
+  ],
+  "narrow_capture_size": [
+    1100,
+    720
+  ],
+  "theme": "gray",
+  "glyph": "R",
+  "proof_text": "R",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "gpui_reference_note": "Existing dist bundle used without rebuilding or modifying the reference; bundle hash identifies the artifact independently of checkout HEAD.",
+  "gpui_wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "font_source_sha256": {
+    "VirtuaGrotesk.designspace": "0ac18f6e0827af3949a36b3c7043f22a50613948bcc8e8193f268f21539fedf3",
+    "VirtuaGrotesk-Bold.ufo/fontinfo.plist": "67981ebbc42195b62ce392c555c107724904737c79c83f8455ad68d847119bbb",
+    "VirtuaGrotesk-Bold.ufo/glyphs/R_.glif": "bb84cd52b528fbf6bd8632382c903f1b3ef2b6095206f7149f787e3b8ccadad4",
+    "VirtuaGrotesk-Regular.ufo/fontinfo.plist": "6cb32c37263cb5fe9679239b09f75e0124419176ed583b07dc2a48415621cf61",
+    "VirtuaGrotesk-Regular.ufo/glyphs/R_.glif": "ee9a24d4fb41d245e4f421dc8c35286d5befffb850833ef9cd63a96ee0895301"
+  },
+  "capture_sha256": {
+    "45-xilem-inspector-spacing-gray.png": "01e53d24ebef3cfa13f58cb26861e985ac54d7be5d9a41678d32fd60c8663adc",
+    "46-xilem-inspector-spacing-1100-gray.png": "424d5c7f98fe39ae28c31165ff8521220db39434fa694846e6dac72f1decda61",
+    "47-xilem-inspector-spacing-folded-gray.png": "fb462718747c03577df9d26010fde93255900164db1943da86dd73a043f658db",
+    "48-xilem-inspector-spacing-overview-gray.png": "bbf9593e07fd03db56398830888e7351676caad5b2cab1e00b2fd90ff8f59ec0",
+    "04-gpui-live-font-r-gray.png": "5d89a4060eb4b4c1cc1a2bb830474ba994fe5c53359bb63831fa08db7743eff9"
+  },
+  "repeat_captures_byte_identical": {
+    "xilem": true,
+    "gpui": true
+  },
+  "verification": [
+    "16 existing session tests passed including selection, transforms and curve fitting",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "Matched1280 editor, narrow1100, folded Transformations and overview checked",
+    "Repeat captures identical both; GPUI3028files and04referencehash unchanged"
+  ],
+  "gpui_font_files_fetched": 3028,
+  "inspector_measurements": {
+    "group_divider_y_both": [
+      74,
+      201,
+      555,
+      653
+    ],
+    "coordinate_field_border_y_both": [
+      135,
+      162,
+      167,
+      194
+    ],
+    "transform_and_curves_button_border_y_both": [
+      297,
+      324,
+      329,
+      356,
+      361,
+      388,
+      587,
+      614
+    ],
+    "group_vertical_padding": 6,
+    "group_horizontal_padding": 8,
+    "count_line_height": 21,
+    "remaining": "Background control composition, input typography/borders and rail tabs still differ; matching boundaries do not imply full inspector parity."
+  }
+}

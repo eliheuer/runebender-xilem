@@ -363,7 +363,7 @@ pub(crate) fn path_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
             }),
         ),
     )
-    .gap(Space::Sm)
+    .gap(Length::px(design::TRANSFORM_CONTROLS_GAP))
 }
 
 /// A transformation parameter shares one row with its label; Enter applies it.
@@ -492,7 +492,7 @@ pub(crate) fn tbtn(
 /// not anything is selected, so the inspector does not jump.
 pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use crate::view::design::{
-        COORD_LABEL_WIDTH, COORD_PICKER_EDGE, COORD_PICKER_GAP, COORD_SECTION_GAP,
+        COORD_COUNT_HEIGHT, COORD_LABEL_WIDTH, COORD_PICKER_EDGE, COORD_PICKER_GAP,
     };
     use runebender_core::outline::path::Quadrant;
     const QUADRANTS: [Quadrant; 9] = [
@@ -605,48 +605,57 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                 },
             ),
             (!app.collapsed.contains("Coordinates")).then(|| {
-                label(match app.selected_points {
-                    0 => "nothing selected".to_string(),
-                    1 => "1 point selected".to_string(),
-                    count => format!("{count} points selected"),
-                })
-                .color(pal.text_muted)
-            }),
-            (!app.collapsed.contains("Coordinates")).then(|| {
-                xrow(
-                    Region::Inline,
+                xcolumn(
+                    Region::Section,
                     (
-                        picker,
-                        xcolumn(
-                            Region::List,
+                        sized_box(
+                            label(match app.selected_points {
+                                0 => "nothing selected".to_string(),
+                                1 => "1 point selected".to_string(),
+                                count => format!("{count} points selected"),
+                            })
+                            .color(pal.text_muted),
+                        )
+                        .dims(Dimensions::new(
+                            Dim::Stretch,
+                            Dim::Fixed(Length::px(COORD_COUNT_HEIGHT)),
+                        )),
+                        xrow(
+                            Region::Inline,
                             (
-                                xrow(
-                                    Region::Inline,
+                                picker,
+                                xcolumn(
+                                    Region::List,
                                     (
-                                        field("X", app.coord_x_buf.clone(), 0).flex(1.0),
-                                        field("W", app.coord_w_buf.clone(), 2).flex(1.0),
+                                        xrow(
+                                            Region::Inline,
+                                            (
+                                                field("X", app.coord_x_buf.clone(), 0).flex(1.0),
+                                                field("W", app.coord_w_buf.clone(), 2).flex(1.0),
+                                            ),
+                                        )
+                                        .gap(Space::Lg),
+                                        xrow(
+                                            Region::Inline,
+                                            (
+                                                field("Y", app.coord_y_buf.clone(), 1).flex(1.0),
+                                                field("H", app.coord_h_buf.clone(), 3).flex(1.0),
+                                            ),
+                                        )
+                                        .gap(Space::Lg),
                                     ),
                                 )
-                                .gap(Space::Lg),
-                                xrow(
-                                    Region::Inline,
-                                    (
-                                        field("Y", app.coord_y_buf.clone(), 1).flex(1.0),
-                                        field("H", app.coord_h_buf.clone(), 3).flex(1.0),
-                                    ),
-                                )
-                                .gap(Space::Lg),
+                                .gap(Space::Sm)
+                                .flex(1.0),
                             ),
                         )
-                        .gap(Space::Sm)
-                        .flex(1.0),
+                        .gap(Space::Lg),
                     ),
                 )
-                .gap(Space::Lg)
             }),
         ),
     )
-    .gap(Length::px(COORD_SECTION_GAP))
+    .gap(Space::Sm)
 }
 
 pub(crate) fn curves_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -671,12 +680,13 @@ pub(crate) fn curves_section(app: &Workspace) -> impl WidgetView<Workspace> + us
                     (
                         recipes::toggle(
                             pal,
-                            "Curvature Comb".into(),
+                            "Curvature comb".into(),
                             view.comb,
                             |app: &mut Workspace| {
                                 app.view.comb = !app.view.comb;
                             },
-                        ),
+                        )
+                        .flex(1.0),
                         recipes::toggle(
                             pal,
                             "Continuity".into(),
@@ -684,7 +694,8 @@ pub(crate) fn curves_section(app: &Workspace) -> impl WidgetView<Workspace> + us
                             |app: &mut Workspace| {
                                 app.view.continuity = !app.view.continuity;
                             },
-                        ),
+                        )
+                        .flex(1.0),
                     ),
                 )
             }),
@@ -702,6 +713,7 @@ pub(crate) fn curves_section(app: &Workspace) -> impl WidgetView<Workspace> + us
             }),
         ),
     )
+    .gap(Space::Sm)
 }
 
 /// Measure: the option toggles the Measure tool works through. Picking
@@ -865,6 +877,7 @@ pub(crate) fn background_section(app: &Workspace) -> impl WidgetView<Workspace> 
             }),
         ),
     )
+    .gap(Space::Sm)
 }
 
 pub(crate) fn mark_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {

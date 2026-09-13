@@ -678,3 +678,34 @@ See [measurements and hashes](coordinates-evidence.json).
 
 Next: reconcile inspector header and Curves/Background spacing, including the
 one-pixel Coordinates offset above; then rail tab faces and matched overview.
+
+
+## 2026-09-13 daytime: inspector group spacing aligned
+
+Inspector groups now use the reference's six-pixel vertical inset and retain
+eight pixels horizontally. Coordinates separates its header from a fixed-height
+count line and the numeric field block. The transformation header gap compensates
+for the tighter inset, while Curves and Background use compact section gaps.
+The two Curves buttons now share the available width.
+
+- [Xilem inspector spacing, 1280 x 720](45-xilem-inspector-spacing-gray.png)
+- [Xilem at 1100 x 720](46-xilem-inspector-spacing-1100-gray.png)
+- [Transformations folded](47-xilem-inspector-spacing-folded-gray.png)
+- [Overview shared-group regression check](48-xilem-inspector-spacing-overview-gray.png)
+- [Reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+Measured group dividers match at y74,201,555,653. Coordinates field borders now
+match at y135,162,167,194, resolving the prior one-pixel offset. Transformation
+button borders match at y297/324,329/356,361/388; Curves matches y587/614. The
+Background header therefore starts at the same vertical position as GPUI.
+Background's button composition and some field styling still differ.
+
+Sixteen existing session tests, formatting, whitespace checks and workspace
+all-target Clippy passed. Normal, narrow, folded and overview images were
+visually inspected. Repeat captures are byte-identical in each editor; the fresh
+GPUI capture loaded3028files and matches the same saved older-bundle reference.
+See [measurements and hashes](inspector-spacing-evidence.json).
+
+Next: Background button composition, inspector input styling and rail tab faces.
+Overview still needs a separate matched-state GPUI audit; this pass checks the
+shared group inset there, without claiming whole-overview parity.

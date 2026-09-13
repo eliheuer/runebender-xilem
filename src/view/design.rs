@@ -106,7 +106,9 @@ pub(crate) const TRANSFORM_LABEL_WIDTH: f64 = 92.0;
 pub(crate) const COORD_PICKER_EDGE: f64 = 52.0;
 pub(crate) const COORD_PICKER_GAP: f64 = 7.0;
 pub(crate) const COORD_LABEL_WIDTH: f64 = 14.0;
-pub(crate) const COORD_SECTION_GAP: f64 = 5.0;
+pub(crate) const COORD_COUNT_HEIGHT: f64 = 21.0;
+/// Compact inspector groups retain the wider horizontal control inset.
+pub(crate) const INSPECTOR_VERTICAL_INSET: f64 = 6.0;
 
 /// Floating metrics-card geometry, measured against the Gray reference capture.
 pub(crate) const METRICS_CARD_WIDTH: f64 = 288.0;
