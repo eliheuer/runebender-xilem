@@ -491,6 +491,9 @@ pub(crate) fn tbtn(
 /// the selection's size on the right. gpui keeps this panel up whether or
 /// not anything is selected, so the inspector does not jump.
 pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    use crate::view::design::{
+        COORD_LABEL_WIDTH, COORD_PICKER_EDGE, COORD_PICKER_GAP, COORD_SECTION_GAP,
+    };
     use runebender_core::outline::path::Quadrant;
     const QUADRANTS: [Quadrant; 9] = [
         Quadrant::TopLeft,
@@ -539,37 +542,18 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                 dot(QUADRANTS[a + 2]),
             ),
         )
-        .gap(Space::Md)
+        .gap(Length::px(COORD_PICKER_GAP))
     };
-    let picker_buttons = xcolumn(Region::List, (row(0), row(3), row(6))).gap(Space::Md);
-    let line_color = pal.outline;
-    let edge = ControlSize::Dot.px() * 3.0 + Space::Md.px() * 2.0;
-    let lines = sized_box(canvas(move |_: &mut Workspace, _, scene, _| {
-        use masonry::imaging::Painter;
-        use masonry::kurbo::{Line, Stroke as LineStroke};
-        let mut painter = Painter::new(scene);
-        let first = ControlSize::Dot.px() / 2.0;
-        let last = edge - first;
-        for coordinate in [first, edge / 2.0, last] {
-            painter
-                .stroke(
-                    Line::new((first, coordinate), (last, coordinate)),
-                    &LineStroke::new(Stroke::Hairline.px()),
-                    line_color,
-                )
-                .draw();
-            painter
-                .stroke(
-                    Line::new((coordinate, first), (coordinate, last)),
-                    &LineStroke::new(Stroke::Hairline.px()),
-                    line_color,
-                )
-                .draw();
-        }
-    }))
-    .dims(Dimensions::fixed(Length::px(edge), Length::px(edge)));
-    let picker = sized_box(xilem::view::zstack((lines, picker_buttons)))
-        .dims(Dimensions::fixed(Length::px(edge), Length::px(edge)))
+    let picker_buttons =
+        xcolumn(Region::List, (row(0), row(3), row(6))).gap(Length::px(COORD_PICKER_GAP));
+    let picker = sized_box(picker_buttons)
+        .padding(Length::px(3.0))
+        .border_width(Stroke::Hairline.length())
+        .border_color(pal.outline)
+        .dims(Dimensions::fixed(
+            Length::px(COORD_PICKER_EDGE),
+            Length::px(COORD_PICKER_EDGE),
+        ))
         .boxed();
     let field = |name: &'static str, value: String, axis: usize| {
         xrow(
@@ -581,24 +565,31 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                         .color(pal.text_muted),
                 )
                 .dims(Dimensions::fixed(
-                    ControlSize::Icon.length(),
+                    Length::px(COORD_LABEL_WIDTH),
                     ControlSize::Icon.length(),
                 )),
-                text_input(value, move |app: &mut Workspace, v| {
-                    if axis < 2 {
-                        app.set_coord(axis, v);
-                    } else {
-                        app.set_coord_size(axis == 2, v);
-                    }
-                })
-                .text_color(pal.text)
-                .background_color(pal.field())
-                .border_color(pal.field_outline)
-                .border_width(Stroke::Hairline.length())
-                .corner_radius(Radius::None.length())
+                sized_box(
+                    text_input(value, move |app: &mut Workspace, v| {
+                        if axis < 2 {
+                            app.set_coord(axis, v);
+                        } else {
+                            app.set_coord_size(axis == 2, v);
+                        }
+                    })
+                    .text_color(pal.text)
+                    .background_color(pal.field())
+                    .border_color(pal.field_outline)
+                    .border_width(Stroke::Hairline.length())
+                    .corner_radius(Radius::None.length()),
+                )
+                .dims(Dimensions::new(
+                    Dim::Stretch,
+                    Dim::from(ControlSize::Control),
+                ))
                 .flex(1.0),
             ),
         )
+        .gap(Space::Md)
     };
     xcolumn(
         Region::Section,
@@ -635,22 +626,27 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                                         field("X", app.coord_x_buf.clone(), 0).flex(1.0),
                                         field("W", app.coord_w_buf.clone(), 2).flex(1.0),
                                     ),
-                                ),
+                                )
+                                .gap(Space::Lg),
                                 xrow(
                                     Region::Inline,
                                     (
                                         field("Y", app.coord_y_buf.clone(), 1).flex(1.0),
                                         field("H", app.coord_h_buf.clone(), 3).flex(1.0),
                                     ),
-                                ),
+                                )
+                                .gap(Space::Lg),
                             ),
                         )
+                        .gap(Space::Sm)
                         .flex(1.0),
                     ),
                 )
+                .gap(Space::Lg)
             }),
         ),
     )
+    .gap(Length::px(COORD_SECTION_GAP))
 }
 
 pub(crate) fn curves_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {

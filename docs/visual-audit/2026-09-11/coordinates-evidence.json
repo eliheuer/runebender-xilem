@@ -1,0 +1,70 @@
+{
+  "recorded_utc": "2026-09-13T19:41:08.297224+00:00",
+  "xilem_parent": "2e9b154",
+  "capture_size": [
+    1280,
+    720
+  ],
+  "narrow_capture_size": [
+    1100,
+    720
+  ],
+  "theme": "gray",
+  "glyph": "R",
+  "proof_text": "R",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "gpui_reference_note": "Existing dist bundle used without rebuilding or modifying the reference; bundle hash identifies the artifact independently of checkout HEAD.",
+  "gpui_wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "font_source_sha256": {
+    "VirtuaGrotesk.designspace": "0ac18f6e0827af3949a36b3c7043f22a50613948bcc8e8193f268f21539fedf3",
+    "VirtuaGrotesk-Bold.ufo/fontinfo.plist": "67981ebbc42195b62ce392c555c107724904737c79c83f8455ad68d847119bbb",
+    "VirtuaGrotesk-Bold.ufo/glyphs/R_.glif": "bb84cd52b528fbf6bd8632382c903f1b3ef2b6095206f7149f787e3b8ccadad4",
+    "VirtuaGrotesk-Regular.ufo/fontinfo.plist": "6cb32c37263cb5fe9679239b09f75e0124419176ed583b07dc2a48415621cf61",
+    "VirtuaGrotesk-Regular.ufo/glyphs/R_.glif": "ee9a24d4fb41d245e4f421dc8c35286d5befffb850833ef9cd63a96ee0895301"
+  },
+  "capture_sha256": {
+    "42-xilem-coordinates-gray.png": "9ae67ddae31295bc87069360bc6c0f3aa2ae754dd9f482bda649d2e40c5e39b5",
+    "43-xilem-coordinates-selected-gray.png": "6e280a4184907d372a126983fca94a796364772aa3ec2b162e14a12f24cabce4",
+    "44-xilem-coordinates-1100-gray.png": "c845c78f0233406f16146689d2ae80738d60fc0cf759533f4255269cf34a714d",
+    "04-gpui-live-font-r-gray.png": "5d89a4060eb4b4c1cc1a2bb830474ba994fe5c53359bb63831fa08db7743eff9"
+  },
+  "repeat_captures_byte_identical": {
+    "xilem": true,
+    "gpui": true
+  },
+  "verification": [
+    "16 session tests passed, including transforms and selection-preserving operations",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "Matching1280 both, selected Xilem and1100 Xilem visually inspected",
+    "Repeat identical both; GPUI3028files and04hash unchanged"
+  ],
+  "gpui_font_files_fetched": 3028,
+  "coordinates_measurements": {
+    "field_inclusive_x_spans_both": [
+      [
+        1128,
+        1182
+      ],
+      [
+        1217,
+        1271
+      ]
+    ],
+    "field_border_y_xilem": [
+      134,
+      161,
+      166,
+      193
+    ],
+    "field_border_y_gpui": [
+      135,
+      162,
+      167,
+      194
+    ],
+    "picker_edge": 52,
+    "remaining": "Fields and picker are one pixel high; Transformations now starts one pixel low. Header and lower-section vertical spacing remain to reconcile."
+  }
+}

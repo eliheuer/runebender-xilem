@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Match the Coordinates inspector's boxed reference picker and balanced numeric fields.
+
 - Give glyph-grid tiles flat faces, crisp inside borders and a matching panel ground.
 
 - Show contour direction with a separate start arrow while preserving each

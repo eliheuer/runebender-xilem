@@ -646,3 +646,35 @@ matches the same older bundle reference hash. See [measurements and hashes](flat
 Next: inspector Coordinates geometry, Curves/Background spacing, and rail tab
 faces. Overview was checked for this shared paint change but still needs its
 own matched-state comparison before broader visual parity claims.
+
+
+## 2026-09-13 daytime: Coordinates picker and field geometry
+
+Coordinates now uses the reference's 52-pixel boxed nine-point picker, without
+connecting rules. The label widths, picker-to-field gap and paired-column gap
+leave equal numeric fields at the reference's horizontal positions. Inputs have
+an explicit standard control height. Existing quadrant buttons and coordinate
+editing callbacks remain in place.
+
+- [Xilem Coordinates, 1280 x 720](42-xilem-coordinates-gray.png)
+- [Selected point values](43-xilem-coordinates-selected-gray.png)
+- [Xilem at 1100 x 720](44-xilem-coordinates-1100-gray.png)
+- [Fresh GPUI reference](04-gpui-live-font-r-gray.png)
+
+Both input columns occupy x1128..1182 and x1217..1271, matching GPUI exactly.
+The field borders are one pixel above the reference (y134/161/166/193 versus
+135/162/167/194); Transformations starts one pixel below its prior position.
+Header and lower-group spacing still require a coordinated follow-up. These
+small vertical offsets are recorded rather than hidden by a whole-inspector
+padding change. The boxed picker follows the source before GPUI commit6e25392
+and the inspected older bundle; current GPUI source has a different picker.
+
+All matching, selected and narrow screenshots were inspected. Sixteen existing
+session tests passed, as did formatting, whitespace checks and workspace
+all-target Clippy. Repeated captures are byte-identical in both editors; GPUI
+loaded3028files and matches the saved reference hash. Native picker clicking
+and coordinate text entry were not exercised by these screenshot checks.
+See [measurements and hashes](coordinates-evidence.json).
+
+Next: reconcile inspector header and Curves/Background spacing, including the
+one-pixel Coordinates offset above; then rail tab faces and matched overview.
