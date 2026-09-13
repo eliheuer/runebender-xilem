@@ -1,0 +1,63 @@
+{
+  "recorded_utc": "2026-09-13T21:11:58.112895+00:00",
+  "gpui_main": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": "Existing older GPUI dist, headless WebGPU, 3028 font files; normal and overview captures equal saved 04 and 63 hashes",
+  "wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "captures": {
+    "66-xilem-search-controls-gray.png": "ee4a2049c5cb29e955e6dc82a992bfeacfdf440e884a7446e9b25eb286172c20",
+    "67-xilem-search-controls-overview-gray.png": "cb123dae0de892becb76395c99ea5eed3a62e527fb62f673e85b2175bef05eae",
+    "68-xilem-search-controls-1100-gray.png": "f0c877cd309e33cc8a8f6a24f48bf54d6f20ff71f384d1a6a34502d33474071d"
+  },
+  "editor_search_field_half_open_rect": [
+    8,
+    89,
+    154,
+    117
+  ],
+  "editor_toggle_half_open_rects": [
+    [
+      158,
+      89,
+      182,
+      117
+    ],
+    [
+      186,
+      89,
+      210,
+      117
+    ],
+    [
+      214,
+      89,
+      238,
+      117
+    ]
+  ],
+  "perimeter_pixel_mismatches": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "editor_change_bounds": [
+    0,
+    81,
+    246,
+    127
+  ],
+  "overview": "Same horizontal edges as GPUI, y82 vs reference y45 because Xilem has a navigation rail",
+  "validation": [
+    "5 grid tests passed",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "Overview, editor and narrow screenshots visually inspected"
+  ],
+  "thumbnail_finding": "Current GPUI cell_glyph_transform uses the same ink-centered calculation and 0.92 inset as Xilem fit_transform; GPUI commit6e25392 introduced this change. Preserve current behavior instead of restoring older baseline alignment solely for bundle screenshot parity.",
+  "limitations": [
+    "Reference bundle is older than GPUI main",
+    "Text rasterization remains different",
+    "No native GUI or live-font writes; active search semantics unchanged"
+  ]
+}

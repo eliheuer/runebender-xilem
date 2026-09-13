@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Give glyph search equal-width scope, regex and case toggles and align its editor row.
+
 - Fit complete overview tile rows above a compact footer and keep grid margins clear.
 
 - Make both side panels and the proof strip resizable by dragging their dividers.

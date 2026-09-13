@@ -101,6 +101,8 @@ pub(crate) const RAIL_TAB_ICON_RISE: f64 = 2.0;
 /// Initial proof drawing height, excluding its single top divider.
 /// Proof appearance controls live in the footer; text and shaping in the inspector.
 pub(crate) const PROOF_STRIP_HEIGHT: f64 = 140.0;
+/// Equal-width scope, regular-expression and case controls beside glyph search.
+pub(crate) const SEARCH_TOGGLE_WIDTH: f64 = 24.0;
 /// Width shared by the proof-blur and zoom sliders in the editor footer.
 pub(crate) const STATUS_SLIDER_WIDTH: f64 = 96.0;
 

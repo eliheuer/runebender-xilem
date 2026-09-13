@@ -846,3 +846,31 @@ The existing GPUI bundle is older than main. Remaining overview gaps include
 thumbnail ink scale/placement, fractional cell edges, search-control widths and
 sidebar spacing. Extra Xilem navigation and the native titlebar need considered
 treatment, rather than deleting features to match the older web reference.
+
+
+## 2026-09-13 daytime: glyph search controls
+
+Scope, regex and case toggles now share a24px width and28px height. Their
+inactive labels use the muted text token. Removing the editor search strip's
+extra surrounding frame leaves its bottom rule and aligns the controls with
+the reference. The editor field spans x8..154 and the three toggles span
+x158..182,186..210,214..238 (half-open), all at y89..117. Every perimeter
+pixel matches the reference for all four controls. The editor screenshot
+changes only within x0..246/y81..127; the canvas and inspector are unchanged.
+Overview horizontal edges also match; its extra navigation rail remains.
+
+- [Editor search](66-xilem-search-controls-gray.png)
+- [Overview search](67-xilem-search-controls-overview-gray.png)
+- [Narrow editor](68-xilem-search-controls-1100-gray.png)
+- [Measurements and provenance](search-controls-evidence.json)
+
+Five grid tests, formatting, whitespace and workspace all-target Clippy passed.
+All three captures were inspected. Fresh GPUI normal and overview captures are
+byte-identical to saved references04 and63.
+
+The initial thumbnail investigation found that current GPUI's
+`cell_glyph_transform` and Xilem's `fit_transform` both center visible ink and
+apply a0.92 inset. GPUI commit6e25392 introduced this behavior. The older
+reference bundle's baseline alignment and larger ink are not grounds to revert
+that shared behavior. This is source agreement, not a fresh-current-GPUI
+render certification. Next compare sidebar spacing or the node editor.

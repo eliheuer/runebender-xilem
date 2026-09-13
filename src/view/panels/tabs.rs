@@ -25,7 +25,25 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     // Search row: the field, then gpui's small scope and case toggles.
     let toggle = |text: String, active: bool, f: fn(&mut Workspace)| {
-        recipes::toggle(pal, text, active, move |app: &mut Workspace| f(app))
+        sized_box(
+            button(
+                label(text).text_size(TextSize::Body.px()).color(if active {
+                    pal.selected_ink()
+                } else {
+                    pal.text_muted
+                }),
+                move |app: &mut Workspace| f(app),
+            )
+            .padding(Space::None)
+            .background_color(if active { pal.selected_bg() } else { pal.panel })
+            .border_color(pal.outline)
+            .border_width(Stroke::Hairline.length())
+            .corner_radius(Radius::None.length()),
+        )
+        .dims(Dimensions::fixed(
+            Length::px(design::SEARCH_TOGGLE_WIDTH),
+            ControlSize::Control.length(),
+        ))
     };
     xrow(
         Region::Inline,
@@ -295,10 +313,13 @@ fn editor_glyph_rail(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         _ => None,
     };
     flex_col((
-        sized_box(glyph_search(app))
-            .padding(Space::Md)
-            .border_color(app.palette.outline)
-            .border_width(Stroke::Hairline.length()),
+        sized_box(glyph_search(app)).padding(Space::Md),
+        sized_box(label(""))
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::Fixed(Stroke::Hairline.length()),
+            ))
+            .background_color(app.palette.outline),
         grid(
             cells,
             app.rail_cell_metrics(),
