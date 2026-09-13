@@ -348,3 +348,40 @@ See [hashes and verification](inspector-grouping-evidence.json).
 Next: account for the missing inspector controls using existing core operations
 where available, then refine shared row spacing, typography, and Gray surfaces.
 Full native interaction/accessibility and deprecation readiness remain unproven.
+
+
+## 2026-09-12 overnight: functional stroke and curve-fit fields
+
+Stroke width and Fit curve % now invoke the existing core outline operations on
+Enter. Stroke width is positive finite font units and targets contours containing
+selected points, or all contours when selection is empty. Fit curve accepts
+1–150 percent of the tangent-intersection distance, changing handle lengths while
+retaining directions and selection. Both refuse a selected component and commands
+do not operate on an interpolated preview. No core implementation was duplicated.
+
+Successful changes flow through the existing session/document undo mechanism.
+Invalid values and unchanged fits create no undo record. Stroke expansion clears
+point selection because its output topology changes. The new fields use the same
+single-line inspector recipe and do not alter the font merely by typing.
+
+- [Xilem with both working fields, 1280 x 720](17-xilem-inspector-effects-gray.png)
+- [Xilem at 1100 x 720](18-xilem-inspector-effects-1100-gray.png)
+- [Freshly reverified GPUI reference](04-gpui-live-font-r-gray.png)
+
+The compared screenshots show both previously missing rows and their labels.
+They remain fully visible at 1100 pixels. Inspector boundaries are closer, but
+row spacing, parameter defaults, field borders, and extra transform icons still
+differ. The GPUI bundle shows Fit curve %, although its current source has since
+removed that field; the existing core operation supplies the Xilem behavior.
+
+Verification: 15 session tests and two command tests passed. New tests cover
+selected versus all-contour stroke expansion, selected versus all-curve fitting,
+invalid/nonfinite values, unchanged fits, retained selection, undo snapshots,
+document undo/redo, and an unchanged disposable UFO on disk. Formatting, diff
+whitespace checks, and workspace all-target Clippy with warnings denied passed.
+Fresh real-font captures repeated byte-identically in both editors. See
+[artifact hashes and validation](inspector-effects-evidence.json).
+
+Next: remaining transform icons and shared inspector spacing/Gray surface
+polish. Screenshots and disposable-font tests do not establish native IME,
+accessibility, GPU/platform parity, or readiness to retire GPUI.

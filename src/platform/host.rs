@@ -284,6 +284,8 @@ impl Workspace {
             coord_w_buf: String::new(),
             coord_h_buf: String::new(),
             slant_buf: String::new(),
+            stroke_buf: String::new(),
+            fit_curve_buf: String::new(),
             offset_buf: String::new(),
             extrude_buf: String::new(),
             roughen_buf: String::new(),

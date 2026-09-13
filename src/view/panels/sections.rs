@@ -411,6 +411,16 @@ fn path_operations_controls(app: &Workspace) -> impl WidgetView<Workspace> + use
             ),
             transform_parameter(
                 app,
+                "Stroke width",
+                app.stroke_buf.clone(),
+                |app, value| app.stroke_buf = value,
+                |app, value| {
+                    app.stroke_buf = value;
+                    app.command_expand_stroke();
+                },
+            ),
+            transform_parameter(
+                app,
                 "Offset ±",
                 app.offset_buf.clone(),
                 |app, value| app.offset_buf = value,
@@ -665,6 +675,18 @@ pub(crate) fn curves_section(app: &Workspace) -> impl WidgetView<Workspace> + us
                             },
                         ),
                     ),
+                )
+            }),
+            (!app.collapsed.contains("Curves")).then(|| {
+                transform_parameter(
+                    app,
+                    "Fit curve %",
+                    app.fit_curve_buf.clone(),
+                    |app, value| app.fit_curve_buf = value,
+                    |app, value| {
+                        app.fit_curve_buf = value;
+                        app.command_fit_curve();
+                    },
                 )
             }),
         ),

@@ -746,6 +746,35 @@ impl Session {
         true
     }
 
+    /// Expand selected contours (or all contours) under one undo record.
+    pub(crate) fn expand_stroke(&mut self, width: f64) -> bool {
+        if !width.is_finite() || width <= 0.0 || self.selected_component.is_some() {
+            return false;
+        }
+        let contours = self.selection.iter().map(|(contour, _)| *contour).collect();
+        self.effect(|glyph| {
+            runebender_core::outline::effects::expand_stroke_contours(glyph, &contours, width)
+        })
+    }
+
+    /// Fit selected curve handles while retaining their point selection.
+    pub(crate) fn fit_curve(&mut self, percent: f64) -> bool {
+        if !(1.0..=150.0).contains(&percent) || self.selected_component.is_some() {
+            return false;
+        }
+        let mut changed = self.glyph.clone();
+        if !runebender_core::outline::cleanup::fit_curve_handles(
+            &mut changed,
+            &self.selection,
+            percent / 100.0,
+        ) {
+            return false;
+        }
+        self.record(EditType::Normal);
+        self.glyph = changed;
+        true
+    }
+
     pub(crate) fn offset(&mut self, delta: f64) -> bool {
         self.effect(|glyph| runebender_core::outline::effects::offset_glyph_contours(glyph, delta))
     }
@@ -1914,6 +1943,67 @@ mod tests {
         let mut rough = two_squares();
         assert!(rough.roughen(10.0, 4.0, 4.0, 7));
         assert_eq!(rough.pending.len(), 1);
+    }
+
+    #[test]
+    fn stroke_expansion_targets_selected_contours_and_records_the_original() {
+        let mut session = two_squares();
+        let original = session.glyph.contours.clone();
+        for width in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(!session.expand_stroke(width));
+        }
+        assert!(session.pending.is_empty());
+        session.selection.insert((0, 0));
+        assert!(session.expand_stroke(20.0));
+        assert_eq!(session.glyph.contours.last(), original.last());
+        assert_ne!(session.glyph.contours, original);
+        assert!(session.selection.is_empty());
+        assert_eq!(session.pending.len(), 1);
+        let HistoryOp::Record(before) = &session.pending[0] else {
+            panic!("undo snapshot");
+        };
+        assert_eq!(before.contours, original);
+        let mut all = two_squares();
+        assert!(all.expand_stroke(20.0));
+        assert!(all.glyph.contours.len() > original.len());
+    }
+
+    #[test]
+    fn curve_fitting_keeps_selection_and_ignores_invalid_or_unchanged_edits() {
+        use norad::{Contour, ContourPoint, PointType};
+        let curve = |offset| {
+            Contour::new(
+                vec![
+                    ContourPoint::new(offset, 0.0, PointType::Move, false, None, None),
+                    ContourPoint::new(offset, 10.0, PointType::OffCurve, false, None, None),
+                    ContourPoint::new(offset + 50.0, 100.0, PointType::OffCurve, false, None, None),
+                    ContourPoint::new(offset + 100.0, 100.0, PointType::Curve, false, None, None),
+                ],
+                None,
+            )
+        };
+        let mut session = two_squares();
+        session.glyph.contours = vec![curve(0.0), curve(200.0)];
+        let original = session.glyph.contours.clone();
+        session.selection.insert((0, 1));
+        for percent in [0.0, -1.0, 151.0, f64::NAN, f64::INFINITY] {
+            assert!(!session.fit_curve(percent));
+        }
+        assert!(session.pending.is_empty());
+        assert!(session.fit_curve(50.0));
+        assert_eq!(session.glyph.contours[0].points[1].y, 50.0);
+        assert_eq!(session.glyph.contours[1], original[1]);
+        assert!(session.selection.contains(&(0, 1)));
+        assert_eq!(session.pending.len(), 1);
+        let HistoryOp::Record(before) = &session.pending[0] else {
+            panic!("undo snapshot");
+        };
+        assert_eq!(before.contours, original);
+        assert!(!session.fit_curve(50.0));
+        assert_eq!(session.pending.len(), 1);
+        session.selection.clear();
+        assert!(session.fit_curve(60.0));
+        assert_eq!(session.glyph.contours[1].points[1].y, 60.0);
     }
 
     #[test]

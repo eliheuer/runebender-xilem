@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Add working Stroke width and Fit curve % inspector fields. Enter applies the
+  core operation to the selection (or all contours/curves), with undo; invalid
+  values and unchanged fits leave the document untouched.
+
 - Keep path operations visible with Transformations, with single-line parameter
   fields and Add extremes. Put Glyph first in the inspector, show selection
   status in Coordinates, and open Background by default.
