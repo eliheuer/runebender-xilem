@@ -2,7 +2,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require('playwright');
-// Usage: NODE_PATH=<playwright modules> node capture-gpui.cjs <dist> <font server URL> <output dir> <chromium executable> [--overview-inspector]
+// Usage: NODE_PATH=<playwright modules> node capture-gpui.cjs <dist> <font server URL> <output dir> <chromium executable> [--overview-inspector | --font-info | --dimensions]
 const [dist, fontServer, output, executablePath, captureMode] = process.argv.slice(2);
 if (!dist || !fontServer || !output || !executablePath) throw new Error('Expected dist, font server URL, output dir, and Chromium executable');
 const root=path.resolve(dist);
@@ -26,6 +26,16 @@ fs.mkdirSync(output,{recursive:true});
  console.log('font files fetched:',gets);
  await page.mouse.move(1279,719);
  await page.screenshot({path:path.join(output,'gpui-overview-gray.png')});
+ if(captureMode === '--font-info' || captureMode === '--dimensions') {
+  await page.mouse.click(1100,359); // Fold Masters to match the native capture.
+  await page.mouse.click(1100,captureMode === '--font-info' ? 87 : 121);
+  await page.mouse.move(1279,719);
+  await page.waitForTimeout(500);
+  const name=captureMode === '--font-info' ? 'font-info' : 'dimensions';
+  await page.screenshot({path:path.join(output,'gpui-'+name+'-gray.png')});
+  await browser.close();await new Promise(r=>server.close(r));
+  return;
+ }
  if(captureMode === '--overview-inspector') {
   await page.mouse.click(1100,359); // Match Xilem's folded Masters section.
   await page.mouse.click(75,59);

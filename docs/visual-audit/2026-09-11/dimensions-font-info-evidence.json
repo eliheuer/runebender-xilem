@@ -1,0 +1,62 @@
+{
+  "recorded_utc": "2026-09-13T22:29:05.061872+00:00",
+  "gpui_main": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": "Existing older GPUI dist, not a fresh main build; 3028 font files; Dimensions repeats identical",
+  "wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "captures": {
+    "79-gpui-font-info-gray.png": "8ab5eb8168ee42f7f361bdb7a84ea40aa1476486c16c8345f7057975b86a7ff5",
+    "80-xilem-font-info-gray.png": "c8e42adae3d537dd02557102eb5b59bce1f2d22ba6b1c2f84d9e4a82e9b56640",
+    "81-gpui-dimensions-gray.png": "7f362741f60feb2424a8f909071eb28d02f27a55901259eaa15be438cb6ba617",
+    "82-xilem-dimensions-before-gray.png": "e06b24dbed811631b64e76849c6c7a299b591eb09041fe8af4da2d596e410649",
+    "83-xilem-dimensions-gray.png": "4dc9404047ece959fa634c45fc85170374239d155cdda8a24df424273d53d1fb",
+    "84-xilem-dimensions-1100-gray.png": "16f3b0dea7897d379a52d194b437e3112136d07e0c1cd9a597ca0b87e880471b"
+  },
+  "measurements": {
+    "gpui_dimensions_bottom_y": 255,
+    "xilem_before_bottom_y": 236,
+    "xilem_after_bottom_y": 256,
+    "native_header_offset": 1,
+    "row_height": 21,
+    "row_gap": 2,
+    "column_gap": 8,
+    "readings": {
+      "H": [
+        100,
+        96
+      ],
+      "O": [
+        102,
+        96
+      ],
+      "n": [
+        96,
+        82
+      ],
+      "o": [
+        98,
+        84
+      ],
+      "t": [
+        96,
+        88
+      ]
+    }
+  },
+  "validation": [
+    "2 core dimension measurement tests passed",
+    "1 application dimension undo test passed",
+    "1280 and 1100 screenshots visually inspected",
+    "Editor byte-identical to reference66",
+    "GPUI Dimensions repeat SHA256 identical",
+    "Helper JavaScript syntax check passed",
+    "cargo fmt --check passed",
+    "git diff --check passed",
+    "cargo clippy --workspace --all-targets -- -D warnings passed"
+  ],
+  "limits": [
+    "Font info remains eight read-only values in Xilem; GPUI has editable names and paired numeric fields. E07 remains missing.",
+    "Comparison concerns font-wide panels; Xilem default A selection and preview remain outside that scope",
+    "Only Dimensions layout changed; Font info editing is not implemented by this pass",
+    "No foreground GUI or live-font save"
+  ]
+}

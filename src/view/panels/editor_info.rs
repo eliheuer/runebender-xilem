@@ -14,7 +14,11 @@ use crate::*;
 
 /// A folding section header with its body, the way `info.rs` builds
 /// the Glyph section.
-fn section<V>(app: &Workspace, title: &'static str, body: V) -> impl WidgetView<Workspace> + use<V>
+fn section<V>(
+    app: &Workspace,
+    title: &'static str,
+    body: V,
+) -> impl WidgetView<Workspace, Widget = masonry::widgets::Flex> + use<V>
 where
     V: WidgetView<Workspace> + 'static,
 {
@@ -100,19 +104,26 @@ pub(crate) fn dimensions_section(app: &Workspace) -> impl WidgetView<Workspace> 
             if stem.is_none() && bar.is_none() {
                 return None;
             }
-            Some(xrow(
-                Region::Inline,
-                (
-                    sized_box(label(*name).text_size(TextSize::Body.px()).color(pal.text))
-                        .dims(Dimensions::new(Dim::Fixed(Length::px(16.0)), Dim::Auto)),
-                    label(format!("stem {}", fmt(stem)))
-                        .text_size(TextSize::Body.px())
-                        .color(pal.text_muted),
-                    label(format!("bar {}", fmt(bar)))
-                        .text_size(TextSize::Body.px())
-                        .color(pal.text_muted),
-                ),
-            ))
+            Some(
+                xrow(
+                    Region::Inline,
+                    (
+                        sized_box(label(*name).text_size(TextSize::Body.px()).color(pal.text))
+                            .dims(Dimensions::new(
+                                Dim::Fixed(Length::px(design::DIMENSIONS_GLYPH_LABEL_WIDTH)),
+                                Dim::Auto,
+                            )),
+                        label(format!("stem {}", fmt(stem)))
+                            .text_size(TextSize::Body.px())
+                            .color(pal.text_muted),
+                        label(format!("bar {}", fmt(bar)))
+                            .text_size(TextSize::Body.px())
+                            .color(pal.text_muted),
+                    ),
+                )
+                .gap(Space::Md)
+                .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row))),
+            )
         })
         .collect();
     let empty = rows.is_empty().then(|| {
@@ -125,6 +136,7 @@ pub(crate) fn dimensions_section(app: &Workspace) -> impl WidgetView<Workspace> 
         "Dimensions",
         xcolumn(Region::List, (xcolumn(Region::List, rows), empty)),
     )
+    .gap(Space::Sm)
 }
 
 /// Kerning: a filter, an editor row (first, second, value; Enter

@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Align the Dimensions readout row heights and column spacing.
+
 - Show the active master and align existing overview glyph identity fields.
 
 - Align sidebar counts, selected-row borders and compact filter rows.

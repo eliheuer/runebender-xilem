@@ -116,6 +116,9 @@ pub(crate) const TRANSFORM_CONTROLS_GAP: f64 = 6.0;
 /// Shared label width for the inspector's single-line transformation parameters.
 pub(crate) const TRANSFORM_LABEL_WIDTH: f64 = 88.0;
 
+/// Reference glyph label column in the Dimensions readout.
+pub(crate) const DIMENSIONS_GLYPH_LABEL_WIDTH: f64 = 16.0;
+
 /// Compact master and other read-only facts in the overview glyph inspector.
 pub(crate) const GLYPH_FACT_ROW_HEIGHT: f64 = 18.0;
 

@@ -986,3 +986,35 @@ and helper syntax checks passed. Both inspector sizes were visually inspected.
 The glyph editor is byte-identical to66. No live font was saved or foreground
 GUI launched. These changes align existing controls; they do not complete the
 overview inspector's behavior.
+
+
+## 2026-09-13 daytime: Dimensions readout and Font info baseline
+
+Font info comparison confirms E07: Xilem displays eight read-only values while
+GPUI offers editable family/style names and paired numeric fields. That needs
+per-master editing, history and cache refresh, not styling read-only values to
+imply they are inputs. Font info is recorded as a baseline and unchanged.
+
+Dimensions reports the same readings in both applications. Xilem now gives each
+row a21px line box, a2px row gap and8px column gaps, with4px after the section
+header. The section ends at y256 versus GPUI y255, matching after the native
+header offset; before it ended at236. The section helper exposes its actual
+Flex widget type so only this section's spacing is overridden. Other sections
+retain their existing layout.
+
+- [GPUI Font info](79-gpui-font-info-gray.png)
+- [Xilem Font info baseline](80-xilem-font-info-gray.png)
+- [GPUI Dimensions](81-gpui-dimensions-gray.png)
+- [Xilem Dimensions before](82-xilem-dimensions-before-gray.png)
+- [Aligned Dimensions](83-xilem-dimensions-gray.png)
+- [Narrow Dimensions](84-xilem-dimensions-1100-gray.png)
+- [Measurements and limitations](dimensions-font-info-evidence.json)
+
+The helper adds optional `--font-info` and `--dimensions` modes. The Dimensions
+reference repeats byte-for-byte. Both Xilem sizes were inspected; normal editor
+output is byte-identical to66. Two core measurement tests and the application
+dimension/undo regression passed. No foreground GUI, graph run or live-font save
+occurred. These font-wide panels do not depend on the different default glyph
+selection/preview elsewhere in the window.
+
+Formatting, whitespace and workspace all-target Clippy checks also passed.
