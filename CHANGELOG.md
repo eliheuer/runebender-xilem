@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Match Background control rows and inspector field alignment; the Background toggle
+  now reflects the visibility setting even when the current glyph has no background.
+
 - Align inspector group dividers, coordinate rows and curve controls with the reference.
 
 - Match the Coordinates inspector's boxed reference picker and balanced numeric fields.

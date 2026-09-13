@@ -1,0 +1,78 @@
+{
+  "recorded_utc": "2026-09-13T20:11:17.340237+00:00",
+  "xilem_parent": "01297bb",
+  "capture_size": [
+    1280,
+    720
+  ],
+  "narrow_capture_size": [
+    1100,
+    720
+  ],
+  "theme": "gray",
+  "glyph": "R",
+  "proof_text": "R",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "gpui_reference_note": "Existing dist bundle used without rebuilding or modifying the reference; bundle hash identifies the artifact independently of checkout HEAD.",
+  "gpui_wasm_sha256": "d6459a705c8fd3f3ef0b2b7b1ca90c9bf4a5ef66e0d56d5079d21bee86563846",
+  "font_source_sha256": {
+    "VirtuaGrotesk.designspace": "0ac18f6e0827af3949a36b3c7043f22a50613948bcc8e8193f268f21539fedf3",
+    "VirtuaGrotesk-Bold.ufo/fontinfo.plist": "67981ebbc42195b62ce392c555c107724904737c79c83f8455ad68d847119bbb",
+    "VirtuaGrotesk-Bold.ufo/glyphs/R_.glif": "bb84cd52b528fbf6bd8632382c903f1b3ef2b6095206f7149f787e3b8ccadad4",
+    "VirtuaGrotesk-Regular.ufo/fontinfo.plist": "6cb32c37263cb5fe9679239b09f75e0124419176ed583b07dc2a48415621cf61",
+    "VirtuaGrotesk-Regular.ufo/glyphs/R_.glif": "ee9a24d4fb41d245e4f421dc8c35286d5befffb850833ef9cd63a96ee0895301"
+  },
+  "capture_sha256": {
+    "49-xilem-background-gray.png": "e800b94604d28467be2a81bb05c9fd2b586c026cf577cd6a40a9a5d10f68c52c",
+    "50-xilem-background-folded-gray.png": "5cc2921bec1346dccfc370ccf2f22373390d25f2ae1afeb9a6f0cdf2401734af",
+    "51-xilem-background-1100-gray.png": "e22e65535cc33215760e5ce64567cabc5382ae6f3c992829ce5b58efca64e160",
+    "52-gpui-background-folded-gray.png": "e9590355ad8dc546236a39fd02d0946a7c611a5e4c86f200a8bc1dc9d5c96ef8",
+    "53-xilem-background-off-gray.png": "25a502e3cbe49a6d2636ad4368a9280fc70f0c9e6e7b16e81ab77408d5efc344",
+    "04-gpui-live-font-r-gray.png": "5d89a4060eb4b4c1cc1a2bb830474ba994fe5c53359bb63831fa08db7743eff9"
+  },
+  "repeat_captures_byte_identical": {
+    "xilem": true,
+    "gpui": true
+  },
+  "verification": [
+    "2 existing edit command tests passed including inspector operations and metric reference keys",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "Matched Background-on1280 normal/folded,1100folded and Xilemoff state visually inspected",
+    "Normal repeats identical both; GPUI3028files and04hash unchanged; helper now also captures folded view"
+  ],
+  "gpui_font_files_fetched": 3028,
+  "background_enabled": true,
+  "background_measurements": {
+    "folded_button_row_y_both": [
+      [
+        365,
+        392
+      ],
+      [
+        397,
+        424
+      ],
+      [
+        429,
+        456
+      ]
+    ],
+    "reference_field_border_y_both": [
+      461,
+      488
+    ],
+    "reference_field_x_both": [
+      1134,
+      1271
+    ],
+    "inspector_field_start_x_both": 1134,
+    "enabled_toggle_fill_rgb_both": [
+      64,
+      64,
+      64
+    ],
+    "remaining": "Enabled toggle keyline and text rasterization still differ. Lower Color/Shaping groups have different folded defaults; they are outside this matched Background comparison."
+  }
+}

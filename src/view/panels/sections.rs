@@ -802,12 +802,6 @@ pub(crate) fn measure_section(app: &Workspace) -> impl WidgetView<Workspace> + u
 /// selected.
 pub(crate) fn background_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    let has_background = app
-        .font
-        .background_contours(&app.session.glyph_name)
-        .is_some();
-    let show = app.show_background;
-    let show_mark_cloud = app.show_mark_cloud;
     xcolumn(
         Region::Section,
         (
@@ -822,57 +816,76 @@ pub(crate) fn background_section(app: &Workspace) -> impl WidgetView<Workspace> 
                 },
             ),
             (!app.collapsed.contains("Background")).then(|| {
-                // Two rows: four chips on one row are wider than the
-                // inspector and push every section past its edge.
                 xcolumn(
-                    Region::List,
+                    Region::Inline,
                     (
                         xrow(
                             Region::Inline,
                             (
                                 recipes::toggle(
                                     pal,
-                                    "Show".into(),
-                                    show && has_background,
+                                    "Background".into(),
+                                    app.show_background,
                                     |app: &mut Workspace| {
                                         app.show_background = !app.show_background;
                                     },
-                                ),
+                                )
+                                .flex(1.0),
                                 recipes::toggle(
                                     pal,
                                     "Mark cloud".into(),
-                                    show_mark_cloud,
+                                    app.show_mark_cloud,
                                     |app: &mut Workspace| {
                                         app.show_mark_cloud = !app.show_mark_cloud;
                                     },
-                                ),
-                                recipes::action(pal, "Send".into(), |app: &mut Workspace| {
-                                    app.send_to_background();
-                                }),
+                                )
+                                .flex(1.0),
                             ),
+                        ),
+                        xrow(
+                            Region::Inline,
+                            (recipes::action(
+                                pal,
+                                "Send to background".into(),
+                                |app: &mut Workspace| {
+                                    app.send_to_background();
+                                },
+                            )
+                            .flex(1.0),),
                         ),
                         xrow(
                             Region::Inline,
                             (
                                 recipes::action(pal, "Swap".into(), |app: &mut Workspace| {
                                     app.swap_background();
-                                }),
+                                })
+                                .flex(1.0),
                                 recipes::action(pal, "Clear".into(), |app: &mut Workspace| {
                                     app.clear_background();
-                                }),
+                                })
+                                .flex(1.0),
+                            ),
+                        ),
+                        xrow(
+                            Region::Inline,
+                            (
+                                sized_box(label("Reference").color(pal.text_muted)).dims(
+                                    Dimensions::new(
+                                        Dim::Fixed(Length::px(design::TRANSFORM_LABEL_WIDTH)),
+                                        Dim::Auto,
+                                    ),
+                                ),
+                                recipes::field_bare(
+                                    pal,
+                                    "glyph name",
+                                    app.reference_buf.clone(),
+                                    |app, value| app.reference_buf = value,
+                                    |app, value| app.reference_buf = value,
+                                )
+                                .flex(1.0),
                             ),
                         ),
                     ),
-                )
-            }),
-            (!app.collapsed.contains("Background")).then(|| {
-                recipes::field(
-                    pal,
-                    "Reference glyph",
-                    app.reference_buf.clone(),
-                    |app: &mut Workspace, v| {
-                        app.reference_buf = v;
-                    },
                 )
             }),
         ),

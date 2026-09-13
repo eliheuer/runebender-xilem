@@ -709,3 +709,36 @@ See [measurements and hashes](inspector-spacing-evidence.json).
 Next: Background button composition, inspector input styling and rail tab faces.
 Overview still needs a separate matched-state GPUI audit; this pass checks the
 shared group inset there, without claiming whole-overview parity.
+
+
+## 2026-09-13 daytime: Background controls and aligned fields
+
+Background now has two equal-width visibility toggles, a full-width Send to
+background action, paired Swap/Clear actions and an inline Reference field with
+a glyph-name placeholder. The toggle reflects the visibility setting independently
+of whether the current glyph contains a background. Existing actions remain.
+The shared inspector label width is now88px, aligning transformation, curve and
+Reference inputs at x1134 in the 1280px view.
+
+- [Xilem, Background enabled](49-xilem-background-gray.png)
+- [Full Background section with Transformations folded](50-xilem-background-folded-gray.png)
+- [Narrow folded view](51-xilem-background-1100-gray.png)
+- [Matched folded GPUI reference](52-gpui-background-folded-gray.png)
+- [Xilem Background disabled](53-xilem-background-off-gray.png)
+
+The folded button rows match y365..392,397..424,429..456; the Reference input
+matches x1134..1271/y461..488. Enabled toggle fill is RGB64 in both. Its keyline
+and text rasterization still differ. Use RUNEBENDER_BACKGROUND=1 to match the
+reference's enabled setting; Xilem's default remains off. Color and Shaping
+have different folded defaults below this section and are outside this comparison.
+
+Two existing command tests, formatting, whitespace checks and workspace all-target
+Clippy passed. Normal, folded, narrow and off-state views were inspected. Normal
+repeat captures are byte-identical in both editors. GPUI loaded3028files and
+matches the same older-bundle reference hash. The capture helper now saves the
+folded view after capturing the normal view. No live font was edited or saved;
+the screenshots do not exercise native background action clicks.
+See [measurements and hashes](background-controls-evidence.json).
+
+Next: active toggle keylines, inspector input styling and rail tab faces, then
+matched overview and node-editor views.
