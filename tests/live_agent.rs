@@ -3,7 +3,7 @@
 
 //! The real CLI and MCP adapters read an unsaved, editor-owned project.
 
-#![cfg(all(unix, feature = "cli"))]
+#![cfg(unix)]
 
 use runebender_core::document::{live, live_socket::Server, project::Project};
 use serde_json::{Value, json};
@@ -40,7 +40,7 @@ fn cli_and_mcp_share_one_unsaved_authorized_document() {
             }
         }
     });
-    let output = Command::new(env!("CARGO_BIN_EXE_runebender-core"))
+    let output = Command::new(env!("CARGO_BIN_EXE_runebender"))
         .args(["agent", "call", "read_glyph", "--session"])
         .arg(&path)
         .args(["--args", r#"{"glyph":"live_test"}"#])
@@ -55,7 +55,7 @@ fn cli_and_mcp_share_one_unsaved_authorized_document() {
     assert_eq!(value["result"]["advance"], 731.0);
     let revision = value["result"]["revision"].clone();
 
-    let mut mcp = Command::new(env!("CARGO_BIN_EXE_runebender-core"))
+    let mut mcp = Command::new(env!("CARGO_BIN_EXE_runebender"))
         .args(["mcp", "--live"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

@@ -15,7 +15,7 @@ use runebender_core::document::proposal;
 fn fixture() -> PathBuf {
     let dir = match std::env::var_os("RUNEBENDER_TEST_FONTS") {
         Some(dir) => PathBuf::from(dir),
-        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../virtua-grotesk/sources"),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../virtua-grotesk/sources"),
     };
     let ufo = dir.join("VirtuaGrotesk-Regular.ufo");
     assert!(
@@ -68,7 +68,7 @@ fn scratch_ufo() -> (Scratch, PathBuf) {
 }
 
 fn run(args: &[&str]) -> (i32, serde_json::Value) {
-    let output = Command::new(env!("CARGO_BIN_EXE_runebender-core"))
+    let output = Command::new(env!("CARGO_BIN_EXE_runebender"))
         .arg("--json")
         .args(args)
         .output()
@@ -176,7 +176,7 @@ fn proposals_list_install_and_discard_through_the_binary() {
 #[test]
 fn propose_without_font_ml_says_so_with_code_3() {
     let (_dir, ufo) = scratch_ufo();
-    let output = Command::new(env!("CARGO_BIN_EXE_runebender-core"))
+    let output = Command::new(env!("CARGO_BIN_EXE_runebender"))
         .args(["--json", "propose", "bolden", ufo.to_str().expect("utf8")])
         .env("RUNEBENDER_FONT_ML", "")
         .env("PATH", "/nonexistent")
@@ -440,7 +440,7 @@ fn nodes_run_runs_core_nodes_and_skips_them_the_second_time() {
 /// line in, one per line out.
 fn mcp_session(font: &Path, tool: &Path, requests: &[serde_json::Value]) -> Vec<serde_json::Value> {
     use std::io::{BufRead as _, BufReader, Write as _};
-    let mut child = Command::new(env!("CARGO_BIN_EXE_runebender-core"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_runebender"))
         .arg("mcp")
         .arg("--font")
         .arg(font)
@@ -493,7 +493,7 @@ fn mcp_lists_the_agent_tools_and_calls_them() {
     assert_eq!(replies.len(), 5);
     let init = &replies[0]["result"];
     assert_eq!(init["protocolVersion"], "2024-11-05");
-    assert_eq!(init["serverInfo"]["name"], "runebender-core");
+    assert_eq!(init["serverInfo"]["name"], "runebender");
     assert!(
         init["instructions"]
             .as_str()
@@ -752,4 +752,24 @@ fn family_requires_explicit_master_and_reports_sources() {
     assert_eq!(read["ok"], true, "{read}");
     assert_eq!(read["result"]["master"], 1);
     assert_eq!(read["result"]["source"], second.to_str().unwrap());
+}
+
+#[test]
+fn help_version_and_invalid_arguments_finish_without_a_window() {
+    for args in [vec!["--help"], vec!["--version"], vec!["info", "--help"]] {
+        let output = Command::new(env!("CARGO_BIN_EXE_runebender"))
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).contains("runebender"));
+    }
+    let (code, value) = run(&[]);
+    assert_eq!(code, 2);
+    assert_eq!(value["ok"], false);
+    let output = Command::new(env!("CARGO_BIN_EXE_runebender"))
+        .args(["--unknown-option"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
 }

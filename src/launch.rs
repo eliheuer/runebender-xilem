@@ -5,9 +5,11 @@
 
 use crate::*;
 
-pub(crate) fn run(event_loop: EventLoopBuilder) -> Result<(), EventLoopError> {
-    let path = std::env::args().nth(1);
-    let mut app = AppState::open(path.as_deref().map(FsPath::new));
+pub(crate) fn run(
+    event_loop: EventLoopBuilder,
+    path: Option<&FsPath>,
+) -> Result<(), EventLoopError> {
+    let mut app = AppState::open(path);
     // RUNEBENDER_GLYPH=<name> starts in the editor on that glyph, so
     // a headless screenshot reaches edit mode without clicks.
     if let Ok(name) = std::env::var("RUNEBENDER_GLYPH")

@@ -2,15 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The font library behind the Runebender font editor, with no
-//! interface attached. The editors share it, and the `runebender-core`
-//! binary in `src/bin` runs the same operations from a shell.
+//! interface attached. The `runebender` application uses it for both
+//! its editor and headless subcommands.
 //!
 //! One rule decides what belongs here: if an operation changes a font,
 //! or reads one to answer a question, it lives in this crate. The
-//! front-ends (runebender-gpui, runebender-xilem) own the window, the
-//! input, and the drawing, and call this crate for everything else.
-//! The `runebender-core` binary in `src/bin` exposes the same operations
-//! on the command line, editing ones included.
+//! application owns the window, input, drawing, and command-line parsing,
+//! and calls this crate for font operations.
 //!
 //! The in-memory font is `norad::Font`. Every function here takes
 //! norad types, or kurbo geometry, and returns the same. The

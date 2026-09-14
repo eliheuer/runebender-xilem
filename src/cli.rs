@@ -52,19 +52,24 @@ fn open(path: &Path, json: bool) -> Result<Font, i32> {
 
 #[derive(Parser)]
 #[command(
-    name = "runebender-core",
-    about = "Font operations from a shell",
-    long_about = "Font operations from a shell.\n\nThe same code the \
-                  Runebender editor runs, without a window.\n\n\
-                  Every command takes --json. Exit codes: 0 ok, \
-                  2 usage, 4 failed."
+    name = "runebender",
+    version,
+    subcommand_precedence_over_arg = true,
+    about = "Runebender font editor and headless font tools",
+    long_about = "Runebender font editor and headless font tools.\n\nOpen the editor with no \
+                  arguments, or pass a UFO or designspace path. Subcommands run without \
+                  opening a window.\n\nUse --json for machine-readable output. \
+                  Exit codes: 0 ok, 2 usage, 3 not built, 4 failed."
 )]
 struct Cli {
     /// Machine-readable output.
     #[arg(long, global = true)]
     json: bool,
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
+    /// A UFO or designspace to open in the editor.
+    #[arg(exclusive = true)]
+    font: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -317,10 +322,60 @@ enum ProposalAction {
     },
 }
 
-fn main() -> std::process::ExitCode {
-    let cli = Cli::parse();
+/// Startup either opens the editor or completes a headless command.
+#[derive(Debug)]
+pub(crate) enum Startup {
+    Editor(Option<PathBuf>),
+    Exit(std::process::ExitCode),
+}
+
+/// Reject mixed editor paths and headless commands without restricting global flags.
+fn parse_args<I, T>(args: I) -> Result<Cli, clap::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    use clap::CommandFactory as _;
+    let cli = Cli::try_parse_from(args)?;
+    if cli.font.is_some() && cli.command.is_some() {
+        return Err(Cli::command().error(
+            clap::error::ErrorKind::ArgumentConflict,
+            "Use either an editor font path or a headless subcommand",
+        ));
+    }
+    Ok(cli)
+}
+
+/// Parse arguments and finish headless work before any window setup.
+pub(crate) fn run() -> Startup {
+    let cli = match parse_args(std::env::args_os()) {
+        Ok(cli) => cli,
+        Err(error) => {
+            let _ = error.print();
+            return Startup::Exit(std::process::ExitCode::from(
+                u8::try_from(error.exit_code()).unwrap_or(1),
+            ));
+        }
+    };
     let json = cli.json;
-    let code = match &cli.command {
+    let Some(command) = cli.command else {
+        if json {
+            let _ = fail(true, exit::USAGE, "--json requires a headless subcommand");
+            return Startup::Exit(std::process::ExitCode::from(2));
+        }
+        if let Some(path) = &cli.font
+            && !path.exists()
+        {
+            let _ = fail(
+                false,
+                exit::USAGE,
+                &format!("{}: font path does not exist", path.display()),
+            );
+            return Startup::Exit(std::process::ExitCode::from(2));
+        }
+        return Startup::Editor(cli.font);
+    };
+    let code = match &command {
         Command::Info { source, glyphs } => info(source, *glyphs, json),
         Command::Proof {
             source,
@@ -476,7 +531,9 @@ fn main() -> std::process::ExitCode {
             json,
         ),
     };
-    std::process::ExitCode::from(u8::try_from(code).unwrap_or(1))
+    Startup::Exit(std::process::ExitCode::from(
+        u8::try_from(code).unwrap_or(1),
+    ))
 }
 
 /// Loads one UFO as a `Master`, reporting a bad path as a usage error.
@@ -1098,7 +1155,7 @@ fn project_info(font: &Path) -> serde_json::Value {
 /// it printed. Every tool is a command the binary already has, so the
 /// model's reach is exactly the command line's.
 fn self_json(args: &[String]) -> serde_json::Value {
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("runebender-core"));
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("runebender"));
     let output = std::process::Command::new(exe).args(args).output();
     match output {
         Ok(o) => {
@@ -1549,7 +1606,7 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
                     "protocolVersion": version,
                     "capabilities": { "tools": {} },
                     "serverInfo": {
-                        "name": "runebender-core",
+                        "name": "runebender",
                         "version": env!("CARGO_PKG_VERSION"),
                     },
                     "instructions": if live_mode { "Live unsaved editor documents. Use editor_sessions then editor_connect if not connected. Verify the project and choose an explicit master. Read glyphs before proposing; only the designer installs proposals. Do not save font files. When multiple editors are open, choose the project the user requested. A closed endpoint never reconnects automatically.".into() } else { mcp_instructions(font.expect("font or session")) },
@@ -2124,5 +2181,29 @@ mod tests {
     fn the_cli_parses() {
         use clap::CommandFactory;
         Cli::command().debug_assert();
+    }
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+
+    #[test]
+    fn editor_paths_and_subcommands_are_unambiguous() {
+        let empty = parse_args(["runebender"]).unwrap();
+        assert!(empty.command.is_none());
+        assert!(empty.font.is_none());
+        let font = parse_args(["runebender", "My Font.designspace"]).unwrap();
+        assert_eq!(font.font.as_deref(), Some(Path::new("My Font.designspace")));
+        assert!(font.command.is_none());
+        let info = parse_args(["runebender", "info", "Font.ufo", "--json"]).unwrap();
+        assert!(matches!(info.command, Some(Command::Info { .. })));
+        assert!(info.font.is_none());
+        assert!(info.json);
+        let info = parse_args(["runebender", "--json", "info", "Font.ufo"]).unwrap();
+        assert!(matches!(info.command, Some(Command::Info { .. })));
+        assert!(info.json);
+        assert!(parse_args(["runebender", "info"]).is_err());
+        assert!(parse_args(["runebender", "Font.ufo", "info", "Other.ufo"]).is_err());
     }
 }

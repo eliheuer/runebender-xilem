@@ -8,7 +8,8 @@ submit a change.
 
 ## What this is
 
-Runebender is a Linebender-native font editor built with Xilem. This
+Runebender is a Linebender-native font editor built with Xilem. The package
+and executable are `runebender`; subcommands run headlessly before window setup. This
 repository is the primary application; new product work targets Xilem.
 GPUI is retained as a visual/behavioral reference and fallback, not a
 second frontend to develop in parallel. Font operations remain in the
@@ -54,6 +55,7 @@ other. Each directory has a `mod.rs` that says what belongs in it.
 | Path | Holds |
 |---|---|
 | `main.rs` | `main()` and the module list |
+| `cli.rs` | startup arguments and headless command adapters |
 | `workspace.rs` | the `Workspace` struct and the types it is made of |
 | `actions.rs` | the action list, the native menu bar, and the keymap behind both |
 | `launch.rs` | the event loop, the window, and the first frame |
@@ -198,7 +200,7 @@ to crates.io. A release is a git tag, and users install with
 
 This repository owns Core and the Xilem application together. Edit font operations
 in `crates/runebender-core`; do not update the legacy sibling Core repository
-or its GPUI consumer for new work. The root package remains the editor so
-`cargo run --release -- <font>` keeps working. Use `cargo run -p runebender-core
--- <arguments>` for the headless CLI. Validate with `cargo test --workspace
+or its GPUI consumer for new work. The root package is `runebender`, so
+`cargo run --release -- <font>` opens the editor and `cargo run -- <subcommand>`
+runs headlessly. Core is library-only; do not add a second CLI executable. Validate with `cargo test --workspace
 -- --test-threads=1` and `cargo clippy --workspace --all-targets`.

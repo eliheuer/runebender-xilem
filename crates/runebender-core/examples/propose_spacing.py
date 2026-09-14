@@ -15,7 +15,7 @@ def main():
     parser.add_argument("--glyph", default="n")
     parser.add_argument("--delta", type=float, required=True)
     parser.add_argument("--task", required=True)
-    parser.add_argument("--binary", default="runebender-core")
+    parser.add_argument("--binary", default="runebender")
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args()
 

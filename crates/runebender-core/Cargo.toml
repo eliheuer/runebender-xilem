@@ -4,23 +4,10 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 license = "Apache-2.0 OR MIT"
-description = "The font library behind the Runebender font editor, with a command-line tool"
+description = "The font library behind the Runebender font editor"
 repository = "https://github.com/eliheuer/runebender-core"
 keywords = ["font", "ufo", "typography", "bezier", "opentype"]
 categories = ["graphics", "text-processing"]
-
-[[bin]]
-name = "runebender-core"
-path = "src/bin/runebender.rs"
-required-features = ["cli"]
-
-[features]
-# The command line. On by default, so `cargo install` builds it.
-# The editors depend on this crate with default-features = false,
-# which keeps clap and its tree out of their builds: nothing in the
-# library uses it.
-default = ["cli"]
-cli = ["dep:clap", "dep:base64"]
 
 [lints.rust]
 unsafe_code = "forbid"
@@ -78,11 +65,8 @@ name = "runebender_core"
 path = "src/lib.rs"
 
 [dependencies]
-# MCP proofs are rasterized in the CLI process, never on the editor thread.
-base64 = { version = "0.22.1", optional = true }
 glyphslib = "0.2.7"
 linesweeper = "0.4"
-clap = { version = "4", features = ["derive"], optional = true }
 norad = "0.18"
 # Reads compiled TTF/OTF outlines for `binary_import`.
 skrifa = "0.44"

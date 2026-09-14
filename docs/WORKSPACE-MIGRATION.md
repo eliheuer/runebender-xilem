@@ -1,7 +1,8 @@
 # Unified Runebender workspace
 
-The root package remains the Xilem application. Core and its headless CLI live
-in `crates/runebender-core`, with GUI dependencies kept out of that crate.
+The root package is `runebender`: one executable for the Xilem editor and
+headless subcommands. Core lives in `crates/runebender-core` as a library,
+with GUI and CLI dependencies kept out of that crate.
 New development belongs here on main. The legacy Core and GPUI repositories
 are reference/fallback snapshots, not parallel development targets.
 
@@ -18,7 +19,7 @@ this workspace.
 ## Commands
 
 - Editor: `cargo run --release -- <font>`
-- Headless CLI: `cargo run -p runebender-core -- --help`
+- Headless CLI: `cargo run -- --help`
 - Tests: `cargo test --workspace -- --test-threads=1`
 - Lints: `cargo clippy --workspace --all-targets -- -D warnings`
 - Docs: `cargo doc --workspace --no-deps`
@@ -42,3 +43,23 @@ Cargo metadata confirms Core resolves inside this repository. The menu worktree
 metadata still resolves independently. Cargo vet reports seven missing audits for
 pinned Xilem/Masonry dependencies; the same seven fail on the pre-migration visual
 parity baseline. No audit exemptions were invented. Nothing was pushed.
+
+## Single application command
+
+The root package and executable are now `runebender`. The CLI adapter moved
+from Core into `src/cli.rs`; its process tests moved to the workspace `tests/`.
+Core stays a library. `runebender` or `runebender Font.designspace` opens the
+editor; subcommands such as `info`, `proof`, `agent`, and `mcp` finish before
+window setup. Existing scripts and MCP configurations should replace the
+`runebender-core` executable with `runebender`. Local chat uses the running
+application, retaining `RUNEBENDER_CORE` only as an explicit runner override.
+
+Local validation: 503 tests passed, four opt-in tests remained ignored;
+workspace Clippy with warnings denied and documentation generation passed.
+Cargo metadata reports one installable binary. A disposable Git workspace
+with the same binary/library/example layout accepted `cargo install --git`
+without a package argument. No dependency versions changed.
+
+`cargo vet --locked` reports nine missing audits: block2 0.6.2, rfd 0.17.2,
+and the seven pinned Xilem/Masonry packages. No audit exemptions were added.
+This check is not green and remains a release gate.

@@ -5,19 +5,19 @@ exclude = [".worktrees/visual-parity", ".worktrees/menu-parity", ".claude/worktr
 resolver = "2"
 
 [package]
-name = "runebender-xilem"
+name = "runebender"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.96"
 license = "Apache-2.0 OR MIT"
-description = "The Runebender font editor on Xilem, mirroring runebender-gpui for a framework comparison"
+description = "Runebender, a font editor built with Xilem"
 repository = "https://github.com/eliheuer/runebender-xilem"
 keywords = ["font", "editor", "typography", "ufo", "xilem"]
 categories = ["graphics", "text-editors"]
 publish = false
 
 [[bin]]
-name = "runebender-xilem"
+name = "runebender"
 path = "src/main.rs"
 
 [lints.rust]
@@ -76,7 +76,10 @@ wildcard_dependencies = "warn"
 xilem = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
 masonry = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
 # The GUI and headless tools share this workspace library.
-runebender-core = { path = "crates/runebender-core", default-features = false }
+runebender-core = { path = "crates/runebender-core" }
+# Command parsing and MCP proof encoding belong to the application.
+clap = { version = "4", features = ["derive"] }
+base64 = "0.22.1"
 norad = "0.18"
 # Typed values in a nodes file, which core keeps as JSON.
 regex = "1"

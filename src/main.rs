@@ -6,6 +6,7 @@
 //! same editor on GPUI.
 
 mod actions;
+mod cli;
 mod edit;
 mod launch;
 mod model;
@@ -92,6 +93,15 @@ where
         .text_size(TextSize::Body.px())
 }
 
-fn main() -> Result<(), EventLoopError> {
-    run(EventLoop::with_user_event())
+fn main() -> std::process::ExitCode {
+    match cli::run() {
+        cli::Startup::Exit(code) => code,
+        cli::Startup::Editor(font) => match run(EventLoop::with_user_event(), font.as_deref()) {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::ExitCode::FAILURE
+            }
+        },
+    }
 }

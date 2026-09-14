@@ -4236,11 +4236,34 @@ dependencies = [
 ]
 
 [[package]]
-name = "runebender-core"
+name = "runebender"
 version = "0.1.0"
 dependencies = [
  "base64",
  "clap",
+ "copypasta",
+ "image",
+ "imaging_vello_cpu",
+ "kurbo 0.13.1",
+ "linesweeper",
+ "masonry",
+ "masonry_testing",
+ "muda",
+ "norad",
+ "notify",
+ "regex",
+ "rfd",
+ "runebender-core",
+ "serde_json",
+ "tokio",
+ "winit",
+ "xilem",
+]
+
+[[package]]
+name = "runebender-core"
+version = "0.1.0"
+dependencies = [
  "fea-rs",
  "glyphslib",
  "harfrust",
@@ -4261,29 +4284,6 @@ dependencies = [
  "unicode-general-category",
  "unicode-normalization",
  "write-fonts",
-]
-
-[[package]]
-name = "runebender-xilem"
-version = "0.1.0"
-dependencies = [
- "copypasta",
- "image",
- "imaging_vello_cpu",
- "kurbo 0.13.1",
- "linesweeper",
- "masonry",
- "masonry_testing",
- "muda",
- "norad",
- "notify",
- "regex",
- "rfd",
- "runebender-core",
- "serde_json",
- "tokio",
- "winit",
- "xilem",
 ]
 
 [[package]]

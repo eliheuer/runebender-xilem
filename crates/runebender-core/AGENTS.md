@@ -12,8 +12,8 @@ The font library behind the Runebender font editor, with no
 interface. One rule decides what belongs here: if an operation
 changes a font, or reads one to answer a question, it lives in this
 crate. The front-ends own the window, the input, and the drawing.
-The `runebender-core` binary in `src/bin` exposes the same operations on
-the command line.
+The workspace application exposes the same operations through headless
+`runebender` subcommands in its `src/cli.rs`.
 
 The in-memory font is `norad::Font`. Functions take norad types or
 kurbo geometry and return the same. There is no private model.
@@ -31,18 +31,15 @@ belongs in it. Read those six comments first.
 | `document/` | `Master`, `Project`, interpolation, composites, `model/` |
 | `text/` | `shape` (harfrust), `joining` (Arabic rules), `buffer` (the Text tool) |
 | `ui/` | `color` (the one colour type), `theme` (the OKLCH resolver), sidebar data, `editing/` (selection, undo, viewport) |
-| `bin/runebender.rs` | the command line |
 
 Paths follow the tree: `runebender_core::outline::glyph_ops`. There
 are no re-exports at the root except three types.
 
-## Features
+## Dependencies
 
-One feature, `cli`, on by default, carrying the command line and its
-only dependency, clap. The editors depend on this crate with
-`default-features = false`, so nothing that opens a window builds
-clap. Keep it that way: a dependency that only the binary needs goes
-behind this feature.
+Core is a library only. CLI parsing and MCP encoding dependencies belong
+in the workspace application, alongside its `src/cli.rs` adapter.
+Keep GUI and command-line dependencies out of this crate.
 
 ## Build and test
 

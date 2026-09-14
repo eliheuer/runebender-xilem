@@ -1,16 +1,19 @@
-# Runebender Xilem
+# Runebender
 
 [![CI](https://github.com/eliheuer/runebender-xilem/actions/workflows/ci.yml/badge.svg)](https://github.com/eliheuer/runebender-xilem/actions/workflows/ci.yml)
 
 A Linebender-native font editor built on [Xilem](https://github.com/linebender/xilem).
 This repository contains the application and its independent font library in
-one Cargo workspace. GPUI is retained separately as a reference and fallback.
+one Cargo workspace.
+
+The package and executable are named `runebender`. Start it without arguments
+to open the editor, or use a subcommand to work without a window.
 
 ## Workspace
 
-- Root package: the Xilem editor. `cargo run --release -- <font>` opens it.
-- `crates/runebender-core`: font operations and a headless CLI, with no GUI dependency.
-- `cargo run -p runebender-core -- --help`: discover headless commands.
+- Root package: `runebender`, the editor and headless command line.
+- `crates/runebender-core`: the shared font library, with no GUI dependency.
+- `cargo run -- --help`: discover commands.
 - `cargo test --workspace -- --test-threads=1`: test both packages.
 
 Core tests use `RUNEBENDER_TEST_FONTS`, or the `virtua-grotesk/sources`
@@ -21,7 +24,9 @@ workspace, not the legacy standalone Core repository.
 
 ```sh
 cargo install --git https://github.com/eliheuer/runebender-xilem
-runebender-xilem path/to/Font.designspace
+runebender path/to/Font.designspace
+runebender info path/to/Font-Regular.ufo --json
+runebender mcp --live
 ```
 
 The user manual and documentation is available at

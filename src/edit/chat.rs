@@ -3,7 +3,7 @@
 
 //! Local chat over the editor-owned live document.
 //!
-//! `font-ml chat` owns inference and asks `runebender-core` for the same
+//! `font-ml chat` owns inference and asks `runebender` for the same
 //! read/propose tools exposed to other agents. This shell owns only process
 //! lifetime, streaming presentation, and the private live-session endpoint.
 
@@ -71,21 +71,12 @@ impl Drop for ChatState {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ChatProgress;
 
-/// Where `runebender-core` is: `$RUNEBENDER_CORE`, PATH, then the Cargo bin dir.
+/// Use this application's CLI; retain the explicit legacy override for custom runners.
 fn core_binary() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("RUNEBENDER_CORE").filter(|path| !path.is_empty()) {
-        return Some(path.into());
-    }
-    if let Some(found) = std::env::var_os("PATH").and_then(|path| {
-        std::env::split_paths(&path)
-            .map(|dir| dir.join("runebender-core"))
-            .find(|candidate| candidate.is_file())
-    }) {
-        return Some(found);
-    }
-    let home = std::env::var_os("HOME")?;
-    let candidate = PathBuf::from(home).join(".cargo/bin/runebender-core");
-    candidate.is_file().then_some(candidate)
+    std::env::var_os("RUNEBENDER_CORE")
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_exe().ok())
 }
 
 impl Workspace {
@@ -149,7 +140,7 @@ impl Workspace {
             return;
         };
         let Some(core) = core_binary() else {
-            self.note = "runebender-core not found; install it or set RUNEBENDER_CORE".into();
+            self.note = "Could not locate the running Runebender executable".into();
             return;
         };
 
@@ -462,7 +453,7 @@ mod tests {
             &runner,
             Path::new("model"),
             Path::new("font.ufo"),
-            Path::new("runebender-core"),
+            Path::new("runebender"),
             Path::new("live.sock"),
             r#"[{"role":"user","content":"Inspect beh-ar"}]"#,
             &job,
