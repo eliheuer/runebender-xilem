@@ -23,19 +23,32 @@ try {
     Remove-Item Env:RUNEBENDER_SIZE -ErrorAction SilentlyContinue
 }
 # A real window is a separate check from the CPU rendering path above.
-$app = Start-Process $exe -PassThru -RedirectStandardOutput "$out/window.stdout.txt" -RedirectStandardError "$out/window.stderr.txt"
+# Avoid mistaking the console window for the editor's native window.
+$start = [System.Diagnostics.ProcessStartInfo]::new($exe)
+$start.UseShellExecute = $false
+$start.CreateNoWindow = $true
+$start.RedirectStandardOutput = $true
+$start.RedirectStandardError = $true
+$start.ArgumentList.Add($font)
+$app = [System.Diagnostics.Process]::Start($start)
+$stdout = $app.StandardOutput.ReadToEndAsync()
+$stderr = $app.StandardError.ReadToEndAsync()
 try {
     $deadline = (Get-Date).AddSeconds(45)
     do {
         Start-Sleep -Milliseconds 500
         $app.Refresh()
         if ($app.HasExited) { throw "Native application exited early: $($app.ExitCode)" }
-    } while ($app.MainWindowHandle -eq 0 -and (Get-Date) -lt $deadline)
-    if ($app.MainWindowHandle -eq 0) { throw 'No native editor window appeared' }
-    "Native window: $($app.MainWindowHandle)" | Set-Content "$out/native-window.txt"
+    } while (($app.MainWindowHandle -eq 0 -or $app.MainWindowTitle -ne 'Runebender') -and (Get-Date) -lt $deadline)
+    if ($app.MainWindowHandle -eq 0 -or $app.MainWindowTitle -ne 'Runebender') { throw 'No native Runebender window appeared' }
+    "Native window: $($app.MainWindowHandle), title: $($app.MainWindowTitle)" | Set-Content "$out/native-window.txt"
     if (!$app.CloseMainWindow()) { throw 'Window refused the close request' }
     if (!$app.WaitForExit(15000)) { throw 'Window did not close cleanly' }
     if ($app.ExitCode -ne 0) { throw "Native application failed: $($app.ExitCode)" }
 } finally {
     if (!$app.HasExited) { Stop-Process -Id $app.Id -Force }
+    $app.WaitForExit()
+    $stdout.GetAwaiter().GetResult() | Set-Content "$out/window.stdout.txt"
+    $stderr.GetAwaiter().GetResult() | Set-Content "$out/window.stderr.txt"
+    $app.Dispose()
 }
