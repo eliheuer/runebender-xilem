@@ -728,9 +728,9 @@ Reference inputs at x1134 in the 1280px view.
 
 The folded button rows match y365..392,397..424,429..456; the Reference input
 matches x1134..1271/y461..488. Enabled toggle fill is RGB64 in both. Its keyline
-and text rasterization still differ. Use RUNEBENDER_BACKGROUND=1 to match the
-reference's enabled setting; Xilem's default remains off. Color and Shaping
-have different folded defaults below this section and are outside this comparison.
+and text rasterization still differ. The later default-state parity pass makes
+the reference's enabled setting Xilem's default as well. Color and Shaping have
+different folded defaults below this section and are outside this comparison.
 
 Two existing command tests, formatting, whitespace checks and workspace all-target
 Clippy passed. Normal, folded, narrow and off-state views were inspected. Normal
@@ -1495,3 +1495,23 @@ Both 1280 by 720 captures were visually inspected. The three marks remain
 legible in Gray and Light, the center stays clear, and the right edge contains
 only the proof blur control. Static headless captures verify paint and layout,
 not native pointer, keyboard, screen-reader, or GPU behavior.
+
+
+## 2026-09-14 overnight: background visibility default
+
+GPUI initializes edit mode with background-layer visibility enabled, which
+also gives the Background toggle its active dark face before any interaction.
+Xilem previously required a headless environment flag to reach that reference
+state and therefore opened with a visibly different inspector default.
+
+Xilem now enables background layers by default. Setting
+`RUNEBENDER_BACKGROUND=0` remains available for deterministic disabled-state
+captures.
+
+- [Gray default Background toggle](133-xilem-editor-background-default-gray.png)
+- [Light default Background toggle](134-xilem-editor-background-default-light.png)
+
+Both 1280 by 720 captures were visually inspected. The Background toggle now
+has the active face in both themes while Mark cloud remains inactive. Static
+headless captures verify paint and layout, not native pointer, keyboard,
+screen-reader, or GPU behavior.

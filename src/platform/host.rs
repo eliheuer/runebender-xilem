@@ -116,7 +116,9 @@ impl Workspace {
         // Headless overrides, so a render can show a state that normally
         // takes clicks to reach. The GPUI build has the same idea.
         let reference_buf = std::env::var("RUNEBENDER_REFERENCE").unwrap_or_default();
-        let show_background = std::env::var("RUNEBENDER_BACKGROUND").is_ok();
+        // GPUI exposes background layers by default. Keep a headless override
+        // for captures that need to exercise the disabled toggle.
+        let show_background = std::env::var("RUNEBENDER_BACKGROUND").as_deref() != Ok("0");
         // RUNEBENDER_VIEW=comb,continuity,colorize,handles,segments,bearings
         let mut view = canvas::editor::ViewOptions::default();
         if let Ok(spec) = std::env::var("RUNEBENDER_VIEW") {

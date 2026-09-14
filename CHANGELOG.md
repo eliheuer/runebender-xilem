@@ -79,6 +79,9 @@ releases begin.
 - Replace edit-footer text controls with GPUI's proof, contrast, and sidebar
   icons; let the proof be hidden and keep zoom controls on the canvas.
 
+- Show background layers by default in edit mode, matching GPUI; headless
+  captures can still disable them with `RUNEBENDER_BACKGROUND=0`.
+
 - Keep the Coordinates inspector compact before selection and draw its
   reference picker as GPUI's connected nine-point grid.
 
