@@ -934,7 +934,7 @@ impl Project {
         project
     }
 
-    /// Opens a designspace, UFO, Glyphs source, or binary font. Sets `export_source` to `path` when the loader left it unset.
+    /// Opens a designspace, UFO, Glyphs source, Babelfont package, or binary font. Sets `export_source` to `path` when the loader left it unset.
     pub fn load(path: &Path) -> Result<Self, String> {
         let mut project = Self::load_inner(path)?;
         if project.export_source.is_none() {
@@ -998,21 +998,37 @@ impl Project {
             project.export_source = Some(open);
             return Ok(project);
         }
-        if path
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("ttf") || e.eq_ignore_ascii_case("otf"))
-        {
-            // A compiled font opens as an editable in-memory UFO.
-            // Save writes that UFO next to the binary — never over
+        if path.extension().is_some_and(|e| {
+            e.eq_ignore_ascii_case("ttf")
+                || e.eq_ignore_ascii_case("otf")
+                || e.eq_ignore_ascii_case("babelfont")
+        }) {
+            // A binary or basic Babelfont source opens as an editable in-memory UFO.
+            // Save writes that UFO next to the source — never over
             // it — and Export compiles from the UFO.
-            let font = import_binary_font(path)?;
+            let is_babelfont = path
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("babelfont"));
+            let font = if is_babelfont {
+                crate::formats::babelfont_import::import_babelfont(path)?
+            } else {
+                import_binary_font(path)?
+            };
             let name: Arc<str> = font
                 .font_info
                 .style_name
                 .clone()
                 .unwrap_or_else(|| "Regular".into())
                 .into();
-            let ufo_path = path.with_extension("ufo");
+            let mut ufo_path = path.with_extension("ufo");
+            if is_babelfont {
+                let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+                let mut index = 1;
+                while ufo_path.exists() {
+                    ufo_path = path.with_file_name(format!("{stem}-import-{index}.ufo"));
+                    index += 1;
+                }
+            }
             let mut model = Master::from_font(font, ufo_path.clone());
             model.dirty = true;
             let mut project = Self {

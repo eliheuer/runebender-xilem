@@ -536,8 +536,20 @@ pub(crate) fn run() -> Startup {
     ))
 }
 
-/// Loads one UFO as a `Master`, reporting a bad path as a usage error.
+/// Loads a UFO or an imported Babelfont copy as a `Master`.
 fn open_master(path: &Path, json: bool) -> Result<Master, i32> {
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("babelfont"))
+    {
+        let project = runebender_core::document::project::Project::load(path)
+            .map_err(|e| fail(json, exit::USAGE, &e))?;
+        return project
+            .masters
+            .into_iter()
+            .next()
+            .ok_or_else(|| fail(json, exit::USAGE, "Babelfont has no master"));
+    }
     Master::load(path).map_err(|e| fail(json, exit::USAGE, &format!("{}: {e}", path.display())))
 }
 

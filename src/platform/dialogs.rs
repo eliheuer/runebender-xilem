@@ -17,6 +17,7 @@ pub(crate) fn font(directory: &Path) -> Option<PathBuf> {
             "designspace",
             "glyphs",
             "glyphspackage",
+            "babelfont",
             "ufo",
             "otf",
             "ttf",

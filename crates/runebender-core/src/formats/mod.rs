@@ -7,6 +7,7 @@
 //! shared with other tools, and the formats read or written besides
 //! UFO: SVG, compiled fonts, `.glyphs`, and traced images.
 
+pub mod babelfont_import;
 pub mod binary_import;
 pub mod color_font;
 pub mod glyphs_import;

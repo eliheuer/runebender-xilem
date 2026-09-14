@@ -56,6 +56,7 @@ fn source_fingerprint(roots: &[std::path::PathBuf]) -> u64 {
 impl Workspace {
     pub(crate) fn open(path: &FsPath) -> Result<Self, String> {
         let font = FontModel::open(path)?;
+        let modified = font.project.ds_dirty || font.project.masters.iter().any(|m| m.dirty);
         let source_roots = source_roots(&font);
         let source_fingerprint = source_fingerprint(&source_roots);
         let features_buf = font.font().features.clone();
@@ -268,7 +269,7 @@ impl Workspace {
                 Ok("text") => Tool::Text,
                 _ => Tool::Select,
             },
-            modified: false,
+            modified,
             source_roots,
             source_fingerprint,
             note: String::new(),
@@ -555,6 +556,16 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imported_babelfont_starts_unsaved() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("crates/runebender-core/tests/fixtures/babelfont/Basic.babelfont");
+        let workspace = Workspace::open(&path).expect("the Babelfont fixture opens");
+        assert!(workspace.modified, "an imported copy needs to be saved");
+        assert!(workspace.font.project.masters[0].dirty);
+        assert!(!path.with_extension("ufo").exists());
+    }
 
     fn copy_tree(source: &std::path::Path, destination: &std::path::Path) {
         std::fs::create_dir_all(destination).expect("the destination directory is created");

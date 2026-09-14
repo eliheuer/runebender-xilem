@@ -1,0 +1,9 @@
+[    {
+      "width": 650,
+      "_master": "M1",
+      "id": "A.alt-M1",
+      "shapes": [
+        {"ref": "A", "transform": [1, 0, 0, 1, 25, 0]}
+      ]
+}
+]

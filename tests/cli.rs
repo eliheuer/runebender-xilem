@@ -773,3 +773,32 @@ fn help_version_and_invalid_arguments_finish_without_a_window() {
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
 }
+
+#[test]
+fn babelfont_info_and_proof_use_the_importer_without_writing_a_ufo() {
+    let package = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("crates/runebender-core/tests/fixtures/babelfont/Basic.babelfont");
+    let (code, result) = run(&["info", package.to_str().unwrap()]);
+    assert_eq!(code, 0, "{result}");
+    assert_eq!(result["family"], "Babelfont Test");
+    assert_eq!(result["glyphs"], 3);
+    assert!(!package.with_extension("ufo").exists());
+    // Commands that write directly to a source directory remain UFO-only.
+    let features = package.join("features.fea");
+    let before = std::fs::read(&features).unwrap();
+    let (code, _) = run(&["features", package.to_str().unwrap(), "--write"]);
+    assert_ne!(code, 0);
+    assert_eq!(std::fs::read(&features).unwrap(), before);
+    let output = std::env::temp_dir().join(format!("babelfont-proof-{}.svg", std::process::id()));
+    let (code, result) = run(&[
+        "proof",
+        package.to_str().unwrap(),
+        "--glyphs",
+        "A,A.alt",
+        "--out",
+        output.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "{result}");
+    assert!(std::fs::read_to_string(&output).unwrap().contains("<svg"));
+    std::fs::remove_file(output).unwrap();
+}

@@ -7,6 +7,11 @@ releases begin.
 
 ## [Unreleased]
 
+- Import basic single-master Babelfont packages into editable UFO fonts, preserving
+  their source files. Outlines, components, anchors, widths, Unicode, names, metrics,
+  and kerning are supported; variable sources and extra layers are rejected.
+- Add Windows build, headless proof, editor rendering, and native startup smoke checks.
+
 - Use one `runebender` package and executable for the editor and headless commands.
   Run `runebender info`, `proof`, `agent`, or `mcp` without opening a window;
   replace `runebender-core` with `runebender` in scripts and MCP configurations.
