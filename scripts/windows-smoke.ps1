@@ -1,5 +1,6 @@
 # Exercise the shipped executable on Windows without touching the source font.
 $ErrorActionPreference = 'Stop'
+$started = Get-Date
 $exe = (Resolve-Path 'target/debug/runebender.exe').Path
 $font = (Resolve-Path 'test-fonts/sources/VirtuaGrotesk-Regular.ufo').Path
 $out = New-Item -ItemType Directory -Force 'windows-smoke'
@@ -51,4 +52,24 @@ try {
     $stdout.GetAwaiter().GetResult() | Set-Content "$out/window.stdout.txt"
     $stderr.GetAwaiter().GetResult() | Set-Content "$out/window.stderr.txt"
     $app.Dispose()
+    # Export only fixed categories and a validated exception code, never raw event data.
+    $faults = Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=$started; Id=1000} -ErrorAction SilentlyContinue
+    $report = foreach ($fault in $faults) {
+        $fields = @{}
+        ([xml]$fault.ToXml()).Event.EventData.Data | ForEach-Object { $fields[$_.Name] = $_.'#text' }
+        if ($fields.AppName -eq 'runebender.exe') {
+            $module = switch ([System.IO.Path]::GetFileName($fields.ModuleName).ToLowerInvariant()) {
+                'd3d12.dll' { 'D3D12' }
+                'd3d12core.dll' { 'D3D12' }
+                'dxgi.dll' { 'DXGI' }
+                'runebender.exe' { 'Runebender' }
+                'ntdll.dll' { 'Windows runtime' }
+                'ucrtbase.dll' { 'C runtime' }
+                default { 'Other' }
+            }
+            $code = if ($fields.ExceptionCode -match '^[0-9a-fA-F]{8}$') { $fields.ExceptionCode } else { 'Unknown' }
+            [pscustomobject]@{ ModuleCategory=$module; ExceptionCode=$code }
+        }
+    }
+    $report | ConvertTo-Json | Set-Content "$out/fault-category.json"
 }
