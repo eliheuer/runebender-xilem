@@ -1306,3 +1306,27 @@ bounded whole-row count, keyboard reveal uses the same row index, and a resize
 recomputes the offset from that index. The pointer regression deliberately sends
 a 17-pixel delta into a 48-pixel row and verifies a 48-pixel result, making the
 half-cell state unrepresentable through the tested interaction path.
+
+
+## 2026-09-14 overnight: compact edit metrics card
+
+GPUI's floating edit metrics card is a 320 by 58 pixel pane with a 22-pixel
+marked header, five equal fields in one row, square corners in the Gray theme,
+and a hard shadow offset four pixels left and down. Xilem previously used a
+288 by 88 pixel neutral rounded card, split the kerning groups into a second
+row, and placed external LSB and RSB labels beside three wider metric fields.
+
+Xilem now uses the GPUI geometry and ordering: left kerning group, LSB, width,
+RSB, and right kerning group. The glyph mark colors the header and selects its
+contrasting ink; an unmarked glyph uses a quiet derived header surface. The
+three numeric fields retain their existing click targets and editing behavior.
+
+- [Gray compact metrics card](115-xilem-editor-compact-metrics-gray.png)
+- [Light compact metrics card](116-xilem-editor-compact-metrics-light.png)
+
+Both final captures were visually inspected. The card remains horizontally
+centered with its existing 12-pixel canvas clearance, while its shorter body
+returns 30 pixels of vertical space to the outline canvas. A focused geometry
+test covers the new field positions and narrow-height hiding threshold. Static
+headless captures verify paint and layout, not native pointer, keyboard,
+screen-reader, or GPU behavior.

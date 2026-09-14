@@ -58,6 +58,9 @@ releases begin.
 
 - Retain dark keylines on enabled toggles and use crisp field borders in the metrics card.
 
+- Match the GPUI edit canvas's compact five-field metrics card, including its marked
+  header, square outline, and offset shadow.
+
 - Match Background control rows and inspector field alignment; the Background toggle
   now reflects the visibility setting even when the current glyph has no background.
 

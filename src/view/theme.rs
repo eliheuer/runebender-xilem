@@ -165,6 +165,19 @@ impl Palette {
         ])
     }
 
+    /// The quieter header surface used by an unmarked floating metrics card.
+    pub(crate) fn floating_pane_header_bg(&self) -> Color {
+        Color::new([
+            self.panel.components[0]
+                + (self.tab_rail.components[0] - self.panel.components[0]) * 0.25,
+            self.panel.components[1]
+                + (self.tab_rail.components[1] - self.panel.components[1]) * 0.25,
+            self.panel.components[2]
+                + (self.tab_rail.components[2] - self.panel.components[2]) * 0.25,
+            1.0,
+        ])
+    }
+
     /// Whatever a tool draws while the pointer is down: the ink.
     pub(crate) fn tool_feedback(&self) -> Color {
         self.text

@@ -33,7 +33,7 @@ use crate::view::design::{
     METRICS_CARD_HEIGHT as PANEL_HEIGHT, METRICS_CARD_INSET as PANEL_PAD,
     METRICS_CARD_WIDTH as PANEL_WIDTH, METRICS_FIELD_GAP, METRICS_FIELD_HEIGHT as PANEL_ROW,
     METRICS_FIELD_START, METRICS_FIELD_WIDTH, POINT_CORNER_RADIUS, POINT_CURVE_RADIUS,
-    POINT_HALO_EXTRA, POINT_RING_WIDTH, POINT_SELECTED_GROW, Radius, START_ARROW_OFFSET,
+    POINT_HALO_EXTRA, POINT_RING_WIDTH, POINT_SELECTED_GROW, START_ARROW_OFFSET,
     START_ARROW_RADIUS, Stroke as DesignStroke, TextSize, point_marker_scale,
 };
 
@@ -363,9 +363,21 @@ impl EditorWidget {
             return;
         };
         let width = PANEL_WIDTH;
-        let frame =
-            Rect::new(left, top, left + width, top + PANEL_HEIGHT).to_rounded_rect(Radius::Sm.px());
+        let frame = Rect::new(left, top, left + width, top + PANEL_HEIGHT);
+        painter
+            .fill(
+                frame + kurbo::Vec2::new(-4.0, 4.0),
+                pal.cell_shadow().with_alpha(0.5),
+            )
+            .draw();
         painter.fill(frame, pal.panel).draw();
+        let header_bg = self.mark.unwrap_or_else(|| pal.floating_pane_header_bg());
+        painter
+            .fill(
+                Rect::new(left, top, left + width, top + PANEL_HEADER),
+                header_bg,
+            )
+            .draw();
         painter
             .stroke(
                 frame,
@@ -373,7 +385,6 @@ impl EditorWidget {
                 pal.outline,
             )
             .draw();
-        // The reference's neutral header keeps glyph marks in the navigation rail.
         painter
             .stroke(
                 Line::new(
@@ -385,13 +396,18 @@ impl EditorWidget {
             )
             .draw();
 
-        let header_text = |painter: &mut Painter<'_>, x: f64, s: &str, size: f32, color, anchor| {
+        let header_ink = if self.mark.is_some() {
+            pal.mark_ink.unwrap_or(pal.text)
+        } else {
+            pal.text
+        };
+        let header_text = |painter: &mut Painter<'_>, x: f64, s: &str, size: f32, anchor| {
             text_label::draw(
                 painter,
                 Point::new(left + x, top + PANEL_HEADER / 2.0),
                 s,
                 size,
-                color,
+                header_ink,
                 anchor,
             );
         };
@@ -400,7 +416,6 @@ impl EditorWidget {
             PAD,
             &self.session.glyph_name,
             TextSize::Body.px(),
-            pal.text,
             Anchor::Start,
         );
         // The codepoint, right aligned on the same line, as the GPUI
@@ -415,7 +430,6 @@ impl EditorWidget {
                 width - PAD,
                 &format!("{:04X}", codepoint as u32),
                 TextSize::Body.px(),
-                pal.text,
                 Anchor::End,
             );
         }
@@ -425,6 +439,38 @@ impl EditorWidget {
             // because a painted control that computes its geometry twice
             // will drift the moment either copy is edited.
             if let Some(boxes) = self.metric_boxes() {
+                let group_box = |column: f64| {
+                    let x = left + PANEL_PAD + column * (METRICS_FIELD_WIDTH + METRICS_FIELD_GAP);
+                    Rect::new(x, boxes[0].1.y0, x + METRICS_FIELD_WIDTH, boxes[0].1.y1)
+                };
+                for (rect, group) in [
+                    (group_box(0.0), &self.groups.0),
+                    (group_box(4.0), &self.groups.1),
+                ] {
+                    painter.fill(rect, pal.field()).draw();
+                    let line = DesignStroke::Hairline.px();
+                    let half = line / 2.0;
+                    painter
+                        .stroke(
+                            Rect::new(
+                                rect.x0 + half,
+                                rect.y0 + half,
+                                rect.x1 - half,
+                                rect.y1 - half,
+                            ),
+                            &Stroke::new(line),
+                            pal.field_outline,
+                        )
+                        .draw();
+                    text_label::draw(
+                        painter,
+                        rect.center(),
+                        &group_label(group),
+                        TextSize::Body.px(),
+                        pal.text,
+                        Anchor::Middle,
+                    );
+                }
                 for (field, rect) in boxes {
                     let focused = self.field == Some(field);
                     let value = if focused {
@@ -468,38 +514,6 @@ impl EditorWidget {
                             Rect::new(rect.x1 - 4.0, rect.y0 + 3.0, rect.x1 - 3.0, rect.y1 - 3.0);
                         painter.fill(caret, pal.role("textCursor")).draw();
                     }
-                }
-            }
-            if let Some(boxes) = self.metric_boxes() {
-                let first = boxes[0].1;
-                let last = boxes[2].1;
-                for (x, label, anchor) in [
-                    (left + PAD, "LSB", Anchor::Start),
-                    (left + width - PAD, "RSB", Anchor::End),
-                ] {
-                    text_label::draw(
-                        painter,
-                        Point::new(x, first.center().y),
-                        label,
-                        TextSize::Body.px(),
-                        pal.text_muted,
-                        anchor,
-                    );
-                }
-                // Group names retain their own row rather than replacing the
-                // sidebearing labels. Full names remain in the inspector.
-                for (rect, group) in [(first, &self.groups.0), (last, &self.groups.1)] {
-                    text_label::draw(
-                        painter,
-                        Point::new(
-                            rect.center().x,
-                            rect.y1 + METRICS_FIELD_GAP + PANEL_ROW / 2.0,
-                        ),
-                        &group_label(group),
-                        TextSize::Body.px(),
-                        pal.text_muted,
-                        Anchor::Middle,
-                    );
                 }
             }
         }
@@ -2456,10 +2470,14 @@ mod tests {
             let (left, top) = widget.metrics_panel_origin().unwrap();
             assert_eq!(left + PANEL_WIDTH / 2.0, width / 2.0);
             assert_eq!(top + PANEL_HEIGHT, 498.0);
+            let boxes = widget.metric_boxes().unwrap();
+            assert_eq!(boxes[0].1.x0, left + 70.0);
+            assert_eq!(boxes[1].1.x0, left + 132.0);
+            assert_eq!(boxes[2].1.x0, left + 194.0);
         }
         widget.size = Size::new(280.0, 510.0);
         assert!(widget.metric_boxes().is_none());
-        widget.size = Size::new(786.0, 90.0);
+        widget.size = Size::new(786.0, 60.0);
         assert!(widget.metric_boxes().is_none());
     }
 

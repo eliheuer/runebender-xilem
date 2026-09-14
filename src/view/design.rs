@@ -150,16 +150,16 @@ pub(crate) const COORD_COUNT_HEIGHT: f64 = 21.0;
 pub(crate) const INSPECTOR_VERTICAL_INSET: f64 = 6.0;
 
 /// Floating metrics-card geometry, measured against the Gray reference capture.
-pub(crate) const METRICS_CARD_WIDTH: f64 = 288.0;
-pub(crate) const METRICS_CARD_HEIGHT: f64 = 88.0;
+pub(crate) const METRICS_CARD_WIDTH: f64 = 320.0;
+pub(crate) const METRICS_CARD_HEIGHT: f64 = 58.0;
 pub(crate) const METRICS_CARD_HEADER: f64 = 22.0;
 pub(crate) const METRICS_CARD_INSET: f64 = 8.0;
 pub(crate) const METRICS_CARD_BOTTOM: f64 = 12.0;
 pub(crate) const METRICS_FIELD_HEIGHT: f64 = 20.0;
-pub(crate) const METRICS_FIELD_WIDTH: f64 = 64.0;
+pub(crate) const METRICS_FIELD_WIDTH: f64 = 56.0;
 pub(crate) const METRICS_FIELD_GAP: f64 = 6.0;
-/// Leave room for the sidebearing label before the first input.
-pub(crate) const METRICS_FIELD_START: f64 = 41.0;
+/// Skip the left kerning-group field before the three editable metrics.
+pub(crate) const METRICS_FIELD_START: f64 = 70.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 #[expect(
