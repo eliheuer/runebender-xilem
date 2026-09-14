@@ -425,6 +425,7 @@ fn header_tab_chip<F>(
     text: String,
     active: bool,
     fixed_width: bool,
+    circular: bool,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F>
 where
@@ -451,7 +452,11 @@ where
         .background_color(pal.header)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::Sm.length())
+        .corner_radius(if circular {
+            Radius::Full.length()
+        } else {
+            Radius::Sm.length()
+        })
         .padding(Space::Md),
     )
     .dims(Dimensions::new(width, Dim::from(ControlSize::Row)))
@@ -475,6 +480,7 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         tab.session.glyph_name.clone(),
                         editing && index == active,
                         false,
+                        false,
                         move |app: &mut Workspace| app.activate_tab(index),
                     ),
                     closable.then(|| {
@@ -483,6 +489,7 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                             "\u{00d7}".into(),
                             false,
                             true,
+                            false,
                             move |app: &mut Workspace| app.close_tab(index),
                         )
                     }),
@@ -501,6 +508,7 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 "Font".into(),
                 matches!(app.mode, Mode::Overview),
                 false,
+                false,
                 |app: &mut Workspace| app.back_to_overview(),
             ),
             // Nodes sits beside Font: the workflow over the font, as
@@ -510,10 +518,11 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 "Nodes".into(),
                 matches!(app.mode, Mode::Nodes),
                 false,
+                false,
                 |app: &mut Workspace| app.enter_nodes_mode(),
             ),
             xrow(Region::Inline, tabs),
-            header_tab_chip(pal, "+".into(), false, true, |app: &mut Workspace| {
+            header_tab_chip(pal, "+".into(), false, true, true, |app: &mut Workspace| {
                 app.new_tab();
             }),
         ),

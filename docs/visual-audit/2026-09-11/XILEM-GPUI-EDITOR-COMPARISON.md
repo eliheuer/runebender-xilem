@@ -1579,3 +1579,28 @@ at 1x. All were visually inspected. The full and narrow layouts retain the
 document identity, eight edit tools, Font and Nodes tabs, active glyph tab, and
 new-tab control without overlap. Static headless captures verify paint and
 layout; AppKit traffic-light placement remains a native-window check.
+
+
+## 2026-09-14: native title-bar optical balance
+
+The first compact pass reduced the title bar to 28 logical pixels. A native
+2x capture showed that this moved one step past the visual center: AppKit's
+fixed traffic lights retained slightly more space above than below, and the
+document text and app controls followed the same high centerline. The square
+21-pixel new-tab chip also pressed visually against the rounded window corner.
+
+The bar now uses a 30-pixel centerline. That adds two physical pixels beneath
+the fixed native controls at 2x and moves every code-owned header item down by
+one logical pixel without introducing per-control offsets. Font, Nodes, and
+glyph tabs keep their existing shape; only the fixed-width new-tab control uses
+a full-radius circular face.
+
+- [Gray balanced title bar](142-xilem-editor-topbar-balanced-gray.png)
+- [Light balanced title bar](143-xilem-editor-topbar-balanced-light.png)
+- [Gray balanced title bar at 1000px and 2x](144-xilem-editor-topbar-balanced-gray-1000-2x.png)
+
+The first two captures are 1280 by 720 at 1x. The density-matched capture is a
+1000 by 680 logical viewport rendered to 2000 by 1360 pixels at 2x. All were
+visually inspected, including a focused same-density comparison with the
+2302-by-114 native source crop. The code-owned title, tools, tabs, and circular
+new-tab control share one centerline in both themes and at the narrower width.
