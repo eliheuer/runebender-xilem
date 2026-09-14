@@ -1060,13 +1060,6 @@ impl Workspace {
         }
     }
 
-    /// Set the editor's zoom outright, for the slider in the bar.
-    pub(crate) fn zoom_to(&mut self, zoom: f64) {
-        let mut session = (*self.session).clone();
-        session.viewport.zoom = zoom.clamp(0.02, 64.0);
-        self.session = Arc::new(session);
-    }
-
     /// Copy the selected contours, or all of them when nothing is
     /// selected.
     pub(crate) fn copy_contours(&mut self) {

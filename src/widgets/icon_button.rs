@@ -13,7 +13,7 @@ use masonry::core::{
     PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, Widget,
 };
 use masonry::imaging::Painter;
-use masonry::kurbo::{Affine, Axis, BezPath, Size, Stroke};
+use masonry::kurbo::{Affine, Axis, BezPath, Line, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 use runebender_core::ui::theme::toolbar_icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
@@ -30,6 +30,16 @@ pub(crate) enum IconMark {
     Grid,
     /// Three horizontal rules: the glyph list view.
     List,
+    /// The proof-strip visibility control.
+    EyeOpen,
+    /// The hidden proof-strip state.
+    EyeClosed,
+    /// A half-filled circle for reversing proof contrast.
+    Invert,
+    /// A split pane with its left dock open.
+    SidebarOpen,
+    /// A split pane with its left dock collapsed.
+    SidebarClosed,
 }
 
 #[derive(Debug)]
@@ -214,6 +224,73 @@ fn paint_mark(
     color: Color,
     mark: IconMark,
 ) {
+    use masonry::kurbo::{Arc, Circle, Rect, Shape as _};
+
+    let extent = maximum_extent
+        .unwrap_or(f64::INFINITY)
+        .min(size.width)
+        .min(size.height);
+    let origin = ((size.width - extent) / 2.0, (size.height - extent) / 2.0);
+    let center = (size.width / 2.0, size.height / 2.0);
+    match mark {
+        IconMark::EyeOpen | IconMark::EyeClosed => {
+            let rx = extent * 0.40;
+            let ry = extent * 0.30;
+            let mut eye = BezPath::new();
+            eye.move_to((center.0 - rx, center.1));
+            eye.quad_to((center.0, center.1 - ry * 2.2), (center.0 + rx, center.1));
+            eye.quad_to((center.0, center.1 + ry * 2.2), (center.0 - rx, center.1));
+            if mark == IconMark::EyeClosed {
+                eye.move_to((center.0 - rx, center.1 + ry));
+                eye.line_to((center.0 + rx, center.1 - ry));
+            }
+            painter.stroke(&eye, &Stroke::new(1.2), color).draw();
+            if mark == IconMark::EyeOpen {
+                painter.fill(Circle::new(center, ry * 0.62), color).draw();
+            }
+            return;
+        }
+        IconMark::Invert => {
+            let radius = extent / 2.0 - 1.5;
+            let circle = Circle::new(center, radius);
+            painter.stroke(circle, &Stroke::new(1.2), color).draw();
+            let half = Arc {
+                center: center.into(),
+                radii: (radius, radius).into(),
+                start_angle: std::f64::consts::FRAC_PI_2,
+                sweep_angle: std::f64::consts::PI,
+                x_rotation: 0.0,
+            }
+            .to_path(0.1);
+            painter.fill(&half, color).draw();
+            return;
+        }
+        IconMark::SidebarOpen | IconMark::SidebarClosed => {
+            let frame = Rect::new(
+                origin.0 + 1.5,
+                origin.1 + 2.0,
+                origin.0 + extent - 1.5,
+                origin.1 + extent - 2.0,
+            );
+            painter.stroke(frame, &Stroke::new(1.2), color).draw();
+            let split = origin.0
+                + extent
+                    * if mark == IconMark::SidebarOpen {
+                        0.37
+                    } else {
+                        0.18
+                    };
+            painter
+                .stroke(
+                    Line::new((split, origin.1 + 2.0), (split, origin.1 + extent - 2.0)),
+                    &Stroke::new(1.2),
+                    color,
+                )
+                .draw();
+            return;
+        }
+        IconMark::Grid | IconMark::List => {}
+    }
     let path = mark_path(size, maximum_extent, mark);
     painter.stroke(&path, &Stroke::new(1.0), color).draw();
 }
@@ -246,6 +323,11 @@ fn mark_path(size: Size, maximum_extent: Option<f64>, mark: IconMark) -> BezPath
                 path.line_to((center.0 + radius, center.1 + dy));
             }
         }
+        IconMark::EyeOpen
+        | IconMark::EyeClosed
+        | IconMark::Invert
+        | IconMark::SidebarOpen
+        | IconMark::SidebarClosed => unreachable!("painted before mark_path"),
     }
     path
 }

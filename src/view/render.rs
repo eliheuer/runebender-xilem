@@ -210,7 +210,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         Mode::Editor(_) => OneOf3::B(editor_pane(app)),
         Mode::Nodes => OneOf3::C(nodes_pane(app)),
     };
-    let body = if matches!(app.mode, Mode::Editor(_)) {
+    let body = if matches!(app.mode, Mode::Editor(_)) && app.preview_visible {
         Either::A(proof_split(body, preview_strip(app), pal.outline))
     } else {
         Either::B(body)

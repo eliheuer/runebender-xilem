@@ -76,6 +76,9 @@ releases begin.
 - Keep the resting edit footer quiet instead of repeating standing glyph and
   selection metrics already visible elsewhere.
 
+- Replace edit-footer text controls with GPUI's proof, contrast, and sidebar
+  icons; let the proof be hidden and keep zoom controls on the canvas.
+
 - Keep the Coordinates inspector compact before selection and draw its
   reference picker as GPUI's connected nine-point grid.
 

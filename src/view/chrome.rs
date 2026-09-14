@@ -8,6 +8,7 @@ use crate::view::design::{
 };
 use crate::widgets::icon_button::{IconMark, mark_button};
 use crate::*;
+use xilem::Color;
 
 /// The title bar, laid out like the GPUI build's header.
 ///
@@ -214,7 +215,7 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             button(face, move |app: &mut Workspace| app.set_mark(mark.clone()))
                 .padding(Space::None)
                 .border_width(Space::None.length())
-                .background_color(xilem::Color::TRANSPARENT)
+                .background_color(Color::TRANSPARENT)
         })
         .collect::<Vec<_>>();
     sized_box(
@@ -376,12 +377,56 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
         xrow(
             Region::Inline,
             (
-                recipes::toggle(
-                    pal,
-                    "Invert".into(),
-                    app.preview_invert,
-                    |app: &mut Workspace| app.preview_invert = !app.preview_invert,
-                ),
+                xrow(
+                    Region::Inline,
+                    (
+                        mark_button(
+                            "Show proof",
+                            if app.preview_visible {
+                                IconMark::EyeOpen
+                            } else {
+                                IconMark::EyeClosed
+                            },
+                            app.preview_visible,
+                            pal.text_muted,
+                            pal.text,
+                            Color::TRANSPARENT,
+                            Color::TRANSPARENT,
+                            |app: &mut Workspace| app.preview_visible = !app.preview_visible,
+                        )
+                        .icon_size(16.0)
+                        .tile_size(16.0),
+                        mark_button(
+                            "Invert proof",
+                            IconMark::Invert,
+                            app.preview_invert,
+                            pal.text_muted,
+                            pal.text,
+                            Color::TRANSPARENT,
+                            Color::TRANSPARENT,
+                            |app: &mut Workspace| app.preview_invert = !app.preview_invert,
+                        )
+                        .icon_size(16.0)
+                        .tile_size(16.0),
+                        mark_button(
+                            "Toggle sidebar",
+                            if app.left_collapsed {
+                                IconMark::SidebarClosed
+                            } else {
+                                IconMark::SidebarOpen
+                            },
+                            !app.left_collapsed,
+                            pal.text_muted,
+                            pal.text,
+                            Color::TRANSPARENT,
+                            Color::TRANSPARENT,
+                            |app: &mut Workspace| app.left_collapsed = !app.left_collapsed,
+                        )
+                        .icon_size(16.0)
+                        .tile_size(16.0),
+                    ),
+                )
+                .gap(Space::Sm),
                 // The readout yields width to controls; Flex still gives it
                 // the remaining space during layout. Its intrinsic text width
                 // must not widen the whole center dock in a narrow window.
@@ -390,7 +435,7 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                     .prop(masonry::properties::LineBreaking::Clip)
                     .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
                     .flex(1.0),
-                label("Blur").color(pal.text_muted),
+                label("blur").color(pal.text_muted),
                 recipes::neutral_slider(
                     pal,
                     0.0,
@@ -399,16 +444,6 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                     |app: &mut Workspace, value| app.preview_blur = value,
                 )
                 .width(Length::px(STATUS_SLIDER_WIDTH)),
-                label("Zoom").color(pal.text_muted),
-                recipes::neutral_slider(
-                    pal,
-                    0.05,
-                    8.0,
-                    app.session.viewport.zoom,
-                    |app: &mut Workspace, value| app.zoom_to(value),
-                )
-                .width(Length::px(STATUS_SLIDER_WIDTH)),
-                label(format!("{:.0}%", app.session.viewport.zoom * 100.0)).color(pal.text_muted),
             ),
         )
         .padding(masonry::properties::Padding::horizontal(Space::Md.length())),

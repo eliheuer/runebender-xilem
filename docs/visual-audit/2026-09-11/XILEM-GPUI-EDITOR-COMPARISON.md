@@ -1473,3 +1473,25 @@ Both 1280 by 720 captures were visually inspected. The center footer is clear
 in both themes while its appearance controls retain their existing positions.
 Static headless captures verify paint and layout, not native pointer,
 keyboard, screen-reader, or GPU behavior.
+
+
+## 2026-09-14 overnight: edit footer appearance controls
+
+GPUI uses three compact geometry icons at the left of the edit footer: an eye
+for proof visibility, a half-filled circle for proof contrast, and a split
+pane for the left sidebar. It keeps the center empty at rest and places only a
+lowercase `blur` label and slider at the right. Xilem instead exposed a text
+`Invert` button and duplicated the canvas zoom controls in this bar.
+
+Xilem now follows the GPUI control set and spacing. Proof visibility is live,
+the contrast and sidebar controls retain their existing actions, and zoom
+remains available through the editor's canvas interactions and commands
+without being repeated in the footer.
+
+- [Gray edit-footer controls](131-xilem-editor-footer-controls-gray.png)
+- [Light edit-footer controls](132-xilem-editor-footer-controls-light.png)
+
+Both 1280 by 720 captures were visually inspected. The three marks remain
+legible in Gray and Light, the center stays clear, and the right edge contains
+only the proof blur control. Static headless captures verify paint and layout,
+not native pointer, keyboard, screen-reader, or GPU behavior.

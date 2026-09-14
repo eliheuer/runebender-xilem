@@ -302,6 +302,7 @@ impl Workspace {
                 .filter(|v| v.is_finite())
                 .unwrap_or(0.0)
                 .clamp(0.0, 8.0),
+            preview_visible: true,
             preview_invert: std::env::var("RUNEBENDER_PREVIEW_INVERT").as_deref() == Ok("1"),
             search_mode: 0,
             search_case: false,
@@ -442,6 +443,7 @@ impl Workspace {
         let list = self.list;
         let detail = self.detail;
         let left_collapsed = self.left_collapsed;
+        let preview_visible = self.preview_visible;
         let search_mode = self.search_mode;
         let search_case = self.search_case;
         let search_regex = self.search_regex;
@@ -457,6 +459,7 @@ impl Workspace {
                 fresh.list = list;
                 fresh.detail = detail;
                 fresh.left_collapsed = left_collapsed;
+                fresh.preview_visible = preview_visible;
                 fresh.search_mode = search_mode;
                 fresh.search_case = search_case;
                 fresh.search_regex = search_regex;
@@ -908,6 +911,7 @@ mod tests {
         workspace.session = Arc::new(session);
         workspace.set_editor_text("B beside beh \u{0628}".into());
         workspace.preview_text = "B preview \u{0628}".into();
+        workspace.preview_visible = false;
         workspace.text_dir = Some(runebender_core::text::buffer::TextDirection::RightToLeft);
         workspace.text_features_disabled.insert("rlig".into());
         workspace.text_script = Some("arab".into());
@@ -937,6 +941,7 @@ mod tests {
         assert_eq!(workspace.session.viewport.zoom, 2.0);
         assert_eq!(workspace.initial_text, "B beside beh \u{0628}");
         assert_eq!(workspace.preview_text, "B preview \u{0628}");
+        assert!(!workspace.preview_visible);
         assert_eq!(
             workspace.text_dir,
             Some(runebender_core::text::buffer::TextDirection::RightToLeft)
