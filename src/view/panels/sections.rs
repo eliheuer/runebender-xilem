@@ -623,18 +623,19 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                 xcolumn(
                     Region::Section,
                     (
-                        sized_box(
-                            label(match app.selected_points {
-                                0 => "nothing selected".to_string(),
-                                1 => "1 point selected".to_string(),
-                                count => format!("{count} points selected"),
-                            })
-                            .color(pal.text_muted),
-                        )
-                        .dims(Dimensions::new(
-                            Dim::Stretch,
-                            Dim::Fixed(Length::px(COORD_COUNT_HEIGHT)),
-                        )),
+                        (app.selected_points > 0).then(|| {
+                            sized_box(
+                                label(match app.selected_points {
+                                    1 => "1 point".to_string(),
+                                    count => format!("{count} points"),
+                                })
+                                .color(pal.text_muted),
+                            )
+                            .dims(Dimensions::new(
+                                Dim::Stretch,
+                                Dim::Fixed(Length::px(COORD_COUNT_HEIGHT)),
+                            ))
+                        }),
                         xrow(
                             Region::Inline,
                             (

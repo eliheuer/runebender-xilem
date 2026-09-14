@@ -1351,3 +1351,23 @@ Both 1280 by 720 captures were visually inspected. The new divider and header
 align with the neighboring Coordinates and Curves groups in both themes.
 Static headless captures verify paint and layout, not native pointer,
 keyboard, screen-reader, or GPU behavior.
+
+
+## 2026-09-14 overnight: quiet Coordinates empty state
+
+GPUI leaves the reference picker and X/Y/W/H fields visible before a point is
+selected but does not spend a separate row announcing the empty state. Xilem's
+`nothing selected` row made the section visibly taller and pushed every section
+below it farther down the inspector.
+
+Xilem now follows GPUI: the count row appears only when one or more points are
+selected, using the same concise `1 point` or `n points` wording. The picker and
+fields remain available in the empty state.
+
+- [Gray compact Coordinates section](119-xilem-editor-coordinates-gray.png)
+- [Light compact Coordinates section](120-xilem-editor-coordinates-light.png)
+
+Both 1280 by 720 captures were visually inspected. In the empty state the
+picker now sits directly below the Coordinates header and the lower sections
+move up by 21 pixels. Static headless captures verify paint and layout, not
+native pointer, keyboard, screen-reader, or GPU behavior.
