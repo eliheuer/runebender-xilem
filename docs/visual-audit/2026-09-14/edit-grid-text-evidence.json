@@ -1,0 +1,42 @@
+{
+  "recorded_local": "2026-09-14",
+  "xilem_parent": "416ef25c9dde786842759d43c8f481c523232e7d",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": {
+    "overall_source": "user-supplied GPUI edit-view screenshot",
+    "source_size": [2466, 1646],
+    "source_density": 2,
+    "component_sources": [
+      "runebender-gpui/src/view/canvas/editor.rs",
+      "runebender-gpui/src/edit/text_tool.rs",
+      "runebender-gpui/src/edit/session.rs"
+    ]
+  },
+  "implementation": {
+    "grid_spacing_design_units": 8,
+    "fine_grid_spacing_design_units": 2,
+    "grid_capture_zoom": 8,
+    "text_initial_value": "",
+    "open_glyph": "five",
+    "viewport": [1280, 720],
+    "density": 1
+  },
+  "captures": {
+    "145-xilem-round-dot-grid-gray.png": {
+      "theme": "gray",
+      "sha256": "5bdf2411aeda8caf9a15b1f4c6b2af0f77f9bbcf9069863d66e416f68410724c"
+    },
+    "146-xilem-text-tool-seeded-gray.png": {
+      "theme": "gray",
+      "sha256": "5d56e94277c9b2663b5b0dd3f6518fe499531fa393ba8eb0e4e310965d22ab55"
+    },
+    "147-xilem-round-dot-grid-light.png": {
+      "theme": "light",
+      "sha256": "bb274144029d47c03ea55608e38563ab8eedd4fc667cbc0f3bc348b9141c8746"
+    },
+    "148-xilem-text-tool-seeded-light.png": {
+      "theme": "light",
+      "sha256": "103a19166f29a84852a11af86a49b70dc6af5cc076f536c72ceab9435f3aaa1f"
+    }
+  }
+}

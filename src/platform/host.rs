@@ -274,6 +274,7 @@ impl Workspace {
                 Ok("text") => Tool::Text,
                 _ => Tool::Select,
             },
+            editor_focus: Arc::new(std::sync::Mutex::new(None)),
             modified,
             source_roots,
             source_fingerprint,

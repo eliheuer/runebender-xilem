@@ -42,6 +42,9 @@ pub(crate) struct TextInputs {
     /// Text to start with. Only used when the buffer is created, so it
     /// is a starting state and not a binding.
     initial: String,
+    /// The glyph whose editor tab owns this text line. GPUI always keeps
+    /// that glyph as the active sort when a text buffer is first opened.
+    active_glyph: Option<(String, Option<char>, f64)>,
     /// Initial logical range for deterministic visual evidence.
     initial_selection: Option<(usize, usize)>,
     /// Writing direction, or `None` for automatic. This one *is* a
@@ -70,12 +73,24 @@ impl TextInputs {
             ascender: font.ascender(),
             descender: font.descender(),
             initial: String::new(),
+            active_glyph: None,
             initial_selection: None,
             direction: None,
             feature_overrides: Vec::new(),
             script: None,
             language: None,
         }
+    }
+
+    /// Read a master and remember the glyph whose editor tab is open.
+    pub(crate) fn for_glyph(font: &FontModel, glyph_name: &str) -> Self {
+        let mut inputs = Self::new(font);
+        inputs.active_glyph = font
+            .glyphs
+            .iter()
+            .find(|glyph| glyph.name == glyph_name)
+            .map(|glyph| (glyph.name.clone(), glyph.codepoint, glyph.advance));
+        inputs
     }
 
     /// Associate these inputs with one document tab's parked text buffer.
@@ -157,6 +172,7 @@ impl TextState {
             ascender: 800.0,
             descender: -200.0,
             initial: "A".into(),
+            active_glyph: Some(("A".into(), Some('A'), 500.0)),
             initial_selection: None,
             direction: None,
             feature_overrides: Vec::new(),
@@ -178,6 +194,26 @@ impl TextState {
         }
         for character in inputs.initial.chars() {
             buffer.insert_character(character);
+        }
+        if let Some((name, codepoint, advance)) = &inputs.active_glyph {
+            let existing = {
+                buffer
+                    .iter()
+                    .position(|sort| sort.glyph_name() == Some(name.as_str()))
+            };
+            match existing {
+                Some(index) => {
+                    buffer.activate_sort(index);
+                }
+                None => {
+                    // A glyph need not have Unicode. Seed it explicitly, as
+                    // GPUI does, so taking the Text tool never blanks the glyph
+                    // that was already open. If a different line had been
+                    // parked here, it cannot provide an active edit target.
+                    buffer.clear();
+                    buffer.insert_glyph(name.clone(), *codepoint, *advance);
+                }
+            }
         }
         buffer.shape_arabic_if_rtl();
         if let Some((start, end)) = inputs.initial_selection {
@@ -383,6 +419,7 @@ mod tests {
             ascender: 800.0,
             descender: -200.0,
             initial: String::new(),
+            active_glyph: None,
             initial_selection: None,
             direction: None,
             feature_overrides: Vec::new(),
@@ -398,6 +435,82 @@ mod tests {
             &[("kern".into(), false), ("liga".into(), false)]
         );
         assert_eq!(state.buffer.shaping_locale(), (Some("arab"), Some("ur")));
+    }
+
+    #[test]
+    fn empty_text_starts_with_the_open_glyph_active() {
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("five");
+        glyph.width = 612.0;
+        glyph.codepoints.insert('5');
+        font.default_layer_mut().insert_glyph(glyph);
+        let mut other = norad::Glyph::new("A");
+        other.width = 500.0;
+        other.codepoints.insert('A');
+        font.default_layer_mut().insert_glyph(other);
+        let mut inputs = TextInputs {
+            context_id: (0, 0),
+            inventory: TextGlyphInventory::from_font(&font),
+            kerning: TextKerningModel::default(),
+            outlines: Arc::new(Vec::new()),
+            line_height: 1000.0,
+            ascender: 800.0,
+            descender: -200.0,
+            initial: String::new(),
+            active_glyph: Some(("five".into(), Some('5'), 612.0)),
+            initial_selection: None,
+            direction: None,
+            feature_overrides: Vec::new(),
+            script: None,
+            language: None,
+        };
+        let state = TextState::new(&inputs);
+
+        assert_eq!(state.buffer.len(), 1);
+        assert_eq!(state.buffer.active_sort(), Some(0));
+        assert_eq!(state.buffer.sort(0).unwrap().glyph_name(), Some("five"));
+
+        inputs.initial = "5".into();
+        let state = TextState::new(&inputs);
+        assert_eq!(state.buffer.len(), 1, "the open glyph is not duplicated");
+        assert_eq!(state.buffer.active_sort(), Some(0));
+
+        inputs.initial = "A".into();
+        let state = TextState::new(&inputs);
+        assert_eq!(
+            state.buffer.sort(0).unwrap().glyph_name(),
+            Some("five"),
+            "a parked line without the open glyph resets to its edit target"
+        );
+        assert_eq!(state.buffer.active_sort(), Some(0));
+    }
+
+    #[test]
+    fn non_unicode_open_glyph_is_still_seeded() {
+        let inputs = TextInputs {
+            context_id: (0, 0),
+            inventory: TextGlyphInventory::default(),
+            kerning: TextKerningModel::default(),
+            outlines: Arc::new(Vec::new()),
+            line_height: 1000.0,
+            ascender: 800.0,
+            descender: -200.0,
+            initial: String::new(),
+            active_glyph: Some(("alternate.001".into(), None, 500.0)),
+            initial_selection: None,
+            direction: None,
+            feature_overrides: Vec::new(),
+            script: None,
+            language: None,
+        };
+        let state = TextState::new(&inputs);
+
+        assert_eq!(state.buffer.len(), 1);
+        assert_eq!(
+            state.buffer.sort(0).unwrap().glyph_name(),
+            Some("alternate.001")
+        );
+        assert_eq!(state.buffer.active_sort(), Some(0));
     }
 
     #[test]

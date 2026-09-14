@@ -146,6 +146,9 @@ pub(crate) struct Workspace {
     pub(crate) active_tab: usize,
     pub(crate) selected_points: usize,
     pub(crate) tool: Tool,
+    /// The live edit canvas. Toolbar controls use this to transfer native
+    /// keyboard/IME focus without making the view-owned text buffer `Send`.
+    pub(crate) editor_focus: Arc<std::sync::Mutex<Option<masonry::core::WidgetId>>>,
     pub(crate) modified: bool,
     /// Source paths whose disk contents define the conflict baseline.
     pub(crate) source_roots: Vec<std::path::PathBuf>,

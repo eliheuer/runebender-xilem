@@ -7,10 +7,12 @@
 //! xix note: an icon button that paints a vector path is something the
 //! framework should offer; here we paint the core icon directly.
 
+use std::sync::{Arc, Mutex};
+
 use masonry::accesskit::{Node, Role};
 use masonry::core::{
     AccessCtx, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx, PointerButton,
-    PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, Widget,
+    PointerButtonEvent, PointerEvent, PropertiesMut, PropertiesRef, RegisterCtx, Widget, WidgetId,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Affine, Axis, BezPath, Line, Size, Stroke};
@@ -57,6 +59,7 @@ pub(crate) struct IconWidget {
     icon_size: Option<f64>,
     frame: Option<(Color, Color)>,
     tile_size: f64,
+    focus_target: Option<Arc<Mutex<Option<WidgetId>>>>,
     size: Size,
     hovered: bool,
 }
@@ -190,6 +193,13 @@ impl Widget for IconWidget {
                 button: Some(PointerButton::Primary),
                 ..
             }) => {
+                if let Some(target) = self
+                    .focus_target
+                    .as_ref()
+                    .and_then(|target| *target.lock().unwrap_or_else(|error| error.into_inner()))
+                {
+                    ctx.set_focus(target);
+                }
                 ctx.submit_action::<IconClicked>(IconClicked);
                 ctx.set_handled();
             }
@@ -344,6 +354,7 @@ pub(crate) struct IconView<F> {
     icon_size: Option<f64>,
     frame: Option<(Color, Color)>,
     tile_size: f64,
+    focus_target: Option<Arc<Mutex<Option<WidgetId>>>>,
     on_click: F,
 }
 
@@ -368,6 +379,7 @@ pub(crate) fn icon_button<State: 'static, F: Fn(&mut State) + 'static>(
         icon_size: None,
         frame: None,
         tile_size: TILE,
+        focus_target: None,
         on_click,
     }
 }
@@ -395,6 +407,7 @@ pub(crate) fn mark_button<State: 'static, F: Fn(&mut State) + 'static>(
         icon_size: None,
         frame: None,
         tile_size: TILE,
+        focus_target: None,
         on_click,
     }
 }
@@ -416,6 +429,12 @@ impl<F> IconView<F> {
     /// Set the square pointer target for a compact icon control.
     pub(crate) fn tile_size(mut self, size: f64) -> Self {
         self.tile_size = size.max(0.0);
+        self
+    }
+
+    /// Transfer focus to another widget as part of this control's click.
+    pub(crate) fn focus_target(mut self, target: Arc<Mutex<Option<WidgetId>>>) -> Self {
+        self.focus_target = Some(target);
         self
     }
 
@@ -444,6 +463,7 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
             icon_size: self.icon_size,
             frame: self.frame,
             tile_size: self.tile_size,
+            focus_target: self.focus_target.clone(),
             size: Size::ZERO,
             hovered: false,
         };
@@ -479,6 +499,7 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
             el.widget.hover_bg = self.hover_bg;
             el.ctx.request_render();
         }
+        el.widget.focus_target = self.focus_target.clone();
     }
 
     fn teardown(&self, (): &mut Self::ViewState, _: &mut ViewCtx, _: Mut<'_, Self::Element>) {}
@@ -503,7 +524,11 @@ impl<State: 'static, F: Fn(&mut State) + 'static> View<State, (), ViewCtx> for I
 #[cfg(test)]
 mod tests {
     use super::*;
+    use masonry::core::NewWidget;
     use masonry::kurbo::Shape as _;
+    use masonry::theme::default_property_set;
+    use masonry::widgets::{Button, Flex, Label};
+    use masonry_testing::TestHarness;
 
     #[test]
     fn geometry_marks_are_centered_and_distinct() {
@@ -519,5 +544,35 @@ mod tests {
             assert!(bounds.x0 > 0.0 && bounds.y0 > 0.0);
             assert!(bounds.x1 < size.width && bounds.y1 < size.height);
         }
+    }
+
+    #[test]
+    fn a_tool_control_can_focus_the_editor_on_click() {
+        let editor = NewWidget::new(Button::new(Label::new("editor").prepare()));
+        let editor_id = editor.id();
+        let target = Arc::new(Mutex::new(Some(editor_id)));
+        let tool = NewWidget::new(IconWidget {
+            icon: "text",
+            mark: None,
+            active: false,
+            fg: Color::BLACK,
+            fg_active: Color::BLACK,
+            active_bg: Color::TRANSPARENT,
+            hover_bg: Color::TRANSPARENT,
+            rail: None,
+            icon_size: None,
+            frame: None,
+            tile_size: TILE,
+            focus_target: Some(target),
+            size: Size::ZERO,
+            hovered: false,
+        });
+        let tool_id = tool.id();
+        let row = Flex::row().with_fixed(tool).with_fixed(editor).prepare();
+        let mut harness = TestHarness::create_with_size(default_property_set(), row, (160, 40));
+
+        harness.mouse_click_on(tool_id, Some(PointerButton::Primary));
+
+        assert_eq!(harness.focused_widget_id(), Some(editor_id));
     }
 }

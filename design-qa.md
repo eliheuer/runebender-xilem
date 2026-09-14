@@ -1,69 +1,76 @@
-# Design QA: native title-bar optical balance
+# Design QA: edit grid and Text-tool entry
 
-Final result: passed
+final result: passed
 
 ## Inputs and state
 
-- Source visual truth: `/Users/eli/Desktop/Screenshot 2026-09-14 at 9.45.33 AM.png`.
-- Source pixels: 2302 by 114 at 144 dpi (2x native macOS capture).
-- Implementation: `src/view/design.rs` and `src/view/panels/tabs.rs` on the
-  edit view with glyph `one`, saved state, and the Select tool active.
-- Reference behavior: `/Users/eli/GH/repos/runebender-gpui/src/view/chrome.rs`
-  and `/Users/eli/GH/repos/runebender-gpui/src/workspace.rs`.
+- Overall GPUI edit-view reference: user-supplied
+  `/Users/eli/Desktop/Screenshot 2026-09-13 at 11.49.42 PM.png`, 2466 by
+  1646 device pixels at macOS 2x density.
+- Component reference: `runebender-gpui/src/view/canvas/editor.rs` at
+  `79e3ab1d096bdcf2538d946c796a8a0cf01f0573`, especially
+  `paint_design_grid`, `grid_dot_sizes`, and `round_dot`.
+- Text behavior reference: `runebender-gpui/src/edit/text_tool.rs` and
+  `runebender-gpui/src/edit/session.rs` at the same revision. A new text
+  buffer retains the open glyph as its active sort.
+- Implementation: `src/view/canvas/editor.rs`, `src/edit/text_tool.rs`,
+  `src/widgets/icon_button.rs`, and their call sites. The captures open the
+  Virtua Grotesk `five` glyph in a 1280 by 720 logical viewport at density 1.
 
-## Rendered evidence
+## Rendered implementation
 
-- Gray full view: `docs/visual-audit/2026-09-11/142-xilem-editor-topbar-balanced-gray.png`,
-  1280 by 720 CSS/logical pixels, device density 1, 1280 by 720 output pixels.
-- Light full view: `docs/visual-audit/2026-09-11/143-xilem-editor-topbar-balanced-light.png`,
-  1280 by 720 CSS/logical pixels, device density 1, 1280 by 720 output pixels.
-- Gray density-matched view:
-  `docs/visual-audit/2026-09-11/144-xilem-editor-topbar-balanced-gray-1000-2x.png`,
-  1000 by 680 CSS/logical pixels, device density 2, 2000 by 1360 output pixels.
-- Focused comparison: the 1960-by-52-pixel native window/header crop and the
-  2000-by-60-pixel implementation header crop were centered without horizontal
-  stretching and stacked at their shared 2x density.
+- `docs/visual-audit/2026-09-14/145-xilem-round-dot-grid-gray.png`:
+  Gray theme, Select tool, edit-canvas zoom 8. The grid is intentionally
+  isolated at this zoom so its circular silhouettes are directly inspectable.
+- `docs/visual-audit/2026-09-14/146-xilem-text-tool-seeded-gray.png`:
+  Gray theme, Text tool, empty saved text context. The open `five` glyph is
+  retained as the active sort instead of disappearing.
+- `docs/visual-audit/2026-09-14/147-xilem-round-dot-grid-light.png` and
+  `148-xilem-text-tool-seeded-light.png`: the same two states in Light.
 
 ## Comparison history
 
-- Earlier P2: the 28-pixel compact pass left less native margin below the
-  AppKit traffic lights than above and put the code-owned centerline too high.
-  Fix: use a 30-pixel title bar. Post-fix evidence: the 2x capture adds two
-  physical pixels beneath the native control position and moves the document
-  text, tools, and tabs down together by one logical pixel.
-- Earlier P2: the square new-tab chip competed with the rounded window corner.
-  Fix: preserve the 21-by-21-pixel slot but give only the `+` chip a full
-  radius. Post-fix evidence: all three renders show a circular terminal control
-  while the Font, Nodes, and glyph tabs remain rounded rectangles.
+- Earlier P1: switching from Select to Text constructed a buffer from an empty
+  string, so the canvas replaced the open glyph with an empty line. Fix: seed
+  an empty buffer with the tab's glyph name, Unicode value when present, and
+  live advance; activate the matching sort when initial text already contains
+  it, or reset a stale line that has no valid edit target. Both Gray and Light
+  captures retain `five` with its advance box and caret.
+- Earlier P1: selecting the Text toolbar icon left native keyboard/IME focus
+  outside the editor. Fix: the per-workspace editor widget id is registered at
+  build time and the Text tool transfers focus during its pointer event. A
+  Masonry harness verifies that the target becomes focused; the existing IME
+  harness verifies commit, preedit, selection, arrows, line navigation, cut,
+  copy, and paste once focused.
+- Earlier P2: design-grid points were axis-aligned `Rect` paths. Fix: preserve
+  GPUI's spacing, fade, and zoom-dependent diameter but build each mark as a
+  Kurbo `Circle`. At zoom 8, every inspected dot has a round silhouette in both
+  themes; the geometry test also proves a bounding-box corner lies outside.
 
 ## Fidelity surfaces
 
-- Fonts and typography: the established 13-pixel interface type and copy are
-  unchanged; the shared row center corrects the title/status vertical position
-  without a font-specific baseline offset.
-- Spacing and layout rhythm: the 30-pixel bar centers 20-pixel tool slots and
-  21-pixel tabs, retains eight-pixel horizontal inset, and remains complete at
-  the 1000-pixel viewport.
-- Colors and visual tokens: existing header, full-strength active ink, and
-  half-strength inactive ink are unchanged in Gray and Light.
-- Image and icon fidelity: the existing `runebender-core` vector toolbar assets
-  remain sharp at 1x and 2x; no replacement or generated assets were needed.
-- Copy and content: file identity, Saved state, eight tools, Font, Nodes, active
-  glyph, and new-tab action remain visible and unaltered.
-
-## Remaining validation boundary
-
-Headless capture verifies the code-owned height, centerline, control geometry,
-themes, and narrow layout. AppKit owns the traffic-light coordinates and does
-not paint them in the headless renderer; their final optical balance is inferred
-from the supplied native 2x capture and the two-pixel height correction.
+- Fonts and typography: no interface font, size, metric-card type, or proof
+  typography changed.
+- Spacing and layout rhythm: grid spacing remains exactly 8 design units with
+  the existing 2-unit close level; Text mode retains the established line-fit
+  and caret layout.
+- Colors and visual tokens: both grid levels continue to use the existing
+  `designGridCoarse` role and fade values; Gray and Light were inspected.
+- Image and icon fidelity: no raster or generated asset was introduced. The
+  round grid is native Kurbo geometry, and the existing Text toolbar vector is
+  unchanged.
+- Copy and content: the open glyph remains `five`; its name, U+0035 identity,
+  advance, rail selection, and inspector content are preserved on tool entry.
 
 ## Validation
 
 - `cargo fmt --check`
-- `cargo clippy --offline --all-targets`
-- `cargo test --offline --bin runebender` (135 passed, 4 ignored)
+- `cargo test --offline --bin runebender` (139 passed, 4 ignored), including
+  the focus-transfer harness, Unicode and non-Unicode Text seed tests, the
+  existing IME/navigation/clipboard harness, and round-grid geometry.
 - `cargo test --offline --test cli` (17 passed)
 - `cargo test --offline --test live_agent` (passed with local Unix-socket
   permission)
+- `cargo clippy --offline --all-targets -- -D warnings`
 - `git diff --check`
+- Gray and Light headless captures visually inspected at 1280 by 720

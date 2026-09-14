@@ -60,7 +60,7 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
                     let (start, end) = value.split_once(':')?;
                     Some((start.parse().ok()?, end.parse().ok()?))
                 });
-            text_tool::TextInputs::new(&app.font)
+            text_tool::TextInputs::for_glyph(&app.font, &app.session.glyph_name)
                 .with_context(app.text_context_id())
                 .with_text(&app.initial_text)
                 .with_direction(app.text_dir)
@@ -71,6 +71,7 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
                     app.text_language.as_deref(),
                 )
         }),
+        app.editor_focus.clone(),
         |app: &mut Workspace, ev| match ev {
             canvas::editor::EditorEvent::Selection(n) => {
                 app.selected_points = n;

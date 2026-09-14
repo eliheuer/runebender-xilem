@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Match GPUI's round, zoom-responsive edit-canvas dot grid, and make the Text
+  tool retain the open glyph, take keyboard focus immediately, and accept typing
+  without a preparatory canvas click.
+
 - Tighten the native title bar to a balanced 30-pixel centerline, reduce
   edit-tool buttons to 20-pixel icon slots, show selection through icon
   contrast without an inverted tile, and fit the new-tab action to the window

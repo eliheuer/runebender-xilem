@@ -135,8 +135,9 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
     let fg_active = pal.header_ink;
     let active_bg = Color::TRANSPARENT;
     let hover_bg = pal.control;
+    let editor_focus = app.editor_focus.clone();
     let tile = move |icon: &'static str, tool: Tool| {
-        icon_button(
+        let button = icon_button(
             icon,
             app.tool == tool,
             fg,
@@ -147,7 +148,12 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
                 app.tool = tool;
             },
         )
-        .tile_size(ControlSize::Icon.px())
+        .tile_size(ControlSize::Icon.px());
+        if tool == Tool::Text {
+            button.focus_target(editor_focus.clone())
+        } else {
+            button
+        }
     };
     xrow(
         Region::List,

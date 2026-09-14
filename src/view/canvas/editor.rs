@@ -39,6 +39,11 @@ use crate::view::design::{
 
 const HIT_RADIUS_PX: f64 = 8.0;
 
+/// Build one round design-grid dot in screen coordinates.
+fn round_grid_dot(at: Point, diameter: f64) -> kurbo::BezPath {
+    kurbo::Shape::to_path(&Circle::new(at, diameter / 2.0), 0.1)
+}
+
 /// Context-menu items: (label, op). Op returns whether the glyph changed.
 /// The right-click menu's rows. Shared with the layer that draws them.
 const MENU_ITEMS: &[MenuRow] = &[
@@ -666,6 +671,22 @@ impl Widget for EditorWidget {
                 } else {
                     self.fit();
                 }
+                // Deterministic close-up evidence for zoom-dependent grid
+                // rendering. This is deliberately gated to headless capture.
+                if std::env::var("RUNEBENDER_SCREENSHOT").is_ok()
+                    && let Ok(zoom) = std::env::var("RUNEBENDER_EDITOR_ZOOM")
+                    && let Ok(zoom) = zoom.parse::<f64>()
+                    && zoom.is_finite()
+                    && zoom > 0.0
+                {
+                    let center = self.size.to_rect().center();
+                    self.session.viewport.zoom_about(
+                        center,
+                        zoom / self.session.viewport.zoom,
+                        zoom,
+                        zoom,
+                    );
+                }
             }
         }
         ctx.set_clip_path(size.to_rect());
@@ -795,7 +816,6 @@ impl Widget for EditorWidget {
                 let (min_y, max_y) = (a.y.min(b.y), a.y.max(b.y));
                 let mut level = |spacing: f64, skip_every: i64, size: f64, alpha: f64| {
                     let mut marks = kurbo::BezPath::new();
-                    let h = size / 2.0;
                     let (ix0, ix1) = (
                         grid_index((min_x / spacing).floor()),
                         grid_index((max_x / spacing).ceil()),
@@ -827,10 +847,7 @@ impl Widget for EditorWidget {
                                 }
                                 let at =
                                     affine * Point::new(ix as f64 * spacing, iy as f64 * spacing);
-                                marks.extend(kurbo::Shape::to_path(
-                                    &Rect::new(at.x - h, at.y - h, at.x + h, at.y + h),
-                                    0.1,
-                                ));
+                                marks.extend(round_grid_dot(at, size));
                             }
                         }
                     }
@@ -1912,6 +1929,7 @@ pub(crate) struct EditorView<F> {
     interp: Option<Arc<kurbo::BezPath>>,
     underlay: Underlay,
     text: Option<crate::edit::text_tool::TextInputs>,
+    focus_target: Arc<std::sync::Mutex<Option<WidgetId>>>,
     on_event: F,
 }
 
@@ -1932,6 +1950,7 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
     interp: Option<Arc<kurbo::BezPath>>,
     underlay: Underlay,
     text: Option<crate::edit::text_tool::TextInputs>,
+    focus_target: Arc<std::sync::Mutex<Option<WidgetId>>>,
     on_event: F,
 ) -> EditorView<F> {
     EditorView {
@@ -1945,6 +1964,7 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
         interp,
         underlay,
         text,
+        focus_target,
         on_event,
     }
 }
@@ -2056,7 +2076,12 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             field: None,
             field_buf: String::new(),
         };
-        (ctx.with_action_widget(|ctx| ctx.create_pod(widget)), ())
+        let pod = ctx.with_action_widget(|ctx| ctx.create_pod(widget));
+        *self
+            .focus_target
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(pod.new_widget.id());
+        (pod, ())
     }
 
     fn rebuild(
@@ -2170,6 +2195,7 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use masonry::kurbo::Shape as _;
     use masonry::theme::default_property_set;
     use masonry_testing::TestHarness;
 
@@ -2213,6 +2239,18 @@ mod tests {
             field: None,
             field_buf: String::new(),
         }
+    }
+
+    #[test]
+    fn design_grid_dot_is_round_instead_of_a_square_tile() {
+        let dot = round_grid_dot(Point::new(10.0, 10.0), 4.0);
+        assert_eq!(dot.bounding_box(), Rect::new(8.0, 8.0, 12.0, 12.0));
+        assert_ne!(dot.winding(Point::new(10.0, 10.0)), 0);
+        assert_eq!(
+            dot.winding(Point::new(8.2, 8.2)),
+            0,
+            "a rounded dot does not fill its bounding-box corner"
+        );
     }
 
     #[test]
