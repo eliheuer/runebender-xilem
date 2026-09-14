@@ -10,6 +10,7 @@ Verified in isolated headless Chrome on macOS at 1280×800:
 - Undo restores the original coordinates and redo restores the edit.
 - Wheel zoom, panel resizing, and switching to Nodes work.
 - Open gives desktop-only feedback. Save preserves the session's edited points.
+- Search opens the matching glyph; Light and Dark retain visible point markers.
 - No JavaScript page errors in the interaction check (`web/smoke.cjs`).
 
 Native validation: workspace tests passed (511 tests, 4 ignored), formatting,

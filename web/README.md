@@ -39,3 +39,7 @@ and the Nodes view, and checks that Open gives desktop-only feedback. Set
 `RUNEBENDER_DEMO_URL` for a different host, `RUNEBENDER_CHROME` for a Chrome
 executable, or `RUNEBENDER_PLAYWRIGHT` for an existing Playwright installation.
 Set `RUNEBENDER_IFRAME=1` when checking the website's full-screen editor wrapper.
+
+`node web/themes.cjs` checks search and opening a glyph, then uses the real
+Theme menu to verify that point markers remain painted in Light and Dark.
+It accepts the same browser and URL environment variables.

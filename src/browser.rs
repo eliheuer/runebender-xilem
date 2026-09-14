@@ -102,6 +102,7 @@ struct Host<V: WidgetView<AppState, Widget: Sized>, F> {
     renderer: imaging_vello_cpu::VelloCpuRenderer,
     width: u32,
     height: u32,
+    painted_theme: &'static str,
 }
 impl<V, F> Host<V, F>
 where
@@ -267,6 +268,12 @@ where
         self.drain();
     }
     fn frame(&mut self) -> Vec<u8> {
+        if self.painted_theme != self.app.theme_id {
+            // Theme changes must invalidate cached widget paint as well as view state.
+            // Reapplying the unchanged logical scale requests a complete repaint.
+            self.root.handle_window_event(WindowEvent::Rescale(1.));
+            self.painted_theme = self.app.theme_id;
+        }
         self.root
             .handle_window_event(WindowEvent::AnimFrame(std::time::Duration::from_millis(32)));
         self.drain();
@@ -320,6 +327,7 @@ where
     );
     root.register_fonts(xilem::Blob::new(Arc::new(UI_FONT)));
     let mut host = Host {
+        painted_theme: app.theme_id,
         app,
         view,
         view_state,
