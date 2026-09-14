@@ -1,0 +1,30 @@
+name: Windows basics
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: eliheuer/virtua-grotesk
+          path: test-fonts
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the Windows application
+        run: cargo build --locked --bin runebender
+      - name: Exercise CLI, rendering, and native startup
+        shell: pwsh
+        run: ./scripts/windows-smoke.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-smoke
+          path: windows-smoke/
