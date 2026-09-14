@@ -32,6 +32,33 @@ runebender mcp --live
 The user manual and documentation is available at
 [runebender.org](https://runebender.org/docs/).
 
+## Windows status
+
+Windows support is not ready to claim yet. The MSVC build, headless font
+inspection, SVG proof, and CPU editor rendering pass in CI, but native startup
+currently fails with an access violation after window creation. The Windows
+workflow retains a failing runtime check so this blocker stays visible.
+
+For development, use 64-bit Windows with Rust's MSVC toolchain and the
+[Visual Studio C++ prerequisites](https://rust-lang.github.io/rustup/installation/windows-msvc.html).
+Then run the Cargo install command above. To open a directory-based font source
+from PowerShell:
+
+```powershell
+runebender 'C:\Fonts\Font-Regular.ufo'
+```
+
+The [Windows basics workflow](https://github.com/eliheuer/runebender-xilem/actions/workflows/windows.yml)
+checks a native build, UFO inspection, SVG proof, editor rendering, and opening
+and closing a native window with a font loaded. The native check is currently
+failing. Editing, dialogs, input methods, and GPU/driver coverage also need
+hands-on Windows testing. There is no installer or Windows ARM build yet.
+
+Use a command-line path for UFO, Glyphs Package, and Babelfont directories;
+the Windows file picker currently selects files. Live MCP connections and the
+live chat bridge currently require macOS or Linux. Headless `info` and `proof`
+work without those services.
+
 ## Basic Babelfont import
 
 Open a single-master `.babelfont` directory with the editor or headless tools:
