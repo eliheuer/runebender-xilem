@@ -344,6 +344,15 @@ impl AppState {
     /// workspace while keeping application-level theme state available on the
     /// welcome screen.
     pub(crate) fn dispatch(&mut self, action: shortcuts::AppAction) {
+        #[cfg(target_arch = "wasm32")]
+        if crate::browser::desktop_action(action) {
+            if let Some(workspace) = self.workspace.as_mut() {
+                workspace.note =
+                    "This demo keeps edits in this tab. Use the desktop app to open or save fonts."
+                        .into();
+            }
+            return;
+        }
         if action == shortcuts::AppAction::Quit {
             self.request_quit();
             return;
@@ -449,6 +458,7 @@ impl AppState {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl xilem::AppState for AppState {
     fn keep_running(&self) -> bool {
         self.running

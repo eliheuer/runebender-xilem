@@ -841,6 +841,13 @@ impl Workspace {
     }
 
     pub(crate) fn dispatch(&mut self, action: shortcuts::AppAction) {
+        #[cfg(target_arch = "wasm32")]
+        if crate::browser::desktop_action(action) {
+            self.note =
+                "This demo keeps edits in this tab. Use the desktop app to open or save fonts."
+                    .into();
+            return;
+        }
         use shortcuts::AppAction as A;
         match action {
             A::Quit => unreachable!("Quit is handled at the application shell"),
@@ -1104,6 +1111,7 @@ impl Workspace {
     }
 
     /// Copy selected glyphs' encoded characters to the system clipboard.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn copy_selected_glyphs_as_text(&mut self) {
         use copypasta::ClipboardProvider as _;
 
@@ -1301,5 +1309,12 @@ mod tests {
         assert!(workspace.modified);
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Workspace {
+    pub(crate) fn copy_selected_glyphs_as_text(&mut self) {
+        self.note = "Clipboard is not available in this demo".into();
     }
 }

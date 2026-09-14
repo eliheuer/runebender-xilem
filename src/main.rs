@@ -5,9 +5,16 @@
 //! See `docs/XILEM-GAPS.md` for what this build costs against the
 //! same editor on GPUI.
 
+// The browser shares editor code whose desktop-only actions are intentionally dormant.
+#![cfg_attr(target_arch = "wasm32", allow(dead_code))]
+
 mod actions;
+#[cfg(target_arch = "wasm32")]
+mod browser;
+#[cfg(not(target_arch = "wasm32"))]
 mod cli;
 mod edit;
+#[cfg(not(target_arch = "wasm32"))]
 mod launch;
 mod model;
 mod platform;
@@ -35,16 +42,21 @@ fn default_property_set() -> masonry::core::DefaultProperties {
     properties
 }
 use crate::widgets::scroll_viewport::portal;
+#[cfg(not(target_arch = "wasm32"))]
 use winit::dpi::LogicalSize;
+#[cfg(not(target_arch = "wasm32"))]
 use winit::error::EventLoopError;
+use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::{
     FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, sized_box, text_button,
 };
-use xilem::{EventLoop, EventLoopBuilder, WidgetView, Xilem};
+#[cfg(not(target_arch = "wasm32"))]
+use xilem::{EventLoop, EventLoopBuilder, Xilem};
 
 use edit::session::Session;
 use edit::*;
+#[cfg(not(target_arch = "wasm32"))]
 use launch::*;
 use model::FontModel;
 use platform::*;
@@ -93,6 +105,7 @@ where
         .text_size(TextSize::Body.px())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> std::process::ExitCode {
     match cli::run() {
         cli::Startup::Exit(code) => code,

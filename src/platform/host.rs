@@ -55,7 +55,10 @@ fn source_fingerprint(roots: &[std::path::PathBuf]) -> u64 {
 
 impl Workspace {
     pub(crate) fn open(path: &FsPath) -> Result<Self, String> {
-        let font = FontModel::open(path)?;
+        Self::from_model(FontModel::open(path)?)
+    }
+
+    pub(crate) fn from_model(font: FontModel) -> Result<Self, String> {
         let modified = font.project.ds_dirty || font.project.masters.iter().any(|m| m.dirty);
         let source_roots = source_roots(&font);
         let source_fingerprint = source_fingerprint(&source_roots);
@@ -370,6 +373,10 @@ impl Workspace {
 
     /// Saves the live document and reports whether the disk now matches it.
     pub(crate) fn save(&mut self) -> bool {
+        if cfg!(target_arch = "wasm32") {
+            self.note = "Edits stay in this tab. Use the desktop app to save fonts.".into();
+            return false;
+        }
         if self.features_edited {
             self.note = "Apply or Revert feature edits before saving".into();
             return false;

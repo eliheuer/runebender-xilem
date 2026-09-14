@@ -494,6 +494,10 @@ impl Workspace {
     /// one glyph; `None` runs every drawn glyph. Every result remains a
     /// proposal until the user explicitly installs or discards it.
     pub(crate) fn run_task(&mut self, task: &str, glyph: Option<usize>) {
+        if cfg!(target_arch = "wasm32") {
+            self.note = "Local AI and workflow execution are available in the desktop app.".into();
+            return;
+        }
         let Some(model) = self.ai.dir.clone() else {
             self.note = "Choose a model first".into();
             return;

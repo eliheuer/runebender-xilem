@@ -283,6 +283,9 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     let content = content.boxed();
     #[cfg(unix)]
     let content = live::with_live(content);
+    #[cfg(target_arch = "wasm32")]
+    return content;
+    #[cfg(not(target_arch = "wasm32"))]
     watch::with_watch(
         ai_pump(
             chat_pump(

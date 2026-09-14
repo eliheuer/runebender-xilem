@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Runebender</title><link rel="icon" href="data:,">
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#999;color:#222;font:13px system-ui,sans-serif}#app{display:block;width:100%;height:calc(100% - 26px);outline:none;touch-action:none}footer{height:26px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border-top:1px solid #444;background:#aaa;gap:10px}footer a,button{color:inherit}button{border:0;background:none;text-decoration:underline;cursor:pointer;font:inherit;padding:0}#loading{position:fixed;inset:0;display:grid;place-content:center;background:#aaa;z-index:2}#loading[hidden]{display:none}#error{max-width:640px;white-space:pre-wrap}a{color:inherit}
+</style>
+</head>
+<body>
+<div id="loading"><div id="status">Loading Runebender…</div><pre id="error"></pre></div>
+<canvas id="app" tabindex="0" aria-label="Runebender font editor. Double-click a glyph to edit it."></canvas>
+<footer><span>Browser preview · Edits stay in this tab</span><span><button id="reset">Reset demo</button> · <a href="https://runebender.org/docs/install.html" target="_blank" rel="noopener">Get the desktop app</a></span></footer>
+<script type="module" src="./app.js"></script>
+</body></html>

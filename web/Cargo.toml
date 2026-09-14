@@ -1,0 +1,29 @@
+[package]
+name = "runebender-browser"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0 OR MIT"
+publish = false
+[workspace]
+[lib]
+path = "../src/main.rs"
+crate-type = ["cdylib"]
+[dependencies]
+xilem = { package = "runebender-xilem-browser", path = "compat" }
+masonry = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a", default-features = false }
+wasm-bindgen = "=0.2.127"
+console_error_panic_hook = "0.1.7"
+web-time = "1"
+runebender-core = { path = "../crates/runebender-core" }
+norad = "0.18"
+regex = "1"
+serde_json = "1"
+kurbo = "0.13"
+linesweeper = "0.4"
+tokio = { version = "1", features = ["rt", "time"] }
+imaging_vello_cpu = "0.0.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+[profile.release]
+opt-level = 2
+lto = "thin"
+codegen-units = 1

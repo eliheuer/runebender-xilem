@@ -1303,6 +1303,7 @@ mod platform {
 
 #[cfg(not(target_os = "macos"))]
 mod platform {
+    #[cfg(not(target_arch = "wasm32"))]
     use crate::widgets::shortcuts::AppAction;
 
     /// The native menu is macOS-only; [`crate::widgets::menu_shell`] owns the
@@ -1310,6 +1311,7 @@ mod platform {
     pub(crate) fn install(_app: &crate::AppState) {}
 
     /// No menu ids exist off macOS, so nothing matches.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn action_for(_id: &muda::MenuId) -> Option<AppAction> {
         None
     }
@@ -1323,6 +1325,7 @@ pub(crate) use platform::install;
 /// Menu events do not travel through winit's event loop, so without this
 /// they never reach the widget tree at all. The pump produces no widget,
 /// which is why it is forked alongside the tree rather than placed in it.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn with_menu_events<V: xilem::WidgetView<AppState>>(
     view: V,
 ) -> impl xilem::WidgetView<AppState> + use<V> {
@@ -1362,4 +1365,9 @@ pub(crate) fn with_menu_events<V: xilem::WidgetView<AppState>>(
             },
         ),
     )
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn with_menu_events<V: xilem::WidgetView<AppState>>(view: V) -> V {
+    view
 }

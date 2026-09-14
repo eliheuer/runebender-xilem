@@ -115,6 +115,10 @@ impl Workspace {
 
     /// Start one local-model turn against this editor's live endpoint.
     pub(crate) fn chat_send(&mut self, text: String) {
+        if cfg!(target_arch = "wasm32") {
+            self.note = "Local AI and workflow execution are available in the desktop app.".into();
+            return;
+        }
         let text = text.trim().to_string();
         if text.is_empty() {
             return;

@@ -366,6 +366,10 @@ impl Workspace {
     /// Runs the open file over the active master and the selection on
     /// a thread. The pump view carries what it says back here.
     pub(crate) fn run_nodes(&mut self) {
+        if cfg!(target_arch = "wasm32") {
+            self.note = "Local AI and workflow execution are available in the desktop app.".into();
+            return;
+        }
         let Some(state) = self.nodes.graph.as_ref() else {
             return;
         };

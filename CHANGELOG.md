@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Run the actual Xilem interface in a browser with a bundled Virtua Grotesk font,
+  outline editing, undo/redo, zoom, and resizable panels. Browser edits stay in memory.
+
 - Preserve the glyph grid's trackpad scroll position across view rebuilds,
   quantize scrolling to complete fitted rows, and move a focused selection with
   the arrow keys while keeping it visible.
