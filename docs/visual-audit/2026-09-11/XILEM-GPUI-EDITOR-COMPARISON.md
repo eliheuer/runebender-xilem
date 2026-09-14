@@ -1142,3 +1142,29 @@ the narrow editor was inspected. No live font or foreground app was modified.
 Both debug and optimized release builds passed. The rebuilt release executable
 also reproduces the standard editor screenshot exactly. The user can relaunch
 the release app to load this change.
+
+
+## 2026-09-13 user report: restore glyph-tile shadows
+
+The user's side-by-side native screenshots exposed a mismatch hidden by the
+older GPUI browser bundle used for the earlier flat-tile comparison: current
+GPUI gives every glyph tile a solid two-pixel lower-left shadow, increased to
+three pixels for the selected tile. Xilem showed only its inside keyline.
+
+Xilem now paints the same hard offset before each square tile and uses the same
+recessed grid-ground and derived shadow-color formulas as GPUI main at
+`79e3ab1`. The tile rectangle, packing, hit testing, scroll geometry, glyph
+painting and captions are unchanged. Both the overview and compact editor rail
+use the shared renderer, so they receive the treatment together.
+
+- [Gray overview with selected tile](101-xilem-grid-shadow-gray.png)
+- [Narrow Gray overview](102-xilem-grid-shadow-1100-gray.png)
+- [Light-theme check](103-xilem-grid-shadow-light.png)
+- [Capture provenance and limits](grid-shadow-evidence.json)
+
+The supplied GPUI reference and final Xilem crop were inspected side by side;
+the hard shadow direction, ordinary two-pixel depth and selected three-pixel
+depth agree. These are component-level comparisons because the supplied windows
+have different dimensions. Both Xilem target sizes and Light were also inspected.
+Five existing grid tests, formatting, whitespace, workspace all-target Clippy
+and an optimized release build pass. No foreground GUI or live font was modified.

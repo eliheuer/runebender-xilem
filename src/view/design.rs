@@ -97,6 +97,10 @@ pub(crate) const RAIL_CELL_SIZE: f64 = 44.0;
 pub(crate) const RAIL_GRID_INSET: f64 = 6.0;
 pub(crate) const RAIL_CELL_MIN: f64 = 24.0;
 pub(crate) const RAIL_CELL_MAX: f64 = 96.0;
+/// Hard offset of an ordinary glyph-grid tile shadow.
+pub(crate) const GRID_CELL_SHADOW_OFFSET: f64 = 2.0;
+/// Selected glyph-grid tiles sit one pixel farther above the grid ground.
+pub(crate) const GRID_CELL_SELECTED_SHADOW_OFFSET: f64 = 3.0;
 pub(crate) const RAIL_TAB_ICON: f64 = 18.0;
 pub(crate) const RAIL_TAB_RADIUS: f64 = 6.0;
 pub(crate) const RAIL_TAB_ICON_RISE: f64 = 2.0;

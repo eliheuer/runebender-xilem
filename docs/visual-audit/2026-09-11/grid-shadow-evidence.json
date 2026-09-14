@@ -1,0 +1,50 @@
+{
+  "recorded_utc": "2026-09-14T00:24:34Z",
+  "xilem_parent": "892f7fb0a45a05320e6b87c0413c29831d67e697",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": {
+    "source": "user-supplied native screenshots",
+    "gpui_screenshot_size": [2492, 1658],
+    "xilem_screenshot_size": [2270, 1480],
+    "gpui_screenshot_sha256": "5a6853282384f06d210fe80ba89aaf4bdad54b1e6611f005c92717f28b1bb449",
+    "xilem_screenshot_sha256": "636f7799ed9947c53a8a7e9736882c4c937481e7fc1dbfcc43e02028277ad789",
+    "limitation": "The supplied windows differ in size; shadow treatment was compared at component level rather than by whole-frame pixel diff."
+  },
+  "implementation": {
+    "ordinary_shadow_offset": [-2, 2],
+    "selected_shadow_offset": [-3, 3],
+    "blur_radius": 0,
+    "spread_radius": 0,
+    "grid_ground_mix_toward_selected": 0.16,
+    "shadow_mix_between_ground_and_selected": 0.5
+  },
+  "captures": {
+    "101-xilem-grid-shadow-gray.png": {
+      "size": [1280, 720],
+      "theme": "gray",
+      "selected": "exclam",
+      "sha256": "602ace303ef855cc8b2d5b6ccb9de3bbc60ee21bc011fb51a2e238ab7bc39c8f"
+    },
+    "102-xilem-grid-shadow-1100-gray.png": {
+      "size": [1100, 720],
+      "theme": "gray",
+      "selected": "exclam",
+      "sha256": "c6c58e34949e98a55caae4889d47c65afd5551a5bda456561cca511ec3a0f4c5"
+    },
+    "103-xilem-grid-shadow-light.png": {
+      "size": [1280, 720],
+      "theme": "light",
+      "selected": "exclam",
+      "sha256": "c0b90a0b2d83be16ae0d66a1856faff91a5f8028186084000601b438f593c25f"
+    }
+  },
+  "verification": [
+    "Five existing glyph-grid tests passed",
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "cargo build --release",
+    "Gray 1280x720, Gray 1100x720 and Light 1280x720 captures visually inspected",
+    "Supplied GPUI reference crop and final Xilem crop inspected side by side"
+  ]
+}

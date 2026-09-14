@@ -141,13 +141,26 @@ impl Palette {
         self.mark("yellow").unwrap_or_else(|| self.selected_ink())
     }
 
-    /// Recessed tile shadow, derived from the grid ground and selected surface.
+    /// The ground behind both glyph grids, recessed from the application surface.
+    pub(crate) fn grid_bg(&self) -> Color {
+        let selected = self.selected_bg();
+        const DARKEN: f32 = 0.16;
+        Color::new([
+            self.app.components[0] + (selected.components[0] - self.app.components[0]) * DARKEN,
+            self.app.components[1] + (selected.components[1] - self.app.components[1]) * DARKEN,
+            self.app.components[2] + (selected.components[2] - self.app.components[2]) * DARKEN,
+            1.0,
+        ])
+    }
+
+    /// Recessed tile shadow, halfway between the grid ground and selected surface.
     pub(crate) fn cell_shadow(&self) -> Color {
+        let ground = self.grid_bg();
         let selected = self.selected_bg();
         Color::new([
-            (self.app.components[0] + selected.components[0]) * 0.5,
-            (self.app.components[1] + selected.components[1]) * 0.5,
-            (self.app.components[2] + selected.components[2]) * 0.5,
+            (ground.components[0] + selected.components[0]) * 0.5,
+            (ground.components[1] + selected.components[1]) * 0.5,
+            (ground.components[2] + selected.components[2]) * 0.5,
             1.0,
         ])
     }

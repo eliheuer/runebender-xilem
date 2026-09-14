@@ -22,7 +22,9 @@ use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
 use crate::model::FontModel;
-use crate::view::design::Stroke as DesignStroke;
+use crate::view::design::{
+    GRID_CELL_SELECTED_SHADOW_OFFSET, GRID_CELL_SHADOW_OFFSET, Stroke as DesignStroke,
+};
 use crate::view::render::px32;
 use crate::view::theme::Palette;
 use crate::widgets::text_label::{self, Anchor};
@@ -352,7 +354,7 @@ impl Widget for GridWidget {
         painter: &mut Painter<'_>,
     ) {
         let pal = &self.palette;
-        painter.fill_rect(self.size.to_rect(), pal.panel);
+        painter.fill_rect(self.size.to_rect(), pal.grid_bg());
 
         let rows = self.packed();
         let total = rows.len();
@@ -398,6 +400,20 @@ impl Widget for GridWidget {
                 } else {
                     glyph_fill
                 };
+                // A hard lower-left shadow lifts each tile from the recessed
+                // grid ground. Selection gets one extra pixel without changing
+                // the tile's layout or hit geometry.
+                let shadow_offset = if picked {
+                    GRID_CELL_SELECTED_SHADOW_OFFSET
+                } else {
+                    GRID_CELL_SHADOW_OFFSET
+                };
+                painter
+                    .fill(
+                        rect + kurbo::Vec2::new(-shadow_offset, shadow_offset),
+                        pal.cell_shadow(),
+                    )
+                    .draw();
                 // The reference cells are square. Encoding the square as a
                 // zero-radius `RoundedRect` made Vello CPU lose later
                 // same-colour outline/text draws in the Gray theme.

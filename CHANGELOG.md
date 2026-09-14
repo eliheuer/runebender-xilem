@@ -7,6 +7,8 @@ releases begin.
 
 ## [Unreleased]
 
+- Lift glyph-grid tiles from their recessed ground with the reference's hard offset shadow.
+
 - Keep resize focus outlines inside the panels so dragging leaves no white or gray end caps.
 
 - Keep master comparison summaries compact and wrap them to the inspector width.
