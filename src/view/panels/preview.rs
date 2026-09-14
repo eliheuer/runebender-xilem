@@ -122,88 +122,86 @@ fn proof_transform(bounds: kurbo::Rect, advance: f64, size: kurbo::Size) -> kurb
 /// A large preview of the selected glyph, at the foot of the inspector in
 /// overview mode (gpui's glyph preview panel). The grid cell is small; this
 /// is where you look at the shape.
-pub(crate) fn glyph_preview(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> {
+pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use masonry::imaging::Painter;
     use masonry::kurbo::{Affine, Circle, Line, Point, Rect, Shape, Size, Stroke};
-    let entry = app.selected.and_then(|i| app.font.glyphs.get(i))?;
-    let outline = entry.outline.clone();
-    let contours = app.font.font().get_glyph(&entry.name)?.contours.clone();
+    let data = app.selected.and_then(|i| {
+        let entry = app.font.glyphs.get(i)?;
+        let contours = app.font.font().get_glyph(&entry.name)?.contours.clone();
+        Some((entry.outline.clone(), contours))
+    });
     let pal = app.palette.clone();
     let background = pal.canvas;
-    let bounds = outline.bounding_box();
-    Some(
-        sized_box(canvas(
-            move |_app: &mut Workspace, _ctx, scene, size: Size| {
-                let mut p = Painter::new(scene);
-                let margin = Space::Xl.px();
-                let scale = ((size.width - margin * 2.0) / bounds.width().max(1.0))
-                    .min((size.height - margin * 2.0) / bounds.height().max(1.0))
-                    .max(0.0);
-                let t = Affine::translate(-bounds.center().to_vec2())
-                    .then_scale_non_uniform(scale, -scale)
-                    .then_translate((size.width / 2.0, size.height / 2.0).into());
-                let stroke = Stroke::new(1.0);
-                p.stroke(&(t * (*outline).clone()), &stroke, pal.role("pathStroke"))
-                    .draw();
-                for contour in &contours {
-                    let n = contour.points.len();
-                    for (i, point) in contour.points.iter().enumerate() {
-                        if point.typ != norad::PointType::OffCurve {
-                            continue;
-                        }
-                        let off = t * Point::new(point.x, point.y);
-                        for j in [(i + n - 1) % n, (i + 1) % n] {
-                            let on = &contour.points[j];
-                            if on.typ != norad::PointType::OffCurve {
-                                p.stroke(
-                                    Line::new(off, t * Point::new(on.x, on.y)),
-                                    &stroke,
-                                    pal.role("pointOffcurve").with_alpha(0.7),
-                                )
-                                .draw();
-                            }
-                        }
+    sized_box(canvas(
+        move |_app: &mut Workspace, _ctx, scene, size: Size| {
+            let Some((outline, contours)) = &data else {
+                return;
+            };
+            let mut p = Painter::new(scene);
+            let bounds = outline.bounding_box();
+            let scale = (size.width * design::OVERVIEW_GLYPH_PREVIEW_FILL
+                / bounds.width().max(1.0))
+            .min(size.height * design::OVERVIEW_GLYPH_PREVIEW_FILL / bounds.height().max(1.0))
+            .max(0.0);
+            let t = Affine::translate(-bounds.center().to_vec2())
+                .then_scale_non_uniform(scale, -scale)
+                .then_translate((size.width / 2.0, size.height / 2.0).into());
+            let stroke = Stroke::new(1.0);
+            p.stroke(&(t * (**outline).clone()), &stroke, pal.role("pathStroke"))
+                .draw();
+            for contour in contours {
+                let n = contour.points.len();
+                for (i, point) in contour.points.iter().enumerate() {
+                    if point.typ != norad::PointType::OffCurve {
+                        continue;
                     }
-                    for point in &contour.points {
-                        let at = t * Point::new(point.x, point.y);
-                        let off = point.typ == norad::PointType::OffCurve;
-                        let hue = pal.role(if off {
-                            "pointOffcurve"
-                        } else if point.smooth {
-                            "pointSmooth"
-                        } else {
-                            "pointCorner"
-                        });
-                        let (fill, border) = if pal.points_filled {
-                            (hue, pal.point_outline.unwrap_or(pal.text))
-                        } else {
-                            (pal.panel, hue)
-                        };
-                        let radius = ControlSize::Dot.px() * 0.4;
-                        if off || point.smooth {
-                            let shape = Circle::new(at, radius);
-                            p.fill(shape, fill).draw();
-                            p.stroke(shape, &stroke, border).draw();
-                        } else {
-                            let shape = Rect::new(
-                                at.x - radius,
-                                at.y - radius,
-                                at.x + radius,
-                                at.y + radius,
-                            );
-                            p.fill(shape, fill).draw();
-                            p.stroke(shape, &stroke, border).draw();
+                    let off = t * Point::new(point.x, point.y);
+                    for j in [(i + n - 1) % n, (i + 1) % n] {
+                        let on = &contour.points[j];
+                        if on.typ != norad::PointType::OffCurve {
+                            p.stroke(
+                                Line::new(off, t * Point::new(on.x, on.y)),
+                                &stroke,
+                                pal.role("pointOffcurve").with_alpha(0.7),
+                            )
+                            .draw();
                         }
                     }
                 }
-            },
-        ))
-        .background_color(background)
-        // The overview's collapsed section headers consume about 376 px at the
-        // standard 720 px window height. Keep the preview visible without an
-        // initial scroll while retaining enough room to inspect control points.
-        .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(260.0)))),
-    )
+                for point in &contour.points {
+                    let at = t * Point::new(point.x, point.y);
+                    let off = point.typ == norad::PointType::OffCurve;
+                    let hue = pal.role(if off {
+                        "pointOffcurve"
+                    } else if point.smooth {
+                        "pointSmooth"
+                    } else {
+                        "pointCorner"
+                    });
+                    let (fill, border) = if pal.points_filled {
+                        (hue, pal.point_outline.unwrap_or(pal.text))
+                    } else {
+                        (pal.canvas, hue)
+                    };
+                    let radius = ControlSize::Dot.px() * 0.4;
+                    if off || point.smooth {
+                        let shape = Circle::new(at, radius);
+                        p.fill(shape, fill).draw();
+                        p.stroke(shape, &stroke, border).draw();
+                    } else {
+                        let shape =
+                            Rect::new(at.x - radius, at.y - radius, at.x + radius, at.y + radius);
+                        p.fill(shape, fill).draw();
+                        p.stroke(shape, &stroke, border).draw();
+                    }
+                }
+            }
+        },
+    ))
+    .background_color(background)
+    // Its enclosing inspector split supplies the height. The canvas itself
+    // must fill that allocation so no panel-colored tail can appear below.
+    .dims(Dimensions::new(Dim::Stretch, Dim::Stretch))
 }
 
 #[cfg(test)]

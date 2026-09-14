@@ -73,6 +73,13 @@ pub(crate) const DOCK_MIN_WIDTH: f64 = 220.0;
 pub(crate) const CENTER_MIN_WIDTH: f64 = 280.0;
 pub(crate) const EDITOR_MIN_HEIGHT: f64 = 160.0;
 pub(crate) const PROOF_MIN_HEIGHT: f64 = 64.0;
+/// Collapsed overview headers occupy this much of the inspector initially.
+pub(crate) const OVERVIEW_INSPECTOR_SECTIONS_HEIGHT: f64 = 340.0;
+/// Keep both halves of the resizable overview inspector usable.
+pub(crate) const OVERVIEW_INSPECTOR_MIN_SECTIONS_HEIGHT: f64 = 120.0;
+pub(crate) const OVERVIEW_GLYPH_PREVIEW_MIN_HEIGHT: f64 = 120.0;
+/// GPUI leaves six percent of the preview free on each side of the fitted ink.
+pub(crate) const OVERVIEW_GLYPH_PREVIEW_FILL: f64 = 0.88;
 /// Wide pointer target around the one-pixel divider.
 pub(crate) const SPLITTER_HIT_WIDTH: f64 = 8.0;
 /// Vertical inset shared by the overview category, script and filter sections.

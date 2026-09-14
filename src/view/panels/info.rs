@@ -258,7 +258,6 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             )
             .gap(Space::None),
             editing.then(|| recipes::inspector_group(pal, measure_section(app))),
-            (!editing).then(|| glyph_preview(app)).flatten(),
         ),
     )
     .gap(Space::None)

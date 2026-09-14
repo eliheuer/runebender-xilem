@@ -162,6 +162,36 @@ where
     clip_split(split)
 }
 
+/// Let the overview's section list and glyph preview share the inspector.
+///
+/// The initial split ends immediately after the ten collapsed headers. The
+/// preview therefore consumes every remaining pixel, while the same native
+/// splitter used by the proof strip lets a user trade preview height for more
+/// open-section space.
+fn overview_inspector_split<State, A, B>(
+    sections: A,
+    preview: B,
+) -> impl WidgetView<State, Widget: Sized> + use<State, A, B>
+where
+    State: 'static,
+    A: WidgetView<State>,
+    B: WidgetView<State>,
+{
+    let split = xilem::view::split(sections, preview)
+        .split_axis(kurbo::Axis::Vertical)
+        .split_point_from_start(Length::px(design::OVERVIEW_INSPECTOR_SECTIONS_HEIGHT))
+        .min_lengths(
+            Length::px(design::OVERVIEW_INSPECTOR_MIN_SECTIONS_HEIGHT),
+            Length::px(design::OVERVIEW_GLYPH_PREVIEW_MIN_HEIGHT),
+        )
+        .bar_thickness(Length::ZERO)
+        .min_bar_area(Length::px(design::SPLITTER_HIT_WIDTH))
+        .solid_bar(false);
+    // The final inspector group already paints the one-pixel boundary. Keep
+    // the native splitter visually transparent so the surface stays uniform.
+    clip_split(split)
+}
+
 pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::{Either, OneOf3};
     let pal = &app.palette;
@@ -202,10 +232,22 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     let left = flex_col((left.flex(1.0), marks_bar(app)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::None);
-    let inspector =
+    let inspector_sections = || {
         portal(sized_box(info_panel(app)).dims(Dimensions::new(Dim::Stretch, Dim::Auto)))
             .constrain_horizontal(true)
-            .background_color(pal.panel);
+            .background_color(pal.panel)
+    };
+    let inspector = if matches!(app.mode, Mode::Overview) {
+        Either::A(overview_inspector_split(
+            inspector_sections(),
+            glyph_preview(app),
+        ))
+    } else {
+        Either::B(inspector_sections())
+    }
+    // Erase the inspector split before adding the two horizontal dock splits;
+    // the section tree is already near rustc's recursive trait limit.
+    .boxed();
     let columns = workspace_columns(
         left.background_color(pal.panel),
         middle,
@@ -644,7 +686,7 @@ mod tab_tests {
 
 #[cfg(test)]
 mod panel_resize_tests {
-    use super::{proof_split, workspace_columns};
+    use super::{overview_inspector_split, proof_split, workspace_columns};
     use masonry::core::keyboard::{Key, NamedKey};
     use masonry::core::{TextEvent, WindowEvent};
     use masonry::dpi::PhysicalSize;
@@ -833,6 +875,48 @@ mod panel_resize_tests {
         h.mouse_move(Point::new(400.0, 748.0));
         h.mouse_button_release(None);
         assert_eq!(heights(&h).1, crate::view::design::PROOF_MIN_HEIGHT);
+    }
+
+    #[test]
+    fn overview_preview_divider_drags_and_retains_its_height() {
+        use xilem::core::View;
+        use xilem::view::label;
+        let logic = || overview_inspector_split(label("Sections"), label("Preview"));
+        let mut ctx = context();
+        let view = logic();
+        let (pod, mut state) = view.build(&mut ctx, &mut ());
+        let mut h = TestHarness::create_with_size(
+            crate::default_property_set(),
+            pod.new_widget,
+            (246, 682),
+        );
+        fn heights<W: masonry::core::Widget>(h: &TestHarness<W>) -> (f64, f64) {
+            let root = h.root_widget();
+            let children = root.children()[0].children();
+            (
+                children[0].ctx().border_box().height(),
+                children[1].ctx().border_box().height(),
+            )
+        }
+        assert_eq!(heights(&h), (340.0, 342.0));
+        h.mouse_move(Point::new(123.0, 340.5));
+        h.mouse_button_press(None);
+        h.mouse_move(Point::new(123.0, 440.5));
+        h.mouse_button_release(None);
+        assert_eq!(heights(&h), (440.0, 242.0));
+
+        let again = logic();
+        h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
+        assert_eq!(heights(&h), (440.0, 242.0));
+
+        h.mouse_move(Point::new(123.0, 440.5));
+        h.mouse_button_press(None);
+        h.mouse_move(Point::new(123.0, 680.0));
+        h.mouse_button_release(None);
+        assert_eq!(
+            heights(&h).1,
+            crate::view::design::OVERVIEW_GLYPH_PREVIEW_MIN_HEIGHT
+        );
     }
 
     #[test]

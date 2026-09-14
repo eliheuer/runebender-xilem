@@ -1232,3 +1232,40 @@ remain ignored by default. The release capture is byte-identical to 108.
 Headless screenshots verify static paint and layout, not native pointer,
 keyboard, screen-reader, or GPU behavior. The title bar remains deliberately
 outside this pass.
+
+
+## 2026-09-13 user report: fill and resize the overview glyph preview
+
+The previous surface correction exposed a layout mismatch: Xilem gave the
+preview a fixed 260-pixel height inside a taller inspector portal. The canvas
+therefore ended early, leaving a panel-colored tail below it, and the glyph was
+centered only within the upper fixed box. GPUI instead makes its preview
+`flex_1` with a 200-pixel minimum and fits the actual ink bounds to 88% of the
+available width or height, whichever is tighter.
+
+Xilem now separates the overview section list from the preview with a native
+vertical Split. Its initial boundary follows the bottom of the ten collapsed
+headers at 340 pixels, so the preview consumes every remaining pixel. The
+existing one-pixel Masters rule remains the only visible boundary, with an
+eight-pixel invisible drag target. Dragging it down makes the preview smaller;
+both section list and preview retain 120-pixel minimums, and the dragged size
+survives view rebuilds. The glyph continues to fit from its real ink bounds and
+is centered in the complete allocation.
+
+- [Gray overview with centered A](111-xilem-overview-resizable-preview-gray.png)
+- [Narrow Gray overview](112-xilem-overview-resizable-preview-1100-gray.png)
+- [Light-theme overview](113-xilem-overview-resizable-preview-light.png)
+- [Expanded Glyph section](114-xilem-overview-expanded-sections-gray.png)
+- [Capture provenance and layout checks](glyph-preview-layout-evidence.json)
+
+All four final captures were visually inspected. In Gray, the `#c1c1c1`
+canvas runs from y378 through the bottom pixel at y719; Light likewise remains
+`#f2f2f2` throughout. The A's visual bounds are centered on the preview's
+vertical midpoint. The focused interaction regression drags the boundary from
+340 to 440 pixels, verifies the resulting 242-pixel preview, rebuilds the view,
+and then verifies the 120-pixel minimum. Static screenshots do not establish
+native pointer, keyboard, accessibility, or GPU behavior; the interaction test
+runs Masonry's event path headlessly. All 129 active tests, formatting,
+whitespace, strict all-target Clippy, and the optimized build pass; four
+model/font integration tests remain ignored by default. The release capture is
+byte-identical to 111.

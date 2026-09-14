@@ -1,0 +1,84 @@
+{
+  "recorded_utc": "2026-09-14T03:03:33Z",
+  "xilem_parent": "bf247ea",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": {
+    "source": "user-supplied native screenshots plus current GPUI source",
+    "xilem_crop_size": [768, 936],
+    "gpui_screenshot_size": [2492, 1658],
+    "xilem_crop_sha256": "005629e22c5084acb8a01d4f02dd34b4ee2854bc99624d41619b790340d327fd",
+    "gpui_screenshot_sha256": "5a6853282384f06d210fe80ba89aaf4bdad54b1e6611f005c92717f28b1bb449",
+    "gpui_source_behavior": [
+      "glyph_preview_panel uses flex_1 with a 200-pixel minimum",
+      "the union of outline and component ink is fitted to 88 percent of the available width or height",
+      "the ink center is translated to the preview center"
+    ],
+    "xilem_before": [
+      "glyph_preview used a fixed 260-pixel height",
+      "the remaining inspector height inherited the panel surface below the canvas",
+      "the glyph was centered within the fixed upper canvas instead of the complete remainder"
+    ],
+    "limitation": "The supplied GPUI screenshot selects a different glyph, so fitting behavior was verified from current GPUI source and Xilem's selected-A captures rather than a whole-frame image diff."
+  },
+  "after": {
+    "samples_111": {
+      "boundary_1100_377": "#1d1d1d",
+      "preview_top_1100_378": "#c1c1c1",
+      "preview_mid_1100_548": "#c1c1c1",
+      "preview_bottom_1100_719": "#c1c1c1"
+    },
+    "samples_113": {
+      "preview_top_1100_378": "#f2f2f2",
+      "preview_bottom_1100_719": "#f2f2f2"
+    },
+    "captures": {
+      "111-xilem-overview-resizable-preview-gray.png": {
+        "size": [1280, 720],
+        "theme": "gray",
+        "selected": "A",
+        "sha256": "3965a74b9fa7899a826f7757c60536105b57ad9a5b850175d1fe018b2889928c"
+      },
+      "112-xilem-overview-resizable-preview-1100-gray.png": {
+        "size": [1100, 720],
+        "theme": "gray",
+        "selected": "A",
+        "sha256": "a7d88cef23fa69038cd1fe4f3c691a5a5e060c859f51fd330d9f5320a38e04c0"
+      },
+      "113-xilem-overview-resizable-preview-light.png": {
+        "size": [1280, 720],
+        "theme": "light",
+        "selected": "A",
+        "sha256": "b5c37c64e3580d00e9732f26310718a8a43b2b2104f04524e3ddb76eee52bf03"
+      },
+      "114-xilem-overview-expanded-sections-gray.png": {
+        "size": [1280, 720],
+        "theme": "gray",
+        "selected": "A",
+        "expanded": "Glyph",
+        "sha256": "dded1e3b29496ada7797a613831d70b7783adf777e7ca26d6187257d117f6a35"
+      }
+    }
+  },
+  "implementation": [
+    "Move the overview preview out of the scrolling section column and into a native vertical Split.",
+    "Initialize the section band at 340 pixels and let the preview fill all remaining height.",
+    "Keep the existing section rule visible while giving the splitter an eight-pixel pointer target.",
+    "Fit and center glyph ink inside the complete split allocation, with one canvas surface through the bottom edge."
+  ],
+  "interaction_regression": {
+    "initial_section_and_preview_heights": [340, 342],
+    "dragged_section_and_preview_heights": [440, 242],
+    "retains_dragged_height_after_rebuild": true,
+    "preview_minimum_height": 120
+  },
+  "verification": [
+    "Focused split interaction regression passes.",
+    "Gray 1280x720, Gray 1100x720, Light 1280x720, and expanded-Glyph Gray captures visually inspected.",
+    "129 active tests pass; 4 model and disposable-font tests remain ignored by default.",
+    "cargo fmt --check and git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "cargo build --offline --release",
+    "Optimized Gray capture is byte-identical to 111.",
+    "Headless screenshots verify paint and layout; the interaction regression exercises Masonry pointer behavior without opening a foreground window."
+  ]
+}

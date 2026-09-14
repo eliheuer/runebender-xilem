@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Let the overview glyph preview fill its inspector remainder, center the ink
+  within that complete surface, and resize from its top boundary.
+
 - Lift the overview glyph preview onto the canvas surface, center its mark
   swatches, and replace font-dependent view symbols with GPUI's drawn icons.
 
