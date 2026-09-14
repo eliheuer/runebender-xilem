@@ -277,13 +277,13 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     };
     let editing = matches!(app.mode, Mode::Editor(_));
     if editing {
-        return Either::A(editor_status(app, text));
+        return Either::A(top_keyline(editor_status(app, text), pal.outline));
     }
     // Small keylined boxes, the size of a swatch plus its padding.
     let bar_box = |text: String, active: bool, f: fn(&mut Workspace)| {
         recipes::toggle_sized(pal, text, active, ControlSize::Icon, f)
     };
-    Either::B(
+    Either::B(top_keyline(
         xrow(
             Region::Toolbar,
             (
@@ -340,7 +340,8 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             Space::Md
         })
         .background_color(pal.panel),
-    )
+        pal.outline,
+    ))
 }
 
 /// Compact editor footer: proof appearance controls surround the live status.

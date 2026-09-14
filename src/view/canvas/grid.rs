@@ -334,17 +334,8 @@ impl Widget for GridWidget {
         }
     }
 
-    fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
+    fn layout(&mut self, _ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
         self.size = size;
-        // Keep the inset clear in both grids: a sliver of the following row
-        // must not leak into the overview margin after fitting complete rows.
-        let inset = self.inset_y();
-        ctx.set_clip_path(Rect::new(
-            0.0,
-            inset,
-            size.width,
-            (size.height - inset).max(inset),
-        ));
     }
 
     fn paint(
@@ -355,6 +346,17 @@ impl Widget for GridWidget {
     ) {
         let pal = &self.palette;
         painter.fill_rect(self.size.to_rect(), pal.grid_bg());
+
+        // Keep cell paint inside the fitted-row area without clipping the
+        // grid's own ground. A widget-level clip also clipped that ground,
+        // letting the parent panel show as mismatched strips above and below.
+        let inset = self.inset_y();
+        painter.push_fill_clip(Rect::new(
+            0.0,
+            inset,
+            self.size.width,
+            (self.size.height - inset).max(inset),
+        ));
 
         let rows = self.packed();
         let total = rows.len();
@@ -535,6 +537,7 @@ impl Widget for GridWidget {
                 )
                 .draw();
         }
+        painter.pop_clip();
     }
 
     fn on_pointer_event(
@@ -810,6 +813,25 @@ mod thumbnail_tests {
                 x += width + GAP;
             }
         }
+    }
+
+    #[test]
+    fn grid_ground_covers_fitted_top_and_bottom_margins() {
+        use masonry::core::NewWidget;
+        use masonry_testing::TestHarness;
+
+        let mut harness = TestHarness::create_with_size(
+            crate::default_property_set(),
+            NewWidget::new(rail()),
+            (246, 538),
+        );
+        let rendered = harness.render();
+        // x=1 stays outside the fitted cells, so all three samples are the
+        // grid ground. A widget-level clip used to expose the parent surface
+        // at the first and last samples.
+        let interior = rendered.get_pixel(1, 20);
+        assert_eq!(rendered.get_pixel(1, 1), interior);
+        assert_eq!(rendered.get_pixel(1, 536), interior);
     }
 
     #[test]

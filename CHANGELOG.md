@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Use one shared dark keyline for dock, proof, and status boundaries, and keep
+  the recessed glyph-grid ground continuous through its fitted margins.
+
 - Lift glyph-grid tiles from their recessed ground with the reference's hard offset shadow.
 
 - Keep resize focus outlines inside the panels so dragging leaves no white or gray end caps.

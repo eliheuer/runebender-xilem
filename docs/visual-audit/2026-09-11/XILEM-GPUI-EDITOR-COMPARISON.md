@@ -1168,3 +1168,35 @@ depth agree. These are component-level comparisons because the supplied windows
 have different dimensions. Both Xilem target sizes and Light were also inspected.
 Five existing grid tests, formatting, whitespace, workspace all-target Clippy
 and an optimized release build pass. No foreground GUI or live font was modified.
+
+
+## 2026-09-13 user report: unify panel boundaries and grid ground
+
+The supplied native screenshots made three separate paint defects visible. The
+Xilem splitter supplied its own `#717179` bar instead of the shared `#1d1d1d`
+outline used by GPUI; the overview footer had no top rule; and the grid's
+widget-level clip prevented its recessed ground from painting in the fitted
+top and bottom margins.
+
+The native Split widgets still retain dragging, keyboard resizing,
+accessibility actions, minimum widths, and their eight-pixel pointer target.
+Their hard-coded visible bar is now suppressed, while panel-owned one-pixel
+keylines use the palette outline token. The same edge recipe draws the proof
+and status rules. The grid now paints its ground before applying a local cell
+clip, so cells remain contained while the two margin strips match the interior
+gaps.
+
+- [Gray overview](104-xilem-panel-boundaries-gray.png)
+- [Narrow Gray overview](105-xilem-panel-boundaries-1100-gray.png)
+- [Light-theme overview](106-xilem-panel-boundaries-light.png)
+- [Gray editor and proof divider](107-xilem-panel-boundaries-editor-gray.png)
+- [Capture provenance and pixel checks](panel-boundaries-evidence.json)
+
+The two supplied screenshots, before capture, four final captures, and both
+themes were inspected. At 1280 pixels, both dock boundaries and the status
+rule are `#1d1d1d`; the grid top, interior gap, and bottom are all `#919191`.
+The new grid-margin regression and all four existing splitter interaction tests
+pass with the other 126 active tests. Formatting, whitespace, all-target Clippy,
+and the optimized build pass; its Gray capture is byte-identical to 104.
+Headless images verify paint and layout, not native pointer delivery or GPU
+rasterization. No foreground GUI or live font was modified.

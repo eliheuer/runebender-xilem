@@ -1,0 +1,82 @@
+{
+  "recorded_utc": "2026-09-14T00:54:24Z",
+  "xilem_parent": "8b07985587738b9a39357ae54c0609808463298d",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": {
+    "source": "user-supplied native screenshots",
+    "gpui_screenshot_size": [2492, 1658],
+    "xilem_screenshot_size": [2294, 1500],
+    "gpui_screenshot_sha256": "5a6853282384f06d210fe80ba89aaf4bdad54b1e6611f005c92717f28b1bb449",
+    "xilem_screenshot_sha256": "afc83fd0af41573c537d3959e631957dfc9281ee7c9019c074e95a4034206f30",
+    "divider_samples": {
+      "gpui_at_532_800_and_533_800": "#1d1d1d",
+      "xilem_at_538_800_and_539_800": "#717179"
+    },
+    "limitation": "The supplied windows differ in size; shared boundaries and surfaces were compared by component and sampled pixels rather than a whole-frame diff."
+  },
+  "before": {
+    "capture": "/private/tmp/xilem-boundaries-before-1280.png",
+    "size": [1280, 720],
+    "theme": "gray",
+    "sha256": "602ace303ef855cc8b2d5b6ccb9de3bbc60ee21bc011fb51a2e238ab7bc39c8f",
+    "samples": {
+      "left_divider_246_400": "#71717a",
+      "grid_top_500_40": "#a1a1a1",
+      "grid_interior_gap_500_204": "#919191",
+      "grid_bottom_500_690": "#a1a1a1",
+      "status_top_500_692": "#b1b1b1"
+    }
+  },
+  "after": {
+    "samples_104": {
+      "left_divider_245_400": "#1d1d1d",
+      "right_divider_1034_400": "#1d1d1d",
+      "grid_top_500_40": "#919191",
+      "grid_interior_gap_500_204": "#919191",
+      "grid_bottom_500_690": "#919191",
+      "status_top_500_692": "#1d1d1d"
+    },
+    "captures": {
+      "104-xilem-panel-boundaries-gray.png": {
+        "size": [1280, 720],
+        "theme": "gray",
+        "selected": "exclam",
+        "sha256": "2fc04547a80fbf9686459d655b77b0816e247ccdb3bda180d7bbb18a8df873e7"
+      },
+      "105-xilem-panel-boundaries-1100-gray.png": {
+        "size": [1100, 720],
+        "theme": "gray",
+        "selected": "exclam",
+        "sha256": "b7e9a282e281b9755a112ef88a39e126bbc66442d78b63a4de30a4f0e8d8dd82"
+      },
+      "106-xilem-panel-boundaries-light.png": {
+        "size": [1280, 720],
+        "theme": "light",
+        "selected": "exclam",
+        "sha256": "1d290e549bd37650970c6a0992fee5a01765de6737a50670c23d6566d7ac7fe4"
+      },
+      "107-xilem-panel-boundaries-editor-gray.png": {
+        "size": [1280, 720],
+        "theme": "gray",
+        "glyph": "A",
+        "sha256": "3c06ec850051f1a83c0fefddb506542f879921d9f7538dd80f821c9b57cb393a"
+      }
+    }
+  },
+  "implementation": [
+    "Suppress the native Split bar while preserving its resize hit area and behavior.",
+    "Overlay dock, proof, and status rules with the shared palette outline token.",
+    "Paint the grid ground before applying a painter-local clip to cells and scrollbar content."
+  ],
+  "verification": [
+    "Grid-margin regression renders matching ground at top, interior, and bottom samples.",
+    "Four panel-resize interaction tests pass.",
+    "127 active tests pass; 4 model and disposable-font tests remain ignored by default.",
+    "cargo fmt --check and git diff --check",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "cargo build --offline --release",
+    "Optimized Gray capture is byte-identical to 104.",
+    "Gray 1280x720, Gray 1100x720, Light 1280x720, and Gray editor captures visually inspected.",
+    "Headless captures do not certify native GPU rasterization or pointer delivery."
+  ]
+}

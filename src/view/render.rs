@@ -5,7 +5,10 @@
 
 use crate::view::design::{DOCK_WIDTH, PROOF_STRIP_HEIGHT};
 use crate::*;
+use masonry::layout::UnitPoint;
+use xilem::Color;
 use xilem::core::lens;
+use xilem::view::ZStackExt as _;
 
 /// A kurbo value as the `f32` a Vello text size or stroke width
 /// takes.
@@ -25,12 +28,68 @@ pub(crate) fn px32(value: f64) -> f32 {
     }
 }
 
+#[derive(Clone, Copy)]
+enum KeylineEdge {
+    Top,
+    Left,
+    Right,
+}
+
+/// Overlay a palette keyline at one edge without consuming layout space.
+fn edge_keyline<State, V>(
+    content: V,
+    edge: KeylineEdge,
+    color: Color,
+) -> impl WidgetView<State, Widget: Sized> + use<State, V>
+where
+    State: 'static,
+    V: WidgetView<State>,
+{
+    let (dimensions, alignment) = match edge {
+        KeylineEdge::Top => (
+            Dimensions::new(Dim::Stretch, Dim::Fixed(Stroke::Hairline.length())),
+            UnitPoint::TOP,
+        ),
+        KeylineEdge::Left => (
+            Dimensions::new(Dim::Fixed(Stroke::Hairline.length()), Dim::Stretch),
+            UnitPoint::LEFT,
+        ),
+        KeylineEdge::Right => (
+            Dimensions::new(Dim::Fixed(Stroke::Hairline.length()), Dim::Stretch),
+            UnitPoint::RIGHT,
+        ),
+    };
+    xilem::view::zstack((
+        content,
+        sized_box(canvas(move |_: &mut State, _, scene, size| {
+            use masonry::imaging::Painter;
+            let mut painter = Painter::new(scene);
+            painter.fill(size.to_rect(), color).draw();
+        }))
+        .dims(dimensions)
+        .alignment(alignment),
+    ))
+}
+
+/// Put the shared outline token at the top of a panel.
+pub(crate) fn top_keyline<State, V>(
+    content: V,
+    color: Color,
+) -> impl WidgetView<State, Widget: Sized> + use<State, V>
+where
+    State: 'static,
+    V: WidgetView<State>,
+{
+    edge_keyline(content, KeylineEdge::Top, color)
+}
+
 /// Native splitters retain dragged sizes across view rebuilds and window resizes.
 fn workspace_columns<State, A, B, C>(
     left: A,
     middle: B,
     right: C,
     collapsed: bool,
+    outline: Color,
 ) -> impl WidgetView<State, Widget: Sized> + use<State, A, B, C>
 where
     State: 'static,
@@ -39,25 +98,30 @@ where
     C: WidgetView<State>,
 {
     use crate::view::design::{CENTER_MIN_WIDTH, DOCK_MIN_WIDTH, SPLITTER_HIT_WIDTH};
+    let left = edge_keyline(left, KeylineEdge::Right, outline);
     let columns = xilem::view::split(left, middle)
         .split_point_from_start(Length::px(if collapsed { 0.0 } else { DOCK_WIDTH }))
         .min_lengths(
             Length::px(if collapsed { 0.0 } else { DOCK_MIN_WIDTH }),
             Length::px(CENTER_MIN_WIDTH),
         )
-        .bar_thickness(Stroke::Hairline.length())
+        // Split keeps the generous hit target and all native resize behavior;
+        // the visible rule is our palette keyline above, not its hard-coded
+        // bluish-gray bar.
+        .bar_thickness(Length::ZERO)
         .min_bar_area(Length::px(SPLITTER_HIT_WIDTH))
-        .solid_bar(true)
+        .solid_bar(false)
         .draggable(!collapsed);
+    let right = edge_keyline(right, KeylineEdge::Left, outline);
     let columns = xilem::view::split(columns, right)
         .split_point_from_end(Length::px(DOCK_WIDTH))
         .min_lengths(
             Length::px(CENTER_MIN_WIDTH + if collapsed { 0.0 } else { DOCK_MIN_WIDTH } + 1.0),
             Length::px(DOCK_MIN_WIDTH),
         )
-        .bar_thickness(Stroke::Hairline.length())
+        .bar_thickness(Length::ZERO)
         .min_bar_area(Length::px(SPLITTER_HIT_WIDTH))
-        .solid_bar(true);
+        .solid_bar(false);
     clip_split(columns)
 }
 
@@ -78,22 +142,23 @@ where
 fn proof_split<State, A, B>(
     editor: A,
     proof: B,
+    outline: Color,
 ) -> impl WidgetView<State, Widget: Sized> + use<State, A, B>
 where
     State: 'static,
     A: WidgetView<State>,
     B: WidgetView<State>,
 {
-    let split = xilem::view::split(editor, proof)
+    let split = xilem::view::split(editor, top_keyline(proof, outline))
         .split_axis(kurbo::Axis::Vertical)
         .split_point_from_end(Length::px(PROOF_STRIP_HEIGHT))
         .min_lengths(
             Length::px(design::EDITOR_MIN_HEIGHT),
             Length::px(design::PROOF_MIN_HEIGHT),
         )
-        .bar_thickness(Stroke::Hairline.length())
+        .bar_thickness(Length::ZERO)
         .min_bar_area(Length::px(design::SPLITTER_HIT_WIDTH))
-        .solid_bar(true);
+        .solid_bar(false);
     clip_split(split)
 }
 
@@ -116,7 +181,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         Mode::Nodes => OneOf3::C(nodes_pane(app)),
     };
     let body = if matches!(app.mode, Mode::Editor(_)) {
-        Either::A(proof_split(body, preview_strip(app)))
+        Either::A(proof_split(body, preview_strip(app), pal.outline))
     } else {
         Either::B(body)
     };
@@ -146,6 +211,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         middle,
         inspector,
         app.left_collapsed,
+        pal.outline,
     );
 
     // Boxed on purpose, and not for tidiness. Every wrapper here adds a
@@ -613,7 +679,16 @@ mod panel_resize_tests {
     fn both_docks_drag_and_retain_widths_after_rebuild_and_window_resize() {
         use xilem::core::View;
         use xilem::view::label;
-        let logic = || workspace_columns(label("Left"), label("Canvas"), label("Right"), false);
+        let outline = masonry::peniko::Color::from_rgb8(29, 29, 29);
+        let logic = || {
+            workspace_columns(
+                label("Left"),
+                label("Canvas"),
+                label("Right"),
+                false,
+                outline,
+            )
+        };
         let mut ctx = context();
         let view = logic();
         let (pod, mut state) = view.build(&mut ctx, &mut ());
@@ -633,23 +708,23 @@ mod panel_resize_tests {
                 children[1].ctx().border_box().width(),
             )
         }
-        assert_eq!(widths(&h), (246.0, 786.0, 246.0));
+        assert_eq!(widths(&h), (246.0, 788.0, 246.0));
         // Start two pixels beside the visible line, within its wider hit target.
         h.mouse_move(Point::new(244.5, 100.0));
         h.mouse_button_press(None);
         h.mouse_move(Point::new(324.5, 100.0));
         h.mouse_button_release(None);
-        assert_eq!(widths(&h), (326.0, 706.0, 246.0));
+        assert_eq!(widths(&h), (326.0, 708.0, 246.0));
         h.mouse_move(Point::new(1033.5, 100.0));
         h.mouse_button_press(None);
         h.mouse_move(Point::new(953.5, 100.0));
         h.mouse_button_release(None);
-        assert_eq!(widths(&h), (326.0, 626.0, 326.0));
+        assert_eq!(widths(&h), (326.0, 628.0, 326.0));
         let again = logic();
         h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
-        assert_eq!(widths(&h), (326.0, 626.0, 326.0));
+        assert_eq!(widths(&h), (326.0, 628.0, 326.0));
         h.process_window_event(WindowEvent::Resize(PhysicalSize::new(1100, 650)));
-        assert_eq!(widths(&h), (326.0, 446.0, 326.0));
+        assert_eq!(widths(&h), (326.0, 448.0, 326.0));
         h.mouse_move(Point::new(326.5, 100.0));
         h.mouse_button_press(None);
         h.mouse_move(Point::new(20.0, 100.0));
@@ -661,8 +736,15 @@ mod panel_resize_tests {
     fn collapsed_left_panel_reopens_without_disabling_the_inspector_splitter() {
         use xilem::core::View;
         use xilem::view::label;
+        let outline = masonry::peniko::Color::from_rgb8(29, 29, 29);
         let logic = |collapsed| {
-            workspace_columns(label("Left"), label("Canvas"), label("Right"), collapsed)
+            workspace_columns(
+                label("Left"),
+                label("Canvas"),
+                label("Right"),
+                collapsed,
+                outline,
+            )
         };
         let mut ctx = context();
         let view = logic(true);
@@ -712,7 +794,8 @@ mod panel_resize_tests {
     fn proof_divider_drags_and_supports_keyboard_resizing() {
         use xilem::core::View;
         use xilem::view::label;
-        let logic = || proof_split(label("Editor"), label("Proof"));
+        let outline = masonry::peniko::Color::from_rgb8(29, 29, 29);
+        let logic = || proof_split(label("Editor"), label("Proof"), outline);
         let mut ctx = context();
         let view = logic();
         let (pod, mut state) = view.build(&mut ctx, &mut ());
@@ -730,17 +813,17 @@ mod panel_resize_tests {
                 children[1].ctx().border_box().height(),
             )
         }
-        assert_eq!(heights(&h), (510.0, 140.0));
+        assert_eq!(heights(&h), (511.0, 140.0));
         h.mouse_move(Point::new(400.0, 510.5));
         h.mouse_button_press(None);
         h.mouse_move(Point::new(400.0, 450.5));
         h.mouse_button_release(None);
-        assert_eq!(heights(&h), (450.0, 200.0));
+        assert_eq!(heights(&h), (451.0, 200.0));
         let again = logic();
         h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
-        assert_eq!(heights(&h), (450.0, 200.0));
+        assert_eq!(heights(&h), (451.0, 200.0));
         h.process_window_event(WindowEvent::Resize(PhysicalSize::new(800, 751)));
-        assert_eq!(heights(&h), (550.0, 200.0));
+        assert_eq!(heights(&h), (551.0, 200.0));
         let split_id = h.root_widget().children()[0].id();
         h.focus_on(Some(split_id));
         h.process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowDown)));
@@ -816,14 +899,14 @@ mod panel_resize_tests {
             }
         }
         check(
-            workspace_columns(pane(), pane(), pane(), false),
+            workspace_columns(pane(), pane(), pane(), false, fill),
             (1296, 666),
             Point::new(1041.5, 108.0),
             Point::new(961.5, 108.0),
             "dock",
         );
         check(
-            proof_split(pane(), pane()),
+            proof_split(pane(), pane(), fill),
             (816, 667),
             Point::new(408.0, 518.5),
             Point::new(408.0, 458.5),
