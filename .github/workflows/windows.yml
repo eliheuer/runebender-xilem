@@ -18,6 +18,8 @@ jobs:
           path: test-fonts
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Build the Windows application
         run: cargo build --locked --bin runebender
       - name: Exercise CLI, rendering, and native startup
