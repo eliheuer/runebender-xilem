@@ -1393,3 +1393,21 @@ Both 1280 by 720 captures were visually inspected. The rule and circle
 contrast remains legible in Gray and Light without adding a surrounding box.
 Static headless captures verify paint and layout, not native pointer,
 keyboard, screen-reader, or GPU behavior.
+
+
+## 2026-09-14 overnight: inspector action-label casing
+
+The GPUI inspector uses title case for the multiword action labels `Add
+Extremes`, `Round Corners`, and `Curvature Comb`. Xilem used sentence case for
+those three controls, which was visible in direct comparison even though their
+geometry and actions already matched.
+
+Xilem now uses the GPUI labels without changing the commands, control sizes,
+or state.
+
+- [Gray inspector labels](123-xilem-editor-inspector-labels-gray.png)
+- [Light inspector labels](124-xilem-editor-inspector-labels-light.png)
+
+Both 1280 by 720 captures were visually inspected; all three labels fit their
+existing controls in both themes. Static headless captures verify paint and
+layout, not native pointer, keyboard, screen-reader, or GPU behavior.

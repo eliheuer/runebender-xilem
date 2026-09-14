@@ -418,13 +418,13 @@ fn path_operations_controls(app: &Workspace) -> impl WidgetView<Workspace> + use
                 Region::Inline,
                 (
                     tbtn(pal, "Optimize", |s| s.optimize()).flex(1.0),
-                    tbtn(pal, "Add extremes", |s| s.add_extremes()).flex(1.0),
+                    tbtn(pal, "Add Extremes", |s| s.add_extremes()).flex(1.0),
                 ),
             ),
             xrow(
                 Region::Inline,
                 (
-                    tbtn(pal, "Round corners", |s| s.round_corners()).flex(1.0),
+                    tbtn(pal, "Round Corners", |s| s.round_corners()).flex(1.0),
                     tbtn(pal, "Reverse", |s| s.reverse()).flex(1.0),
                 ),
             ),
@@ -695,7 +695,7 @@ pub(crate) fn curves_section(app: &Workspace) -> impl WidgetView<Workspace> + us
                     (
                         recipes::toggle(
                             pal,
-                            "Curvature comb".into(),
+                            "Curvature Comb".into(),
                             view.comb,
                             |app: &mut Workspace| {
                                 app.view.comb = !app.view.comb;

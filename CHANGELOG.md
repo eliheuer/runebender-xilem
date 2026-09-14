@@ -70,6 +70,8 @@ releases begin.
 - Keep the Coordinates inspector compact before selection and draw its
   reference picker as GPUI's connected nine-point grid.
 
+- Match GPUI's inspector action-label casing.
+
 - Match Background control rows and inspector field alignment; the Background toggle
   now reflects the visibility setting even when the current glyph has no background.
 
