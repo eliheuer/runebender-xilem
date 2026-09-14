@@ -5,10 +5,14 @@
 
 use crate::view::design::{
     MARK_CLEAR_CROSS_HALF, MARK_SELECTED_RING_INSET, MARK_SWATCH_DIAMETER, MARK_SWATCH_GAP,
+    TITLEBAR_HEIGHT,
 };
 use crate::widgets::icon_button::{IconMark, mark_button};
 use crate::*;
+use masonry::properties::Padding;
+use masonry::properties::types::CrossAxisAlignment;
 use xilem::Color;
+use xilem::view::flex_row;
 
 /// The title bar, laid out like the GPUI build's header.
 ///
@@ -29,9 +33,8 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let status = if app.modified { "Not saved" } else { "Saved" };
-    xrow(
-        Region::Toolbar,
-        (
+    sized_box(
+        flex_row((
             // Room for the traffic lights, which sit where AppKit puts
             // them: winit has no way to move them, so the header pads
             // for the default place, the same 78px Zed pads on Tahoe.
@@ -76,9 +79,19 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             drag_region().flex(1.0),
             editing.then(|| header_tools(app)),
             tab_strip(app),
-        ),
+        ))
+        .cross_axis_alignment(CrossAxisAlignment::Center)
+        .gap(Space::Md)
+        // AppKit owns the traffic-light position. Keeping the title row free
+        // of vertical padding lets its fixed height center those controls;
+        // horizontal padding retains the established leading/trailing inset.
+        .padding(Padding::horizontal(Space::Md.length()))
+        .background_color(pal.header),
     )
-    .background_color(pal.header)
+    .dims(Dimensions::new(
+        Dim::Stretch,
+        Dim::Fixed(Length::px(TITLEBAR_HEIGHT)),
+    ))
     // The shared rule in app_logic separates the header from all three docks.
 }
 
@@ -115,9 +128,12 @@ pub(crate) fn direction_chips(app: &Workspace) -> impl WidgetView<Workspace> + u
 /// not in a left column).
 pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    let fg = pal.header_ink;
-    let fg_active = pal.header;
-    let active_bg = pal.selected_bg();
+    // Tool state is carried by icon contrast, not an inverted tile. This keeps
+    // the header as quiet as the adjacent outlined tabs while making the
+    // selected tool the brightest mark on the bar.
+    let fg = pal.header_ink.with_alpha(0.5);
+    let fg_active = pal.header_ink;
+    let active_bg = Color::TRANSPARENT;
     let hover_bg = pal.control;
     let tile = move |icon: &'static str, tool: Tool| {
         icon_button(
@@ -131,6 +147,7 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
                 app.tool = tool;
             },
         )
+        .tile_size(ControlSize::Icon.px())
     };
     xrow(
         Region::List,
@@ -228,9 +245,7 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 .background_color(outline),
             flex_row(swatches)
                 .gap(Length::px(MARK_SWATCH_GAP))
-                .padding(masonry::properties::Padding::horizontal(Length::px(
-                    MARK_SWATCH_GAP,
-                )))
+                .padding(Padding::horizontal(Length::px(MARK_SWATCH_GAP)))
                 .flex(1.0),
         ))
         .gap(Space::None)
@@ -446,7 +461,7 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                 .width(Length::px(STATUS_SLIDER_WIDTH)),
             ),
         )
-        .padding(masonry::properties::Padding::horizontal(Space::Md.length())),
+        .padding(Padding::horizontal(Space::Md.length())),
     )
     .dims(Dimensions::new(
         Dim::Stretch,

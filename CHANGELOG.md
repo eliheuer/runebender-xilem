@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Tighten the native title bar to a shared 28-pixel centerline, reduce edit-tool
+  buttons to 20-pixel icon slots, and show selection through icon contrast
+  without an inverted tile.
+
 - Run the actual Xilem interface in a browser with a bundled Virtua Grotesk font,
   outline editing, undo/redo, zoom, and resizable panels. Browser edits stay in memory.
 

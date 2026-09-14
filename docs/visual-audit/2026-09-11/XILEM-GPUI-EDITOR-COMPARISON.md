@@ -1555,3 +1555,27 @@ Both 1280 by 720 captures were visually inspected. The proof shows the active
 `five` glyph, centered and fitted to the same 140-pixel strip in Gray and
 Light. Static headless captures verify paint and layout, not native text entry,
 pointer, keyboard, screen-reader, or GPU behavior.
+
+
+## 2026-09-14: compact, aligned title bar
+
+The native Xilem title bar used the general toolbar recipe: 24-pixel edit-tool
+tiles surrounded by eight pixels of padding on every edge. That produced a
+40-pixel bar, left macOS's fixed traffic lights visibly high, and made the tool
+row heavier than the adjacent 21-pixel tabs. Its active tool also inverted to a
+filled tile while inactive icons remained brighter.
+
+The title bar now owns a 28-pixel height with horizontal-only inset. Its text,
+20-pixel tool slots, and unchanged tabs share one vertical centerline. Inactive
+tools use half-strength header ink, the active tool uses full-strength ink, and
+selection no longer paints a background tile.
+
+- [Gray compact title bar](139-xilem-editor-topbar-gray.png)
+- [Light compact title bar](140-xilem-editor-topbar-light.png)
+- [Gray compact title bar at 1000px](141-xilem-editor-topbar-gray-1000.png)
+
+The first two captures are 1280 by 720 at 1x; the narrow capture is 1000 by 680
+at 1x. All were visually inspected. The full and narrow layouts retain the
+document identity, eight edit tools, Font and Nodes tabs, active glyph tab, and
+new-tab control without overlap. Static headless captures verify paint and
+layout; AppKit traffic-light placement remains a native-window check.

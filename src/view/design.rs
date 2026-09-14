@@ -115,6 +115,9 @@ pub(crate) const PROOF_STRIP_HEIGHT: f64 = 140.0;
 pub(crate) const SEARCH_TOGGLE_WIDTH: f64 = 24.0;
 /// Width shared by the proof-blur and zoom sliders in the editor footer.
 pub(crate) const STATUS_SLIDER_WIDTH: f64 = 96.0;
+/// Compact native title bar: 21px tabs and 20px tools sit on one 28px centerline.
+/// On macOS this also balances the fixed traffic-light inset above and below.
+pub(crate) const TITLEBAR_HEIGHT: f64 = 28.0;
 
 /// Transformation icon extent measured in the reference, inside a 24-pixel tile.
 pub(crate) const TRANSFORM_ICON_SIZE: f64 = 22.0;
