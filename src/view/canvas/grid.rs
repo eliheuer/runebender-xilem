@@ -277,8 +277,48 @@ impl GridWidget {
         2.0 * self.inset_y() + rows as f64 * self.row_pitch() - GAP
     }
 
+    fn visible_rows(&self) -> usize {
+        let available = (self.size.height - 2.0 * self.inset_y()).max(0.0);
+        usize::try_from(round_units(((available + GAP) / self.row_pitch()).floor()))
+            .unwrap_or(1)
+            .max(1)
+    }
+
+    fn scroll_row(&self) -> usize {
+        usize::try_from(round_units(self.scroll / self.row_pitch())).unwrap_or(0)
+    }
+
+    fn max_scroll_row(&self, rows: usize) -> usize {
+        rows.saturating_sub(self.visible_rows())
+    }
+
     fn max_scroll(&self, rows: usize) -> f64 {
-        (self.content_height(rows) - self.size.height).max(0.0)
+        self.max_scroll_row(rows) as f64 * self.row_pitch()
+    }
+
+    fn set_scroll_row(&mut self, row: usize, rows: usize) {
+        self.scroll = row.min(self.max_scroll_row(rows)) as f64 * self.row_pitch();
+    }
+
+    /// Move by complete rows, matching GPUI's row-quantized wheel behavior.
+    fn scroll_rows(&mut self, delta_y: f64, rows: usize) -> bool {
+        if delta_y == 0.0 {
+            return false;
+        }
+        let visible = self.visible_rows();
+        let step = usize::try_from(round_units(
+            (delta_y / self.row_pitch()).abs().ceil().max(1.0),
+        ))
+        .unwrap_or(1)
+        .clamp(1, visible);
+        let current = self.scroll_row();
+        let next = if delta_y > 0.0 {
+            current.saturating_sub(step)
+        } else {
+            current.saturating_add(step).min(self.max_scroll_row(rows))
+        };
+        self.set_scroll_row(next, rows);
+        next != current
     }
 
     /// Replace the display cells, resetting the viewport only when their order changes.
@@ -319,17 +359,13 @@ impl GridWidget {
             .iter()
             .position(|packed| packed.iter().any(|(cell, _)| *cell == target))
         {
-            let inset = self.inset_y();
-            let top = inset + row as f64 * self.row_pitch();
-            let bottom = top + self.cell_height();
-            let visible_top = self.scroll + inset;
-            let visible_bottom = self.scroll + self.size.height - inset;
-            if top < visible_top {
-                self.scroll = (top - inset).max(0.0);
-            } else if bottom > visible_bottom {
-                self.scroll = bottom - (self.size.height - inset);
+            let first = self.scroll_row();
+            let visible = self.visible_rows();
+            if row < first {
+                self.set_scroll_row(row, rows.len());
+            } else if row >= first + visible {
+                self.set_scroll_row(row + 1 - visible, rows.len());
             }
-            self.scroll = self.scroll.clamp(0.0, self.max_scroll(rows.len()));
         }
         Some(index)
     }
@@ -389,7 +425,9 @@ impl Widget for GridWidget {
     }
 
     fn layout(&mut self, _ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
+        let scroll_row = self.scroll_row();
         self.size = size;
+        self.set_scroll_row(scroll_row, self.packed().len());
     }
 
     fn paint(
@@ -398,6 +436,9 @@ impl Widget for GridWidget {
         _props: &PropertiesRef<'_>,
         painter: &mut Painter<'_>,
     ) {
+        let rows = self.packed();
+        let total = rows.len();
+        self.set_scroll_row(self.scroll_row(), total);
         let pal = &self.palette;
         painter.fill_rect(self.size.to_rect(), pal.grid_bg());
 
@@ -412,9 +453,6 @@ impl Widget for GridWidget {
             (self.size.height - inset).max(inset),
         ));
 
-        let rows = self.packed();
-        let total = rows.len();
-        self.scroll = self.scroll.clamp(0.0, self.max_scroll(total));
         let pitch = self.row_pitch();
         // The GPUI build's cell rule: a marked cell is filled with its
         // mark and keylined; its glyph and labels are drawn in the
@@ -632,13 +670,11 @@ impl Widget for GridWidget {
             PointerEvent::Scroll(PointerScrollEvent { delta, .. }) => {
                 let dy = match delta {
                     ScrollDelta::PixelDelta(p) => p.y,
-                    ScrollDelta::LineDelta(_, y) => f64::from(*y) * (self.metrics.cell + GAP),
+                    ScrollDelta::LineDelta(_, y) => f64::from(*y) * self.row_pitch(),
                     _ => 0.0,
                 };
                 let total = self.packed().len();
-                let next = (self.scroll - dy).clamp(0.0, self.max_scroll(total));
-                if next != self.scroll {
-                    self.scroll = next;
+                if self.scroll_rows(dy, total) {
                     ctx.request_render();
                 }
                 ctx.set_handled();
@@ -928,10 +964,11 @@ mod thumbnail_tests {
                 persistent_device_id: None,
                 pointer_type: PointerType::Mouse,
             },
-            delta: ScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -96.0)),
+            delta: ScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -17.0)),
             state,
         }));
-        assert_eq!(harness.edit_root_widget(|root| root.widget.scroll), 96.0);
+        let pitch = harness.edit_root_widget(|root| root.widget.row_pitch());
+        assert_eq!(harness.edit_root_widget(|root| root.widget.scroll), pitch);
 
         harness.edit_root_widget(|root| {
             let equivalent = Arc::new(root.widget.cells.as_ref().clone());
@@ -939,7 +976,7 @@ mod thumbnail_tests {
         });
         assert_eq!(
             harness.edit_root_widget(|root| root.widget.scroll),
-            96.0,
+            pitch,
             "a routine Xilem rebuild must not snap the trackpad viewport to the top"
         );
     }
@@ -975,7 +1012,11 @@ mod thumbnail_tests {
             harness.edit_root_widget(|root| root.widget.selected),
             Some(55)
         );
-        assert!(harness.edit_root_widget(|root| root.widget.scroll) > 0.0);
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.scroll),
+            harness.edit_root_widget(|root| root.widget.row_pitch()),
+            "keyboard reveal must also land on a complete row"
+        );
 
         harness.process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowLeft)));
         assert!(matches!(

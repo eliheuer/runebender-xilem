@@ -1296,3 +1296,13 @@ tests and four ignored model integrations; the live-agent test also passes when
 run outside the macOS filesystem sandbox. Formatting and strict all-target Clippy
 pass. The supplied screenshot is static evidence of the affected surface and does
 not itself establish native trackpad delivery or keyboard focus behavior.
+
+A follow-up native screenshot exposed one remaining difference: retaining the
+pixel offset still allowed a trackpad gesture to stop between rows, leaving the
+first and last cells sliced. GPUI stores `scroll_row` as an integer and derives
+the pixel position from the fitted row height. Xilem now follows that behavior:
+every non-zero wheel gesture advances at least one row, larger deltas advance a
+bounded whole-row count, keyboard reveal uses the same row index, and a resize
+recomputes the offset from that index. The pointer regression deliberately sends
+a 17-pixel delta into a 48-pixel row and verifies a 48-pixel result, making the
+half-cell state unrepresentable through the tested interaction path.
