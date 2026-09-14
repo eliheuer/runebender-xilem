@@ -59,6 +59,9 @@ releases begin.
 
 - Match editor sidebar tab spacing and faces, joining the selected tab to its panel.
 
+- Keep the edit and overview sidebar tab rails on the same GPUI geometry and
+  surface colors.
+
 - Retain dark keylines on enabled toggles and use crisp field borders in the metrics card.
 
 - Match the GPUI edit canvas's compact five-field metrics card, including its marked

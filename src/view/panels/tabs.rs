@@ -220,27 +220,15 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
                 move |app: &mut Workspace| app.rail = which,
             )
             .rail_tab(
-                if active {
-                    pal.panel
-                } else if editing {
-                    pal.field()
-                } else {
-                    pal.inactive_tab
-                },
+                if active { pal.panel } else { pal.inactive_tab },
                 pal.outline,
-                if editing {
-                    design::EDITOR_RAIL_TAB_ICON_RISE
-                } else {
-                    design::RAIL_TAB_ICON_RISE
-                },
+                design::RAIL_TAB_ICON_RISE,
             ),
         )
         .dims(Dimensions::new(
             Dim::Stretch,
             Dim::Fixed(Length::px(if active {
                 RAIL_TAB_ACTIVE_HEIGHT
-            } else if editing {
-                design::EDITOR_RAIL_TAB_INACTIVE_HEIGHT
             } else {
                 RAIL_TAB_INACTIVE_HEIGHT
             })),
@@ -249,11 +237,7 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
     let has_axes = !app.font.axes.is_empty();
     sized_box(xilem::view::zstack((
         sized_box(canvas({
-            let background = if editing {
-                pal.inactive_tab
-            } else {
-                pal.tab_rail
-            };
+            let background = pal.tab_rail;
             let outline = pal.outline;
             move |_: &mut Workspace, _, scene, size| {
                 use masonry::imaging::Painter;
@@ -285,21 +269,17 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
             tab("text", Rail::Chat).flex(1.0),
         ))
         .cross_axis_alignment(CrossAxisAlignment::Start)
-        .gap(if editing { Space::Md } else { Space::Sm })
+        .gap(Space::Sm)
         .padding(masonry::properties::Padding {
-            left: if editing { Space::Md } else { Space::Sm }.length(),
-            right: if editing { Space::Md } else { Space::Sm }.length(),
-            top: if editing { Space::Md } else { Space::Sm }.length(),
+            left: Space::Sm.length(),
+            right: Space::Sm.length(),
+            top: Space::Sm.length(),
             bottom: Space::None.length(),
         }),
     )))
     .dims(Dimensions::new(
         Dim::Stretch,
-        Dim::Fixed(Length::px(if editing {
-            design::EDITOR_RAIL_TAB_HEIGHT
-        } else {
-            RAIL_TAB_HEIGHT
-        })),
+        Dim::Fixed(Length::px(RAIL_TAB_HEIGHT)),
     ))
 }
 

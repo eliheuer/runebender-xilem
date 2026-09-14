@@ -1411,3 +1411,25 @@ or state.
 Both 1280 by 720 captures were visually inspected; all three labels fit their
 existing controls in both themes. Static headless captures verify paint and
 layout, not native pointer, keyboard, screen-reader, or GPU behavior.
+
+
+## 2026-09-14 overnight: shared sidebar-tab geometry
+
+GPUI uses the same 36-pixel navigation band in the font overview and edit
+sidebar: four pixels of top and horizontal inset, four pixels between tabs,
+32-pixel active faces, and 28-pixel inactive faces. Xilem's edit mode used an
+eight-pixel inset and gap, a 40-pixel band, 24-pixel inactive faces, and a
+different rail surface, so the selected and inactive tabs shifted relative to
+the otherwise matching overview tabs.
+
+Xilem now uses one GPUI geometry and surface treatment in both modes. The
+active tab reaches the bottom rule, inactive tabs stop four pixels above it,
+and the selected icon retains the two-pixel rise used by the reference.
+
+- [Gray shared tab geometry](125-xilem-editor-sidebar-tabs-gray.png)
+- [Light shared tab geometry](126-xilem-editor-sidebar-tabs-light.png)
+
+Both 1280 by 720 captures were visually inspected. The active Glyphs tab joins
+the panel and the five icons share a baseline in Gray and Light. Static
+headless captures verify paint and layout, not native pointer, keyboard,
+screen-reader, or GPU behavior.
