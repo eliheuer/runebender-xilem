@@ -290,7 +290,7 @@ pub(crate) fn shaping_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     )
 }
 
-pub(crate) fn path_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+pub(crate) fn transformations_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use crate::edit::session::BoolOp;
     use icon_button::icon_button;
     let pal = &app.palette;
@@ -324,43 +324,58 @@ pub(crate) fn path_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
                 },
             ),
             (!app.collapsed.contains("Transformations")).then(|| {
-                // The icon rows share a pitch; the following form has its own
-                // measured separation and a uniform control-row rhythm.
                 xcolumn(
                     Region::Section,
                     (
-                        xcolumn(
-                            Region::Section,
+                        xrow(
+                            Region::List,
                             (
-                                xrow(
-                                    Region::List,
-                                    (
-                                        op("flip-h", |s| s.flip_horizontal()),
-                                        op("flip-v", |s| s.flip_vertical()),
-                                        op("rot-ccw", |s| s.rotate_90()),
-                                        op("rot-cw", |s| s.rotate_90_clockwise()),
-                                        op("duplicate", |s| s.duplicate()),
-                                        op("duplicate-repeat", |s| s.duplicate_repeat()),
-                                    ),
-                                )
-                                .gap(Space::Md),
-                                xrow(
-                                    Region::List,
-                                    (
-                                        op("union", |s| s.remove_overlap()),
-                                        op("subtract", |s| s.boolean(BoolOp::Subtract)),
-                                        op("intersect", |s| s.boolean(BoolOp::Intersect)),
-                                        op("exclude", |s| s.boolean(BoolOp::Exclude)),
-                                    ),
-                                )
-                                .gap(Space::Md),
+                                op("flip-h", |s| s.flip_horizontal()),
+                                op("flip-v", |s| s.flip_vertical()),
+                                op("rot-ccw", |s| s.rotate_90()),
+                                op("rot-cw", |s| s.rotate_90_clockwise()),
+                                op("duplicate", |s| s.duplicate()),
+                                op("duplicate-repeat", |s| s.duplicate_repeat()),
                             ),
-                        ),
-                        path_operations_controls(app),
+                        )
+                        .gap(Space::Md),
+                        xrow(
+                            Region::List,
+                            (
+                                op("union", |s| s.remove_overlap()),
+                                op("subtract", |s| s.boolean(BoolOp::Subtract)),
+                                op("intersect", |s| s.boolean(BoolOp::Intersect)),
+                                op("exclude", |s| s.boolean(BoolOp::Exclude)),
+                            ),
+                        )
+                        .gap(Space::Md),
                     ),
                 )
-                .gap(Length::px(design::TRANSFORM_CONTROLS_GAP))
+                .gap(Space::Md)
             }),
+        ),
+    )
+    .gap(Length::px(design::TRANSFORM_CONTROLS_GAP))
+}
+
+/// Curve and outline operations follow GPUI in their own disclosure below
+/// geometric transformations.
+pub(crate) fn path_operations_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    xcolumn(
+        Region::Section,
+        (
+            recipes::section_toggle(
+                pal,
+                "Path Operations",
+                !app.collapsed.contains("Path Operations"),
+                move |app: &mut Workspace| {
+                    if !app.collapsed.remove("Path Operations") {
+                        app.collapsed.insert("Path Operations");
+                    }
+                },
+            ),
+            (!app.collapsed.contains("Path Operations")).then(|| path_operations_controls(app)),
         ),
     )
     .gap(Length::px(design::TRANSFORM_CONTROLS_GAP))

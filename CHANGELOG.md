@@ -61,6 +61,9 @@ releases begin.
 - Match the GPUI edit canvas's compact five-field metrics card, including its marked
   header, square outline, and offset shadow.
 
+- Restore the edit inspector's separate Transformations and Path Operations
+  disclosures so its default hierarchy matches GPUI.
+
 - Match Background control rows and inspector field alignment; the Background toggle
   now reflects the visibility setting even when the current glyph has no background.
 

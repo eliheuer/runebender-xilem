@@ -1330,3 +1330,24 @@ returns 30 pixels of vertical space to the outline canvas. A focused geometry
 test covers the new field positions and narrow-height hiding threshold. Static
 headless captures verify paint and layout, not native pointer, keyboard,
 screen-reader, or GPU behavior.
+
+
+## 2026-09-14 overnight: restore the Path Operations disclosure
+
+GPUI presents geometric transforms and path operations as two adjacent,
+independently collapsible inspector sections. Xilem had placed both sets of
+controls under Transformations, so the Path Operations header was absent and
+the default inspector hierarchy did not match the reference.
+
+Xilem now keeps the two icon rows under Transformations and places the six
+named operations plus their parameter fields under a separate Path Operations
+disclosure. Both sections remain expanded by default, matching GPUI, and each
+can be folded without changing the other.
+
+- [Gray inspector hierarchy](117-xilem-editor-path-operations-gray.png)
+- [Light inspector hierarchy](118-xilem-editor-path-operations-light.png)
+
+Both 1280 by 720 captures were visually inspected. The new divider and header
+align with the neighboring Coordinates and Curves groups in both themes.
+Static headless captures verify paint and layout, not native pointer,
+keyboard, screen-reader, or GPU behavior.
