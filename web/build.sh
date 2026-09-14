@@ -3,7 +3,8 @@
 set -eu
 cd "$(dirname "$0")/.."
 python3 web/prepare.py
-cargo build --manifest-path web/Cargo.toml --locked --target wasm32-unknown-unknown --release
+# Vello CPU selects its SIMD pipeline at compile time on WebAssembly.
+CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS="-C target-feature=+simd128" cargo build --manifest-path web/Cargo.toml --locked --target wasm32-unknown-unknown --release
 bindgen_tool=${RUNEBENDER_WASM_BINDGEN:-wasm-bindgen}
 if [ "$("$bindgen_tool" --version)" != 'wasm-bindgen 0.2.127' ]; then
   echo 'This lockfile needs wasm-bindgen-cli 0.2.127. Set RUNEBENDER_WASM_BINDGEN to that executable.' >&2

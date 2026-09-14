@@ -31,15 +31,35 @@ The browser is a separate Cargo workspace and lockfile so this manifest
 adaptation and browser dependencies cannot change native dependency selection.
 The font is under the SIL Open Font License in `licenses/`.
 
-## Browser interaction check
+## Browser quality checks
 
-With the demo served and Playwright installed, run `node web/smoke.cjs`. It drives
-Chrome through glyph opening, outline dragging, undo/redo, zoom, a splitter drag,
-and the Nodes view, and checks that Open gives desktop-only feedback. Set
-`RUNEBENDER_DEMO_URL` for a different host, `RUNEBENDER_CHROME` for a Chrome
-executable, or `RUNEBENDER_PLAYWRIGHT` for an existing Playwright installation.
-Set `RUNEBENDER_IFRAME=1` when checking the website's full-screen editor wrapper.
+Build with `./web/build.sh`, then serve `web/` on port 4326. The build enables
+WebAssembly SIMD so Vello CPU uses its vectorized renderer. No WebGPU or
+cross-origin-isolation headers are required. Browser dependencies remain separate
+from the desktop lockfile.
 
-`node web/themes.cjs` checks search and opening a glyph, then uses the real
-Theme menu to verify that point markers remain painted in Light and Dark.
-It accepts the same browser and URL environment variables.
+With Playwright installed, run `node web/quality.cjs`. The default matrix covers
+1×, 2×, and 1.25× displays; 1000–1440px windows; density changes without reload;
+actual outline dragging and undo/redo; painted zoom; splitter cursors; themes;
+keyboard focus; paste; composition events; and the Nodes canvas. It also checks
+that the app does not continually repaint while idle.
+
+Environment variables:
+
+- `RUNEBENDER_DEMO_URL`: another local or published URL.
+- `RUNEBENDER_IFRAME=1`: test the website's full-screen wrapper.
+- `RUNEBENDER_CHROME`: an installed Chrome executable.
+- `RUNEBENDER_PLAYWRIGHT`: an existing Playwright module installation.
+- `RUNEBENDER_DPRS`: comma-separated display densities, default `1,2,1.25`.
+- `RUNEBENDER_PROOFS`: save screenshots and frame timing measurements here.
+
+`smoke.cjs` and `themes.cjs` remain aliases for this shared check, at 1×.
+Browser frame timings are local measurements, not guarantees for other machines.
+The composition checks dispatch DOM events; they do not certify every OS IME.
+
+The canvas tracks physical resolution independently of CSS layout. Masonry receives
+that same scale for layout, painting, and pointer input. Browser resize, resolution,
+and focus events keep it in sync. Mouse motion is coalesced per animation frame;
+only requested repaints run the renderer. A hidden native text input bridges paste
+and composition to the focused Masonry widget. The bundled Nodes example is editable
+in memory; executing its proof/export workflow requires the desktop application.

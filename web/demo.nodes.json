@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "nodes": [
+    { "id": 1, "type": "core.source", "pos": [32, 64] },
+    { "id": 2, "type": "core.proof", "pos": [352, 64], "values": { "out": "selection.svg" } },
+    { "id": 3, "type": "core.master", "pos": [32, 272], "values": { "name": "Regular" } },
+    { "id": 4, "type": "core.proof", "pos": [352, 272], "values": { "out": "regular.svg" } }
+  ],
+  "links": [[1, "source", 2, "source"], [3, "source", 4, "source"]]
+}

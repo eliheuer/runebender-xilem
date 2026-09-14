@@ -7,6 +7,11 @@ releases begin.
 
 ## [Unreleased]
 
+- Render the browser editor at Retina and fractional display resolutions, enable
+  Vello's WASM SIMD renderer, and repaint only when needed. Keep pointer input,
+  splitter cursors, focus, paste, and composition aligned with the desktop widgets.
+  Include an editable example graph in the browser's Nodes view.
+
 - Match GPUI's round, zoom-responsive edit-canvas dot grid, and make the Text
   tool retain the open glyph, take keyboard focus immediately, and accept typing
   without a preparatory canvas click.

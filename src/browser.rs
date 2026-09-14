@@ -7,7 +7,7 @@ use crate::*;
 use masonry::app::{
     RenderRoot, RenderRootOptions, RenderRootSignal, VisualLayerKind, WindowSizePolicy,
 };
-use masonry::core::ScrollDelta;
+use masonry::core::{Ime, ScrollDelta};
 use masonry::core::{TextEvent, WindowEvent};
 use masonry::dpi::{PhysicalPosition, PhysicalSize};
 use masonry::imaging::{
@@ -63,6 +63,12 @@ fn demo_state() -> AppState {
         "VirtuaGrotesk-Regular.ufo".into(),
     );
     let mut workspace = Workspace::from_model(FontModel::from_project(project)).unwrap();
+    // Open a real, editable Core graph in memory so Nodes is useful on first visit.
+    workspace.new_nodes_file();
+    let graph = serde_json::from_str(include_str!("../web/demo.nodes.json")).unwrap();
+    workspace.nodes_changed(graph);
+    workspace.nodes.graph.as_mut().unwrap().path = "example.nodes.json".into();
+    workspace.mode = Mode::Overview;
     workspace.note = "Browser session — edits stay in this tab".into();
     AppState {
         palette: workspace.palette.clone(),
@@ -87,9 +93,12 @@ trait BrowserApp {
         dy: f64,
     );
     fn key(&mut self, down: bool, key: &str, code: &str, modifiers: u8, repeat: bool);
-    fn resize(&mut self, width: u32, height: u32);
-    fn frame(&mut self) -> Vec<u8>;
+    fn resize(&mut self, width: u32, height: u32, scale: f64);
+    fn frame(&mut self, elapsed_ms: f64) -> Vec<u8>;
     fn state(&self) -> String;
+    fn feedback(&mut self) -> String;
+    fn text(&mut self, kind: u8, text: String);
+    fn focus(&mut self, focused: bool);
 }
 struct Host<V: WidgetView<AppState, Widget: Sized>, F> {
     app: AppState,
@@ -102,6 +111,11 @@ struct Host<V: WidgetView<AppState, Widget: Sized>, F> {
     renderer: imaging_vello_cpu::VelloCpuRenderer,
     width: u32,
     height: u32,
+    scale: f64,
+    dirty: bool,
+    ime_active: bool,
+    ime_position: [f64; 2],
+    clipboard: Option<String>,
     painted_theme: &'static str,
 }
 impl<V, F> Host<V, F>
@@ -153,10 +167,17 @@ where
                     RenderRootSignal::NewLayer(_, widget, position) => {
                         self.root.add_layer(widget, position)
                     }
-                    RenderRootSignal::RemoveLayer(id) => self.root.remove_layer(id),
+                    RenderRootSignal::RemoveLayer(id) => {
+                        self.root.remove_layer(id);
+                    }
                     RenderRootSignal::RepositionLayer(id, position) => {
                         self.root.reposition_layer(id, position)
                     }
+                    RenderRootSignal::RequestRedraw => self.dirty = true,
+                    RenderRootSignal::StartIme => self.ime_active = true,
+                    RenderRootSignal::EndIme => self.ime_active = false,
+                    RenderRootSignal::ImeMoved(pos, _) => self.ime_position = [pos.x, pos.y],
+                    RenderRootSignal::ClipboardStore(text) => self.clipboard = Some(text),
                     _ => {}
                 }
             }
@@ -260,23 +281,32 @@ where
             }));
         self.drain();
     }
-    fn resize(&mut self, width: u32, height: u32) {
+    fn resize(&mut self, width: u32, height: u32, scale: f64) {
         self.width = width;
         self.height = height;
+        if self.scale != scale {
+            self.scale = scale;
+            self.root.handle_window_event(WindowEvent::Rescale(scale));
+        }
         self.root
             .handle_window_event(WindowEvent::Resize(PhysicalSize::new(width, height)));
         self.drain();
     }
-    fn frame(&mut self) -> Vec<u8> {
+    fn frame(&mut self, elapsed_ms: f64) -> Vec<u8> {
         if self.painted_theme != self.app.theme_id {
             // Theme changes must invalidate cached widget paint as well as view state.
             // Reapplying the unchanged logical scale requests a complete repaint.
-            self.root.handle_window_event(WindowEvent::Rescale(1.));
+            self.root
+                .handle_window_event(WindowEvent::Rescale(self.scale));
             self.painted_theme = self.app.theme_id;
         }
-        self.root
-            .handle_window_event(WindowEvent::AnimFrame(std::time::Duration::from_millis(32)));
+        if self.root.needs_anim() {
+            self.root.handle_window_event(WindowEvent::AnimFrame(
+                std::time::Duration::from_secs_f64(elapsed_ms.clamp(0., 100.) / 1000.),
+            ));
+        }
         self.drain();
+        self.dirty = false;
         let (layers, _) = self.root.redraw();
         let mut scene = Scene::new();
         Painter::new(&mut scene).fill_rect(
@@ -285,7 +315,11 @@ where
         );
         for layer in &layers.layers {
             if let VisualLayerKind::Scene(s) = &layer.kind {
-                replay_transformed(s, &mut scene, layer.transform);
+                replay_transformed(
+                    s,
+                    &mut scene,
+                    kurbo::Affine::scale(self.scale) * layer.transform,
+                );
             }
         }
         self.renderer
@@ -293,12 +327,52 @@ where
             .unwrap()
             .data
     }
+    fn feedback(&mut self) -> String {
+        serde_json::json!({"cursor": self.root.cursor_icon().to_string(),
+            "dirty": self.dirty, "animate": self.root.needs_anim(),
+            "ime": self.ime_active, "imePosition": self.ime_position,
+            "clipboard": self.clipboard.take()})
+        .to_string()
+    }
+    fn text(&mut self, kind: u8, text: String) {
+        match kind {
+            0 => {
+                self.root.handle_text_event(TextEvent::ClipboardPaste(text));
+            }
+            1 => {
+                let end = text.len();
+                self.root
+                    .handle_text_event(TextEvent::Ime(Ime::Preedit(text, Some((end, end)))));
+            }
+            2 => {
+                self.root
+                    .handle_text_event(TextEvent::Ime(Ime::Preedit(String::new(), None)));
+                self.root
+                    .handle_text_event(TextEvent::Ime(Ime::Commit(text)));
+            }
+            _ => {
+                self.root.handle_text_event(TextEvent::Ime(Ime::Enabled));
+            }
+        }
+        self.drain();
+    }
+    fn focus(&mut self, focused: bool) {
+        self.root
+            .handle_text_event(TextEvent::WindowFocusChange(focused));
+        self.drain();
+    }
     fn state(&self) -> String {
         let w = self.app.workspace.as_ref().unwrap();
-        serde_json::json!({"mode":match w.mode { Mode::Overview=>"overview",Mode::Editor(_)=>"editor",Mode::Nodes=>"nodes" },"modified":w.modified,"glyph":w.session.glyph_name,"selected_points":w.selected_points,"glyph_count":w.font.glyphs.len(),"note":w.note,"points":w.session.glyph.contours.iter().flat_map(|c|c.points.iter().map(|p|(p.x,p.y))).collect::<Vec<_>>(),"zoom":w.session.viewport.zoom}).to_string()
+        serde_json::json!({"nodes":w.nodes.graph.as_ref().map(|g| &g.graph),"simd":cfg!(target_feature="simd128"),"scale":self.scale,"mode":match w.mode { Mode::Overview=>"overview",Mode::Editor(_)=>"editor",Mode::Nodes=>"nodes" },"modified":w.modified,"glyph":w.session.glyph_name,"selected_points":w.selected_points,"glyph_count":w.font.glyphs.len(),"note":w.note,"points":w.session.glyph.contours.iter().flat_map(|c|c.points.iter().map(|p|(p.x,p.y))).collect::<Vec<_>>(),"zoom":w.session.viewport.zoom}).to_string()
     }
 }
-fn create<V, F>(mut app: AppState, logic: F, width: u32, height: u32) -> Box<dyn BrowserApp>
+fn create<V, F>(
+    mut app: AppState,
+    logic: F,
+    width: u32,
+    height: u32,
+    scale: f64,
+) -> Box<dyn BrowserApp>
 where
     V: WidgetView<AppState, Widget: Sized> + 'static,
     F: Fn(&mut AppState) -> V + 'static,
@@ -321,12 +395,17 @@ where
             use_system_fonts: false,
             size_policy: WindowSizePolicy::User,
             size: PhysicalSize::new(width, height),
-            scale_factor: 1.,
+            scale_factor: scale,
             test_font: Some(xilem::Blob::new(Arc::new(UI_FONT))),
         },
     );
     root.register_fonts(xilem::Blob::new(Arc::new(UI_FONT)));
     let mut host = Host {
+        scale,
+        dirty: true,
+        ime_active: false,
+        ime_position: [0., 0.],
+        clipboard: None,
         painted_theme: app.theme_id,
         app,
         view,
@@ -351,7 +430,7 @@ pub struct BrowserEditor {
 #[wasm_bindgen]
 impl BrowserEditor {
     #[wasm_bindgen(constructor)]
-    pub fn new(width: u32, height: u32) -> Self {
+    pub fn new(width: u32, height: u32, scale: f64) -> Self {
         console_error_panic_hook::set_once();
         Self {
             host: create(
@@ -359,6 +438,7 @@ impl BrowserEditor {
                 |app| sized_box(root_logic(app)),
                 width,
                 height,
+                scale,
             ),
         }
     }
@@ -380,11 +460,20 @@ impl BrowserEditor {
     pub fn key(&mut self, down: bool, key: &str, code: &str, mods: u8, repeat: bool) {
         self.host.key(down, key, code, mods, repeat);
     }
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.host.resize(width, height);
+    pub fn resize(&mut self, width: u32, height: u32, scale: f64) {
+        self.host.resize(width, height, scale);
     }
-    pub fn frame(&mut self) -> Vec<u8> {
-        self.host.frame()
+    pub fn frame(&mut self, elapsed_ms: f64) -> Vec<u8> {
+        self.host.frame(elapsed_ms)
+    }
+    pub fn feedback(&mut self) -> String {
+        self.host.feedback()
+    }
+    pub fn text(&mut self, kind: u8, text: String) {
+        self.host.text(kind, text);
+    }
+    pub fn focus(&mut self, focused: bool) {
+        self.host.focus(focused);
     }
     pub fn state(&self) -> String {
         self.host.state()
