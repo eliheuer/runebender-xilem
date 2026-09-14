@@ -1535,3 +1535,23 @@ at the same control positions in Gray and Light without changing the empty
 Slant, Stroke width, or Offset fields. Static headless captures verify paint
 and layout, not native typing, pointer, keyboard, screen-reader, or GPU
 behavior.
+
+
+## 2026-09-14 overnight: resting proof content
+
+GPUI's proof strip starts with the active edit buffer, so opening `five` shows
+the `five` outline rather than unrelated sample text. Xilem initialized every
+tab with “Runebender,” making the largest element below the canvas visibly
+different before the user chose any preview text.
+
+Xilem now leaves the shaping preview override empty at startup. The proof then
+uses the active glyph outline; explicit Preview text, sample commands, and
+`RUNEBENDER_PREVIEW_TEXT` still switch it to shaped text.
+
+- [Gray active-glyph proof](137-xilem-editor-active-glyph-proof-gray.png)
+- [Light active-glyph proof](138-xilem-editor-active-glyph-proof-light.png)
+
+Both 1280 by 720 captures were visually inspected. The proof shows the active
+`five` glyph, centered and fitted to the same 140-pixel strip in Gray and
+Light. Static headless captures verify paint and layout, not native text entry,
+pointer, keyboard, screen-reader, or GPU behavior.

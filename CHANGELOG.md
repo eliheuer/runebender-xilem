@@ -85,6 +85,9 @@ releases begin.
 - Restore GPUI's example values in the empty Extrude and Roughen inspector
   fields so their expected comma-separated input is visible before editing.
 
+- Preview the active glyph itself in the resting edit view instead of starting
+  every tab with the sample word “Runebender.”
+
 - Keep the Coordinates inspector compact before selection and draw its
   reference picker as GPUI's connected nine-point grid.
 

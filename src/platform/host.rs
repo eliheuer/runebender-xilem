@@ -296,8 +296,10 @@ impl Workspace {
             extrude_buf: String::new(),
             roughen_buf: String::new(),
             roughen_seed: 0,
-            preview_text: std::env::var("RUNEBENDER_PREVIEW_TEXT")
-                .unwrap_or_else(|_| "Runebender".into()),
+            // An empty override previews the active glyph itself, which is
+            // GPUI's resting edit state. Shaping text remains opt-in through
+            // the inspector, sample commands, or the headless environment.
+            preview_text: std::env::var("RUNEBENDER_PREVIEW_TEXT").unwrap_or_default(),
             preview_blur: std::env::var("RUNEBENDER_PREVIEW_BLUR")
                 .ok()
                 .and_then(|v| v.parse::<f64>().ok())
