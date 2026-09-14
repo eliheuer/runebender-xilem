@@ -82,6 +82,9 @@ releases begin.
 - Show background layers by default in edit mode, matching GPUI; headless
   captures can still disable them with `RUNEBENDER_BACKGROUND=0`.
 
+- Restore GPUI's example values in the empty Extrude and Roughen inspector
+  fields so their expected comma-separated input is visible before editing.
+
 - Keep the Coordinates inspector compact before selection and draw its
   reference picker as GPUI's connected nine-point grid.
 

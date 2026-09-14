@@ -385,6 +385,7 @@ pub(crate) fn path_operations_section(app: &Workspace) -> impl WidgetView<Worksp
 fn transform_parameter(
     app: &Workspace,
     title: &'static str,
+    placeholder: &'static str,
     value: String,
     on_change: fn(&mut Workspace, String),
     on_enter: fn(&mut Workspace, String),
@@ -396,7 +397,7 @@ fn transform_parameter(
                 Dim::Fixed(Length::px(design::TRANSFORM_LABEL_WIDTH)),
                 Dim::Auto,
             )),
-            recipes::field_bare(&app.palette, "", value, on_change, on_enter).flex(1.0),
+            recipes::field_bare(&app.palette, placeholder, value, on_change, on_enter).flex(1.0),
         ),
     )
 }
@@ -431,6 +432,7 @@ fn path_operations_controls(app: &Workspace) -> impl WidgetView<Workspace> + use
             transform_parameter(
                 app,
                 "Slant °",
+                "",
                 app.slant_buf.clone(),
                 |app, value| app.slant_buf = value,
                 |app, value| {
@@ -441,6 +443,7 @@ fn path_operations_controls(app: &Workspace) -> impl WidgetView<Workspace> + use
             transform_parameter(
                 app,
                 "Stroke width",
+                "",
                 app.stroke_buf.clone(),
                 |app, value| app.stroke_buf = value,
                 |app, value| {
@@ -451,6 +454,7 @@ fn path_operations_controls(app: &Workspace) -> impl WidgetView<Workspace> + use
             transform_parameter(
                 app,
                 "Offset ±",
+                "",
                 app.offset_buf.clone(),
                 |app, value| app.offset_buf = value,
                 |app, value| {
@@ -461,6 +465,7 @@ fn path_operations_controls(app: &Workspace) -> impl WidgetView<Workspace> + use
             transform_parameter(
                 app,
                 "Extrude d,°",
+                "15,30",
                 app.extrude_buf.clone(),
                 |app, value| app.extrude_buf = value,
                 |app, value| {
@@ -471,6 +476,7 @@ fn path_operations_controls(app: &Workspace) -> impl WidgetView<Workspace> + use
             transform_parameter(
                 app,
                 "Roughen s,h,v",
+                "15,15,10",
                 app.roughen_buf.clone(),
                 |app, value| app.roughen_buf = value,
                 |app, value| {
@@ -718,6 +724,7 @@ pub(crate) fn curves_section(app: &Workspace) -> impl WidgetView<Workspace> + us
                 transform_parameter(
                     app,
                     "Fit curve %",
+                    "",
                     app.fit_curve_buf.clone(),
                     |app, value| app.fit_curve_buf = value,
                     |app, value| {

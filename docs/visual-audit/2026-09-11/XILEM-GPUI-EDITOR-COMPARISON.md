@@ -1515,3 +1515,23 @@ Both 1280 by 720 captures were visually inspected. The Background toggle now
 has the active face in both themes while Mark cloud remains inactive. Static
 headless captures verify paint and layout, not native pointer, keyboard,
 screen-reader, or GPU behavior.
+
+
+## 2026-09-14 overnight: path-operation input examples
+
+GPUI shows `15,30` in the empty Extrude field and `15,15,10` in the empty
+Roughen field. These are placeholders rather than applied values, but they are
+prominent in the default inspector and explain the comma-separated formats.
+Xilem left both controls visually blank.
+
+Xilem now uses the same two placeholders while preserving empty buffers and
+the existing Enter-to-apply behavior.
+
+- [Gray path-operation placeholders](135-xilem-editor-operation-placeholders-gray.png)
+- [Light path-operation placeholders](136-xilem-editor-operation-placeholders-light.png)
+
+Both 1280 by 720 captures were visually inspected. The example values appear
+at the same control positions in Gray and Light without changing the empty
+Slant, Stroke width, or Offset fields. Static headless captures verify paint
+and layout, not native typing, pointer, keyboard, screen-reader, or GPU
+behavior.
