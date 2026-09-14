@@ -87,6 +87,10 @@ if (output) fs.mkdirSync(output, { recursive: true });
       for (const [theme, y] of [['light', 92], ['dark', 43], ['gray', 66]]) {
         await page.mouse.click(440, 15); await page.mouse.click(515, 284); await page.mouse.click(681, y); await settle();
         assert.ok((await markers()).count > 30, `${theme}: outline survives theme changes`);
+        const surface = await frame.evaluate(() => document.querySelector('canvas').getContext('2d')
+          .getImageData(Math.round(2 * devicePixelRatio), Math.round(35 * devicePixelRatio), 1, 1).data[0]);
+        assert.ok(theme === 'light' ? surface > 200 : theme === 'dark' ? surface < 80 : surface > 100 && surface < 200,
+          `${theme}: actual painted surface changes with the menu selection`);
         await shot(`editor-${theme}`);
       }
       // Losing focus must release temporary tools/modifiers instead of sticking in pan.
@@ -94,7 +98,7 @@ if (output) fs.mkdirSync(output, { recursive: true });
       await frame.evaluate(() => window.dispatchEvent(new Event('blur')));
       await page.keyboard.up('Space');
       await page.mouse.click(750, 450); await settle();
-      await page.mouse.click(1150, 38); await settle();
+      await page.mouse.click(1150, 15); await settle();
       assert.equal((await state()).mode, 'nodes');
       const graph = (await state()).nodes;
       assert.equal(graph.nodes.length, 4, 'Nodes starts with an editable example');
@@ -118,7 +122,7 @@ if (output) fs.mkdirSync(output, { recursive: true });
       assert.equal((await state()).mode, 'overview', 'Escape from the canvas opens Font overview');
       // Paste and IME events are dispatched into the DOM input bridge, never the model.
       for (const [kind, text] of [['paste', 'ampersand'], ['composition', 'exclam']]) {
-        await page.mouse.click(70, 110); await settle(); await page.keyboard.press('Control+a');
+        await page.mouse.click(70, 86); await settle(); await page.keyboard.press('Control+a');
         assert.equal(await frame.evaluate(() => document.activeElement.id), 'text-input', 'text field owns browser input focus');
         if (kind === 'paste') assert.equal(await frame.evaluate(() => {
           const event = new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', ctrlKey: true, bubbles: true, cancelable: true });

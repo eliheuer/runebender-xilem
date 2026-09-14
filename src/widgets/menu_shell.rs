@@ -32,7 +32,15 @@ use crate::widgets::shortcuts::AppAction;
 use crate::widgets::text_label::{self, Anchor};
 use runebender_core::outline::glyph_paths::round_units;
 
-const BAR_HEIGHT: f64 = 24.0;
+#[path = "menu_header.rs"]
+mod header;
+
+const BAR_HEIGHT: f64 = crate::view::design::TITLEBAR_HEIGHT;
+
+/// Platforms without an OS menu share one application header row.
+pub(crate) fn in_window() -> bool {
+    !cfg!(target_os = "macos") || std::env::var("RUNEBENDER_IN_WINDOW_MENU").is_ok()
+}
 const TITLE_PAD: f64 = 10.0;
 const ROW_HEIGHT: f64 = 24.0;
 const POPUP_PAD: f64 = 4.0;
@@ -40,6 +48,17 @@ const POPUP_WIDTH: f64 = 220.0;
 
 fn title_width(title: &str) -> f64 {
     title.chars().count() as f64 * 7.25 + TITLE_PAD * 2.0
+}
+
+// Disabled commands remain legible, but never receive an active highlight.
+fn row_ink(pal: &Palette, enabled: bool, selected: bool) -> xilem::Color {
+    if !enabled {
+        pal.text_muted
+    } else if selected {
+        pal.selected_ink()
+    } else {
+        pal.text
+    }
 }
 
 fn shortcut_label(accelerator: &str) -> String {
@@ -128,6 +147,7 @@ struct EntryState {
 /// The application content plus a menu bar and window-level shortcut scope.
 pub(crate) struct MenuShell {
     inner: WidgetPod<dyn Widget>,
+    integrated_header: bool,
     accessible_titles: Vec<WidgetPod<AccessibleMenuTitle>>,
     palette: Arc<Palette>,
     states: Arc<Vec<EntryState>>,
@@ -148,6 +168,7 @@ impl MenuShell {
     ) -> Self {
         Self {
             inner: child.erased().to_pod(),
+            integrated_header: false,
             accessible_titles: MENUS
                 .iter()
                 .map(|label| NewWidget::new(AccessibleMenuTitle { label }).to_pod())
@@ -291,15 +312,24 @@ impl Widget for MenuShell {
         let child = ctx.redirect_measurement(&mut self.inner, axis, cross_length);
         match axis {
             Axis::Horizontal => child,
-            Axis::Vertical => child.saturating_add(Length::px(BAR_HEIGHT)),
+            Axis::Vertical => child.saturating_add(Length::px(if self.integrated_header {
+                0.0
+            } else {
+                BAR_HEIGHT
+            })),
         }
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
         self.size = size;
-        let child_size = Size::new(size.width, (size.height - BAR_HEIGHT).max(0.0));
+        let inset = if self.integrated_header {
+            0.0
+        } else {
+            BAR_HEIGHT
+        };
+        let child_size = Size::new(size.width, (size.height - inset).max(0.0));
         ctx.run_layout(&mut self.inner, child_size);
-        ctx.place_child(&mut self.inner, Point::new(0.0, BAR_HEIGHT));
+        ctx.place_child(&mut self.inner, Point::new(0.0, inset));
         for (index, title) in self.accessible_titles.iter_mut().enumerate() {
             let rect = title_rect(index);
             ctx.run_layout(title, rect.size());
@@ -319,25 +349,24 @@ impl Widget for MenuShell {
             .fill(Rect::new(0.0, 0.0, self.size.width, BAR_HEIGHT), pal.header)
             .draw();
         painter
-            .stroke(
+            .fill(
                 Rect::new(0.0, BAR_HEIGHT - 1.0, self.size.width, BAR_HEIGHT),
-                &Stroke::new(1.0),
-                pal.role("gridBorder"),
+                pal.outline,
             )
             .draw();
         for (index, title) in MENUS.iter().enumerate() {
             let rect = title_rect(index);
             if self.active_menu == Some(index) {
-                painter.fill(rect, pal.role("gridSelected")).draw();
+                painter.fill(rect, pal.selected_bg()).draw();
             }
             let ink = if self.active_menu == Some(index) {
-                pal.role("selectedInk")
+                pal.selected_ink()
             } else {
                 pal.header_ink
             };
             text_label::draw(
                 painter,
-                Point::new(rect.x0 + TITLE_PAD, BAR_HEIGHT / 2.0 + 4.0),
+                Point::new(rect.x0 + TITLE_PAD, BAR_HEIGHT / 2.0),
                 title,
                 13.0,
                 ink,
@@ -896,11 +925,7 @@ impl Widget for MenuPopup {
         let pal = &self.palette;
         painter.fill(self.size.to_rect(), pal.panel).draw();
         painter
-            .stroke(
-                self.size.to_rect(),
-                &Stroke::new(1.0),
-                pal.role("gridBorder"),
-            )
+            .stroke(self.size.to_rect(), &Stroke::new(1.0), pal.outline)
             .draw();
         for (index, row) in rows(self.menu, self.submenu).into_iter().enumerate() {
             let state = row_state(row, &self.states);
@@ -911,38 +936,28 @@ impl Widget for MenuPopup {
                     .stroke(
                         Line::new(Point::new(6.0, top), Point::new(POPUP_WIDTH - 6.0, top)),
                         &Stroke::new(1.0),
-                        pal.role("gridBorder"),
+                        pal.outline,
                     )
                     .draw();
             }
-            if self.selected == index {
+            if self.selected == index && state.enabled {
                 painter
                     .fill(
                         Rect::new(2.0, top, POPUP_WIDTH - 2.0, top + ROW_HEIGHT),
-                        pal.role("gridSelected"),
+                        pal.selected_bg(),
                     )
                     .draw();
             }
             text_label::draw(
                 painter,
-                Point::new(26.0, top + ROW_HEIGHT / 2.0 + 4.0),
+                Point::new(26.0, top + ROW_HEIGHT / 2.0),
                 label,
                 13.0,
-                if !state.enabled {
-                    pal.role("textMuted").with_alpha(0.55)
-                } else if self.selected == index {
-                    pal.role("selectedInk")
-                } else {
-                    pal.text
-                },
+                row_ink(pal, state.enabled, self.selected == index),
                 Anchor::Start,
             );
             if state.checked == Some(true) {
-                let ink = if self.selected == index {
-                    pal.role("selectedInk")
-                } else {
-                    pal.text
-                };
+                let ink = row_ink(pal, state.enabled, self.selected == index);
                 painter
                     .stroke(
                         Line::new(Point::new(10.0, top + 12.0), Point::new(14.0, top + 16.0)),
@@ -961,10 +976,10 @@ impl Widget for MenuPopup {
             if let MenuRow::Submenu(_) = row {
                 text_label::draw(
                     painter,
-                    Point::new(POPUP_WIDTH - 10.0, top + ROW_HEIGHT / 2.0 + 4.0),
+                    Point::new(POPUP_WIDTH - 10.0, top + ROW_HEIGHT / 2.0),
                     "›",
                     15.0,
-                    pal.text,
+                    row_ink(pal, state.enabled, self.selected == index),
                     Anchor::End,
                 );
             }
@@ -974,14 +989,10 @@ impl Widget for MenuPopup {
                 let accelerator = shortcut_label(accelerator);
                 text_label::draw(
                     painter,
-                    Point::new(POPUP_WIDTH - 10.0, top + ROW_HEIGHT / 2.0 + 4.0),
+                    Point::new(POPUP_WIDTH - 10.0, top + ROW_HEIGHT / 2.0),
                     &accelerator,
                     13.0,
-                    if self.selected == index {
-                        pal.role("selectedInk")
-                    } else {
-                        pal.role("textMuted")
-                    },
+                    row_ink(pal, state.enabled, self.selected == index),
                     Anchor::End,
                 );
             }
@@ -1121,7 +1132,22 @@ pub(crate) fn menu_shell<V: WidgetView<AppState>>(
     inner: V,
     palette: Arc<Palette>,
     app: &AppState,
-) -> MenuShellView<V> {
+) -> MenuShellView<impl WidgetView<AppState>> {
+    use crate::*;
+    use masonry::properties::Padding;
+    let menu_width: f64 = MENUS.iter().map(|title| title_width(title)).sum();
+    let row = sized_box(header::view(app))
+        .padding(Padding {
+            left: Length::px(menu_width),
+            right: Space::Md.length(),
+            top: Length::ZERO,
+            bottom: Length::ZERO,
+        })
+        .dims(Dimensions::new(
+            Dim::Stretch,
+            Dim::Fixed(Length::px(BAR_HEIGHT)),
+        ));
+    let inner = flex_col((row, inner.flex(1.0))).gap(Space::None);
     MenuShellView {
         inner,
         palette,
@@ -1139,11 +1165,10 @@ where
     fn build(&self, ctx: &mut ViewCtx, app: &mut AppState) -> (Self::Element, Self::ViewState) {
         let (child, child_state) = self.inner.build(ctx, app);
         let pod = ctx.with_action_widget(|ctx| {
-            ctx.create_pod(MenuShell::new(
-                child.new_widget,
-                self.palette.clone(),
-                self.states.clone(),
-            ))
+            let mut shell =
+                MenuShell::new(child.new_widget, self.palette.clone(), self.states.clone());
+            shell.integrated_header = true;
+            ctx.create_pod(shell)
         });
         (pod, child_state)
     }
@@ -1155,6 +1180,9 @@ where
         mut element: Mut<'_, Self::Element>,
         app: &mut AppState,
     ) {
+        if !Arc::ptr_eq(&element.widget.palette, &self.palette) {
+            element.ctx.request_render();
+        }
         element.widget.palette = self.palette.clone();
         element.widget.states = self.states.clone();
         let mut child = MenuShell::child_mut(&mut element);
@@ -1470,5 +1498,53 @@ mod tests {
         );
         assert_ne!(harness.focused_widget_id(), Some(button_id));
         assert!(harness.pop_action::<AppAction>().is_none());
+    }
+}
+
+#[cfg(test)]
+mod contrast_tests {
+    use super::*;
+
+    fn contrast(a: xilem::Color, b: xilem::Color) -> f64 {
+        fn luminance(c: xilem::Color) -> f64 {
+            let linear = |v: f32| {
+                let v = f64::from(v);
+                if v <= 0.04045 {
+                    v / 12.92
+                } else {
+                    ((v + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            linear(c.components[0]) * 0.2126
+                + linear(c.components[1]) * 0.7152
+                + linear(c.components[2]) * 0.0722
+        }
+        let a = luminance(a);
+        let b = luminance(b);
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn menu_text_is_readable_in_every_theme_and_state() {
+        for theme in ["gray", "light", "dark"] {
+            let pal = Palette::load(theme);
+            assert!(
+                contrast(pal.header_ink, pal.header) >= 4.5,
+                "{theme} header"
+            );
+            assert!(
+                contrast(row_ink(&pal, true, false), pal.panel) >= 4.5,
+                "{theme} enabled"
+            );
+            assert!(
+                contrast(row_ink(&pal, true, true), pal.selected_bg()) >= 4.5,
+                "{theme} selected"
+            );
+            assert!(
+                contrast(row_ink(&pal, false, false), pal.panel) >= 3.0,
+                "{theme} disabled"
+            );
+            assert_eq!(row_ink(&pal, false, true), row_ink(&pal, false, false));
+        }
     }
 }

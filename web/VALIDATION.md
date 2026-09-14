@@ -52,3 +52,9 @@ user-file import/export, persistent edits, and local processes remain outside
 this preview. The current native divider has a narrow draggable edge and can retain the default
 cursor before dragging; the test
 measures a real drag on that edge rather than merely checking a resize cursor.
+
+## In-window header follow-up
+
+The one-row header, menu contrast, and long-filename behavior are documented
+with direct captures in `docs/browser-quality/2026-09-14-menus/`. All 12 native
+menu tests pass; the browser interaction matrix and WASM Clippy also pass.

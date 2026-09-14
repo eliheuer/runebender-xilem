@@ -63,3 +63,7 @@ and focus events keep it in sync. Mouse motion is coalesced per animation frame;
 only requested repaints run the renderer. A hidden native text input bridges paste
 and composition to the focused Masonry widget. The bundled Nodes example is editable
 in memory; executing its proof/export workflow requires the desktop application.
+
+For menu appearance checks, run `node web/menu-appearance.cjs` with the same
+Playwright/Chrome variables and `RUNEBENDER_PROOFS` set to a capture directory.
+The browser uses the shared in-window header; macOS normally keeps its OS menus.

@@ -70,3 +70,49 @@ pub(crate) fn draw(
         });
     });
 }
+
+/// Measure a shaped UI label in logical pixels.
+pub(crate) fn width(text: &str, size: f32) -> f64 {
+    FONT_CX.with(|font_cx| {
+        LAYOUT_CX.with(|layout_cx| {
+            let mut fonts = font_cx.borrow_mut();
+            let mut layouts = layout_cx.borrow_mut();
+            let mut builder = layouts.ranged_builder(&mut fonts, text, 1.0, true);
+            builder.push_default(StyleProperty::FontSize(size));
+            builder.push_default(masonry::parley::FontFamily::named(crate::UI_FONT_FAMILY));
+            let mut layout: Layout<BrushIndex> = builder.build(text);
+            layout.break_all_lines(None);
+            f64::from(layout.width())
+        })
+    })
+}
+
+/// Draw a single-line label, with an ellipsis if its measured width exceeds `available`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn draw_elided(
+    painter: &mut masonry::imaging::Painter<'_>,
+    at: Point,
+    text: &str,
+    size: f32,
+    color: Color,
+    anchor: Anchor,
+    available: f64,
+) {
+    if width(text, size) <= available {
+        return draw(painter, at, text, size, color, anchor);
+    }
+    if width("…", size) > available {
+        return;
+    }
+    let mut end = text.len();
+    loop {
+        let candidate = format!("{}…", &text[..end]);
+        if width(&candidate, size) <= available {
+            return draw(painter, at, &candidate, size, color, anchor);
+        }
+        end = text[..end]
+            .char_indices()
+            .next_back()
+            .map_or(0, |(index, _)| index);
+    }
+}

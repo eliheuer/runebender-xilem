@@ -80,12 +80,18 @@ impl Palette {
                 (titlebar.components[2] + panel.components[2]) * 0.5,
                 1.0,
             ]),
-            header: Color::new([
-                selected.components[0] * 0.5,
-                selected.components[1] * 0.5,
-                selected.components[2] * 0.5,
-                1.0,
-            ]),
+            // Dark's selected surface is light; halving it produced a mid-gray
+            // header with insufficient text contrast. Use its named titlebar.
+            header: if theme_id == "dark" {
+                titlebar
+            } else {
+                Color::new([
+                    selected.components[0] * 0.5,
+                    selected.components[1] * 0.5,
+                    selected.components[2] * 0.5,
+                    1.0,
+                ])
+            },
             // Gray and Light invert the header controls; Dark's selected
             // ink is intentionally dark, so it keeps ordinary text ink.
             header_ink: if theme_id == "dark" {

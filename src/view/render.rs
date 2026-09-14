@@ -264,7 +264,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     // compile error, a link error, after a clean build of everything.
     // Erasing the type here cuts the chain.
     let content = flex_col((
-        titlebar(app),
+        (!menu_shell::in_window()).then(|| titlebar(app)),
         // One shared top rule keeps all three columns on the same boundary.
         // The navigation rail must not paint another top edge of its own.
         sized_box(label(""))

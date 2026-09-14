@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Combine in-window menus and document controls into one header row, keep long
+  filenames within the available space, and fix menu borders, disabled text,
+  selection colors, and Dark header contrast.
+
 - Render the browser editor at Retina and fractional display resolutions, enable
   Vello's WASM SIMD renderer, and repaint only when needed. Keep pointer input,
   splitter cursors, focus, paste, and composition aligned with the desktop widgets.
