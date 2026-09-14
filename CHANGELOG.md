@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Preserve the glyph grid's trackpad scroll position across view rebuilds, and
+  move a focused selection with the arrow keys while keeping it visible.
+
 - Import basic single-master Babelfont packages into editable UFO fonts, preserving
   their source files. Outlines, components, anchors, widths, Unicode, names, metrics,
   and kerning are supported; variable sources and extra layers are rejected.

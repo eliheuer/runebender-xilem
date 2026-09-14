@@ -1269,3 +1269,30 @@ runs Masonry's event path headlessly. All 129 active tests, formatting,
 whitespace, strict all-target Clippy, and the optimized build pass; four
 model/font integration tests remain ignored by default. The release capture is
 byte-identical to 111.
+
+
+## 2026-09-13 user report: glyph-grid trackpad and arrow navigation
+
+The Xilem grid owned a pixel scroll offset and correctly received native wheel
+events, but `filtered_cells` produces a fresh `Arc` during every view rebuild.
+The grid treated each new allocation as changed content and reset its offset to
+zero, so a Mac trackpad gesture could visibly snap or jitter as unrelated state
+rebuilt the view. A clicked grid accepted focus but did not implement a text-event
+handler, leaving all four arrow keys inert.
+
+The grid now resets its viewport only when the displayed glyph indices or their
+order actually change. Equivalent view rebuilds replace refreshed cell data while
+retaining the current scroll offset. With grid focus, Left and Right move one item
+in display order, Up and Down move by the fitted column count, and the destination
+row is scrolled fully into view. Unmodified arrows clear multi-selection through
+the same `Selected` action as an ordinary click, matching GPUI's bounded movement.
+
+Focused Masonry regressions send a pixel-delta pointer event, replace the cells
+with an equivalent allocation, and verify that the offset stays at 96 pixels.
+A second interaction test focuses the grid, sends all four named arrow keys,
+checks the emitted glyph indices, and verifies that moving below the viewport
+advances its scroll. The complete application and CLI suites pass with 152 active
+tests and four ignored model integrations; the live-agent test also passes when
+run outside the macOS filesystem sandbox. Formatting and strict all-target Clippy
+pass. The supplied screenshot is static evidence of the affected surface and does
+not itself establish native trackpad delivery or keyboard focus behavior.

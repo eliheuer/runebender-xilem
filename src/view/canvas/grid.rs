@@ -10,10 +10,11 @@
 use std::sync::Arc;
 
 use masonry::accesskit::{Node, Role};
+use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
     AccessCtx, ChildrenIds, EventCtx, LayoutCtx, MeasureCtx, PaintCtx, PointerButton,
     PointerButtonEvent, PointerEvent, PointerScrollEvent, PropertiesMut, PropertiesRef,
-    RegisterCtx, ScrollDelta, Widget,
+    RegisterCtx, ScrollDelta, TextEvent, Widget,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Affine, Axis, Point, Rect, Shape, Size, Stroke};
@@ -278,6 +279,59 @@ impl GridWidget {
 
     fn max_scroll(&self, rows: usize) -> f64 {
         (self.content_height(rows) - self.size.height).max(0.0)
+    }
+
+    /// Replace the display cells, resetting the viewport only when their order changes.
+    ///
+    /// `filtered_cells` returns a new `Arc` on every Xilem rebuild. Pointer identity
+    /// therefore cannot distinguish a routine rebuild from a changed filter, and using
+    /// it as that distinction made every selection update snap the grid back to the top.
+    fn update_cells(&mut self, cells: Arc<Vec<Cell>>) {
+        let order_changed = self.cells.len() != cells.len()
+            || self
+                .cells
+                .iter()
+                .zip(cells.iter())
+                .any(|(old, new)| old.index != new.index);
+        self.cells = cells;
+        if order_changed {
+            self.scroll = 0.0;
+        }
+    }
+
+    /// Move the primary selection in display order and keep it fully visible.
+    fn step_selection(&mut self, offset: isize) -> Option<usize> {
+        let current = self
+            .selected
+            .and_then(|selected| self.cells.iter().position(|cell| cell.index == selected))?;
+        let target = current
+            .saturating_add_signed(offset)
+            .min(self.cells.len().saturating_sub(1));
+        if target == current {
+            return None;
+        }
+        let index = self.cells[target].index;
+        self.selected = Some(index);
+        self.multi = Arc::default();
+
+        let rows = self.packed();
+        if let Some(row) = rows
+            .iter()
+            .position(|packed| packed.iter().any(|(cell, _)| *cell == target))
+        {
+            let inset = self.inset_y();
+            let top = inset + row as f64 * self.row_pitch();
+            let bottom = top + self.cell_height();
+            let visible_top = self.scroll + inset;
+            let visible_bottom = self.scroll + self.size.height - inset;
+            if top < visible_top {
+                self.scroll = (top - inset).max(0.0);
+            } else if bottom > visible_bottom {
+                self.scroll = bottom - (self.size.height - inset);
+            }
+            self.scroll = self.scroll.clamp(0.0, self.max_scroll(rows.len()));
+        }
+        Some(index)
     }
 }
 
@@ -593,6 +647,44 @@ impl Widget for GridWidget {
         }
     }
 
+    fn on_text_event(
+        &mut self,
+        ctx: &mut EventCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        event: &TextEvent,
+    ) {
+        let TextEvent::Keyboard(key) = event else {
+            return;
+        };
+        if key.state != KeyState::Down
+            || key.modifiers.meta()
+            || key.modifiers.ctrl()
+            || key.modifiers.alt()
+            || key.modifiers.shift()
+        {
+            return;
+        }
+        let columns = isize::try_from(self.columns()).unwrap_or(isize::MAX);
+        let offset = match key.key {
+            Key::Named(NamedKey::ArrowLeft) => -1,
+            Key::Named(NamedKey::ArrowRight) => 1,
+            Key::Named(NamedKey::ArrowUp) => -columns,
+            Key::Named(NamedKey::ArrowDown) => columns,
+            _ => return,
+        };
+        if let Some(index) = self.step_selection(offset) {
+            ctx.submit_action::<GridEvent>(GridEvent::Selected {
+                index,
+                cmd: false,
+                shift: false,
+            });
+            ctx.request_render();
+        }
+        // Once the grid owns focus, arrows belong to its spatial selection even
+        // at an outer edge; do not let an edge press trigger a parent shortcut.
+        ctx.set_handled();
+    }
+
     fn accessibility_role(&self) -> Role {
         Role::Canvas
     }
@@ -704,8 +796,7 @@ where
             changed = true;
         }
         if !Arc::ptr_eq(&self.cells, &prev.cells) {
-            element.widget.cells = self.cells.clone();
-            element.widget.scroll = 0.0;
+            element.widget.update_cells(self.cells.clone());
             changed = true;
         }
         if self.selected != prev.selected {
@@ -813,6 +904,94 @@ mod thumbnail_tests {
                 x += width + GAP;
             }
         }
+    }
+
+    #[test]
+    fn trackpad_scroll_survives_an_equivalent_cell_rebuild() {
+        use masonry::core::pointer::{PointerId, PointerInfo, PointerState, PointerType};
+        use masonry::core::{NewWidget, PointerEvent, PointerScrollEvent, ScrollDelta};
+        use masonry::dpi::PhysicalPosition;
+        use masonry_testing::TestHarness;
+
+        let mut harness = TestHarness::create_with_size(
+            crate::default_property_set(),
+            NewWidget::new(rail()),
+            (246, 538),
+        );
+        let state = PointerState {
+            position: PhysicalPosition::new(100.0, 100.0),
+            ..PointerState::default()
+        };
+        harness.process_pointer_event(PointerEvent::Scroll(PointerScrollEvent {
+            pointer: PointerInfo {
+                pointer_id: Some(PointerId::PRIMARY),
+                persistent_device_id: None,
+                pointer_type: PointerType::Mouse,
+            },
+            delta: ScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -96.0)),
+            state,
+        }));
+        assert_eq!(harness.edit_root_widget(|root| root.widget.scroll), 96.0);
+
+        harness.edit_root_widget(|root| {
+            let equivalent = Arc::new(root.widget.cells.as_ref().clone());
+            root.widget.update_cells(equivalent);
+        });
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.scroll),
+            96.0,
+            "a routine Xilem rebuild must not snap the trackpad viewport to the top"
+        );
+    }
+
+    #[test]
+    fn focused_grid_arrows_move_selection_and_reveal_the_next_row() {
+        use masonry::core::keyboard::{Key, NamedKey};
+        use masonry::core::{NewWidget, TextEvent};
+        use masonry_testing::TestHarness;
+
+        let mut widget = rail();
+        widget.selected = Some(50);
+        let mut harness = TestHarness::create_with_size(
+            crate::default_property_set(),
+            NewWidget::new(widget),
+            (246, 538),
+        );
+        let id = harness.root_widget().id();
+        harness.focus_on(Some(id));
+
+        harness.process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowDown)));
+        let (action, action_id) = harness.pop_action::<GridEvent>().expect("selection action");
+        assert_eq!(action_id, id);
+        assert!(matches!(
+            action,
+            GridEvent::Selected {
+                index: 55,
+                cmd: false,
+                shift: false
+            }
+        ));
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.selected),
+            Some(55)
+        );
+        assert!(harness.edit_root_widget(|root| root.widget.scroll) > 0.0);
+
+        harness.process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowLeft)));
+        assert!(matches!(
+            harness.pop_action::<GridEvent>().map(|pair| pair.0),
+            Some(GridEvent::Selected { index: 54, .. })
+        ));
+        harness.process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowUp)));
+        assert!(matches!(
+            harness.pop_action::<GridEvent>().map(|pair| pair.0),
+            Some(GridEvent::Selected { index: 49, .. })
+        ));
+        harness.process_text_event(TextEvent::key_down(Key::Named(NamedKey::ArrowRight)));
+        assert!(matches!(
+            harness.pop_action::<GridEvent>().map(|pair| pair.0),
+            Some(GridEvent::Selected { index: 50, .. })
+        ));
     }
 
     #[test]
