@@ -1453,3 +1453,23 @@ Both 1280 by 720 captures were visually inspected. Coordinates now occupies
 the top edge, and the collapsed Glyph header sits directly between Path
 Operations and Curves in both themes. Static headless captures verify paint
 and layout, not native pointer, keyboard, screen-reader, or GPU behavior.
+
+
+## 2026-09-14 overnight: quiet edit footer
+
+GPUI leaves the center of the resting edit footer empty and uses it only for
+transient notes or live measurement readouts. Xilem permanently repeated the
+glyph name, advance, point count, and selection count there even though those
+facts already appear in the metrics card and inspector.
+
+Xilem now leaves that standing readout empty in edit mode. Existing action
+notes still replace the empty value, and overview and node-mode status text is
+unchanged.
+
+- [Gray quiet edit footer](129-xilem-editor-quiet-footer-gray.png)
+- [Light quiet edit footer](130-xilem-editor-quiet-footer-light.png)
+
+Both 1280 by 720 captures were visually inspected. The center footer is clear
+in both themes while its appearance controls retain their existing positions.
+Static headless captures verify paint and layout, not native pointer,
+keyboard, screen-reader, or GPU behavior.

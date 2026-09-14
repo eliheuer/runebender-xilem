@@ -73,6 +73,9 @@ releases begin.
 - Put edit-mode Coordinates and path tools before Glyph metadata in the same
   inspector order as GPUI.
 
+- Keep the resting edit footer quiet instead of repeating standing glyph and
+  selection metrics already visible elsewhere.
+
 - Keep the Coordinates inspector compact before selection and draw its
   reference picker as GPUI's connected nine-point grid.
 

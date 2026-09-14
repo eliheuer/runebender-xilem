@@ -258,13 +258,9 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             app.filtered_cells().len(),
             app.font.glyphs.len(),
         ),
-        Mode::Editor(_) => format!(
-            "{} \u{00b7} advance {} \u{00b7} {} points \u{00b7} {} selected",
-            app.session.glyph_name.as_str(),
-            app.session.advance(),
-            app.session.point_count(),
-            app.selected_points,
-        ),
+        // GPUI keeps the resting edit footer quiet; transient notes still
+        // replace this empty string below when an action has something to say.
+        Mode::Editor(_) => String::new(),
         Mode::Nodes => app
             .nodes
             .graph
