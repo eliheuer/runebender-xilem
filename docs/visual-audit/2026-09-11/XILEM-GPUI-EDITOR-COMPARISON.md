@@ -1371,3 +1371,25 @@ Both 1280 by 720 captures were visually inspected. In the empty state the
 picker now sits directly below the Coordinates header and the lower sections
 move up by 21 pixels. Static headless captures verify paint and layout, not
 native pointer, keyboard, screen-reader, or GPU behavior.
+
+
+## 2026-09-14 overnight: connected Coordinates picker
+
+GPUI's coordinate-reference picker is one 52-pixel control: six crossing rules
+connect nine circular targets, with the active reference point filled. Xilem
+used nine independent button widgets inside an outlined box, leaving the rules
+absent and making the control read as a generic keypad.
+
+Xilem now paints a native Masonry rule layer behind the existing nine buttons.
+Each target therefore retains its direct pointer and accessibility action and
+refreshes the coordinate fields through the existing workspace action. The
+inactive circles mask the rules beneath them, while the active circle uses the
+inspector text color, matching GPUI's construction.
+
+- [Gray connected coordinate picker](121-xilem-editor-coordinate-picker-gray.png)
+- [Light connected coordinate picker](122-xilem-editor-coordinate-picker-light.png)
+
+Both 1280 by 720 captures were visually inspected. The rule and circle
+contrast remains legible in Gray and Light without adding a surrounding box.
+Static headless captures verify paint and layout, not native pointer,
+keyboard, screen-reader, or GPU behavior.

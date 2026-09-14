@@ -67,6 +67,9 @@ releases begin.
 - Restore the edit inspector's separate Transformations and Path Operations
   disclosures so its default hierarchy matches GPUI.
 
+- Keep the Coordinates inspector compact before selection and draw its
+  reference picker as GPUI's connected nine-point grid.
+
 - Match Background control rows and inspector field alignment; the Background toggle
   now reflects the visibility setting even when the current glyph has no background.
 

@@ -509,6 +509,7 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
     use crate::view::design::{
         COORD_COUNT_HEIGHT, COORD_LABEL_WIDTH, COORD_PICKER_EDGE, COORD_PICKER_GAP,
     };
+    use crate::widgets::quadrant_picker::quadrant_grid;
     use runebender_core::outline::path::Quadrant;
     const QUADRANTS: [Quadrant; 9] = [
         Quadrant::TopLeft,
@@ -522,7 +523,6 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
         Quadrant::BottomRight,
     ];
     let pal = &app.palette;
-    // The picker: three rows of three dots, the active one filled accent.
     let dot = |q: Quadrant| {
         let active = app.coord_quadrant == q;
         let (bg, border) = if active {
@@ -535,8 +535,6 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                 app.coord_quadrant = q;
                 app.refresh_coord_bufs();
             })
-            // Without this the button's own padding sets a minimum width
-            // and the dot stretches into a pill.
             .padding(Space::None)
             .background_color(bg)
             .border_color(border)
@@ -559,17 +557,18 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
         )
         .gap(Length::px(COORD_PICKER_GAP))
     };
-    let picker_buttons =
-        xcolumn(Region::List, (row(0), row(3), row(6))).gap(Length::px(COORD_PICKER_GAP));
-    let picker = sized_box(picker_buttons)
-        .padding(Length::px(3.0))
-        .border_width(Stroke::Hairline.length())
-        .border_color(pal.outline)
-        .dims(Dimensions::fixed(
-            Length::px(COORD_PICKER_EDGE),
-            Length::px(COORD_PICKER_EDGE),
-        ))
-        .boxed();
+    let picker_buttons = sized_box(
+        xcolumn(Region::List, (row(0), row(3), row(6))).gap(Length::px(COORD_PICKER_GAP)),
+    )
+    .padding(Length::px(3.0));
+    let picker = sized_box(xilem::view::zstack((
+        quadrant_grid(pal.outline),
+        picker_buttons,
+    )))
+    .dims(Dimensions::fixed(
+        Length::px(COORD_PICKER_EDGE),
+        Length::px(COORD_PICKER_EDGE),
+    ));
     let field = |name: &'static str, value: String, axis: usize| {
         xrow(
             Region::Inline,

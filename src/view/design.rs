@@ -143,7 +143,7 @@ pub(crate) const GLYPH_FACT_ROW_HEIGHT: f64 = 18.0;
 
 /// Coordinates inspector geometry measured in the Gray reference.
 pub(crate) const COORD_PICKER_EDGE: f64 = 52.0;
-pub(crate) const COORD_PICKER_GAP: f64 = 7.0;
+pub(crate) const COORD_PICKER_GAP: f64 = 8.0;
 pub(crate) const COORD_LABEL_WIDTH: f64 = 14.0;
 pub(crate) const COORD_COUNT_HEIGHT: f64 = 21.0;
 /// Compact inspector groups retain the wider horizontal control inset.
