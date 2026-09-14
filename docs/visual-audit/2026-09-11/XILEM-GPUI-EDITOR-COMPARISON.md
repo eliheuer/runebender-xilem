@@ -1433,3 +1433,23 @@ Both 1280 by 720 captures were visually inspected. The active Glyphs tab joins
 the panel and the five icons share a baseline in Gray and Light. Static
 headless captures verify paint and layout, not native pointer, keyboard,
 screen-reader, or GPU behavior.
+
+
+## 2026-09-14 overnight: edit inspector section order
+
+GPUI begins its edit inspector with Coordinates, Transformations, and Path
+Operations, then places the collapsed Glyph metadata section before Curves and
+Background. Xilem kept Glyph at the top in both overview and edit mode, so the
+right panel's first glance differed even after the individual groups matched.
+
+Xilem now follows the GPUI edit order while preserving Glyph as the first
+overview section. The optional edit groups disappear in overview mode, so the
+same view sequence serves both modes without duplicating the inspector.
+
+- [Gray edit inspector order](127-xilem-editor-inspector-order-gray.png)
+- [Light edit inspector order](128-xilem-editor-inspector-order-light.png)
+
+Both 1280 by 720 captures were visually inspected. Coordinates now occupies
+the top edge, and the collapsed Glyph header sits directly between Path
+Operations and Curves in both themes. Static headless captures verify paint
+and layout, not native pointer, keyboard, screen-reader, or GPU behavior.

@@ -70,6 +70,9 @@ releases begin.
 - Restore the edit inspector's separate Transformations and Path Operations
   disclosures so its default hierarchy matches GPUI.
 
+- Put edit-mode Coordinates and path tools before Glyph metadata in the same
+  inspector order as GPUI.
+
 - Keep the Coordinates inspector compact before selection and draw its
   reference picker as GPUI's connected nine-point grid.
 
