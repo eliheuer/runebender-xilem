@@ -129,6 +129,7 @@ pub(crate) fn glyph_preview(app: &Workspace) -> Option<impl WidgetView<Workspace
     let outline = entry.outline.clone();
     let contours = app.font.font().get_glyph(&entry.name)?.contours.clone();
     let pal = app.palette.clone();
+    let background = pal.canvas;
     let bounds = outline.bounding_box();
     Some(
         sized_box(canvas(
@@ -197,6 +198,7 @@ pub(crate) fn glyph_preview(app: &Workspace) -> Option<impl WidgetView<Workspace
                 }
             },
         ))
+        .background_color(background)
         // The overview's collapsed section headers consume about 376 px at the
         // standard 720 px window height. Keep the preview visible without an
         // initial scroll while retaining enough room to inspect control points.

@@ -29,6 +29,8 @@ use xilem::view::{Flex, FlexSequence, Prop, flex_col, flex_row};
 pub(crate) const MARK_SWATCH_DIAMETER: f64 = 18.0;
 pub(crate) const MARK_SWATCH_GAP: f64 = 6.0;
 pub(crate) const MARK_CLEAR_CROSS_HALF: f64 = 16.0 * 0.28;
+/// Keep the selected ring clear of its 24px swatch slot on every edge.
+pub(crate) const MARK_SELECTED_RING_INSET: f64 = 1.0;
 
 /// Shared single-line input inset. Virtua's line box needs a one-pixel
 /// downward optical correction to balance the visible capitals/descenders.

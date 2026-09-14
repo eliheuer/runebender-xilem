@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Lift the overview glyph preview onto the canvas surface, center its mark
+  swatches, and replace font-dependent view symbols with GPUI's drawn icons.
+
 - Use one shared dark keyline for dock, proof, and status boundaries, and keep
   the recessed glyph-grid ground continuous through its fitted margins.
 

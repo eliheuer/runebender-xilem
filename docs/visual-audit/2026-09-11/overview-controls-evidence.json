@@ -1,0 +1,64 @@
+{
+  "recorded_utc": "2026-09-14T01:53:00Z",
+  "xilem_parent": "c98f8dd73064ab2416f8146a017ef43f9b52c066",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "reference": {
+    "source": "user-supplied native screenshots",
+    "gpui_screenshot_size": [2492, 1658],
+    "xilem_screenshot_size": [2258, 1502],
+    "gpui_screenshot_sha256": "5a6853282384f06d210fe80ba89aaf4bdad54b1e6611f005c92717f28b1bb449",
+    "xilem_screenshot_sha256": "9bbe9172a8789d6c086544f329551a551521093276f061f1c008834ae11d44c4",
+    "preview_samples": {
+      "gpui_panel_2300_500": "#a8a8a8",
+      "gpui_preview_2300_1100": "#c1c1c1",
+      "xilem_panel_2050_500": "#b1b1b1",
+      "xilem_preview_2050_1100": "#b1b1b1"
+    },
+    "icon_source": "runebender-gpui src/view/paint.rs glyph_free_icon, with IconMark::Grid and IconMark::List; no image asset is used",
+    "limitation": "The supplied windows differ in size and selected glyph; surfaces and controls were compared component by component."
+  },
+  "after": {
+    "samples_108": {
+      "inspector_panel_1100_250": "#b1b1b1",
+      "glyph_preview_1100_500": "#c1c1c1",
+      "selected_swatch_ring_bounds_within_24x27_slot": [1, 3, 22, 24],
+      "selected_swatch_slot_margins_left_top_right_bottom": [1, 3, 1, 2]
+    },
+    "captures": {
+      "108-xilem-overview-controls-gray.png": {
+        "size": [1280, 720],
+        "theme": "gray",
+        "selected": "percent",
+        "sha256": "6dcd77048bd4fdcc3635a374d16fad60b42aef16603215b2792bf61d666461b4"
+      },
+      "109-xilem-overview-controls-1100-gray.png": {
+        "size": [1100, 720],
+        "theme": "gray",
+        "selected": "percent",
+        "sha256": "0d2b083d4a1392bb947f2862247a1421d5a67d4808bac300151f3f2cbbd91654"
+      },
+      "110-xilem-overview-controls-light.png": {
+        "size": [1280, 720],
+        "theme": "light",
+        "selected": "percent",
+        "sha256": "5c3c2411401d056392f9b9a77f24aeb16db06f4421eceb9c19962c57c21a2a78"
+      }
+    }
+  },
+  "implementation": [
+    "Paint the overview glyph preview on the shared canvas surface.",
+    "Vertically center the swatch row and inset the selected ring by one pixel.",
+    "Port GPUI's geometry-painted Grid and List marks into labeled Xilem icon buttons."
+  ],
+  "verification": [
+    "Grid/list path regression verifies distinct centered geometry contained within each control.",
+    "Gray 1280x720, Gray 1100x720, and Light 1280x720 captures visually inspected.",
+    "cargo fmt --check and git diff --check",
+    "cargo test",
+    "cargo clippy --offline --workspace --all-targets -- -D warnings",
+    "cargo build --offline --release",
+    "128 active tests pass; 4 model and disposable-font tests remain ignored by default.",
+    "Optimized Gray capture is byte-identical to 108.",
+    "Headless captures do not certify native pointer, keyboard, screen-reader, or GPU behavior."
+  ]
+}

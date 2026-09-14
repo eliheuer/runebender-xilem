@@ -1200,3 +1200,35 @@ pass with the other 126 active tests. Formatting, whitespace, all-target Clippy,
 and the optimized build pass; its Gray capture is byte-identical to 104.
 Headless images verify paint and layout, not native pointer delivery or GPU
 rasterization. No foreground GUI or live font was modified.
+
+
+## 2026-09-13 user report: overview preview and footer controls
+
+The supplied native screenshots identified three small overview mismatches.
+GPUI's glyph preview sits on the lighter `canvas` surface (`#c1c1c1` in Gray),
+while Xilem let the inspector's `panel` surface (`#b1b1b1`) show through. The
+mark row's 24-pixel slots were aligned to the top of its remaining space, and
+the selected ring used the slot's complete radius. The grid/list toggles were
+Unicode substitutes whose appearance depended on interface-font coverage.
+
+The preview now explicitly uses the shared canvas token. The swatch row takes
+the space below its one-pixel rule and centers there; the selected ring stays
+one pixel inside its slot, yielding three pixels above and two below in the
+27-pixel row. The footer uses the same source geometry as GPUI's
+`glyph_free_icon`: four outlined cells for Grid and three rules for List. Both
+remain labeled buttons in the accessibility tree.
+
+- [Gray overview](108-xilem-overview-controls-gray.png)
+- [Narrow Gray overview](109-xilem-overview-controls-1100-gray.png)
+- [Light-theme overview](110-xilem-overview-controls-light.png)
+- [Capture provenance and pixel checks](overview-controls-evidence.json)
+
+All three Xilem captures were visually inspected. The Gray preview sample is
+`#c1c1c1` against the inspector's `#b1b1b1`; the selected swatch ring is clear
+of all four slot edges; and both view marks render without font glyphs. The
+geometry regression, formatting, whitespace, 128 active tests, all-target
+Clippy, and an optimized release build pass; four model/font integration tests
+remain ignored by default. The release capture is byte-identical to 108.
+Headless screenshots verify static paint and layout, not native pointer,
+keyboard, screen-reader, or GPU behavior. The title bar remains deliberately
+outside this pass.

@@ -3,7 +3,10 @@
 
 //! The bars around the canvas: the titlebar, the header tools, the status bar.
 
-use crate::view::design::{MARK_CLEAR_CROSS_HALF, MARK_SWATCH_DIAMETER, MARK_SWATCH_GAP};
+use crate::view::design::{
+    MARK_CLEAR_CROSS_HALF, MARK_SELECTED_RING_INSET, MARK_SWATCH_DIAMETER, MARK_SWATCH_GAP,
+};
+use crate::widgets::icon_button::{IconMark, mark_button};
 use crate::*;
 
 /// The title bar, laid out like the GPUI build's header.
@@ -183,7 +186,10 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 if selected {
                     painter
                         .stroke(
-                            Circle::new(center, half - Stroke::Hairline.px() / 2.0),
+                            Circle::new(
+                                center,
+                                half - MARK_SELECTED_RING_INSET - Stroke::Hairline.px() / 2.0,
+                            ),
                             &Pen::new(Stroke::Hairline.px()),
                             selected_ring,
                         )
@@ -219,9 +225,12 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     Dim::Fixed(Stroke::Hairline.length()),
                 ))
                 .background_color(outline),
-            flex_row(swatches).gap(Length::px(MARK_SWATCH_GAP)).padding(
-                masonry::properties::Padding::horizontal(Length::px(MARK_SWATCH_GAP)),
-            ),
+            flex_row(swatches)
+                .gap(Length::px(MARK_SWATCH_GAP))
+                .padding(masonry::properties::Padding::horizontal(Length::px(
+                    MARK_SWATCH_GAP,
+                )))
+                .flex(1.0),
         ))
         .gap(Space::None)
         .background_color(pal.panel),
@@ -312,13 +321,32 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     xrow(
                         Region::Inline,
                         (
-                            // Grid or List, the GPUI build's two views.
-                            bar_box("\u{229e}".into(), !app.list, |app: &mut Workspace| {
-                                app.list = false;
-                            }),
-                            bar_box("\u{2261}".into(), app.list, |app: &mut Workspace| {
-                                app.list = true;
-                            }),
+                            // GPUI paints these marks from geometry rather than
+                            // asking the interface font for Unicode symbols.
+                            mark_button(
+                                "Grid view",
+                                IconMark::Grid,
+                                !app.list,
+                                pal.text_muted,
+                                pal.selected_ink(),
+                                pal.selected_bg(),
+                                pal.control,
+                                |app: &mut Workspace| app.list = false,
+                            )
+                            .framed(pal.panel, pal.outline)
+                            .tile_size(ControlSize::Icon.px()),
+                            mark_button(
+                                "List view",
+                                IconMark::List,
+                                app.list,
+                                pal.text_muted,
+                                pal.selected_ink(),
+                                pal.selected_bg(),
+                                pal.control,
+                                |app: &mut Workspace| app.list = true,
+                            )
+                            .framed(pal.panel, pal.outline)
+                            .tile_size(ControlSize::Icon.px()),
                             recipes::neutral_slider(
                                 &app.palette,
                                 48.0,
