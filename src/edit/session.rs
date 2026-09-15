@@ -66,6 +66,8 @@ pub(crate) struct PointView {
 pub(crate) struct Session {
     pub glyph_name: String,
     pub glyph: norad::Glyph,
+    pub metaballs: metaballs::MetaballSelection,
+    pub metaball_preview: BezPath,
     /// Components, resolved against the font at session creation.
     pub components: BezPath,
     /// Resolved path for each top-level component, for selection and feedback.
@@ -122,9 +124,11 @@ impl Session {
         Self {
             glyph_name: String::new(),
             glyph: norad::Glyph::new(".notdef"),
+            metaball_preview: BezPath::new(),
             components: BezPath::new(),
             component_paths: Vec::new(),
             component_contours: Vec::new(),
+            metaballs: metaballs::MetaballSelection::default(),
             metrics: Metrics::of(font),
             selection: HashSet::new(),
             viewport: ViewPort::new(),
@@ -147,10 +151,13 @@ impl Session {
         let component_contours = resolved_component_contour_sets(font, &glyph);
         Some(Self {
             glyph_name: name.to_string(),
+            metaball_preview: runebender_core::outline::metaballs::glyph_preview(&glyph)
+                .unwrap_or_default(),
             glyph,
             components,
             component_paths,
             component_contours,
+            metaballs: metaballs::MetaballSelection::default(),
             metrics: Metrics::of(font),
             selection: HashSet::new(),
             viewport: ViewPort::new(),
@@ -355,7 +362,9 @@ impl Session {
     }
 
     pub(crate) fn outline(&self) -> BezPath {
-        glyph_paths::contours_to_bezpath(&self.glyph)
+        let mut path = glyph_paths::contours_to_bezpath(&self.glyph);
+        path.extend(self.metaball_preview.clone());
+        path
     }
 
     pub(crate) fn points(&self) -> Vec<PointView> {
@@ -408,6 +417,7 @@ impl Session {
             .selected_component
             .filter(|index| *index < glyph.components.len());
         self.glyph = glyph;
+        self.refresh_metaball_preview();
         self.pen.clear();
         self.active_contour = None;
         self.in_drag = false;
@@ -1252,6 +1262,9 @@ impl Workspace {
     pub(crate) fn select_tool(&mut self, tool: Tool) {
         self.tool_before_space_pan = None;
         self.tool = tool;
+        if tool == Tool::Metaball && self.session.metaballs.selected.is_empty() {
+            Arc::make_mut(&mut self.session).select_all_metaballs();
+        }
         if tool == Tool::Text {
             self.begin_text_session();
         }
@@ -1319,6 +1332,15 @@ impl Workspace {
         self.park();
         self.active_tab = index;
         self.session = session;
+        // An overview batch can change this glyph while its tab is parked.
+        if let Some(glyph) = self
+            .font
+            .font()
+            .get_glyph(&self.session.glyph_name)
+            .cloned()
+        {
+            Arc::make_mut(&mut self.session).reload_glyph(self.font.font(), glyph);
+        }
         self.tool_before_space_pan = None;
         self.tool = tool;
         self.restore_text_context(text_context);

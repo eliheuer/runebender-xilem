@@ -7,6 +7,10 @@ releases begin.
 
 ## [Unreleased]
 
+- Add an editable metaball shape tool to Xilem: center selection and dragging,
+  parameter fields, saved UFO sources, cubic conversion with Undo, and a
+  whole-font conversion command. Kurbo fits the sampled field boundaries.
+
 - Align the overview search, glyph captions, collapsed inspector stack, and
   preview surface to the shared design tokens.
 

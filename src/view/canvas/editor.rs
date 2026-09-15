@@ -349,6 +349,10 @@ pub(crate) enum EditorEvent {
 }
 
 enum Drag {
+    Metaballs {
+        last: Point,
+        changed: bool,
+    },
     None,
     Points {
         start: Point,
@@ -1599,6 +1603,51 @@ impl Widget for EditorWidget {
             }
         }
 
+        if self.tool == Tool::Metaball
+            && let Ok(source) =
+                runebender_core::formats::metaballs::read_metaballs(&self.session.glyph)
+        {
+            for group in source.groups {
+                for ball in group.balls {
+                    let center = affine * Point::new(ball.x, ball.y);
+                    let selected = self
+                        .session
+                        .metaballs
+                        .selected
+                        .contains(&(group.id, ball.id));
+                    let ink = if selected {
+                        pal.tool_feedback()
+                    } else {
+                        pal.editor_control_ink()
+                    };
+                    painter
+                        .stroke(
+                            Circle::new(center, ball.radius * self.session.viewport.zoom),
+                            &Stroke::new(DesignStroke::Hairline.px()),
+                            ink.with_alpha(0.35),
+                        )
+                        .draw();
+                    painter
+                        .fill(
+                            Circle::new(
+                                center,
+                                POINT_CURVE_RADIUS
+                                    + if selected { POINT_SELECTED_GROW } else { 0.0 },
+                            ),
+                            ink,
+                        )
+                        .draw();
+                    painter
+                        .stroke(
+                            Circle::new(center, HIT_RADIUS_PX),
+                            &Stroke::new(DesignStroke::Hairline.px()),
+                            ink,
+                        )
+                        .draw();
+                }
+            }
+        }
+
         // Marquee rectangle.
         if let Drag::Marquee { start, current, .. } = &self.drag {
             let rect = Rect::from_points(*start, *current);
@@ -1758,6 +1807,20 @@ impl Widget for EditorWidget {
                 }
                 ctx.capture_pointer();
                 match button {
+                    Some(PointerButton::Primary) if self.tool == Tool::Metaball => {
+                        ctx.request_focus();
+                        let at = self.screen_to_glyph_design(at);
+                        let changed = self.session.metaball_click(
+                            at,
+                            HIT_RADIUS_PX / self.session.viewport.zoom,
+                            state.modifiers.shift(),
+                        );
+                        self.drag = Drag::Metaballs { last: at, changed };
+                        self.emit(ctx, false);
+                        ctx.request_render();
+                        ctx.set_handled();
+                        return;
+                    }
                     Some(PointerButton::Primary) if self.tool == Tool::Hand => {
                         self.drag = Drag::Pan { last: at };
                         ctx.set_handled();
@@ -1901,6 +1964,11 @@ impl Widget for EditorWidget {
                     }
                 }
                 match &mut self.drag {
+                    Drag::Metaballs { last, changed } => {
+                        *changed |= self.session.move_metaballs(glyph_design - *last, true);
+                        *last = glyph_design;
+                        ctx.request_render();
+                    }
                     Drag::AdvanceLine => {
                         let d = glyph_design;
                         self.session.drag_advance(d.x.round());
@@ -1969,6 +2037,12 @@ impl Widget for EditorWidget {
                 }
             }
             PointerEvent::Up(_) | PointerEvent::Cancel(_) => match &self.drag {
+                Drag::Metaballs { changed, .. } => {
+                    let changed = *changed;
+                    self.session.end_metric_drag();
+                    self.drag = Drag::None;
+                    self.emit(ctx, changed);
+                }
                 Drag::Points { .. } => {
                     self.session.end_point_drag();
                     self.drag = Drag::None;
@@ -2129,6 +2203,55 @@ impl Widget for EditorWidget {
             }
             if character.eq_ignore_ascii_case("a") {
                 text.buffer.select_range(0, text.buffer.len());
+                ctx.request_render();
+                ctx.set_handled();
+                return;
+            }
+        }
+
+        if self.tool == Tool::Metaball && self.field.is_none() {
+            let mut edited = false;
+            let handled = match &key.key {
+                Key::Character(c) if cmd && c.eq_ignore_ascii_case("a") => {
+                    self.session.select_all_metaballs();
+                    true
+                }
+                Key::Named(NamedKey::Backspace | NamedKey::Delete) => {
+                    edited = self.session.delete_metaballs();
+                    true
+                }
+                Key::Named(NamedKey::ArrowLeft) => {
+                    edited = self
+                        .session
+                        .move_metaballs(kurbo::Vec2::new(-step, 0.0), false);
+                    true
+                }
+                Key::Named(NamedKey::ArrowRight) => {
+                    edited = self
+                        .session
+                        .move_metaballs(kurbo::Vec2::new(step, 0.0), false);
+                    true
+                }
+                Key::Named(NamedKey::ArrowUp) => {
+                    edited = self
+                        .session
+                        .move_metaballs(kurbo::Vec2::new(0.0, step), false);
+                    true
+                }
+                Key::Named(NamedKey::ArrowDown) => {
+                    edited = self
+                        .session
+                        .move_metaballs(kurbo::Vec2::new(0.0, -step), false);
+                    true
+                }
+                Key::Named(NamedKey::Escape) => {
+                    self.session.metaballs = crate::edit::metaballs::MetaballSelection::default();
+                    true
+                }
+                _ => false,
+            };
+            if handled {
+                self.emit(ctx, edited);
                 ctx.request_render();
                 ctx.set_handled();
                 return;
@@ -3265,6 +3388,37 @@ mod tests {
         harness.mouse_button_press(Some(PointerButton::Primary));
         let menu = harness.edit_root_widget(|root| root.widget.menu);
         assert!(menu.is_none(), "a left click does not open the menu");
+    }
+
+    #[test]
+    fn metaball_pointer_gesture_adds_live_source_with_one_undo_step() {
+        let mut editor = widget();
+        editor.tool = Tool::Metaball;
+        let original = editor.session.glyph.clone();
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        harness.mouse_move(Point::new(300.0, 200.0));
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_move(Point::new(330.0, 220.0));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        harness.edit_root_widget(|root| {
+            let session = &root.widget.session;
+            let source =
+                runebender_core::formats::metaballs::read_metaballs(&session.glyph).unwrap();
+            assert_eq!(source.groups.len(), 1);
+            assert_eq!(source.groups[0].balls.len(), 1);
+            assert_eq!(
+                session.glyph.contours, original.contours,
+                "live metaballs do not create font points"
+            );
+            assert_eq!(
+                session.pending.len(),
+                1,
+                "placing and dragging is one undo step"
+            );
+            assert!(!session.gesture_in_progress());
+            assert!(!session.metaball_preview.elements().is_empty());
+        });
     }
 
     #[test]

@@ -33,6 +33,7 @@ pub(crate) enum Tool {
     Pen,
     Rect,
     Ellipse,
+    Metaball,
     HyperPen,
     Knife,
     Measure,

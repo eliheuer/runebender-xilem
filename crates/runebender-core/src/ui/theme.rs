@@ -668,9 +668,18 @@ mod icon_tests {
     #[test]
     fn parses_all_toolbar_icons() {
         let icons = toolbar_icons();
-        assert_eq!(icons.len(), 26);
+        assert_eq!(icons.len(), 27);
         for name in [
-            "select", "pen", "knife", "measure", "shapes", "flip-h", "rot-cw", "union", "save",
+            "select",
+            "pen",
+            "knife",
+            "measure",
+            "shapes",
+            "shape-metaball",
+            "flip-h",
+            "rot-cw",
+            "union",
+            "save",
         ] {
             let icon = icons.get(name).unwrap_or_else(|| panic!("missing {name}"));
             assert!(!icon.path.elements().is_empty());

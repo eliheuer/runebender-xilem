@@ -42,6 +42,9 @@ pub fn glyph_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
     for contour in &glyph.contours {
         append_contour(&mut path, contour);
     }
+    if let Ok(preview) = super::metaballs::glyph_preview(glyph) {
+        path.extend(preview);
+    }
     append_components(&mut path, glyph, font, Affine::IDENTITY, 0);
     path
 }
@@ -295,6 +298,9 @@ fn append_components(
                     path.extend((combined * &contour_path).elements().iter().cloned());
                 }
             }
+        }
+        if let Ok(preview) = super::metaballs::glyph_preview(base) {
+            path.extend(combined * preview);
         }
         append_components(path, base, font, combined, depth + 1);
     }

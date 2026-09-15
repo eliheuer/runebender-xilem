@@ -74,6 +74,21 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Convert all live metaballs in a UFO to cubic outlines in a new UFO.
+    CollapseMetaballs {
+        /// Input UFO; never modified.
+        source: PathBuf,
+        /// New output UFO directory. Must not already exist.
+        #[arg(long)]
+        out: PathBuf,
+        /// Sampling grid spacing in font units; smaller captures finer details.
+        #[arg(long, default_value = "2")]
+        resolution: f64,
+        /// Cubic fitting accuracy relative to the sampled boundary, in font units.
+        #[arg(long, default_value = "0.25")]
+        accuracy: f64,
+    },
+
     /// List local editor socket paths (a crashed editor may leave a stale entry).
     Sessions,
     /// What a font is: names, metrics, counts, and any proposals
@@ -441,6 +456,12 @@ pub(crate) fn run() -> Startup {
                 }
             }
         },
+        Command::CollapseMetaballs {
+            source,
+            out,
+            resolution,
+            accuracy,
+        } => collapse_metaballs(source, out, *resolution, *accuracy, json),
         Command::Sessions => {
             #[cfg(unix)]
             println!(
@@ -2172,6 +2193,52 @@ fn proof_content(mut value: serde_json::Value) -> Vec<serde_json::Value> {
         serde_json::json!({"type":"text", "text":value.to_string()}),
     );
     content
+}
+
+fn collapse_metaballs(
+    source: &Path,
+    out: &Path,
+    resolution: f64,
+    accuracy: f64,
+    json: bool,
+) -> i32 {
+    use runebender_core::outline::metaballs::{OutlineOptions, collapse_font};
+    if out.exists() {
+        return fail(
+            json,
+            exit::USAGE,
+            "output already exists; choose a new UFO path",
+        );
+    }
+    let mut font = match open(source, json) {
+        Ok(font) => font,
+        Err(code) => return code,
+    };
+    let count = match collapse_font(
+        &mut font,
+        OutlineOptions {
+            resolution,
+            accuracy,
+        },
+    ) {
+        Ok(count) => count,
+        Err(e) => return fail(json, exit::FAILED, &e),
+    };
+    if let Err(e) = font.save(out) {
+        return fail(json, exit::FAILED, &e.to_string());
+    }
+    if json {
+        println!(
+            "{}",
+            json!({"ok": true, "groups_converted": count, "output": out})
+        );
+    } else {
+        println!(
+            "Converted {count} metaball groups to cubic outlines in {}",
+            out.display()
+        );
+    }
+    exit::OK
 }
 
 #[cfg(test)]

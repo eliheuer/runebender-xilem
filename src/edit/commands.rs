@@ -900,6 +900,9 @@ impl Workspace {
             A::AddExtremes => self.apply_op(|s| s.add_extremes()),
             A::RoundCoordinates => self.apply_op(|s| s.round_coordinates()),
             A::CorrectPathDirection => self.apply_op(|s| s.correct_path_direction()),
+            A::MetaballsToCubic => self.edit_metaballs(|s| s.collapse_metaballs(false)),
+            A::MetaballGroupsToCubic => self.edit_metaballs(|s| s.collapse_metaballs(true)),
+            A::FontMetaballsToCubic => self.collapse_font_metaballs(),
             A::HyperToCubic => self.apply_op(|s| s.hyper_to_cubic()),
             A::QuadsToCubics => self.apply_op(|s| s.quads_to_cubics()),
             A::CubicsToQuads => self.apply_op(|s| s.cubics_to_quads()),
@@ -1027,7 +1030,11 @@ impl Workspace {
             A::SelectAll => {
                 if matches!(self.mode, Mode::Editor(_)) {
                     let mut session = (*self.session).clone();
-                    session.select_all();
+                    if self.tool == Tool::Metaball {
+                        session.select_all_metaballs();
+                    } else {
+                        session.select_all();
+                    }
                     self.selected_points = session.selection.len();
                     self.session = Arc::new(session);
                 }

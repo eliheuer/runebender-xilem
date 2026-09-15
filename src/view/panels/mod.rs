@@ -12,3 +12,5 @@ pub(crate) mod nodes;
 pub(crate) mod preview;
 pub(crate) mod sections;
 pub(crate) mod tabs;
+
+pub(crate) mod metaballs;

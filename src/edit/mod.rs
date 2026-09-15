@@ -12,3 +12,5 @@ pub(crate) mod nodes;
 pub(crate) mod session;
 pub(crate) mod sidebar;
 pub(crate) mod text_tool;
+
+pub(crate) mod metaballs;

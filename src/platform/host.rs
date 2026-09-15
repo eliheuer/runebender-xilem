@@ -168,6 +168,7 @@ impl Workspace {
         let initial_text = std::env::var("RUNEBENDER_TEXT").unwrap_or_default();
         let tool = match std::env::var("RUNEBENDER_TOOL").as_deref() {
             Ok("hand") => Tool::Hand,
+            Ok("metaball") => Tool::Metaball,
             Ok("measure") => Tool::Measure,
             Ok("text") => Tool::Text,
             _ => Tool::Select,
@@ -381,6 +382,9 @@ impl Workspace {
         }
         if std::env::var("RUNEBENDER_MODE").as_deref() == Ok("nodes") {
             app.enter_nodes_mode();
+        }
+        if tool == Tool::Metaball {
+            Arc::make_mut(&mut app.session).select_all_metaballs();
         }
         Ok(app)
     }

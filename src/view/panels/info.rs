@@ -218,7 +218,14 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             // GPUI leads edit mode with selection geometry and its tools;
             // the overview still begins with glyph identity because these
             // optional edit groups disappear there.
-            editing.then(|| recipes::inspector_group(pal, coordinates_section(app))),
+            xcolumn(
+                Region::List,
+                (
+                    (editing && app.tool == Tool::Metaball)
+                        .then(|| recipes::inspector_group(pal, super::metaballs::panel(app))),
+                    editing.then(|| recipes::inspector_group(pal, coordinates_section(app))),
+                ),
+            ),
             editing.then(|| recipes::inspector_group(pal, transformations_section(app))),
             editing.then(|| recipes::inspector_group(pal, curves_section(app))),
             editing.then(|| recipes::inspector_group(pal, path_operations_section(app))),

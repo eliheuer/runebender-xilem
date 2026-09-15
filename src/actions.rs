@@ -87,6 +87,9 @@ impl Entry {
     pub(crate) fn submenu(&self) -> Option<&'static str> {
         use AppAction as A;
         match self.action {
+            A::MetaballsToCubic | A::MetaballGroupsToCubic | A::FontMetaballsToCubic => {
+                Some("Metaballs")
+            }
             A::GridDots | A::GridLines => Some("Grid"),
             A::Theme(_) => Some("Theme"),
             A::MeasureColorize
@@ -133,6 +136,8 @@ impl Entry {
                 }
                 _ => false,
             },
+            A::MetaballsToCubic | A::MetaballGroupsToCubic => editor,
+            A::FontMetaballsToCubic => matches!(app.mode, crate::Mode::Overview),
             A::Copy | A::SelectAll => editor,
             A::Paste => editor && !app.clipboard.is_empty(),
             A::CopySelectedGlyphs => app.selected.is_some() || !app.multi_selected.is_empty(),
@@ -549,6 +554,30 @@ pub(crate) const ACTIONS: &[Entry] = &[
         title: "Optimize",
         accelerator: None,
         action: AppAction::Optimize,
+    },
+    Entry {
+        menu: "Path",
+        title: "Selected Groups to Cubic",
+        accelerator: None,
+        action: AppAction::MetaballGroupsToCubic,
+    },
+    Entry {
+        menu: "Path",
+        title: "Glyph to Cubic",
+        accelerator: None,
+        action: AppAction::MetaballsToCubic,
+    },
+    Entry {
+        menu: "Path",
+        title: "Font to Cubic (Current Master, Overview)",
+        accelerator: None,
+        action: AppAction::FontMetaballsToCubic,
+    },
+    Entry {
+        menu: "",
+        title: "Metaball",
+        accelerator: None,
+        action: AppAction::Tool(Tool::Metaball),
     },
     Entry {
         menu: "Path",
@@ -1077,6 +1106,9 @@ mod tests {
                 "Harmonize",
                 "Balance",
                 "Optimize",
+                "Selected Groups to Cubic",
+                "Glyph to Cubic",
+                "Font to Cubic (Current Master, Overview)",
                 "Hyperbezier to Cubic",
                 "Quadratic to Cubic",
                 "Cubic to Quadratic",

@@ -162,6 +162,7 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
             tile("hyperpen", Tool::HyperPen),
             tile("shape-rectangle", Tool::Rect),
             tile("shape-ellipse", Tool::Ellipse),
+            tile("shape-metaball", Tool::Metaball),
             tile("knife", Tool::Knife),
             tile("measure", Tool::Measure),
             tile("text", Tool::Text),
