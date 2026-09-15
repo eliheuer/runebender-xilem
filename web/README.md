@@ -6,7 +6,7 @@ Masonry, and paints its retained scene into a canvas using Vello CPU. There is
 no screenshot player and no separate JavaScript implementation of the editor.
 
 The bundled Virtua Grotesk source opens in memory. Edits last for this tab;
-refreshing or Reset Demo restores the bundled font. Desktop filesystem access,
+refreshing restores the bundled font. Desktop filesystem access,
 local AI processes, and saving are outside this first browser version.
 
 ## Build

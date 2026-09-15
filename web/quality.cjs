@@ -21,6 +21,11 @@ if (output) fs.mkdirSync(output, { recursive: true });
       const state = () => frame.evaluate(() => window.runebender.state());
       const metrics = () => frame.evaluate(() => window.runebender.metrics());
       const shot = async name => { if (output) await page.screenshot({ path: path.join(output, `${name}-${dpr}x.png`) }); };
+      const setTheme = async theme => {
+        await page.mouse.click(393, 15);
+        await page.mouse.click(515, 284);
+        await page.mouse.click(681, { dark: 43, gray: 66, light: 92 }[theme]);
+      };
       const backing = async () => {
         await frame.waitForFunction(() => {
           const c = document.querySelector('canvas'), r = c.getBoundingClientRect();
@@ -47,6 +52,16 @@ if (output) fs.mkdirSync(output, { recursive: true });
         return { first, height: (maxY - minY) / s, count };
       });
       await settle(); await backing();
+      const shell = await frame.evaluate(() => {
+        const canvas = document.querySelector('canvas');
+        return {
+          canvasHeight: canvas.getBoundingClientRect().height,
+          viewportHeight: innerHeight,
+          footerCount: document.querySelectorAll('footer').length,
+        };
+      });
+      assert.equal(shell.canvasHeight, shell.viewportHeight, 'canvas fills the browser viewport');
+      assert.equal(shell.footerCount, 0, 'browser-only preview footer is absent');
       assert.equal((await state()).glyph_count, 863);
       assert.equal((await state()).simd, true, 'optimized WASM SIMD pipeline is compiled in');
       await shot('overview-gray');
@@ -84,13 +99,23 @@ if (output) fs.mkdirSync(output, { recursive: true });
       await page.mouse.move(305, 350); await page.mouse.down();
       await page.mouse.move(245, 350, { steps: 12 }); await page.mouse.up(); await settle();
       assert.ok(await divider(245) > .95, 'drag restores the original panel width');
-      for (const [theme, y] of [['light', 92], ['dark', 43], ['gray', 66]]) {
-        await page.mouse.click(440, 15); await page.mouse.click(515, 284); await page.mouse.click(681, y); await settle();
+      for (const theme of ['light', 'dark', 'gray']) {
+        await setTheme(theme); await settle();
         assert.ok((await markers()).count > 30, `${theme}: outline survives theme changes`);
         const surface = await frame.evaluate(() => document.querySelector('canvas').getContext('2d')
           .getImageData(Math.round(2 * devicePixelRatio), Math.round(35 * devicePixelRatio), 1, 1).data[0]);
         assert.ok(theme === 'light' ? surface > 200 : theme === 'dark' ? surface < 80 : surface > 100 && surface < 200,
           `${theme}: actual painted surface changes with the menu selection`);
+        await page.mouse.click(112, 15); await settle();
+        const menuSurfaces = await frame.evaluate(() => {
+          const canvas = document.querySelector('canvas'), scale = devicePixelRatio;
+          const pixel = (x, y) => [...canvas.getContext('2d').getImageData(
+            Math.round(x * scale), Math.round(y * scale), 1, 1).data.slice(0, 3)];
+          return { header: pixel(800, 10), popup: pixel(100, 32) };
+        });
+        assert.deepEqual(menuSurfaces.popup, menuSurfaces.header,
+          `${theme}: dropdown uses the header surface`);
+        await page.keyboard.press('Escape');
         await shot(`editor-${theme}`);
       }
       // Losing focus must release temporary tools/modifiers instead of sticking in pan.

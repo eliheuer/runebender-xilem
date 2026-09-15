@@ -41,23 +41,24 @@ const BAR_HEIGHT: f64 = crate::view::design::TITLEBAR_HEIGHT;
 pub(crate) fn in_window() -> bool {
     !cfg!(target_os = "macos") || std::env::var("RUNEBENDER_IN_WINDOW_MENU").is_ok()
 }
-const TITLE_PAD: f64 = 10.0;
+const TITLE_SIZE: f32 = 13.0;
+const TITLE_PAD: f64 = crate::view::design::Space::Md.px();
 const ROW_HEIGHT: f64 = 24.0;
 const POPUP_PAD: f64 = 4.0;
 const POPUP_WIDTH: f64 = 220.0;
 
 fn title_width(title: &str) -> f64 {
-    title.chars().count() as f64 * 7.25 + TITLE_PAD * 2.0
+    text_label::width(title, TITLE_SIZE) + TITLE_PAD * 2.0
 }
 
 // Disabled commands remain legible, but never receive an active highlight.
 fn row_ink(pal: &Palette, enabled: bool, selected: bool) -> xilem::Color {
     if !enabled {
-        pal.text_muted
+        pal.header_ink.with_alpha(0.65)
     } else if selected {
         pal.selected_ink()
     } else {
-        pal.text
+        pal.header_ink
     }
 }
 
@@ -368,7 +369,7 @@ impl Widget for MenuShell {
                 painter,
                 Point::new(rect.x0 + TITLE_PAD, BAR_HEIGHT / 2.0),
                 title,
-                13.0,
+                TITLE_SIZE,
                 ink,
                 Anchor::Start,
             );
@@ -927,7 +928,7 @@ impl Widget for MenuPopup {
         painter: &mut Painter<'_>,
     ) {
         let pal = &self.palette;
-        painter.fill(self.size.to_rect(), pal.panel).draw();
+        painter.fill(self.size.to_rect(), pal.header).draw();
         painter
             .stroke(self.size.to_rect(), &Stroke::new(1.0), pal.outline)
             .draw();
@@ -956,7 +957,7 @@ impl Widget for MenuPopup {
                 painter,
                 Point::new(26.0, top + ROW_HEIGHT / 2.0),
                 label,
-                13.0,
+                TITLE_SIZE,
                 row_ink(pal, state.enabled, self.selected == index),
                 Anchor::Start,
             );
@@ -995,7 +996,7 @@ impl Widget for MenuPopup {
                     painter,
                     Point::new(POPUP_WIDTH - 10.0, top + ROW_HEIGHT / 2.0),
                     &accelerator,
-                    13.0,
+                    TITLE_SIZE,
                     row_ink(pal, state.enabled, self.selected == index),
                     Anchor::End,
                 );
@@ -1503,11 +1504,33 @@ mod tests {
         assert_ne!(harness.focused_widget_id(), Some(button_id));
         assert!(harness.pop_action::<AppAction>().is_none());
     }
+
+    #[test]
+    fn title_labels_have_one_consistent_gap() {
+        for (index, titles) in MENUS.windows(2).enumerate() {
+            let current = title_rect(index);
+            let next = title_rect(index + 1);
+            let current_label_end =
+                current.x0 + TITLE_PAD + text_label::width(titles[0], TITLE_SIZE);
+            let next_label_start = next.x0 + TITLE_PAD;
+            assert!((next_label_start - current_label_end - TITLE_PAD * 2.0).abs() < 0.01);
+        }
+    }
 }
 
 #[cfg(test)]
 mod contrast_tests {
     use super::*;
+
+    fn over(foreground: xilem::Color, background: xilem::Color) -> xilem::Color {
+        let alpha = foreground.components[3];
+        xilem::Color::new([
+            foreground.components[0] * alpha + background.components[0] * (1.0 - alpha),
+            foreground.components[1] * alpha + background.components[1] * (1.0 - alpha),
+            foreground.components[2] * alpha + background.components[2] * (1.0 - alpha),
+            1.0,
+        ])
+    }
 
     fn contrast(a: xilem::Color, b: xilem::Color) -> f64 {
         fn luminance(c: xilem::Color) -> f64 {
@@ -1537,7 +1560,7 @@ mod contrast_tests {
                 "{theme} header"
             );
             assert!(
-                contrast(row_ink(&pal, true, false), pal.panel) >= 4.5,
+                contrast(row_ink(&pal, true, false), pal.header) >= 4.5,
                 "{theme} enabled"
             );
             assert!(
@@ -1545,7 +1568,7 @@ mod contrast_tests {
                 "{theme} selected"
             );
             assert!(
-                contrast(row_ink(&pal, false, false), pal.panel) >= 3.0,
+                contrast(over(row_ink(&pal, false, false), pal.header), pal.header) >= 3.0,
                 "{theme} disabled"
             );
             assert_eq!(row_ink(&pal, false, true), row_ink(&pal, false, false));

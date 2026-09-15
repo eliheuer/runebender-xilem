@@ -168,9 +168,6 @@ watchResolution();
 setInterval(() => {
   if (!document.hidden && (window.devicePixelRatio || 1) !== scale) resize();
 }, 250);
-document.querySelector('#reset').addEventListener('click', () => {
-  if (confirm('Discard this tab’s edits and reload the sample font?')) location.reload();
-});
 try {
   await init();
   resize();

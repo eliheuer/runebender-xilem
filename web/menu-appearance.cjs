@@ -12,11 +12,17 @@ fs.mkdirSync(output, { recursive: true });
     await page.goto(process.env.RUNEBENDER_DEMO_URL || 'http://127.0.0.1:4326/');
     const frame = process.env.RUNEBENDER_IFRAME ? page.frames().find(f => f.url().includes('/app/index.html')) : page;
     await frame.waitForFunction(() => window.runebender);
-    for (const [theme, y] of [['gray', 66], ['light', 92], ['dark', 43]]) {
-      await page.mouse.click(440, 15); await page.mouse.click(515, 284); await page.mouse.click(681, y);
+    const setTheme = async theme => {
+      await page.mouse.click(393, 15);
+      await page.mouse.click(515, 284);
+      await page.mouse.click(681, { dark: 43, gray: 66, light: 92 }[theme]);
+    };
+    for (const theme of ['gray', 'light', 'dark']) {
+      await setTheme(theme);
       await page.waitForTimeout(150);
-      for (const [menu, x] of [['filter', 380], ['file', 112]]) {
-        await page.mouse.click(x, 15); await page.waitForTimeout(100);
+      for (const [menu, x] of [['filter', 345], ['file', 112]]) {
+        await page.mouse.click(x, 15);
+        await page.waitForTimeout(100);
         await page.screenshot({ path: path.join(output, `${menu}-${theme}-2x.png`), clip: { x: 0, y: 0, width: 1440, height: 300 } });
         await page.keyboard.press('Escape');
       }
