@@ -113,8 +113,8 @@ impl Workspace {
         } else {
             font.master_axis_values(font.active())
         };
-        // Headless overrides, so a render can show a state that normally
-        // takes clicks to reach. The GPUI build has the same idea.
+        // Headless overrides let a render show a state that normally takes
+        // clicks to reach.
         let reference_buf = std::env::var("RUNEBENDER_REFERENCE").unwrap_or_default();
         // GPUI exposes background layers by default. Keep a headless override
         // for captures that need to exercise the disabled toggle.
@@ -539,9 +539,8 @@ impl Workspace {
     /// A new font from the template: GF metrics and the GF Latin Core
     /// set as empty encoded glyphs, saved beside the font in hand.
     ///
-    /// The GPUI build asks where to put it with a save dialog. There is
-    /// no file dialog here, so it lands next to the current source under
-    /// the first Untitled name that is free.
+    /// The new font lands next to the current source under the first Untitled
+    /// name that is free.
     pub(crate) fn new_font(&mut self) {
         if self.modified {
             self.note = "Save or discard changes before creating a new font".into();

@@ -5,7 +5,7 @@
 //!
 //! Spacing and kerning are judged in words, not on one glyph at a time,
 //! so a font editor needs a place to type. The engine is
-//! `runebender_core::text::buffer`, the same one the web and GPUI builds use:
+//! `runebender_core::text::buffer`, shared with other Runebender interfaces:
 //! it owns the buffer, the shaping, the bidi runs, the kerning, the
 //! caret, and the hit testing. What lives here is the part that is
 //! specific to this editor: keeping the buffer fed with the current
@@ -42,8 +42,8 @@ pub(crate) struct TextInputs {
     /// Text to start with. Only used when the buffer is created, so it
     /// is a starting state and not a binding.
     initial: String,
-    /// The glyph whose editor tab owns this text line. GPUI always keeps
-    /// that glyph as the active sort when a text buffer is first opened.
+    /// The glyph whose editor tab owns this text line. It remains the active
+    /// sort when a text buffer is first opened.
     active_glyph: Option<(String, Option<char>, f64)>,
     /// Initial logical range for deterministic visual evidence.
     initial_selection: Option<(usize, usize)>,

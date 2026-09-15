@@ -4,8 +4,7 @@
 //! Reload when the sources change underneath us.
 //!
 //! A font project is edited by more than this program: a build script
-//! writes a master, another editor saves, a git checkout moves the tree.
-//! The GPUI build reloads on that, so this does too.
+//! writes a master, another editor saves, or a git checkout moves the tree.
 //!
 //! The pump is the same shape as the menu one, and for the same reason:
 //! the events come from somewhere that is not winit's event loop, and

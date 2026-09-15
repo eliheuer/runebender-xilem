@@ -215,12 +215,11 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
     let pal = &app.palette;
 
     // Left column: category sidebar in overview only. In the editor the
-    // tools live in the header (gpui-style), so the left column collapses.
+    // tools live in the header, so the left column collapses.
     let _editing_mode = matches!(app.mode, Mode::Editor(_));
     let _ = &app.multi_selected;
 
-    // The window, in the GPUI build's shape: one title bar across the
-    // whole width, then the three columns under it, then a bottom bar
+    // One title bar spans the whole width, followed by three columns and a bottom bar
     // that runs under the sidebar and the middle but not under the
     // inspector, which is full height.
     let body = match app.mode {
@@ -234,8 +233,7 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         Either::B(body)
     };
     // The bottom bar belongs to the middle column, so the sidebar
-    // keeps the window's full height and its own marks bar, as in the
-    // GPUI build.
+    // keeps the window's full height and its own marks bar.
     let middle = flex_col((body.flex(1.0), status(app)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::None)
@@ -245,8 +243,8 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         Mode::Overview | Mode::Nodes => Either::A(sidebar(app)),
         Mode::Editor(_) => Either::B(editor_nav(app)),
     };
-    // The marks bar sits under the sidebar in both modes, as the GPUI
-    // build has it, not in the middle column's bar.
+    // The marks bar sits under the sidebar in both modes, not in the middle
+    // column's bar.
     let left = flex_col((left.flex(1.0), marks_bar(app)))
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .gap(Space::None);

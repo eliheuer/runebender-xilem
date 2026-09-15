@@ -18,8 +18,8 @@
 //! through UFO `kern1` and `kern2` groups, and a manual kerning drag
 //! writes a direct pair value back into that model. The `layout` and
 //! `hit_test` methods place every sort in font units and map a point
-//! back to a cursor position or a sort, which is what the
-//! `runebender-core` CLI and runebender-gpui draw and click on.
+//! back to a cursor position or a sort, which is what the Runebender
+//! application draws and clicks on.
 
 use crate::{document::model::kerning::lookup_kerning as lookup_xilem_kerning, text::joining};
 use serde::{Deserialize, Serialize};

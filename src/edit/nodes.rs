@@ -6,8 +6,7 @@
 //!
 //! Core owns the file, the registry, the layout and the runner
 //! (`runebender_core::document::nodes`, `nodes_run` and `ui::nodes`).
-//! This file is the same seam as `edit/nodes.rs` in the GPUI build:
-//! find the files, open one, validate it, run it on a thread, and
+//! This module finds the files, opens one, validates it, runs it on a thread, and
 //! hand the widget what it draws. The widget owns the pan, the
 //! selection and the drag, and sends the graph back when it changes.
 

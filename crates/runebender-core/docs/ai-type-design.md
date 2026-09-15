@@ -94,7 +94,7 @@ Build and use this revision of the binary (`cargo build --locked`), or install i
 An older binary on PATH will not have the new tools. For an MCP client, launch:
 
 ```sh
-runebender-core mcp --font /absolute/path/Family.designspace
+runebender mcp --font /absolute/path/Family.designspace
 ```
 
 The host chooses Astra or a local language model; no provider SDK or API key belongs in
@@ -105,8 +105,8 @@ Start with `project_info`, choose the intended master, then read the relevant fo
 glyphs. Use `agent tools --json` for the published input schemas. For example:
 
 ```sh
-runebender-core agent call project_info --font /absolute/path/Family.designspace
-runebender-core agent call read_glyph --font /absolute/path/Family.designspace \
+runebender agent call project_info --font /absolute/path/Family.designspace
+runebender agent call read_glyph --font /absolute/path/Family.designspace \
   --args '{"master":0,"glyph":"n"}'
 ```
 
@@ -126,9 +126,9 @@ Create a JSON file using the returned revision and measured width, not these pla
 ```
 
 ```sh
-runebender-core agent call propose_edits --font /absolute/path/Family.designspace \
+runebender agent call propose_edits --font /absolute/path/Family.designspace \
   --args-file edits.json
-runebender-core agent call proof --font /absolute/path/Family.designspace \
+runebender agent call proof --font /absolute/path/Family.designspace \
   --args '{"master":0,"glyphs":["n"],"layer":"com.runebender.proposal.n-spacing-01"}'
 ```
 
@@ -137,7 +137,7 @@ accepting spacing decisions; a cell proof alone is insufficient. Installation is
 authorized action in an editor using this core, or:
 
 ```sh
-runebender-core --json proposal install /absolute/path/Master.ufo --task n-spacing-01
+runebender --json proposal install /absolute/path/Master.ufo --task n-spacing-01
 ```
 
 The CLI's in-memory undo history does not survive process exit. Use the editor's undo or
@@ -152,17 +152,17 @@ batch. Start on a copy of a font before using `--write` on working sources.
 
 ## Live native editor sessions
 
-The native GPUI and Xilem editors now create one private Unix socket per open document
-lifetime. Core handles calls on the UI thread against the editor's actual `Project`.
+The native Runebender editor creates one private Unix socket per open document lifetime.
+Core handles calls on the UI thread against the editor's actual `Project`.
 Opening another document replaces the endpoint. There is no fallback from a failed live
 connection to files on disk. Windows and browser transports are not implemented.
 
 ```sh
-runebender-core sessions
-runebender-core agent call project_info --session /absolute/path/session.sock
-runebender-core agent call read_glyph --session /absolute/path/session.sock \
+runebender sessions
+runebender agent call project_info --session /absolute/path/session.sock
+runebender agent call read_glyph --session /absolute/path/session.sock \
   --args '{"master":0,"glyph":"n"}'
-runebender-core mcp --session /absolute/path/session.sock
+runebender mcp --session /absolute/path/session.sock
 ```
 
 Use a path from `sessions`; call `project_info` to verify which project it represents.
@@ -194,14 +194,14 @@ uses the live MCP tools. The project `.omp/mcp.json` files configure one stable 
   "mcpServers": {
     "runebender": {
       "type": "stdio",
-      "command": "runebender-core",
+      "command": "runebender",
       "args": ["mcp", "--live"]
     }
   }
 }
 ```
 
-Install this core binary and rebuild/restart the native editor. In an existing OMP
+Install this workspace binary and restart the native editor. In an existing OMP
 session in the configured project, run `/mcp reload`, then `/mcp test runebender`.
 Ask OMP: **Connect to my Runebender editor, confirm the font and master, and inspect n
 without making changes.** The `editor_sessions` and `editor_connect` tools handle the
@@ -221,7 +221,7 @@ The same server works with an external Codex TUI/CLI or desktop session:
 
 ```toml
 [mcp_servers.runebender]
-command = "/absolute/path/runebender-core"
+command = "/absolute/path/runebender"
 args = ["mcp", "--live"]
 ```
 

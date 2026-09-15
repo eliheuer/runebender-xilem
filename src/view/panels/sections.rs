@@ -941,12 +941,11 @@ pub(crate) fn mark_section(app: &Workspace) -> impl WidgetView<Workspace> + use<
     )
 }
 
-/// The font's metadata, which is what the GPUI build's right panel
-/// holds when no glyph is picked.
+/// The font's metadata, shown when no glyph is picked.
 pub(crate) fn font_info_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    // The names and the design metrics; the export and hinting
-    // numbers go to Advanced below, as in the GPUI build.
+    // The names and the design metrics; the export and hinting numbers go to
+    // Advanced below.
     let rows: Vec<_> = app
         .font
         .info_rows()

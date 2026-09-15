@@ -3,8 +3,8 @@
 
 //! The nodes pane: one row of buttons over the canvas.
 //!
-//! The files beside the font as square controls, then New, Open, Save and Run,
-//! the GPUI build's row. Node types to add are on the canvas's
+//! The files beside the font appear as square controls, followed by New, Open,
+//! Save and Run. Node types to add are on the canvas's
 //! right-click menu, a layer the canvas widget opens itself. A
 //! selected Master, Model or Adapter node offers its choices in a
 //! second row.

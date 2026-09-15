@@ -2,7 +2,7 @@
   "mcpServers": {
     "runebender": {
       "type": "stdio",
-      "command": "runebender-core",
+      "command": "runebender",
       "args": [
         "mcp",
         "--live"

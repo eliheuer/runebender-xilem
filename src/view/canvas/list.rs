@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The List view: one row per glyph, one column per property, behind
-//! the bottom bar's List box. The same columns as the GPUI build's
-//! `glyph_list_view`: a mark cell, the name, Unicode, width, LSB,
-//! RSB, the two kerning groups, and the category.
+//! the bottom bar's List box: a mark cell, the name, Unicode, width,
+//! LSB, RSB, the two kerning groups, and the category.
 
 use crate::*;
 
-/// Column widths, the GPUI build's.
+/// Column widths for the compact list layout.
 const W_UNI: f64 = 68.0;
 const W_NUM: f64 = 52.0;
 const W_GROUP: f64 = 84.0;

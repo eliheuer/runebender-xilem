@@ -9,8 +9,7 @@
 //! point. This widget adds the paint calls and the mouse, the same
 //! way the glyph editor does: core's `ViewPort` for pan and zoom, one
 //! drag enum, and a `Painter`. Vello rasterizes the paths with edge
-//! coverage, so a ring, a wire and a keyline are anti-aliased here
-//! where the GPUI build's lyon triangles are not.
+//! coverage so rings, wires, and keylines are anti-aliased.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -219,8 +218,8 @@ impl Widget for NodesWidget {
             painter
                 .fill(
                     &(tf * rings),
-                    // Mixed most of the way into the ground, as the
-                    // GPUI build draws it, so the grid stays behind.
+                    // Mixed most of the way into the ground so the grid stays
+                    // behind.
                     mix(pal.app, pal.outline, 0.4),
                 )
                 .draw();

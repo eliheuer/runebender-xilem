@@ -71,7 +71,7 @@ impl Drop for ChatState {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ChatProgress;
 
-/// Use this application's CLI; retain the explicit legacy override for custom runners.
+/// Use this application's CLI, with an explicit override for custom runners.
 fn core_binary() -> Option<PathBuf> {
     std::env::var_os("RUNEBENDER_CORE")
         .filter(|path| !path.is_empty())

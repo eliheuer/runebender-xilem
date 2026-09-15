@@ -14,7 +14,7 @@ use masonry::properties::types::CrossAxisAlignment;
 use xilem::Color;
 use xilem::view::flex_row;
 
-/// The title bar, laid out like the GPUI build's header.
+/// The title bar for document identity, editor tools, and tabs.
 ///
 /// Left to right: the file name, the save state, the tools when a
 /// glyph is open, and the tab
@@ -23,8 +23,8 @@ use xilem::view::flex_row;
 pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let editing = matches!(app.mode, Mode::Editor(_));
-    // The GPUI title bar keeps the document identity visible in every
-    // mode. An editor tab says which glyph is open; it is not a substitute
+    // Keep the document identity visible in every mode. An editor tab says
+    // which glyph is open; it is not a substitute
     // for knowing which font the edits belong to.
     let title = app
         .font
@@ -42,9 +42,8 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 sized_box(label("")).dims(Dimensions::new(Dim::Fixed(Length::px(66.0)), Dim::Auto))
             }),
             // The name and the save state take whatever is left and
-            // clip. GPUI writes `flex_1` and `overflow_hidden` on this
-            // group for the same reason: when the window is narrow, the
-            // file name is the part that can go.
+            // clip. When the window is narrow, the file name is the part that
+            // can go.
             sized_box(xrow(
                 Region::Inline,
                 (
@@ -53,10 +52,8 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         .color(pal.header_ink),
                     // Saved is the mark palette's green, not saved its
                     // red: the same two colours the glyph grid uses. The
-                    // GPUI build draws this as a keylined tag; here that
-                    // was five style wrappers on a label in the root
-                    // tuple, and rustc never finished the build. Until
-                    // the tag is a painted widget, it is coloured text.
+                    // This remains coloured text until the tag becomes a
+                    // dedicated painted widget.
                     label(status.to_string())
                         .text_size(TextSize::Body.px())
                         .color(if app.modified {
@@ -95,7 +92,7 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     // The shared rule in app_logic separates the header from all three docks.
 }
 
-/// LTR / RTL / Auto, as the GPUI build has them.
+/// LTR, RTL, and automatic writing-direction controls.
 ///
 /// Up whenever a glyph is open, not only under the text tool: the
 /// direction is a property of what is being reviewed, not of the tool
@@ -124,8 +121,7 @@ pub(crate) fn direction_chips(app: &Workspace) -> impl WidgetView<Workspace> + u
     )
 }
 
-/// The tools as a horizontal row for the header (gpui puts them there,
-/// not in a left column).
+/// The tools as a horizontal row in the header.
 pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     // Tool state is carried by icon contrast, not an inverted tile. This keeps
@@ -174,7 +170,7 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
 }
 
 /// The marks bar at the foot of the sidebar: round swatches, the
-/// clear mark last, as the GPUI build draws it under its sidebar.
+/// clear mark last.
 pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let current = app
@@ -269,7 +265,7 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
 
 /// The bar under the middle column: add and remove glyph at the
 /// left, the count centred, the view boxes and the zoom at the right.
-/// The GPUI build's bottom bar, box for box.
+/// The workspace status bar.
 pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::Either;
     let pal = &app.palette;
@@ -284,7 +280,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             app.filtered_cells().len(),
             app.font.glyphs.len(),
         ),
-        // GPUI keeps the resting edit footer quiet; transient notes still
+        // Keep the resting edit footer quiet; transient notes still
         // replace this empty string below when an action has something to say.
         Mode::Editor(_) => String::new(),
         Mode::Nodes => app

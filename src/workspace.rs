@@ -12,7 +12,7 @@ pub(crate) enum Sort {
 }
 
 /// The active sidebar selection: a category chip, a language group, or a
-/// builtin/GF-coverage filter (mirrors runebender-gpui's `SidebarFilter`).
+/// builtin or Google Fonts coverage filter.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Sel {
     Category(GlyphCategory),
@@ -121,11 +121,9 @@ pub(crate) struct Workspace {
     /// Optional shaping script and language selected in the preview controls.
     pub(crate) text_script: Option<String>,
     pub(crate) text_language: Option<String>,
-    /// Whether the left column is folded away, as the GPUI build's
-    /// grid-icon button in the title bar does it.
+    /// Whether the left column is folded away.
     pub(crate) left_collapsed: bool,
-    /// Sidebar groups that are folded shut, by title. The GPUI build's
-    /// sidebar folds, and a font with four filter groups needs it.
+    /// Sidebar groups that are folded shut, by title.
     pub(crate) collapsed: std::collections::HashSet<&'static str>,
     pub(crate) sel: Sel,
     pub(crate) sort: Sort,
@@ -166,9 +164,9 @@ pub(crate) struct Workspace {
     pub(crate) initial_text: String,
     /// Whether this tab owns an open text composition.
     ///
-    /// This is deliberately independent of `tool`: GPUI and Web keep the
-    /// composed line on the canvas when Select (or another outline tool) is
-    /// picked, so the active sort can be edited without losing its neighbours.
+    /// This is deliberately independent of `tool`: the composed line remains
+    /// on the canvas when Select or another outline tool is picked, so the
+    /// active sort can be edited without losing its neighbours.
     pub(crate) has_text_session: bool,
     /// Grid cell size, driven by the bottom bar's zoom.
     pub(crate) cell_size: f64,
@@ -182,8 +180,7 @@ pub(crate) struct Workspace {
     /// Kerning group names for the open glyph, left side then right.
     pub(crate) kern1_buf: String,
     pub(crate) kern2_buf: String,
-    /// Copied contours. An in-app clipboard, as in the GPUI build: the
-    /// system clipboard carries text, not outlines.
+    /// Copied contours. The system clipboard carries text, not outlines.
     pub(crate) clipboard: Vec<norad::Contour>,
     /// Draw the UFO background layer under the outline.
     pub(crate) show_background: bool,
@@ -224,7 +221,7 @@ pub(crate) struct Workspace {
     /// Case-sensitive search.
     pub(crate) search_case: bool,
     /// Masters drawn as ghost outlines under the active one. The Layers
-    /// section toggles these, one per thumbnail click (gpui's eye).
+    /// section toggles these, one per thumbnail click.
     pub(crate) reference_layers: std::collections::HashSet<usize>,
     /// Whether every non-active master is shown as a reference outline.
     pub(crate) show_all_masters: bool,

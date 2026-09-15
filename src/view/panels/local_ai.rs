@@ -4,8 +4,7 @@
 //! The Local AI panel: installed models, the tasks font-ml runs, and
 //! the proposals waiting.
 //!
-//! The same panel as `view/panels/local_ai.rs` in the GPUI build, in
-//! the editor's left rail. Rows come from the tool: a task font-ml
+//! This panel lives in the editor's left rail. Rows come from the tool: a task font-ml
 //! gains appears here with no change to this file.
 
 use crate::edit::nodes::file_label;
@@ -45,7 +44,7 @@ pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + us
     });
     let summary = app.ai.summary.clone().map(plain);
     // Strength, because a model can be right about direction and
-    // short on distance. The GPUI build's slider row.
+    // short on distance.
     let strength = app.ai.strength;
     let strength_row = app.ai.dir.is_some().then(|| {
         xrow(

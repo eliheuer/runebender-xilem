@@ -3,14 +3,13 @@
 
 //! The local models panel: finding models on disk and running one.
 //!
-//! The same seam as `edit/local_ai.rs` in the GPUI build. The model
-//! runtime is `font-ml`, a separate program. This shell never links
+//! The model runtime is `font-ml`, a separate program. This application never links
 //! it: it finds the binary, runs it over the UFO on disk, and reads
 //! the proposal layer it leaves behind. What the shell owns is the
 //! seam: save first, run on a thread, pull the proposal layer into the
 //! open font, and hand it to core to install or discard.
 //!
-//! As in the GPUI build, the font is core's `Master`, and an install
+//! The font is core's `Master`, and an install
 //! records one undo step per glyph on its pile. "Undo install" in the
 //! panel takes the most recent one back; Cmd+Z over the open glyph
 //! does the same through the editor.

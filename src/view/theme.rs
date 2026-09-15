@@ -3,9 +3,8 @@
 
 //! Colors from the shared OKLCH theme file, as peniko colors.
 //!
-//! xix note: this whole file is the design kernel's job. The app should
-//! not hand-map named tokens into a palette; the framework's theme should
-//! carry them and the widgets should read them.
+//! The framework does not currently resolve Runebender's application theme,
+//! so this module maps the shared semantic tokens once for every view.
 
 use runebender_core::ui::color::ColorRgba;
 use runebender_core::ui::theme::{Theme as CoreTheme, load_theme};
@@ -239,8 +238,8 @@ impl Palette {
             .collect()
     }
 
-    /// Popcount tier ramp, shared with the GPUI build and the web
-    /// editor: one power of two is structural (green), two an elegant
+    /// Popcount tier ramp, shared with the web editor: one power of two
+    /// is structural (green), two an elegant
     /// sum (yellow), three acceptable (orange), four or more a flagged
     /// correction (red).
     pub(crate) fn popcount(&self, count: u32) -> Color {

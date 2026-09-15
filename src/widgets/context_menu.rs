@@ -15,10 +15,8 @@
 //!
 //! What is missing is the reactive half: there is no Xilem view for
 //! layers, so an application built out of views cannot open one. This
-//! file only exists because the editor is a hand-written Masonry widget
-//! and can therefore reach `create_layer` directly. An application that
-//! stayed in view-land could not do this at all, which is the gap worth
-//! recording (docs/XILEM-GAPS.md).
+//! file exists because the editor is a hand-written Masonry widget and can
+//! therefore reach `create_layer` directly.
 
 use std::sync::Arc;
 

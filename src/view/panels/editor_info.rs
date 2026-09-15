@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The inspector's font-wide sections: Dimensions, Kerning, Groups,
-//! Compare, Features, and the editor's Related. The same sections as
-//! `view/panels/editor_info.rs` in the GPUI build, in its order, so
-//! the two inspectors read the same.
+//! Compare, Features, and the editor's Related.
 //!
 //! Xilem 0.4 has no multi-line text view, so Features shows the file
 //! and offers Generate and Apply; editing the text by hand waits for

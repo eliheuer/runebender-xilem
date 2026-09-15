@@ -762,8 +762,7 @@ impl FontModel {
     /// How many glyphs are marked for export.
     ///
     /// A glyph is skipped when its lib says so, which is how both Glyphs
-    /// and the UFO spec record it. The GPUI build shows this count at
-    /// the head of its filter list.
+    /// and the UFO spec record it. The filter list shows the resulting count.
     pub(crate) fn exporting_count(&self) -> usize {
         let font = self.font();
         self.glyphs
@@ -790,8 +789,7 @@ impl FontModel {
 
     /// The font's headline metadata, as label and value pairs.
     ///
-    /// The GPUI build shows this whenever no glyph is picked, and it is
-    /// most of what its right panel holds in the overview. These are
+    /// The overview shows this whenever no glyph is picked. These values are
     /// read here rather than edited: writing them back means a form per
     /// master and a rule about which values are per-master, which the
     /// editor does not have yet.

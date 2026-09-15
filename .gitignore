@@ -5,3 +5,4 @@
 
 # Agent worktrees
 .claude/worktrees/
+.worktrees/

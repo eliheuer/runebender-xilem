@@ -5,8 +5,7 @@
 //!
 //! Eight buckets (one "All" + seven derived from Unicode general
 //! category groups). The mapping in `from_codepoint` is the same one
-//! runebender-xilem's old `components::category_panel::GlyphCategory`
-//! used; it moved here so both editors filter the same way.
+//! the editor uses everywhere, so every interface filters the same way.
 
 use unicode_general_category::{GeneralCategory, get_general_category};
 

@@ -1,14 +1,13 @@
 # Live experiment MVP
 
-The native GPUI Nodes workspace uses connected nodes for the live font, independent
+Runebender's Nodes workspace uses connected nodes for the live font, independent
 versions, Designbot proofs, and explicit application to the root. Controls and preview
-images live inside the canvas. Xilem exposes experiments through MCP; its canvas does
-not yet implement these live node controls.
+images live inside the canvas, while the same experiment state is available through MCP.
 
 ## Start
 
-Install current `designbot`, `runebender-core`, and the native editor. Restart the
-editor after updating. In OMP run `/mcp reload` and connect to the intended editor.
+Install current `designbot` and build or install `runebender`. Restart the editor after
+updating. In OMP run `/mcp reload` and connect to the intended editor.
 Read `design_context`, the official type-design guide, and the font's DESIGN.md.
 
 Open Nodes (or click New if an older workflow is open). The starter graph connects

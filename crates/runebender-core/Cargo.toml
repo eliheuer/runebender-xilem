@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.88"
 license = "Apache-2.0 OR MIT"
 description = "The font library behind the Runebender font editor"
-repository = "https://github.com/eliheuer/runebender-core"
+repository = "https://github.com/eliheuer/runebender-xilem"
 keywords = ["font", "ufo", "typography", "bezier", "opentype"]
 categories = ["graphics", "text-processing"]
 
@@ -82,8 +82,7 @@ serde_json = "1.0.151"
 schemars = "1.2"
 
 # Unicode general-category lookup, used by `category::GlyphCategory`.
-# Same crate as runebender-xilem, just hoisted here so both editors
-# share the categorization.
+# Hoisted here so the workspace shares one categorization implementation.
 unicode-general-category = "0.6"
 # Canonical decompositions, so a precomposed glyph knows its base
 # and marks (`document::compose`).

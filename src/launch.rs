@@ -51,8 +51,8 @@ pub(crate) fn run(
 
         // The harness needs a root widget with a concrete type, so wrap
         // the app's root view in a sized box.
-        // RUNEBENDER_SIZE=1000x680 renders at a chosen logical size, so a shot
-        // can be matched against the GPUI build's window for comparison.
+        // RUNEBENDER_SIZE=1000x680 renders at a chosen logical size for
+        // repeatable review captures.
         let size = std::env::var("RUNEBENDER_SIZE")
             .ok()
             .and_then(|spec| {
@@ -97,8 +97,8 @@ pub(crate) fn run(
                 let options = options
                     .with_initial_inner_size(LogicalSize::new(1100., 720.))
                     .on_close(AppState::request_quit);
-                // On macOS the header row is the title bar, as in the GPUI build:
-                // content runs under the transparent system bar and pads for traffic lights.
+                // On macOS the header row is the title bar: content runs under
+                // the transparent system bar and pads for traffic lights.
                 #[cfg(target_os = "macos")]
                 let options = {
                     use xilem::WindowOptionsExtMacOS as _;

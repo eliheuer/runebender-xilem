@@ -31,7 +31,7 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     };
     let editing = matches!(app.mode, Mode::Editor(_));
     let nodes = matches!(app.mode, Mode::Nodes);
-    // Width / LSB / RSB in one row (gpui's metrics row). Each field commits
+    // Width, LSB, and RSB share one row. Each field commits
     // live; LSB shifts the glyph, RSB changes the advance.
     let field_bg = pal.field();
     let _ = field_bg;
@@ -88,7 +88,7 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     app.unicode_buf.clone(),
                     |app: &mut Workspace, v| app.set_unicode_from_buf(v),
                 ),
-                // Kerning groups, left side then right, as gpui's Glyph
+                // Kerning groups, left side then right. The Glyph
                 // panel has them. Empty takes the glyph out of the group,
                 // and the write lands in every master, because a
                 // designspace's masters have to agree about groups.

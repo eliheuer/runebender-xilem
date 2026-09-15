@@ -1,86 +1,90 @@
 # Runebender
 
 [![CI](https://github.com/eliheuer/runebender-xilem/actions/workflows/ci.yml/badge.svg)](https://github.com/eliheuer/runebender-xilem/actions/workflows/ci.yml)
+[![Windows basics](https://github.com/eliheuer/runebender-xilem/actions/workflows/windows.yml/badge.svg)](https://github.com/eliheuer/runebender-xilem/actions/workflows/windows.yml)
 
-A Linebender-native font editor built on [Xilem](https://github.com/linebender/xilem).
-This repository contains the application and its independent font library in
-one Cargo workspace.
+Runebender is an experimental font editor built in Rust with
+[Xilem](https://github.com/linebender/xilem). This repository is the complete
+Cargo workspace: the graphical editor and headless commands are one
+`runebender` executable, backed by the internal `crates/runebender-core`
+library.
 
-The package and executable are named `runebender`. Start it without arguments
-to open the editor, or use a subcommand to work without a window.
+Runebender is suitable for testing and development, not production font work
+without backups. Platform and interaction limits are tracked in
+[Known limitations](docs/known-limitations.md).
+
+## Install and run
+
+Install Rust 1.96 or newer, then build from source:
+
+```sh
+git clone https://github.com/eliheuer/runebender-xilem.git
+cd runebender-xilem
+cargo run --release -- path/to/Font.designspace
+```
+
+The editor accepts UFOs and designspaces. With no path it opens a file picker.
+Basic, import-only Babelfont packages are also supported; unsupported data is
+rejected rather than silently discarded.
+
+Install the executable directly from Git:
+
+```sh
+cargo install --git https://github.com/eliheuer/runebender-xilem --locked
+runebender path/to/Font-Regular.ufo
+```
+
+Linux builds need the Wayland, X11, Vulkan, OpenSSL, GLib, GTK, and xdo
+development libraries listed in [.github/workflows/ci.yml](.github/workflows/ci.yml).
+Windows builds use the 64-bit MSVC Rust toolchain and its Visual Studio C++
+prerequisites.
+
+## Headless tools
+
+Subcommands finish before any window is created:
+
+```sh
+runebender --help
+runebender info path/to/Font.designspace --json
+runebender proof path/to/Font.ufo --glyphs H,n,o --out proof.svg
+runebender mcp --font path/to/Font.designspace
+```
+
+`agent`, `compose`, `features`, `nodes`, `proposal`, and `propose` expose the
+same font operations used by the editor. Commands that propose changes keep
+them separate for review and explicit installation.
 
 ## Workspace
 
-- Root package: `runebender`, the editor and headless command line.
-- `crates/runebender-core`: the shared font library, with no GUI dependency.
-- `cargo run -- --help`: discover commands.
-- `cargo test --workspace -- --test-threads=1`: test both packages.
+- `src/`: application, command line, platform adapters, views, and widgets.
+- `crates/runebender-core/`: font data, editing, formats, shaping, and analysis;
+  it has no GUI dependency and no separate executable.
+- `web/`: the same Xilem/Masonry widget tree compiled to a self-contained WASM
+  demo. It uses an in-memory bundled font and does not save user files.
+- `docs/`: current limitations plus dated reproducible evidence from earlier
+  implementation and browser-quality passes.
 
-Core tests use `RUNEBENDER_TEST_FONTS`, or the `virtua-grotesk/sources`
-directory beside this repository. New font-library work belongs in this
-workspace, not the legacy standalone Core repository.
+The user documentation is at [runebender.org](https://runebender.org/docs/).
 
-## Use
-
-```sh
-cargo install --git https://github.com/eliheuer/runebender-xilem
-runebender path/to/Font.designspace
-runebender info path/to/Font-Regular.ufo --json
-runebender mcp --live
-```
-
-The user manual and documentation is available at
-[runebender.org](https://runebender.org/docs/).
-
-## Windows status
-
-Windows support is not ready to claim yet. The MSVC build, headless font
-inspection, SVG proof, and CPU editor rendering pass in CI, but native startup
-currently fails with an access violation after window creation. The Windows
-workflow retains a failing runtime check so this blocker stays visible.
-
-For development, use 64-bit Windows with Rust's MSVC toolchain and the
-[Visual Studio C++ prerequisites](https://rust-lang.github.io/rustup/installation/windows-msvc.html).
-Then run the Cargo install command above. To open a directory-based font source
-from PowerShell:
-
-```powershell
-runebender 'C:\Fonts\Font-Regular.ufo'
-```
-
-The [Windows basics workflow](https://github.com/eliheuer/runebender-xilem/actions/workflows/windows.yml)
-checks a native build, UFO inspection, SVG proof, editor rendering, and opening
-and closing a native window with a font loaded. The native check is currently
-failing. Editing, dialogs, input methods, and GPU/driver coverage also need
-hands-on Windows testing. There is no installer or Windows ARM build yet.
-
-Use a command-line path for UFO, Glyphs Package, and Babelfont directories;
-the Windows file picker currently selects files. Live MCP connections and the
-live chat bridge currently require macOS or Linux. Headless `info` and `proof`
-work without those services.
-
-## Basic Babelfont import
-
-Open a single-master `.babelfont` directory with the editor or headless tools:
+## Develop
 
 ```sh
-runebender Font.babelfont
-runebender info Font.babelfont --json
-runebender proof Font.babelfont --glyphs A,V --out proof.svg
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo doc --workspace --no-deps --locked
+cargo test --workspace --locked -- --test-threads=1
+cargo build --workspace --release --locked
+cargo vet --locked
+cargo deny --locked check advisories
 ```
 
-The importer reads the native package format written by Babelfont 3.1.3. It
-imports outlines, components, anchors, widths, Unicode, family/style names,
-basic metrics, kerning groups/pairs, export flags, and self-contained features.
-The font opens as an unsaved UFO copy. Save writes a new sibling UFO, choosing
-an unused name if necessary; the original Babelfont package is left untouched.
+Tests that need a full font read `RUNEBENDER_TEST_FONTS`, or
+`../virtua-grotesk/sources` when that repository is beside this one. Four
+model- or fixture-dependent tests are ignored by default and are not part of
+the ordinary test count.
 
-This is basic import, not round-trip support. Multiple masters, axes, instances,
-additional/background layers, and external feature includes are rejected.
-Guides, hints, production names, and application-specific metadata are not
-imported. No Python installation is needed. The test fixture was generated by
-the upstream Babelfont serializer; see
-[`crates/runebender-core/tests/fixtures/babelfont`](crates/runebender-core/tests/fixtures/babelfont).
+The canonical development rules are in [AGENTS.md](AGENTS.md); visual changes
+also follow [DESIGN.md](DESIGN.md).
 
 ## License
 

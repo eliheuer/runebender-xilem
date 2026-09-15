@@ -1,9 +1,8 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Runebender on xix. A font editor: glyph grid, glyph editor, sidebar.
-//! See `docs/XILEM-GAPS.md` for what this build costs against the
-//! same editor on GPUI.
+//! Runebender, a font editor and headless font-tool executable built with
+//! Xilem and the workspace's `runebender-core` library.
 
 // The browser shares editor code whose desktop-only actions are intentionally dormant.
 #![cfg_attr(target_arch = "wasm32", allow(dead_code))]

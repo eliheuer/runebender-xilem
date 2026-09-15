@@ -11,8 +11,8 @@
 //! is the model's side of the table, the foreground is the person's.
 //!
 //! The chat runtime lives in `font-ml`, which asks this crate for the
-//! prompt and the tool list (`runebender-core agent tools --json`) and
-//! runs each call back through it (`runebender-core agent call`). An
+//! prompt and the tool list (`runebender agent tools --json`) and
+//! runs each call back through it (`runebender agent call`). An
 //! outside harness such as OMP reads the same definitions, so the two
 //! ways of driving the editor cannot drift apart.
 

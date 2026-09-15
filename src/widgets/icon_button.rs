@@ -1,11 +1,8 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! An icon tile that paints either one of runebender-core's toolbar icons or
-//! GPUI's geometry-only status marks, and reports clicks.
-//!
-//! xix note: an icon button that paints a vector path is something the
-//! framework should offer; here we paint the core icon directly.
+//! An icon tile that paints either one of `runebender-core`'s toolbar icons
+//! or a small geometry-only status mark, and reports clicks.
 
 use std::sync::{Arc, Mutex};
 

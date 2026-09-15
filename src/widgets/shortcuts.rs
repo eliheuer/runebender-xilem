@@ -9,9 +9,8 @@
 //! matches it against a keymap, and submits an app-level action. That is
 //! how Cmd+S and tool shortcuts work regardless of what has focus.
 //!
-//! xix note: this is a stand-in for the framework's window-level action +
-//! keymap layer (DESIGN.md D5). The real version lives in the fork and also
-//! drives a native menu bar (muda) from the same action list.
+//! Xilem does not yet provide an application-level keymap layer, so this
+//! widget keeps the behavior at the root of Runebender's view tree.
 
 use masonry::accesskit::{Node, Role};
 use masonry::core::keyboard::KeyState;
@@ -130,7 +129,7 @@ pub(crate) enum AppAction {
     PlaceImage,
     ImportSvg,
     RemoveImage,
-    /// The grid's order, as the GPUI build's View menu has it.
+    /// The grid's order in the View menu.
     SortByName,
     SortByUnicode,
 }

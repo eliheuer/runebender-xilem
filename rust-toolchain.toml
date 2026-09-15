@@ -1,4 +1,4 @@
-# Pin stable, as runebender-gpui does, so both editors are built the
-# same way. Nothing here needs nightly.
+# Pin stable so local builds and CI use the same toolchain channel.
+# Nothing here needs nightly.
 [toolchain]
 channel = "stable"

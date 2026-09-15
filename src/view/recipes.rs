@@ -48,9 +48,8 @@ where
 
 /// A section header that collapses its section.
 ///
-/// The GPUI build's sidebar groups fold, which matters once a font has
-/// four filter groups and a language list: without folding the sidebar
-/// is a single scroll of rows with no shape.
+/// Sidebar groups fold because four filter groups and a language list would
+/// otherwise become one undifferentiated scroll of rows.
 pub(crate) fn section_toggle<F>(
     pal: &Palette,
     text: &'static str,
@@ -140,7 +139,7 @@ pub(crate) fn kv(pal: &Palette, name: String, value: String) -> impl WidgetView<
 }
 
 /// A bare text field: no caption, a placeholder inside, control
-/// height. The kerning row in the GPUI build.
+/// height. Used by compact rows such as the kerning controls.
 pub(crate) fn field_bare<F, G>(
     pal: &Palette,
     placeholder: &'static str,
@@ -382,8 +381,8 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     ))
 }
 
-/// A toggle at control height that takes the width of its label: the
-/// GPUI build's `toggle`, inverted when active.
+/// A toggle at control height that takes the width of its label and inverts
+/// when active.
 pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
     text: String,

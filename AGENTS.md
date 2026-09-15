@@ -1,206 +1,104 @@
 # AGENTS.md
 
-Context for anyone, human or agent, working on `runebender-xilem`.
-The reference for how the code is organized is
-[runebender.org/docs/code-layout.html](https://runebender.org/docs/code-layout.html).
-This file is the short version plus what you need to build and
-submit a change.
+Runebender is one application and one Cargo workspace. Keep application and
+library changes in this repository; sibling repositories are not workspace members.
 
-## What this is
+## Architecture
 
-Runebender is a Linebender-native font editor built with Xilem. The package
-and executable are `runebender`; subcommands run headlessly before window setup. This
-repository is the primary application; new product work targets Xilem.
-GPUI is retained as a visual/behavioral reference and fallback, not a
-second frontend to develop in parallel. Font operations remain in the
-independent `crates/runebender-core` library so the GUI and headless tools share behavior.
+The root package produces the `runebender` executable. A font path starts the
+Xilem editor; a subcommand runs headlessly before window setup. The internal
+`crates/runebender-core` package is library-only and contains every operation
+that reads or changes a font.
 
-It builds against upstream Xilem pinned to a revision, not a fork.
-Where Xilem has no answer for something the editor needs, the answer
-lives here in application code, and `docs/XILEM-GAPS.md` records it.
+The in-memory font is `norad::Font`. Keep application state and platform work
+out of Core. Keep font mutations, analysis, formats, shaping, interpolation,
+selection, and undo in Core when they can be shared.
 
-## Which shell is which
-
-Work directly on `main` in the main checkout unless a task explicitly
-requires isolation. The old visual-parity worktree is historical; do not
-start new work there. Preserve in-progress isolated menu work until it
-is reviewed and integrated.
-
-The application boundaries are:
-
-- No local-AI or task logic lives in a shell. Models, proposals, undo,
-  and the task list live in runebender-core and in font-ml.
-- font-ml is a separate binary. A shell runs it as a subprocess and
-  reads JSON back. It never links font-ml or candle.
-- A proposal from a model is a UFO layer named
-  `com.runebender.proposal.<task>`. The shell shows it and asks core to
-  install or discard it. It does not interpret it.
-- The shell renders state from core. If a feature needs new state,
-  add the state to core first.
-- Full GPUI parity is the current target. `GPUI-PARITY.md` in the
-  repository root records the baseline, work order, and acceptance
-  checks. Implement those behaviors in Xilem; do not mirror new features
-  into GPUI unless the user explicitly requests a fallback fix.
-- GPUI is the behavioral reference; Linebender is the architectural
-  target. Prefer Linebender APIs and conventions, and record reusable
-  gaps as contribution opportunities in the appropriate ecosystem
-  project. Do not transplant GPUI architecture merely to match it.
-
-## Layout
-
-The layout mirrors runebender-gpui file for file where the two
-share a concern, so a change in one editor is easy to carry to the
-other. Each directory has a `mod.rs` that says what belongs in it.
-
-| Path | Holds |
+| Path | Responsibility |
 |---|---|
-| `main.rs` | `main()` and the module list |
-| `cli.rs` | startup arguments and headless command adapters |
-| `workspace.rs` | the `Workspace` struct and the types it is made of |
-| `actions.rs` | the action list, the native menu bar, and the keymap behind both |
-| `launch.rs` | the event loop, the window, and the first frame |
-| `model.rs` | the font model: a loaded font plus a per-glyph cache. The next thing to replace with core's `Master` and `Project` |
-| `view/` | what the window shows: `canvas/` (editor, grid), `panels/` (one file per region), `chrome`, `render`, `design`, `recipes`, `theme` |
-| `edit/` | what the user does: `commands`, `inspector`, `session`, `sidebar`, `text_tool` |
-| `platform/` | the world outside the window: `host` (files), `watch`, `screenshot` |
-| `widgets/` | icon tiles, text labels, the context menu, the shortcut host |
+| `src/main.rs` | executable composition root |
+| `src/cli.rs` | arguments and headless adapters |
+| `src/launch.rs` | native event loop and window setup |
+| `src/workspace.rs` | application and open-document state |
+| `src/actions.rs` | one action table for menus and shortcuts |
+| `src/edit/` | application editing commands and session adapters |
+| `src/platform/` | files, watching, live endpoints, and screenshots |
+| `src/view/` | application views and canvas widgets |
+| `src/widgets/` | reusable widgets missing from the framework |
+| `crates/runebender-core/src/` | font library by concern |
+| `web/` | browser host for the shared widget tree |
 
-Where the two editors differ: GPUI builds its input widgets in
-`wiring.rs`; Xilem's views are rebuilt every frame from state, so
-there is no wiring step and `recipes.rs` holds the view functions
-that repeat. `design.rs` is the design system Xilem does not ship.
-
-## Porting between the two editors
-
-The same editor is built twice, on GPUI and on Xilem. A feature that
-lands in one should be cheap to carry to the other, so the two share
-a file layout: the same concern lives at the same path in both, and
-a change is a diff you can read side by side.
-
-Mirror where the concern is shared. Diverge where the framework
-forces it, and say so in the file's own module comment. Do not force
-a match that costs either editor clarity.
-
-| Concern | Both |
-|---|---|
-| `main()` and the module list | `main.rs` |
-| The `Workspace` struct | `workspace.rs` |
-| Actions, the menu bar, the keymap | `actions.rs` |
-| The event loop and the first frame | `launch.rs` |
-| What the window shows | `view/` |
-| What the user does | `edit/` |
-| The world outside the window | `platform/` |
-| Toolkit pieces the framework lacks | `widgets/` |
-| The glyph canvas and the grid | `view/canvas/` |
-| One file per panel region | `view/panels/` |
-| Files, and reloading one master | `platform/host.rs` |
-| Watching for other writers | `platform/watch.rs` |
-
-Where they differ on purpose:
-
-| GPUI | Xilem | Why |
-|---|---|---|
-| `wiring.rs` | `view/recipes.rs` | GPUI builds input widgets once and subscribes. Xilem rebuilds views from state every frame, so there is nothing to wire; what repeats becomes a recipe. |
-| GPUI's own scale | `view/design.rs` | GPUI ships `px_1`, `text_xs`, `rounded_md`. Xilem takes a number wherever a measurement goes, so the scale is application code. |
-| `view/blur.rs` | none | GPUI blurs box shadows and nothing else, so the preview's blur is rasterized on the CPU. Vello blurs what it is asked to. |
-| `RB_OPEN_GLYPH` | `--bin screenshot` | Two ways to see a frame without clicking. Xilem has a headless render path; GPUI opens on a named glyph instead. |
-| `widgets/` | `widgets/` | Same directory, different contents: each toolkit is missing different things. |
-
-When one editor gets ahead, the port is: read the file at the same
-path in the repository that has the feature, and write the same
-decomposition here. If it needs a new file, give it the name the
-other one uses, so the next port in the other direction is a diff.
+Read the module header for the area you change. Keep one concern per file where
+that remains clearer than another layer of indirection.
 
 ## Build and test
 
+The Rust toolchain is pinned. CI runs Linux and macOS with warnings denied, plus
+a separate Windows smoke workflow.
+
 ```sh
-cargo run path/to/Font.designspace
-cargo test
-cargo fmt
-cargo clippy --all-targets
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo doc --workspace --no-deps --locked
+cargo test --workspace --locked -- --test-threads=1
+cargo build --workspace --release --locked
 ```
 
-`rust-toolchain.toml` pins stable. To work on core at the same time,
-clone it beside this repository and put a `paths` override in a
-`.cargo/config.toml` above both checkouts, never inside either.
+Set `RUNEBENDER_TEST_FONTS` to a directory containing test UFOs and a
+designspace when the adjacent Virtua Grotesk checkout is unavailable. Do not
+count ignored model tests as passing runtime coverage.
 
-`cargo run --bin screenshot` renders one frame to a PNG with no
-window, which is how the interface is checked without launching it.
-Do not launch the GUI to check your work while the user is at the
-machine.
+For a clean-checkout proof, clone or archive the repository into a temporary
+directory and run the documented commands there. Do not add local path patches
+to a committed Cargo configuration.
 
-## The gate
+## Interface work
 
-CI runs on every push, on Linux and macOS: `cargo fmt --check`,
-`cargo clippy --all-targets`, `cargo doc --no-deps`, `cargo test`,
-and a release build, with warnings denied. The Linux job installs
-the libraries winit and Vello link against.
+Read `DESIGN.md` before changing a view. Use `view::theme` for colors,
+`view::design` for measurements, and `view::recipes` for repeated controls.
+Views read workspace state; commands own intent; Core owns font behavior.
 
-CI's stable can be newer than yours. If clippy passes locally and
-fails there, run it under the toolchain CI reports.
+Use the headless screenshot path for visual checks. Inspect Gray and Light when
+UI code changes, and wait for idle auto-hide before accepting a capture. A
+headless image does not prove native pointer, IME, accessibility, or GPU
+behavior. Do not open a foreground GUI while the user is using the machine.
 
-## The interface
+The browser reuses the desktop widget tree but has an in-memory font and a
+separate Cargo workspace. When shared sources change, run its build and smoke
+checks as described in `web/README.md`.
 
-`DESIGN.md` says how to change what a person looks at: the token
-rule, the canvas and the chrome, how interface text is worded, and
-the mistakes worth knowing by name. Read it before touching a view.
-The tokens themselves are `view/theme.rs` and `view/design.rs`.
+## Platform boundaries
 
-## Conventions
+- macOS uses `muda` for the operating-system menu bar.
+- Linux, Windows, and the browser use the in-window Masonry menu.
+- Live editor sockets are Unix-only; keep headless file commands portable.
+- File dialogs are an application concern. Core must not depend on them.
 
-- Call `theme::` accessors instead of naming a colour, and the
-  `design::` tokens instead of a size, radius, or stroke width.
-- A command is the whole of one intent, in `edit/commands.rs`.
-- Views read the workspace; they do not hold state.
-- No path to a sibling checkout in a committed file.
-- Core is pinned by git revision in `Cargo.toml`. Bump it when core
-  changes.
+Do not turn a failing platform check green by removing it. Record an honest
+support limit in `docs/known-limitations.md` when a failure cannot be reproduced
+or fixed in scope.
+
+## Rust conventions
+
+- Follow the current Linebender canonical lint and rustfmt sets.
+- Every public Core item needs a useful doc comment.
+- An in-place edit returns whether or how much it changed.
+- A UFO lib key has one constant, reader, and writer.
+- Tests live beside the code they verify.
+- Edition 2024; line width 100; no `unsafe` in workspace code.
+- Prefer a reasoned `expect` or a structural fix to a local lint allowance.
 
 ## Supply chain
 
-Dependencies are vetted with cargo-vet; `supply-chain/` holds the
-audits and exemptions, and CI runs `cargo vet --locked`. CI also runs
-`cargo deny check advisories`, which is the other half: vet says
-where a crate came from, deny says whether anyone has published a
-vulnerability against it. `deny.toml` holds the ignore list, one
-entry per advisory with the reason and what would let it go. When you
-add or bump a dependency, run `cargo vet` and record the result on
-purpose.
+Dependencies are checked with `cargo vet --locked` and
+`cargo deny --locked check advisories`. Imports, audits, and exemptions live in
+`supply-chain/`. Never add an audit without reviewing the required code and
+criteria. Never add or broaden an exemption silently. Dependency changes must
+include an explicit provenance decision.
 
-## Releases
+## Changes and Git
 
-User-visible changes go under `Unreleased` in `CHANGELOG.md` as they
-land. No release exists yet. When the first one is cut:
-
-1. CI green on `main`.
-2. `cargo vet` and `cargo deny check advisories` clean.
-3. Pin `runebender-core` to that crate's release tag, not a loose
-   revision.
-4. Move the `Unreleased` notes in `CHANGELOG.md` under the new
-   version heading, with the date.
-5. Bump `version` in `Cargo.toml`, tag `vX.Y.Z`, and push the tag.
-6. Make a GitHub release from the tag with the changelog section as
-   the body.
-
-Semantic Versioning from the first release; before 1.0, a breaking
-change bumps the minor version.
-
-Xilem is a pinned git dependency, so this crate cannot be published
-to crates.io. A release is a git tag, and users install with
-`cargo install --git ... --tag vX.Y.Z`.
-
-## Git
-
-- Commit locally as you work. Push when a phase is coherent.
-- Commit messages say why. The diff shows what.
-- No `Co-Authored-By` trailers for agents.
-- Stage explicit paths. Never `git add -A`.
-
-## Unified workspace
-
-This repository owns Core and the Xilem application together. Edit font operations
-in `crates/runebender-core`; do not update the legacy sibling Core repository
-or its GPUI consumer for new work. The root package is `runebender`, so
-`cargo run --release -- <font>` opens the editor and `cargo run -- <subcommand>`
-runs headlessly. Core is library-only; do not add a second CLI executable. Validate with `cargo test --workspace
--- --test-threads=1` and `cargo clippy --workspace --all-targets`.
+Record user-visible changes under `Unreleased` in `CHANGELOG.md`. Preserve
+unrelated working-tree changes. Stage explicit paths, never `git add -A`.
+Commit coherent phases with messages that explain why, and do not add agent
+co-author trailers. Do not force-push or remove other worktrees.

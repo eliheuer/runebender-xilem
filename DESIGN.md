@@ -1,201 +1,102 @@
 # Design
 
-How the Runebender interface is designed: what a change should look
-like, and how to tell a good one from a bad one. For anyone, human or
-agent, changing what a person sees.
+Runebender is a dense working tool. Its interface should keep the glyph primary,
+make state legible without decoration, and remain stable while values change.
 
-The rules below are shared with
-[runebender-gpui](https://github.com/eliheuer/runebender-gpui),
-the other Runebender editor.
-The two look the same on purpose, so keep the shared sections in step:
-a difference between these two files should be a difference the
-framework forces, not one that crept in.
+## Name the role
 
-## The one rule
+Use a semantic token, never a one-off visual value.
 
-Name a token. Never name a value.
+- Colors come from Core's `themes/runebender.theme.json` through
+  `src/view/theme.rs`.
+- Space, sizes, radii, strokes, and type come from `src/view/design.rs`.
+- Repeated control structures belong in `src/view/recipes.rs`.
 
-A colour, a corner radius, a stroke width, a gap, a text size: each
-has a name in the shared theme, and the name is what the code says.
-The moment a literal `0x808080` or a bare `7.0` appears in a view,
-four themes stop agreeing and nobody can find the value again.
+A new color needs a named role in every shipped theme. A new measurement needs
+a place in the application scale and a reason it is not an existing token.
 
-Every token comes from `themes/runebender.theme.json` in this
-repository. The editors resolve the same file, so a change lands in
-all of them at once and none can drift. If you need a colour that is
-not there, add the token to the file and give it a name that says
-what it is for (`point.smooth.fill`), not what it looks like
-(`light_blue`).
+## Color
 
-## Colour
+Themes are authored in OKLCH. Gray is the default; Light is the required
+contrast check; Dark alone can hide mistakes.
 
-Colour is authored in OKLCH. Lightness and chroma mean the same
-thing at every hue there, so a set of colours reads as one family
-rather than a pile. Three themes ship: Dark, Gray (the default), and
-Light. More come once the token system is settled.
-
-- A token is named after its job. `metrics.baseline`, not `red_line`.
-- Hue carries meaning on the canvas: a corner point and a smooth
-  point are told apart by shape and colour together, never by colour
-  alone.
-- A selected control in the chrome is inverted, ink on the panel's
-  fill, never tinted. A hue that reads on one theme is invisible on
-  another and to some eyes on all of them. Nothing in the chrome or
-  in the canvas's tool feedback uses the accent hue at all: value and
-  weight say what is active. The warning hue is the one colour with a
-  job, and its job is "something is wrong".
-- Every new token gets a value in all three themes. A theme that
-  falls back is a theme that looks broken in one place.
-- Check a change in Gray and in Light. Dark hides low contrast.
+- Hue on the canvas must carry meaning and be reinforced by shape.
+- Selection in chrome uses value contrast, not an arbitrary accent.
+- Structural keylines stay distinct from filled glyph and proof ink.
+- Warning and error colors are reserved for those states.
+- Every token resolves in every theme; no per-view fallback colors.
 
 ## Space and size
 
-Space comes from a closed scale, not from arithmetic. Two panels
-that are eight apart and nine apart look like a mistake, and it is
-the kind of mistake nobody can see but everybody feels.
-
-- Space between things, never padding inside one thing plus a margin
-  outside another. Pick one and keep it.
-- Controls line up on a shared height. A row of controls that are
-  within two pixels of each other is worse than a row that is
-  obviously different.
-- Round to whole pixels. The canvas draws on a scaled grid; the
-  chrome does not.
+- Use the closed spacing and control-size scales.
+- Put spacing between siblings in one place; do not combine internal padding
+  and external margins to approximate a gap.
+- Align controls to shared heights.
+- Keep chrome on whole logical pixels. Canvas geometry may use the scaled
+  drawing transform.
+- Content changes must not make panels jump or reorder under the pointer.
 
 ## Type
 
-One typeface for the interface, at one size. Colour carries
-emphasis, not size: a label and its value are the same size, and the
-label is dimmer. Nothing in the chrome sets its own size; the cell
-captions in the grid use the same one, and a cell too narrow to hold
-a caption holds none.
+The interface uses one family and a small named type scale. Color and placement
+carry hierarchy more often than size.
 
-Numbers in the interface are what a designer reads all day. They are
-right-aligned when stacked, they keep a fixed number of decimals so
-the column does not jump, and they never lose their unit.
+- Use the shared label, input, and selectable-prose helpers.
+- Right-align stacked numeric values and preserve meaningful units.
+- Truncate single-line labels intentionally; wrap prose intentionally.
+- Do not set a local font family or size in an ordinary view.
 
-## The canvas and the chrome
+## Canvas and chrome
 
-They are two design problems and mixing them is the most common way
-to make the editor feel wrong.
+The canvas explains the current glyph. The chrome explains the application.
 
-**The canvas** shows the glyph. Everything drawn there competes with
-the outline for attention, so it earns its place or it goes: thin
-rules, low contrast, no fills behind anything, no shadow, nothing
-animated. If a designer cannot see the shape, nothing else you did
-matters.
-
-**The chrome** is the panels, bars, and menus. It is dense, quiet,
-and predictable. It does not move when a value changes. A panel that
-resizes itself as numbers grow is a panel nobody can aim at.
-
-Something belongs on the canvas only if it is about this glyph at
-this moment. Everything else is chrome.
+Canvas marks compete with the outline, so keep them thin, quiet, and directly
+relevant to the active edit. Panels, menus, tabs, buttons, and persistent status
+belong in chrome. Avoid cards, shadows, hover decoration, or animation on top of
+the drawing unless the mark communicates editing state that cannot live
+elsewhere.
 
 ## Words
 
-Interface text is part of the design.
+- Sentence case for labels, buttons, and menu items.
+- Commands are verbs; labels are nouns without colons.
+- Report the result: “Saved 3 glyphs,” not “Save complete.”
+- No exclamation marks, apologies, or conversational filler in status text.
+- Error text says what failed and what the user can do next.
 
-- Sentence case for everything: menu items, labels, buttons.
-- A command is a verb: "Add extremes", not "Extremes".
-- A label is a noun, with no colon.
-- Say what happened, not that something happened: "Saved 3 glyphs",
-  not "Save complete".
-- No exclamation marks, no apologies, no "Oops".
-- The status line reports; it does not chat.
+## Common failures
 
-## Mistakes with names
+**Themed by hand.** One literal color looks correct in the current theme and
+breaks the others.
 
-These are the ways generated interface work goes wrong. Each one
-looks reasonable in isolation.
+**Off the scale.** A near-duplicate gap or radius makes the system harder to
+reason about.
 
-**Themed by hand.** A view that reads a token for most colours and
-names one literal for the odd case. It looks right in the theme you
-were in, and only that one.
+**Chrome on the canvas.** Application decoration obscures the work.
 
-**Off the scale.** A gap of 10 where the scale has 8 and 12, because
-10 looked better on this screen. Now the scale has a hole and the
-next person adds 11.
+**Decoration without information.** A divider, icon, or color reads as a signal
+even when it has no meaning.
 
-**Chrome on the canvas.** A rounded panel, a drop shadow, or a hover
-highlight drawn over the glyph. It reads as an application feature
-sitting on the artwork.
+**Layout that moves.** Dynamic widths and surprise controls make familiar
+targets hard to aim at.
 
-**Decoration standing in for information.** An icon that means
-nothing, a divider that separates nothing, a colour that carries no
-meaning. Every mark in an editor is read as a signal, so a mark with
-no meaning is a lie.
+**One unusually clever control.** Local novelty costs more than it saves in a
+dense editor.
 
-**Layout that moves.** A panel that changes width with its content,
-a list that reorders while the pointer is over it, a control that
-appears on hover in a place a click was heading.
+## Visual verification
 
-**Cleverness in one place.** A single control designed better than
-everything around it is worse than a plain one. Consistency is what
-lets a person stop looking.
+Render the actual application widget tree headlessly in Gray and Light:
 
-## Reference
+```sh
+RUNEBENDER_SCREENSHOT=/tmp/runebender-gray.png \
+RUNEBENDER_THEME=gray RUNEBENDER_SIZE=1100x720 \
+cargo run --locked -- path/to/Font.designspace
 
-The Gray theme's visual reference is Ableton Live, the session and
-arrangement views. Named here so a change can be checked against
-something, not so the editor copies it. What the reference does that
-the Gray theme is after:
+RUNEBENDER_SCREENSHOT=/tmp/runebender-light.png \
+RUNEBENDER_THEME=light RUNEBENDER_SIZE=1100x720 \
+cargo run --locked -- path/to/Font.designspace
+```
 
-- A mid grey ground everywhere, with the content carrying the colour.
-  Clips and tracks are flat, saturated swatches with dark ink on them,
-  which is what the glyph grid's mark cells already are.
-- Rules, not tints, draw the layout. One-pixel lines a step darker
-  than the ground separate panels and rows. Nothing has a shadow.
-- Selection is ink, not hue: the chosen thing goes dark with light
-  text.
-- Controls are small, dense, and all on one height. A field is a
-  pale slab with a value in it; a button is the same slab with a verb.
-- Small tab strips switch what a region shows: a row of icon tabs at
-  the top of a device or clip panel, on the panel's own ground,
-  with the active tab filled. A candidate for the left panel's
-  Glyphs/Shapes/Axes/Local AI tabs and for the header's Font and
-  session tabs. Not built yet.
-
-Colours are not to be copied from the reference; the token file
-decides them. The reference settles questions of weight, density,
-and where a line goes.
-
-## Where the tokens are
-
-| What | Where |
-|---|---|
-| Colour | `view/theme.rs`, resolved from core's `themes/runebender.theme.json` |
-| Space, size, radius, stroke, type | `view/design.rs`, this application's own scale |
-| Repeated view shapes | `view/recipes.rs` |
-| Drawing on the canvas | `view/canvas/` |
-
-Xilem takes a number wherever a measurement is needed, so the scale
-is application code here rather than something the framework ships.
-`design.rs` is that scale: `Space`, `ControlSize`, `Stroke`,
-`Radius`, `ButtonShape`, `TextSize`, and `Region`, which says what each kind of
-container measures. Use those names. A measurement that is not in the scale is
-either a new entry in the scale, argued for, or the wrong measurement.
-
-All ordinary pressable controls use `recipes::button`, not Xilem's raw button.
-That recipe is square by construction. A control may opt in to
-`ButtonShape::Circular` only when its silhouette carries meaning, currently the
-title-bar add button, coordinate dots, and colour swatches. This keeps stock
-framework rounding from leaking into a panel one call site at a time.
-
-This is the clearest difference from runebender-gpui, where the
-framework ships the scale and this file does not exist. Keeping the
-vocabulary in one place is what makes that comparison honest.
-
-Views are rebuilt every frame from state. They read the workspace;
-they do not hold state of their own. A shape that appears twice
-becomes a recipe in `recipes.rs`. `Region` decides padding and gap
-for a container, so do not set them by hand next to one that already
-does.
-
-## Looking at it
-
-`cargo run --bin screenshot` renders one frame to a PNG with no
-window, which is how a change is checked here. Check it in Gray and
-in Light.
-
-Do not launch the GUI while the user is at the machine.
+Inspect both images at the same logical and device-pixel size. Headless CPU
+rendering is visual evidence only; it does not establish native GPU, input,
+accessibility, or platform behavior.
