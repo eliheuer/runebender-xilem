@@ -38,6 +38,9 @@ a separate Windows smoke workflow.
 
 ```sh
 cargo fmt --all --check
+taplo fmt --check --diff
+bash .github/copyright.sh
+typos
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo doc --workspace --no-deps --locked
 cargo test --workspace --locked -- --test-threads=1

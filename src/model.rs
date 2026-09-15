@@ -1030,10 +1030,10 @@ mod tests {
     }
 
     #[test]
-    fn parity_fixture_keeps_an_incompatible_master_pair() {
+    fn fixture_keeps_an_incompatible_master_pair() {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("docs/parity/fixtures/incompatible/Test.designspace");
-        let model = FontModel::open(&path).expect("the checked-in parity fixture opens");
+            .join("tests/fixtures/incompatible/Test.designspace");
+        let model = FontModel::open(&path).expect("the checked-in test fixture opens");
 
         assert_eq!(model.incompatible_count(), 1);
         let detail = model

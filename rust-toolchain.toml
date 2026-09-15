@@ -1,4 +1,4 @@
-# Pin stable so local builds and CI use the same toolchain channel.
-# Nothing here needs nightly.
+# Keep local builds on the workspace's stated minimum Rust version.
+# CI uses the same value explicitly.
 [toolchain]
-channel = "stable"
+channel = "1.96"

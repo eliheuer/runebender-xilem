@@ -52,7 +52,9 @@ pub fn svg_to_contours(
             continue;
         };
         let body = &after[1..];
-        let Some(end) = body.find(quote) else { break };
+        let Some(end) = body.find(quote) else {
+            break;
+        };
         let data = &body[..end];
         let path = BezPath::from_svg(data).map_err(|e| format!("SVG path: {e}"))?;
         combined.extend(path.elements().iter().copied());

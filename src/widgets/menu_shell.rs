@@ -390,7 +390,9 @@ impl Widget for MenuShell {
             }
             _ => return,
         };
-        let Some(index) = menu_at(point) else { return };
+        let Some(index) = menu_at(point) else {
+            return;
+        };
         match event {
             PointerEvent::Down(PointerButtonEvent {
                 button: Some(PointerButton::Primary),
@@ -807,7 +809,9 @@ impl MenuPopup {
             });
             return;
         }
-        let MenuRow::Action(index) = row else { return };
+        let MenuRow::Action(index) = row else {
+            return;
+        };
         if !self.states[index].enabled {
             return;
         }

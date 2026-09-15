@@ -1,0 +1,32 @@
+# See https://github.com/crate-ci/typos/blob/master/docs/reference.md.
+
+[files]
+# Generated font and binary evidence files are not prose or source code.
+extend-exclude = [
+    "**/*.glif",
+    "**/*.png",
+    "**/*.woff2",
+    "/.git",
+    "crates/runebender-core/data/gf-glyphsets.json",
+    "crates/runebender-core/data/new-font-template.json",
+    "supply-chain/",
+    "web/demo-font.json",
+]
+ignore-hidden = false
+
+[default]
+# Arabic glyph names from the Adobe/Google Fonts production convention.
+extend-ignore-re = ["teh(-ar|Marbuta)"]
+
+[default.extend-identifiers]
+# OpenType axis tag and compact integer-grid coordinate.
+wdth = "wdth"
+iy = "iy"
+iy0 = "iy0"
+iy1 = "iy1"
+Nd = "Nd"
+ot = "ot"
+
+[default.extend-words]
+# Project name; this is not a misspelling of "virtual".
+Virtua = "Virtua"

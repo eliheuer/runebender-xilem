@@ -3,23 +3,14 @@ members = [".", "crates/runebender-core"]
 default-members = ["."]
 resolver = "2"
 
-[package]
-name = "runebender"
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.96"
 license = "Apache-2.0 OR MIT"
-description = "Runebender, a font editor built with Xilem"
 repository = "https://github.com/eliheuer/runebender-xilem"
-keywords = ["font", "editor", "typography", "ufo", "xilem"]
-categories = ["graphics", "text-editors"]
-publish = false
 
-[[bin]]
-name = "runebender"
-path = "src/main.rs"
-
-[lints.rust]
+[workspace.lints.rust]
 unsafe_code = "forbid"
 
 # LINEBENDER LINT SET - Cargo.toml - v8
@@ -40,7 +31,7 @@ unused_lifetimes = "warn"
 unused_macro_rules = "warn"
 unused_qualifications = "warn"
 
-[lints.clippy]
+[workspace.lints.clippy]
 too_many_arguments = "allow"
 
 allow_attributes_without_reason = "warn"
@@ -69,6 +60,25 @@ negative_feature_names = "warn"
 redundant_feature_names = "warn"
 wildcard_dependencies = "warn"
 # END LINEBENDER LINT SET
+
+[package]
+name = "runebender"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Runebender, a font editor built with Xilem"
+repository.workspace = true
+keywords = ["font", "editor", "typography", "ufo", "xilem"]
+categories = ["graphics", "text-editors"]
+publish = false
+
+[[bin]]
+name = "runebender"
+path = "src/main.rs"
+
+[lints]
+workspace = true
 
 [dependencies]
 # Upstream Xilem, pinned so framework changes remain deliberate and reviewable.

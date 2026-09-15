@@ -13,9 +13,9 @@
 [advisories]
 unmaintained = "workspace"
 ignore = [
-  # quick-xml 0.38 reaches us through norad, which pins it. Our own
-  # dependency is on 0.41, which is fixed. Remove these when norad
-  # releases against 0.41 or later.
-  "RUSTSEC-2026-0194",
-  "RUSTSEC-2026-0195",
+    # quick-xml 0.38 reaches us through norad, which pins it. Our own
+    # dependency is on 0.41, which is fixed. Remove these when norad
+    # releases against 0.41 or later.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
 ]

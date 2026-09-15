@@ -601,7 +601,7 @@ fn snap_all(q: &mut [Point], on: &[bool], n: usize, tol: f64) {
         let d = smooth_pos - anchor;
         // A handle that runs horizontally/vertically from its node sits at an
         // extremum: pin the perpendicular coordinate to the node so the two
-        // handles stay colinear (flat tangent) and on-grid. Only the along-axis
+        // handles stay collinear (flat tangent) and on-grid. Only the along-axis
         // length is free to snap. Diagonal handles snap on both axes.
         let lock_x = d.x.abs() < 0.5; // vertical handle → x pinned
         let lock_y = d.y.abs() < 0.5; // horizontal handle → y pinned

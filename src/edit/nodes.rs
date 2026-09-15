@@ -985,7 +985,7 @@ mod tests {
             "clone Virtua Grotesk beside this repository"
         );
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("docs/parity/2026-09-11/bolden-review.nodes.json");
+            .join("tests/fixtures/nodes/bolden-review.nodes.json");
         let root = std::env::temp_dir().join(format!(
             "runebender-xilem-real-nodes-{}-{}",
             std::process::id(),

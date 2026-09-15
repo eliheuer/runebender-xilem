@@ -816,7 +816,9 @@ impl EditorWidget {
     /// letters of a word. Typing is for judging spacing, so the view has
     /// to hold the line.
     fn fit_text(&mut self) {
-        let Some(text) = &self.text else { return };
+        let Some(text) = &self.text else {
+            return;
+        };
         let m = self.session.metrics;
         let width: f64 = text
             .placed()

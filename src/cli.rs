@@ -1612,7 +1612,9 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
         let _ = out.flush();
     };
     for line in stdin.lock().lines() {
-        let Ok(line) = line else { break };
+        let Ok(line) = line else {
+            break;
+        };
         if line.trim().is_empty() {
             continue;
         }
@@ -1628,7 +1630,9 @@ fn mcp_serve(font: Option<&Path>, session: Option<&Path>, live: bool, tool: Opti
         let method = message.get("method").and_then(|m| m.as_str()).unwrap_or("");
         let params = message.get("params").cloned().unwrap_or(json!({}));
         // A notification has no id and gets no reply.
-        let Some(id) = id else { continue };
+        let Some(id) = id else {
+            continue;
+        };
         let result = match method {
             "initialize" => {
                 let version = params

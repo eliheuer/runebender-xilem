@@ -70,6 +70,9 @@ The user documentation is at [runebender.org](https://runebender.org/docs/).
 
 ```sh
 cargo fmt --all --check
+taplo fmt --check --diff
+bash .github/copyright.sh
+typos
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo doc --workspace --no-deps --locked
 cargo test --workspace --locked -- --test-threads=1
@@ -78,6 +81,9 @@ cargo vet --locked
 cargo deny --locked check advisories
 ```
 
+CI installs Taplo and `typos`; local runs need `taplo-cli` 0.9.3 and
+`typos-cli` 1.45.0.
+
 Tests that need a full font read `RUNEBENDER_TEST_FONTS`, or
 `../virtua-grotesk/sources` when that repository is beside this one. Four
 model- or fixture-dependent tests are ignored by default and are not part of
@@ -85,6 +91,15 @@ the ordinary test count.
 
 The canonical development rules are in [AGENTS.md](AGENTS.md); visual changes
 also follow [DESIGN.md](DESIGN.md).
+
+## Community
+
+Issues and pull requests are welcome. The
+[Rust code of conduct](https://www.rust-lang.org/policies/code-of-conduct)
+applies.
+
+Unless stated otherwise, contributions intentionally submitted for inclusion
+are licensed under the same terms as the project.
 
 ## License
 

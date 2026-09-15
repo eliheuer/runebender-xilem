@@ -1,0 +1,6 @@
+exclude = ["**/.worktrees/**", "**/target/**"]
+
+[formatting]
+align_comments = false
+column_width = 100
+indent_string = "    "
