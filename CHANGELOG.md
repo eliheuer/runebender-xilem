@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Center glyph metric rules on their design coordinates so the zero sidebearing
+  and baseline remain aligned with the dot-grid intersections at every scale.
+
 - Keep Gray edit-canvas structure darkest while softening composed glyphs,
   proof text, footer appearance marks, and the coordinate-picker selection.
 

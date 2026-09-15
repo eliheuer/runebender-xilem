@@ -53,6 +53,18 @@ fn round_grid_dot(at: Point, diameter: f64) -> kurbo::BezPath {
     kurbo::Shape::to_path(&Circle::new(at, diameter / 2.0), 0.1)
 }
 
+/// A horizontal rule whose visual centre stays on the supplied coordinate.
+fn horizontal_rule_rect(x0: f64, x1: f64, y: f64, width: f64) -> Rect {
+    let half = width / 2.0;
+    Rect::new(x0.min(x1), y - half, x0.max(x1), y + half)
+}
+
+/// A vertical rule whose visual centre stays on the supplied coordinate.
+fn vertical_rule_rect(x: f64, y0: f64, y1: f64, width: f64) -> Rect {
+    let half = width / 2.0;
+    Rect::new(x - half, y0.min(y1), x + half, y0.max(y1))
+}
+
 /// Hermite ease from zero to one.
 fn smoothstep(t: f64) -> f64 {
     let t = t.clamp(0.0, 1.0);
@@ -427,9 +439,8 @@ pub(crate) enum MetricField {
 impl EditorWidget {
     /// The metrics panel that floats over the drawing, centered at its bottom.
     ///
-    /// The GPUI build has this, and it is a large part of why that
-    /// editor reads better: the numbers you are working on sit with the
-    /// drawing instead of in a column at the side.
+    /// The numbers being edited sit with the drawing instead of in a column at
+    /// the side, which keeps the relationship visible.
     ///
     /// This is painted rather than composed. The view-land way is a
     /// `zstack` around the editor pane, and that one extra container
@@ -635,7 +646,7 @@ impl EditorWidget {
             );
         }
         if let Some(sb) = &bearings {
-            // Three boxes you can type in, like the GPUI build's. Each
+            // Three boxes you can type in. Each
             // one is drawn here and hit tested from the same rectangles,
             // because a painted control that computes its geometry twice
             // will drift the moment either copy is edited.
@@ -1229,15 +1240,12 @@ impl Widget for EditorWidget {
         levels.dedup_by(|a, b| (*a - *b).abs() < 0.001);
         for y in levels {
             let sy = (affine * Point::new(0.0, y)).y;
-            painter.fill_rect(Rect::new(x0.min(x1), sy, x0.max(x1), sy + rule), frame);
+            painter.fill_rect(horizontal_rule_rect(x0, x1, sy, rule), frame);
         }
         let top = (affine * Point::new(0.0, box_top)).y;
         let bottom = (affine * Point::new(0.0, m.descender)).y;
         for x in [x0, x1] {
-            painter.fill_rect(
-                Rect::new(x, top.min(bottom), x + rule, top.max(bottom)),
-                frame,
-            );
+            painter.fill_rect(vertical_rule_rect(x, top, bottom, rule), frame);
         }
 
         // Editing affordances only render on a master. Off a master the view
@@ -1354,8 +1362,8 @@ impl Widget for EditorWidget {
                 } else {
                     (hue, pal.app)
                 };
-                // A point is a dark window with a coloured ring, which is
-                // the GPUI build's recipe and the web editor's before it: a
+                // A point is a dark window with a coloured ring, shared with
+                // the web editor: a
                 // halo so the point keeps an edge over the outline, an
                 // interior that masks what runs under it, then a
                 // constant-width ring. A solid dot loses its shape against
@@ -2407,9 +2415,8 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
 /// The analysis overlays: what the editor draws on top of the outline
 /// besides the points.
 ///
-/// These match the GPUI build's Measure and Curves options, and all of
-/// them read from `runebender-core`, so the three editors agree about
-/// what a kink or a stem is.
+/// They read from `runebender-core` so analysis remains consistent across
+/// interfaces.
 #[derive(Clone, Copy, Default, PartialEq)]
 pub(crate) struct ViewOptions {
     /// Draw design-grid lines instead of dots.
@@ -2703,6 +2710,17 @@ mod tests {
             0,
             "a rounded dot does not fill its bounding-box corner"
         );
+    }
+
+    #[test]
+    fn metric_rules_are_centered_on_their_design_coordinates() {
+        let horizontal = horizontal_rule_rect(10.0, 30.0, 12.25, 1.0);
+        assert_eq!(horizontal.center().y, 12.25);
+        assert_eq!(horizontal.height(), 1.0);
+
+        let vertical = vertical_rule_rect(18.75, 40.0, 5.0, 1.0);
+        assert_eq!(vertical.center().x, 18.75);
+        assert_eq!(vertical.width(), 1.0);
     }
 
     #[test]
