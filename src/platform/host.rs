@@ -407,7 +407,12 @@ impl Workspace {
             Ok(()) => {
                 self.source_fingerprint = source_fingerprint(&self.source_roots);
                 self.modified = false;
-                self.note = format!("Saved {}", self.font.source().display());
+                let source = self.font.source();
+                let label = source
+                    .file_name()
+                    .map(|name| name.to_string_lossy())
+                    .unwrap_or_else(|| source.as_os_str().to_string_lossy());
+                self.note = format!("Saved {label}");
                 true
             }
             Err(e) => {
@@ -1058,6 +1063,10 @@ mod tests {
         workspace.open_glyph(0);
         workspace.set_advance_from_buf("620".into());
         assert!(workspace.save());
+        assert_eq!(
+            workspace.note,
+            format!("Saved {}", path.file_name().unwrap().to_string_lossy())
+        );
         assert!(workspace.font.master().can_undo(0));
         workspace.reload_from_disk();
         assert_eq!(workspace.session.advance(), 620.0);

@@ -11,6 +11,12 @@ releases begin.
   parameter fields, saved UFO sources, cubic conversion with Undo, and a
   whole-font conversion command. Kurbo fits the sampled field boundaries.
 
+- Let expanded overview inspector sections reflow above the glyph preview,
+  compact glyph identity fields, and strengthen their labels and keylines.
+
+- Unify the overview footer's sidebar, add, remove, grid, and list controls on
+  one compact icon treatment, and keep save confirmations from displacing them.
+
 - Align the overview search, glyph captions, collapsed inspector stack, and
   preview surface to the shared design tokens.
 

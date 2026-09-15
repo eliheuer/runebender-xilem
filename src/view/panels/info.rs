@@ -124,29 +124,9 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     // build lets you rename a glyph, set its codepoint and set its width
     // without opening it. These write to the highlighted cell.
     let overview_fields = (!editing && app.selected.is_some()).then(|| {
-        let master = app
-            .font
-            .master_names()
-            .get(app.font.active())
-            .cloned()
-            .unwrap_or_default();
         xcolumn(
             Region::Form,
             (
-                sized_box(xrow(
-                    Region::Inline,
-                    (
-                        label("Master")
-                            .text_size(TextSize::Body.px())
-                            .color(pal.text_muted),
-                        FlexSpacer::Flex(1.0),
-                        label(master).text_size(TextSize::Body.px()).color(pal.text),
-                    ),
-                ))
-                .dims(Dimensions::new(
-                    Dim::Stretch,
-                    Dim::Fixed(Length::px(design::GLYPH_FACT_ROW_HEIGHT)),
-                )),
                 overview_identity_field(
                     pal,
                     "Glyph name",
@@ -154,19 +134,26 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                     |app: &mut Workspace, v| app.name_buf = v,
                     |app: &mut Workspace, v| app.overview_rename(v),
                 ),
-                overview_identity_field(
-                    pal,
-                    "Width",
-                    app.advance_buf.clone(),
-                    |app: &mut Workspace, v| app.overview_set_advance(v),
-                    |_: &mut Workspace, _| {},
-                ),
-                overview_identity_field(
-                    pal,
-                    "Unicode",
-                    app.unicode_buf.clone(),
-                    |app: &mut Workspace, v| app.overview_set_unicode(v),
-                    |_: &mut Workspace, _| {},
+                xrow(
+                    Region::Form,
+                    (
+                        overview_identity_field(
+                            pal,
+                            "Width",
+                            app.advance_buf.clone(),
+                            |app: &mut Workspace, v| app.overview_set_advance(v),
+                            |_: &mut Workspace, _| {},
+                        )
+                        .flex(1.0),
+                        overview_identity_field(
+                            pal,
+                            "Unicode",
+                            app.unicode_buf.clone(),
+                            |app: &mut Workspace, v| app.overview_set_unicode(v),
+                            |_: &mut Workspace, _| {},
+                        )
+                        .flex(1.0),
+                    ),
                 ),
             ),
         )
@@ -299,7 +286,7 @@ where
         (
             label(name)
                 .text_size(TextSize::Body.px())
-                .color(pal.text_muted)
+                .color(pal.outline)
                 .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row))),
             sized_box(input_typography::input_typography(
                 text_input(value, on_change)
@@ -307,7 +294,7 @@ where
                     .text_color(pal.text)
                     .placeholder_color(pal.text_muted)
                     .background_color(pal.field())
-                    .border_color(pal.field_outline)
+                    .border_color(pal.outline)
                     .border_width(Stroke::Hairline.length())
                     .corner_radius(Radius::None.length()),
             ))

@@ -179,35 +179,24 @@ where
     clip_split(split)
 }
 
-/// Let the overview's section list and glyph preview share the inspector.
+/// Let inspector sections take their natural height and give the glyph preview
+/// every remaining pixel.
 ///
-/// The initial split ends immediately after the ten collapsed headers. The
-/// preview therefore consumes every remaining pixel, while the same native
-/// splitter used by the proof strip lets a user trade preview height for more
-/// open-section space.
-fn overview_inspector_split<State, A, B>(
+/// Unlike a stateful splitter, this recomputes the allocation when a section
+/// opens or closes. Expanded sections therefore push the preview down and
+/// compress it instead of continuing underneath it.
+fn overview_inspector_stack<State, A, B>(
     sections: A,
     preview: B,
-    initial_sections_height: f64,
 ) -> impl WidgetView<State, Widget: Sized> + use<State, A, B>
 where
     State: 'static,
     A: WidgetView<State>,
     B: WidgetView<State>,
 {
-    let split = xilem::view::split(sections, preview)
-        .split_axis(kurbo::Axis::Vertical)
-        .split_point_from_start(Length::px(initial_sections_height))
-        .min_lengths(
-            Length::px(design::OVERVIEW_INSPECTOR_MIN_SECTIONS_HEIGHT),
-            Length::px(design::OVERVIEW_GLYPH_PREVIEW_MIN_HEIGHT),
-        )
-        .bar_thickness(Length::ZERO)
-        .min_bar_area(Length::px(design::SPLITTER_HIT_WIDTH))
-        .solid_bar(false);
-    // The final inspector group already paints the one-pixel boundary. Keep
-    // the native splitter visually transparent so the surface stays uniform.
-    clip_split(split)
+    flex_col((sections, preview.flex(1.0)))
+        .cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .gap(Space::None)
 }
 
 pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -253,18 +242,13 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
             .constrain_horizontal(true)
             .background_color(pal.panel)
     };
-    let inspector_sections_height = design::overview_inspector_sections_height(
-        app.font.master_names().len(),
-        !app.collapsed.contains("Masters"),
-    );
     // Font and Nodes both use the document inspector: compact sections above
     // the selected glyph's outline preview. Nodes is a workflow over the same
     // font, so changing modes must not replace that useful document context.
     let inspector = if matches!(app.mode, Mode::Overview | Mode::Nodes) {
-        Either::A(overview_inspector_split(
+        Either::A(overview_inspector_stack(
             inspector_sections(),
             glyph_preview(app),
-            inspector_sections_height,
         ))
     } else {
         Either::B(inspector_sections())
@@ -814,7 +798,7 @@ mod tab_tests {
 
 #[cfg(test)]
 mod panel_resize_tests {
-    use super::{overview_inspector_split, proof_split, workspace_columns};
+    use super::{overview_inspector_stack, proof_split, workspace_columns};
     use masonry::core::keyboard::{Key, NamedKey};
     use masonry::core::{TextEvent, WindowEvent};
     use masonry::dpi::PhysicalSize;
@@ -1006,18 +990,23 @@ mod panel_resize_tests {
     }
 
     #[test]
-    fn overview_preview_divider_drags_and_retains_its_height() {
+    fn overview_sections_take_their_height_and_preview_takes_the_remainder() {
+        use masonry::layout::{Dim, Length};
+        use masonry::properties::Dimensions;
         use xilem::core::View;
-        use xilem::view::label;
-        let logic = || {
-            overview_inspector_split(
-                label("Sections"),
+        use xilem::style::Style;
+        use xilem::view::{label, sized_box};
+        let logic = |sections_height| {
+            overview_inspector_stack(
+                sized_box(label("Sections")).dims(Dimensions::new(
+                    Dim::Stretch,
+                    Dim::Fixed(Length::px(sections_height)),
+                )),
                 label("Preview"),
-                crate::view::design::OVERVIEW_INSPECTOR_SECTIONS_HEIGHT,
             )
         };
         let mut ctx = context();
-        let view = logic();
+        let view = logic(320.0);
         let (pod, mut state) = view.build(&mut ctx, &mut ());
         let mut h = TestHarness::create_with_size(
             crate::default_property_set(),
@@ -1026,32 +1015,17 @@ mod panel_resize_tests {
         );
         fn heights<W: masonry::core::Widget>(h: &TestHarness<W>) -> (f64, f64) {
             let root = h.root_widget();
-            let children = root.children()[0].children();
+            let children = root.children();
             (
                 children[0].ctx().border_box().height(),
                 children[1].ctx().border_box().height(),
             )
         }
-        let initial = crate::view::design::OVERVIEW_INSPECTOR_SECTIONS_HEIGHT;
-        assert_eq!(heights(&h), (initial, 682.0 - initial));
-        h.mouse_move(Point::new(123.0, initial + 0.5));
-        h.mouse_button_press(None);
-        h.mouse_move(Point::new(123.0, initial + 100.5));
-        h.mouse_button_release(None);
-        assert_eq!(heights(&h), (initial + 100.0, 582.0 - initial));
+        assert_eq!(heights(&h), (320.0, 362.0));
 
-        let again = logic();
+        let again = logic(440.0);
         h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
-        assert_eq!(heights(&h), (initial + 100.0, 582.0 - initial));
-
-        h.mouse_move(Point::new(123.0, initial + 100.5));
-        h.mouse_button_press(None);
-        h.mouse_move(Point::new(123.0, 680.0));
-        h.mouse_button_release(None);
-        assert_eq!(
-            heights(&h).1,
-            crate::view::design::OVERVIEW_GLYPH_PREVIEW_MIN_HEIGHT
-        );
+        assert_eq!(heights(&h), (440.0, 242.0));
     }
 
     #[test]

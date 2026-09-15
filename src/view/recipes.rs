@@ -408,34 +408,6 @@ pub(crate) fn toggle<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
 }
 
-/// A square toggle at a chosen size.
-pub(crate) fn toggle_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
-    pal: &Palette,
-    text: String,
-    active: bool,
-    size: ControlSize,
-    on_click: F,
-) -> impl WidgetView<Workspace> + use<F> {
-    let (fg, border, bg) = if active {
-        (pal.selected_ink(), pal.outline, pal.selected_bg())
-    } else {
-        (pal.text_muted, pal.outline, pal.panel)
-    };
-    sized_box(
-        button(
-            label(text).text_size(TextSize::Caption.px()).color(fg),
-            move |app: &mut Workspace| on_click(app),
-        )
-        .padding(Space::None)
-        .padding(Space::Sm)
-        .background_color(bg)
-        .border_color(border)
-        .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::None.length()),
-    )
-    .dims(Dimensions::fixed(size.length(), size.length()))
-}
-
 /// A labeled push button at control height.
 pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,

@@ -78,28 +78,6 @@ pub(crate) const DOCK_MIN_WIDTH: f64 = 220.0;
 pub(crate) const CENTER_MIN_WIDTH: f64 = 280.0;
 pub(crate) const EDITOR_MIN_HEIGHT: f64 = 160.0;
 pub(crate) const PROOF_MIN_HEIGHT: f64 = 64.0;
-/// Number of collapsed section rows above the overview glyph preview.
-const OVERVIEW_INSPECTOR_SECTION_COUNT: f64 = 10.0;
-/// Collapsed overview headers occupy this much of the inspector initially.
-pub(crate) const OVERVIEW_INSPECTOR_SECTIONS_HEIGHT: f64 =
-    (ControlSize::Row.px() + INSPECTOR_VERTICAL_INSET * 2.0 + Stroke::Hairline.px())
-        * OVERVIEW_INSPECTOR_SECTION_COUNT;
-/// Initial inspector height when the master chooser is open.
-///
-/// The base already includes the collapsed Masters header. Opening it adds
-/// the section gap, one dense row per master, and the gaps between those rows.
-pub(crate) fn overview_inspector_sections_height(master_count: usize, masters_open: bool) -> f64 {
-    if !masters_open || master_count == 0 {
-        return OVERVIEW_INSPECTOR_SECTIONS_HEIGHT;
-    }
-    OVERVIEW_INSPECTOR_SECTIONS_HEIGHT
-        + Space::Md.px()
-        + ControlSize::Icon.px() * master_count as f64
-        + Space::Xs.px() * master_count.saturating_sub(1) as f64
-}
-/// Keep both halves of the resizable overview inspector usable.
-pub(crate) const OVERVIEW_INSPECTOR_MIN_SECTIONS_HEIGHT: f64 = 120.0;
-pub(crate) const OVERVIEW_GLYPH_PREVIEW_MIN_HEIGHT: f64 = 120.0;
 /// GPUI leaves six percent of the preview free on each side of the fitted ink.
 pub(crate) const OVERVIEW_GLYPH_PREVIEW_FILL: f64 = 0.88;
 /// Wide pointer target around the one-pixel divider.
@@ -139,6 +117,8 @@ pub(crate) const PROOF_STRIP_HEIGHT: f64 = 140.0;
 pub(crate) const SEARCH_TOGGLE_WIDTH: f64 = 24.0;
 /// Width shared by the proof-blur and zoom sliders in the editor footer.
 pub(crate) const STATUS_SLIDER_WIDTH: f64 = 96.0;
+/// Square size shared by the overview footer's five icon controls.
+pub(crate) const STATUS_ICON_SIZE: f64 = 16.0;
 /// Compact native title bar: 21px tabs and 20px tools sit on one 30px centerline.
 /// On macOS this also balances the fixed traffic-light inset above and below.
 pub(crate) const TITLEBAR_HEIGHT: f64 = 30.0;
@@ -161,9 +141,6 @@ pub(crate) const KERN_PAIR_ROW_HEIGHT: f64 = 25.0;
 pub(crate) const KERN_LIST_MAX_HEIGHT: f64 = 220.0;
 /// A group chip contains the 21px interface line box and its two border pixels.
 pub(crate) const GROUP_CHIP_HEIGHT: f64 = 23.0;
-
-/// Compact master and other read-only facts in the overview glyph inspector.
-pub(crate) const GLYPH_FACT_ROW_HEIGHT: f64 = 18.0;
 
 /// Coordinates inspector geometry measured in the Gray reference.
 pub(crate) const COORD_PICKER_EDGE: f64 = ControlSize::Control.px() * 2.0 + Space::Sm.px();

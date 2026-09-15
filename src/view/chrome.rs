@@ -5,7 +5,7 @@
 
 use crate::view::design::{
     MARK_CLEAR_CROSS_HALF, MARK_SELECTED_RING_INSET, MARK_SWATCH_DIAMETER, MARK_SWATCH_GAP,
-    TITLEBAR_HEIGHT,
+    STATUS_ICON_SIZE, TITLEBAR_HEIGHT,
 };
 use crate::widgets::icon_button::{IconMark, mark_button};
 use crate::*;
@@ -307,10 +307,6 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     if editing {
         return Either::A(top_keyline(editor_status(app, text), pal.outline));
     }
-    // Small keylined boxes, the size of a swatch plus its padding.
-    let bar_box = |text: String, active: bool, f: fn(&mut Workspace)| {
-        recipes::toggle_sized(pal, text, active, ControlSize::Icon, f)
-    };
     Either::B(top_keyline(
         sized_box(
             xrow(
@@ -321,18 +317,33 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         xrow(
                             Region::Inline,
                             (
-                                bar_box("+".into(), false, |app: &mut Workspace| app.new_glyph()),
-                                bar_box("\u{2212}".into(), false, |app: &mut Workspace| {
-                                    app.note = "Remove glyph: not built in this shell yet".into();
-                                }),
+                                overview_status_button(
+                                    pal,
+                                    "Add glyph",
+                                    IconMark::Plus,
+                                    false,
+                                    |app: &mut Workspace| app.new_glyph(),
+                                ),
+                                overview_status_button(
+                                    pal,
+                                    "Remove glyph",
+                                    IconMark::Minus,
+                                    false,
+                                    |app: &mut Workspace| {
+                                        app.note =
+                                            "Remove glyph: not built in this shell yet".into();
+                                    },
+                                ),
                             ),
                         )
                     }),
-                    FlexSpacer::Flex(1.0),
                     label(text)
                         .text_size(TextSize::Body.px())
-                        .color(pal.text_muted),
-                    FlexSpacer::Flex(1.0),
+                        .text_alignment(masonry::TextAlign::Center)
+                        .color(pal.text_muted)
+                        .prop(masonry::properties::LineBreaking::Clip)
+                        .dims(Dimensions::new(Dim::Fixed(Length::ZERO), Dim::Auto))
+                        .flex(1.0),
                     matches!(app.mode, Mode::Nodes).then(|| {
                         recipes::action_sized(
                             pal,
@@ -347,32 +358,20 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                         xrow(
                             Region::Inline,
                             (
-                                // GPUI paints these marks from geometry rather than
-                                // asking the interface font for Unicode symbols.
-                                mark_button(
+                                overview_status_button(
+                                    pal,
                                     "Grid view",
                                     IconMark::Grid,
                                     !app.list,
-                                    pal.text_muted,
-                                    pal.selected_ink(),
-                                    pal.selected_bg(),
-                                    pal.control,
                                     |app: &mut Workspace| app.list = false,
-                                )
-                                .framed(pal.panel, pal.outline)
-                                .tile_size(ControlSize::Icon.px()),
-                                mark_button(
+                                ),
+                                overview_status_button(
+                                    pal,
                                     "List view",
                                     IconMark::List,
                                     app.list,
-                                    pal.text_muted,
-                                    pal.selected_ink(),
-                                    pal.selected_bg(),
-                                    pal.control,
                                     |app: &mut Workspace| app.list = true,
-                                )
-                                .framed(pal.panel, pal.outline)
-                                .tile_size(ControlSize::Icon.px()),
+                                ),
                                 recipes::neutral_slider(
                                     &app.palette,
                                     48.0,
@@ -398,6 +397,32 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         )),
         pal.outline,
     ))
+}
+
+/// One compact, pixel-stable control shared by the five overview footer actions.
+fn overview_status_button<F>(
+    pal: &Palette,
+    label: &'static str,
+    mark: IconMark,
+    active: bool,
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F>
+where
+    F: Fn(&mut Workspace) + Send + Sync + 'static,
+{
+    mark_button(
+        label,
+        mark,
+        active,
+        pal.editor_control_ink(),
+        pal.selected_ink(),
+        pal.selected_bg(),
+        pal.control,
+        on_click,
+    )
+    .icon_size(STATUS_ICON_SIZE)
+    .framed(pal.panel, pal.outline)
+    .tile_size(STATUS_ICON_SIZE)
 }
 
 /// Compact editor footer: proof appearance controls surround the live status.
@@ -481,13 +506,14 @@ fn sidebar_toggle(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         } else {
             IconMark::SidebarOpen
         },
-        !app.left_collapsed,
-        pal.editor_ink(),
+        false,
+        pal.editor_control_ink(),
         pal.editor_control_ink(),
         Color::TRANSPARENT,
-        Color::TRANSPARENT,
+        pal.control,
         |app: &mut Workspace| app.left_collapsed = !app.left_collapsed,
     )
-    .icon_size(16.0)
-    .tile_size(16.0)
+    .icon_size(STATUS_ICON_SIZE)
+    .framed(pal.panel, pal.outline)
+    .tile_size(STATUS_ICON_SIZE)
 }

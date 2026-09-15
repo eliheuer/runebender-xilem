@@ -95,7 +95,7 @@ pub(crate) fn run(
         let view = xilem::window(window_id, "Runebender", root_logic(app))
             .with_options(|options| {
                 let options = options
-                    .with_initial_inner_size(LogicalSize::new(1100., 720.))
+                    .with_initial_inner_size(LogicalSize::new(1200., 800.))
                     .on_close(AppState::request_quit);
                 // On macOS the header row is the title bar: content runs under
                 // the transparent system bar and pads for traffic lights.

@@ -25,6 +25,10 @@ const TILE: f64 = 24.0;
 /// Small geometry-only marks used by GPUI where no toolbar asset exists.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum IconMark {
+    /// A centered plus sign.
+    Plus,
+    /// A centered horizontal minus sign.
+    Minus,
     /// Four outlined cells: the glyph grid view.
     Grid,
     /// Three horizontal rules: the glyph list view.
@@ -231,7 +235,7 @@ fn paint_mark(
     color: Color,
     mark: IconMark,
 ) {
-    use masonry::kurbo::{Arc, Circle, Rect, Shape as _};
+    use masonry::kurbo::{Arc, Circle, Shape as _};
 
     let extent = maximum_extent
         .unwrap_or(f64::INFINITY)
@@ -273,30 +277,31 @@ fn paint_mark(
             return;
         }
         IconMark::SidebarOpen | IconMark::SidebarClosed => {
-            let frame = Rect::new(
-                origin.0 + 1.5,
-                origin.1 + 2.0,
-                origin.0 + extent - 1.5,
-                origin.1 + extent - 2.0,
+            // The shared footer frame supplies the outer rectangle. This mark
+            // draws only the pane divider, keeping its stroke identical to the
+            // plus, minus, grid, and list controls beside it.
+            let split = snap_half(
+                origin.0
+                    + extent
+                        * if mark == IconMark::SidebarOpen {
+                            0.37
+                        } else {
+                            0.18
+                        },
             );
-            painter.stroke(frame, &Stroke::new(1.2), color).draw();
-            let split = origin.0
-                + extent
-                    * if mark == IconMark::SidebarOpen {
-                        0.37
-                    } else {
-                        0.18
-                    };
             painter
                 .stroke(
-                    Line::new((split, origin.1 + 2.0), (split, origin.1 + extent - 2.0)),
-                    &Stroke::new(1.2),
+                    Line::new(
+                        (split, snap_half(origin.1 + 2.0)),
+                        (split, snap_half(origin.1 + extent - 2.0)),
+                    ),
+                    &Stroke::new(1.0),
                     color,
                 )
                 .draw();
             return;
         }
-        IconMark::Grid | IconMark::List => {}
+        IconMark::Plus | IconMark::Minus | IconMark::Grid | IconMark::List => {}
     }
     let path = mark_path(size, maximum_extent, mark);
     painter.stroke(&path, &Stroke::new(1.0), color).draw();
@@ -308,15 +313,24 @@ fn mark_path(size: Size, maximum_extent: Option<f64>, mark: IconMark) -> BezPath
         .unwrap_or(f64::INFINITY)
         .min(size.width)
         .min(size.height);
-    let radius = extent / 2.0 * 0.42;
+    let radius = extent / 2.0 * 0.56;
     let mut path = BezPath::new();
     match mark {
+        IconMark::Plus | IconMark::Minus => {
+            path.move_to((snap_half(center.0 - radius), snap_half(center.1)));
+            path.line_to((snap_half(center.0 + radius), snap_half(center.1)));
+            if mark == IconMark::Plus {
+                path.move_to((snap_half(center.0), snap_half(center.1 - radius)));
+                path.line_to((snap_half(center.0), snap_half(center.1 + radius)));
+            }
+        }
         IconMark::Grid => {
             let gap = radius * 0.35;
             let side = radius - gap / 2.0;
             for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
                 let (x0, y0) = (center.0 + sx * gap / 2.0, center.1 + sy * gap / 2.0);
                 let (x1, y1) = (x0 + sx * side, y0 + sy * side);
+                let (x0, y0, x1, y1) = (snap_half(x0), snap_half(y0), snap_half(x1), snap_half(y1));
                 path.move_to((x0, y0));
                 path.line_to((x1, y0));
                 path.line_to((x1, y1));
@@ -326,8 +340,8 @@ fn mark_path(size: Size, maximum_extent: Option<f64>, mark: IconMark) -> BezPath
         }
         IconMark::List => {
             for dy in [-radius * 0.8, 0.0, radius * 0.8] {
-                path.move_to((center.0 - radius, center.1 + dy));
-                path.line_to((center.0 + radius, center.1 + dy));
+                path.move_to((snap_half(center.0 - radius), snap_half(center.1 + dy)));
+                path.line_to((snap_half(center.0 + radius), snap_half(center.1 + dy)));
             }
         }
         IconMark::EyeOpen
@@ -337,6 +351,12 @@ fn mark_path(size: Size, maximum_extent: Option<f64>, mark: IconMark) -> BezPath
         | IconMark::SidebarClosed => unreachable!("painted before mark_path"),
     }
     path
+}
+
+/// Snap a status-mark coordinate to a half logical pixel so both 1× and 2×
+/// strokes remain stable instead of landing on arbitrary subpixels.
+fn snap_half(value: f64) -> f64 {
+    (value * 2.0).round() / 2.0
 }
 
 pub(crate) struct IconView<F> {
@@ -532,10 +552,19 @@ mod tests {
         let size = Size::new(20.0, 20.0);
         let grid = mark_path(size, None, IconMark::Grid);
         let list = mark_path(size, None, IconMark::List);
+        let plus = mark_path(size, None, IconMark::Plus);
+        let minus = mark_path(size, None, IconMark::Minus);
 
         assert_eq!(grid.elements().len(), 20);
         assert_eq!(list.elements().len(), 6);
-        for bounds in [grid.bounding_box(), list.bounding_box()] {
+        assert_eq!(plus.elements().len(), 4);
+        assert_eq!(minus.elements().len(), 2);
+        for bounds in [
+            grid.bounding_box(),
+            list.bounding_box(),
+            plus.bounding_box(),
+            minus.bounding_box(),
+        ] {
             assert!((bounds.center().x - 10.0).abs() < 0.01);
             assert!((bounds.center().y - 10.0).abs() < 0.01);
             assert!(bounds.x0 > 0.0 && bounds.y0 > 0.0);
