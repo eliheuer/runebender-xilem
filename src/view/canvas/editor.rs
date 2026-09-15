@@ -34,10 +34,10 @@ use crate::view::design::{
     METRICS_CARD_HEIGHT as PANEL_HEIGHT, METRICS_CARD_INSET as PANEL_PAD,
     METRICS_CARD_WIDTH as PANEL_WIDTH, METRICS_FIELD_GAP, METRICS_FIELD_HEIGHT as PANEL_ROW,
     METRICS_FIELD_START, METRICS_FIELD_WIDTH, POINT_CORNER_RADIUS, POINT_CURVE_RADIUS,
-    POINT_HALO_EXTRA, POINT_RING_WIDTH, POINT_SELECTED_GROW, START_MARKER_BACK,
-    START_MARKER_HALF_WIDTH, START_MARKER_SCALE, START_MARKER_SMOOTH_CUT, START_MARKER_TIP,
-    Stroke as DesignStroke, TEXT_CURSOR_CAP_FRACTION, TEXT_CURSOR_CAP_MAX, TEXT_CURSOR_CAP_MIN,
-    TextSize, point_marker_scale,
+    POINT_GRID_COARSE_LINE_WIDTH, POINT_GRID_FINE_LINE_WIDTH, POINT_HALO_EXTRA, POINT_RING_WIDTH,
+    POINT_SELECTED_GROW, START_MARKER_BACK, START_MARKER_HALF_WIDTH, START_MARKER_SCALE,
+    START_MARKER_SMOOTH_CUT, START_MARKER_TIP, Stroke as DesignStroke, TEXT_CURSOR_CAP_FRACTION,
+    TEXT_CURSOR_CAP_MAX, TEXT_CURSOR_CAP_MIN, TextSize, point_marker_scale,
 };
 
 const HIT_RADIUS_PX: f64 = 8.0;
@@ -51,6 +51,93 @@ fn cursor_visible_at(elapsed_ns: u64) -> bool {
 /// Build one round design-grid dot in screen coordinates.
 fn round_grid_dot(at: Point, diameter: f64) -> kurbo::BezPath {
     kurbo::Shape::to_path(&Circle::new(at, diameter / 2.0), 0.1)
+}
+
+/// Hermite ease from zero to one.
+fn smoothstep(t: f64) -> f64 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// The design grid's coarse and fine opacity at this zoom.
+fn grid_alphas(zoom: f64) -> (f64, f64) {
+    (
+        smoothstep((zoom - 0.8) / 0.8),
+        smoothstep((zoom - 8.0) / 8.0),
+    )
+}
+
+/// The design grid's coarse and fine dot diameters at this zoom.
+fn grid_dot_sizes(zoom: f64) -> (f64, f64) {
+    (
+        (8.0 * zoom * 0.2).clamp(1.5, 5.0),
+        (2.0 * zoom * 0.125).clamp(1.0, 3.5),
+    )
+}
+
+/// Build the part of one design-grid level visible through a point marker.
+fn point_grid_marks(
+    affine: Affine,
+    center: Point,
+    radius: f64,
+    square: bool,
+    spacing: f64,
+    dot_size: f64,
+    grid_lines: bool,
+) -> kurbo::BezPath {
+    let inv = affine.inverse();
+    let a = (inv * Point::new(center.x - radius, center.y)).x;
+    let b = (inv * Point::new(center.x + radius, center.y)).x;
+    let (lo_x, hi_x) = (a.min(b), a.max(b));
+    let a = (inv * Point::new(center.x, center.y - radius)).y;
+    let b = (inv * Point::new(center.x, center.y + radius)).y;
+    let (lo_y, hi_y) = (a.min(b), a.max(b));
+    let xs = grid_index((lo_x / spacing).ceil())..=grid_index((hi_x / spacing).floor());
+    let ys = grid_index((lo_y / spacing).ceil())..=grid_index((hi_y / spacing).floor());
+    let mut marks = kurbo::BezPath::new();
+
+    if grid_lines {
+        let half_at = |distance: f64| {
+            if square {
+                radius
+            } else {
+                (radius * radius - distance * distance).max(0.0).sqrt()
+            }
+        };
+        for x_index in xs.clone() {
+            let x = (affine * Point::new(x_index as f64 * spacing, 0.0)).x;
+            let half = half_at(x - center.x);
+            if half > 0.2 {
+                marks.move_to(Point::new(x, center.y - half));
+                marks.line_to(Point::new(x, center.y + half));
+            }
+        }
+        for y_index in ys {
+            let y = (affine * Point::new(0.0, y_index as f64 * spacing)).y;
+            let half = half_at(y - center.y);
+            if half > 0.2 {
+                marks.move_to(Point::new(center.x - half, y));
+                marks.line_to(Point::new(center.x + half, y));
+            }
+        }
+    } else {
+        for x_index in xs {
+            for y_index in ys.clone() {
+                let at = affine * Point::new(x_index as f64 * spacing, y_index as f64 * spacing);
+                let dx = at.x - center.x;
+                let dy = at.y - center.y;
+                let inside = if square {
+                    dx.abs() <= radius && dy.abs() <= radius
+                } else {
+                    dx * dx + dy * dy <= radius * radius
+                };
+                if inside {
+                    marks.extend(round_grid_dot(at, dot_size));
+                }
+            }
+        }
+    }
+    marks
 }
 
 fn point_marker_shape(center: Point, radius: f64, square: bool) -> kurbo::BezPath {
@@ -1023,11 +1110,7 @@ impl Widget for EditorWidget {
         // the coarse one and an eighth of the fine one, within limits.
         {
             let zoom = self.session.viewport.zoom;
-            let smoothstep = |t: f64| {
-                let t = t.clamp(0.0, 1.0);
-                t * t * (3.0 - 2.0 * t)
-            };
-            let mid = smoothstep((zoom - 0.8) / 0.8);
+            let (mid, close) = grid_alphas(zoom);
             if mid > 0.0 {
                 let inv = affine.inverse();
                 let a = inv * Point::new(0.0, 0.0);
@@ -1080,11 +1163,9 @@ impl Widget for EditorWidget {
                         painter.fill(&marks, color).draw();
                     }
                 };
-                let coarse = (8.0 * zoom * 0.2).clamp(1.5, 5.0);
+                let (coarse, fine) = grid_dot_sizes(zoom);
                 level(8.0, 0, coarse, mid);
-                let close = smoothstep((zoom - 8.0) / 8.0);
                 if close > 0.0 {
-                    let fine = (2.0 * zoom * 0.125).clamp(1.0, 3.5);
                     level(2.0, 4, fine, close);
                 }
             }
@@ -1262,6 +1343,46 @@ impl Widget for EditorWidget {
                         .draw();
                 }
                 painter.fill(&shape, interior).draw();
+
+                // A point is also a window onto the design grid. GPUI
+                // redraws the dots or line chords which fall inside the
+                // marker after its interior and before its ring. This makes
+                // exact grid alignment readable without weakening the point.
+                let (coarse_alpha, fine_alpha) = grid_alphas(self.session.viewport.zoom);
+                let (coarse_dot, fine_dot) = grid_dot_sizes(self.session.viewport.zoom);
+                let grid_color = if selected || pal.points_filled {
+                    fill
+                } else {
+                    hue
+                };
+                for (spacing, alpha, dot_size, line_width) in [
+                    (8.0, coarse_alpha, coarse_dot, POINT_GRID_COARSE_LINE_WIDTH),
+                    (2.0, fine_alpha, fine_dot, POINT_GRID_FINE_LINE_WIDTH),
+                ] {
+                    if alpha <= 0.0 {
+                        continue;
+                    }
+                    let marks = point_grid_marks(
+                        affine,
+                        sp,
+                        r,
+                        square,
+                        spacing,
+                        dot_size,
+                        self.view.grid_lines,
+                    );
+                    if marks.is_empty() {
+                        continue;
+                    }
+                    let color = grid_color.with_alpha(crate::view::render::px32(alpha));
+                    if self.view.grid_lines {
+                        painter
+                            .stroke(&marks, &Stroke::new(line_width), color)
+                            .draw();
+                    } else {
+                        painter.fill(&marks, color).draw();
+                    }
+                }
                 painter.stroke(&shape, &ring, fill).draw();
             }
 
@@ -2536,6 +2657,58 @@ mod tests {
             0,
             "a rounded dot does not fill its bounding-box corner"
         );
+    }
+
+    #[test]
+    fn point_window_repaints_the_grid_intersection_under_its_center() {
+        let marks = point_grid_marks(
+            Affine::IDENTITY,
+            Point::new(8.0, 8.0),
+            4.5,
+            false,
+            8.0,
+            2.0,
+            false,
+        );
+        assert_ne!(marks.winding(Point::new(8.0, 8.0)), 0);
+        assert_eq!(marks.bounding_box(), Rect::new(7.0, 7.0, 9.0, 9.0));
+    }
+
+    #[test]
+    fn point_window_preserves_an_off_center_grid_dot() {
+        let marks = point_grid_marks(
+            Affine::IDENTITY,
+            Point::new(10.0, 8.0),
+            4.5,
+            false,
+            8.0,
+            2.0,
+            false,
+        );
+        assert_ne!(marks.winding(Point::new(8.0, 8.0)), 0);
+        assert_eq!(marks.winding(Point::new(10.0, 8.0)), 0);
+    }
+
+    #[test]
+    fn point_window_clips_line_grid_to_the_marker() {
+        let marks = point_grid_marks(
+            Affine::IDENTITY,
+            Point::new(8.0, 8.0),
+            4.5,
+            false,
+            8.0,
+            2.0,
+            true,
+        );
+        assert_eq!(marks.bounding_box(), Rect::new(3.5, 3.5, 12.5, 12.5));
+    }
+
+    #[test]
+    fn design_grid_levels_fade_in_at_the_gpui_thresholds() {
+        assert_eq!(grid_alphas(0.8), (0.0, 0.0));
+        assert_eq!(grid_alphas(1.6), (1.0, 0.0));
+        assert_eq!(grid_alphas(8.0), (1.0, 0.0));
+        assert_eq!(grid_alphas(16.0), (1.0, 1.0));
     }
 
     #[test]

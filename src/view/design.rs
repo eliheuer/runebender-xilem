@@ -44,6 +44,9 @@ pub(crate) const POINT_CURVE_RADIUS: f64 = 4.5;
 pub(crate) const POINT_SELECTED_GROW: f64 = 1.0;
 pub(crate) const POINT_RING_WIDTH: f64 = 1.5;
 pub(crate) const POINT_HALO_EXTRA: f64 = 2.0;
+/// Grid-line chords redrawn inside point markers, coarse then fine.
+pub(crate) const POINT_GRID_COARSE_LINE_WIDTH: f64 = 1.0;
+pub(crate) const POINT_GRID_FINE_LINE_WIDTH: f64 = 0.7;
 /// A diamond needs wider diagonals to read like the neighboring round node.
 pub(crate) const ANCHOR_DIAMOND_SCALE: f64 = 1.35;
 /// A closed contour's first node becomes a directional wedge at point scale.

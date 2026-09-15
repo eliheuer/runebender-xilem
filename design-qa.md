@@ -348,3 +348,67 @@ final result: passed
   GPUI/Xilem comparison visually inspected
 
 final result: passed
+
+## Point-marker design-grid windows
+
+- Supplied GPUI reference:
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 7.10.28 PM.png`, 2262 by
+  1496 pixels, showing design-grid dots preserved inside point markers.
+- Behavioral source reference: GPUI `paint_points` fills each point, redraws
+  the portion of the active dot or line grid inside it using the point hue,
+  then paints the point ring. Xilem now uses the same three-layer recipe.
+- Post-fix captures:
+  `docs/visual-audit/2026-09-14/180-xilem-point-grid-window-gray-2x.png`
+  and
+  `docs/visual-audit/2026-09-14/181-xilem-point-grid-window-light-2x.png`,
+  both 2250 by 1460 device pixels at a 1125 by 730 logical viewport and 4.0
+  editor zoom. The centered and displaced grid dots remain visible inside
+  point interiors in both themes.
+- Additional glyph proof:
+  `docs/visual-audit/2026-09-14/182-xilem-point-grid-window-close-gray-2x.png`
+  exercises the same point treatment on `eight` at 2.0 editor zoom.
+- Combined comparison evidence:
+  `docs/visual-audit/2026-09-14/183-gpui-xilem-point-grid-window-comparison.png`,
+  1600 by 900 pixels, with the supplied GPUI crop on the left and Xilem Gray
+  on the right.
+
+### Comparison history
+
+- Resolved P1, alignment legibility: the point interior no longer masks an
+  underlying design-grid intersection. A centered dot now remains centered
+  and an off-grid dot remains visibly displaced inside the marker.
+- Resolved P2, marker hierarchy: the grid fragment is painted after the point
+  interior but before its outline, so the point ring remains uninterrupted.
+- Resolved P2, grid-mode parity: dot mode redraws round grid dots and line
+  mode redraws clipped vertical and horizontal chords, matching GPUI.
+- Post-fix comparison found no remaining actionable P0, P1, or P2 mismatch in
+  the requested point-marker grid-visibility scope.
+
+### Fidelity surfaces
+
+- Fonts and typography: this canvas-only change adds no text and changes no
+  type treatment.
+- Spacing and layout rhythm: no panel, metric, control, or glyph geometry
+  moved.
+- Colors and visual tokens: embedded grid fragments use the point's existing
+  theme hue, or its outline color in filled-point themes, with the same
+  zoom-dependent opacity as the canvas grid. Gray and Light were inspected.
+- Image quality and asset fidelity: point windows and grid marks remain native
+  vector geometry; no raster assets or generated substitutes were added.
+- Copy and content: no interface copy or font data changed.
+
+### Validation
+
+- Focused point-window tests cover centered and displaced dot intersections,
+  clipped line-grid chords, and GPUI's coarse/fine zoom thresholds.
+- `cargo test --workspace -- --test-threads=1` with the two sandbox-only
+  Unix-socket tests skipped (157 application tests, 17 CLI tests, 352 core
+  tests, and 5 mark-feature tests passed; 4 model tests remained ignored)
+- `cargo clippy --workspace --all-targets -- -A
+  clippy::allow-attributes-without-reason -D warnings`
+- `cargo fmt --check`
+- `git diff --check`
+- Gray and Light two-times headless captures and the direct GPUI/Xilem
+  comparison were visually inspected.
+
+final result: passed
