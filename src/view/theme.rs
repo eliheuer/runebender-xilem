@@ -189,6 +189,24 @@ impl Palette {
         self.text
     }
 
+    /// The ink for filled type and compact marks inside the editing workspace.
+    ///
+    /// Panel keylines remain the darkest neutral in Gray. Filled glyphs and
+    /// proof type use the theme's existing preview-fill neutral instead of
+    /// competing with the structure around them.
+    pub(crate) fn editor_ink(&self) -> Color {
+        self.role("previewFill")
+    }
+
+    /// The slightly stronger neutral for an active compact editor control.
+    ///
+    /// This is one step quieter than a structural outline and one step
+    /// stronger than filled proof type, so state remains visible without an
+    /// isolated near-black pupil or picker centre.
+    pub(crate) fn editor_control_ink(&self) -> Color {
+        self.text_muted
+    }
+
     /// The metrics lines: their own token, never the accent.
     pub(crate) fn metrics_line(&self) -> Color {
         self.role("metricsLine")
@@ -276,5 +294,15 @@ mod tests {
             assert_eq!(&fill[..3], &role[..3]);
             assert!((fill[3] - role[3] * 0.70).abs() < f32::EPSILON);
         }
+    }
+
+    #[test]
+    fn gray_editor_ink_is_quieter_than_the_structural_outline() {
+        let palette = Palette::load("gray");
+        assert_eq!(palette.editor_ink(), palette.role("previewFill"));
+        assert_eq!(palette.editor_control_ink(), palette.text_muted);
+        assert!(palette.editor_control_ink().components[0] > palette.outline.components[0]);
+        assert!(palette.editor_ink().components[0] > palette.outline.components[0]);
+        assert!(palette.editor_ink().components[0] > palette.editor_control_ink().components[0]);
     }
 }

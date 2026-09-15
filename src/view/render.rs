@@ -624,6 +624,7 @@ mod tab_tests {
 
         app.select_tool(Tool::Hand);
         app.begin_space_pan();
+        assert_eq!(app.tool_before_space_pan, Some(Tool::Hand));
         app.end_space_pan();
         assert_eq!(
             app.tool,

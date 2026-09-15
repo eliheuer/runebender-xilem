@@ -207,8 +207,6 @@ pub(crate) struct Workspace {
     pub(crate) slant_buf: String,
     /// Width in font units for expanding selected contours into strokes.
     pub(crate) stroke_buf: String,
-    /// Curve-handle length as a percentage of the tangent intersection distance.
-    pub(crate) fit_curve_buf: String,
     pub(crate) offset_buf: String,
     pub(crate) extrude_buf: String,
     pub(crate) roughen_buf: String,

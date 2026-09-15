@@ -16,12 +16,12 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
     };
     let components = app.session.components_arc();
     let has_components = interp.is_none() && !components.elements().is_empty();
-    // The preview is type, so it takes the text colour, as the GPUI
-    // build draws it: ink on the panel, no hue.
+    // The proof is type, so it takes the editor's quiet neutral ink on the
+    // panel rather than the structural keyline or a semantic hue.
     let fill = if app.preview_invert {
         app.palette.selected_ink()
     } else {
-        app.palette.text
+        app.palette.editor_ink()
     };
     let background = if app.preview_invert {
         app.palette.selected_bg()

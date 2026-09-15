@@ -4,7 +4,36 @@
 //! Local Chat transcript, model selection, prompt, and process controls.
 
 use crate::edit::chat::ChatEntry;
+use crate::widgets::selectable_text::selectable_text;
 use crate::*;
+use xilem::Color;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TranscriptKind {
+    User,
+    Assistant,
+    Tool,
+    Error,
+}
+
+fn transcript_text(entry: &ChatEntry) -> (String, TranscriptKind) {
+    match entry {
+        ChatEntry::User(text) => (text.clone(), TranscriptKind::User),
+        ChatEntry::Assistant(text) => (
+            if text.is_empty() {
+                "…".into()
+            } else {
+                text.clone()
+            },
+            TranscriptKind::Assistant,
+        ),
+        ChatEntry::Tool { name, ok, note } => (
+            format!("[{}] {name}: {note}", if *ok { "ok" } else { "error" }),
+            TranscriptKind::Tool,
+        ),
+        ChatEntry::Error(text) => (format!("Error: {text}"), TranscriptKind::Error),
+    }
+}
 
 pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
@@ -33,26 +62,66 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         .entries
         .iter()
         .map(|entry| {
-            let (text, color) = match entry {
-                ChatEntry::User(text) => (format!("You: {text}"), pal.text),
-                ChatEntry::Assistant(text) => (
-                    if text.is_empty() {
-                        "Assistant: …".into()
-                    } else {
-                        format!("Assistant: {text}")
+            let (text, kind) = transcript_text(entry);
+            let (color, background, border, radius, padding) = match kind {
+                TranscriptKind::User => (
+                    pal.selected_ink(),
+                    pal.selected_bg(),
+                    Color::TRANSPARENT,
+                    Radius::Sm,
+                    masonry::properties::Padding {
+                        left: Space::Md.length(),
+                        right: Space::Md.length(),
+                        top: Space::Sm.length(),
+                        bottom: Space::Sm.length(),
                     },
+                ),
+                TranscriptKind::Assistant => (
                     pal.text,
+                    Color::TRANSPARENT,
+                    Color::TRANSPARENT,
+                    Radius::None,
+                    Space::Sm.into(),
                 ),
-                ChatEntry::Tool { name, ok, note } => (
-                    format!("[{}] {name}: {note}", if *ok { "ok" } else { "error" }),
+                TranscriptKind::Tool => (
                     pal.text_muted,
+                    pal.control,
+                    pal.field_outline,
+                    Radius::Sm,
+                    masonry::properties::Padding {
+                        left: Space::Md.length(),
+                        right: Space::Md.length(),
+                        top: Space::Xs.length(),
+                        bottom: Space::Xs.length(),
+                    },
                 ),
-                ChatEntry::Error(text) => (format!("Error: {text}"), pal.text),
+                TranscriptKind::Error => (
+                    pal.role("danger"),
+                    Color::TRANSPARENT,
+                    Color::TRANSPARENT,
+                    Radius::None,
+                    Space::Sm.into(),
+                ),
             };
-            label(text).color(color).boxed()
+            sized_box(
+                selectable_text::<Workspace, ()>(text)
+                    .color(color)
+                    .text_size(TextSize::Body.px()),
+            )
+            .padding(padding)
+            .background_color(background)
+            .border_color(border)
+            .border_width(if border == Color::TRANSPARENT {
+                Stroke::None.length()
+            } else {
+                Stroke::Hairline.length()
+            })
+            .corner_radius(radius.length())
+            .dims(Dimensions::new(Dim::Stretch, Dim::Auto))
         })
         .collect();
-    let transcript = portal(xcolumn(Region::List, transcript)).constrain_horizontal(true);
+    let transcript =
+        portal(xcolumn(Region::List, transcript).gap(Space::Sm)).constrain_horizontal(true);
 
     let status = app
         .chat
@@ -106,4 +175,29 @@ pub(crate) fn chat_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         ),
     )
     .background_color(pal.panel)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transcript_roles_do_not_repeat_speaker_labels() {
+        assert_eq!(
+            transcript_text(&ChatEntry::User("What is the UPM?".into())),
+            ("What is the UPM?".into(), TranscriptKind::User)
+        );
+        assert_eq!(
+            transcript_text(&ChatEntry::Assistant(String::new())),
+            ("…".into(), TranscriptKind::Assistant)
+        );
+        assert_eq!(
+            transcript_text(&ChatEntry::Tool {
+                name: "project_info".into(),
+                ok: true,
+                note: "done".into(),
+            }),
+            ("[ok] project_info: done".into(), TranscriptKind::Tool)
+        );
+    }
 }

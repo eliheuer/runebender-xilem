@@ -14,10 +14,10 @@ use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::view::design::COORD_PICKER_EDGE;
+use crate::view::design::{COORD_PICKER_EDGE, COORD_PICKER_GAP, COORD_PICKER_INSET, ControlSize};
 
-const GRID_START: f64 = 8.0;
-const GRID_STEP: f64 = 18.0;
+const GRID_START: f64 = COORD_PICKER_INSET + ControlSize::Dot.px() / 2.0;
+const GRID_STEP: f64 = ControlSize::Dot.px() + COORD_PICKER_GAP;
 
 pub(crate) struct QuadrantGridWidget {
     color: Color,

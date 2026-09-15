@@ -220,9 +220,9 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             // optional edit groups disappear there.
             editing.then(|| recipes::inspector_group(pal, coordinates_section(app))),
             editing.then(|| recipes::inspector_group(pal, transformations_section(app))),
+            editing.then(|| recipes::inspector_group(pal, curves_section(app))),
             editing.then(|| recipes::inspector_group(pal, path_operations_section(app))),
             recipes::inspector_group(pal, glyph_section),
-            editing.then(|| recipes::inspector_group(pal, curves_section(app))),
             editing.then(|| recipes::inspector_group(pal, background_section(app))),
             editing.then(|| {
                 xcolumn(

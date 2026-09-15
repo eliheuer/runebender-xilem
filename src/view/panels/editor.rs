@@ -47,6 +47,7 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
         groups,
         mark,
         app.tool,
+        app.tool_before_space_pan.is_some(),
         app.view,
         ghosts,
         interp,

@@ -384,6 +384,8 @@ pub(crate) struct EditorWidget {
     /// A glyph mark colors the card header, as it does in GPUI.
     mark: Option<xilem::Color>,
     tool: Tool,
+    /// Space is held: pan while showing only the filled design.
+    preview_mode: bool,
     ghosts: Arc<Vec<kurbo::BezPath>>,
     /// Read-only interpolated instance overlay at the current axis location.
     interp: Option<Arc<kurbo::BezPath>>,
@@ -439,6 +441,9 @@ impl EditorWidget {
     /// Paint and hit testing both read this, so the box you click is the
     /// box you can see. Writing it twice is how a painted control drifts.
     fn metric_boxes(&self) -> Option<[(MetricField, Rect); 3]> {
+        if self.preview_mode {
+            return None;
+        }
         self.session.side_bearings()?;
         let (left, top) = self.metrics_panel_origin()?;
         let y = top + PANEL_HEADER + PANEL_PAD + DesignStroke::Hairline.px();
@@ -922,13 +927,45 @@ impl Widget for EditorWidget {
         let view_affine = self.session.viewport.affine();
         painter.fill_rect(self.size.to_rect(), pal.canvas);
 
+        // Holding Space is both the temporary Hand tool and the standard font
+        // editor preview: show the filled design without nodes, handles, grid,
+        // metrics, analyses, underlays, or other editing chrome. GPUI and Web
+        // use this same press/release lifecycle, so panning never changes the
+        // persistent tool and releasing Space restores the normal drawing.
+        if self.preview_mode {
+            if let Some(text) = &self.text {
+                for sort in text.placed() {
+                    painter
+                        .fill(&(view_affine * sort.path), pal.editor_ink())
+                        .draw();
+                }
+            } else if let Some(interp) = &self.interp {
+                painter
+                    .fill(&(view_affine * (**interp).clone()), pal.editor_ink())
+                    .draw();
+            } else {
+                painter
+                    .fill(&(view_affine * self.session.outline()), pal.editor_ink())
+                    .draw();
+                if !self.session.components.elements().is_empty() {
+                    painter
+                        .fill(
+                            &(view_affine * self.session.components.clone()),
+                            pal.editor_ink(),
+                        )
+                        .draw();
+                }
+            }
+            return;
+        }
+
         // A text composition outlives the Text tool. With Text active every
         // sort is a fill and the caret is visible; with an outline tool the
         // active sort is omitted here and the editable glyph chrome below is
         // drawn at that sort's origin. This is the GPUI/Web state model.
         if let Some(text) = &self.text {
             let m = &self.session.metrics;
-            let ink = pal.text;
+            let ink = pal.editor_ink();
             let sort_top = m.upm.max(m.ascender);
             let sort_bottom = m.descender;
             let sort_height_px = ((sort_top - sort_bottom) * self.session.viewport.zoom).abs();
@@ -2319,6 +2356,7 @@ pub(crate) struct EditorView<F> {
     groups: (String, String),
     mark: Option<xilem::Color>,
     tool: Tool,
+    preview_mode: bool,
     view: ViewOptions,
     ghosts: Arc<Vec<kurbo::BezPath>>,
     interp: Option<Arc<kurbo::BezPath>>,
@@ -2340,6 +2378,7 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
     groups: (String, String),
     mark: Option<xilem::Color>,
     tool: Tool,
+    preview_mode: bool,
     view: ViewOptions,
     ghosts: Arc<Vec<kurbo::BezPath>>,
     interp: Option<Arc<kurbo::BezPath>>,
@@ -2354,6 +2393,7 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
         groups,
         mark,
         tool,
+        preview_mode,
         view,
         ghosts,
         interp,
@@ -2455,6 +2495,7 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             groups: self.groups.clone(),
             mark: self.mark,
             tool: self.tool,
+            preview_mode: self.preview_mode,
             ghosts: self.ghosts.clone(),
             interp: self.interp.clone(),
             underlay: self.underlay.clone(),
@@ -2508,6 +2549,10 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             if self.tool != Tool::Pen {
                 element.widget.session.pen_cancel();
             }
+            dirty = true;
+        }
+        if self.preview_mode != prev.preview_mode {
+            element.widget.preview_mode = self.preview_mode;
             dirty = true;
         }
         if self.groups != prev.groups {
@@ -2630,6 +2675,7 @@ mod tests {
             groups: (String::new(), String::new()),
             mark: None,
             tool: Tool::Select,
+            preview_mode: false,
             ghosts: Arc::new(Vec::new()),
             interp: None,
             underlay: Underlay::default(),
@@ -3087,6 +3133,18 @@ mod tests {
         assert_eq!(
             text_sort_corner_ys(&metrics),
             vec![-250.0, 0.0, 750.0, 1000.0]
+        );
+    }
+
+    #[test]
+    fn space_preview_hides_metrics_hit_targets() {
+        let mut widget = widget();
+        widget.size = Size::new(600.0, 400.0);
+        assert!(widget.metric_boxes().is_some());
+        widget.preview_mode = true;
+        assert!(
+            widget.metric_boxes().is_none(),
+            "hidden preview chrome cannot intercept a pan gesture"
         );
     }
 

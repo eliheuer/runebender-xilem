@@ -494,5 +494,9 @@ where
             active: pal.text_muted,
             inactive: pal.text_muted,
         })
-        .prop(ThumbColor(pal.panel))
+        .prop(ThumbColor(pal.button))
+        // Masonry's stock slider paints a white rounded capsule around the
+        // whole control on hover or focus. Runebender keeps that state in the
+        // slightly lighter thumb instead, so the footer remains one flat row.
+        .border_color(xilem::Color::TRANSPARENT)
 }

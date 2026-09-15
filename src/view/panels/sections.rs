@@ -314,6 +314,7 @@ pub(crate) fn transformations_section(app: &Workspace) -> impl WidgetView<Worksp
             move |app: &mut Workspace| app.apply_op(f),
         )
         .icon_size(design::TRANSFORM_ICON_SIZE)
+        .tile_size(design::TRANSFORM_TILE_SIZE)
     };
     xcolumn(
         Region::Section,
@@ -335,25 +336,35 @@ pub(crate) fn transformations_section(app: &Workspace) -> impl WidgetView<Worksp
                         xrow(
                             Region::List,
                             (
+                                FlexSpacer::Flex(1.0),
                                 op("flip-h", |s| s.flip_horizontal()),
+                                FlexSpacer::Flex(1.0),
                                 op("flip-v", |s| s.flip_vertical()),
+                                FlexSpacer::Flex(1.0),
                                 op("rot-ccw", |s| s.rotate_90()),
+                                FlexSpacer::Flex(1.0),
                                 op("rot-cw", |s| s.rotate_90_clockwise()),
+                                FlexSpacer::Flex(1.0),
                                 op("duplicate", |s| s.duplicate()),
-                                op("duplicate-repeat", |s| s.duplicate_repeat()),
+                                FlexSpacer::Flex(1.0),
                             ),
-                        )
-                        .gap(Space::Md),
+                        ),
                         xrow(
                             Region::List,
                             (
+                                FlexSpacer::Flex(1.0),
+                                op("duplicate-repeat", |s| s.duplicate_repeat()),
+                                FlexSpacer::Flex(1.0),
                                 op("union", |s| s.remove_overlap()),
+                                FlexSpacer::Flex(1.0),
                                 op("subtract", |s| s.boolean(BoolOp::Subtract)),
+                                FlexSpacer::Flex(1.0),
                                 op("intersect", |s| s.boolean(BoolOp::Intersect)),
+                                FlexSpacer::Flex(1.0),
                                 op("exclude", |s| s.boolean(BoolOp::Exclude)),
+                                FlexSpacer::Flex(1.0),
                             ),
-                        )
-                        .gap(Space::Md),
+                        ),
                     ),
                 )
                 .gap(Space::Md)
@@ -513,12 +524,12 @@ pub(crate) fn tbtn(
     })
 }
 
-/// Coordinates: the 9-point reference picker beside the X/Y fields, with
-/// the selection's size on the right. gpui keeps this panel up whether or
-/// not anything is selected, so the inspector does not jump.
+/// Coordinates: the 9-point reference picker beside compact X/Y/W/H fields.
+/// GPUI keeps this panel up whether or not anything is selected, so the
+/// inspector does not jump.
 pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use crate::view::design::{
-        COORD_COUNT_HEIGHT, COORD_LABEL_WIDTH, COORD_PICKER_EDGE, COORD_PICKER_GAP,
+        COORD_LABEL_WIDTH, COORD_PICKER_EDGE, COORD_PICKER_GAP, COORD_PICKER_INSET,
     };
     use crate::widgets::quadrant_picker::quadrant_grid;
     use runebender_core::outline::path::Quadrant;
@@ -537,7 +548,7 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
     let dot = |q: Quadrant| {
         let active = app.coord_quadrant == q;
         let (bg, border) = if active {
-            (pal.text, pal.text)
+            (pal.editor_control_ink(), pal.editor_control_ink())
         } else {
             (pal.panel, pal.outline)
         };
@@ -571,7 +582,7 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
     let picker_buttons = sized_box(
         xcolumn(Region::List, (row(0), row(3), row(6))).gap(Length::px(COORD_PICKER_GAP)),
     )
-    .padding(Length::px(3.0));
+    .padding(Length::px(COORD_PICKER_INSET));
     let picker = sized_box(xilem::view::zstack((
         quadrant_grid(pal.outline),
         picker_buttons,
@@ -614,7 +625,7 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                 .flex(1.0),
             ),
         )
-        .gap(Space::Md)
+        .gap(Space::Sm)
     };
     xcolumn(
         Region::Section,
@@ -630,54 +641,36 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
                 },
             ),
             (!app.collapsed.contains("Coordinates")).then(|| {
-                xcolumn(
-                    Region::Section,
+                xrow(
+                    Region::Inline,
                     (
-                        (app.selected_points > 0).then(|| {
-                            sized_box(
-                                label(match app.selected_points {
-                                    1 => "1 point".to_string(),
-                                    count => format!("{count} points"),
-                                })
-                                .color(pal.text_muted),
-                            )
-                            .dims(Dimensions::new(
-                                Dim::Stretch,
-                                Dim::Fixed(Length::px(COORD_COUNT_HEIGHT)),
-                            ))
-                        }),
-                        xrow(
-                            Region::Inline,
+                        picker,
+                        xcolumn(
+                            Region::List,
                             (
-                                picker,
-                                xcolumn(
-                                    Region::List,
+                                xrow(
+                                    Region::Inline,
                                     (
-                                        xrow(
-                                            Region::Inline,
-                                            (
-                                                field("X", app.coord_x_buf.clone(), 0).flex(1.0),
-                                                field("W", app.coord_w_buf.clone(), 2).flex(1.0),
-                                            ),
-                                        )
-                                        .gap(Space::Lg),
-                                        xrow(
-                                            Region::Inline,
-                                            (
-                                                field("Y", app.coord_y_buf.clone(), 1).flex(1.0),
-                                                field("H", app.coord_h_buf.clone(), 3).flex(1.0),
-                                            ),
-                                        )
-                                        .gap(Space::Lg),
+                                        field("X", app.coord_x_buf.clone(), 0).flex(1.0),
+                                        field("W", app.coord_w_buf.clone(), 2).flex(1.0),
                                     ),
                                 )
-                                .gap(Space::Sm)
-                                .flex(1.0),
+                                .gap(Space::Md),
+                                xrow(
+                                    Region::Inline,
+                                    (
+                                        field("Y", app.coord_y_buf.clone(), 1).flex(1.0),
+                                        field("H", app.coord_h_buf.clone(), 3).flex(1.0),
+                                    ),
+                                )
+                                .gap(Space::Md),
                             ),
                         )
-                        .gap(Space::Lg),
+                        .gap(Space::Sm)
+                        .flex(1.0),
                     ),
                 )
+                .gap(Space::Md)
             }),
         ),
     )
@@ -723,19 +716,6 @@ pub(crate) fn curves_section(app: &Workspace) -> impl WidgetView<Workspace> + us
                         )
                         .flex(1.0),
                     ),
-                )
-            }),
-            (!app.collapsed.contains("Curves")).then(|| {
-                transform_parameter(
-                    app,
-                    "Fit curve %",
-                    "",
-                    app.fit_curve_buf.clone(),
-                    |app, value| app.fit_curve_buf = value,
-                    |app, value| {
-                        app.fit_curve_buf = value;
-                        app.command_fit_curve();
-                    },
                 )
             }),
         ),

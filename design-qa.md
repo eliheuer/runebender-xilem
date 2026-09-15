@@ -2,6 +2,120 @@
 
 final result: passed
 
+## Selectable, wrapping local-chat transcript
+
+- Supplied visual reference:
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 7.46.32 PM.png`, showing
+  speaker-prefixed transcript labels clipping at the right edge of the narrow
+  Local Chat dock.
+- Implementation baseline:
+  `docs/parity/2026-09-11/a07-chat-gray.png`, the prior Local Chat layout at
+  its default dock width.
+- Post-fix captures:
+  `docs/visual-audit/2026-09-14/189-xilem-chat-gray-2x.png` and
+  `docs/visual-audit/2026-09-14/190-xilem-chat-light-2x.png`, both 2250 by 1460
+  device pixels at a 1125 by 730 logical viewport, populated during capture
+  with deliberately long user, tool, and assistant turns.
+- Direct baseline/post-fix comparison:
+  `docs/visual-audit/2026-09-14/191-xilem-chat-before-after.png`, 1920 by 640
+  pixels.
+
+### Comparison history
+
+- Resolved P1, transcript clipping: every chat entry now uses native selectable
+  word-wrapping prose constrained to the dock width, so long model responses
+  grow vertically instead of disappearing beyond the right edge.
+- Resolved P1, conversation hierarchy: user turns use selected-color cards,
+  assistant prose stays unboxed, and tool results use quiet bordered status
+  rows. Repeated `You:` and `Assistant:` prefixes are gone.
+- Resolved P1, dock discoverability: Local Chat now exposes the shared sidebar
+  collapse mark beside its heading. The existing workspace splitter continues
+  to resize the dock between the shared minimum and the remaining canvas.
+- The first post-fix render exposed missing arrow/cross glyphs in the bundled
+  interface font. Tool statuses were revised to the font-safe `[ok]` and
+  `[error]` notation before the final captures.
+- Post-fix comparison found no remaining actionable P0, P1, or P2 mismatch in
+  the requested transcript wrapping, role styling, selection, resize, and
+  collapse scope.
+
+### Fidelity surfaces
+
+- Fonts and typography: the selectable prose wrapper explicitly applies the
+  bundled Virtua Grotesk interface family and the shared body-size token.
+- Spacing and layout rhythm: message insets, gaps, corner radii, control size,
+  and border widths use the shared `Space`, `Radius`, `ControlSize`, and
+  `Stroke` vocabularies.
+- Colors and visual tokens: user, assistant, tool, and error states use the
+  resolved palette rather than local color literals. Gray and Light were
+  inspected independently.
+- Image quality and asset fidelity: the collapse control remains a native
+  geometry mark and the transcript remains native text; no raster UI assets
+  were introduced.
+- Copy and content: chat content is unchanged. Only redundant speaker prefixes
+  and tool-status punctuation changed.
+
+### Validation
+
+- Transcript-role regression test, including the empty streaming reply and
+  font-safe tool-result notation.
+- `cargo test --bin runebender --test cli -- --test-threads=1` (159 application
+  tests and 17 CLI tests passed; 4 model tests remained ignored).
+- `cargo clippy --workspace --all-targets -- -A
+  clippy::allow-attributes-without-reason -D warnings`.
+- `cargo fmt --check`.
+- `git diff --check`.
+- Gray and Light two-times headless captures and the direct baseline/post-fix
+  comparison were visually inspected.
+
+final result: passed
+
+## Edit-canvas neutral hierarchy
+
+- Visual reference: the supplied Gray-theme native screenshot, checked against
+  the semantic canvas and footer roles in the sibling GPUI implementation.
+- Pre-fix capture:
+  `docs/visual-audit/2026-09-14/204-xilem-edit-neutrals-before-gray-2x.png`.
+- Final captures:
+  `docs/visual-audit/2026-09-14/205-xilem-edit-neutrals-gray-2x.png` and
+  `docs/visual-audit/2026-09-14/206-xilem-edit-neutrals-light-2x.png`. Each is
+  2280 by 1508 device pixels at a 1140 by 754 logical viewport.
+- Direct before/after comparison:
+  `docs/visual-audit/2026-09-14/207-xilem-edit-neutrals-before-after.png`.
+
+### Comparison history
+
+- Resolved P1, competing near-black fills: composed inactive sorts and proof
+  text now use the named `previewFill` role rather than the primary text/keyline
+  neutral. In Gray this moves the fill from the structural `neutral.23` to
+  `neutral.43` while leaving outline geometry unchanged.
+- Resolved P2, compact control mismatch: the footer eye, proof inversion mark,
+  sidebar toggle, and coordinate-picker centre now use the same muted neutral
+  as the transformation icons. Active state remains legible without isolated
+  near-black centres.
+- Resolved P2, theme drift: both choices live behind semantic palette accessors
+  instead of per-view colour values. Gray and Light resolve their own shared
+  tokens through the same recipes.
+- Post-fix comparison found no remaining actionable P0, P1, or P2 mismatch in
+  the requested dark-neutral scope. Titlebar, panel keylines, glyph-grid ink,
+  and selected-cell contrast remain intentionally unchanged.
+
+### Validation
+
+- `cargo test --workspace --quiet -- --test-threads=1` (161 application tests
+  and 17 CLI tests passed; 4 model tests remained ignored). The sandbox blocks
+  the live-agent IPC endpoint, so its one integration test was rerun outside
+  the sandbox and passed.
+- `cargo clippy --workspace --all-targets -- -A
+  clippy::allow-attributes-without-reason -D warnings`
+- `cargo fmt --check`
+- `git diff --check`
+- Matching Gray before/after and final Light two-times headless captures were
+  visually inspected. The final Gray histogram confirms the edit/proof fill at
+  the lighter neutral while structural outline pixels remain at the darkest
+  theme step.
+
+final result: passed
+
 ## Inputs and state
 
 - GPUI reference: user-supplied
@@ -410,5 +524,180 @@ final result: passed
 - `git diff --check`
 - Gray and Light two-times headless captures and the direct GPUI/Xilem
   comparison were visually inspected.
+
+final result: passed
+
+## Compact edit inspector and neutral slider state
+
+- Supplied visual references: the blur-focus detail in
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 7.41.57 PM.png` and the edit
+  inspector in `/Users/eli/Desktop/Screenshot 2026-09-14 at 7.43.13 PM.png`.
+- Pre-fix implementation reference:
+  `docs/visual-audit/2026-09-14/180-xilem-point-grid-window-gray-2x.png`,
+  showing the previous coordinate geometry, uneven six/four transformation
+  rows, open Path Operations, and the Fit curve percentage field.
+- Post-fix captures:
+  `docs/visual-audit/2026-09-14/184-xilem-compact-inspector-gray-2x.png`
+  and
+  `docs/visual-audit/2026-09-14/185-xilem-compact-inspector-light-2x.png`,
+  both 2250 by 1460 device pixels at a 1125 by 730 logical viewport.
+- Direct before/after inspector comparison:
+  `docs/visual-audit/2026-09-14/186-xilem-inspector-before-after.png`,
+  984 by 1280 pixels.
+
+### Comparison history
+
+- Resolved P1, slider state: neutral sliders no longer inherit Masonry's white
+  rounded hover/focus capsule. The thumb now carries the understated state
+  contrast through the shared palette's button gray.
+- Resolved P1, coordinate density: the redundant selected-point count is gone;
+  the 60-pixel reference picker exactly spans two 28-pixel input rows and their
+  four-pixel gap; all four labels use one compact width and gap.
+- Resolved P1, transformation rhythm: the ten operations now occupy two
+  evenly distributed rows of five control-size targets with matching outer
+  margins.
+- Resolved P1, inspector hierarchy: Coordinates, Transformations, and Curves
+  are the only edit groups open initially, Curves follows Transformations, and
+  the Fit curve percentage control is no longer exposed.
+- Post-fix comparison found no remaining actionable P0, P1, or P2 mismatch in
+  the requested slider-state and compact-inspector scope.
+
+### Fidelity surfaces
+
+- Fonts and typography: existing interface typography is unchanged.
+- Spacing and layout rhythm: coordinate and transformation geometry now comes
+  from `ControlSize` and `Space` tokens rather than isolated values.
+- Colors and visual tokens: the slider thumb and hidden focus border use the
+  shared palette and transparent color token. Gray and Light were inspected.
+- Image quality and asset fidelity: all controls remain native vector widgets;
+  no raster control assets were introduced.
+- Copy and content: only the requested selected-point and Fit curve labels were
+  removed.
+
+### Validation
+
+- Default inspector-state and coordinate-picker geometry regression tests
+- `cargo test --bin runebender --test cli -- --test-threads=1` (158 application
+  tests and 17 CLI tests passed; 4 model tests remained ignored)
+- `cargo test -p runebender-core --lib -- --skip
+  document::live_socket::tests::round_trip_requires_editor_dispatch_and_drop_removes_endpoint
+  --test-threads=1` (352 core tests passed; the sandbox-only socket test was
+  intentionally filtered after confirming its `Operation not permitted`
+  failure)
+- `cargo test -p runebender-core --test mark_features -- --test-threads=1`
+  (5 mark-feature tests passed)
+- `cargo clippy --workspace --all-targets -- -A
+  clippy::allow-attributes-without-reason -D warnings`
+- `cargo fmt --check`
+- `git diff --check`
+- Gray and Light two-times headless captures and the direct before/after
+  comparison were visually inspected.
+
+final result: passed
+
+## Stable sidebar toggle across every view
+
+- Supplied visual references:
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 9.13.13 PM.png` and
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 9.15.18 PM.png`.
+- Pre-fix implementation reference:
+  `docs/visual-audit/2026-09-14/189-xilem-chat-gray-2x.png`, showing the
+  sidebar control inside the Local Chat header where it became unreachable
+  after collapsing the dock.
+- Post-fix captures:
+  `docs/visual-audit/2026-09-14/192-xilem-overview-footer-gray-2x.png`,
+  `docs/visual-audit/2026-09-14/193-xilem-nodes-footer-gray-2x.png`,
+  `docs/visual-audit/2026-09-14/194-xilem-chat-footer-gray-2x.png`,
+  `docs/visual-audit/2026-09-14/195-xilem-chat-footer-collapsed-gray-2x.png`,
+  and `docs/visual-audit/2026-09-14/196-xilem-overview-footer-light-2x.png`.
+  Each capture is 2250 by 1460 device pixels at a 1125 by 730 logical
+  viewport.
+- Direct before/after comparison:
+  `docs/visual-audit/2026-09-14/197-xilem-sidebar-toggle-before-after.png`.
+- Cross-mode contact sheet:
+  `docs/visual-audit/2026-09-14/198-xilem-sidebar-toggle-all-modes.png`.
+
+### Comparison history
+
+- Resolved P1, reachability: the sidebar toggle is no longer inside the panel
+  it controls. A collapsed-state capture confirms the restore control remains
+  visible when the left dock reaches zero width.
+- Resolved P1, positional consistency: Overview, Nodes, and Edit now share one
+  sidebar-toggle recipe in the first position of the center footer.
+- Resolved P2, duplicate control: the redundant Local Chat header icon was
+  removed, leaving one stable control instead of mode-specific copies.
+- Post-fix comparison found no remaining actionable P0, P1, or P2 mismatch in
+  the requested sidebar-toggle placement scope.
+
+### Fidelity surfaces
+
+- Fonts and typography: existing interface typography is unchanged.
+- Spacing and layout rhythm: the toggle consistently precedes each mode's
+  footer-specific controls without changing the left-dock or inspector widths.
+- Colors and visual tokens: the control continues to use the shared icon-button
+  palette in active and collapsed states. Gray and Light were inspected.
+- Image quality and asset fidelity: the existing vector sidebar marks were
+  reused; no raster assets were introduced.
+- Copy and content: Local Chat content is unchanged apart from removal of the
+  duplicate header control.
+
+### Validation
+
+- `cargo test --bin runebender --test cli -- --test-threads=1` (159 application
+  tests and 17 CLI tests passed; 4 model tests remained ignored)
+- `cargo clippy --workspace --all-targets -- -A
+  clippy::allow-attributes-without-reason -D warnings`
+- `cargo fmt --check`
+- `git diff --check`
+- Overview, Nodes, expanded Edit/Chat, collapsed Edit/Chat, Gray, and Light
+  two-times headless captures plus the comparison sheets were visually
+  inspected.
+
+final result: passed
+
+## Space-held pan preview
+
+- Behavioral references: GPUI's `Tool::Preview`, Space key press/release
+  handling, and preview paint pass in the sibling `runebender-gpui` checkout.
+- Pre-fix capture:
+  `docs/visual-audit/2026-09-14/199-xilem-space-preview-before-gray-2x.png`.
+- Held-Space captures:
+  `docs/visual-audit/2026-09-14/200-xilem-space-preview-held-gray-2x.png`,
+  `docs/visual-audit/2026-09-14/201-xilem-space-preview-held-light-2x.png`, and
+  `docs/visual-audit/2026-09-14/202-xilem-space-preview-text-held-gray-2x.png`.
+  Each capture is 2250 by 1460 device pixels at a 1125 by 730 logical
+  viewport.
+- Direct before/after comparison:
+  `docs/visual-audit/2026-09-14/203-xilem-space-preview-before-after.png`.
+
+### Comparison history
+
+- Resolved P1, temporary preview: pressing Space in an edit canvas now enters
+  the Hand tool and a solid filled-outline preview together; releasing Space
+  restores the persistent tool and full editing display.
+- Resolved P1, preview layers: design grid, metric lines and card, points,
+  handles, anchors, curve analyses, underlays, and other editing feedback are
+  absent while the preview is held.
+- Resolved P1, composed text: an existing text line remains intact and every
+  sort is rendered as a clean fill during the held preview.
+- Resolved P2, Hand-tool edge case: Space also enters preview when Hand was the
+  persistent tool, then returns to Hand on release.
+- Post-fix comparison found no remaining actionable P0, P1, or P2 mismatch in
+  the Space-held preview scope.
+
+### Validation
+
+- `view::canvas::editor::tests::space_preview_hides_metrics_hit_targets`
+- `view::render::tab_tests::space_pan_restores_the_persistent_tool`
+- Existing Text-tool regression coverage continues to reserve ordinary Space
+  for inserting text while the Text tool owns keyboard focus.
+- `cargo test --bin runebender --test cli -- --test-threads=1` (160 application
+  tests and 17 CLI tests passed; 4 model tests remained ignored)
+- `cargo clippy --workspace --all-targets -- -A
+  clippy::allow-attributes-without-reason -D warnings`
+- `cargo fmt --check`
+- `git diff --check`
+- Gray and Light two-times headless captures, a composed-text capture, and the
+  direct before/after comparison were visually inspected.
 
 final result: passed

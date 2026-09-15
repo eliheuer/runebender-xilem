@@ -764,6 +764,13 @@ impl Session {
     }
 
     /// Fit selected curve handles while retaining their point selection.
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "the percentage field is hidden, but this keeps the tested operation available to future command surfaces"
+        )
+    )]
     pub(crate) fn fit_curve(&mut self, percent: f64) -> bool {
         if !(1.0..=150.0).contains(&percent) || self.selected_component.is_some() {
             return false;
@@ -1278,10 +1285,7 @@ impl Workspace {
 
     /// Temporarily use the Hand tool while Space is held.
     pub(crate) fn begin_space_pan(&mut self) {
-        if !matches!(self.mode, Mode::Editor(_))
-            || self.tool == Tool::Hand
-            || self.tool_before_space_pan.is_some()
-        {
+        if !matches!(self.mode, Mode::Editor(_)) || self.tool_before_space_pan.is_some() {
             return;
         }
         self.tool_before_space_pan = Some(self.tool);

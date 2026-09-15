@@ -48,9 +48,9 @@ pub(crate) enum AppAction {
     Redo,
     Overview,
     Tool(Tool),
-    /// Hold Space to pan without replacing the selected tool.
+    /// Hold Space to pan in a chrome-free filled preview.
     BeginSpacePan,
-    /// Restore the selected tool when Space is released.
+    /// Restore the selected tool and editing chrome when Space is released.
     EndSpacePan,
     FlipHorizontal,
     FlipVertical,

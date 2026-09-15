@@ -7,6 +7,16 @@ releases begin.
 
 ## [Unreleased]
 
+- Keep Gray edit-canvas structure darkest while softening composed glyphs,
+  proof text, footer appearance marks, and the coordinate-picker selection.
+
+- Make a Space-held pan temporarily show the standard filled outline preview,
+  hiding edit geometry until the persistent tool returns on release.
+
+- Remove the slider focus capsule, compact and align the edit coordinates,
+  balance transformations into two five-action rows, and prioritize the three
+  primary editing sections in the inspector.
+
 - Combine in-window menus and document controls into one header row, keep long
   filenames within the available space, and fix menu borders, disabled text,
   selection colors, and Dark header contrast.
@@ -311,6 +321,10 @@ No releases yet. `AGENTS.md` has the checklist for the first one.
 Until then, `main` is the only line and this section stays open.
 
 ### Changed
+
+- Wrap and expose selectable local-chat transcripts, distinguish conversation
+  roles visually, and keep the resizable left-dock toggle in one reachable
+  center-footer position across every view.
 
 - Align the Xilem header, editor rail, and node canvas with GPUI's shared visual hierarchy.
 

@@ -16,4 +16,6 @@ pub(crate) mod preview_blur;
 
 pub(crate) mod scroll_viewport;
 
+pub(crate) mod selectable_text;
+
 pub(crate) mod input_typography;

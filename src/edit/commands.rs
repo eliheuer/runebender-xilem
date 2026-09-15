@@ -778,15 +778,6 @@ impl Workspace {
         }
     }
 
-    pub(crate) fn command_fit_curve(&mut self) {
-        if self.interp_preview().is_some() {
-            return;
-        }
-        if let Ok(percent) = self.fit_curve_buf.trim().parse::<f64>() {
-            self.apply_op(|session| session.fit_curve(percent));
-        }
-    }
-
     pub(crate) fn command_filter_offset(&mut self) {
         if let Ok(delta) = self.offset_buf.trim().parse::<f64>() {
             self.apply_op(|session| session.offset(delta));
@@ -1230,27 +1221,10 @@ mod tests {
         app.open_glyph(index);
         for input in ["", "invalid", "NaN", "inf", "0", "-10"] {
             app.stroke_buf = input.into();
-            app.fit_curve_buf = input.into();
             app.command_expand_stroke();
-            app.command_fit_curve();
         }
         assert!(!app.modified);
         assert_eq!(app.font.master().undo_depth(index), 0);
-        app.fit_curve_buf = "50".into();
-        app.command_fit_curve();
-        assert_eq!(app.session.glyph.contours[0].points[1].y, 50.0);
-        assert_eq!(app.font.master().undo_depth(index), 1);
-        app.command_fit_curve();
-        assert_eq!(
-            app.font.master().undo_depth(index),
-            1,
-            "unchanged fit adds no history"
-        );
-        app.undo_active_edit(false);
-        assert_eq!(app.session.glyph.contours, original);
-        app.undo_active_edit(true);
-        assert_eq!(app.session.glyph.contours[0].points[1].y, 50.0);
-        app.undo_active_edit(false);
         app.stroke_buf = "20".into();
         app.command_expand_stroke();
         assert_ne!(app.session.glyph.contours, original);

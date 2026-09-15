@@ -238,6 +238,10 @@ impl Workspace {
                     "Mark",
                     "Shaping",
                     "Axes",
+                    "Path Operations",
+                    "Background",
+                    "Measure",
+                    "Masters",
                 ]);
                 set
             },
@@ -297,7 +301,6 @@ impl Workspace {
             coord_h_buf: String::new(),
             slant_buf: String::new(),
             stroke_buf: String::new(),
-            fit_curve_buf: String::new(),
             offset_buf: String::new(),
             extrude_buf: String::new(),
             roughen_buf: String::new(),
@@ -658,6 +661,19 @@ mod tests {
         let mut workspace = Workspace::open(&path).expect("an empty UFO opens");
         let document_id = workspace.document_id;
         assert!(matches!(workspace.mode, Mode::Overview));
+        for title in ["Coordinates", "Transformations", "Curves"] {
+            assert!(!workspace.collapsed.contains(title));
+        }
+        for title in [
+            "Path Operations",
+            "Glyph",
+            "Background",
+            "Masters",
+            "Axes",
+            "Measure",
+        ] {
+            assert!(workspace.collapsed.contains(title));
+        }
         assert!(workspace.font.glyphs.is_empty());
         assert_eq!(workspace.selected, None);
         assert!(workspace.tabs.is_empty());

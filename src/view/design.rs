@@ -148,6 +148,8 @@ pub(crate) const TITLEBAR_HEIGHT: f64 = 30.0;
 
 /// Transformation icon extent measured in the reference, inside a 24-pixel tile.
 pub(crate) const TRANSFORM_ICON_SIZE: f64 = 22.0;
+/// Five transformation actions share each inspector row on control-size targets.
+pub(crate) const TRANSFORM_TILE_SIZE: f64 = ControlSize::Control.px();
 /// Six pixels separate the transformation icon rows from the parameter form.
 pub(crate) const TRANSFORM_CONTROLS_GAP: f64 = 6.0;
 
@@ -167,10 +169,11 @@ pub(crate) const GROUP_CHIP_HEIGHT: f64 = 23.0;
 pub(crate) const GLYPH_FACT_ROW_HEIGHT: f64 = 18.0;
 
 /// Coordinates inspector geometry measured in the Gray reference.
-pub(crate) const COORD_PICKER_EDGE: f64 = 52.0;
-pub(crate) const COORD_PICKER_GAP: f64 = 8.0;
-pub(crate) const COORD_LABEL_WIDTH: f64 = 14.0;
-pub(crate) const COORD_COUNT_HEIGHT: f64 = 21.0;
+pub(crate) const COORD_PICKER_EDGE: f64 = ControlSize::Control.px() * 2.0 + Space::Sm.px();
+pub(crate) const COORD_PICKER_INSET: f64 = 3.0;
+pub(crate) const COORD_PICKER_GAP: f64 =
+    (COORD_PICKER_EDGE - COORD_PICKER_INSET * 2.0 - ControlSize::Dot.px() * 3.0) / 2.0;
+pub(crate) const COORD_LABEL_WIDTH: f64 = 10.0;
 /// Compact inspector groups retain the wider horizontal control inset.
 pub(crate) const INSPECTOR_VERTICAL_INSET: f64 = 6.0;
 
@@ -582,4 +585,21 @@ where
     flex.cross_axis_alignment(alignment)
         .gap(region.gap())
         .padding(region.inset())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn coordinate_picker_matches_the_two_row_field_stack() {
+        assert_eq!(
+            COORD_PICKER_EDGE,
+            ControlSize::Control.px() * 2.0 + Space::Sm.px()
+        );
+        assert_eq!(
+            COORD_PICKER_INSET * 2.0 + ControlSize::Dot.px() * 3.0 + COORD_PICKER_GAP * 2.0,
+            COORD_PICKER_EDGE
+        );
+    }
 }

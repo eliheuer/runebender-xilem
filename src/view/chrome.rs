@@ -319,6 +319,7 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             xrow(
                 Region::Inline,
                 (
+                    sidebar_toggle(app),
                     matches!(app.mode, Mode::Overview).then(|| {
                         xrow(
                             Region::Inline,
@@ -413,6 +414,7 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                 xrow(
                     Region::Inline,
                     (
+                        sidebar_toggle(app),
                         mark_button(
                             "Show proof",
                             if app.preview_visible {
@@ -421,8 +423,8 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                                 IconMark::EyeClosed
                             },
                             app.preview_visible,
-                            pal.text_muted,
-                            pal.text,
+                            pal.editor_ink(),
+                            pal.editor_control_ink(),
                             Color::TRANSPARENT,
                             Color::TRANSPARENT,
                             |app: &mut Workspace| app.preview_visible = !app.preview_visible,
@@ -433,27 +435,11 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
                             "Invert proof",
                             IconMark::Invert,
                             app.preview_invert,
-                            pal.text_muted,
-                            pal.text,
+                            pal.editor_ink(),
+                            pal.editor_control_ink(),
                             Color::TRANSPARENT,
                             Color::TRANSPARENT,
                             |app: &mut Workspace| app.preview_invert = !app.preview_invert,
-                        )
-                        .icon_size(16.0)
-                        .tile_size(16.0),
-                        mark_button(
-                            "Toggle sidebar",
-                            if app.left_collapsed {
-                                IconMark::SidebarClosed
-                            } else {
-                                IconMark::SidebarOpen
-                            },
-                            !app.left_collapsed,
-                            pal.text_muted,
-                            pal.text,
-                            Color::TRANSPARENT,
-                            Color::TRANSPARENT,
-                            |app: &mut Workspace| app.left_collapsed = !app.left_collapsed,
                         )
                         .icon_size(16.0)
                         .tile_size(16.0),
@@ -486,4 +472,25 @@ fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + 
         Dim::from(ControlSize::Control),
     ))
     .background_color(pal.panel)
+}
+
+/// One stable footer control for hiding and restoring the left dock in every mode.
+fn sidebar_toggle(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
+    let pal = &app.palette;
+    mark_button(
+        "Toggle sidebar",
+        if app.left_collapsed {
+            IconMark::SidebarClosed
+        } else {
+            IconMark::SidebarOpen
+        },
+        !app.left_collapsed,
+        pal.editor_ink(),
+        pal.editor_control_ink(),
+        Color::TRANSPARENT,
+        Color::TRANSPARENT,
+        |app: &mut Workspace| app.left_collapsed = !app.left_collapsed,
+    )
+    .icon_size(16.0)
+    .tile_size(16.0)
 }
