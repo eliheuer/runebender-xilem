@@ -763,31 +763,6 @@ impl Session {
         })
     }
 
-    /// Fit selected curve handles while retaining their point selection.
-    #[cfg_attr(
-        not(test),
-        allow(
-            dead_code,
-            reason = "the percentage field is hidden, but this keeps the tested operation available to future command surfaces"
-        )
-    )]
-    pub(crate) fn fit_curve(&mut self, percent: f64) -> bool {
-        if !(1.0..=150.0).contains(&percent) || self.selected_component.is_some() {
-            return false;
-        }
-        let mut changed = self.glyph.clone();
-        if !runebender_core::outline::cleanup::fit_curve_handles(
-            &mut changed,
-            &self.selection,
-            percent / 100.0,
-        ) {
-            return false;
-        }
-        self.record(EditType::Normal);
-        self.glyph = changed;
-        true
-    }
-
     pub(crate) fn offset(&mut self, delta: f64) -> bool {
         self.effect(|glyph| runebender_core::outline::effects::offset_glyph_contours(glyph, delta))
     }
@@ -1143,8 +1118,7 @@ impl Session {
     }
 
     /// The contours to copy: the ones holding a selected point, or every
-    /// contour when nothing is selected. This is the web editor's rule,
-    /// and the GPUI build's.
+    /// contour when nothing is selected. This is shared with the web editor.
     pub(crate) fn contours_for_copy(&self) -> Vec<norad::Contour> {
         if self.selection.is_empty() {
             return self.glyph.contours.clone();
@@ -1222,7 +1196,7 @@ fn resolved_component_contour_sets(
 }
 
 impl Workspace {
-    /// The OKLCH themes in menu order (matches runebender-gpui).
+    /// The OKLCH themes in menu order.
     pub(crate) const THEMES: [&'static str; 3] = ["dark", "gray", "light"];
 
     fn text_context(&self) -> TextContext {
@@ -2048,44 +2022,6 @@ mod tests {
         let mut all = two_squares();
         assert!(all.expand_stroke(20.0));
         assert!(all.glyph.contours.len() > original.len());
-    }
-
-    #[test]
-    fn curve_fitting_keeps_selection_and_ignores_invalid_or_unchanged_edits() {
-        use norad::{Contour, ContourPoint, PointType};
-        let curve = |offset| {
-            Contour::new(
-                vec![
-                    ContourPoint::new(offset, 0.0, PointType::Move, false, None, None),
-                    ContourPoint::new(offset, 10.0, PointType::OffCurve, false, None, None),
-                    ContourPoint::new(offset + 50.0, 100.0, PointType::OffCurve, false, None, None),
-                    ContourPoint::new(offset + 100.0, 100.0, PointType::Curve, false, None, None),
-                ],
-                None,
-            )
-        };
-        let mut session = two_squares();
-        session.glyph.contours = vec![curve(0.0), curve(200.0)];
-        let original = session.glyph.contours.clone();
-        session.selection.insert((0, 1));
-        for percent in [0.0, -1.0, 151.0, f64::NAN, f64::INFINITY] {
-            assert!(!session.fit_curve(percent));
-        }
-        assert!(session.pending.is_empty());
-        assert!(session.fit_curve(50.0));
-        assert_eq!(session.glyph.contours[0].points[1].y, 50.0);
-        assert_eq!(session.glyph.contours[1], original[1]);
-        assert!(session.selection.contains(&(0, 1)));
-        assert_eq!(session.pending.len(), 1);
-        let HistoryOp::Record(before) = &session.pending[0] else {
-            panic!("undo snapshot");
-        };
-        assert_eq!(before.contours, original);
-        assert!(!session.fit_curve(50.0));
-        assert_eq!(session.pending.len(), 1);
-        session.selection.clear();
-        assert!(session.fit_curve(60.0));
-        assert_eq!(session.glyph.contours[1].points[1].y, 60.0);
     }
 
     #[test]

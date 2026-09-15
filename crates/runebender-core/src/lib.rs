@@ -26,6 +26,13 @@
 //! - [`ui`]: what every front-end shares that is not font data.
 //!   Themes, the sidebar's filter data, selection and undo.
 
+// LINEBENDER LINT SET - lib.rs - v4
+// See https://linebender.org/wiki/canonical-lints/
+#![cfg_attr(not(test), warn(unused_crate_dependencies))]
+#![warn(clippy::print_stdout, clippy::print_stderr)]
+#![cfg_attr(target_pointer_width = "64", warn(clippy::trivially_copy_pass_by_ref))]
+// END LINEBENDER LINT SET
+
 pub mod analysis;
 pub mod document;
 pub mod formats;

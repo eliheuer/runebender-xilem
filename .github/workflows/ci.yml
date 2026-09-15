@@ -47,13 +47,13 @@ jobs:
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
-        run: cargo clippy --workspace --all-targets
+        run: cargo clippy --workspace --all-targets --locked
       - name: doc
-        run: cargo doc --workspace --no-deps
+        run: cargo doc --workspace --no-deps --locked
       - name: test
-        run: cargo test --workspace -- --test-threads=1
+        run: cargo test --workspace --locked -- --test-threads=1
       - name: build
-        run: cargo build --workspace --release
+        run: cargo build --workspace --release --locked
 
   vet:
     name: supply chain

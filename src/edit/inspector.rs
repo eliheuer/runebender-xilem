@@ -459,8 +459,8 @@ impl Workspace {
             } => (if redo { before } else { after }, *undo_depth),
             MetadataEdit::Unicode {
                 glyph, undo_depth, ..
-            } => (glyph, *undo_depth),
-            MetadataEdit::FontData {
+            }
+            | MetadataEdit::FontData {
                 glyph, undo_depth, ..
             } => (glyph, *undo_depth),
         };
@@ -552,8 +552,8 @@ impl Workspace {
             } => (if redo { before } else { after }, *undo_depth),
             MetadataEdit::Unicode {
                 glyph, undo_depth, ..
-            } => (glyph, *undo_depth),
-            MetadataEdit::FontData {
+            }
+            | MetadataEdit::FontData {
                 glyph, undo_depth, ..
             } => (glyph, *undo_depth),
         };

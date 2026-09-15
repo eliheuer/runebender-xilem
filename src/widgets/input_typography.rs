@@ -144,6 +144,7 @@ mod tests {
     use masonry::properties::{ContentColor, PlaceholderColor};
     use masonry::widgets::TextArea;
     use masonry_testing::TestHarness;
+    #[cfg(target_os = "macos")]
     use xilem::style::Style;
 
     #[test]

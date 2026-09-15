@@ -1,6 +1,8 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Reserves enough main-thread stack for native Windows debug builds.
+
 // Xilem view construction exceeds Windows' default 1 MiB main-thread stack
 // in debug builds. Reserve 16 MiB for the application; pages commit on demand.
 fn main() {

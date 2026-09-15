@@ -1,0 +1,8 @@
+# LINEBENDER LINT SET - .clippy.toml - v1
+# See https://linebender.org/wiki/canonical-lints/
+
+# Values up to two 64-bit registers are cheap to copy on supported desktop
+# targets, so do not suggest references for these small types.
+trivial-copy-size-limit = 16
+
+# END LINEBENDER LINT SET

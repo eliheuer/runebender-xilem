@@ -7,9 +7,9 @@
 //! has no menu API of any kind, so Masonry never inherited menus, and a
 //! font editor with no File menu is not a font editor anyone will use.
 //!
-//! The shape here is GPUI's: an action is a plain value, a table binds a
-//! key and a menu position to it, and both paths run the same code. What
-//! this file adds on top is the plumbing Xilem does not own:
+//! An action is a plain value, a table binds a key and a menu position to
+//! it, and both paths run the same code. This file adds the plumbing Xilem
+//! does not own:
 //!
 //! - The menu bar is built with `muda`, on the main thread, the first
 //!   time the view function runs. On macOS `init_for_nsapp` attaches to
@@ -19,11 +19,8 @@
 //!   muda's own global channel, so a `task` view drains that channel on
 //!   the runtime and posts each one back into the application.
 //!
-//! The Linux and Windows halves are not here. muda's menu bar wants a GTK
-//! window on Linux and an HWND on Windows, and winit gives out neither
-//! through Xilem, so those platforms need an in-window menu bar drawn
-//! with Masonry's layer system. That split is most of why this is not
-//! simply a pull request against Xilem.
+//! Linux and Windows use the in-window menu bar drawn with Masonry's layer
+//! system. They do not initialize `muda` or its global event channel.
 
 use crate::widgets::shortcuts::AppAction;
 use crate::{AppState, Tool};
@@ -1318,18 +1315,9 @@ mod platform {
 
 #[cfg(not(target_os = "macos"))]
 mod platform {
-    #[cfg(not(target_arch = "wasm32"))]
-    use crate::widgets::shortcuts::AppAction;
-
     /// The native menu is macOS-only; [`crate::widgets::menu_shell`] owns the
     /// in-window menu on these platforms.
     pub(crate) fn install(_app: &crate::AppState) {}
-
-    /// No menu ids exist off macOS, so nothing matches.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(super) fn action_for(_id: &muda::MenuId) -> Option<AppAction> {
-        None
-    }
 }
 
 pub(crate) use platform::install;
@@ -1340,7 +1328,7 @@ pub(crate) use platform::install;
 /// Menu events do not travel through winit's event loop, so without this
 /// they never reach the widget tree at all. The pump produces no widget,
 /// which is why it is forked alongside the tree rather than placed in it.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(target_os = "macos")]
 pub(crate) fn with_menu_events<V: xilem::WidgetView<AppState>>(
     view: V,
 ) -> impl xilem::WidgetView<AppState> + use<V> {
@@ -1382,7 +1370,7 @@ pub(crate) fn with_menu_events<V: xilem::WidgetView<AppState>>(
     )
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(target_os = "macos"))]
 pub(crate) fn with_menu_events<V: xilem::WidgetView<AppState>>(view: V) -> V {
     view
 }

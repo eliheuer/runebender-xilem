@@ -5,9 +5,8 @@
 //! Masonry's `render_text` and Parley. Used for measure labels and
 //! grid cell labels.
 //!
-//! xix note: this is exactly the "draw text into a canvas scene" the
-//! framework should provide directly. Every canvas app needs it and
-//! there is no one-liner today, so each app carries this file.
+//! This stays local while Masonry has no one-call equivalent for shaped
+//! canvas labels.
 
 use std::cell::RefCell;
 
@@ -88,7 +87,6 @@ pub(crate) fn width(text: &str, size: f32) -> f64 {
 }
 
 /// Draw a single-line label, with an ellipsis if its measured width exceeds `available`.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_elided(
     painter: &mut masonry::imaging::Painter<'_>,
     at: Point,

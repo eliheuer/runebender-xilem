@@ -1,7 +1,6 @@
 [workspace]
 members = [".", "crates/runebender-core"]
 default-members = ["."]
-exclude = [".worktrees/visual-parity", ".worktrees/menu-parity", ".claude/worktrees/vigilant-beaver"]
 resolver = "2"
 
 [package]
@@ -32,6 +31,7 @@ unsafe_op_in_unsafe_fn = "forbid"
 
 elided_lifetimes_in_paths = "warn"
 missing_debug_implementations = "warn"
+missing_docs = "warn"
 trivial_numeric_casts = "warn"
 unnameable_types = "warn"
 unreachable_pub = "warn"
@@ -71,8 +71,7 @@ wildcard_dependencies = "warn"
 # END LINEBENDER LINT SET
 
 [dependencies]
-# Upstream Xilem, pinned. This editor builds on the real thing, so that
-# comparing it against runebender-gpui measures Xilem and not a fork.
+# Upstream Xilem, pinned so framework changes remain deliberate and reviewable.
 xilem = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
 masonry = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a" }
 # The GUI and headless tools share this workspace library.
@@ -89,10 +88,7 @@ linesweeper = "0.4"
 # System text clipboard for the glyph-grid Copy as Text command.
 copypasta = "0.10.2"
 winit = "0.30"
-# Native menu bar. Xilem is on winit, which has no menu API, so this is
-# the application's job. Tauri's crate, the same one Zed-class apps use.
-muda = "0.19"
-# Reload when the sources change under us, the way the GPUI build does.
+# Reload when the font sources change on disk.
 notify = "8"
 # Cross-platform native file and folder prompts for File, Nodes, and image
 # commands. Xilem/winit intentionally do not supply dialog APIs.
@@ -106,6 +102,11 @@ tokio = { version = "1", features = ["rt", "time"] }
 imaging_vello_cpu = "0.0.1"
 # Writing the screenshot. PNG is the only format it needs.
 image = { version = "0.25", default-features = false, features = ["png"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# macOS owns its menu bar at the application level. Linux and Windows use the
+# in-window menu and must not initialize muda's global native event channel.
+muda = "0.19"
 
 [dev-dependencies]
 # Still the right tool for widget tests, where a fixed font and no system

@@ -824,14 +824,13 @@ impl NodeGraph {
                         input: p.name.clone(),
                         kind: p.kind,
                     }),
-                    Some(_) => {}
                     None if p.required && !linked && p.default.is_none() => {
                         problems.push(Problem::MissingInput {
                             node: n.id,
                             input: p.name.clone(),
                         });
                     }
-                    None => {}
+                    Some(_) | None => {}
                 }
             }
             for name in n.values.keys() {

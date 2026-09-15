@@ -272,11 +272,7 @@ impl HyperPath {
             .iter()
             .filter(|pt| !matches!(pt.point_type, workspace::PointType::OffCurve))
             .map(|pt| {
-                let smooth = match pt.point_type {
-                    workspace::PointType::Hyper => true,
-                    workspace::PointType::HyperCorner => false,
-                    _ => true,
-                };
+                let smooth = !matches!(pt.point_type, workspace::PointType::HyperCorner);
                 PathPoint {
                     id: EntityId::next(),
                     point: Point::new(pt.x, pt.y),
@@ -353,7 +349,7 @@ impl<'a> HyperSegmentIterator<'a> {
     }
 }
 
-impl<'a> Iterator for HyperSegmentIterator<'a> {
+impl Iterator for HyperSegmentIterator<'_> {
     type Item = super::segment::SegmentInfo;
 
     fn next(&mut self) -> Option<Self::Item> {
