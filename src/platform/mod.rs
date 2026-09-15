@@ -12,10 +12,10 @@ pub(crate) mod export;
 
 pub(crate) mod host;
 pub(crate) mod screenshot;
-#[cfg(unix)]
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod watch;
-#[cfg(not(unix))]
-#[path = "no_watch.rs"]
+#[cfg(target_arch = "wasm32")]
+#[path = "browser_watch.rs"]
 pub(crate) mod watch;
 
 #[cfg(unix)]

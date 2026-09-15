@@ -88,6 +88,8 @@ linesweeper = "0.4"
 # System text clipboard for the glyph-grid Copy as Text command.
 copypasta = "0.10.2"
 winit = "0.30"
+# Reload when the font sources change on disk.
+notify = "8"
 # Cross-platform native file and folder prompts for File, Nodes, and image
 # commands. Xilem/winit intentionally do not supply dialog APIs.
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
@@ -105,11 +107,6 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # macOS owns its menu bar at the application level. Linux and Windows use the
 # in-window menu and must not initialize muda's global native event channel.
 muda = "0.19"
-
-[target.'cfg(unix)'.dependencies]
-# Reload when the font sources change on disk. Windows leaves this off until
-# its native event-loop startup is stable under the smoke test.
-notify = "8"
 
 [dev-dependencies]
 # Still the right tool for widget tests, where a fixed font and no system
