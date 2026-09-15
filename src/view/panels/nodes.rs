@@ -3,7 +3,7 @@
 
 //! The nodes pane: one row of buttons over the canvas.
 //!
-//! The files beside the font as chips, then New, Open…, Save and Run,
+//! The files beside the font as square controls, then New, Open, Save and Run,
 //! the GPUI build's row. Node types to add are on the canvas's
 //! right-click menu, a layer the canvas widget opens itself. A
 //! selected Master, Model or Adapter node offers its choices in a
@@ -31,11 +31,10 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         .cloned()
         .map(|file| {
             let current = file == open_path;
-            tab_chip(
+            recipes::toggle(
                 pal,
                 file_label(&file),
                 current,
-                false,
                 move |app: &mut Workspace| {
                     if app.nodes.graph.as_ref().is_none_or(|g| g.path != file) {
                         app.open_nodes_file(&file);
@@ -44,42 +43,47 @@ pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
             )
         })
         .collect();
-    let unlisted = (!app.nodes.files.contains(&open_path)).then(|| {
-        tab_chip(
-            pal,
-            file_label(&open_path),
-            true,
-            false,
-            |_: &mut Workspace| {},
-        )
-    });
+    let unlisted = (!app.nodes.files.contains(&open_path))
+        .then(|| recipes::toggle(pal, file_label(&open_path), true, |_: &mut Workspace| {}));
     let running = app.nodes.job.is_some();
-    let strip = xrow(
-        Region::Toolbar,
-        (
-            xrow(Region::Inline, files),
-            unlisted,
-            FlexSpacer::Flex(1.0),
-            recipes::toggle(pal, "New".into(), false, |app: &mut Workspace| {
-                app.new_nodes_file();
-            }),
-            recipes::toggle(pal, "Open\u{2026}".into(), false, |app: &mut Workspace| {
-                app.command_open_nodes();
-            }),
-            recipes::toggle(pal, "Save".into(), false, |app: &mut Workspace| {
-                app.save_nodes_file();
-            }),
-            recipes::toggle(
-                pal,
-                if running { "Running\u{2026}" } else { "Run" }.into(),
-                !running,
-                |app: &mut Workspace| app.run_nodes(),
-            ),
-        ),
-    )
-    .padding(Space::Sm)
-    .gap(Space::Sm)
-    .background_color(pal.panel);
+    // The left tab rail and the inspector's first header occupy this same
+    // 36-pixel band. One square, keylined control style keeps the file tabs
+    // and commands from reading as two unrelated toolbars.
+    let strip = bottom_keyline(
+        sized_box(
+            xrow(
+                Region::Inline,
+                (
+                    xrow(Region::Inline, files),
+                    unlisted,
+                    FlexSpacer::Flex(1.0),
+                    recipes::toggle(pal, "New".into(), false, |app: &mut Workspace| {
+                        app.new_nodes_file();
+                    }),
+                    recipes::toggle(pal, "Open".into(), false, |app: &mut Workspace| {
+                        app.command_open_nodes();
+                    }),
+                    recipes::toggle(pal, "Save".into(), false, |app: &mut Workspace| {
+                        app.save_nodes_file();
+                    }),
+                    recipes::toggle(
+                        pal,
+                        if running { "Running\u{2026}" } else { "Run" }.into(),
+                        !running,
+                        |app: &mut Workspace| app.run_nodes(),
+                    ),
+                ),
+            )
+            .padding(Space::Sm)
+            .gap(Space::Sm)
+            .background_color(pal.panel),
+        )
+        .dims(Dimensions::new(
+            Dim::Stretch,
+            Dim::Fixed(Length::px(design::RAIL_TAB_HEIGHT)),
+        )),
+        pal.outline,
+    );
     let choices = nodes_choices(app);
     let problems: Vec<_> = state
         .problems

@@ -30,7 +30,15 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
     };
     let blur = app.preview_blur;
     let instance_preview = interp.is_some();
-    let has_preview_text = !app.preview_text.is_empty() && !instance_preview;
+    // The proof strip follows the open text composition even while an outline
+    // tool edits one sort in context. Tool choice and composition lifetime are
+    // separate state in both GPUI and Web.
+    let proof_text = if app.has_text_session {
+        &app.initial_text
+    } else {
+        &app.preview_text
+    };
+    let has_preview_text = !proof_text.is_empty() && !instance_preview;
     let (preview_paths, advance) = if !has_preview_text {
         let mut paths = vec![(*outline).clone()];
         if has_components {
@@ -40,7 +48,7 @@ pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use
     } else {
         let inputs = text_tool::TextInputs::new(&app.font)
             .with_direction(app.text_dir)
-            .with_text(&app.preview_text)
+            .with_text(proof_text)
             .with_shaping_options(
                 &app.text_features_disabled,
                 app.text_script.as_deref(),

@@ -28,6 +28,8 @@ pub(crate) enum Sel {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Tool {
     Select,
+    /// Moves the editor viewport without changing the glyph or selection.
+    Hand,
     Pen,
     Rect,
     Ellipse,
@@ -146,6 +148,9 @@ pub(crate) struct Workspace {
     pub(crate) active_tab: usize,
     pub(crate) selected_points: usize,
     pub(crate) tool: Tool,
+    /// The persistent tool restored when a temporary Space-held pan ends.
+    /// `None` distinguishes a selected Hand tool from the temporary override.
+    pub(crate) tool_before_space_pan: Option<Tool>,
     /// The live edit canvas. Toolbar controls use this to transfer native
     /// keyboard/IME focus without making the view-owned text buffer `Send`.
     pub(crate) editor_focus: Arc<std::sync::Mutex<Option<masonry::core::WidgetId>>>,
@@ -159,6 +164,12 @@ pub(crate) struct Workspace {
     pub(crate) view: canvas::editor::ViewOptions,
     /// What the text tool starts with, from `RUNEBENDER_TEXT`.
     pub(crate) initial_text: String,
+    /// Whether this tab owns an open text composition.
+    ///
+    /// This is deliberately independent of `tool`: GPUI and Web keep the
+    /// composed line on the canvas when Select (or another outline tool) is
+    /// picked, so the active sort can be edited without losing its neighbours.
+    pub(crate) has_text_session: bool,
     /// Grid cell size, driven by the bottom bar's zoom.
     pub(crate) cell_size: f64,
     /// Independent thumbnail size for the editor's navigation rail.
@@ -493,6 +504,7 @@ pub(crate) struct Tab {
 #[derive(Clone, Default)]
 pub(crate) struct TextContext {
     pub(crate) editor_text: String,
+    pub(crate) has_text_session: bool,
     pub(crate) preview_text: String,
     pub(crate) direction: Option<runebender_core::text::buffer::TextDirection>,
     pub(crate) features_disabled: std::collections::HashSet<String>,

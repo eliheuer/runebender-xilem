@@ -121,8 +121,7 @@ pub(crate) fn glyph_list(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
                 )
                 .background_color(bg)
                 .border_width(Stroke::None.length())
-                .padding(Space::None)
-                .corner_radius(Radius::Sm.length()),
+                .padding(Space::None),
             )
             .dims(Dimensions::new(Dim::Stretch, Dim::Fixed(Length::px(24.0))))
         })

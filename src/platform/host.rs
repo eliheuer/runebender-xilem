@@ -165,6 +165,14 @@ impl Workspace {
             .and_then(|glyph| glyph.codepoint)
             .map(|c| format!("{:04X}", c as u32))
             .unwrap_or_default();
+        let initial_text = std::env::var("RUNEBENDER_TEXT").unwrap_or_default();
+        let tool = match std::env::var("RUNEBENDER_TOOL").as_deref() {
+            Ok("hand") => Tool::Hand,
+            Ok("measure") => Tool::Measure,
+            Ok("text") => Tool::Text,
+            _ => Tool::Select,
+        };
+        let has_text_session = tool == Tool::Text || !initial_text.is_empty();
         let mut app = Self {
             document_id: NEXT_DOCUMENT_ID.fetch_add(1, Ordering::Relaxed),
             font,
@@ -229,7 +237,6 @@ impl Workspace {
                     "Related",
                     "Mark",
                     "Shaping",
-                    "Masters",
                     "Axes",
                 ]);
                 set
@@ -269,18 +276,16 @@ impl Workspace {
             active_tab: 0,
             session,
             selected_points: 0,
-            tool: match std::env::var("RUNEBENDER_TOOL").as_deref() {
-                Ok("measure") => Tool::Measure,
-                Ok("text") => Tool::Text,
-                _ => Tool::Select,
-            },
+            tool,
+            tool_before_space_pan: None,
             editor_focus: Arc::new(std::sync::Mutex::new(None)),
             modified,
             source_roots,
             source_fingerprint,
             note: String::new(),
             view,
-            initial_text: std::env::var("RUNEBENDER_TEXT").unwrap_or_default(),
+            initial_text,
+            has_text_session,
             cell_size: 96.0,
             rail_cell_size: design::RAIL_CELL_SIZE,
             axis_values,

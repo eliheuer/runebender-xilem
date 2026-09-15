@@ -46,9 +46,18 @@ pub(crate) const POINT_RING_WIDTH: f64 = 1.5;
 pub(crate) const POINT_HALO_EXTRA: f64 = 2.0;
 /// A diamond needs wider diagonals to read like the neighboring round node.
 pub(crate) const ANCHOR_DIAMOND_SCALE: f64 = 1.35;
-/// Direction arrows sit beside the first on-curve point of a closed contour.
-pub(crate) const START_ARROW_RADIUS: f64 = 5.5;
-pub(crate) const START_ARROW_OFFSET: f64 = 8.0;
+/// A closed contour's first node becomes a directional wedge at point scale.
+pub(crate) const START_MARKER_SCALE: f64 = 1.5;
+pub(crate) const START_MARKER_TIP: f64 = 1.15;
+pub(crate) const START_MARKER_BACK: f64 = 0.70;
+pub(crate) const START_MARKER_HALF_WIDTH: f64 = 0.85;
+/// Smooth starts soften the three wedge corners by this edge fraction.
+pub(crate) const START_MARKER_SMOOTH_CUT: f64 = 0.25;
+
+/// Caret caps scale with the composed line while staying compact at extremes.
+pub(crate) const TEXT_CURSOR_CAP_FRACTION: f64 = 0.075;
+pub(crate) const TEXT_CURSOR_CAP_MIN: f64 = 4.0;
+pub(crate) const TEXT_CURSOR_CAP_MAX: f64 = 28.0;
 
 /// Keep nodes compact when zoomed out and enlarge them gradually for close editing.
 /// The three smooth intervals match the reference's point-size curve.
@@ -74,7 +83,20 @@ pub(crate) const CENTER_MIN_WIDTH: f64 = 280.0;
 pub(crate) const EDITOR_MIN_HEIGHT: f64 = 160.0;
 pub(crate) const PROOF_MIN_HEIGHT: f64 = 64.0;
 /// Collapsed overview headers occupy this much of the inspector initially.
-pub(crate) const OVERVIEW_INSPECTOR_SECTIONS_HEIGHT: f64 = 340.0;
+pub(crate) const OVERVIEW_INSPECTOR_SECTIONS_HEIGHT: f64 = 344.0;
+/// Initial inspector height when the master chooser is open.
+///
+/// The base already includes the collapsed Masters header. Opening it adds
+/// the section gap, one dense row per master, and the gaps between those rows.
+pub(crate) fn overview_inspector_sections_height(master_count: usize, masters_open: bool) -> f64 {
+    if !masters_open || master_count == 0 {
+        return OVERVIEW_INSPECTOR_SECTIONS_HEIGHT;
+    }
+    OVERVIEW_INSPECTOR_SECTIONS_HEIGHT
+        + Space::Md.px()
+        + ControlSize::Icon.px() * master_count as f64
+        + Space::Xs.px() * master_count.saturating_sub(1) as f64
+}
 /// Keep both halves of the resizable overview inspector usable.
 pub(crate) const OVERVIEW_INSPECTOR_MIN_SECTIONS_HEIGHT: f64 = 120.0;
 pub(crate) const OVERVIEW_GLYPH_PREVIEW_MIN_HEIGHT: f64 = 120.0;
@@ -96,6 +118,8 @@ pub(crate) const ROW_MARKER_CHEVRON_TIP: f64 = 2.5;
 pub(crate) const RAIL_TAB_ACTIVE_HEIGHT: f64 = 32.0;
 pub(crate) const RAIL_TAB_INACTIVE_HEIGHT: f64 = 28.0;
 pub(crate) const RAIL_TAB_HEIGHT: f64 = 36.0;
+/// Content height that makes a collapsed node-inspector group fill the rail.
+pub(crate) const NODE_VIEW_SECTION_HEADER_HEIGHT: f64 = 23.0;
 /// Target thumbnail size and compact grid inset; the fitted cells use whole pixels.
 pub(crate) const RAIL_CELL_SIZE: f64 = 44.0;
 pub(crate) const RAIL_GRID_INSET: f64 = 6.0;
@@ -350,6 +374,32 @@ impl Radius {
     }
 }
 
+/// The only two button silhouettes used by the application.
+///
+/// Body controls are square so adjacent controls, list rows, and panel
+/// keylines join cleanly. A fully round button is reserved for controls whose
+/// meaning is itself circular, such as the title-bar add button and mark
+/// swatches. Keeping this semantic choice here prevents individual call sites
+/// from drifting back to Masonry's rounded default.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum ButtonShape {
+    /// The standard application control: square and keyline-aligned.
+    #[default]
+    Square,
+    /// A deliberately circular control.
+    Circular,
+}
+
+impl ButtonShape {
+    /// The shared corner radius for this button family.
+    pub(crate) const fn radius(self) -> Length {
+        match self {
+            Self::Square => Radius::None.length(),
+            Self::Circular => Radius::Full.length(),
+        }
+    }
+}
+
 /// The type scale. Two sizes carry most of an interface.
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
 #[expect(
@@ -421,6 +471,10 @@ impl From<TextSize> for f32 {
     }
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[expect(
+    dead_code,
+    reason = "the region scale remains a closed vocabulary even when one role has no direct call site"
+)]
 pub(crate) enum Region {
     /// A panel, sidebar, or inspector. The default for a pane of content.
     #[default]

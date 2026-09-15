@@ -83,7 +83,7 @@ fn chip_rows<F: Fn(&mut Workspace, &str) + Clone + Send + Sync + 'static>(
     xcolumn(Region::List, rows).gap(gap)
 }
 
-/// A small keylined chip, the GPUI build's `px_1` rounded box.
+/// A small keylined chip using the application's square control silhouette.
 fn chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     pal: &Palette,
     text: String,
@@ -98,10 +98,10 @@ fn styled_chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
     style: ChipStyle,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F> {
-    let (height, radius, ink) = match style {
-        ChipStyle::Compact => (ControlSize::Row.px(), Radius::Sm, pal.text),
-        ChipStyle::GroupMember => (design::GROUP_CHIP_HEIGHT, Radius::None, pal.text),
-        ChipStyle::GroupAdd => (design::GROUP_CHIP_HEIGHT, Radius::None, pal.text_muted),
+    let (height, ink) = match style {
+        ChipStyle::Compact => (ControlSize::Row.px(), pal.text),
+        ChipStyle::GroupMember => (design::GROUP_CHIP_HEIGHT, pal.text),
+        ChipStyle::GroupAdd => (design::GROUP_CHIP_HEIGHT, pal.text_muted),
     };
     sized_box(
         button(
@@ -112,7 +112,7 @@ fn styled_chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         .background_color(pal.panel)
         .border_color(pal.outline)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(radius.length()),
+        .corner_radius(Radius::None.length()),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::Fixed(Length::px(height))))
 }

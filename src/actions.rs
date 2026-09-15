@@ -773,6 +773,12 @@ pub(crate) const ACTIONS: &[Entry] = &[
     },
     Entry {
         menu: "",
+        title: "Hand",
+        accelerator: None,
+        action: AppAction::Tool(Tool::Hand),
+    },
+    Entry {
+        menu: "",
         title: "Pen",
         accelerator: Some("P"),
         action: AppAction::Tool(Tool::Pen),
@@ -873,6 +879,15 @@ fn action_for_key_impl(
 
 /// Whether `action` is currently available, using its shared menu predicate.
 pub(crate) fn action_enabled(action: AppAction, app: &AppState) -> bool {
+    if action == AppAction::BeginSpacePan {
+        return app
+            .workspace
+            .as_ref()
+            .is_some_and(|workspace| matches!(workspace.mode, crate::Mode::Editor(_)));
+    }
+    if action == AppAction::EndSpacePan {
+        return app.workspace.is_some();
+    }
     ACTIONS
         .iter()
         .find(|entry| entry.action == action)

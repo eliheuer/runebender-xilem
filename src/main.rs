@@ -48,9 +48,7 @@ use winit::dpi::LogicalSize;
 use winit::error::EventLoopError;
 use xilem::WidgetView;
 use xilem::style::Style;
-use xilem::view::{
-    FlexExt as _, FlexSpacer, button, canvas, flex_col, flex_row, sized_box, text_button,
-};
+use xilem::view::{FlexExt as _, FlexSpacer, canvas, flex_col, flex_row, sized_box};
 #[cfg(not(target_arch = "wasm32"))]
 use xilem::{EventLoop, EventLoopBuilder, Xilem};
 
@@ -64,11 +62,12 @@ use runebender_core::analysis::category::GlyphCategory;
 use view::canvas::editor::editor;
 use view::canvas::grid::{Cell, CellMetrics, GridEvent, cells_of, grid};
 use view::chrome::*;
-use view::design::{ControlSize, Radius, Region, Space, Stroke, TextSize};
+use view::design::{ButtonShape, ControlSize, Radius, Region, Space, Stroke, TextSize};
 use view::panels::{
     chat::*, editor::*, editor_info::*, info::*, local_ai::*, nodes::*, preview::*, sections::*,
     tabs::*,
 };
+use view::recipes::button;
 use view::render::*;
 use view::theme::Palette;
 use view::*;

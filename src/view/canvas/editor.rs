@@ -9,13 +9,14 @@ use std::sync::Arc;
 use masonry::accesskit::{Node, Role};
 use masonry::core::keyboard::{Key, KeyState, NamedKey};
 use masonry::core::{
-    AccessCtx, ChildrenIds, EventCtx, LayerType, LayoutCtx, MeasureCtx, NewWidget, PaintCtx,
-    PointerButton, PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate,
-    PropertiesMut, PropertiesRef, RegisterCtx, ScrollDelta, TextEvent, Widget, WidgetId,
+    AccessCtx, ChildrenIds, CursorIcon, EventCtx, LayerType, LayoutCtx, MeasureCtx, NewWidget,
+    PaintCtx, PointerButton, PointerButtonEvent, PointerEvent, PointerScrollEvent, PointerUpdate,
+    PropertiesMut, PropertiesRef, QueryCtx, RegisterCtx, ScrollDelta, TextEvent, UpdateCtx, Widget,
+    WidgetId,
 };
 use masonry::imaging::Painter;
 use masonry::kurbo;
-use masonry::kurbo::{Axis, Circle, Line, Point, Rect, Size, Stroke};
+use masonry::kurbo::{Affine, Axis, Circle, Line, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 use runebender_core::outline::glyph_ops::PointId;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
@@ -33,15 +34,114 @@ use crate::view::design::{
     METRICS_CARD_HEIGHT as PANEL_HEIGHT, METRICS_CARD_INSET as PANEL_PAD,
     METRICS_CARD_WIDTH as PANEL_WIDTH, METRICS_FIELD_GAP, METRICS_FIELD_HEIGHT as PANEL_ROW,
     METRICS_FIELD_START, METRICS_FIELD_WIDTH, POINT_CORNER_RADIUS, POINT_CURVE_RADIUS,
-    POINT_HALO_EXTRA, POINT_RING_WIDTH, POINT_SELECTED_GROW, START_ARROW_OFFSET,
-    START_ARROW_RADIUS, Stroke as DesignStroke, TextSize, point_marker_scale,
+    POINT_HALO_EXTRA, POINT_RING_WIDTH, POINT_SELECTED_GROW, START_MARKER_BACK,
+    START_MARKER_HALF_WIDTH, START_MARKER_SCALE, START_MARKER_SMOOTH_CUT, START_MARKER_TIP,
+    Stroke as DesignStroke, TEXT_CURSOR_CAP_FRACTION, TEXT_CURSOR_CAP_MAX, TEXT_CURSOR_CAP_MIN,
+    TextSize, point_marker_scale,
 };
 
 const HIT_RADIUS_PX: f64 = 8.0;
+const CURSOR_BLINK_HALF_CYCLE_NS: u64 = 500_000_000;
+const CURSOR_BLINK_CYCLE_NS: u64 = CURSOR_BLINK_HALF_CYCLE_NS * 2;
+
+fn cursor_visible_at(elapsed_ns: u64) -> bool {
+    elapsed_ns.rem_euclid(CURSOR_BLINK_CYCLE_NS) <= CURSOR_BLINK_HALF_CYCLE_NS
+}
 
 /// Build one round design-grid dot in screen coordinates.
 fn round_grid_dot(at: Point, diameter: f64) -> kurbo::BezPath {
     kurbo::Shape::to_path(&Circle::new(at, diameter / 2.0), 0.1)
+}
+
+fn point_marker_shape(center: Point, radius: f64, square: bool) -> kurbo::BezPath {
+    if square {
+        kurbo::Shape::to_path(
+            &Rect::new(
+                center.x - radius,
+                center.y - radius,
+                center.x + radius,
+                center.y + radius,
+            ),
+            0.1,
+        )
+    } else {
+        kurbo::Shape::to_path(&Circle::new(center, radius), 0.15)
+    }
+}
+
+/// Replace a closed contour's first node with the GPUI direction wedge.
+fn direction_marker_shape(
+    center: Point,
+    toward: Point,
+    radius: f64,
+    smooth: bool,
+) -> Option<kurbo::BezPath> {
+    let direction = toward - center;
+    let length = direction.hypot();
+    if length < f64::EPSILON {
+        return None;
+    }
+    let forward = direction / length;
+    let side = kurbo::Vec2::new(-forward.y, forward.x);
+    let radius = radius * START_MARKER_SCALE;
+    let tip = center + forward * radius * START_MARKER_TIP;
+    let left =
+        center - forward * radius * START_MARKER_BACK + side * radius * START_MARKER_HALF_WIDTH;
+    let right =
+        center - forward * radius * START_MARKER_BACK - side * radius * START_MARKER_HALF_WIDTH;
+
+    let mut path = kurbo::BezPath::new();
+    if smooth {
+        let toward = |a: Point, b: Point| {
+            Point::new(
+                a.x + (b.x - a.x) * START_MARKER_SMOOTH_CUT,
+                a.y + (b.y - a.y) * START_MARKER_SMOOTH_CUT,
+            )
+        };
+        path.move_to(toward(tip, right));
+        path.quad_to(tip, toward(tip, left));
+        path.line_to(toward(left, tip));
+        path.quad_to(left, toward(left, right));
+        path.line_to(toward(right, left));
+        path.quad_to(right, toward(right, tip));
+    } else {
+        path.move_to(tip);
+        path.line_to(left);
+        path.line_to(right);
+    }
+    path.close_path();
+    Some(path)
+}
+
+/// Metric heights shared by every text sort, deduplicated so equal font
+/// metrics do not paint darker than their neighbours.
+fn text_sort_metric_ys(metrics: &crate::edit::session::Metrics) -> Vec<f64> {
+    let mut ys = vec![
+        metrics.descender,
+        0.0,
+        metrics.ascender,
+        metrics.upm.max(metrics.ascender),
+        metrics.x_height,
+        metrics.cap_height,
+    ];
+    ys.retain(|y| y.is_finite());
+    ys.sort_by(f64::total_cmp);
+    ys.dedup_by(|a, b| (*a - *b).abs() < 0.001);
+    ys
+}
+
+/// The reduced set used for the inward corner marks in Text mode.
+fn text_sort_corner_ys(metrics: &crate::edit::session::Metrics) -> Vec<f64> {
+    let mut ys = vec![
+        metrics.descender,
+        0.0,
+        metrics.ascender,
+        metrics.upm.max(metrics.ascender),
+    ];
+    ys.retain(|y| y.is_finite());
+    ys.sort_by(f64::total_cmp);
+    ys.dedup_by(|a, b| (*a - *b).abs() < 0.001);
+    ys
 }
 
 /// Context-menu items: (label, op). Op returns whether the glyph changed.
@@ -138,8 +238,9 @@ pub(crate) enum EditorEvent {
     Edited,
     /// Selection changed; carries how many points are selected.
     Selection(usize),
-    /// The text tool activated a sort: open that glyph for editing.
-    EditGlyph(String),
+    /// A composed sort was activated: open that glyph without losing the line,
+    /// and keep the tool that established the interaction.
+    EditGlyph { name: String, tool: Tool },
     /// The committed logical text changed; park it with the active tab.
     TextChanged(String),
     /// Cmd+Z: the app undoes on the master's pile.
@@ -201,7 +302,7 @@ pub(crate) struct EditorWidget {
     interp: Option<Arc<kurbo::BezPath>>,
     /// Background layer and reference glyph, drawn under everything.
     underlay: Underlay,
-    /// The text tool's buffer, present only while that tool is in hand.
+    /// The tab's text composition, kept while outline tools edit one sort.
     text: Option<crate::edit::text_tool::TextState>,
     /// The master the buffer was built from.
     text_inputs: Option<crate::edit::text_tool::TextInputs>,
@@ -221,6 +322,9 @@ pub(crate) struct EditorWidget {
     /// Three numbers over the drawing therefore cost an editing mode.
     field: Option<MetricField>,
     field_buf: String,
+    /// Text caret blink phase; reset whenever the person moves or edits it.
+    cursor_blink_elapsed_ns: u64,
+    cursor_visible: bool,
 }
 
 /// Which number in the metrics panel is being typed into.
@@ -517,7 +621,7 @@ impl EditorWidget {
                         // field drawn by hand.
                         let caret =
                             Rect::new(rect.x1 - 4.0, rect.y0 + 3.0, rect.x1 - 3.0, rect.y1 - 3.0);
-                        painter.fill(caret, pal.role("textCursor")).draw();
+                        painter.fill(caret, pal.outline).draw();
                     }
                 }
             }
@@ -525,7 +629,7 @@ impl EditorWidget {
     }
 
     fn screen_points(&self) -> Vec<(PointId, Point, bool, bool, bool)> {
-        let affine = self.session.viewport.affine();
+        let affine = self.glyph_affine();
         self.session
             .points()
             .into_iter()
@@ -536,7 +640,7 @@ impl EditorWidget {
     /// Closed contours expose their first on-curve point and outgoing direction.
     /// Open paths and contours without an on-curve point have no start marker.
     fn start_markers(&self) -> Vec<(PointId, Point, Point)> {
-        let affine = self.session.viewport.affine();
+        let affine = self.glyph_affine();
         self.session
             .glyph
             .contours
@@ -565,6 +669,25 @@ impl EditorWidget {
             .filter(|(_, sp, _, _, _)| sp.distance(at) <= HIT_RADIUS_PX)
             .min_by(|a, b| a.1.distance(at).total_cmp(&b.1.distance(at)))
             .map(|(id, _, _, _, _)| id)
+    }
+
+    /// The active sort's position in the composed line, or the origin when
+    /// this tab has no text composition.
+    fn active_sort_origin(&self) -> Point {
+        self.text
+            .as_ref()
+            .and_then(crate::edit::text_tool::TextState::active_origin)
+            .unwrap_or(Point::ORIGIN)
+    }
+
+    /// Design-to-screen transform for the glyph currently being edited.
+    fn glyph_affine(&self) -> Affine {
+        self.session.viewport.affine() * Affine::translate(self.active_sort_origin().to_vec2())
+    }
+
+    /// Convert a screen point into the active sort's glyph-local design space.
+    fn screen_to_glyph_design(&self, at: Point) -> Point {
+        self.session.viewport.screen_to_design(at) - self.active_sort_origin().to_vec2()
     }
 
     fn fit(&mut self) {
@@ -597,13 +720,23 @@ impl EditorWidget {
         // em, which is right for one glyph and wrong for a word: a line
         // of fifteen letters would fit vertically and run off both sides.
         let width = width.max(m.upm);
-        let design_height = (m.ascender - m.descender).max(1.0);
-        let zoom = ((self.size.width * 0.9) / width).min((self.size.height * 0.8) / design_height);
+        // Text lines use the full sort box, not merely ascender to
+        // descender. Virtua's upm is above its ascender; fitting the shorter
+        // range made the top metric cross and caret cap collide with the
+        // title bar while the glyphs looked too large.
+        let sort_top = m.upm.max(m.ascender);
+        let design_height = (sort_top - m.descender).max(1.0);
+        // Leave the same breathing room as the mature editors: roughly ten
+        // percent at each horizontal edge, and reserve the floating metrics
+        // card instead of centering the run behind it.
+        let available_height =
+            (self.size.height - PANEL_HEIGHT - METRICS_CARD_BOTTOM).max(design_height * 0.001);
+        let zoom = ((self.size.width * 0.8) / width).min((available_height * 0.8) / design_height);
         self.session.viewport.zoom = zoom.max(0.001);
-        let center_y = (m.ascender + m.descender) / 2.0;
+        let center_y = (sort_top + m.descender) / 2.0;
         self.session.viewport.offset = kurbo::Vec2::new(
             (self.size.width - width * self.session.viewport.zoom) / 2.0,
-            self.size.height / 2.0 + center_y * self.session.viewport.zoom,
+            available_height / 2.0 + center_y * self.session.viewport.zoom,
         );
         self.session.fitted = true;
     }
@@ -664,9 +797,9 @@ impl Widget for EditorWidget {
         if self.size != size {
             self.size = size;
             if !self.session.fitted {
-                // The text tool frames the line; everything else frames
-                // the glyph.
-                if self.tool == Tool::Text && self.text.is_some() {
+                // An open composition frames the line even while Select edits
+                // one sort within it.
+                if self.text.is_some() {
                     self.fit_text();
                 } else {
                     self.fit();
@@ -699,50 +832,137 @@ impl Widget for EditorWidget {
         painter: &mut Painter<'_>,
     ) {
         let pal = self.palette.clone();
-        let affine = self.session.viewport.affine();
+        let view_affine = self.session.viewport.affine();
         painter.fill_rect(self.size.to_rect(), pal.canvas);
 
-        // The text tool draws a line of glyphs rather than one glyph.
-        // The active sort is the one being edited, so it keeps the
-        // editing colour and the rest are quiet.
-        if self.tool == Tool::Text
-            && let Some(text) = &self.text
-        {
+        // A text composition outlives the Text tool. With Text active every
+        // sort is a fill and the caret is visible; with an outline tool the
+        // active sort is omitted here and the editable glyph chrome below is
+        // drawn at that sort's origin. This is the GPUI/Web state model.
+        if let Some(text) = &self.text {
             let m = &self.session.metrics;
             let ink = pal.text;
-            let quiet = pal.text.with_alpha(0.55);
+            let sort_top = m.upm.max(m.ascender);
+            let sort_bottom = m.descender;
+            let sort_height_px = ((sort_top - sort_bottom) * self.session.viewport.zoom).abs();
+            let mark = (sort_height_px * 0.05).clamp(1.5, 24.0);
+            let marks_visible = mark >= 3.0;
+            let rule = Stroke::new(DesignStroke::Hairline.px());
             for sort in text.placed() {
                 let box_ = Rect::from_points(
-                    affine * Point::new(sort.origin.x, m.descender + sort.origin.y),
-                    affine * Point::new(sort.origin.x + sort.advance, m.ascender + sort.origin.y),
+                    view_affine * Point::new(sort.origin.x, sort_bottom + sort.origin.y),
+                    view_affine
+                        * Point::new(sort.origin.x + sort.advance, sort_top + sort.origin.y),
                 );
-                if sort.selected {
+                if self.tool == Tool::Text && sort.selected {
                     painter
                         .fill(box_, pal.role("selection").with_alpha(0.32))
                         .draw();
                 }
-                let color = if sort.active { ink } else { quiet };
-                painter.fill(&(affine * sort.path), color).draw();
-                if sort.active {
-                    painter
-                        .stroke(box_, &Stroke::new(1.0), pal.role("metricQuiet"))
-                        .draw();
+                if marks_visible {
+                    // As in GPUI and Web, inactive sorts get complete quiet
+                    // metric boxes. The active sort keeps only the corner
+                    // ticks, so its neighbours cannot paint grey over it.
+                    if !sort.active {
+                        let quiet = pal.role("metricQuiet");
+                        for x in [box_.x0, box_.x1] {
+                            painter
+                                .stroke(Line::new((x, box_.y0), (x, box_.y1)), &rule, quiet)
+                                .draw();
+                        }
+                        for y in text_sort_metric_ys(m) {
+                            let sy = (view_affine * Point::new(sort.origin.x, sort.origin.y + y)).y;
+                            painter
+                                .stroke(Line::new((box_.x0, sy), (box_.x1, sy)), &rule, quiet)
+                                .draw();
+                        }
+                    }
+
+                    // The complete boxes stay quiet mid-gray; the corner marks
+                    // use the same dark hairline as panel edges. A single
+                    // stroke keeps shared sort intersections from building up
+                    // the awkward overlaps produced by a cased color line.
+                    if !sort.active || self.tool == Tool::Text {
+                        let guide = pal.outline;
+                        for x in [box_.x0, box_.x1] {
+                            for y in text_sort_corner_ys(m) {
+                                let center =
+                                    view_affine * Point::new(sort.origin.x, sort.origin.y + y);
+                                let center = Point::new(x, center.y);
+                                let x0 = (center.x - mark).max(box_.x0);
+                                let x1 = (center.x + mark).min(box_.x1);
+                                if x1 > x0 {
+                                    painter
+                                        .stroke(
+                                            Line::new((x0, center.y), (x1, center.y)),
+                                            &rule,
+                                            guide,
+                                        )
+                                        .draw();
+                                }
+                                let y0 = (center.y - mark).max(box_.y0);
+                                let y1 = (center.y + mark).min(box_.y1);
+                                if y1 > y0 {
+                                    painter
+                                        .stroke(
+                                            Line::new((center.x, y0), (center.x, y1)),
+                                            &rule,
+                                            guide,
+                                        )
+                                        .draw();
+                                }
+                            }
+                        }
+                    }
+                }
+                if !sort.active || self.tool == Tool::Text {
+                    painter.fill(&(view_affine * sort.path), ink).draw();
                 }
             }
-            // The caret, full em height, so it reads as a text cursor
-            // rather than a mark on the baseline.
-            let caret = text.caret();
-            let top = affine * Point::new(caret.x, caret.y + m.ascender);
-            let bottom = affine * Point::new(caret.x, caret.y + m.descender);
-            painter
-                .stroke(
-                    Line::new(top, bottom),
-                    &Stroke::new(1.5),
-                    pal.role("textCursor"),
-                )
-                .draw();
-            return;
+            if self.tool == Tool::Text && self.cursor_visible {
+                // The caret follows GPUI and Web: a full sort-height rule with
+                // inward triangular caps scaled from its on-screen height. It
+                // uses the same single outline stroke as the sort corners.
+                let caret = text.caret();
+                let top = view_affine * Point::new(caret.x, caret.y + sort_top);
+                let bottom = view_affine * Point::new(caret.x, caret.y + sort_bottom);
+                let cursor = pal.outline;
+                painter
+                    .stroke(
+                        Line::new(top, bottom),
+                        &Stroke::new(DesignStroke::Hairline.px()),
+                        cursor,
+                    )
+                    .draw();
+                let triangle_width = (sort_height_px * TEXT_CURSOR_CAP_FRACTION)
+                    .clamp(TEXT_CURSOR_CAP_MIN, TEXT_CURSOR_CAP_MAX);
+                let triangle_height = triangle_width * (2.0 / 3.0);
+                let mut top_cap = kurbo::BezPath::new();
+                top_cap.move_to((top.x - triangle_width / 2.0, top.y));
+                top_cap.line_to((top.x + triangle_width / 2.0, top.y));
+                top_cap.line_to((top.x, top.y + triangle_height));
+                top_cap.close_path();
+                painter.fill(&top_cap, cursor).draw();
+                let mut bottom_cap = kurbo::BezPath::new();
+                bottom_cap.move_to((bottom.x - triangle_width / 2.0, bottom.y));
+                bottom_cap.line_to((bottom.x + triangle_width / 2.0, bottom.y));
+                bottom_cap.line_to((bottom.x, bottom.y - triangle_height));
+                bottom_cap.close_path();
+                painter.fill(&bottom_cap, cursor).draw();
+
+                self.paint_metrics(painter);
+                return;
+            }
+            if self.tool == Tool::Text {
+                self.paint_metrics(painter);
+                return;
+            }
+            if text.active_origin().is_none() {
+                return;
+            }
         }
+
+        let affine = self.glyph_affine();
 
         // Underlay, drawn first so everything else sits on top of it. The
         // reference glyph is a quiet fill (it is a shape to match), the
@@ -955,6 +1175,7 @@ impl Widget for EditorWidget {
             let marker_scale = point_marker_scale(self.session.viewport.zoom);
             let ring_width = (POINT_RING_WIDTH * marker_scale).max(DesignStroke::Hairline.px());
             let halo_width = ring_width + POINT_HALO_EXTRA;
+            let start_markers = self.start_markers();
             for (id, sp, on_curve, smooth, _) in self.screen_points() {
                 let selected = self.session.selection.contains(&id);
                 let hue = if !on_curve {
@@ -991,51 +1212,24 @@ impl Widget for EditorWidget {
                     POINT_CURVE_RADIUS
                 };
                 let r = (radius + if selected { POINT_SELECTED_GROW } else { 0.0 }) * marker_scale;
+                let shape = start_markers
+                    .iter()
+                    .find(|(start_id, _, _)| *start_id == id)
+                    .and_then(|(_, from, to)| direction_marker_shape(*from, *to, r, smooth))
+                    .unwrap_or_else(|| point_marker_shape(sp, r, square));
                 let halo = pal.app.with_alpha(0.85);
                 let ring = Stroke::new(ring_width);
-                if square {
-                    let shape = Rect::new(sp.x - r, sp.y - r, sp.x + r, sp.y + r);
-                    if pal.point_halo {
-                        painter.stroke(shape, &Stroke::new(halo_width), halo).draw();
-                    }
-                    painter.fill(shape, interior).draw();
-                    painter.stroke(shape, &ring, fill).draw();
-                } else {
-                    let shape = Circle::new(sp, r);
-                    if pal.point_halo {
-                        painter.stroke(shape, &Stroke::new(halo_width), halo).draw();
-                    }
-                    painter.fill(shape, interior).draw();
-                    painter.stroke(shape, &ring, fill).draw();
+                if pal.point_halo {
+                    painter
+                        .stroke(&shape, &Stroke::new(halo_width), halo)
+                        .draw();
                 }
+                painter.fill(&shape, interior).draw();
+                painter.stroke(&shape, &ring, fill).draw();
             }
 
-            // A separate direction arrow preserves the ordinary point shape
-            // and its corner/smooth hue, as in the inspected reference bundle.
-            for (id, from, to) in self.start_markers() {
-                let selected = self.session.selection.contains(&id);
-                let size = (START_ARROW_RADIUS + if selected { POINT_SELECTED_GROW } else { 0.0 })
-                    * marker_scale;
-                let forward = (to - from).normalize();
-                let side = kurbo::Vec2::new(-forward.y, forward.x);
-                let center = from + side * START_ARROW_OFFSET * marker_scale;
-                let tip = center + forward * size;
-                let base = center - forward * size * 0.5;
-                let mut arrow = kurbo::BezPath::new();
-                arrow.move_to(tip);
-                arrow.line_to(base + side * size * 0.5);
-                arrow.line_to(base - side * size * 0.5);
-                arrow.close_path();
-                let color = pal.role(if selected {
-                    "pointSelected"
-                } else {
-                    "pointSmooth"
-                });
-                painter.fill(&arrow, color).draw();
-            }
-
-            // Anchors have a dark interior and a distinct pink keyline in
-            // the inspected reference; selection retains the shared node palette.
+            // Anchors use the same point construction, with solid pink inside
+            // the shared dark keyline. Selection retains the node palette.
             let anchor_color = pal.mark("pink").unwrap_or_else(|| pal.role("danger"));
             for (ai, anchor) in self.session.glyph.anchors.iter().enumerate() {
                 let p = affine * Point::new(anchor.x, anchor.y);
@@ -1046,7 +1240,7 @@ impl Widget for EditorWidget {
                         pal.role("pointSelected"),
                     )
                 } else {
-                    (anchor_color, pal.role("pointInner"))
+                    (pal.point_outline.unwrap_or(pal.text), anchor_color)
                 };
                 let r = (POINT_CURVE_RADIUS + if selected { POINT_SELECTED_GROW } else { 0.0 })
                     * marker_scale
@@ -1332,17 +1526,42 @@ impl Widget for EditorWidget {
             PointerEvent::Down(PointerButtonEvent { button, state, .. }) => {
                 ctx.request_focus();
                 let at = ctx.local_position(state.position);
+                // GPUI and Web let any editing tool follow a composed sort on
+                // double-click. Activating it before replacing the live glyph
+                // session is what keeps the surrounding word on the canvas.
+                if state.count >= 2
+                    && *button == Some(PointerButton::Primary)
+                    && let Some(text) = self.text.as_mut()
+                {
+                    let design = self.session.viewport.screen_to_design(at);
+                    if let Some(glyph) = text.activate_at(design) {
+                        ctx.submit_action::<EditorEvent>(EditorEvent::EditGlyph {
+                            name: glyph,
+                            tool: self.tool,
+                        });
+                        self.drag = Drag::None;
+                        ctx.request_render();
+                        ctx.set_handled();
+                        return;
+                    }
+                }
                 // Text tool: a click is a caret placement, and a click on
                 // a sort makes that glyph the one being edited.
                 if self.tool == Tool::Text
                     && let Some(text) = self.text.as_mut()
                     && *button == Some(PointerButton::Primary)
                 {
+                    self.cursor_blink_elapsed_ns = 0;
+                    self.cursor_visible = true;
+                    ctx.request_anim_frame();
                     let design = self.session.viewport.screen_to_design(at);
                     if let Some(index) = text.click(design)
                         && let Some(glyph) = text.activate(index)
                     {
-                        ctx.submit_action::<EditorEvent>(EditorEvent::EditGlyph(glyph));
+                        ctx.submit_action::<EditorEvent>(EditorEvent::EditGlyph {
+                            name: glyph,
+                            tool: Tool::Text,
+                        });
                     }
                     ctx.request_render();
                     ctx.set_handled();
@@ -1353,7 +1572,7 @@ impl Widget for EditorWidget {
                     // it is rooted in window space, so it can hang past
                     // the editor's edge like a menu should.
                     if self.menu.is_none() {
-                        let design = self.session.viewport.screen_to_design(at);
+                        let design = self.screen_to_glyph_design(at);
                         let menu = ContextMenu::new(
                             ctx.widget_id(),
                             MenuTarget::Editor,
@@ -1370,8 +1589,13 @@ impl Widget for EditorWidget {
                 }
                 ctx.capture_pointer();
                 match button {
+                    Some(PointerButton::Primary) if self.tool == Tool::Hand => {
+                        self.drag = Drag::Pan { last: at };
+                        ctx.set_handled();
+                        return;
+                    }
                     Some(PointerButton::Primary) if self.tool == Tool::HyperPen => {
-                        let affine = self.session.viewport.affine();
+                        let affine = self.glyph_affine();
                         let near_first = self
                             .session
                             .first_contour_point()
@@ -1381,7 +1605,7 @@ impl Widget for EditorWidget {
                         if near_first && self.session.hyper_is_active() {
                             self.session.hyper_close();
                         } else {
-                            let d = self.session.viewport.screen_to_design(at);
+                            let d = self.screen_to_glyph_design(at);
                             self.session.hyper_add(d.x, d.y, corner);
                         }
                         self.emit(ctx, true);
@@ -1393,7 +1617,7 @@ impl Widget for EditorWidget {
                     {
                         ctx.request_focus();
                         ctx.capture_pointer();
-                        let d = self.session.viewport.screen_to_design(at);
+                        let d = self.screen_to_glyph_design(at);
                         self.drag = Drag::Shape {
                             start: d,
                             current: d,
@@ -1402,7 +1626,7 @@ impl Widget for EditorWidget {
                         return;
                     }
                     Some(PointerButton::Primary) if self.tool == Tool::Pen => {
-                        let affine = self.session.viewport.affine();
+                        let affine = self.glyph_affine();
                         let near_first = self
                             .session
                             .pen_first_point()
@@ -1413,7 +1637,7 @@ impl Widget for EditorWidget {
                             self.drag = Drag::None;
                             self.emit(ctx, true);
                         } else {
-                            let origin = self.session.viewport.screen_to_design(at);
+                            let origin = self.screen_to_glyph_design(at);
                             self.drag = Drag::Pen {
                                 origin,
                                 dragging: false,
@@ -1425,7 +1649,7 @@ impl Widget for EditorWidget {
                     Some(PointerButton::Primary) => {
                         let shift = state.modifiers.shift();
                         // Sidebearing lines (only when not near a point).
-                        let affine = self.session.viewport.affine();
+                        let affine = self.glyph_affine();
                         let adv_x = (affine * Point::new(self.session.advance(), 0.0)).x;
                         let lsb_x = (affine * Point::new(0.0, 0.0)).x;
                         if self.hit_point(at).is_none() {
@@ -1442,7 +1666,7 @@ impl Widget for EditorWidget {
                         }
                         // Anchor hit takes priority over points.
                         if let Some(ai) = self.session.anchor_at(
-                            self.session.viewport.screen_to_design(at),
+                            self.screen_to_glyph_design(at),
                             HIT_RADIUS_PX / self.session.viewport.zoom,
                         ) {
                             self.session.selected_anchor = Some(ai);
@@ -1470,7 +1694,7 @@ impl Widget for EditorWidget {
                                 self.emit(ctx, false);
                             }
                             None => {
-                                let design = self.session.viewport.screen_to_design(at);
+                                let design = self.screen_to_glyph_design(at);
                                 if let Some(index) = self.session.component_at(design) {
                                     self.session.select_component(index);
                                     self.drag = Drag::Component { last: design };
@@ -1497,15 +1721,19 @@ impl Widget for EditorWidget {
             }
             PointerEvent::Move(PointerUpdate { current, .. }) => {
                 let at = ctx.local_position(current.position);
+                let active_origin = self.active_sort_origin().to_vec2();
+                let glyph_design = self.session.viewport.screen_to_design(at) - active_origin;
+                let glyph_affine =
+                    self.session.viewport.affine() * Affine::translate(active_origin);
                 if matches!(self.tool, Tool::Pen | Tool::HyperPen) {
-                    self.hover = Some(self.session.viewport.screen_to_design(at));
+                    self.hover = Some(glyph_design);
                     if self.session.active_contour.is_some() {
                         ctx.request_render();
                     }
                 }
                 match &mut self.drag {
                     Drag::AdvanceLine => {
-                        let d = self.session.viewport.screen_to_design(at);
+                        let d = glyph_design;
                         self.session.drag_advance(d.x.round());
                         ctx.request_render();
                     }
@@ -1520,12 +1748,12 @@ impl Widget for EditorWidget {
                     }
                     Drag::Anchor { idx } => {
                         let idx = *idx;
-                        let d = self.session.viewport.screen_to_design(at);
+                        let d = glyph_design;
                         self.session.move_anchor(idx, d.x.round(), d.y.round());
                         ctx.request_render();
                     }
                     Drag::Component { last } => {
-                        let design = self.session.viewport.screen_to_design(at);
+                        let design = glyph_design;
                         let delta = design - *last;
                         *last = design;
                         if self.session.drag_component_by(delta.x, delta.y) {
@@ -1534,8 +1762,8 @@ impl Widget for EditorWidget {
                     }
                     Drag::Pen { origin, dragging } => {
                         let origin = *origin;
-                        let to = self.session.viewport.screen_to_design(at);
-                        let moved_px = (self.session.viewport.affine() * origin).distance(at);
+                        let to = glyph_design;
+                        let moved_px = (glyph_affine * origin).distance(at);
                         if *dragging {
                             self.session.pen_smooth_drag(origin, to);
                             ctx.request_render();
@@ -1565,7 +1793,7 @@ impl Widget for EditorWidget {
                         ctx.request_render();
                     }
                     Drag::Shape { current, .. } => {
-                        *current = self.session.viewport.screen_to_design(at);
+                        *current = glyph_design;
                         ctx.request_render();
                     }
                     Drag::None => {}
@@ -1650,6 +1878,11 @@ impl Widget for EditorWidget {
         _props: &mut PropertiesMut<'_>,
         event: &TextEvent,
     ) {
+        if self.tool == Tool::Text && self.text.is_some() {
+            self.cursor_blink_elapsed_ns = 0;
+            self.cursor_visible = true;
+            ctx.request_anim_frame();
+        }
         if self.tool == Tool::Text
             && let Some(text) = self.text.as_mut()
             && let TextEvent::Ime(ime) = event
@@ -1752,12 +1985,13 @@ impl Widget for EditorWidget {
             && !cmd
         {
             let (handled, changed_text) = match &key.key {
-                // Text arrives through `Ime::Commit`, including ordinary
-                // keyboard input. Consume the logical character key here so
-                // it neither inserts twice nor triggers an application tool.
-                Key::Character(_) => {
-                    ctx.set_handled();
-                    return;
+                // Masonry, GPUI, and Web all deliver ordinary typing as a
+                // logical character key. IME commits remain a separate path
+                // for composed text.
+                Key::Character(value) => {
+                    let value: String = value.chars().filter(|c| !c.is_control()).collect();
+                    let changed = !value.is_empty() && text.commit_preedit(&value);
+                    (true, changed)
                 }
                 Key::Named(NamedKey::Backspace) => {
                     let changed = text.buffer.delete_before_cursor().is_some();
@@ -1888,8 +2122,45 @@ impl Widget for EditorWidget {
         }
     }
 
+    fn on_anim_frame(
+        &mut self,
+        ctx: &mut UpdateCtx<'_>,
+        _props: &mut PropertiesMut<'_>,
+        interval: u64,
+    ) {
+        if self.tool != Tool::Text || self.text.is_none() {
+            return;
+        }
+
+        self.cursor_blink_elapsed_ns = self
+            .cursor_blink_elapsed_ns
+            .saturating_add(interval)
+            .rem_euclid(CURSOR_BLINK_CYCLE_NS);
+        // Keep the exact half-cycle boundary visible. Headless proof renders
+        // after a 500 ms settle frame, while a real display crosses the
+        // boundary on its following frame.
+        let visible = cursor_visible_at(self.cursor_blink_elapsed_ns);
+        if visible != self.cursor_visible {
+            self.cursor_visible = visible;
+            ctx.request_paint_only();
+        }
+        ctx.request_anim_frame();
+    }
+
     fn accessibility_role(&self) -> Role {
         Role::Canvas
+    }
+
+    fn get_cursor(&self, _ctx: &QueryCtx<'_>, _pos: Point) -> CursorIcon {
+        if self.tool == Tool::Hand {
+            if matches!(self.drag, Drag::Pan { .. }) {
+                CursorIcon::Grabbing
+            } else {
+                CursorIcon::Grab
+            }
+        } else {
+            CursorIcon::Default
+        }
     }
 
     fn accessibility(
@@ -2075,6 +2346,8 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             view: self.view,
             field: None,
             field_buf: String::new(),
+            cursor_blink_elapsed_ns: 0,
+            cursor_visible: true,
         };
         let pod = ctx.with_action_widget(|ctx| ctx.create_pod(widget));
         *self
@@ -2103,6 +2376,11 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
         }
         if self.tool != prev.tool {
             element.widget.tool = self.tool;
+            element.widget.cursor_blink_elapsed_ns = 0;
+            element.widget.cursor_visible = true;
+            if self.tool == Tool::Text {
+                element.ctx.request_anim_frame();
+            }
             if self.tool != Tool::Pen {
                 element.widget.session.pen_cancel();
             }
@@ -2195,9 +2473,11 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use masonry::dpi::PhysicalPosition;
     use masonry::kurbo::Shape as _;
     use masonry::theme::default_property_set;
-    use masonry_testing::TestHarness;
+    use masonry::ui_events::pointer::PointerState;
+    use masonry_testing::{PRIMARY_MOUSE, TestHarness};
 
     fn session() -> Session {
         let mut font = norad::Font::new();
@@ -2238,6 +2518,8 @@ mod tests {
             view: ViewOptions::default(),
             field: None,
             field_buf: String::new(),
+            cursor_blink_elapsed_ns: 0,
+            cursor_visible: true,
         }
     }
 
@@ -2250,6 +2532,42 @@ mod tests {
             dot.winding(Point::new(8.2, 8.2)),
             0,
             "a rounded dot does not fill its bounding-box corner"
+        );
+    }
+
+    #[test]
+    fn text_cursor_blinks_on_a_one_second_cycle() {
+        assert!(cursor_visible_at(0));
+        assert!(cursor_visible_at(CURSOR_BLINK_HALF_CYCLE_NS));
+        assert!(!cursor_visible_at(CURSOR_BLINK_HALF_CYCLE_NS + 1));
+        assert!(!cursor_visible_at(CURSOR_BLINK_CYCLE_NS - 1));
+        assert!(cursor_visible_at(CURSOR_BLINK_CYCLE_NS));
+    }
+
+    #[test]
+    fn text_cursor_animation_hides_then_resets_on_input() {
+        use masonry::core::keyboard::{Code, KeyboardEvent};
+
+        let mut editor = widget();
+        editor.tool = Tool::Text;
+        editor.text = Some(crate::edit::text_tool::TextState::test_buffer());
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        harness.focus_on(Some(harness.root_id()));
+
+        harness.animate_ms(501);
+        assert!(!harness.edit_root_widget(|root| root.widget.cursor_visible));
+
+        harness.process_text_event(TextEvent::Keyboard(KeyboardEvent {
+            state: KeyState::Down,
+            key: Key::Named(NamedKey::ArrowLeft),
+            code: Code::ArrowLeft,
+            ..KeyboardEvent::default()
+        }));
+        assert!(harness.edit_root_widget(|root| root.widget.cursor_visible));
+        assert_eq!(
+            harness.edit_root_widget(|root| root.widget.cursor_blink_elapsed_ns),
+            0
         );
     }
 
@@ -2274,6 +2592,54 @@ mod tests {
             editor.start_markers().is_empty(),
             "empty contours are harmless"
         );
+    }
+
+    #[test]
+    fn start_marker_replaces_the_node_and_softens_only_smooth_starts() {
+        let center = Point::new(20.0, 20.0);
+        let toward = Point::new(30.0, 20.0);
+        let sharp = direction_marker_shape(center, toward, POINT_CORNER_RADIUS, false).unwrap();
+        let smooth = direction_marker_shape(center, toward, POINT_CURVE_RADIUS, true).unwrap();
+
+        assert_eq!(
+            sharp.elements().len(),
+            4,
+            "a corner start is a crisp triangle"
+        );
+        assert_eq!(
+            smooth
+                .elements()
+                .iter()
+                .filter(|element| matches!(element, kurbo::PathEl::QuadTo(_, _)))
+                .count(),
+            3,
+            "a smooth start rounds each wedge corner"
+        );
+        assert!(
+            direction_marker_shape(center, center, POINT_CURVE_RADIUS, true).is_none(),
+            "a zero-length direction falls back to the ordinary node"
+        );
+    }
+
+    #[test]
+    fn outline_tools_use_the_active_sorts_origin() {
+        let mut editor = widget();
+        let mut text = crate::edit::text_tool::TextState::test_buffer();
+        assert!(text.buffer.insert_character('B'));
+        assert!(text.buffer.activate_sort(1));
+        editor.text = Some(text);
+
+        let origin = editor.active_sort_origin();
+        assert_eq!(origin, Point::new(500.0, 0.0));
+        assert_eq!(
+            editor.glyph_affine() * Point::ORIGIN,
+            editor.session.viewport.affine() * origin,
+            "the editable glyph is drawn where its active sort sits"
+        );
+        let screen = editor.glyph_affine() * Point::new(40.0, 60.0);
+        let design = editor.screen_to_glyph_design(screen);
+        assert!((design.x - 40.0).abs() < 0.001);
+        assert!((design.y - 60.0).abs() < 0.001);
     }
 
     #[test]
@@ -2326,11 +2692,22 @@ mod tests {
         );
         harness.edit_root_widget(|root| root.widget.tool = Tool::Text);
         harness.process_text_event(typed());
+        let (event, _) = harness
+            .pop_action::<EditorEvent>()
+            .expect("ordinary keyboard text reports the complete buffer");
+        assert!(
+            matches!(event, EditorEvent::TextChanged(text) if text == "AB"),
+            "logical character keys type directly, as Masonry, GPUI, and Web do"
+        );
         assert_eq!(
             harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
-            1,
-            "logical key text waits for the IME commit"
+            2,
+            "ordinary keyboard input does not depend on an IME commit"
         );
+        harness.process_text_event(named(NamedKey::Backspace));
+        let _ = harness
+            .pop_action::<EditorEvent>()
+            .expect("deleting the direct-key test glyph reports the restored buffer");
         harness.process_text_event(TextEvent::Ime(Ime::Preedit("B".into(), Some((0, 1)))));
         assert_eq!(
             harness.edit_root_widget(|root| root.widget.text.as_ref().unwrap().buffer.len()),
@@ -2445,6 +2822,98 @@ mod tests {
         );
     }
 
+    #[test]
+    fn text_tool_consumes_space_as_text() {
+        use masonry::core::keyboard::{Code, KeyboardEvent};
+        let mut editor = widget();
+        editor.tool = Tool::Text;
+        editor.text = Some(crate::edit::text_tool::TextState::test_buffer());
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        harness.focus_on(Some(harness.root_id()));
+        harness.process_text_event(TextEvent::Keyboard(KeyboardEvent {
+            state: KeyState::Down,
+            key: Key::Character(" ".into()),
+            code: Code::Space,
+            ..KeyboardEvent::default()
+        }));
+
+        let (event, _) = harness
+            .pop_action::<EditorEvent>()
+            .expect("the Text tool consumes Space and reports the buffer");
+        assert!(matches!(event, EditorEvent::TextChanged(text) if text == "A "));
+    }
+
+    #[test]
+    fn select_double_click_activates_the_composed_sort() {
+        let mut editor = widget();
+        let mut text = crate::edit::text_tool::TextState::test_buffer();
+        assert!(text.buffer.insert_character('B'));
+        editor.text = Some(text);
+        editor.tool = Tool::Select;
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        let at = harness.edit_root_widget(|root| {
+            let editor = &root.widget;
+            let text = editor.text.as_ref().unwrap();
+            let layout = text.buffer.layout(text.line_height);
+            let sort = &layout.items[1];
+            editor.session.viewport.affine()
+                * Point::new(sort.x + sort.advance_width / 2.0, sort.y + 300.0)
+        });
+        let state = PointerState {
+            position: PhysicalPosition::new(at.x, at.y),
+            count: 2,
+            ..PointerState::default()
+        };
+        harness.process_pointer_event(PointerEvent::Down(PointerButtonEvent {
+            pointer: PRIMARY_MOUSE,
+            button: Some(PointerButton::Primary),
+            state,
+        }));
+
+        let (event, _) = harness
+            .pop_action::<EditorEvent>()
+            .expect("double-clicking a sort reports the glyph to edit");
+        assert!(matches!(
+            event,
+            EditorEvent::EditGlyph {
+                name,
+                tool: Tool::Select
+            } if name == "B"
+        ));
+        assert_eq!(
+            harness.edit_root_widget(|root| root
+                .widget
+                .text
+                .as_ref()
+                .unwrap()
+                .buffer
+                .active_sort()),
+            Some(1),
+            "the clicked sort becomes the editable one"
+        );
+    }
+
+    #[test]
+    fn text_sort_metric_heights_match_the_web_renderer() {
+        let metrics = crate::edit::session::Metrics {
+            upm: 1000.0,
+            ascender: 750.0,
+            descender: -250.0,
+            x_height: 500.0,
+            cap_height: 700.0,
+        };
+        assert_eq!(
+            text_sort_metric_ys(&metrics),
+            vec![-250.0, 0.0, 500.0, 700.0, 750.0, 1000.0]
+        );
+        assert_eq!(
+            text_sort_corner_ys(&metrics),
+            vec![-250.0, 0.0, 750.0, 1000.0]
+        );
+    }
+
     /// Typing in the width box changes the advance, and only on Enter.
     #[test]
     fn metric_box_commits_on_enter() {
@@ -2544,5 +3013,34 @@ mod tests {
         harness.mouse_button_press(Some(PointerButton::Primary));
         let menu = harness.edit_root_widget(|root| root.widget.menu);
         assert!(menu.is_none(), "a left click does not open the menu");
+    }
+
+    #[test]
+    fn hand_tool_primary_drag_pans_without_editing() {
+        let mut editor = widget();
+        editor.tool = Tool::Hand;
+        let selection = editor.session.selection.clone();
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        let before = harness.edit_root_widget(|root| root.widget.session.viewport.offset);
+
+        harness.mouse_move(Point::new(240.0, 180.0));
+        assert_eq!(harness.cursor_icon(), CursorIcon::Grab);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_move(Point::new(275.0, 205.0));
+        assert_eq!(harness.cursor_icon(), CursorIcon::Grabbing);
+        harness.mouse_button_release(Some(PointerButton::Primary));
+
+        let (after, after_selection) = harness.edit_root_widget(|root| {
+            (
+                root.widget.session.viewport.offset,
+                root.widget.session.selection.clone(),
+            )
+        });
+        assert_eq!(after - before, kurbo::Vec2::new(35.0, 25.0));
+        assert_eq!(
+            after_selection, selection,
+            "panning does not select or move points"
+        );
     }
 }

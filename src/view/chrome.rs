@@ -145,7 +145,7 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
             active_bg,
             hover_bg,
             move |app: &mut Workspace| {
-                app.tool = tool;
+                app.select_tool(tool);
             },
         )
         .tile_size(ControlSize::Icon.px());
@@ -159,6 +159,9 @@ pub(crate) fn header_tools(app: &Workspace) -> impl WidgetView<Workspace> + use<
         Region::List,
         (
             tile("select", Tool::Select),
+            // The shared icon set calls this asset `preview`; its drawing is
+            // the hand used by the viewport-pan tool.
+            tile("preview", Tool::Hand),
             tile("pen", Tool::Pen),
             tile("hyperpen", Tool::HyperPen),
             tile("shape-rectangle", Tool::Rect),
@@ -238,6 +241,7 @@ pub(crate) fn marks_bar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             button(face, move |app: &mut Workspace| app.set_mark(mark.clone()))
                 .padding(Space::None)
                 .border_width(Space::None.length())
+                .corner_radius(ButtonShape::Circular.radius())
                 .background_color(Color::TRANSPARENT)
         })
         .collect::<Vec<_>>();
@@ -311,81 +315,89 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         recipes::toggle_sized(pal, text, active, ControlSize::Icon, f)
     };
     Either::B(top_keyline(
-        xrow(
-            Region::Toolbar,
-            (
-                matches!(app.mode, Mode::Overview).then(|| {
-                    xrow(
-                        Region::Inline,
-                        (
-                            bar_box("+".into(), false, |app: &mut Workspace| app.new_glyph()),
-                            bar_box("\u{2212}".into(), false, |app: &mut Workspace| {
-                                app.note = "Remove glyph: not built in this shell yet".into();
-                            }),
-                        ),
-                    )
-                }),
-                FlexSpacer::Flex(1.0),
-                label(text)
-                    .text_size(TextSize::Body.px())
-                    .color(pal.text_muted),
-                FlexSpacer::Flex(1.0),
-                matches!(app.mode, Mode::Nodes).then(|| {
-                    recipes::toggle(pal, "Fit graph".into(), false, |app: &mut Workspace| {
-                        app.nodes.fit_request = app.nodes.fit_request.wrapping_add(1);
-                    })
-                }),
-                matches!(app.mode, Mode::Overview).then(|| {
-                    xrow(
-                        Region::Inline,
-                        (
-                            // GPUI paints these marks from geometry rather than
-                            // asking the interface font for Unicode symbols.
-                            mark_button(
-                                "Grid view",
-                                IconMark::Grid,
-                                !app.list,
-                                pal.text_muted,
-                                pal.selected_ink(),
-                                pal.selected_bg(),
-                                pal.control,
-                                |app: &mut Workspace| app.list = false,
-                            )
-                            .framed(pal.panel, pal.outline)
-                            .tile_size(ControlSize::Icon.px()),
-                            mark_button(
-                                "List view",
-                                IconMark::List,
-                                app.list,
-                                pal.text_muted,
-                                pal.selected_ink(),
-                                pal.selected_bg(),
-                                pal.control,
-                                |app: &mut Workspace| app.list = true,
-                            )
-                            .framed(pal.panel, pal.outline)
-                            .tile_size(ControlSize::Icon.px()),
-                            recipes::neutral_slider(
-                                &app.palette,
-                                48.0,
-                                200.0,
-                                app.cell_size,
-                                |app: &mut Workspace, v| {
-                                    app.cell_size = v;
-                                },
-                            )
-                            .width(Length::px(96.0)),
-                        ),
-                    )
-                }),
-            ),
+        sized_box(
+            xrow(
+                Region::Inline,
+                (
+                    matches!(app.mode, Mode::Overview).then(|| {
+                        xrow(
+                            Region::Inline,
+                            (
+                                bar_box("+".into(), false, |app: &mut Workspace| app.new_glyph()),
+                                bar_box("\u{2212}".into(), false, |app: &mut Workspace| {
+                                    app.note = "Remove glyph: not built in this shell yet".into();
+                                }),
+                            ),
+                        )
+                    }),
+                    FlexSpacer::Flex(1.0),
+                    label(text)
+                        .text_size(TextSize::Body.px())
+                        .color(pal.text_muted),
+                    FlexSpacer::Flex(1.0),
+                    matches!(app.mode, Mode::Nodes).then(|| {
+                        recipes::action_sized(
+                            pal,
+                            "Fit graph".into(),
+                            ControlSize::Icon,
+                            |app: &mut Workspace| {
+                                app.nodes.fit_request = app.nodes.fit_request.wrapping_add(1);
+                            },
+                        )
+                    }),
+                    matches!(app.mode, Mode::Overview).then(|| {
+                        xrow(
+                            Region::Inline,
+                            (
+                                // GPUI paints these marks from geometry rather than
+                                // asking the interface font for Unicode symbols.
+                                mark_button(
+                                    "Grid view",
+                                    IconMark::Grid,
+                                    !app.list,
+                                    pal.text_muted,
+                                    pal.selected_ink(),
+                                    pal.selected_bg(),
+                                    pal.control,
+                                    |app: &mut Workspace| app.list = false,
+                                )
+                                .framed(pal.panel, pal.outline)
+                                .tile_size(ControlSize::Icon.px()),
+                                mark_button(
+                                    "List view",
+                                    IconMark::List,
+                                    app.list,
+                                    pal.text_muted,
+                                    pal.selected_ink(),
+                                    pal.selected_bg(),
+                                    pal.control,
+                                    |app: &mut Workspace| app.list = true,
+                                )
+                                .framed(pal.panel, pal.outline)
+                                .tile_size(ControlSize::Icon.px()),
+                                recipes::neutral_slider(
+                                    &app.palette,
+                                    48.0,
+                                    200.0,
+                                    app.cell_size,
+                                    |app: &mut Workspace, v| {
+                                        app.cell_size = v;
+                                    },
+                                )
+                                .width(Length::px(96.0)),
+                            ),
+                        )
+                    }),
+                ),
+            )
+            .padding(Padding::horizontal(Space::Sm.length()))
+            .gap(Space::Sm)
+            .background_color(pal.panel),
         )
-        .padding(if matches!(app.mode, Mode::Overview) {
-            Space::Sm
-        } else {
-            Space::Md
-        })
-        .background_color(pal.panel),
+        .dims(Dimensions::new(
+            Dim::Stretch,
+            Dim::from(ControlSize::Control),
+        )),
         pal.outline,
     ))
 }

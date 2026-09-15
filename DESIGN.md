@@ -172,10 +172,15 @@ and where a line goes.
 Xilem takes a number wherever a measurement is needed, so the scale
 is application code here rather than something the framework ships.
 `design.rs` is that scale: `Space`, `ControlSize`, `Stroke`,
-`Radius`, `TextSize`, and `Region`, which says what each kind of
-container measures. Use those names. A measurement that is not in the
-scale is either a new entry in the scale, argued for, or the wrong
-measurement.
+`Radius`, `ButtonShape`, `TextSize`, and `Region`, which says what each kind of
+container measures. Use those names. A measurement that is not in the scale is
+either a new entry in the scale, argued for, or the wrong measurement.
+
+All ordinary pressable controls use `recipes::button`, not Xilem's raw button.
+That recipe is square by construction. A control may opt in to
+`ButtonShape::Circular` only when its silhouette carries meaning, currently the
+title-bar add button, coordinate dots, and colour swatches. This keeps stock
+framework rounding from leaking into a panel one call site at a time.
 
 This is the clearest difference from runebender-gpui, where the
 framework ships the scale and this file does not exist. Keeping the

@@ -182,6 +182,12 @@ pub(crate) struct GridWidget {
     selected: Option<usize>,
     multi: Arc<std::collections::HashSet<usize>>,
     scroll: f64,
+    /// Unconsumed logical-pixel travel from a high-resolution trackpad.
+    ///
+    /// Pixel scroll events arrive much more frequently than mouse-wheel line
+    /// events. Accumulating them prevents every tiny event from becoming a
+    /// complete row jump while retaining the grid's row-snapped viewport.
+    pixel_scroll_remainder: f64,
     size: Size,
     /// The pointer is over the grid, which is when the scroll thumb shows.
     hovered: bool,
@@ -321,6 +327,41 @@ impl GridWidget {
         next != current
     }
 
+    /// Accumulate high-resolution trackpad travel before moving complete rows.
+    fn scroll_pixels(&mut self, delta_y: f64, rows: usize) -> bool {
+        if !delta_y.is_finite() || delta_y == 0.0 {
+            return false;
+        }
+        // Do not make a new gesture in the opposite direction first cancel a
+        // stale fraction of a row from the previous gesture.
+        if self.pixel_scroll_remainder != 0.0
+            && self.pixel_scroll_remainder.signum() != delta_y.signum()
+        {
+            self.pixel_scroll_remainder = 0.0;
+        }
+        self.pixel_scroll_remainder += delta_y;
+
+        let pitch = self.row_pitch().max(1.0);
+        let step = usize::try_from(round_units(
+            (self.pixel_scroll_remainder.abs() / pitch).floor(),
+        ))
+        .unwrap_or(0)
+        .min(self.visible_rows());
+        if step == 0 {
+            return false;
+        }
+
+        let consumed = self.pixel_scroll_remainder.signum() * step as f64 * pitch;
+        self.pixel_scroll_remainder -= consumed;
+        let changed = self.scroll_rows(consumed, rows);
+        if !changed {
+            // Momentum at an edge must not leave a large hidden balance that
+            // makes the next gesture in the other direction feel unresponsive.
+            self.pixel_scroll_remainder = 0.0;
+        }
+        changed
+    }
+
     /// Replace the display cells, resetting the viewport only when their order changes.
     ///
     /// `filtered_cells` returns a new `Arc` on every Xilem rebuild. Pointer identity
@@ -336,6 +377,7 @@ impl GridWidget {
         self.cells = cells;
         if order_changed {
             self.scroll = 0.0;
+            self.pixel_scroll_remainder = 0.0;
         }
     }
 
@@ -350,6 +392,7 @@ impl GridWidget {
         if target == current {
             return None;
         }
+        self.pixel_scroll_remainder = 0.0;
         let index = self.cells[target].index;
         self.selected = Some(index);
         self.multi = Arc::default();
@@ -425,6 +468,9 @@ impl Widget for GridWidget {
     }
 
     fn layout(&mut self, _ctx: &mut LayoutCtx<'_>, _props: &PropertiesRef<'_>, size: Size) {
+        if self.size != size {
+            self.pixel_scroll_remainder = 0.0;
+        }
         let scroll_row = self.scroll_row();
         self.size = size;
         self.set_scroll_row(scroll_row, self.packed().len());
@@ -668,13 +714,21 @@ impl Widget for GridWidget {
                 ctx.set_handled();
             }
             PointerEvent::Scroll(PointerScrollEvent { delta, .. }) => {
-                let dy = match delta {
-                    ScrollDelta::PixelDelta(p) => p.y,
-                    ScrollDelta::LineDelta(_, y) => f64::from(*y) * self.row_pitch(),
-                    _ => 0.0,
-                };
                 let total = self.packed().len();
-                if self.scroll_rows(dy, total) {
+                let changed = match delta {
+                    // ui-events specifies these in physical pixels. Grid
+                    // geometry is logical, so normalize for Retina displays
+                    // before accumulating the gesture.
+                    ScrollDelta::PixelDelta(p) => {
+                        self.scroll_pixels(p.y / ctx.scale_factor(), total)
+                    }
+                    ScrollDelta::LineDelta(_, y) => {
+                        self.pixel_scroll_remainder = 0.0;
+                        self.scroll_rows(f64::from(*y) * self.row_pitch(), total)
+                    }
+                    _ => false,
+                };
+                if changed {
                     ctx.request_render();
                 }
                 ctx.set_handled();
@@ -805,6 +859,7 @@ where
             selected: self.selected,
             multi: self.multi.clone(),
             scroll: 0.0,
+            pixel_scroll_remainder: 0.0,
             size: Size::ZERO,
             hovered: false,
         };
@@ -823,6 +878,7 @@ where
         if self.metrics != prev.metrics {
             element.widget.metrics = self.metrics;
             element.widget.scroll = 0.0;
+            element.widget.pixel_scroll_remainder = 0.0;
             // The rail's clip inset depends on the fitted thumbnail size.
             element.ctx.request_layout();
             changed = true;
@@ -899,6 +955,7 @@ mod thumbnail_tests {
             selected: None,
             multi: Arc::default(),
             scroll: 0.0,
+            pixel_scroll_remainder: 0.0,
             size: Size::new(246.0, 538.0),
             hovered: false,
         }
@@ -943,7 +1000,7 @@ mod thumbnail_tests {
     }
 
     #[test]
-    fn trackpad_scroll_survives_an_equivalent_cell_rebuild() {
+    fn trackpad_scroll_accumulates_before_moving_a_row_and_survives_rebuild() {
         use masonry::core::pointer::{PointerId, PointerInfo, PointerState, PointerType};
         use masonry::core::{NewWidget, PointerEvent, PointerScrollEvent, ScrollDelta};
         use masonry::dpi::PhysicalPosition;
@@ -958,16 +1015,25 @@ mod thumbnail_tests {
             position: PhysicalPosition::new(100.0, 100.0),
             ..PointerState::default()
         };
-        harness.process_pointer_event(PointerEvent::Scroll(PointerScrollEvent {
-            pointer: PointerInfo {
-                pointer_id: Some(PointerId::PRIMARY),
-                persistent_device_id: None,
-                pointer_type: PointerType::Mouse,
-            },
-            delta: ScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -17.0)),
-            state,
-        }));
         let pitch = harness.edit_root_widget(|root| root.widget.row_pitch());
+        for event in 0..3 {
+            harness.process_pointer_event(PointerEvent::Scroll(PointerScrollEvent {
+                pointer: PointerInfo {
+                    pointer_id: Some(PointerId::PRIMARY),
+                    persistent_device_id: None,
+                    pointer_type: PointerType::Mouse,
+                },
+                delta: ScrollDelta::PixelDelta(PhysicalPosition::new(0.0, -17.0)),
+                state: state.clone(),
+            }));
+            if event < 2 {
+                assert_eq!(
+                    harness.edit_root_widget(|root| root.widget.scroll),
+                    0.0,
+                    "a sub-row trackpad delta must not become a whole-row jump"
+                );
+            }
+        }
         assert_eq!(harness.edit_root_widget(|root| root.widget.scroll), pitch);
 
         harness.edit_root_widget(|root| {
@@ -979,6 +1045,30 @@ mod thumbnail_tests {
             pitch,
             "a routine Xilem rebuild must not snap the trackpad viewport to the top"
         );
+    }
+
+    #[test]
+    fn mouse_wheel_lines_still_move_immediately() {
+        use masonry::core::pointer::{PointerId, PointerInfo, PointerState, PointerType};
+        use masonry::core::{NewWidget, PointerEvent, PointerScrollEvent, ScrollDelta};
+        use masonry_testing::TestHarness;
+
+        let mut harness = TestHarness::create_with_size(
+            crate::default_property_set(),
+            NewWidget::new(rail()),
+            (246, 538),
+        );
+        harness.process_pointer_event(PointerEvent::Scroll(PointerScrollEvent {
+            pointer: PointerInfo {
+                pointer_id: Some(PointerId::PRIMARY),
+                persistent_device_id: None,
+                pointer_type: PointerType::Mouse,
+            },
+            delta: ScrollDelta::LineDelta(0.0, -1.0),
+            state: PointerState::default(),
+        }));
+        let pitch = harness.edit_root_widget(|root| root.widget.row_pitch());
+        assert_eq!(harness.edit_root_widget(|root| root.widget.scroll), pitch);
     }
 
     #[test]

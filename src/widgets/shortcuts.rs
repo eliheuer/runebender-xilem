@@ -48,6 +48,10 @@ pub(crate) enum AppAction {
     Redo,
     Overview,
     Tool(Tool),
+    /// Hold Space to pan without replacing the selected tool.
+    BeginSpacePan,
+    /// Restore the selected tool when Space is released.
+    EndSpacePan,
     FlipHorizontal,
     FlipVertical,
     Rotate90,
@@ -184,6 +188,19 @@ impl Widget for ShortcutHost {
         let TextEvent::Keyboard(key) = event else {
             return;
         };
+        let unmodified_space = matches!(&key.key, masonry::core::keyboard::Key::Character(value) if value == " ")
+            && !key.modifiers.meta()
+            && !key.modifiers.ctrl()
+            && !key.modifiers.alt();
+        if unmodified_space {
+            let action = match key.state {
+                KeyState::Down => AppAction::BeginSpacePan,
+                KeyState::Up => AppAction::EndSpacePan,
+            };
+            ctx.submit_action::<AppAction>(action);
+            ctx.set_handled();
+            return;
+        }
         if key.state != KeyState::Down {
             return;
         }
@@ -313,16 +330,20 @@ mod tests {
     use masonry::widgets::{Button, Label, TextArea};
     use masonry_testing::TestHarness;
 
-    fn key(k: Key, cmd: bool) -> TextEvent {
+    fn key_with_state(k: Key, cmd: bool, state: KeyState) -> TextEvent {
         let mut modifiers = Modifiers::empty();
         modifiers.set(Modifiers::META, cmd);
         TextEvent::Keyboard(KeyboardEvent {
-            state: KeyState::Down,
+            state,
             key: k,
             code: Code::Unidentified,
             modifiers,
             ..KeyboardEvent::default()
         })
+    }
+
+    fn key(k: Key, cmd: bool) -> TextEvent {
+        key_with_state(k, cmd, KeyState::Down)
     }
 
     fn harness() -> (TestHarness<ShortcutHost>, masonry::core::WidgetId) {
@@ -362,6 +383,30 @@ mod tests {
         harness.process_text_event(key(Key::Named(NamedKey::Escape), false));
         let action = harness.pop_action::<AppAction>();
         assert_eq!(action.map(|(a, _)| a), Some(AppAction::Overview));
+    }
+
+    #[test]
+    fn space_press_and_release_dispatch_temporary_pan_actions() {
+        let (mut harness, _) = harness();
+        harness.focus_on(Some(harness.root_id()));
+        harness.process_text_event(key_with_state(
+            Key::Character(" ".into()),
+            false,
+            KeyState::Down,
+        ));
+        let down = harness.pop_action::<AppAction>();
+        assert_eq!(
+            down.map(|(action, _)| action),
+            Some(AppAction::BeginSpacePan)
+        );
+
+        harness.process_text_event(key_with_state(
+            Key::Character(" ".into()),
+            false,
+            KeyState::Up,
+        ));
+        let up = harness.pop_action::<AppAction>();
+        assert_eq!(up.map(|(action, _)| action), Some(AppAction::EndSpacePan));
     }
 
     #[test]

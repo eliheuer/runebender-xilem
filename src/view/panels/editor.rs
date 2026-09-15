@@ -51,7 +51,7 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
         ghosts,
         interp,
         app.underlay(),
-        (app.tool == Tool::Text).then(|| {
+        app.has_text_session.then(|| {
             // Headless evidence can start with one logical range
             // selected; live selection remains widget-owned.
             let selection = std::env::var("RUNEBENDER_TEXT_SELECTION")
@@ -81,12 +81,9 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
             canvas::editor::EditorEvent::Undo => app.undo_open_glyph(false),
             canvas::editor::EditorEvent::Redo => app.undo_open_glyph(true),
             canvas::editor::EditorEvent::TextChanged(text) => app.set_editor_text(text),
-            canvas::editor::EditorEvent::EditGlyph(name) => {
+            canvas::editor::EditorEvent::EditGlyph { name, tool } => {
                 if let Some(index) = app.font.index_of(&name) {
-                    app.open_glyph(index);
-                    // Stay in the text tool: the point is to edit the glyph
-                    // while the word around it is still on screen.
-                    app.tool = Tool::Text;
+                    app.edit_text_sort_glyph(index, tool);
                 }
             }
         },

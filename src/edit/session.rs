@@ -1221,6 +1221,7 @@ impl Workspace {
     fn text_context(&self) -> TextContext {
         TextContext {
             editor_text: self.initial_text.clone(),
+            has_text_session: self.has_text_session,
             preview_text: self.preview_text.clone(),
             direction: self.text_dir,
             features_disabled: self.text_features_disabled.clone(),
@@ -1231,6 +1232,7 @@ impl Workspace {
 
     pub(crate) fn restore_text_context(&mut self, context: TextContext) {
         self.initial_text = context.editor_text;
+        self.has_text_session = context.has_text_session;
         self.preview_text = context.preview_text;
         self.text_dir = context.direction;
         self.text_features_disabled = context.features_disabled;
@@ -1250,25 +1252,68 @@ impl Workspace {
 
     /// Keep the active tab's plain text copy in step with the editor widget.
     pub(crate) fn set_editor_text(&mut self, text: String) {
+        self.begin_text_session();
         self.initial_text = text.clone();
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             tab.text_context.editor_text = text;
         }
     }
 
+    /// Open the active tab's text composition without coupling it to a tool.
+    pub(crate) fn begin_text_session(&mut self) {
+        self.has_text_session = true;
+        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            tab.text_context.has_text_session = true;
+        }
+    }
+
+    /// Pick a tool while preserving any text composition already on the tab.
+    pub(crate) fn select_tool(&mut self, tool: Tool) {
+        self.tool_before_space_pan = None;
+        self.tool = tool;
+        if tool == Tool::Text {
+            self.begin_text_session();
+        }
+    }
+
+    /// Temporarily use the Hand tool while Space is held.
+    pub(crate) fn begin_space_pan(&mut self) {
+        if !matches!(self.mode, Mode::Editor(_))
+            || self.tool == Tool::Hand
+            || self.tool_before_space_pan.is_some()
+        {
+            return;
+        }
+        self.tool_before_space_pan = Some(self.tool);
+        self.tool = Tool::Hand;
+    }
+
+    /// Restore the tool that was active before a Space-held pan.
+    pub(crate) fn end_space_pan(&mut self) {
+        if let Some(tool) = self.tool_before_space_pan.take() {
+            self.tool = tool;
+        }
+    }
+
+    fn persistent_tool(&self) -> Tool {
+        self.tool_before_space_pan.unwrap_or(self.tool)
+    }
+
     /// Write the live session back into its tab, so switching away from
     /// it does not lose the edit, the selection, or the undo stack.
     pub(crate) fn park(&mut self) {
         let text_context = self.text_context();
+        let persistent_tool = self.persistent_tool();
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             tab.session = self.session.clone();
-            tab.tool = self.tool;
+            tab.tool = persistent_tool;
             tab.text_context = text_context;
         }
     }
 
     /// Leave the editor while keeping any parked session aligned to the active master.
     pub(crate) fn settle_on_overview(&mut self) {
+        self.end_space_pan();
         self.mode = Mode::Overview;
         self.selected = None;
         if self.tabs.is_empty() {
@@ -1296,6 +1341,7 @@ impl Workspace {
         self.park();
         self.active_tab = index;
         self.session = session;
+        self.tool_before_space_pan = None;
         self.tool = tool;
         self.restore_text_context(text_context);
         let name = self.session.glyph_name.clone();
@@ -1320,12 +1366,13 @@ impl Workspace {
         let Some(session) = Session::new(self.font.font(), &self.session.glyph_name) else {
             return;
         };
+        let persistent_tool = self.persistent_tool();
         self.park();
         self.tabs.push(Tab {
             text_context_id: host::NEXT_TEXT_CONTEXT_ID
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             session: Arc::new(session),
-            tool: self.tool,
+            tool: persistent_tool,
             text_context: self.text_context(),
         });
         self.activate_tab(self.tabs.len() - 1);
@@ -1365,6 +1412,28 @@ impl Workspace {
                 return;
             }
         }
+        self.replace_active_tab_glyph(index);
+    }
+
+    /// Edit one sort from the current text buffer without changing tabs or
+    /// replacing that tab's text context.
+    ///
+    /// A grid open follows an existing glyph tab, but a sort activation is
+    /// local to the word being edited. GPUI changes only the active edit
+    /// session, and Web reloads only that sort's glyph metrics; both keep the
+    /// surrounding text buffer intact.
+    pub(crate) fn edit_text_sort_glyph(&mut self, index: usize, tool: Tool) {
+        if self.replace_active_tab_glyph(index) {
+            self.select_tool(tool);
+            if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                tab.tool = tool;
+            }
+        }
+    }
+
+    /// Replace the glyph session in the active tab while retaining the tab's
+    /// stable identity and parked text/preview state.
+    fn replace_active_tab_glyph(&mut self, index: usize) -> bool {
         if let Some(entry) = self.font.glyphs.get(index)
             && let Some(session) = Session::new(self.font.font(), &entry.name)
         {
@@ -1385,7 +1454,7 @@ impl Workspace {
                     text_context_id: host::NEXT_TEXT_CONTEXT_ID
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                     session: self.session.clone(),
-                    tool: self.tool,
+                    tool: self.persistent_tool(),
                     text_context: self.text_context(),
                 });
                 self.active_tab = self.tabs.len() - 1;
@@ -1393,7 +1462,9 @@ impl Workspace {
             self.selected = Some(index);
             self.selected_points = 0;
             self.mode = Mode::Editor(index);
+            return true;
         }
+        false
     }
 
     /// After an edit, pull the glyph back out of the session and refresh
@@ -1688,6 +1759,7 @@ impl Workspace {
     }
 
     pub(crate) fn back_to_overview(&mut self) {
+        self.end_space_pan();
         self.mode = Mode::Overview;
     }
 }

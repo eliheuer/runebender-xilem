@@ -1,76 +1,278 @@
-# Design QA: edit grid and Text-tool entry
+# Design QA: Text-tool parity follow-up
 
 final result: passed
 
 ## Inputs and state
 
-- Overall GPUI edit-view reference: user-supplied
-  `/Users/eli/Desktop/Screenshot 2026-09-13 at 11.49.42 PM.png`, 2466 by
-  1646 device pixels at macOS 2x density.
-- Component reference: `runebender-gpui/src/view/canvas/editor.rs` at
-  `79e3ab1d096bdcf2538d946c796a8a0cf01f0573`, especially
-  `paint_design_grid`, `grid_dot_sizes`, and `round_dot`.
-- Text behavior reference: `runebender-gpui/src/edit/text_tool.rs` and
-  `runebender-gpui/src/edit/session.rs` at the same revision. A new text
-  buffer retains the open glyph as its active sort.
-- Implementation: `src/view/canvas/editor.rs`, `src/edit/text_tool.rs`,
-  `src/widgets/icon_button.rs`, and their call sites. The captures open the
-  Virtua Grotesk `five` glyph in a 1280 by 720 logical viewport at density 1.
+- GPUI reference: user-supplied
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 10.59.39 AM.png`, 2442 by
+  1656 device pixels at macOS 2x density. Text tool, Gray theme, text `123`,
+  active sort `one`, proof strip visible.
+- Earlier Xilem implementation: user-supplied
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 10.58.51 AM.png`, 2250 by
+  1478 device pixels at macOS 2x density. Text tool, Gray theme, seeded text
+  `1`, active sort `one`, proof strip visible.
+- Behavioral references: `runebender-gpui/src/edit/input.rs`,
+  `runebender-gpui/src/view/canvas/editor.rs`, and
+  `runebender-web/src/Runebender.vue`. GPUI, Web, and Masonry's editable text
+  widget all insert ordinary logical character keys directly and reserve IME
+  commits for composed text.
+- Rendering references: GPUI `paint_sort_boxes` and `paint_text_caret`, plus
+  Web `draw_text_buffer`, `append_text_sort_metric_box`, and
+  `append_text_sort_corner_marks`.
+- Post-fix Xilem captures use a 1221 by 828 logical viewport at density 2,
+  producing the same 2442 by 1656 device-pixel frame as the GPUI reference.
 
 ## Rendered implementation
 
-- `docs/visual-audit/2026-09-14/145-xilem-round-dot-grid-gray.png`:
-  Gray theme, Select tool, edit-canvas zoom 8. The grid is intentionally
-  isolated at this zoom so its circular silhouettes are directly inspectable.
-- `docs/visual-audit/2026-09-14/146-xilem-text-tool-seeded-gray.png`:
-  Gray theme, Text tool, empty saved text context. The open `five` glyph is
-  retained as the active sort instead of disappearing.
-- `docs/visual-audit/2026-09-14/147-xilem-round-dot-grid-light.png` and
-  `148-xilem-text-tool-seeded-light.png`: the same two states in Light.
+- `docs/visual-audit/2026-09-14/149-xilem-text-parity-gray-2x.png`: Gray,
+  `one`, Text tool, `123`, active sort `one`.
+- `docs/visual-audit/2026-09-14/150-xilem-text-parity-light-2x.png`: the same
+  state in Light.
 
 ## Comparison history
 
-- Earlier P1: switching from Select to Text constructed a buffer from an empty
-  string, so the canvas replaced the open glyph with an empty line. Fix: seed
-  an empty buffer with the tab's glyph name, Unicode value when present, and
-  live advance; activate the matching sort when initial text already contains
-  it, or reset a stale line that has no valid edit target. Both Gray and Light
-  captures retain `five` with its advance box and caret.
-- Earlier P1: selecting the Text toolbar icon left native keyboard/IME focus
-  outside the editor. Fix: the per-workspace editor widget id is registered at
-  build time and the Text tool transfers focus during its pointer event. A
-  Masonry harness verifies that the target becomes focused; the existing IME
-  harness verifies commit, preedit, selection, arrows, line navigation, cut,
-  copy, and paste once focused.
-- Earlier P2: design-grid points were axis-aligned `Rect` paths. Fix: preserve
-  GPUI's spacing, fade, and zoom-dependent diameter but build each mark as a
-  Kurbo `Circle`. At zoom 8, every inspected dot has a round silhouette in both
-  themes; the geometry test also proves a bounding-box corner lies outside.
+- Resolved P1, behavior/accessibility: Xilem consumed `Key::Character` while
+  waiting for an IME commit that ordinary macOS typing did not deliver to this
+  custom canvas. It now inserts character keys directly, reports the complete
+  Text buffer, and retains the separate IME preedit/commit path. The harness
+  covers direct typing, composition, deletion, arrows, multiline navigation,
+  selection, copy, cut, and paste.
+- Resolved P1, layout/behavior: the Text paint branch returned before the
+  floating glyph metrics card. It now keeps the active `one / 0031 / 40 / 384
+  / 88 / one` card visible in both post-fix captures.
+- Resolved P1, layout/color: the active-only rectangle was replaced with the
+  GPUI/Web model: full quiet metric boxes for inactive sorts plus clipped
+  corner marks at the descender, baseline, ascender, and sort top. The full
+  boxes also include x-height and cap-height when distinct.
+- Resolved P2, icon/shape: the bare caret rule is now a full sort-height rule
+  with inward triangular caps whose size follows the on-screen sort height.
+- Resolved P2, content/state: the live Text buffer supplies the canvas, active
+  tab title, and proof strip. All three surfaces show `123` in the matched-size
+  captures.
+- Resolved P2, spacing: Text fitting now uses Web's full sort bounds, leaves
+  horizontal breathing room, and reserves the floating card. The top/bottom
+  metric frame and caret no longer clip or run behind the card.
 
 ## Fidelity surfaces
 
-- Fonts and typography: no interface font, size, metric-card type, or proof
-  typography changed.
-- Spacing and layout rhythm: grid spacing remains exactly 8 design units with
-  the existing 2-unit close level; Text mode retains the established line-fit
-  and caret layout.
-- Colors and visual tokens: both grid levels continue to use the existing
-  `designGridCoarse` role and fade values; Gray and Light were inspected.
-- Image and icon fidelity: no raster or generated asset was introduced. The
-  round grid is native Kurbo geometry, and the existing Text toolbar vector is
-  unchanged.
-- Copy and content: the open glyph remains `five`; its name, U+0035 identity,
-  advance, rail selection, and inspector content are preserved on tool entry.
+- Fonts and typography: the three outlines and proof use Virtua Grotesk's
+  source paths; no substitute text font or fake glyph art was introduced.
+- Spacing and layout: source and final Gray frames were compared at identical
+  device dimensions and density normalization. The run fits above the metrics
+  card with intact top and bottom bounds.
+- Colors and tokens: glyph ink, quiet metric, metric guide, mark header, card,
+  and cursor all use the existing theme roles; Gray and Light were inspected.
+- Image and icon fidelity: no raster or generated assets are involved. Metric
+  marks and caret caps are native Kurbo/Masonry geometry ported from the
+  established renderer behavior.
+- Copy and content: `123`, active sort `one`, U+0031, and its spacing metrics
+  remain consistent across canvas, tab, card, rail selection, and proof.
+
+## Edit-rail divider follow-up
+
+- Reference: user-supplied
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 11.13.26 AM.png`, a focused
+  678 by 256 device-pixel crop of the lower-left edit rail.
+- Resolved P2, stroke: the glyph-count/slider row and the marks bar both painted
+  their shared boundary, producing two adjacent hairlines above the swatches.
+  The status row now paints only its upper keyline, leaving the marks bar as the
+  sole owner of the shared divider.
+- `docs/visual-audit/2026-09-14/151-xilem-edit-rail-single-divider-gray-2x.png`:
+  full post-fix Gray capture at 2442 by 1656 device pixels.
+- `docs/visual-audit/2026-09-14/152-xilem-edit-rail-single-divider-focus.png`:
+  focused post-fix comparison crop; the swatch boundary is one hairline across
+  the rail.
+
+## Nodes chrome parity follow-up
+
+- GPUI target: user-supplied
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 11.16.13 AM.png`, 2538 by
+  1700 device pixels. Nodes mode, Gray theme, three graph tabs, Masters open,
+  and the selected glyph outline visible.
+- Earlier Xilem state: user-supplied
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 11.14.24 AM.png`, 2334 by
+  1502 device pixels. Nodes mode, Gray theme, mixed rounded and square toolbar
+  controls, a tall footer, and no glyph preview.
+- Matched post-fix implementation:
+  `docs/visual-audit/2026-09-14/157-xilem-nodes-chrome-parity-gray-matched-2x.png`,
+  2538 by 1700 device pixels from a 1269 by 850 logical viewport at 2x.
+  Graph contents differ from the target fixture, so the direct comparison is
+  scoped to the top rails, footer, and inspector composition.
+- Independent theme check:
+  `docs/visual-audit/2026-09-14/156-xilem-nodes-chrome-parity-light-2x.png`,
+  2334 by 1502 device pixels from a 1167 by 751 logical viewport at 2x.
+- Resolved P2, controls/copy: graph tabs and New, Open, Save, and Run now use
+  one square, dark-keylined control recipe. `Open…` is now `Open` as requested.
+- Resolved P2, alignment: the center toolbar occupies the same 36-pixel rail as
+  the left tabs and owns one bottom keyline. Its controls share one baseline.
+- Resolved P2, density: the node footer is fixed to the same 28-pixel height as
+  the swatch bar, with a compact 20-pixel Fit graph button.
+- Resolved P1, inspector structure: Nodes now keeps the overview document
+  inspector, with Masters open by default and the selected-glyph outline in a
+  resizable lower pane. The initial split accounts for the visible master rows
+  instead of clipping them.
+- Resolved P2, master rows: the selector follows GPUI's compact 20-pixel row,
+  neutral selected fill, keyline, and selected-content ink rather than the
+  oversized stock-button treatment.
+- Fonts and typography: node chrome continues to use the shared 13-pixel UI
+  type; labels and selected state differ by theme token, not size.
+- Spacing and layout: matched-size Gray comparison confirms the toolbar rail,
+  footer, master list, and preview remain aligned at the target viewport.
+- Colors and tokens: all new borders, fills, and labels use palette roles; Gray
+  and Light were inspected together.
+- Image and icon fidelity: no raster assets or substitute icons were added; the
+  preview is the existing live outline renderer.
+- Copy and content: command labels are New, Open, Save, Run, and Fit graph; the
+  status line retains the graph name, node count, link count, and live note.
+
+## Button-shape system follow-up
+
+- User-reported source state:
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 11.55.23 AM.png`, a 636 by 852
+  device-pixel crop showing rounded title tabs and a rounded selected master
+  beside square node controls.
+- GPUI reference:
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 11.16.13 AM.png`, 2538 by 1700
+  device pixels, where the comparable title tabs, graph controls, and master
+  selection use square keylines.
+- Post-fix implementation:
+  `docs/visual-audit/2026-09-14/159-xilem-button-shape-system-gray-final-2x.png`,
+  2538 by 1700 device pixels from the same 1269 by 850 logical viewport at 2x.
+- Resolved P2, control drift: `ButtonShape` is now the semantic source of truth
+  for square and circular controls. The Runebender `recipes::button` factory
+  applies the square shape before any call-site styling, so panels cannot
+  silently inherit Xilem's rounded stock button.
+- Resolved P2, visible mismatch: title tabs, graph tabs, graph commands,
+  inspector master rows, list rows, and compact action chips are square.
+  Circular opt-in remains limited to the title-bar add control, coordinate
+  dots, and colour swatches.
+- Fonts and typography: no type metrics changed; the shared 13-pixel UI type
+  remains consistent across each control family.
+- Spacing and layout: the shape migration changes no control dimensions,
+  padding, alignment, or panel split.
+- Colors and tokens: existing palette roles and keyline colors are unchanged.
+- Image and icon fidelity: no image or icon assets changed.
+- Copy and content: no labels changed in this follow-up.
+- Focused comparison was necessary because the reported mismatch is confined
+  to the title strip and Masters section; the full final capture confirms that
+  the rule also holds across the node toolbar and footer.
+
+## Text-sort context follow-up
+
+- User-reported source state:
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 12.22.58 PM.png` and
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 12.23.06 PM.png`. The first
+  shows `Render` in Text mode; after activating `R`, the second loses the run
+  and shows only the edited glyph.
+- Behavioral references: GPUI `activate_sort_at_pos` changes the active edit
+  session without reseeding `edit_buffer`; Web
+  `loadActiveTextSortGlyphIntoEditor` reloads with `metricsOnly: true` and
+  `seedTextBuffer: false`.
+- Resolved P1, state: sort activation now replaces the current tab's glyph
+  session without invoking ordinary glyph/tab navigation. The tab identity,
+  parked text context, full word, proof strip, and Text tool remain intact,
+  even when the activated glyph already has another tab.
+- Resolved P2, color: Web maps `metricGuide` to the theme accent. Xilem's
+  clipped sort intersections now use that green accent while complete inactive
+  metric boxes retain the quieter neutral role.
+- Post-fix captures:
+  `docs/visual-audit/2026-09-14/160-xilem-text-sort-context-gray-2x.png` and
+  `docs/visual-audit/2026-09-14/161-xilem-text-sort-context-light-2x.png`, both
+  2442 by 1656 device pixels. Both show the full `Render` run, active `R`
+  metrics, the `Render` proof, and green intersection ticks.
+- Static captures verify the intact rendered state and both theme recipes. The
+  state-transition regression test verifies that activating a sort keeps the
+  text tab and its word; native pointer delivery remains outside headless QA.
 
 ## Validation
 
-- `cargo fmt --check`
-- `cargo test --offline --bin runebender` (139 passed, 4 ignored), including
-  the focus-transfer harness, Unicode and non-Unicode Text seed tests, the
-  existing IME/navigation/clipboard harness, and round-grid geometry.
+- `cargo test --offline --bin runebender` (142 passed, 4 ignored)
 - `cargo test --offline --test cli` (17 passed)
 - `cargo test --offline --test live_agent` (passed with local Unix-socket
   permission)
-- `cargo clippy --offline --all-targets -- -D warnings`
+- `cargo clippy --offline --workspace --all-targets -- -D warnings`
+- `cargo fmt --check`
 - `git diff --check`
-- Gray and Light headless captures visually inspected at 1280 by 720
+- Matched-size Gray comparisons and independent Light captures visually
+  inspected for both Text and Nodes modes
+
+## Text-to-Select composition follow-up
+
+- User-reported reference:
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 12.39.59 PM.png`, showing GPUI
+  with `test` retained while Select exposes the first `t`'s outline and nodes.
+- Behavioral references: GPUI keeps one `edit_buffer` across tool changes and
+  translates the editable glyph through `EditorState::sort_offset`; Web keeps
+  `has_text_session` separate from `text_mode_active` and uses the active
+  sort's layout origin for both drawing and hit testing.
+- Resolved P1, composition lifetime: each Xilem editor tab now records whether
+  it owns an open text composition independently of its active tool. Selecting
+  an outline tool no longer removes the composed run, tab text, or proof.
+- Resolved P1, in-context editing: Select, Pen, HyperPen, shape, metrics,
+  component, anchor, point, and marquee geometry now share the active sort's
+  translated glyph coordinate system. The glyph's editable nodes sit at the
+  same position as the omitted active text fill, while neighbouring sorts stay
+  visible.
+- Resolved P2, mode chrome: the caret and text selection appear only in Text;
+  in Select the active sort becomes editable outline chrome and its metrics
+  card remains visible, matching the GPUI screenshot.
+- Post-fix captures:
+  `docs/visual-audit/2026-09-14/162-xilem-text-select-context-gray-2x.png` and
+  `docs/visual-audit/2026-09-14/163-xilem-text-select-context-light-2x.png`, both
+  2438 by 1612 device pixels. Both show Select active, the full `test` run, the
+  first `t` editable in place, and `test` retained in the proof strip.
+- The state-transition regression verifies Text to Select to Text preserves
+  the tab's word; the geometry regression verifies drawing and hit conversion
+  share the active sort origin. Static captures verify both palette recipes;
+  native pointer and IME delivery remain outside headless visual QA.
+
+## Start-point and anchor parity follow-up
+
+- Source visual truth:
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 4.43.37 PM.png`, 1020 by 914
+  pixels, GPUI Gray editor focused on the `a` outline.
+- Earlier implementation:
+  `docs/visual-audit/2026-09-14/170-xilem-start-anchor-before-gray-2x.png`,
+  1221 by 828 pixels. Start nodes remained ordinary circles or squares and a
+  second blue arrow sat beside each one; unselected anchors had an unrelated
+  dark center.
+- Post-fix implementation:
+  `docs/visual-audit/2026-09-14/172-xilem-start-anchor-close-gray-2x.png` and
+  `docs/visual-audit/2026-09-14/173-xilem-start-anchor-close-light-2x.png`,
+  both 1221 by 828 pixels at a 1221 by 828 logical viewport and 0.8 editor
+  zoom. The focused Gray canvas was cropped to 608 by 632 and normalized to
+  914 pixels high for comparison.
+- Combined comparison evidence:
+  `docs/visual-audit/2026-09-14/174-gpui-xilem-start-anchor-comparison.png`,
+  1900 by 914 pixels, with the GPUI source on the left and normalized Xilem
+  crop on the right.
+
+### Comparison history
+
+- Resolved P2, start-point semantics: the detached arrow and ordinary start
+  node were replaced by GPUI's single directional wedge at the exact node
+  position. Corner starts use a crisp triangle; smooth starts round all three
+  corners. Fill, ring, halo, selection, traversal order, and scale continue to
+  come from the ordinary point recipe.
+- Resolved P2, anchor style: unselected anchors now use solid theme pink inside
+  the same dark point keyline, rather than a pink ring around a dark core.
+  Selected anchors retain the shared selected-point treatment.
+- Post-fix comparison found no remaining actionable P0, P1, or P2 mismatch in
+  the requested start-point, direction-indicator, and anchor styling scope.
+
+### Fidelity surfaces
+
+- Fonts and typography: this marker-only change adds no text and changes no
+  type treatment.
+- Spacing and layout rhythm: marker centers remain on the exact design points;
+  no panel, glyph, or metric layout moved. The focused crop was normalized only
+  for visual comparison.
+- Colors and visual tokens: direction wedges inherit their point kind and
+  selection roles; anchors use the existing pink mark and point-outline roles.
+  Gray and Light were inspected.
+- Image quality and asset fidelity: the markers remain native vector geometry;
+  no raster assets, generated substitutes, or approximate icons were added.
+- Copy and content: no interface copy or font data changed.
+
+final result: passed

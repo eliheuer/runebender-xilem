@@ -312,31 +312,35 @@ fn editor_glyph_rail(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             },
         )
         .flex(1.0),
-        sized_box(
-            xrow(
-                Region::Inline,
-                (
-                    label(format!("{count} glyphs"))
-                        .color(app.palette.text_muted)
-                        .flex(1.0),
-                    recipes::neutral_slider(
-                        &app.palette,
-                        RAIL_CELL_MIN,
-                        RAIL_CELL_MAX,
-                        app.rail_cell_size,
-                        |app: &mut Workspace, value| app.rail_cell_size = value,
-                    )
-                    .width(Length::px(STATUS_SLIDER_WIDTH)),
-                ),
+        // The marks bar immediately below already owns the shared divider.
+        // Give this status row only its upper keyline; a full border painted
+        // a second horizontal stroke directly above the swatches.
+        top_keyline(
+            sized_box(
+                xrow(
+                    Region::Inline,
+                    (
+                        label(format!("{count} glyphs"))
+                            .color(app.palette.text_muted)
+                            .flex(1.0),
+                        recipes::neutral_slider(
+                            &app.palette,
+                            RAIL_CELL_MIN,
+                            RAIL_CELL_MAX,
+                            app.rail_cell_size,
+                            |app: &mut Workspace, value| app.rail_cell_size = value,
+                        )
+                        .width(Length::px(STATUS_SLIDER_WIDTH)),
+                    ),
+                )
+                .padding(masonry::properties::Padding::horizontal(Space::Md.length())),
             )
-            .padding(masonry::properties::Padding::horizontal(Space::Md.length())),
-        )
-        .dims(Dimensions::new(
-            Dim::Stretch,
-            Dim::from(ControlSize::Control),
-        ))
-        .border_color(app.palette.outline)
-        .border_width(Stroke::Hairline.length()),
+            .dims(Dimensions::new(
+                Dim::Stretch,
+                Dim::from(ControlSize::Control),
+            )),
+            app.palette.outline,
+        ),
     ))
     .cross_axis_alignment(CrossAxisAlignment::Stretch)
     .gap(Space::None)
@@ -410,7 +414,7 @@ where
         .background_color(bg)
         .border_color(border)
         .border_width(Stroke::Hairline.length())
-        .corner_radius(Radius::Sm.length())
+        .corner_radius(Radius::None.length())
         // The stock button's padding is sized for a form button, not
         // for a chip in a title bar. GPUI writes `px_2`.
         .padding(Space::Md),
@@ -453,9 +457,9 @@ where
         .border_color(border)
         .border_width(Stroke::Hairline.length())
         .corner_radius(if circular {
-            Radius::Full.length()
+            ButtonShape::Circular.radius()
         } else {
-            Radius::Sm.length()
+            ButtonShape::Square.radius()
         })
         .padding(Space::Md),
     )
@@ -472,12 +476,19 @@ pub(crate) fn tab_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         .iter()
         .enumerate()
         .map(|(index, tab)| {
+            let mut label = tab.text_context.editor_text.clone();
+            if label.is_empty() {
+                label = tab.session.glyph_name.clone();
+            } else if label.chars().count() > 24 {
+                label = label.chars().take(24).collect();
+                label.push('…');
+            }
             xrow(
                 Region::Inline,
                 (
                     header_tab_chip(
                         pal,
-                        tab.session.glyph_name.clone(),
+                        label,
                         editing && index == active,
                         false,
                         false,

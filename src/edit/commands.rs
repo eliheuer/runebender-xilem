@@ -873,8 +873,10 @@ impl Workspace {
                     self.back_to_overview();
                 }
             }
+            A::BeginSpacePan => self.begin_space_pan(),
+            A::EndSpacePan => self.end_space_pan(),
             A::Tool(t) => {
-                self.tool = t;
+                self.select_tool(t);
                 // Picking Measure turns on what the tool is for, keeping
                 // whatever curve analyses were already showing.
                 if t == Tool::Measure && !self.view.measures() {

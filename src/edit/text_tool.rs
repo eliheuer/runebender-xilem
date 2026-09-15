@@ -157,10 +157,12 @@ impl TextState {
     #[cfg(test)]
     pub(crate) fn test_buffer() -> Self {
         let mut font = norad::Font::new();
-        for name in ["A", "B"] {
+        for (name, codepoint, width) in
+            [("A", 'A', 500.0), ("B", 'B', 500.0), ("space", ' ', 250.0)]
+        {
             let mut glyph = norad::Glyph::new(name);
-            glyph.width = 500.0;
-            glyph.codepoints.insert(name.chars().next().unwrap());
+            glyph.width = width;
+            glyph.codepoints.insert(codepoint);
             font.default_layer_mut().insert_glyph(glyph);
         }
         Self::new(&TextInputs {
@@ -372,6 +374,17 @@ impl TextState {
         Point::new(layout.cursor_x, layout.cursor_y)
     }
 
+    /// Layout origin of the sort whose glyph is open in the outline editor.
+    pub(crate) fn active_origin(&self) -> Option<Point> {
+        let active = self.buffer.active_sort()?;
+        self.buffer
+            .layout(self.line_height)
+            .items
+            .iter()
+            .find(|item| item.index == active)
+            .map(|item| Point::new(item.x, item.y))
+    }
+
     /// A click: put the caret there, and report the sort under it.
     pub(crate) fn click(&mut self, at: Point) -> Option<usize> {
         let hit = self
@@ -380,6 +393,21 @@ impl TextState {
         self.buffer
             .place_cursor_at(at.x, at.y, self.line_height, self.ascender, self.descender);
         hit.active_sort
+    }
+
+    /// Activate the sort box under `at` without moving the text caret.
+    pub(crate) fn activate_at(&mut self, at: Point) -> Option<String> {
+        let activation = self.buffer.activate_sort_at(
+            at.x,
+            at.y,
+            self.line_height,
+            self.ascender,
+            self.descender,
+        )?;
+        self.buffer
+            .sort(activation.index)
+            .and_then(|sort| sort.glyph_name())
+            .map(str::to_string)
     }
 
     /// Make a sort the one being edited, and report its glyph.

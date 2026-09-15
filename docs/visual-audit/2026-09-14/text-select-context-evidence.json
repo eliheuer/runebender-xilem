@@ -1,0 +1,39 @@
+{
+  "recorded_local": "2026-09-14",
+  "reference": {
+    "screenshot": "/Users/eli/Desktop/Screenshot 2026-09-14 at 12.39.59 PM.png",
+    "gpui": [
+      "runebender-gpui/src/workspace.rs::EditorState::transform",
+      "runebender-gpui/src/edit/text_tool.rs::sync_sort_offset",
+      "runebender-gpui/src/view/canvas/editor.rs::paint_sort_fills"
+    ],
+    "web": [
+      "runebender-web/core/src/editor.rs::EditorState::has_text_session",
+      "runebender-web/core/src/renderer.rs::draw_state"
+    ]
+  },
+  "captures": {
+    "162-xilem-text-select-context-gray-2x.png": {
+      "theme": "gray",
+      "tool": "select",
+      "text": "test",
+      "active_glyph": "t",
+      "size": [2438, 1612],
+      "sha256": "654024c37e5f7724abcd75f7a1c889c58077588784dffede3189778cd990268c"
+    },
+    "163-xilem-text-select-context-light-2x.png": {
+      "theme": "light",
+      "tool": "select",
+      "text": "test",
+      "active_glyph": "t",
+      "size": [2438, 1612],
+      "sha256": "d0da1beaa192d88f12e1cc2d2cd58d2e50a5817867baa91091ceaf941f7337dc"
+    }
+  },
+  "validation": {
+    "cargo_test_bin": "142 passed, 4 ignored",
+    "cargo_test_cli": "17 passed",
+    "cargo_clippy_all_targets_deny_warnings": "passed",
+    "themes_visually_inspected": ["gray", "light"]
+  }
+}

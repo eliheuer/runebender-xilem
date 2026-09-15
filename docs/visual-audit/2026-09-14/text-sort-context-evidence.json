@@ -1,0 +1,30 @@
+{
+  "recorded_local": "2026-09-14",
+  "xilem_parent": "4599fa534ad34437591a1f3784c1f5c0994b315c",
+  "gpui_reference_head": "79e3ab1d096bdcf2538d946c796a8a0cf01f0573",
+  "web_reference_head": "a6375df8e82ac38f118baf12eb3aba628c1899e5",
+  "reference": {
+    "behavior": [
+      "runebender-gpui/src/edit/input.rs::activate_sort_at_pos",
+      "runebender-web/src/Runebender.vue::loadActiveTextSortGlyphIntoEditor"
+    ],
+    "color": "runebender-web/src/Runebender.vue::applyCanvasTheme metricGuide"
+  },
+  "captures": {
+    "160-xilem-text-sort-context-gray-2x.png": {
+      "theme": "gray",
+      "size": [2442, 1656],
+      "sha256": "cdc0a0ab38a92ccd018f09de46382df8b99e9be05d1fc0c05927fd05d9e796f7"
+    },
+    "161-xilem-text-sort-context-light-2x.png": {
+      "theme": "light",
+      "size": [2442, 1656],
+      "sha256": "edf13cdb6d2faeedfe3c1513d67fec2bc47efc9167fca9fb20f703a236d91142"
+    }
+  },
+  "validation": {
+    "cargo_test": "141 passed, 4 ignored; 17 CLI passed; live-agent passed with socket permission",
+    "cargo_clippy_all_targets_deny_warnings": "passed",
+    "themes_visually_inspected": ["gray", "light"]
+  }
+}

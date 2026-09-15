@@ -14,8 +14,9 @@
 use crate::widgets::input_typography;
 
 use crate::view::design::{
-    ControlSize, ROW_MARKER_BULLET_RADIUS, ROW_MARKER_CHEVRON_LONG, ROW_MARKER_CHEVRON_SHORT,
-    ROW_MARKER_CHEVRON_TIP, ROW_MARKER_SIZE, Radius, Region, Space, Stroke, TextSize,
+    ButtonShape, ControlSize, ROW_MARKER_BULLET_RADIUS, ROW_MARKER_CHEVRON_LONG,
+    ROW_MARKER_CHEVRON_SHORT, ROW_MARKER_CHEVRON_TIP, ROW_MARKER_SIZE, Radius, Region, Space,
+    Stroke, TextSize,
 };
 use crate::view::design::{column, row};
 use crate::{label, text_input};
@@ -23,10 +24,27 @@ use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use xilem::WidgetView;
 use xilem::style::Style;
-use xilem::view::{FlexSpacer, button, canvas, sized_box};
+use xilem::view::{FlexSpacer, button as xilem_button, canvas, sized_box};
 
 use crate::Workspace;
 use crate::view::theme::Palette;
+
+/// The application's base button.
+///
+/// Xilem's stock button is rounded. Runebender panel controls are square so
+/// their keylines can join neighboring rows and controls. All view code gets
+/// this factory through `crate::*`; deliberately circular controls override
+/// the radius with [`ButtonShape::Circular`].
+pub(crate) fn button<V, F>(
+    child: V,
+    on_click: F,
+) -> impl WidgetView<Workspace, Widget = masonry::widgets::Button> + use<V, F>
+where
+    V: WidgetView<Workspace>,
+    F: Fn(&mut Workspace) + Send + Sync + 'static,
+{
+    xilem_button(child, on_click).corner_radius(ButtonShape::Square.radius())
+}
 
 /// A section header that collapses its section.
 ///
@@ -37,6 +55,20 @@ pub(crate) fn section_toggle<F>(
     pal: &Palette,
     text: &'static str,
     open: bool,
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F>
+where
+    F: Fn(&mut Workspace) + Send + Sync + 'static,
+{
+    section_toggle_height(pal, text, open, ControlSize::Row.px(), on_click)
+}
+
+/// A section header with an explicit tokenized content height.
+pub(crate) fn section_toggle_height<F>(
+    pal: &Palette,
+    text: &'static str,
+    open: bool,
+    height: f64,
     on_click: F,
 ) -> impl WidgetView<Workspace> + use<F>
 where
@@ -62,7 +94,10 @@ where
         .border_width(Stroke::None.length())
         .padding(Space::None),
     )
-    .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Row)))
+    .dims(Dimensions::new(
+        Dim::Stretch,
+        Dim::Fixed(Length::px(height)),
+    ))
 }
 
 /// An inspector group with a full-width dividing rule and a shared inset.
@@ -419,6 +454,27 @@ pub(crate) fn action<F: Fn(&mut Workspace) + Send + Sync + 'static>(
         .corner_radius(Radius::None.length()),
     )
     .dims(Dimensions::new(Dim::Auto, Dim::from(ControlSize::Control)))
+}
+
+/// A labeled push button at a chosen compact height.
+pub(crate) fn action_sized<F: Fn(&mut Workspace) + Send + Sync + 'static>(
+    pal: &Palette,
+    text: String,
+    size: ControlSize,
+    on_click: F,
+) -> impl WidgetView<Workspace> + use<F> {
+    sized_box(
+        button(
+            label(text).text_size(TextSize::Body.px()).color(pal.text),
+            move |app: &mut Workspace| on_click(app),
+        )
+        .padding(Space::Sm)
+        .background_color(pal.button)
+        .border_color(pal.outline)
+        .border_width(Stroke::Hairline.length())
+        .corner_radius(Radius::None.length()),
+    )
+    .dims(Dimensions::new(Dim::Auto, Dim::from(size)))
 }
 
 /// The editor's neutral slider, retaining Masonry keyboard and pointer behavior.

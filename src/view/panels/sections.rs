@@ -83,22 +83,27 @@ pub(crate) fn masters_section(app: &Workspace) -> Option<impl WidgetView<Workspa
         .enumerate()
         .map(|(i, name)| {
             let active = i == app.font.active();
-            let (bg, fg) = if active {
-                (pal.selected_bg(), pal.selected_ink())
+            let (bg, fg, border) = if active {
+                (pal.selected_bg(), pal.selected_content_ink(), pal.outline)
             } else {
-                (pal.panel, pal.text)
+                (pal.panel, pal.text, xilem::Color::TRANSPARENT)
             };
             sized_box(
                 button(
                     label(name).text_size(TextSize::Body.px()).color(fg),
                     move |app: &mut Workspace| app.set_master(i),
                 )
-                .background_color(bg),
+                .padding(Space::Sm)
+                .background_color(bg)
+                .border_color(border)
+                .border_width(if active {
+                    Stroke::Hairline.length()
+                } else {
+                    Stroke::None.length()
+                })
+                .corner_radius(Radius::None.length()),
             )
-            .dims(Dimensions::new(
-                Dim::Stretch,
-                Dim::from(ControlSize::Control),
-            ))
+            .dims(Dimensions::new(Dim::Stretch, Dim::from(ControlSize::Icon)))
         })
         .collect();
     Some(xcolumn(
@@ -545,7 +550,7 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
             .background_color(bg)
             .border_color(border)
             .border_width(Stroke::Hairline.length())
-            .corner_radius(Radius::Sm.length()),
+            .corner_radius(ButtonShape::Circular.radius()),
         )
         .dims(Dimensions::fixed(
             ControlSize::Dot.length(),
@@ -917,10 +922,13 @@ pub(crate) fn background_section(app: &Workspace) -> impl WidgetView<Workspace> 
 
 pub(crate) fn mark_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    let swatch = |label: Option<String>, color: xilem::Color| {
+    let swatch = |mark_label: Option<String>, color: xilem::Color| {
         sized_box(
-            text_button("", move |app: &mut Workspace| app.set_mark(label.clone()))
-                .background_color(color),
+            button(label(""), move |app: &mut Workspace| {
+                app.set_mark(mark_label.clone());
+            })
+            .background_color(color)
+            .corner_radius(ButtonShape::Circular.radius()),
         )
         .dims(Dimensions::fixed(
             ControlSize::Row.length(),
@@ -969,10 +977,15 @@ pub(crate) fn font_info_section(app: &Workspace) -> impl WidgetView<Workspace> +
     xcolumn(
         Region::Section,
         (
-            recipes::section_toggle(
+            recipes::section_toggle_height(
                 pal,
                 "Font info",
                 !app.collapsed.contains("Font info"),
+                if matches!(app.mode, Mode::Nodes) && app.collapsed.contains("Font info") {
+                    design::NODE_VIEW_SECTION_HEADER_HEIGHT
+                } else {
+                    ControlSize::Row.px()
+                },
                 move |app: &mut Workspace| {
                     if !app.collapsed.remove("Font info") {
                         app.collapsed.insert("Font info");

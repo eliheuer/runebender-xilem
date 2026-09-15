@@ -30,6 +30,7 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
         }
     };
     let editing = matches!(app.mode, Mode::Editor(_));
+    let nodes = matches!(app.mode, Mode::Nodes);
     // Width / LSB / RSB in one row (gpui's metrics row). Each field commits
     // live; LSB shifts the glyph, RSB changes the advance.
     let field_bg = pal.field();
@@ -174,10 +175,15 @@ pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
     let glyph_section = xcolumn(
         Region::Section,
         (
-            recipes::section_toggle(
+            recipes::section_toggle_height(
                 pal,
                 "Glyph",
                 !app.collapsed.contains("Glyph"),
+                if nodes && app.collapsed.contains("Glyph") {
+                    design::NODE_VIEW_SECTION_HEADER_HEIGHT
+                } else {
+                    ControlSize::Row.px()
+                },
                 move |app: &mut Workspace| {
                     if !app.collapsed.remove("Glyph") {
                         app.collapsed.insert("Glyph");

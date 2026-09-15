@@ -31,6 +31,7 @@ pub(crate) fn px32(value: f64) -> f32 {
 #[derive(Clone, Copy)]
 enum KeylineEdge {
     Top,
+    Bottom,
     Left,
     Right,
 }
@@ -49,6 +50,10 @@ where
         KeylineEdge::Top => (
             Dimensions::new(Dim::Stretch, Dim::Fixed(Stroke::Hairline.length())),
             UnitPoint::TOP,
+        ),
+        KeylineEdge::Bottom => (
+            Dimensions::new(Dim::Stretch, Dim::Fixed(Stroke::Hairline.length())),
+            UnitPoint::BOTTOM,
         ),
         KeylineEdge::Left => (
             Dimensions::new(Dim::Fixed(Stroke::Hairline.length()), Dim::Stretch),
@@ -81,6 +86,18 @@ where
     V: WidgetView<State>,
 {
     edge_keyline(content, KeylineEdge::Top, color)
+}
+
+/// Put the shared outline token at the bottom of a panel.
+pub(crate) fn bottom_keyline<State, V>(
+    content: V,
+    color: Color,
+) -> impl WidgetView<State, Widget: Sized> + use<State, V>
+where
+    State: 'static,
+    V: WidgetView<State>,
+{
+    edge_keyline(content, KeylineEdge::Bottom, color)
 }
 
 /// Native splitters retain dragged sizes across view rebuilds and window resizes.
@@ -171,6 +188,7 @@ where
 fn overview_inspector_split<State, A, B>(
     sections: A,
     preview: B,
+    initial_sections_height: f64,
 ) -> impl WidgetView<State, Widget: Sized> + use<State, A, B>
 where
     State: 'static,
@@ -179,7 +197,7 @@ where
 {
     let split = xilem::view::split(sections, preview)
         .split_axis(kurbo::Axis::Vertical)
-        .split_point_from_start(Length::px(design::OVERVIEW_INSPECTOR_SECTIONS_HEIGHT))
+        .split_point_from_start(Length::px(initial_sections_height))
         .min_lengths(
             Length::px(design::OVERVIEW_INSPECTOR_MIN_SECTIONS_HEIGHT),
             Length::px(design::OVERVIEW_GLYPH_PREVIEW_MIN_HEIGHT),
@@ -237,10 +255,18 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
             .constrain_horizontal(true)
             .background_color(pal.panel)
     };
-    let inspector = if matches!(app.mode, Mode::Overview) {
+    let inspector_sections_height = design::overview_inspector_sections_height(
+        app.font.master_names().len(),
+        !app.collapsed.contains("Masters"),
+    );
+    // Font and Nodes both use the document inspector: compact sections above
+    // the selected glyph's outline preview. Nodes is a workflow over the same
+    // font, so changing modes must not replace that useful document context.
+    let inspector = if matches!(app.mode, Mode::Overview | Mode::Nodes) {
         Either::A(overview_inspector_split(
             inspector_sections(),
             glyph_preview(app),
+            inspector_sections_height,
         ))
     } else {
         Either::B(inspector_sections())
@@ -567,6 +593,46 @@ mod tab_tests {
     }
 
     #[test]
+    fn space_pan_restores_the_persistent_tool() {
+        let mut app = app();
+        let a = app.font.index_of("A").expect("A");
+        app.open_glyph(a);
+        app.select_tool(Tool::Pen);
+
+        app.begin_space_pan();
+        assert_eq!(app.tool, Tool::Hand);
+        assert_eq!(app.tool_before_space_pan, Some(Tool::Pen));
+        app.begin_space_pan();
+        assert_eq!(
+            app.tool_before_space_pan,
+            Some(Tool::Pen),
+            "repeat is harmless"
+        );
+        app.end_space_pan();
+        assert_eq!(app.tool, Tool::Pen);
+        assert_eq!(app.tool_before_space_pan, None);
+
+        app.begin_space_pan();
+        app.new_tab();
+        assert_eq!(
+            app.tool,
+            Tool::Pen,
+            "a tab switch restores the persistent tool"
+        );
+        assert_eq!(app.tabs[0].tool, Tool::Pen);
+        assert_eq!(app.tabs[1].tool, Tool::Pen);
+
+        app.select_tool(Tool::Hand);
+        app.begin_space_pan();
+        app.end_space_pan();
+        assert_eq!(
+            app.tool,
+            Tool::Hand,
+            "a selected Hand tool remains selected"
+        );
+    }
+
+    #[test]
     fn a_tab_keeps_its_own_selection() {
         let mut app = app();
         let a = app.font.index_of("A").expect("A");
@@ -613,6 +679,7 @@ mod tab_tests {
 
         app.activate_tab(0);
         assert_eq!(app.initial_text, "first editor");
+        assert!(app.has_text_session);
         assert_eq!(app.preview_text, "first preview");
         assert_eq!(app.text_dir, Some(TextDirection::RightToLeft));
         assert!(app.text_features_disabled.contains("rlig"));
@@ -621,11 +688,70 @@ mod tab_tests {
 
         app.activate_tab(1);
         assert_eq!(app.initial_text, "second editor");
+        assert!(app.has_text_session);
         assert_eq!(app.preview_text, "second preview");
         assert_eq!(app.text_dir, Some(TextDirection::LeftToRight));
         assert!(app.text_features_disabled.is_empty());
         assert_eq!(app.text_script, None);
         assert_eq!(app.text_language, None);
+    }
+
+    #[test]
+    fn activating_a_text_sort_keeps_the_word_in_its_current_tab() {
+        let mut app = app();
+        let a = app.font.index_of("A").expect("A");
+        let b = app.font.index_of("B").expect("B");
+
+        app.open_glyph(a);
+        app.tool = Tool::Text;
+        app.set_editor_text("AB".into());
+        app.park();
+
+        // Give B another existing tab. The ordinary open-glyph path would
+        // follow this tab and replace the word with its parked context.
+        app.new_tab();
+        app.open_glyph(b);
+        app.set_editor_text("B".into());
+        app.park();
+
+        app.activate_tab(0);
+        let text_tab = app.active_tab;
+        let context = app.text_context_id();
+        app.edit_text_sort_glyph(b, Tool::Text);
+
+        assert_eq!(
+            app.active_tab, text_tab,
+            "sort activation does not switch tabs"
+        );
+        assert_eq!(
+            app.text_context_id(),
+            context,
+            "the buffer identity is stable"
+        );
+        assert_eq!(
+            app.initial_text, "AB",
+            "the surrounding word remains parked"
+        );
+        assert_eq!(app.tabs[text_tab].text_context.editor_text, "AB");
+        assert_eq!(app.session.glyph_name, "B");
+        assert!(matches!(app.mode, Mode::Editor(index) if index == b));
+        assert_eq!(app.tool, Tool::Text);
+
+        app.select_tool(Tool::Select);
+        assert_eq!(app.initial_text, "AB");
+        assert!(app.has_text_session, "Select keeps the composition open");
+        assert_eq!(app.tabs[text_tab].text_context.editor_text, "AB");
+        app.select_tool(Tool::Text);
+        assert_eq!(
+            app.initial_text, "AB",
+            "returning to Text restores the word"
+        );
+
+        app.edit_text_sort_glyph(a, Tool::Select);
+        assert_eq!(app.tool, Tool::Select);
+        assert_eq!(app.initial_text, "AB");
+        assert_eq!(app.tabs[text_tab].text_context.editor_text, "AB");
+        assert_eq!(app.session.glyph_name, "A");
     }
 
     /// Renaming used to rebuild the model from the active master, which
@@ -884,7 +1010,13 @@ mod panel_resize_tests {
     fn overview_preview_divider_drags_and_retains_its_height() {
         use xilem::core::View;
         use xilem::view::label;
-        let logic = || overview_inspector_split(label("Sections"), label("Preview"));
+        let logic = || {
+            overview_inspector_split(
+                label("Sections"),
+                label("Preview"),
+                crate::view::design::OVERVIEW_INSPECTOR_SECTIONS_HEIGHT,
+            )
+        };
         let mut ctx = context();
         let view = logic();
         let (pod, mut state) = view.build(&mut ctx, &mut ());
@@ -901,18 +1033,18 @@ mod panel_resize_tests {
                 children[1].ctx().border_box().height(),
             )
         }
-        assert_eq!(heights(&h), (340.0, 342.0));
-        h.mouse_move(Point::new(123.0, 340.5));
+        assert_eq!(heights(&h), (344.0, 338.0));
+        h.mouse_move(Point::new(123.0, 344.5));
         h.mouse_button_press(None);
-        h.mouse_move(Point::new(123.0, 440.5));
+        h.mouse_move(Point::new(123.0, 444.5));
         h.mouse_button_release(None);
-        assert_eq!(heights(&h), (440.0, 242.0));
+        assert_eq!(heights(&h), (444.0, 238.0));
 
         let again = logic();
         h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
-        assert_eq!(heights(&h), (440.0, 242.0));
+        assert_eq!(heights(&h), (444.0, 238.0));
 
-        h.mouse_move(Point::new(123.0, 440.5));
+        h.mouse_move(Point::new(123.0, 444.5));
         h.mouse_button_press(None);
         h.mouse_move(Point::new(123.0, 680.0));
         h.mouse_button_release(None);
