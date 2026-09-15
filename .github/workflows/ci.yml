@@ -8,7 +8,12 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
+  CARGO_BUILD_JOBS: 2
   CARGO_TERM_COLOR: always
 
 jobs:
