@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Align the overview search, glyph captions, collapsed inspector stack, and
+  preview surface to the shared design tokens.
+
 - Center glyph metric rules on their design coordinates so the zero sidebearing
   and baseline remain aligned with the dot-grid intersections at every scale.
 

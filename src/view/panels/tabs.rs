@@ -14,7 +14,7 @@ pub(crate) enum Rail {
     Glyphs,
     Shapes,
     Axes,
-    /// Local models: the same panel the GPUI build keeps on this rail.
+    /// Local models installed for the editor.
     LocalAi,
     /// Chat availability, until the conversation backend is connected.
     Chat,
@@ -23,7 +23,7 @@ pub(crate) enum Rail {
 /// Shared search controls keep filtering identical in overview and the editor rail.
 fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
-    // Search row: the field, then gpui's small scope and case toggles.
+    // Search row: the field, then compact scope and case toggles.
     let toggle = |text: String, active: bool, f: fn(&mut Workspace)| {
         sized_box(
             button(
@@ -48,8 +48,8 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     xrow(
         Region::Inline,
         (
-            // A field, not a well: one step darker than the
-            // panel with a quiet outline, as every field is.
+            // The search is a primary navigation control, so its keyline
+            // matches the adjacent scope buttons and rail tabs.
             input_typography::input_typography(
                 text_input(app.filter.clone(), |app: &mut Workspace, v| {
                     app.filter = v;
@@ -59,7 +59,7 @@ fn glyph_search(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                 .text_color(pal.text)
                 .placeholder_color(pal.text_muted)
                 .background_color(pal.field())
-                .border_color(pal.field_outline)
+                .border_color(pal.outline)
                 .border_width(Stroke::Hairline.length())
                 .corner_radius(Radius::None.length())
                 .dims(Dimensions::new(
@@ -375,15 +375,15 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
 
 /// Curves: the two analyses that are about shape quality rather than
 /// measurement. Both read from runebender-core, so they say the same
-/// thing here as in the other two editors.
+/// thing here as in other tabbed document editors.
 /// The tab strip: one tab per open glyph, with a close box, and a plus
 /// that opens a second view on the glyph in hand.
-/// The tab strip, in the title bar, as the GPUI build has it.
+/// The tab strip in the title bar.
 ///
 /// A "Font" tab that is active in the overview, one tab per open glyph
 /// with a close button, and a "+" that opens a second tab on the glyph
 /// in hand. Tabs are outlined rather than filled: accent when active,
-/// the grid border when not, which is the GPUI build's rule.
+/// the grid border when not.
 pub(crate) fn tab_chip<F>(
     pal: &Palette,
     text: String,
@@ -395,7 +395,7 @@ where
     F: Fn(&mut Workspace) + Send + Sync + 'static,
 {
     // Selection is inversion: an active tab is a filled block of ink
-    // with the panel colour for its label, the GPUI build's rule.
+    // with the panel colour for its label.
     let (fg, border, bg) = if active {
         (pal.selected_ink(), pal.selected_bg(), pal.selected_bg())
     } else {
@@ -718,7 +718,7 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             // the glyphs it is missing, named and encoded, to every
             // master. Selecting the row and filling it are different
             // buttons on purpose: one is navigation, one writes.
-            // No plus in the row: the GPUI build's Filters rows are
+            // No plus in the row: filter rows are
             // plain, and generating the missing glyphs is a command.
             let count = format!("{}/{}", app.filter_present(i), expected);
             let selected = app.sel == Sel::Filter(i);

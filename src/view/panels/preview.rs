@@ -128,7 +128,7 @@ fn proof_transform(bounds: kurbo::Rect, advance: f64, size: kurbo::Size) -> kurb
 }
 
 /// A large preview of the selected glyph, at the foot of the inspector in
-/// overview mode (gpui's glyph preview panel). The grid cell is small; this
+/// overview mode. The grid cell is small; this
 /// is where you look at the shape.
 pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use masonry::imaging::Painter;
@@ -142,10 +142,14 @@ pub(crate) fn glyph_preview(app: &Workspace) -> impl WidgetView<Workspace> + use
     let background = pal.canvas;
     sized_box(canvas(
         move |_app: &mut Workspace, _ctx, scene, size: Size| {
+            let mut p = Painter::new(scene);
+            // Own every pixel of the preview allocation. Relying only on the
+            // wrapper background left the splitter's top edge on the panel
+            // surface, which read as a second-colour strip above the glyph.
+            p.fill_rect(size.to_rect(), background);
             let Some((outline, contours)) = &data else {
                 return;
             };
-            let mut p = Painter::new(scene);
             let bounds = outline.bounding_box();
             let scale = (size.width * design::OVERVIEW_GLYPH_PREVIEW_FILL
                 / bounds.width().max(1.0))

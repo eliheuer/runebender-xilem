@@ -9,15 +9,8 @@
 //! control-size scale, radii, strokes, a type scale, and a table of what
 //! each kind of container measures.
 //!
-//! It is about four hundred lines, none of it about fonts, and every
-//! application on Xilem needs its own version. That is the point of the
-//! comparison with runebender-gpui: gpui ships the scale (`px_1`..`px_4`,
-//! `text_xs`, `rounded_md`) and `gpui-component` ships the styled parts,
-//! so the equivalent file there does not exist.
-//!
-//! The types are the ones prototyped in the xix fork
-//! (github.com/eliheuer/xix), kept here in application code so this
-//! editor builds against upstream Xilem unmodified.
+//! These application-owned tokens keep the editor consistent while it
+//! builds against upstream Xilem without a private framework fork.
 
 use masonry::layout::{Dim, Length};
 use masonry::properties::types::CrossAxisAlignment;
@@ -85,8 +78,12 @@ pub(crate) const DOCK_MIN_WIDTH: f64 = 220.0;
 pub(crate) const CENTER_MIN_WIDTH: f64 = 280.0;
 pub(crate) const EDITOR_MIN_HEIGHT: f64 = 160.0;
 pub(crate) const PROOF_MIN_HEIGHT: f64 = 64.0;
+/// Number of collapsed section rows above the overview glyph preview.
+const OVERVIEW_INSPECTOR_SECTION_COUNT: f64 = 10.0;
 /// Collapsed overview headers occupy this much of the inspector initially.
-pub(crate) const OVERVIEW_INSPECTOR_SECTIONS_HEIGHT: f64 = 344.0;
+pub(crate) const OVERVIEW_INSPECTOR_SECTIONS_HEIGHT: f64 =
+    (ControlSize::Row.px() + INSPECTOR_VERTICAL_INSET * 2.0 + Stroke::Hairline.px())
+        * OVERVIEW_INSPECTOR_SECTION_COUNT;
 /// Initial inspector height when the master chooser is open.
 ///
 /// The base already includes the collapsed Masters header. Opening it adds
@@ -430,8 +427,8 @@ impl TextSize {
     /// The size, in logical pixels.
     pub(crate) const fn px(self) -> f32 {
         match self {
-            // One size, the GPUI build's 13px, whatever the role: the
-            // scale is kept as names so a role can move later, but a
+            // One 13px size for every compact role. The scale is kept as names
+            // so a role can move later, but a
             // window with three sizes in its chrome reads as three
             // windows.
             Self::Caption | Self::Body | Self::Title => 13.0,

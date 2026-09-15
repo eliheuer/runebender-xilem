@@ -3,7 +3,7 @@
 
 //! The glyph grid: one canvas island that paints every visible cell.
 //!
-//! Following runebender-gpui's lesson, this is one widget that paints all
+//! This is one widget that paints all
 //! cells into one scene, not a widget per cell. It owns scroll offset and
 //! selection, and reports open/select events to the app.
 
@@ -32,11 +32,10 @@ use crate::widgets::text_label::{self, Anchor};
 use runebender_core::outline::glyph_paths::round_units;
 
 const GAP: f64 = 8.0;
-/// The label block, in the GPUI build's measurements: a little air over
-/// the first line, the lines close together, and the same inset under
-/// them as at the sides.
-const LABEL_TOP: f64 = 5.0;
-const LABEL_BOTTOM: f64 = 5.0;
+/// The label block has a little air over the first line, close line spacing,
+/// and the same inset below as at the sides.
+const LABEL_TOP: f64 = 6.0;
+const LABEL_BOTTOM: f64 = 4.0;
 const LABEL_GAP: f64 = 0.0;
 
 /// Caption size, line count, and total height for a base-width cell.
@@ -139,8 +138,7 @@ pub(crate) struct CellMetrics {
     pub ascender: f64,
     pub descender: f64,
     pub upm: f64,
-    /// Detail view: a third line under the name with the category and
-    /// the advance, as the GPUI build's Detail mode has it.
+    /// Detail view: a third line under the name with the category and advance.
     ///
     /// This rides in the metrics rather than being its own parameter
     /// because adding one field to the widget means editing the widget
@@ -500,8 +498,7 @@ impl Widget for GridWidget {
         ));
 
         let pitch = self.row_pitch();
-        // The GPUI build's cell rule: a marked cell is filled with its
-        // mark and keylined; its glyph and labels are drawn in the
+        // A marked cell is filled with its mark and keylined; its glyph and labels are drawn in the
         // theme's mark ink. A selected cell inverts.
         let cell_border = pal.outline;
         let glyph_fill = pal.text;
@@ -524,9 +521,8 @@ impl Widget for GridWidget {
                 let selected = self.selected == Some(cell.index);
                 let multi = self.multi.contains(&cell.index);
 
-                // Selected and multi-selected read the same: one fill,
-                // one ring, one width. The GPUI build draws `border_1`
-                // on every cell and changes only the colour.
+                // Selected and multi-selected read the same: one fill, one
+                // ring, and one width.
                 let picked = selected || multi;
                 let bg = if picked {
                     pal.selected_bg()
@@ -577,13 +573,11 @@ impl Widget for GridWidget {
                 );
                 painter.stroke(keyline, &Stroke::new(width), border).draw();
 
-                // The label block, sized from what it draws. Same rule as
-                // the GPUI build: under 34px wide a cell is a thumbnail
+                // The label block is sized from what it draws: under 34px wide a cell is a thumbnail
                 // with no text, under 90px it carries its name only, and
                 // above that the name and the codepoint.
                 // One type size, the interface's: a cell too narrow to
-                // carry a name at it carries none. The GPUI build's
-                // thresholds.
+                // carry a name at it carries none.
                 let (label_size, label_lines, block) = cell_label_metrics(
                     self.cell_width(1),
                     self.metrics.captions_below,

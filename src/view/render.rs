@@ -1032,18 +1032,19 @@ mod panel_resize_tests {
                 children[1].ctx().border_box().height(),
             )
         }
-        assert_eq!(heights(&h), (344.0, 338.0));
-        h.mouse_move(Point::new(123.0, 344.5));
+        let initial = crate::view::design::OVERVIEW_INSPECTOR_SECTIONS_HEIGHT;
+        assert_eq!(heights(&h), (initial, 682.0 - initial));
+        h.mouse_move(Point::new(123.0, initial + 0.5));
         h.mouse_button_press(None);
-        h.mouse_move(Point::new(123.0, 444.5));
+        h.mouse_move(Point::new(123.0, initial + 100.5));
         h.mouse_button_release(None);
-        assert_eq!(heights(&h), (444.0, 238.0));
+        assert_eq!(heights(&h), (initial + 100.0, 582.0 - initial));
 
         let again = logic();
         h.edit_root_widget(|root| again.rebuild(&view, &mut state, &mut ctx, root, &mut ()));
-        assert_eq!(heights(&h), (444.0, 238.0));
+        assert_eq!(heights(&h), (initial + 100.0, 582.0 - initial));
 
-        h.mouse_move(Point::new(123.0, 444.5));
+        h.mouse_move(Point::new(123.0, initial + 100.5));
         h.mouse_button_press(None);
         h.mouse_move(Point::new(123.0, 680.0));
         h.mouse_button_release(None);
