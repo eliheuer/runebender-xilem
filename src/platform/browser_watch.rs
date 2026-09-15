@@ -1,7 +1,0 @@
-//! Browser fonts are held in memory; there is no filesystem watcher.
-pub(crate) fn with_watch<V: xilem::WidgetView<crate::Workspace>>(
-    view: V,
-    _paths: Vec<std::path::PathBuf>,
-) -> V {
-    view
-}

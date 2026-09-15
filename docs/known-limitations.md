@@ -12,7 +12,11 @@ dialogs, accessibility, and GPU/driver combinations still need hands-on tests.
 Windows builds successfully, and its headless `info`, SVG proof, and CPU editor
 render checks pass. At commit `c42baf8`, the native startup smoke test created a
 window and then exited with access violation `0xC0000005` (`-1073741819`). The
-workflow remains failing until a subsequent Windows run verifies a fix. See
+same signature remained at `e43700b` after isolating macOS menu handling. The
+only remaining always-running 16 ms task on Windows was the source-tree watcher,
+so it is disabled there pending another smoke run; this is a bounded hypothesis,
+not a claimed diagnosis. The workflow remains failing until a subsequent Windows
+run verifies a fix. See
 [the Windows workflow](https://github.com/eliheuer/runebender-xilem/actions/workflows/windows.yml)
 and `scripts/windows-smoke.ps1`.
 
@@ -22,7 +26,8 @@ log but no reduced reproducer or triaged cause, so passing current macOS CI does
 not close it.
 
 The live editor endpoint and Local Chat bridge use Unix sockets and are not
-available on Windows. Headless file commands remain portable.
+available on Windows. Windows also does not yet live-reload a font changed by
+another process. Headless file commands remain portable.
 
 ## Input and local models
 
