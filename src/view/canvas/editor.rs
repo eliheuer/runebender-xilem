@@ -1143,11 +1143,48 @@ impl Widget for EditorWidget {
                         .draw();
                 }
             }
+
+            // Curvature comb: paint the coloured strip before the editable
+            // outline, handles, and points. This is the GPUI layer order: the
+            // comb remains vivid, while every editing affordance stays clear
+            // and selectable above it.
+            if self.view.comb {
+                let strips = self.session.curvature_comb();
+                let maxk = strips
+                    .iter()
+                    .flatten()
+                    .map(|sample| sample.kappa.abs())
+                    .fold(0.0, f64::max);
+                for strip in strips {
+                    for pair in strip.windows(2) {
+                        let mut quad = kurbo::BezPath::new();
+                        quad.move_to(affine * pair[0].on);
+                        quad.line_to(affine * pair[1].on);
+                        quad.line_to(affine * pair[1].outer);
+                        quad.line_to(affine * pair[0].outer);
+                        quad.close_path();
+                        let k = if maxk > 1e-12 {
+                            (pair[0].kappa.abs() + pair[1].kappa.abs()) * 0.5 / maxk
+                        } else {
+                            0.0
+                        };
+                        painter
+                            .stroke(
+                                &quad,
+                                &Stroke::new(2.0),
+                                pal.point_outline.unwrap_or(pal.text),
+                            )
+                            .draw();
+                        painter.fill(&quad, pal.comb_gradient(k)).draw();
+                    }
+                }
+            }
+
             let outline = affine * self.session.outline();
             painter
-                // The outline fill role, opaque, as the GPUI build: a mid
-                // tone under the stroke so the shape reads at a glance.
-                .fill(&outline, pal.role("outlineFill"))
+                // GPUI keeps the edit fill at 70% opacity so the glyph reads
+                // as a shape without hiding the design grid and metrics.
+                .fill(&outline, pal.outline_fill())
                 .draw();
             painter
                 .stroke(&outline, &Stroke::new(1.0), pal.role("pathStroke"))
@@ -1276,40 +1313,6 @@ impl Widget for EditorWidget {
                     pal.role("warning").with_alpha(0.95),
                 )
                 .draw();
-        }
-
-        // Curvature comb: a strip pushed out along the normal of every
-        // curved segment, so the shape of the curvature is visible.
-        if self.view.comb && self.interp.is_none() {
-            let strips = self.session.curvature_comb();
-            let maxk = strips
-                .iter()
-                .flatten()
-                .map(|sample| sample.kappa.abs())
-                .fold(0.0, f64::max);
-            for strip in strips {
-                for pair in strip.windows(2) {
-                    let mut quad = kurbo::BezPath::new();
-                    quad.move_to(affine * pair[0].on);
-                    quad.line_to(affine * pair[1].on);
-                    quad.line_to(affine * pair[1].outer);
-                    quad.line_to(affine * pair[0].outer);
-                    quad.close_path();
-                    let k = if maxk > 1e-12 {
-                        (pair[0].kappa.abs() + pair[1].kappa.abs()) * 0.5 / maxk
-                    } else {
-                        0.0
-                    };
-                    painter
-                        .stroke(
-                            &quad,
-                            &Stroke::new(2.0),
-                            pal.point_outline.unwrap_or(pal.text),
-                        )
-                        .draw();
-                    painter.fill(&quad, pal.comb_gradient(k)).draw();
-                }
-            }
         }
 
         // Continuity rings match GPUI and preserve the underlying point shape.

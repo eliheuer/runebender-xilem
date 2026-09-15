@@ -194,6 +194,21 @@ impl Palette {
         self.role("metricsLine")
     }
 
+    /// The translucent fill beneath an editable glyph outline.
+    ///
+    /// Keep this recipe beside the shared `outlineFill` role so every canvas
+    /// uses GPUI's opacity without restating it at individual paint sites.
+    pub(crate) fn outline_fill(&self) -> Color {
+        const EDIT_FILL_ALPHA: f32 = 0.70;
+        let fill = self.role("outlineFill");
+        Color::new([
+            fill.components[0],
+            fill.components[1],
+            fill.components[2],
+            fill.components[3] * EDIT_FILL_ALPHA,
+        ])
+    }
+
     pub(crate) fn role(&self, name: &str) -> Color {
         self.roles.get(name).copied().unwrap_or(Color::WHITE)
     }
@@ -245,5 +260,21 @@ impl Palette {
 
     pub(crate) fn mark(&self, label: &str) -> Option<Color> {
         self.marks.get(label).copied()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn editable_outline_fill_preserves_role_color_at_gpui_opacity() {
+        for theme_id in ["dark", "gray", "light"] {
+            let palette = Palette::load(theme_id);
+            let role = palette.role("outlineFill").components;
+            let fill = palette.outline_fill().components;
+            assert_eq!(&fill[..3], &role[..3]);
+            assert!((fill[3] - role[3] * 0.70).abs() < f32::EPSILON);
+        }
     }
 }

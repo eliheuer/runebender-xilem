@@ -276,3 +276,75 @@ final result: passed
 - Copy and content: no interface copy or font data changed.
 
 final result: passed
+
+## Curvature-overlay layering follow-up
+
+- Supplied implementation baseline:
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 5.06.15 PM.png`, 2250 by
+  1460 pixels, showing Xilem with the comb painted over handle lines and point
+  markers and an opaque edit-outline fill.
+- Supplied visual reference:
+  `/Users/eli/Desktop/Screenshot 2026-09-14 at 5.06.55 PM.png`, 2400 by
+  1594 pixels, showing GPUI with the comb beneath the outline, handles, and
+  points and the design grid visible through the filled outline.
+- Behavioral source reference: GPUI `paint_scene` paints
+  `paint_curvature_comb`, then `paint_outline`, `paint_handles`, and
+  `paint_points`; its `outline_fill` recipe multiplies the shared role alpha
+  by 0.70. Xilem now follows that same layer order and named fill recipe.
+- Post-fix captures:
+  `docs/visual-audit/2026-09-14/175-xilem-comb-layering-gray-2x.png`
+  and
+  `docs/visual-audit/2026-09-14/176-xilem-comb-layering-light-2x.png` show the
+  standard fitted editor state;
+  `docs/visual-audit/2026-09-14/177-xilem-comb-layering-close-gray-2x.png`
+  and
+  `docs/visual-audit/2026-09-14/178-xilem-comb-layering-close-light-2x.png`,
+  both 2250 by 1460 device pixels at a 1125 by 730 logical viewport and 1.5
+  editor zoom.
+- Combined comparison evidence:
+  `docs/visual-audit/2026-09-14/179-gpui-xilem-comb-layering-comparison.png`,
+  2533 by 1065 pixels, with the GPUI reference crop on the left and Xilem
+  implementation crop on the right.
+
+### Comparison history
+
+- Resolved P1, editing visibility: the curvature strip is now painted before
+  the glyph outline, handle lines, off-curve circles, on-curve nodes, anchors,
+  and continuity rings. All editing targets retain a clean uninterrupted edge
+  over the comb.
+- Resolved P2, canvas depth: the `outlineFill` theme role now passes through a
+  single `Palette::outline_fill` recipe at GPUI's 70% opacity. The filled glyph
+  remains legible while the design-grid dots and metric rules remain visible
+  through it.
+- The comb colors and opacity were intentionally left unchanged; the supplied
+  GPUI reference uses a vivid opaque comb and obtains clarity from paint order.
+- Post-fix comparison found no remaining actionable P0, P1, or P2 mismatch in
+  the requested curvature-comb stacking and outline-transparency scope.
+
+### Fidelity surfaces
+
+- Fonts and typography: this canvas-only change adds no text and changes no
+  type treatment.
+- Spacing and layout rhythm: no panel, glyph, metric, or control geometry
+  moved; the comparison crops normalize only the visible canvas region.
+- Colors and visual tokens: outline fill uses the existing shared
+  `outlineFill` role through one named opacity recipe. Comb, point, handle,
+  anchor, and continuity colors remain theme-driven. Gray and Light were
+  inspected.
+- Image quality and asset fidelity: all affected marks remain native vector
+  geometry; no raster assets or generated substitutes were added.
+- Copy and content: no interface copy or font data changed.
+
+### Validation
+
+- `cargo test --workspace -- --test-threads=1` with the two sandbox-only
+  Unix-socket tests skipped (153 application tests, 17 CLI tests, 352 core
+  tests, and 5 mark-feature tests passed; 4 model tests remained ignored)
+- `cargo clippy --workspace --all-targets -- -A
+  clippy::allow-attributes-without-reason -D warnings`
+- `cargo fmt --check`
+- `git diff --check`
+- Gray and Light standard-fit captures, close-up captures, and the direct
+  GPUI/Xilem comparison visually inspected
+
+final result: passed
