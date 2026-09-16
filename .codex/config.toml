@@ -1,0 +1,3 @@
+[mcp_servers.runebender]
+command = "runebender"
+args = ["mcp", "--live"]

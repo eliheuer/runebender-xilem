@@ -60,6 +60,8 @@ them separate for review and explicit installation.
   demo. It uses an in-memory bundled font and does not save user files.
 - `docs/`: current limitations plus dated reproducible evidence from earlier
   implementation and browser-quality passes.
+- `.mcp.json` and `.codex/config.toml`: equivalent project adapters for the
+  live-editor MCP server.
 
 The user documentation is at [runebender.org](https://runebender.org/docs/).
 
@@ -74,7 +76,6 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo doc --workspace --no-deps --locked
 cargo test --workspace --locked -- --test-threads=1
 cargo build --workspace --release --locked
-cargo vet --locked
 cargo deny --locked check advisories
 ```
 

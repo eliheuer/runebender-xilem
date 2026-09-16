@@ -184,16 +184,16 @@ are not executed. A timeout after dispatch can have an uncertain result: inspect
 proposal list before retrying. Reusing a task name never overwrites an existing proposal.
 Selection subscriptions, progress events and a shared inference job queue remain future work.
 
-## OMP and the live editor: first testing workflow
+## MCP clients and the live editor
 
-Keep OpenAI authentication and conversation in OMP. The editor owns the document; OMP
-uses the live MCP tools. The project `.omp/mcp.json` files configure one stable command:
+Keep model authentication and conversation in the client you choose. The editor owns
+the document; the client uses Runebender's live MCP tools. The project `.mcp.json`
+configures one client-neutral stdio command:
 
 ```json
 {
   "mcpServers": {
     "runebender": {
-      "type": "stdio",
       "command": "runebender",
       "args": ["mcp", "--live"]
     }
@@ -201,40 +201,47 @@ uses the live MCP tools. The project `.omp/mcp.json` files configure one stable 
 }
 ```
 
-Install this workspace binary and restart the native editor. In an existing OMP
-session in the configured project, run `/mcp reload`, then `/mcp test runebender`.
-Ask OMP: **Connect to my Runebender editor, confirm the font and master, and inspect n
-without making changes.** The `editor_sessions` and `editor_connect` tools handle the
-endpoint selection. No socket path needs to be pasted into a config file when the editor
-reopens. If multiple editors are open, identify the intended font before proposing edits.
+OMP and Claude Code discover this root file directly. Pi deliberately omits built-in MCP;
+install [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter) if you want Pi to
+read the same file. OMP's
+[MCP guide](https://github.com/can1357/oh-my-pi/blob/main/docs/mcp-config.md) and Claude's
+[MCP guide](https://docs.anthropic.com/en/docs/claude-code/mcp) document their project
+discovery behavior.
 
-OMP's [MCP configuration guide](https://github.com/can1357/oh-my-pi/blob/main/docs/mcp-config.md)
-documents project `.omp/mcp.json` discovery, `/mcp reload`, and `/mcp test`.
-The setup changes no OMP model, provider, login, or approval preferences.
+ChatGPT desktop's Codex surface, Codex CLI, and the IDE extension instead share Codex
+configuration. This repository carries the equivalent project-scoped declaration in
+`.codex/config.toml`:
+
+```toml
+[mcp_servers.runebender]
+command = "runebender"
+args = ["mcp", "--live"]
+```
+
+See OpenAI's [MCP documentation](https://learn.chatgpt.com/docs/extend/mcp). ChatGPT web
+does not launch a local stdio server from this project configuration.
+
+Install this workspace binary and restart the native editor, then reload the selected
+client's MCP servers. In OMP, run `/mcp reload` followed by `/mcp test runebender`; in
+Pi with the adapter, inspect `/mcp`. Ask the client: **Connect to my Runebender editor,
+confirm the font and master, and inspect n without making changes.** The
+`editor_sessions` and `editor_connect` tools handle endpoint selection. No socket path
+needs to be pasted into configuration when the editor reopens. If multiple editors are
+open, identify the intended font before proposing edits. Client configuration changes
+no model, provider, login, or approval preferences.
 
 Then try: **Read n in master 0 and propose 12 more units of right sidebearing. Leave it
 as a proposal for me to review.** Inspect the proposal in the editor's Local AI panel,
 install it there, and undo once to verify recovery. This is a mechanical integration
 test, not a spacing recommendation for Virtua Grotesk. Keep early tests in a font copy.
 
-The same server works with an external Codex TUI/CLI or desktop session:
-
-```toml
-[mcp_servers.runebender]
-command = "/absolute/path/runebender"
-args = ["mcp", "--live"]
-```
-
-The desktop app, CLI and IDE share MCP configuration on the same Codex host, according to
-OpenAI's [MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
-ChatGPT web does not read local Codex configuration.
-
 GPUI's local GGUF chat now also uses the live endpoint through
 `RUNEBENDER_LIVE_SESSION`, inherited by `font-ml`'s core tool subprocesses. It no longer
 saves the font before a turn. Xilem exposes the same external tools but has no chat pane.
-Embedded Codex-login chat is deferred while the OMP workflow is tested. A preliminary
-Codex subprocess experiment authenticated, but its MCP calls required approval that a
-noninteractive turn could not request; no embedded Codex option ships in this phase.
+Embedded Codex-login chat is deferred while the external-client workflow is tested. A
+preliminary Codex subprocess experiment authenticated, but its MCP calls required
+approval that a noninteractive turn could not request; no embedded Codex option ships in
+this phase.
 
 ## Drawing missing glyphs
 

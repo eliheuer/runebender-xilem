@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Share the live-editor MCP setup across OMP, Claude Code, Pi with its MCP adapter,
+  and ChatGPT desktop/Codex, and use client-neutral agent wording in the Nodes view.
+
 - Consolidate the font engine and Xilem application into one Cargo package while
   preserving the executable's editor-by-default and headless-subcommand behavior.
 

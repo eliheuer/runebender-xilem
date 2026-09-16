@@ -7,7 +7,7 @@ images live inside the canvas, while the same experiment state is available thro
 ## Start
 
 Install current `designbot` and build or install `runebender`. Restart the editor after
-updating. In OMP run `/mcp reload` and connect to the intended editor.
+updating. Reload your MCP client and connect to the intended editor.
 Read `design_context`, the official type-design guide, and the font's DESIGN.md.
 
 Open Nodes (or click New if an older workflow is open). The starter graph connects
@@ -22,17 +22,17 @@ a baseline version and fork that twice, so both directions have exactly the same
 Each branch has its own font and proposal layers. Use `branch` and `master` on every
 agent operation targeting a version; omitting `branch` addresses the root.
 
-Example OMP brief:
+Example client brief:
 
 > In master 0, fork baseline, then kern-a and kern-b from baseline. Use the same
 > approved references and text for both. Work only on kern-a in this conversation.
 > Read its kerning revision, propose your pair values with experiment_kern, and
 > produce a specimen of "AVATAR To Wa". Leave the root unchanged.
 
-A second OMP session can connect to the same editor and work on kern-b. The editor
-serializes calls; the sessions share the named versions. The MVP does not launch
-or select AI providers automatically. Keep the provider and model in OMP, and record
-which model/brief was used in the fork's reason.
+A second client session can connect to the same editor and work on kern-b. The editor
+serializes calls; the sessions share the named versions. The MVP does not launch or
+select AI providers automatically. Keep the provider and model in the client, and record
+which model and brief were used in the fork's reason.
 
 ## Draw and kern
 
@@ -51,18 +51,19 @@ which model/brief was used in the fork's reason.
 
 ## Review and apply
 
-The Font version node displays the branch name to give OMP. Branches created through
-MCP also appear as connected version and proof nodes in the open live graph.
+The Font version node displays the branch name to give the MCP client. Branches created
+through MCP also appear as connected version and proof nodes in the open live graph.
 
 Designbot proof nodes render selected glyphs (up to 256; six drawn glyphs when there
 is no selection), or the fixed kerning specimen "AVATAR To Wa". For custom text or
-reference sets, ask OMP for a proof, then click Latest OMP proof in that proof node.
-The PNG shown and exported PDF use the same scene. Images are snapshots: refresh after
-edits. Export PNG opens a save dialog for full-size inspection outside the thumbnail.
+reference sets, ask the client for a proof, then click Latest agent proof in that proof
+node. The PNG shown and exported PDF use the same scene. Images are snapshots: refresh
+after edits. Export PNG opens a save dialog for full-size inspection outside the thumbnail.
 
 Add apply node creates a connected output. Clicking Apply changes accepts the input
-version's changed glyph outlines and kerning, including contour-structure changes. Use `experiment_apply` through OMP for selective
-existing glyphs or kerning-only application and an explicit keep_structure policy.
+version's changed glyph outlines and kerning, including contour-structure changes. Use
+`experiment_apply` through the MCP client for selective existing glyphs or kerning-only
+application and an explicit keep_structure policy.
 Root changes since the baseline produce conflicts before any mutation. Unrelated edits
 survive. No operation saves the root to disk: inspect, undo if needed, then Save normally.
 
@@ -84,9 +85,9 @@ results. Save important versions as new UFOs before closing. Normal font Save pe
 accepted root changes. Maximum 16 versions per document.
 
 Live font ports deliberately cannot connect to the older disk-based model-task ports.
-OMP remains the AI client for this increment. Local/cloud process nodes, persistent
-version bundles, and comparison controls beyond adjacent proof previews remain future
-work. The MVP does not merge overlapping conflicts, create absent glyph records,
-edit groups, or automatically dispatch multiple AI jobs. Family-wide
-interpolation validation remains a separate review. Keep experimental proofs as files
-and record accepted decisions in the font project's design brief.
+The external MCP client remains responsible for the model and conversation. Local/cloud
+process nodes, persistent version bundles, and comparison controls beyond adjacent proof
+previews remain future work. The MVP does not merge overlapping conflicts, create absent
+glyph records, edit groups, or automatically dispatch multiple AI jobs. Family-wide
+interpolation validation remains a separate review. Keep experimental proofs as files and
+record accepted decisions in the font project's design brief.

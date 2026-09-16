@@ -18,11 +18,13 @@ Native validation from that earlier preview phase: workspace tests passed (511 t
 Clippy with warnings denied, and documentation build passed. The native Cargo
 manifest and lockfile are unchanged by this browser work.
 
-`cargo vet --locked` was run on the native workspace. It reports nine existing
-unvetted dependencies: block2 0.6.2, rfd 0.17.2, and the pinned Xilem revision's
-masonry, masonry_core, masonry_testing, masonry_winit, tree_arena, xilem, and
-xilem_core. No audit or exemption was invented to mark these as vetted. The
-separate browser workspace has not undergone a full dependency audit.
+At the time of this dated validation, `cargo vet --locked` reported nine unvetted
+dependencies: block2 0.6.2, rfd 0.17.2, and the pinned Xilem revision's masonry,
+masonry_core, masonry_testing, masonry_winit, tree_arena, xilem, and xilem_core.
+No audit or exemption was invented to mark these as vetted. Cargo-vet is no longer
+part of the current repository policy; CI checks the locked graph for RustSec
+advisories instead. The separate browser workspace has not undergone a full
+dependency audit.
 
 ## Resolution and interaction pass
 

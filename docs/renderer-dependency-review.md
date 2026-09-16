@@ -6,9 +6,10 @@ The GUI builds snapshots and runs rendering on a background worker. The MCP adap
 runs rendering in its own process. Neither route saves the live font.
 
 The resvg prototype was removed, including its transitive rustybuzz dependency.
-No new cargo-vet exemptions were added. Runebender shapes live text with harfrust;
-Designbot's text stack uses Parley and harfrust. Designbot's dependency maintenance
-remains the responsibility of that project, rather than entering the core library.
+No replacement renderer dependency was added to this workspace. Runebender shapes live
+text with harfrust; Designbot's text stack uses Parley and harfrust. Designbot's
+dependency maintenance remains the responsibility of that project, rather than entering
+the core library.
 
 Install a Designbot release supporting this command:
 
@@ -26,6 +27,6 @@ Set DESIGNBOT_BIN to choose a specific executable; otherwise it uses PATH.
 The Designbot CLI scene mode always uses raw output. Its existing script command
 and social-media rendering behavior are unchanged.
 
-Validation includes synthetic PNG/PDF inspection, OMP image delivery, independent
-A/B kerning branches with an unchanged root, and PDF export through MCP. These
-checks establish the transport and edit contract, not the quality of AI design.
+Validation includes synthetic PNG/PDF inspection, MCP image delivery through OMP,
+independent A/B kerning branches with an unchanged root, and PDF export through MCP.
+These checks establish the transport and edit contract, not the quality of AI design.

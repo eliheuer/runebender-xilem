@@ -342,7 +342,7 @@ pub fn actions(type_name: &str) -> &'static [&'static str] {
         "live.proof" => &[
             "Render glyphs",
             "Render kerning",
-            "Latest OMP proof",
+            "Latest agent proof",
             "Export PDF…",
             "Export PNG…",
         ],

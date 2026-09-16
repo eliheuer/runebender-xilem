@@ -196,7 +196,7 @@ pub fn create_version(
         input.master,
         &name,
         input.branch.as_deref(),
-        "Node graph experiment; edit this branch through OMP",
+        "Node graph experiment; edit this branch through MCP",
     )?;
     let n = graph.node_mut(id).unwrap();
     n.values.insert("branch".into(), json!(name));

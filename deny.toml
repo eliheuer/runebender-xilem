@@ -1,6 +1,4 @@
-# Security advisories. cargo-vet, in supply-chain/, reviews where a
-# dependency came from; this asks whether anyone has published a
-# vulnerability against it. Neither replaces the other.
+# RustSec security advisories for dependencies in the locked graph.
 #
 # A vulnerability fails the build. Unmaintained crates are reported
 # only for what this repository depends on directly: the rest sit

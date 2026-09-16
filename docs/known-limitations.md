@@ -18,7 +18,7 @@ bounded hypothesis fixed it, so the watcher remains available and the cause is
 still unknown. The workflow remains failing until a subsequent Windows run
 verifies a fix. See
 [the Windows workflow](https://github.com/eliheuer/runebender-xilem/actions/workflows/windows.yml)
-and `scripts/windows-smoke.ps1`.
+and `.github/scripts/windows-smoke.ps1`.
 
 [Issue #13](https://github.com/eliheuer/runebender-xilem/issues/13) reports a
 crash on an Apple-silicon Mac running a beta macOS release. It includes a user
@@ -63,14 +63,12 @@ equivalent match arms were merged where the grouping stayed clear, a returned
 periodic command from the Linebender canonical-lints page before a release and
 review new findings individually.
 
-## Supply-chain coverage
+## Dependency coverage
 
-`cargo deny --locked check advisories` passes. Refreshing the configured public
-cargo-vet imports added real coverage for `block2` 0.6.2. Eight exact versions
-remain unvetted: `rfd` 0.17.2 and the pinned Xilem revision's `masonry`,
-`masonry_core`, `masonry_testing`, `masonry_winit`, `tree_arena`, `xilem`, and
-`xilem_core`. The repository does not claim those packages were audited, and no
-new exemption is added merely to make CI green.
+CI checks the locked dependency graph against RustSec with
+`cargo deny --locked check advisories`. Git dependencies use exact revisions.
+These controls detect published advisories and dependency drift; they do not claim
+that Runebender's maintainers have audited every third-party crate.
 
 ## Reproducible evidence
 

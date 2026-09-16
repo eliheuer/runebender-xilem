@@ -92,13 +92,13 @@ or fixed in scope.
 - Edition 2024; line width 100; no `unsafe` in workspace code.
 - Prefer a reasoned `expect` or a structural fix to a local lint allowance.
 
-## Supply chain
+## Dependency policy
 
-Dependencies are checked with `cargo vet --locked` and
-`cargo deny --locked check advisories`. Imports, audits, and exemptions live in
-`supply-chain/`. Never add an audit without reviewing the required code and
-criteria. Never add or broaden an exemption silently. Dependency changes must
-include an explicit provenance decision.
+Commit `Cargo.lock` and use `--locked` in CI. Git dependencies must name an exact
+revision, not a branch. CI runs `cargo deny --locked check advisories`; every ignored
+advisory needs a comment explaining the affected dependency and removal condition.
+Review dependency additions and upgrades explicitly rather than treating generated
+policy files as evidence that their code was audited.
 
 ## Changes and Git
 
