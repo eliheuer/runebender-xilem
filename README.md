@@ -71,18 +71,13 @@ The developer-facing source map is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ```sh
 cargo fmt --all --check
-taplo fmt --check --diff
 bash .github/copyright.sh
-typos
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo doc --workspace --no-deps --locked
 cargo test --workspace --locked -- --test-threads=1
 cargo build --workspace --release --locked
 cargo deny --locked check advisories
 ```
-
-CI installs Taplo and `typos`; local runs need `taplo-cli` 0.9.3 and
-`typos-cli` 1.45.0.
 
 Tests that need a full font read `RUNEBENDER_TEST_FONTS`, or
 `../virtua-grotesk/sources` when that repository is beside this one. Four
