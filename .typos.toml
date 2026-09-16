@@ -7,8 +7,8 @@ extend-exclude = [
     "**/*.png",
     "**/*.woff2",
     "/.git",
-    "crates/runebender-core/data/gf-glyphsets.json",
-    "crates/runebender-core/data/new-font-template.json",
+    "data/gf-glyphsets.json",
+    "data/new-font-template.json",
     "supply-chain/",
     "web/demo-font.json",
 ]
