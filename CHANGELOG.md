@@ -1,365 +1,60 @@
 # Changelog
 
-All notable changes to runebender-xilem. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
-project will use [Semantic Versioning](https://semver.org/) once
-releases begin.
+All notable user-facing changes to Runebender are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project will use
+[Semantic Versioning](https://semver.org/) once releases begin.
+
+No release has been published yet.
 
 ## [Unreleased]
 
-- Share the live-editor MCP setup across OMP, Claude Code, Pi with its MCP adapter,
-  and ChatGPT desktop/Codex, and use client-neutral agent wording in the Nodes view.
-
-- Consolidate the font engine and Xilem application into one Cargo package while
-  preserving the executable's editor-by-default and headless-subcommand behavior.
-
-- Give every in-window menu title one measured gap, use the header palette for
-  dropdowns, and let the browser editor fill the space formerly used by its
-  preview footer.
-
-- Add an editable metaball shape tool to Xilem: center selection and dragging,
-  parameter fields, saved UFO sources, cubic conversion with Undo, and a
-  whole-font conversion command. Kurbo fits the sampled field boundaries.
-
-- Let expanded overview inspector sections reflow above the glyph preview,
-  compact glyph identity fields, and strengthen their labels and keylines.
-
-- Unify the overview footer's sidebar, add, remove, grid, and list controls on
-  one compact icon treatment, and keep save confirmations from displacing them.
-
-- Align the overview search, glyph captions, collapsed inspector stack, and
-  preview surface to the shared design tokens.
-
-- Center glyph metric rules on their design coordinates so the zero sidebearing
-  and baseline remain aligned with the dot-grid intersections at every scale.
-
-- Keep Gray edit-canvas structure darkest while softening composed glyphs,
-  proof text, footer appearance marks, and the coordinate-picker selection.
-
-- Make a Space-held pan temporarily show the standard filled outline preview,
-  hiding edit geometry until the persistent tool returns on release.
-
-- Remove the slider focus capsule, compact and align the edit coordinates,
-  balance transformations into two five-action rows, and prioritize the three
-  primary editing sections in the inspector.
-
-- Combine in-window menus and document controls into one header row, keep long
-  filenames within the available space, and fix menu borders, disabled text,
-  selection colors, and Dark header contrast.
-
-- Render the browser editor at Retina and fractional display resolutions, enable
-  Vello's WASM SIMD renderer, and repaint only when needed. Keep pointer input,
-  splitter cursors, focus, paste, and composition aligned with the desktop widgets.
-  Include an editable example graph in the browser's Nodes view.
-
-- Match GPUI's round, zoom-responsive edit-canvas dot grid, and make the Text
-  tool retain the open glyph, take keyboard focus immediately, and accept typing
-  without a preparatory canvas click.
-
-- Tighten the native title bar to a balanced 30-pixel centerline, reduce
-  edit-tool buttons to 20-pixel icon slots, show selection through icon
-  contrast without an inverted tile, and fit the new-tab action to the window
-  corner with a circular face.
-
-- Run the actual Xilem interface in a browser with a bundled Virtua Grotesk font,
-  outline editing, undo/redo, zoom, and resizable panels. Browser edits stay in memory.
-
-- Preserve the glyph grid's trackpad scroll position across view rebuilds,
-  quantize scrolling to complete fitted rows, and move a focused selection with
-  the arrow keys while keeping it visible.
-
-- Import basic single-master Babelfont packages into editable UFO fonts, preserving
-  their source files. Outlines, components, anchors, widths, Unicode, names, metrics,
-  and kerning are supported; variable sources and extra layers are rejected.
-- Add Windows build, headless proof, editor rendering, and native startup smoke checks.
-
-- Use one `runebender` package and executable for the editor and headless commands.
-  Run `runebender info`, `proof`, `agent`, or `mcp` without opening a window;
-  replace `runebender-core` with `runebender` in scripts and MCP configurations.
-
-- Let the overview glyph preview fill its inspector remainder, center the ink
-  within that complete surface, and resize from its top boundary.
-
-- Lift the overview glyph preview onto the canvas surface, center its mark
-  swatches, and replace font-dependent view symbols with GPUI's drawn icons.
-
-- Use one shared dark keyline for dock, proof, and status boundaries, and keep
-  the recessed glyph-grid ground continuous through its fitted margins.
-
-- Lift glyph-grid tiles from their recessed ground with the reference's hard offset shadow.
-
-- Keep resize focus outlines inside the panels so dragging leaves no white or gray end caps.
-
-- Keep master comparison summaries compact and wrap them to the inspector width.
-
-- Clarify the new-group input and align square group chips and shelf spacing.
-
-- Align Kerning pair rows and let its three editor fields share the resized dock width.
-
-- Align the Dimensions readout row heights and column spacing.
-
-- Show the active master and align existing overview glyph identity fields.
-
-- Align sidebar counts, selected-row borders and compact filter rows.
-
-- Restore the Separator category and match sidebar section spacing.
-
-- Give glyph search equal-width scope, regex and case toggles and align its editor row.
-
-- Fit complete overview tile rows above a compact footer and keep grid margins clear.
-
-- Make both side panels and the proof strip resizable by dragging their dividers.
-  Dock widths remain stable when the window resizes, with usable minimum sizes.
-
-- Match editor sidebar tab spacing and faces, joining the selected tab to its panel.
-
-- Keep the edit and overview sidebar tab rails on the same GPUI geometry and
-  surface colors.
-
-- Retain dark keylines on enabled toggles and use crisp field borders in the metrics card.
-
-- Match the GPUI edit canvas's compact five-field metrics card, including its marked
-  header, square outline, and offset shadow.
-
-- Restore the edit inspector's separate Transformations and Path Operations
-  disclosures so its default hierarchy matches GPUI.
-
-- Put edit-mode Coordinates and path tools before Glyph metadata in the same
-  inspector order as GPUI.
-
-- Keep the resting edit footer quiet instead of repeating standing glyph and
-  selection metrics already visible elsewhere.
-
-- Replace edit-footer text controls with GPUI's proof, contrast, and sidebar
-  icons; let the proof be hidden and keep zoom controls on the canvas.
-
-- Show background layers by default in edit mode, matching GPUI; headless
-  captures can still disable them with `RUNEBENDER_BACKGROUND=0`.
-
-- Restore GPUI's example values in the empty Extrude and Roughen inspector
-  fields so their expected comma-separated input is visible before editing.
-
-- Preview the active glyph itself in the resting edit view instead of starting
-  every tab with the sample word “Runebender.”
-
-- Keep the Coordinates inspector compact before selection and draw its
-  reference picker as GPUI's connected nine-point grid.
-
-- Match GPUI's inspector action-label casing.
-
-- Match Background control rows and inspector field alignment; the Background toggle
-  now reflects the visibility setting even when the current glyph has no background.
-
-- Align inspector group dividers, coordinate rows and curve controls with the reference.
-
-- Match the Coordinates inspector's boxed reference picker and balanced numeric fields.
-
-- Give glyph-grid tiles flat faces, crisp inside borders and a matching panel ground.
-
-- Show contour direction with a separate start arrow while preserving each
-  point's corner or smooth color; open contours do not get start arrows.
-
-- Distinguish anchors with filled diamonds and pink keylines, scaled with zoom
-  alongside outline points and retaining a clear selected state.
-
-- Scale outline point markers smoothly with zoom, keep selected points legible
-  with a dark keyline, and draw handle lines in the shared neutral ink.
-
-- Keep metric rules within the glyph advance and extend its frame to the full
-  em height, matching the reference canvas without lines across the workspace.
-
-- Restore the Gray reference palette's lighter panel and canvas surfaces and
-  quieter field borders using the shared OKLCH tokens.
-
-- Align transformation icon rows with their heading and give inspector actions
-  and parameters a consistent 32-pixel row pitch.
-
-- Draw inspector transformation icons at the measured 22-pixel reference size
-  for clearer shapes and matching visual weight.
-
-- Complete the inspector's transformation row with both rotation directions,
-  Duplicate, and Duplicate Repeat. The clockwise icon now rotates clockwise.
-
-- Add working Stroke width and Fit curve % inspector fields. Enter applies the
-  core operation to the selection (or all contours/curves), with undo; invalid
-  values and unchanged fits leave the document untouched.
-
-- Keep path operations visible with Transformations, with single-line parameter
-  fields and Add extremes. Put Glyph first in the inspector, show selection
-  status in Coordinates, and open Background by default.
-
-- Label the floating spacing card's LSB and RSB fields, keep kerning groups on
-  their own row, and match the compact neutral card's canvas placement.
-
-- Fit five compact glyph columns in the editor rail, with whole-pixel thumbnails
-  and an independent size slider beside the filtered glyph count.
-
-- Give the proof drawing its full initial height: move Invert/Blur into the
-  compact editor footer and preview text into Shaping, alongside direction,
-  features, and language. Match proof fitting and the single header divider.
-
-- Keep the editor proof strip, including its controls, within its 140-pixel
-  initial height so the canvas has more room and the initial glyph fit is larger.
-
-- Make Unicode and glyph-name changes atomic across designspace masters and
-  Undo/Redo them in order with surrounding outline and metric edits; preserve
-  each renamed glyph's existing Core history and add overview-width Undo/Redo.
-
-- Preserve Core Undo/Redo for inspector Unicode, width, and sidebearing edits;
-  reject non-finite metrics, keep advance fixed when changing LSB, and report
-  rejected glyph-name collisions without leaving a stale field value.
-
-- Connect the Chat rail to local GGUF models through `font-ml chat` and the
-  editor's private live endpoint, with streamed transcript/tool rows, model
-  choice, multi-turn context, cancellation, clearing, and proposal refresh.
-
-- Require an explicit user-authorization argument before live automation can
-  install proposals or apply and undo experiments; keep socket operations on
-  the editor-owned unsaved document without writing its UFO source.
-
-- Paint disclosure and leaf markers as theme-aware vector geometry so the
-  bundled interface font cannot turn sidebar and inspector state into missing-glyph boxes.
-
-- Add reproducible 1x and 2x headless parity captures with fixed logical sizing,
-  device scale, fixture hashes, and renderer metadata.
-
-- Make overview mark-color changes update the visible grid immediately and
-  undo a multi-glyph selection as one source- and glyph-identified edit.
-
-- Include glyph metadata and lib data in Core undo snapshots, so mark colors,
-  Unicode, notes, images, and guidelines restore with outlines and metrics.
-
-- Route text-tool input through native IME composition and commit events,
-  preview preedit text without changing the buffer, and prevent key/IME duplicates.
-
-- Add bidi-aware keyboard text selection, replacement, and deletion, with visible
-  selection and logical pointer mapping across Arabic ligatures.
-
-- Reshape existing text immediately after live glyph, metric, or feature refresh
-  while preserving its caret, selection, active glyph, and manual kerning state.
-
-- Add shared text-tool and preview controls for common OpenType features and
-  automatic, Arabic, or Urdu shaping locale selection.
-
-- Support system clipboard copy, cut, paste, and select-all in the canvas text
-  tool using logical Unicode text, normalized line breaks, and Arabic reshaping.
-
-- Keep editor text, preview text, direction, language, and feature choices with
-  each editor tab, without carrying a widget-owned text buffer into another tab
-  or replacement document.
-
-- Match GPUI's overview and editor-rail grid sizing, selection extension, caption
-  geometry, and source-derived padding; render square cells as true rectangles so
-  CPU evidence retains Gray-theme outlines and labels.
-
-- Keep document navigation clean, refuse external reload while unsaved edits are
-  present, and exercise outline, metrics, anchor, undo/redo, save, and reopen on a
-  disposable full Virtua Grotesk designspace without changing unrelated font data.
-
-- Keep every local-AI result as a reviewable proposal, including single-glyph
-  runs; preserve complete worker diagnostics and require an explicit Install or
-  Discard before the foreground changes.
-
-- Reject completed local-AI and node results after document, master, glyph, or
-  foreground-revision changes, including all-glyph runs whose inventory changed.
-
-- Surface `font-ml tasks --json` launch, exit, schema, and JSON errors in the
-  Local AI rail while keeping panel task availability aligned with node types.
-
-- Wire the Nodes toolbar Open action to the existing native graph picker and
-  cover new/save/reopen, parameter, validation, and failure-state round trips.
-
-- Route multiline text-tool Up/Down/Home/End keys through Core's bidi-aware caret
-  model and verify mixed Latin, Arabic, digits, lam-alef, and kasra against the
-  real Virtua Grotesk inventory and feature file.
-
-- Make node runs target the open or explicitly selected glyphs, resolve sibling
-  designspace masters, preserve model-device choice, and return proposal-only
-  graph output to the same Compare, Install, Discard, and Undo review workflow.
-
-- Align the navigation, grid and inspector top edges with one shared separator below the title bar.
-
-- Align search and inspector inputs with shared insets and optical baseline positioning; route inspector text and labels through the bundled UI-font helpers.
-
-- Preserve the native macOS editor menus at startup by disabling winit's replacement default menu.
-
-- Give glyph search equal padding and matching Virtua Grotesk typography for placeholder and typed text, preventing clipped descenders.
-
-- Remove the doubled right edge on the navigation tabs and keep scrollbar overlays outside the viewport clip during scrolling, preserving Masonry scrolling behavior.
-
-- Match the mark strip to GPUI with equal slots, smaller circles, selection rings, and a centered drawn clear cross; restore vertical panel dividers.
-- Use the native application properties for headless visual captures.
-
-- Apply the bundled Virtua Grotesk at 13px consistently to UI labels and editable fields.
-
-- Complete the desktop menu system: shared command metadata, native macOS and
-  accessible in-window menus, working file/glyph/path/filter/view commands,
-  stateful submenus, keyboard navigation, and focused-text shortcut precedence.
-
-- Consolidate Core and its headless CLI into the Xilem Cargo workspace, preserving Core history and the existing theme.
-
-- Make the main checkout the primary Xilem development location; retain GPUI as a reference and fallback.
-
-- Keep wheel and trackpad scrolling without visible scrollbar overlays; verified during pointer movement, two-axis scrolling, and resizing.
-
-- Correct the header separator and outline the navigation strip; restore the Chat tab with an explicit unavailable state.
-
-- Match navigation tab heights, top-only selected corners, and icon sizing to GPUI.
-
-- Remove the extra titlebar icon and tighten category sidebar rows to the GPUI reference.
-
-- Count the primary overview selection and contain glyph captions within their tiles.
-
-- Retain the live text buffer across tool switches without consuming outline-tool input.
-
-- Match GPUI continuity rings while preserving the underlying point markers.
-
-- Draw curvature combs with GPUI-normalized geometry and theme-colored, outlined teeth.
-
-- Add Fit graph and refit newly opened node files; keep glyph-grid controls in Font view.
-
-- Fit the initial node viewport and keep connection wires and ports visible above cards.
-
-- Use shared neutral theme colors for sliders and header tab selection.
-
-- Align category sidebar insets and full-width rules; group font counts under Filters.
-
-- Share working Glyphs, Axes, and Local AI navigation across font, node, and glyph workspaces.
-
-- Match GPUI thumbnail ink centering, em-relative scale, and compact caption spacing; keep tall marks inside their cells.
-
-- Fit glyph rows to the viewport, give rail thumbnails GPUI proportions, and propagate grid size/theme changes on rebuild.
-
-- Give word proofs the GPUI initial drawing height and start additional inspector sections folded.
-
-- Add a contour-selection Shapes rail, inverted word proofs, connected coordinate reference controls, and GPUI-style glyph and node shadows.
-
-- Add editable shaped word previews with cached Vello CPU blur, larger outline previews, shared rail search controls, and clearer selected-state and metrics styling.
-
-- Add selection width/height editing around the chosen reference point and record inspector undo immediately.
-
-- Align inspector section borders, spacing, ordering, and path-operation groups with GPUI; fit overview tiles across the available width.
-
-- Keep GPUI live-node files out of the disk runner; experiments remain available through MCP.
-
-
-No releases yet. `AGENTS.md` has the checklist for the first one.
-Until then, `main` is the only line and this section stays open.
+### Added
+
+- Added a native Xilem font editor and a browser build that reuse the same Masonry widget
+  tree. Browser edits use a bundled font and remain in memory.
+- Added outline, component, anchor, metric, kerning/group, metadata, multi-master, and proof
+  editing workflows with shared Undo/Redo.
+- Added editable metaball sources, cubic conversion, and whole-font conversion.
+- Added basic single-master Babelfont import while preserving source packages; variable
+  sources and extra layers are rejected explicitly.
+- Added a bidi-aware text tool with Arabic shaping, IME composition, clipboard actions,
+  keyboard selection, OpenType feature and language controls, and per-tab state.
+- Added Nodes workflows for font operations, local-model tasks, independent experiment
+  branches, Designbot PNG/PDF proofs, guarded application, and transaction undo.
+- Added reviewable local-AI proposals and local GGUF chat; model results never change
+  foreground glyphs without explicit installation.
+- Added live-document MCP tools for reads, proofs, proposals, kerning, and experiment
+  workflows, plus shared project configuration for OMP, Claude Code, Pi with an adapter,
+  and ChatGPT desktop/Codex.
+- Added `runebender info`, `proof`, `agent`, and `mcp` headless commands.
+- Added Linux and macOS CI, Windows build/render/native-startup diagnostics, and
+  reproducible headless visual captures in Gray and Light.
 
 ### Changed
 
-- Wrap and expose selectable local-chat transcripts, distinguish conversation
-  roles visually, and keep the resizable left-dock toggle in one reachable
-  center-footer position across every view.
+- Consolidated the font engine, command line, and Xilem application into one `runebender`
+  package and executable.
+- Grouped Xilem runtime code under `src/app`, moved named editor tools into
+  `src/app/editor/tools`, and added a contributor-facing architecture map.
+- Reworked the editor's menus, title bar, sidebars, inspectors, glyph grid, proof strip,
+  Nodes canvas, resizing, and theme roles around shared Linebender-style design tokens and
+  GPUI behavior references.
+- Centralized document history so outline, metric, metadata, kerning, proposal, and
+  experiment changes use the same guarded Undo/Redo model.
+- Improved browser rendering for Retina and fractional scales, WASM SIMD, native cursors,
+  focus, paste, composition, splitters, and idle repaint behavior.
+- Reduced themes to Dark, Gray (default), and Light.
 
-- Align the Xilem header, editor rail, and node canvas with GPUI's shared visual hierarchy.
+### Fixed
 
-- Shared live experiment, kerning and drawing tools through MCP; refresh open sessions after application and preserve undo. Uses the core Designbot proof interface.
+- Prevented external reloads, stale model results, or stale proposals from overwriting
+  unsaved or subsequently edited document state.
+- Made glyph-name, Unicode, mark-color, metric, and multi-master edits atomic and
+  recoverable through Undo/Redo.
+- Corrected text shaping and caret behavior across mixed Latin/Arabic text, ligatures,
+  combining marks, kerning, line breaks, and direction changes.
+- Stabilized grid scrolling and keyboard navigation, panel and proof resizing, menu focus
+  and shortcuts, and editor-tool focus transitions.
 
-- Core pin updated for revision-checked agent proposals. Installing a guarded
-  proposal skips glyphs whose foreground changed after the proposal was made.
-
-- Themes: Midnight removed, Gray is the default. Dark, Gray, Light.
-- Undo lives in core. `Session` holds an `EditHistory` from
-  `runebender_core::document::history` instead of its own `UndoState`,
-  and records, undoes, and discards through it.
+Known platform and workflow limits are tracked in
+[`docs/known-limitations.md`](docs/known-limitations.md).

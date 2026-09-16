@@ -8,14 +8,19 @@
 
 **Implementation evidence**
 
-- Before, Gray: `docs/visual-audit/2026-09-15/221-xilem-overview-glyph-panel-before-gray-2x.png`
-- Final, Gray: `docs/visual-audit/2026-09-15/222-xilem-overview-glyph-panel-final-gray-2x.png`
-- Final, Light: `docs/visual-audit/2026-09-15/223-xilem-overview-glyph-panel-final-light-2x.png`
-- Final collapsed state, Gray:
-  `docs/visual-audit/2026-09-15/229-xilem-overview-glyph-panel-collapsed-gray-2x.png`
-- Focused before/after: `docs/visual-audit/2026-09-15/227-xilem-overview-glyph-panel-before-after-gray.png`
-- Normalized source/final comparison:
-  `docs/visual-audit/2026-09-15/228-source-final-overview-glyph-panel-gray.png`
+- [Before, Gray][before-gray]
+- [Final, Gray][final-gray]
+- [Final, Light][final-light]
+- [Final collapsed state, Gray][collapsed-gray]
+- [Focused before/after][before-after]
+- [Normalized source/final comparison][normalized]
+
+[before-gray]: 221-xilem-overview-glyph-panel-before-gray-2x.png
+[final-gray]: 222-xilem-overview-glyph-panel-final-gray-2x.png
+[final-light]: 223-xilem-overview-glyph-panel-final-light-2x.png
+[collapsed-gray]: 229-xilem-overview-glyph-panel-collapsed-gray-2x.png
+[before-after]: 227-xilem-overview-glyph-panel-before-after-gray.png
+[normalized]: 228-source-final-overview-glyph-panel-gray.png
 
 **Normalization and state**
 
