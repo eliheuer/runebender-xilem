@@ -117,7 +117,7 @@ fn styled_chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
 
 /// Dimensions: the narrowest stem and bar of the reference glyphs.
 pub(crate) fn dimensions_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use runebender_core::analysis::dimensions::{REFERENCE_GLYPHS, stem_and_bar};
+    use runebender::analysis::dimensions::{REFERENCE_GLYPHS, stem_and_bar};
     let pal = &app.palette;
     let fmt = |v: Option<i64>| {
         v.map(|v| v.to_string())

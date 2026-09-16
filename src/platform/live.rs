@@ -29,7 +29,7 @@ pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
                         if matches!(call.name.as_str(), "proposal_install" | "experiment_apply" | "experiment_undo_apply") && app.session.gesture_in_progress() {
                             return serde_json::json!({"ok":false,"error":"finish the canvas gesture before installing"});
                         }
-                        let result = runebender_core::document::live::call(
+                        let result = runebender::document::live::call(
                             &mut app.font.project,
                             &call.name,
                             &call.arguments,

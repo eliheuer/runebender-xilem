@@ -4,7 +4,7 @@
 //! The info panel: which sections show for the grid and for a glyph.
 
 use crate::*;
-use runebender_core::outline::glyph_paths::round_units;
+use runebender::outline::glyph_paths::round_units;
 
 pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;

@@ -9,13 +9,13 @@
 
 use std::path::PathBuf;
 
-use runebender_core::text::features;
-use runebender_core::text::shape::{ShapedGlyph, ShapingFont, ShapingGlyph, ShapingSource};
+use runebender::text::features;
+use runebender::text::shape::{ShapedGlyph, ShapingFont, ShapingGlyph, ShapingSource};
 
 fn fixture() -> PathBuf {
     let dir = match std::env::var_os("RUNEBENDER_TEST_FONTS") {
         Some(dir) => PathBuf::from(dir),
-        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../virtua-grotesk/sources"),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../virtua-grotesk/sources"),
     };
     let ufo = dir.join("VirtuaGrotesk-Regular.ufo");
     assert!(ufo.is_dir(), "fixture not found at {}", dir.display());
@@ -189,7 +189,7 @@ fn a_sukun_stacks_on_a_shadda_through_mkmk() {
 
 #[test]
 fn the_text_buffer_lays_a_fatha_on_the_beh() {
-    use runebender_core::text::buffer::{TextBuffer, TextGlyphInventory};
+    use runebender::text::buffer::{TextBuffer, TextGlyphInventory};
     let font = norad::Font::load(fixture()).expect("fixture loads");
     // The shaper's answer, to hold the buffer to.
     let sf = shaping_font(&font);

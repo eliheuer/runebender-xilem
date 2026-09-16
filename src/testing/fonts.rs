@@ -6,7 +6,7 @@
 //! The Virtua Grotesk sources live in their own repository,
 //! eliheuer/virtua-grotesk, not here, so this crate stays small and
 //! the tests run against the current font. Tests look for them in
-//! `$RUNEBENDER_TEST_FONTS`, or in `../../../virtua-grotesk/sources` next
+//! `$RUNEBENDER_TEST_FONTS`, or in `../virtua-grotesk/sources` next
 //! to this checkout. CI checks that repository out alongside.
 
 use std::path::{Path, PathBuf};
@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 pub(crate) fn dir() -> PathBuf {
     let dir = match std::env::var_os("RUNEBENDER_TEST_FONTS") {
         Some(dir) => PathBuf::from(dir),
-        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../virtua-grotesk/sources"),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../virtua-grotesk/sources"),
     };
     assert!(
         dir.join("VirtuaGrotesk.designspace").is_file(),

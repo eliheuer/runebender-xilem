@@ -1991,27 +1991,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "runebender-browser"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "image",
- "imaging_vello_cpu",
- "kurbo 0.13.1",
- "linesweeper",
- "masonry",
- "norad",
- "regex",
- "runebender-core",
- "runebender-xilem-browser",
- "serde_json",
- "tokio",
- "wasm-bindgen",
- "web-time",
-]
-
-[[package]]
-name = "runebender-core"
+name = "runebender"
 version = "0.1.0"
 dependencies = [
  "fea-rs",
@@ -2034,6 +2014,26 @@ dependencies = [
  "unicode-general-category",
  "unicode-normalization",
  "write-fonts",
+]
+
+[[package]]
+name = "runebender-browser"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "image",
+ "imaging_vello_cpu",
+ "kurbo 0.13.1",
+ "linesweeper",
+ "masonry",
+ "norad",
+ "regex",
+ "runebender",
+ "runebender-xilem-browser",
+ "serde_json",
+ "tokio",
+ "wasm-bindgen",
+ "web-time",
 ]
 
 [[package]]

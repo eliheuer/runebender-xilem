@@ -136,7 +136,7 @@ impl Workspace {
         };
         if matches!(self.mode, Mode::Editor(_)) {
             self.apply_op(move |session| {
-                session.record(runebender_core::ui::editing::edit_types::EditType::Normal);
+                session.record(runebender::ui::editing::edit_types::EditType::Normal);
                 session.glyph.contours = rebuilt.contours;
                 session.glyph.width = rebuilt.width;
                 session.selection.clear();
@@ -160,8 +160,8 @@ impl Workspace {
 
     /// Apply Glyphs-style sidebearing formulas in every master.
     pub(crate) fn command_update_metrics(&mut self) {
-        use runebender_core::document::project::Master;
-        use runebender_core::formats::metrics_keys::{
+        use runebender::document::project::Master;
+        use runebender::formats::metrics_keys::{
             MetricsFormula, parse_metrics_key, read_metrics_key,
         };
 
@@ -255,7 +255,7 @@ impl Workspace {
 
     /// Select positional Arabic forms whose joining bands disagree.
     pub(crate) fn command_check_joining(&mut self) {
-        use runebender_core::analysis::measure::joining_band;
+        use runebender::analysis::measure::joining_band;
 
         let mut bands = Vec::new();
         let mut broken = Vec::new();
@@ -273,7 +273,7 @@ impl Workspace {
                 continue;
             };
             let outline =
-                runebender_core::outline::glyph_paths::glyph_to_bezpath(glyph, self.font.font());
+                runebender::outline::glyph_paths::glyph_to_bezpath(glyph, self.font.font());
             for left in [true, false] {
                 if (left && joins_left) || (!left && joins_right) {
                     match joining_band(&outline, entry.advance, left, 2.0) {
@@ -318,11 +318,8 @@ impl Workspace {
             .map(|glyph| glyph.name.clone())
             .collect();
         let only = (!names.is_empty()).then_some(names);
-        let report = runebender_core::document::compose::compose(
-            self.font.font_mut(),
-            only.as_deref(),
-            true,
-        );
+        let report =
+            runebender::document::compose::compose(self.font.font_mut(), only.as_deref(), true);
         let proposed = report.proposed().len();
         let current = report
             .derived
@@ -358,7 +355,7 @@ impl Workspace {
                 master.history.record(&name, glyph);
             }
             if master
-                .edit_glyph(glyph_index, runebender_core::formats::lib_keys::bake_masks)
+                .edit_glyph(glyph_index, runebender::formats::lib_keys::bake_masks)
                 .unwrap_or(false)
             {
                 baked += 1;
@@ -397,8 +394,8 @@ impl Workspace {
         let Some(glyph) = self.font.font().get_glyph(&entry.name) else {
             return;
         };
-        let path = runebender_core::outline::glyph_paths::glyph_to_bezpath(glyph, self.font.font());
-        let svg = runebender_core::formats::svg::glyph_svg(
+        let path = runebender::outline::glyph_paths::glyph_to_bezpath(glyph, self.font.font());
+        let svg = runebender::formats::svg::glyph_svg(
             &path,
             glyph.width,
             self.font.ascender(),
@@ -561,9 +558,9 @@ impl Workspace {
         let traced = std::fs::read(&path)
             .map_err(|error| error.to_string())
             .and_then(|bytes| {
-                runebender_core::formats::image_trace::trace_image(
+                runebender::formats::image_trace::trace_image(
                     &bytes,
-                    &runebender_core::formats::image_trace::TraceConfig {
+                    &runebender::formats::image_trace::TraceConfig {
                         target_height: (self.font.ascender() - self.font.descender()).max(1.0),
                         y_offset: self.font.descender(),
                         advance: self.session.advance().max(1.0),
@@ -597,7 +594,7 @@ impl Workspace {
         let contours = std::fs::read_to_string(path)
             .map_err(|error| error.to_string())
             .and_then(|svg| {
-                runebender_core::formats::svg::svg_to_contours(
+                runebender::formats::svg::svg_to_contours(
                     &svg,
                     self.font.ascender(),
                     self.font.descender(),
@@ -671,7 +668,7 @@ impl Workspace {
             .images
             .insert(std::path::PathBuf::from(&file_name), bytes);
         self.apply_op(move |session| {
-            session.record(runebender_core::ui::editing::edit_types::EditType::Normal);
+            session.record(runebender::ui::editing::edit_types::EditType::Normal);
             session.glyph.image = Some(placed);
             true
         });
@@ -706,7 +703,7 @@ impl Workspace {
             return;
         }
         self.apply_op(|session| {
-            session.record(runebender_core::ui::editing::edit_types::EditType::Normal);
+            session.record(runebender::ui::editing::edit_types::EditType::Normal);
             session.glyph.image = None;
             true
         });
@@ -731,7 +728,7 @@ impl Workspace {
     /// The GF sets carry a name and a codepoint per glyph, so what lands
     /// is named and encoded, which is what makes the row's count move.
     pub(crate) fn generate_missing(&mut self, index: usize) {
-        let filters = runebender_core::ui::sidebar::builtin_filters();
+        let filters = runebender::ui::sidebar::builtin_filters();
         let Some(set) = filters.get(index).and_then(|f| f.glyphset.as_ref()) else {
             return;
         };
@@ -1264,7 +1261,7 @@ mod tests {
         font.default_layer_mut()
             .insert_glyph(rectangle("n", 50.0, 450.0));
         let mut h = rectangle("h", 0.0, 400.0);
-        runebender_core::formats::metrics_keys::write_metrics_key(&mut h, true, "=n+10");
+        runebender::formats::metrics_keys::write_metrics_key(&mut h, true, "=n+10");
         font.default_layer_mut().insert_glyph(h);
         font.save(&path).expect("the fixture saves");
 

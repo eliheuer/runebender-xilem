@@ -374,7 +374,7 @@ pub(crate) fn editor_nav(app: &Workspace) -> impl WidgetView<Workspace> + use<> 
 }
 
 /// Curves: the two analyses that are about shape quality rather than
-/// measurement. Both read from runebender-core, so they say the same
+/// measurement. Both read from the same analysis modules, so they say the same
 /// thing here as in other tabbed document editors.
 /// The tab strip: one tab per open glyph, with a close box, and a plus
 /// that opens a second view on the glyph in hand.
@@ -608,7 +608,7 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     // GPUI sidebar does; the rows under it are indented leaves.
     let mut cat_rows: Vec<_> = Vec::new();
     for c in cats.iter().copied().filter(|c| app.category_count(*c) > 0) {
-        let subs = runebender_core::ui::sidebar::category_subfilters(c.display_name());
+        let subs = runebender::ui::sidebar::category_subfilters(c.display_name());
         let key = c.display_name();
         let open = app.expanded_categories.contains(key);
         let selected =
@@ -651,7 +651,7 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
 
     // Languages: script groups with their coverage sets under them.
     let mut lang_rows: Vec<_> = Vec::new();
-    for (i, g) in runebender_core::ui::sidebar::language_groups()
+    for (i, g) in runebender::ui::sidebar::language_groups()
         .iter()
         .enumerate()
     {
@@ -706,7 +706,7 @@ fn category_sidebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         }
     }
 
-    let filter_rows: Vec<_> = runebender_core::ui::sidebar::builtin_filters()
+    let filter_rows: Vec<_> = runebender::ui::sidebar::builtin_filters()
         .iter()
         .enumerate()
         .filter_map(|(i, b)| {

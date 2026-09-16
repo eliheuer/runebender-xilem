@@ -34,7 +34,7 @@ use crate::view::canvas::editor::EditorWidget;
 use crate::view::canvas::nodes::NodesWidget;
 use crate::view::theme::Palette;
 use crate::widgets::text_label::{self, Anchor};
-use runebender_core::outline::glyph_paths::round_units;
+use runebender::outline::glyph_paths::round_units;
 
 /// Row height, and the menu's width. Fixed, because a context menu that
 /// resizes to its longest label is harder to aim at than one that does

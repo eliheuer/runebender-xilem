@@ -98,7 +98,7 @@ pub(crate) fn titlebar(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
 /// direction is a property of what is being reviewed, not of the tool
 /// in hand.
 pub(crate) fn direction_chips(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use runebender_core::text::buffer::TextDirection;
+    use runebender::text::buffer::TextDirection;
     let pal = &app.palette;
     let chip = |text: &'static str, want: Option<TextDirection>| {
         tab_chip(

@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! An icon tile that paints either one of `runebender-core`'s toolbar icons
+//! An icon tile that paints either one of Runebender's toolbar icons
 //! or a small geometry-only status mark, and reports clicks.
 
 use std::sync::{Arc, Mutex};
@@ -14,7 +14,7 @@ use masonry::core::{
 use masonry::imaging::Painter;
 use masonry::kurbo::{Affine, Axis, BezPath, Line, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-use runebender_core::ui::theme::toolbar_icons;
+use runebender::ui::theme::toolbar_icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 

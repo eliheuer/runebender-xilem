@@ -6,19 +6,19 @@
 //! switching masters, and the axis location.
 //!
 //! The session works on a `norad::Glyph` directly so every operation in
-//! `runebender_core::outline::glyph_ops` and `point_ops` applies without conversion.
+//! `runebender::outline::glyph_ops` and `point_ops` applies without conversion.
 //! The editor island owns the session; the app receives copies of the glyph.
 
 use crate::*;
 use std::collections::{HashMap, HashSet};
 
 use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};
-use runebender_core::outline::glyph_ops::{self, PointId};
-use runebender_core::outline::glyph_paths;
-use runebender_core::outline::glyph_paths::round_units;
-use runebender_core::outline::point_ops;
-use runebender_core::ui::editing::edit_types::EditType;
-use runebender_core::ui::editing::viewport::ViewPort;
+use runebender::outline::glyph_ops::{self, PointId};
+use runebender::outline::glyph_paths;
+use runebender::outline::glyph_paths::round_units;
+use runebender::outline::point_ops;
+use runebender::ui::editing::edit_types::EditType;
+use runebender::ui::editing::viewport::ViewPort;
 
 /// Boolean operation kinds, mapped to `linesweeper::BinaryOp` internally.
 #[derive(Clone, Copy)]
@@ -151,7 +151,7 @@ impl Session {
         let component_contours = resolved_component_contour_sets(font, &glyph);
         Some(Self {
             glyph_name: name.to_string(),
-            metaball_preview: runebender_core::outline::metaballs::glyph_preview(&glyph)
+            metaball_preview: runebender::outline::metaballs::glyph_preview(&glyph)
                 .unwrap_or_default(),
             glyph,
             components,
@@ -263,7 +263,7 @@ impl Session {
             .components
             .get(self.selected_component?)
             .map(|component| {
-                !runebender_core::document::composites::component_alignment_disabled(component)
+                !runebender::document::composites::component_alignment_disabled(component)
             })
     }
 
@@ -285,7 +285,7 @@ impl Session {
 
     pub(crate) fn add_component(&mut self, font: &norad::Font, base: &str) -> bool {
         let mut changed = self.glyph.clone();
-        if !runebender_core::outline::component_ops::add_component(font, &mut changed, base) {
+        if !runebender::outline::component_ops::add_component(font, &mut changed, base) {
             return false;
         }
         self.record(EditType::Normal);
@@ -305,11 +305,10 @@ impl Session {
         let Some(component) = changed.components.get_mut(index) else {
             return false;
         };
-        let aligned =
-            !runebender_core::document::composites::component_alignment_disabled(component);
-        runebender_core::document::composites::set_component_alignment_disabled(component, aligned);
+        let aligned = !runebender::document::composites::component_alignment_disabled(component);
+        runebender::document::composites::set_component_alignment_disabled(component, aligned);
         if !aligned {
-            runebender_core::document::composites::realign_glyph(font, &mut changed, true);
+            runebender::document::composites::realign_glyph(font, &mut changed, true);
         }
         self.record(EditType::Normal);
         self.glyph = changed;
@@ -334,12 +333,8 @@ impl Session {
         let Some(index) = self.selected_component else {
             return false;
         };
-        let changed = runebender_core::outline::component_ops::translate_component(
-            &mut self.glyph,
-            index,
-            dx,
-            dy,
-        );
+        let changed =
+            runebender::outline::component_ops::translate_component(&mut self.glyph, index, dx, dy);
         if changed {
             if let Some(path) = self.component_paths.get_mut(index) {
                 *path = kurbo::Affine::translate((dx, dy)) * path.clone();
@@ -496,7 +491,7 @@ impl Session {
     pub(crate) fn delete_selected(&mut self) -> bool {
         if let Some(index) = self.selected_component.take() {
             self.record(EditType::Normal);
-            if runebender_core::outline::component_ops::delete_component(&mut self.glyph, index) {
+            if runebender::outline::component_ops::delete_component(&mut self.glyph, index) {
                 self.component_paths.remove(index);
                 self.component_contours.remove(index);
                 self.rebuild_combined_components();
@@ -769,19 +764,17 @@ impl Session {
         }
         let contours = self.selection.iter().map(|(contour, _)| *contour).collect();
         self.effect(|glyph| {
-            runebender_core::outline::effects::expand_stroke_contours(glyph, &contours, width)
+            runebender::outline::effects::expand_stroke_contours(glyph, &contours, width)
         })
     }
 
     pub(crate) fn offset(&mut self, delta: f64) -> bool {
-        self.effect(|glyph| runebender_core::outline::effects::offset_glyph_contours(glyph, delta))
+        self.effect(|glyph| runebender::outline::effects::offset_glyph_contours(glyph, delta))
     }
 
     pub(crate) fn extrude(&mut self, offset: f64, angle: f64, keep_front: bool) -> bool {
         self.effect(|glyph| {
-            runebender_core::outline::effects::extrude_glyph_contours(
-                glyph, offset, angle, keep_front,
-            )
+            runebender::outline::effects::extrude_glyph_contours(glyph, offset, angle, keep_front)
         })
     }
 
@@ -794,7 +787,7 @@ impl Session {
     ) -> bool {
         let selected = self.selection.iter().map(|(contour, _)| *contour).collect();
         self.effect(|glyph| {
-            runebender_core::outline::effects::roughen_glyph_contours(
+            runebender::outline::effects::roughen_glyph_contours(
                 glyph, &selected, segment, horizontal, vertical, seed,
             )
         })
@@ -850,13 +843,13 @@ impl Session {
 
     /// Points where a knife line from p0 to p1 crosses the outline.
     pub(crate) fn knife_hits(&self, p0: Point, p1: Point) -> Vec<Point> {
-        runebender_core::outline::knife::knife_hit_points(&self.glyph, p0, p1)
+        runebender::outline::knife::knife_hit_points(&self.glyph, p0, p1)
     }
 
     /// Cut the outline along the line p0..p1.
     pub(crate) fn knife_cut(&mut self, p0: Point, p1: Point) -> bool {
         self.record(EditType::Normal);
-        let changed = runebender_core::outline::knife::knife_cut_glyph(&mut self.glyph, p0, p1);
+        let changed = runebender::outline::knife::knife_cut_glyph(&mut self.glyph, p0, p1);
         if !changed {
             // Nothing cut; drop the empty undo group we just pushed.
             if matches!(self.pending.last(), Some(HistoryOp::Record(_))) {
@@ -869,24 +862,24 @@ impl Session {
     }
 
     /// The glyph's contours as core `Path`s (for measurement/analysis).
-    pub(crate) fn paths(&self) -> Vec<runebender_core::outline::path::Path> {
+    pub(crate) fn paths(&self) -> Vec<runebender::outline::path::Path> {
         self.glyph
             .contours
             .iter()
             .map(|c| {
-                runebender_core::outline::path::Path::from_contour(
-                    &runebender_core::outline::path::hyper_model::Contour::from_norad(c),
+                runebender::outline::path::Path::from_contour(
+                    &runebender::outline::path::hyper_model::Contour::from_norad(c),
                 )
             })
             .collect()
     }
 
-    pub(crate) fn measurements(&self) -> Vec<runebender_core::analysis::measure::Measurement> {
-        runebender_core::analysis::measure::glyph_measurements(&self.paths())
+    pub(crate) fn measurements(&self) -> Vec<runebender::analysis::measure::Measurement> {
+        runebender::analysis::measure::glyph_measurements(&self.paths())
     }
 
-    pub(crate) fn side_bearings(&self) -> Option<runebender_core::analysis::measure::SideBearings> {
-        runebender_core::analysis::measure::side_bearings(&self.paths(), self.advance())
+    pub(crate) fn side_bearings(&self) -> Option<runebender::analysis::measure::SideBearings> {
+        runebender::analysis::measure::side_bearings(&self.paths(), self.advance())
     }
 
     /// Bounding box of the selected points in design space, if any.
@@ -966,10 +959,9 @@ impl Session {
                 return false;
             };
             self.record(EditType::Normal);
-            let Some(next) = runebender_core::outline::component_ops::duplicate_component(
-                &mut self.glyph,
-                index,
-            ) else {
+            let Some(next) =
+                runebender::outline::component_ops::duplicate_component(&mut self.glyph, index)
+            else {
                 return false;
             };
             self.component_paths
@@ -1013,22 +1005,22 @@ impl Session {
 
     pub(crate) fn tidy_paths(&mut self) -> bool {
         self.record(EditType::Normal);
-        runebender_core::outline::cleanup::tidy_contours(&mut self.glyph) > 0
+        runebender::outline::cleanup::tidy_contours(&mut self.glyph) > 0
     }
 
     pub(crate) fn add_extremes(&mut self) -> bool {
         self.record(EditType::Normal);
-        runebender_core::outline::cleanup::add_extreme_points(&mut self.glyph, &self.selection)
+        runebender::outline::cleanup::add_extreme_points(&mut self.glyph, &self.selection)
     }
 
     pub(crate) fn round_coordinates(&mut self) -> bool {
         self.record(EditType::Normal);
-        runebender_core::outline::cleanup::round_glyph_coordinates(&mut self.glyph) > 0
+        runebender::outline::cleanup::round_glyph_coordinates(&mut self.glyph) > 0
     }
 
     pub(crate) fn correct_path_direction(&mut self) -> bool {
         self.record(EditType::Normal);
-        runebender_core::outline::cleanup::correct_path_directions(&mut self.glyph) > 0
+        runebender::outline::cleanup::correct_path_directions(&mut self.glyph) > 0
     }
 
     pub(crate) fn hyper_to_cubic(&mut self) -> bool {
@@ -1042,12 +1034,12 @@ impl Session {
 
     pub(crate) fn quads_to_cubics(&mut self) -> bool {
         self.record(EditType::Normal);
-        runebender_core::outline::convert::quads_to_cubics(&mut self.glyph)
+        runebender::outline::convert::quads_to_cubics(&mut self.glyph)
     }
 
     pub(crate) fn cubics_to_quads(&mut self) -> bool {
         self.record(EditType::Normal);
-        runebender_core::outline::convert::cubics_to_quads(&mut self.glyph, 1.0)
+        runebender::outline::convert::cubics_to_quads(&mut self.glyph, 1.0)
     }
 
     /// Index of the anchor near `p` (design space), if within `tol`.
@@ -1102,29 +1094,29 @@ impl Session {
     }
 
     /// Continuity of every on-curve node: corner, kink, G1, G2, G3.
-    pub(crate) fn continuity(&self) -> Vec<runebender_core::analysis::curve::NodeContinuity> {
-        let cubics = runebender_core::analysis::curve::cubics_from_norad(&self.glyph);
-        runebender_core::analysis::curve::node_continuity(&cubics)
+    pub(crate) fn continuity(&self) -> Vec<runebender::analysis::curve::NodeContinuity> {
+        let cubics = runebender::analysis::curve::cubics_from_norad(&self.glyph);
+        runebender::analysis::curve::node_continuity(&cubics)
     }
 
     /// The outline split into strokes colored by segment length, the web
     /// editor's colorize mode.
-    pub(crate) fn colored_strokes(&self) -> Vec<runebender_core::analysis::measure::ColoredStroke> {
-        runebender_core::analysis::measure::colored_strokes(&self.paths())
+    pub(crate) fn colored_strokes(&self) -> Vec<runebender::analysis::measure::ColoredStroke> {
+        runebender::analysis::measure::colored_strokes(&self.paths())
     }
 
-    pub(crate) fn curvature_comb(&self) -> Vec<Vec<runebender_core::analysis::curve::CombSample>> {
-        let cubics = runebender_core::analysis::curve::cubics_from_norad(&self.glyph);
-        let maxk = runebender_core::analysis::curve::max_curvature(&cubics);
+    pub(crate) fn curvature_comb(&self) -> Vec<Vec<runebender::analysis::curve::CombSample>> {
+        let cubics = runebender::analysis::curve::cubics_from_norad(&self.glyph);
+        let maxk = runebender::analysis::curve::max_curvature(&cubics);
         if maxk <= 1e-12 {
             return Vec::new();
         }
-        runebender_core::analysis::curve::curvature_comb(&cubics, 1.0, 74.0 / maxk, false, 16)
+        runebender::analysis::curve::curvature_comb(&cubics, 1.0, 74.0 / maxk, false, 16)
     }
 
     pub(crate) fn set_mark(&mut self, label: Option<&str>) {
         self.record(EditType::Normal);
-        runebender_core::ui::theme::set_glyph_mark(&mut self.glyph, label);
+        runebender::ui::theme::set_glyph_mark(&mut self.glyph, label);
     }
 
     /// The contours to copy: the ones holding a selected point, or every
@@ -1200,7 +1192,7 @@ fn resolved_component_contour_sets(
         .map(|component| {
             let mut wrapper = norad::Glyph::new("component-wrapper");
             wrapper.components.push(component.clone());
-            runebender_core::outline::component_ops::resolved_component_contours(font, &wrapper)
+            runebender::outline::component_ops::resolved_component_contours(font, &wrapper)
         })
         .collect()
 }
@@ -1793,7 +1785,7 @@ mod tests {
 
     #[test]
     fn edits_land_on_the_masters_pile_and_undo_from_it() {
-        use runebender_core::document::project::Master;
+        use runebender::document::project::Master;
         let mut session = two_squares();
         let mut master = Master::from_font(
             {
@@ -1983,7 +1975,7 @@ mod tests {
             norad::AffineTransform::default(),
             None,
         );
-        runebender_core::document::composites::set_component_alignment_disabled(&mut loose, true);
+        runebender::document::composites::set_component_alignment_disabled(&mut loose, true);
         composite.components.push(loose);
         font.default_layer_mut().insert_glyph(composite);
 
@@ -2130,7 +2122,7 @@ mod tests {
     #[test]
     fn decompose_undo_rebuilds_nested_transformed_component_preview() {
         use masonry::kurbo::Shape as _;
-        use runebender_core::document::project::Master;
+        use runebender::document::project::Master;
 
         let mut font = norad::Font::new();
         let mut base = norad::Glyph::new("base");

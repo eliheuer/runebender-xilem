@@ -10,7 +10,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use runebender_core::document::proposal;
+use runebender::document::proposal;
 
 fn fixture() -> PathBuf {
     let dir = match std::env::var_os("RUNEBENDER_TEST_FONTS") {
@@ -527,7 +527,7 @@ fn mcp_lists_the_agent_tools_and_calls_them() {
 
 #[test]
 fn compose_derives_marks_and_the_result_shapes() {
-    use runebender_core::text::shape::{ShapingFont, ShapingGlyph, ShapingSource};
+    use runebender::text::shape::{ShapingFont, ShapingGlyph, ShapingSource};
     let (_dir, ufo) = scratch_ufo();
     let path = ufo.to_str().expect("utf8");
     // Report first: a Latin accent and an Arabic hamza both derive
@@ -776,8 +776,8 @@ fn help_version_and_invalid_arguments_finish_without_a_window() {
 
 #[test]
 fn babelfont_info_and_proof_use_the_importer_without_writing_a_ufo() {
-    let package = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("crates/runebender-core/tests/fixtures/babelfont/Basic.babelfont");
+    let package =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/babelfont/Basic.babelfont");
     let (code, result) = run(&["info", package.to_str().unwrap()]);
     assert_eq!(code, 0, "{result}");
     assert_eq!(result["family"], "Babelfont Test");

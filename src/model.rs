@@ -11,10 +11,10 @@ use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 
 use kurbo::{BezPath, Rect};
-use runebender_core::analysis::category::GlyphCategory;
-use runebender_core::document::project::{Master, Project};
-use runebender_core::document::proposal;
-use runebender_core::outline::glyph_paths;
+use runebender::analysis::category::GlyphCategory;
+use runebender::document::project::{Master, Project};
+use runebender::document::proposal;
+use runebender::outline::glyph_paths;
 
 /// One designspace axis, in user coordinates with its map into design
 /// coordinates. Core's `AxisInfo` keeps only the design-space extents;
@@ -42,7 +42,7 @@ impl Axis {
     /// Convert a user-coordinate value to the normalized coordinate Core stores.
     pub(crate) fn user_to_normalized(&self, value: f64) -> f64 {
         let (min, default, max) = self.design_extents();
-        runebender_core::document::var_model::normalize_value(
+        runebender::document::var_model::normalize_value(
             self.user_to_design(value),
             min,
             default,
@@ -53,8 +53,7 @@ impl Axis {
     /// Convert Core's normalized coordinate back to the user's axis scale.
     pub(crate) fn normalized_to_user(&self, value: f64) -> f64 {
         let (min, default, max) = self.design_extents();
-        let design =
-            runebender_core::document::var_model::denormalize_value(value, min, default, max);
+        let design = runebender::document::var_model::denormalize_value(value, min, default, max);
         self.design_to_user(design)
     }
 
@@ -129,7 +128,7 @@ pub(crate) struct GlyphEntry {
 }
 
 impl GlyphEntry {
-    fn from_core(entry: &runebender_core::document::project::GlyphEntry) -> Self {
+    fn from_core(entry: &runebender::document::project::GlyphEntry) -> Self {
         Self {
             name: entry.name.to_string(),
             codepoint: entry.codepoint,
@@ -430,7 +429,7 @@ impl FontModel {
 
     /// Rename a glyph, in every master.
     ///
-    /// `runebender_core` does the work inside one font: the glyph, the
+    /// `runebender` does the work inside one font: the glyph, the
     /// components that place it, group memberships, and kerning keys on
     /// either side. This applies that to all the masters, because a
     /// designspace whose sources disagree about a glyph name does not
@@ -438,7 +437,7 @@ impl FontModel {
     pub(crate) fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
         let mut renamed = false;
         for master in &mut self.project.masters {
-            if runebender_core::document::font_ops::rename_glyph(&mut master.font, old, new) {
+            if runebender::document::font_ops::rename_glyph(&mut master.font, old, new) {
                 master.dirty = true;
                 let _ = master.history.rename_glyph(old, new);
                 master.refresh_from_font();
@@ -520,7 +519,7 @@ impl FontModel {
         target: &std::collections::HashMap<String, f64>,
         depth: u8,
     ) -> Option<BezPath> {
-        use runebender_core::document::var_model::VariationModel;
+        use runebender::document::var_model::VariationModel;
         if depth > 8 {
             return None;
         }
@@ -732,7 +731,7 @@ impl FontModel {
     ///
     /// `first_side` is the left side in left-to-right text: `public.kern1`.
     pub(crate) fn kern_group(&self, glyph: &str, first_side: bool) -> String {
-        runebender_core::document::font_ops::kern_group(self.font(), glyph, first_side)
+        runebender::document::font_ops::kern_group(self.font(), glyph, first_side)
             .map(|name| name.to_string())
             .unwrap_or_default()
     }
@@ -745,7 +744,7 @@ impl FontModel {
     pub(crate) fn set_kern_group(&mut self, glyph: &str, first_side: bool, group: &str) -> bool {
         let mut changed = false;
         for master in &mut self.project.masters {
-            if runebender_core::document::font_ops::set_kern_group(
+            if runebender::document::font_ops::set_kern_group(
                 &mut master.font,
                 glyph,
                 first_side,

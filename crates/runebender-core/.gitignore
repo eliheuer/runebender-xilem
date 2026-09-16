@@ -1,7 +1,0 @@
-/target
-.DS_Store
-.idea/
-.vscode/
-
-# Local lockfile experiments
-Cargo.lock.user

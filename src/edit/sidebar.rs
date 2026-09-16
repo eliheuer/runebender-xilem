@@ -4,7 +4,7 @@
 //! The sidebar's filters and the grid selection.
 
 use crate::*;
-use runebender_core::outline::glyph_paths::round_units;
+use runebender::outline::glyph_paths::round_units;
 
 impl Workspace {
     /// The cells that pass the current search + category filter. The two
@@ -65,7 +65,7 @@ impl Workspace {
 
     /// Does the glyph at `index` pass the active sidebar selection?
     pub(crate) fn cell_matches_sel(&self, index: usize) -> bool {
-        use runebender_core::ui::sidebar as sb;
+        use runebender::ui::sidebar as sb;
         let entry = &self.font.glyphs[index];
         match self.sel {
             Sel::Category(GlyphCategory::All) => true,
@@ -107,7 +107,7 @@ impl Workspace {
 
     /// How many glyphs in the font match language group `i`.
     pub(crate) fn language_count(&self, i: usize) -> usize {
-        use runebender_core::ui::sidebar as sb;
+        use runebender::ui::sidebar as sb;
         let Some(g) = sb::language_groups().get(i) else {
             return 0;
         };
@@ -120,7 +120,7 @@ impl Workspace {
 
     /// Present-count for GF-coverage filter `i` (glyphs the font has).
     pub(crate) fn filter_present(&self, i: usize) -> usize {
-        use runebender_core::ui::sidebar as sb;
+        use runebender::ui::sidebar as sb;
         let Some(f) = sb::builtin_filters()
             .get(i)
             .and_then(|b| b.glyphset.as_ref())
@@ -136,7 +136,7 @@ impl Workspace {
 
     /// How many glyphs a category's subfilter holds.
     pub(crate) fn subfilter_count(&self, cat: GlyphCategory, sub: &str) -> usize {
-        use runebender_core::ui::sidebar as sb;
+        use runebender::ui::sidebar as sb;
         self.font
             .glyphs
             .iter()
@@ -150,7 +150,7 @@ impl Workspace {
     /// How many glyphs a language group's filter holds, and how many
     /// it expects.
     pub(crate) fn language_filter_count(&self, gi: usize, fi: usize) -> (usize, Option<usize>) {
-        use runebender_core::ui::sidebar as sb;
+        use runebender::ui::sidebar as sb;
         let Some(f) = sb::language_groups()
             .get(gi)
             .and_then(|g| g.filters.get(fi))
@@ -223,7 +223,7 @@ impl Workspace {
 
     /// How many glyphs a coverage filter is still missing.
     pub(crate) fn filter_missing(&self, index: usize) -> usize {
-        let filters = runebender_core::ui::sidebar::builtin_filters();
+        let filters = runebender::ui::sidebar::builtin_filters();
         let Some(set) = filters.get(index).and_then(|f| f.glyphset.as_ref()) else {
             return 0;
         };

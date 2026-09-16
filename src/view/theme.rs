@@ -6,8 +6,8 @@
 //! The framework does not currently resolve Runebender's application theme,
 //! so this module maps the shared semantic tokens once for every view.
 
-use runebender_core::ui::color::ColorRgba;
-use runebender_core::ui::theme::{Theme as CoreTheme, load_theme};
+use runebender::ui::color::ColorRgba;
+use runebender::ui::theme::{Theme as CoreTheme, load_theme};
 use std::collections::HashMap;
 use xilem::Color;
 
@@ -120,7 +120,7 @@ impl Palette {
             mark_order: t.marks.iter().map(|(k, _)| k.clone()).collect(),
             mark_outline: t.mark_outline.map(color),
             mark_ink: t.mark_ink.map(color),
-            points_filled: t.point_style == runebender_core::ui::theme::PointStyle::Fill,
+            points_filled: t.point_style == runebender::ui::theme::PointStyle::Fill,
             point_outline: t.point_outline.map(color),
             point_halo: t.point_halo,
         }

@@ -4,11 +4,11 @@
 //! Live metaball selection, gestures, and inspector commands.
 
 use crate::*;
-use runebender_core::formats::metaballs::{
+use runebender::formats::metaballs::{
     Metaball, MetaballGroup, Metaballs, read_metaballs, write_metaballs,
 };
-use runebender_core::outline::metaballs::{OutlineOptions, collapse};
-use runebender_core::ui::editing::edit_types::EditType;
+use runebender::outline::metaballs::{OutlineOptions, collapse};
+use runebender::ui::editing::edit_types::EditType;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Default)]
@@ -22,7 +22,7 @@ pub(crate) struct MetaballSelection {
 impl Session {
     pub(crate) fn refresh_metaball_preview(&mut self) {
         self.metaballs.drafts.clear();
-        match runebender_core::outline::metaballs::glyph_preview(&self.glyph) {
+        match runebender::outline::metaballs::glyph_preview(&self.glyph) {
             Ok(path) => {
                 self.metaball_preview = path;
                 self.metaballs.error = None;

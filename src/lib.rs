@@ -1,14 +1,11 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The font library behind the Runebender font editor, with no
-//! interface attached. The `runebender` application uses it for both
-//! its editor and headless subcommands.
+//! Runebender's font engine.
 //!
-//! One rule decides what belongs here: if an operation changes a font,
-//! or reads one to answer a question, it lives in this crate. The
-//! application owns the window, input, drawing, and command-line parsing,
-//! and calls this crate for font operations.
+//! The `runebender` package contains both this library target and the
+//! Xilem application. The executable uses these modules for its editor
+//! and for headless subcommands.
 //!
 //! The in-memory font is `norad::Font`. Every function here takes
 //! norad types, or kurbo geometry, and returns the same. The
@@ -23,12 +20,11 @@
 //! - [`document`]: the open font and its family. `Master`, `Project`,
 //!   interpolation, composites, in-memory fonts.
 //! - [`text`]: shaping, joining rules, and the text buffer.
-//! - [`ui`]: what every front-end shares that is not font data.
-//!   Themes, the sidebar's filter data, selection and undo.
+//! - [`ui`]: toolkit-independent editor data: themes, sidebar filters,
+//!   selection, undo, and viewport state.
 
 // LINEBENDER LINT SET - lib.rs - v4
 // See https://linebender.org/wiki/canonical-lints/
-#![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![warn(clippy::print_stdout, clippy::print_stderr)]
 #![cfg_attr(target_pointer_width = "64", warn(clippy::trivially_copy_pass_by_ref))]
 // END LINEBENDER LINT SET

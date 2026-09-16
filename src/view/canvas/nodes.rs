@@ -4,7 +4,7 @@
 //! The nodes canvas: the open `.nodes.json` as boxes and wires, drawn
 //! by Vello.
 //!
-//! The layout is core's (`runebender_core::ui::nodes`): where every
+//! The layout is core's (`runebender::ui::nodes`): where every
 //! box, port and wire sits, in canvas units, and what is under a
 //! point. This widget adds the paint calls and the mouse, the same
 //! way the glyph editor does: core's `ViewPort` for pan and zoom, one
@@ -24,10 +24,10 @@ use masonry::core::{
 use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, BezPath, Line, Point, Rect, Shape as _, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-use runebender_core::document::nodes::{Kind, NodeGraph, Registry};
-use runebender_core::document::nodes_run::Status;
-use runebender_core::ui::editing::viewport::ViewPort;
-use runebender_core::ui::nodes::{self as nl, Hit, NodeBox};
+use runebender::document::nodes::{Kind, NodeGraph, Registry};
+use runebender::document::nodes_run::Status;
+use runebender::ui::editing::viewport::ViewPort;
+use runebender::ui::nodes::{self as nl, Hit, NodeBox};
 use xilem::Color;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};

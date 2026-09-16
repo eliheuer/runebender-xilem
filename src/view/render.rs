@@ -639,7 +639,7 @@ mod tab_tests {
 
     #[test]
     fn tabs_keep_independent_text_and_preview_contexts() {
-        use runebender_core::text::buffer::TextDirection;
+        use runebender::text::buffer::TextDirection;
 
         let mut app = app();
         let a = app.font.index_of("A").expect("A");

@@ -5,7 +5,7 @@
 
 #![cfg(unix)]
 
-use runebender_core::document::{live, live_socket::Server, project::Project};
+use runebender::document::{live, live_socket::Server, project::Project};
 use serde_json::{Value, json};
 use std::io::Write;
 use std::process::{Command, Stdio};

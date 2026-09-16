@@ -82,9 +82,8 @@ fn core_binary() -> Option<PathBuf> {
 impl Workspace {
     /// Rescan local GGUF chat-model folders without loading any weights.
     pub(crate) fn scan_chat_models(&mut self) {
-        self.chat.installed = runebender_core::document::nodes_run::installed_chat_models(
-            Self::models_dir().as_deref(),
-        );
+        self.chat.installed =
+            runebender::document::nodes_run::installed_chat_models(Self::models_dir().as_deref());
         if self
             .chat
             .model

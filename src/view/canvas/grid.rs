@@ -29,7 +29,7 @@ use crate::view::design::{
 use crate::view::render::px32;
 use crate::view::theme::Palette;
 use crate::widgets::text_label::{self, Anchor};
-use runebender_core::outline::glyph_paths::round_units;
+use runebender::outline::glyph_paths::round_units;
 
 const GAP: f64 = 8.0;
 /// The label block has a little air over the first line, close line spacing,
@@ -637,7 +637,7 @@ impl Widget for GridWidget {
                     let category = cell
                         .codepoint
                         .map(|c| {
-                            runebender_core::analysis::category::GlyphCategory::from_codepoint(c)
+                            runebender::analysis::category::GlyphCategory::from_codepoint(c)
                                 .display_name()
                         })
                         .unwrap_or("Unencoded");

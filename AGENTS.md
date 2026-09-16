@@ -1,21 +1,22 @@
 # AGENTS.md
 
-Runebender is one application and one Cargo workspace. Keep application and
-library changes in this repository; sibling repositories are not workspace members.
+Runebender is one application and one Cargo package. Keep all changes in this
+repository; sibling repositories are not workspace members.
 
 ## Architecture
 
-The root package produces the `runebender` executable. A font path starts the
-Xilem editor; a subcommand runs headlessly before window setup. The internal
-`crates/runebender-core` package is library-only and contains every operation
-that reads or changes a font.
+The package produces the `runebender` executable and its internal library target.
+A font path starts the Xilem editor; a subcommand runs headlessly before window
+setup. Modules under `src/analysis`, `src/document`, `src/formats`, `src/outline`,
+and `src/text` contain operations that read or change a font.
 
 The in-memory font is `norad::Font`. Keep application state and platform work
-out of Core. Keep font mutations, analysis, formats, shaping, interpolation,
-selection, and undo in Core when they can be shared.
+out of the font-engine modules. Keep font mutations, analysis, formats, shaping,
+interpolation, selection, and undo in those modules when they can be shared.
 
 | Path | Responsibility |
 |---|---|
+| `src/lib.rs` | font-engine module root |
 | `src/main.rs` | executable composition root |
 | `src/cli.rs` | arguments and headless adapters |
 | `src/launch.rs` | native event loop and window setup |
@@ -25,7 +26,7 @@ selection, and undo in Core when they can be shared.
 | `src/platform/` | files, watching, live endpoints, and screenshots |
 | `src/view/` | application views and canvas widgets |
 | `src/widgets/` | reusable widgets missing from the framework |
-| `crates/runebender-core/src/` | font library by concern |
+| `src/{analysis,document,formats,outline,text,ui}/` | font engine by concern |
 | `web/` | browser host for the shared widget tree |
 
 Read the module header for the area you change. Keep one concern per file where
@@ -59,7 +60,7 @@ to a committed Cargo configuration.
 
 Read `DESIGN.md` before changing a view. Use `view::theme` for colors,
 `view::design` for measurements, and `view::recipes` for repeated controls.
-Views read workspace state; commands own intent; Core owns font behavior.
+Views read workspace state; commands own intent; the font engine owns font behavior.
 
 Use the headless screenshot path for visual checks. Inspect Gray and Light when
 UI code changes, and wait for idle auto-hide before accepting a capture. A
@@ -75,7 +76,7 @@ checks as described in `web/README.md`.
 - macOS uses `muda` for the operating-system menu bar.
 - Linux, Windows, and the browser use the in-window Masonry menu.
 - Live editor sockets are Unix-only; keep headless file commands portable.
-- File dialogs are an application concern. Core must not depend on them.
+- File dialogs are an application concern. Font-engine modules must not depend on them.
 
 Do not turn a failing platform check green by removing it. Record an honest
 support limit in `docs/known-limitations.md` when a failure cannot be reproduced
@@ -84,7 +85,7 @@ or fixed in scope.
 ## Rust conventions
 
 - Follow the current Linebender canonical lint and rustfmt sets.
-- Every public Core item needs a useful doc comment.
+- Every public library item needs a useful doc comment.
 - An in-place edit returns whether or how much it changed.
 - A UFO lib key has one constant, reader, and writer.
 - Tests live beside the code they verify.

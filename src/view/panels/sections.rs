@@ -532,7 +532,7 @@ pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace>
         COORD_LABEL_WIDTH, COORD_PICKER_EDGE, COORD_PICKER_GAP, COORD_PICKER_INSET,
     };
     use crate::widgets::quadrant_picker::quadrant_grid;
-    use runebender_core::outline::path::Quadrant;
+    use runebender::outline::path::Quadrant;
     const QUADRANTS: [Quadrant; 9] = [
         Quadrant::TopLeft,
         Quadrant::Top,

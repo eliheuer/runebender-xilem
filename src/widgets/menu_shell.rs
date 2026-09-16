@@ -30,7 +30,7 @@ use crate::actions::{ACTIONS, MENUS};
 use crate::view::theme::Palette;
 use crate::widgets::shortcuts::AppAction;
 use crate::widgets::text_label::{self, Anchor};
-use runebender_core::outline::glyph_paths::round_units;
+use runebender::outline::glyph_paths::round_units;
 
 #[path = "menu_header.rs"]
 mod header;

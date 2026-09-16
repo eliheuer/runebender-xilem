@@ -1,8 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Runebender, a font editor and headless font-tool executable built with
-//! Xilem and the workspace's `runebender-core` library.
+//! Runebender, a font editor and headless font-tool executable built with Xilem.
 
 // The browser shares editor code whose desktop-only actions are intentionally dormant.
 #![cfg_attr(target_arch = "wasm32", allow(dead_code))]
@@ -57,7 +56,7 @@ use edit::*;
 use launch::*;
 use model::FontModel;
 use platform::*;
-use runebender_core::analysis::category::GlyphCategory;
+use runebender::analysis::category::GlyphCategory;
 use view::canvas::editor::editor;
 use view::canvas::grid::{Cell, CellMetrics, GridEvent, cells_of, grid};
 use view::chrome::*;

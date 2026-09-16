@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use runebender_core::document::proposal::{self, ProposalSummary};
+use runebender::document::proposal::{self, ProposalSummary};
 
 use crate::{Mode, Session, Workspace, cells_of};
 
@@ -167,7 +167,7 @@ pub(crate) fn foreground_revisions(
         .map(|glyph| {
             Ok((
                 glyph.name().to_string(),
-                runebender_core::document::edit_batch::glyph_revision(glyph)?,
+                runebender::document::edit_batch::glyph_revision(glyph)?,
             ))
         })
         .collect()
@@ -296,13 +296,13 @@ impl Workspace {
     /// Where models are looked for: `$RUNEBENDER_MODELS`, else
     /// `~/.runebender/models`, plus the roots core reads.
     pub(crate) fn models_dir() -> Option<PathBuf> {
-        runebender_core::document::nodes_run::default_models_dir()
+        runebender::document::nodes_run::default_models_dir()
     }
 
     /// Look at the disk again: the model directories and the tasks.
     pub(crate) fn rescan_models(&mut self) {
         self.ai.installed =
-            runebender_core::document::nodes_run::installed(Self::models_dir().as_deref(), false);
+            runebender::document::nodes_run::installed(Self::models_dir().as_deref(), false);
         self.ai.tasks = self
             .nodes
             .tasks_json

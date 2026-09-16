@@ -7,6 +7,9 @@ releases begin.
 
 ## [Unreleased]
 
+- Consolidate the font engine and Xilem application into one Cargo package while
+  preserving the executable's editor-by-default and headless-subcommand behavior.
+
 - Give every in-window menu title one measured gap, use the header palette for
   dropdowns, and let the browser editor fill the space formerly used by its
   preview footer.

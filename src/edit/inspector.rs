@@ -4,7 +4,7 @@
 //! The info panel's fields, and what typing in them does to the font.
 
 use crate::*;
-use runebender_core::outline::glyph_paths::round_units;
+use runebender::outline::glyph_paths::round_units;
 
 fn mark_cloud(font: &FontModel, base: &norad::Glyph) -> Vec<Arc<kurbo::BezPath>> {
     let base_anchors: Vec<_> = base
@@ -327,10 +327,8 @@ impl Workspace {
             return;
         };
         let mut parsed = glyph.clone();
-        if !runebender_core::document::font_ops::set_glyph_unicode(
-            &mut parsed,
-            self.unicode_buf.trim(),
-        ) {
+        if !runebender::document::font_ops::set_glyph_unicode(&mut parsed, self.unicode_buf.trim())
+        {
             return;
         }
         let codepoints: Vec<char> = parsed.codepoints.iter().collect();
@@ -642,7 +640,7 @@ impl Workspace {
             for &index in &indices {
                 self.font.master_mut().record_undo(index);
                 self.font.master_mut().edit_glyph(index, |glyph| {
-                    runebender_core::ui::theme::set_glyph_mark(glyph, label.as_deref());
+                    runebender::ui::theme::set_glyph_mark(glyph, label.as_deref());
                 });
                 self.font.refresh_entry(index);
             }
@@ -866,7 +864,7 @@ impl Workspace {
     pub(crate) fn generate_features(&mut self) {
         let mut draft = self.font.font().clone();
         draft.features = self.features_buf.clone();
-        let fea = runebender_core::text::features::with_generated(&draft);
+        let fea = runebender::text::features::with_generated(&draft);
         if fea == self.features_buf {
             self.features_status = Some("Nothing to generate from anchors".into());
             return;
@@ -876,7 +874,7 @@ impl Workspace {
     }
 
     fn feature_compile_verdict(&self, features: &str) -> Result<(), String> {
-        use runebender_core::text::shape::{ShapingFont, ShapingGlyph, ShapingSource};
+        use runebender::text::shape::{ShapingFont, ShapingGlyph, ShapingSource};
 
         let master = self.font.master();
         let glyphs = std::iter::once(ShapingGlyph {
@@ -1066,7 +1064,7 @@ mod size_tests {
         let mut session = (*app.session).clone();
         session.select_all();
         app.session = Arc::new(session);
-        app.coord_quadrant = runebender_core::outline::path::Quadrant::TopRight;
+        app.coord_quadrant = runebender::outline::path::Quadrant::TopRight;
         let reference = app.coord_point().expect("selected points");
         app.set_coord_size(true, "250".into());
         assert_eq!(app.session.selection_bounds().unwrap().width(), 250.0);

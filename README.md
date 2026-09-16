@@ -4,10 +4,8 @@
 [![Windows basics](https://github.com/eliheuer/runebender-xilem/actions/workflows/windows.yml/badge.svg)](https://github.com/eliheuer/runebender-xilem/actions/workflows/windows.yml)
 
 Runebender is an experimental font editor built in Rust with
-[Xilem](https://github.com/linebender/xilem). This repository is the complete
-Cargo workspace: the graphical editor and headless commands are one
-`runebender` executable, backed by the internal `crates/runebender-core`
-library.
+[Xilem](https://github.com/linebender/xilem). The graphical editor, font engine,
+and headless commands live in one Cargo package and one `runebender` executable.
 
 Runebender is suitable for testing and development, not production font work
 without backups. Platform and interaction limits are tracked in
@@ -56,9 +54,8 @@ them separate for review and explicit installation.
 
 ## Workspace
 
-- `src/`: application, command line, platform adapters, views, and widgets.
-- `crates/runebender-core/`: font data, editing, formats, shaping, and analysis;
-  it has no GUI dependency and no separate executable.
+- `src/`: font data and operations, command line, platform adapters, Xilem views,
+  and widgets.
 - `web/`: the same Xilem/Masonry widget tree compiled to a self-contained WASM
   demo. It uses an in-memory bundled font and does not save user files.
 - `docs/`: current limitations plus dated reproducible evidence from earlier

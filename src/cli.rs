@@ -3,8 +3,8 @@
 
 //! Font operations from a shell.
 //!
-//! A thin shell over `runebender_core`, which is where the work
-//! lives. Conventions match `font-ml`, so the two are driven the same
+//! A thin shell over Runebender's font modules, where the work lives.
+//! Conventions match `font-ml`, so the two are driven the same
 //! way: `--json` on every command, and exit codes that separate a
 //! usage mistake from a real failure.
 
@@ -12,14 +12,14 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use norad::Font;
-use runebender_core::document::agent;
-use runebender_core::document::compose;
-use runebender_core::document::font_ops;
-use runebender_core::document::nodes;
-use runebender_core::document::nodes_run;
-use runebender_core::document::project::Master;
-use runebender_core::document::proposal;
-use runebender_core::outline::embolden;
+use runebender::document::agent;
+use runebender::document::compose;
+use runebender::document::font_ops;
+use runebender::document::nodes;
+use runebender::document::nodes_run;
+use runebender::document::project::Master;
+use runebender::document::proposal;
+use runebender::outline::embolden;
 use serde_json::json;
 
 /// Exit codes, matching font-ml so a caller can branch on them.
@@ -419,7 +419,7 @@ pub(crate) fn run() -> Startup {
         Command::Agent { action } => match action {
             AgentAction::Tools => {
                 let tools = if std::env::var_os("RUNEBENDER_LIVE_SESSION").is_some() {
-                    runebender_core::document::live::tools()
+                    runebender::document::live::tools()
                 } else {
                     agent::tools()
                 };
@@ -466,7 +466,7 @@ pub(crate) fn run() -> Startup {
             #[cfg(unix)]
             println!(
                 "{}",
-                json!({"ok": true, "sessions": runebender_core::document::live_socket::sessions()})
+                json!({"ok": true, "sessions": runebender::document::live_socket::sessions()})
             );
             #[cfg(not(unix))]
             println!(
@@ -563,7 +563,7 @@ fn open_master(path: &Path, json: bool) -> Result<Master, i32> {
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("babelfont"))
     {
-        let project = runebender_core::document::project::Project::load(path)
+        let project = runebender::document::project::Project::load(path)
             .map_err(|e| fail(json, exit::USAGE, &e))?;
         return project
             .masters
@@ -699,7 +699,7 @@ fn proof(
     if names.is_empty() {
         return fail(json, exit::USAGE, "no glyph to draw");
     }
-    let sheet = match runebender_core::formats::svg::proof_sheet(&master, layer, &names, columns) {
+    let sheet = match runebender::formats::svg::proof_sheet(&master, layer, &names, columns) {
         Ok(s) => s,
         Err(e) => return fail(json, exit::USAGE, &e),
     };
@@ -837,7 +837,7 @@ fn proposal_discard(source: &Path, task: &str, json: bool) -> i32 {
 /// `features`: the mark features the anchors imply, printed or
 /// written beside `features.fea` with an include line.
 fn features_cmd(source: &Path, write: bool, json: bool) -> i32 {
-    use runebender_core::text::features;
+    use runebender::text::features;
     let font = match open(source, json) {
         Ok(f) => f,
         Err(code) => return code,
@@ -1162,7 +1162,7 @@ fn nodes_run(
 /// The UFO a font path stands for: the UFO itself, or the first
 /// master of a designspace.
 fn font_master(font: &Path, master: Option<usize>) -> Result<PathBuf, String> {
-    let project = runebender_core::document::project::Project::load(font)?;
+    let project = runebender::document::project::Project::load(font)?;
     let index = match master {
         Some(index) => index,
         None if project.masters.len() == 1 => 0,
@@ -1176,7 +1176,7 @@ fn font_master(font: &Path, master: Option<usize>) -> Result<PathBuf, String> {
 }
 
 fn project_info(font: &Path) -> serde_json::Value {
-    match runebender_core::document::project::Project::load(font) {
+    match runebender::document::project::Project::load(font) {
         Ok(p) => json!({"ok": true, "project": font, "masters": p.masters.iter().enumerate()
             .map(|(index, m)| json!({"index": index, "name": p.master_names[index].as_ref(), "source": m.source_path}))
             .collect::<Vec<_>>()}),
@@ -1211,7 +1211,7 @@ fn read_glyph(source: &Path, name: &str, layer: Option<&str>) -> serde_json::Val
         Ok(f) => f,
         Err(e) => return json!({ "ok": false, "error": e.to_string() }),
     };
-    runebender_core::analysis::glyph::read_glyph(&font, name, layer)
+    runebender::analysis::glyph::read_glyph(&font, name, layer)
 }
 
 /// Searches the documentation folders for passages that match.
@@ -1379,7 +1379,7 @@ fn dispatch_call(
     let inherited = std::env::var_os("RUNEBENDER_LIVE_SESSION").map(PathBuf::from);
     if let Some(session) = session.or(inherited.as_deref()) {
         #[cfg(unix)]
-        return runebender_core::document::live_socket::call(
+        return runebender::document::live_socket::call(
             session,
             &agent::ToolCall {
                 name: name.into(),
@@ -1495,10 +1495,9 @@ fn agent_call_source(
                 .as_object_mut()
                 .expect("object validated")
                 .remove("master");
-            match serde_json::from_value::<runebender_core::document::edit_batch::EditBatch>(batch)
-            {
+            match serde_json::from_value::<runebender::document::edit_batch::EditBatch>(batch) {
                 Ok(batch) => {
-                    match runebender_core::document::edit_batch::save_proposal(source, &batch) {
+                    match runebender::document::edit_batch::save_proposal(source, &batch) {
                         Ok(summary) => json!({"ok": true, "proposal": summary}),
                         Err(e) => json!({"ok": false, "error": e}),
                     }
@@ -1691,7 +1690,7 @@ fn mcp_tools(live: bool) -> Vec<agent::Tool> {
     if !live {
         return agent::tools();
     }
-    let mut tools = runebender_core::document::live::tools();
+    let mut tools = runebender::document::live::tools();
     if let Some(proof) = tools.iter_mut().find(|tool| tool.name == "proof") {
         proof.description = "Return a PNG proof image and metrics from the live unsaved master. Supply 1 to 256 explicit glyph names; use layer to view a proposal. Use small groups for legible images. Images are required for visual judgment; report if your client does not deliver them.".into();
     }
@@ -1714,7 +1713,7 @@ fn live_client_call(
     }
     #[cfg(unix)]
     {
-        use runebender_core::document::live_socket;
+        use runebender::document::live_socket;
         if name == "export_proof" {
             let run = (|| -> Result<serde_json::Value, String> {
                 use std::io::Write as _;
@@ -1747,7 +1746,7 @@ fn live_client_call(
                     return Ok(value);
                 }
                 let scene = value.get("scene").ok_or("proof has no scene")?;
-                let bytes = runebender_core::formats::designbot::render(scene, pdf)?;
+                let bytes = runebender::formats::designbot::render(scene, pdf)?;
                 let mut file = std::fs::OpenOptions::new()
                     .write(true)
                     .create_new(true)
@@ -2181,7 +2180,7 @@ fn proof_content(mut value: serde_json::Value) -> Vec<serde_json::Value> {
     use base64::Engine as _;
     let mut content = Vec::new();
     if let Some(scene) = value.get("scene") {
-        let rendered = runebender_core::formats::designbot::render(scene, false);
+        let rendered = runebender::formats::designbot::render(scene, false);
         match rendered {
             Ok(png) => {
                 content.push(serde_json::json!({"type":"image", "mimeType":"image/png",
@@ -2206,7 +2205,7 @@ fn collapse_metaballs(
     accuracy: f64,
     json: bool,
 ) -> i32 {
-    use runebender_core::outline::metaballs::{OutlineOptions, collapse_font};
+    use runebender::outline::metaballs::{OutlineOptions, collapse_font};
     if out.exists() {
         return fail(
             json,

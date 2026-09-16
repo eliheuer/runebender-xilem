@@ -6,7 +6,7 @@ UFO anchors, and previewing or saving them does not add ordinary contour points.
 ## Xilem editor
 
 This implementation belongs to this workspace's Xilem application and internal
-`crates/runebender-core` library. Choose the paired-circle metaball icon beside
+Runebender's outline modules. Choose the paired-circle metaball icon beside
 Rectangle and Ellipse. Click to place a center, drag to move it, and Shift-click
 to select several. Cmd/Ctrl+A selects all centers in the glyph. Arrow keys nudge
 selected centers; Shift makes a ten-unit step. Delete removes selected centers.

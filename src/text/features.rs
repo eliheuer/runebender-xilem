@@ -214,7 +214,7 @@ pub fn generate(font: &Font) -> Generated {
         };
     }
     let mut fea = String::new();
-    fea.push_str("# Written by `runebender-core features` from the font's anchors.\n");
+    fea.push_str("# Written by `runebender features` from the font's anchors.\n");
     fea.push_str("# Edit the anchors, not this file; it is written again on save.\n\n");
     fea.push_str(&mark_lines);
     if !filter_sets.is_empty() {

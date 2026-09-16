@@ -18,7 +18,7 @@ use masonry::imaging::Painter;
 use masonry::kurbo;
 use masonry::kurbo::{Affine, Axis, Circle, Line, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-use runebender_core::outline::glyph_ops::PointId;
+use runebender::outline::glyph_ops::PointId;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
@@ -1489,7 +1489,7 @@ impl Widget for EditorWidget {
 
         // Continuity rings match GPUI and preserve the underlying point shape.
         if self.view.continuity && self.interp.is_none() {
-            use runebender_core::analysis::curve::GLevel;
+            use runebender::analysis::curve::GLevel;
             const CONTINUITY_RADIUS: f64 = 4.5 * 1.9;
             let color = pal.mark("green").unwrap_or(pal.text);
             let outline = pal.point_outline.unwrap_or(pal.text);
@@ -1519,7 +1519,7 @@ impl Widget for EditorWidget {
         if self.view.measures() && self.interp.is_none() {
             let zoom = self.session.viewport.zoom;
             for m in self.session.measurements() {
-                use runebender_core::analysis::measure::MeasureKind;
+                use runebender::analysis::measure::MeasureKind;
                 let wanted = match m.kind {
                     MeasureKind::Handle => self.view.handles,
                     MeasureKind::Segment => self.view.segments,
@@ -1544,7 +1544,7 @@ impl Widget for EditorWidget {
             }
             if self.view.sizes {
                 use kurbo::Shape as _;
-                for hit in runebender_core::outline::segment_ops::segments(&self.session.glyph) {
+                for hit in runebender::outline::segment_ops::segments(&self.session.glyph) {
                     let bounds = hit.seg.bounding_box();
                     if bounds.width() < 1.0 && bounds.height() < 1.0 {
                         continue;
@@ -1606,8 +1606,7 @@ impl Widget for EditorWidget {
         }
 
         if self.tool == Tool::Metaball
-            && let Ok(source) =
-                runebender_core::formats::metaballs::read_metaballs(&self.session.glyph)
+            && let Ok(source) = runebender::formats::metaballs::read_metaballs(&self.session.glyph)
         {
             for group in source.groups {
                 for ball in group.balls {
@@ -2540,7 +2539,7 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
 /// The analysis overlays: what the editor draws on top of the outline
 /// besides the points.
 ///
-/// They read from `runebender-core` so analysis remains consistent across
+/// They read from Runebender's analysis modules so results remain consistent across
 /// interfaces.
 #[derive(Clone, Copy, Default, PartialEq)]
 pub(crate) struct ViewOptions {
@@ -2586,7 +2585,7 @@ impl ViewOptions {
     /// A length, spelled the way the options ask for.
     fn label(self, value: i64) -> String {
         if self.popcount {
-            runebender_core::analysis::measure::label(value)
+            runebender::analysis::measure::label(value)
         } else {
             value.to_string()
         }
@@ -3405,8 +3404,7 @@ mod tests {
         harness.mouse_button_release(Some(PointerButton::Primary));
         harness.edit_root_widget(|root| {
             let session = &root.widget.session;
-            let source =
-                runebender_core::formats::metaballs::read_metaballs(&session.glyph).unwrap();
+            let source = runebender::formats::metaballs::read_metaballs(&session.glyph).unwrap();
             assert_eq!(source.groups.len(), 1);
             assert_eq!(source.groups[0].balls.len(), 1);
             assert_eq!(

@@ -57,11 +57,9 @@ fn demo_state() -> AppState {
             .insert_glyph(norad::Glyph::parse_raw(glif.as_str().unwrap().as_bytes()).unwrap());
     }
     let mut project =
-        runebender_core::document::project::Project::new_font("VirtuaGrotesk-Regular.ufo".into());
-    project.masters[0] = runebender_core::document::project::Master::from_font(
-        font,
-        "VirtuaGrotesk-Regular.ufo".into(),
-    );
+        runebender::document::project::Project::new_font("VirtuaGrotesk-Regular.ufo".into());
+    project.masters[0] =
+        runebender::document::project::Master::from_font(font, "VirtuaGrotesk-Regular.ufo".into());
     let mut workspace = Workspace::from_model(FontModel::from_project(project)).unwrap();
     // Open a real, editable Core graph in memory so Nodes is useful on first visit.
     workspace.new_nodes_file();

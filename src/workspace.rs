@@ -38,7 +38,7 @@ pub(crate) enum Tool {
     Knife,
     Measure,
     /// Type glyphs into a line and edit them in context: the web
-    /// editor's text tool, on runebender-core's text engine.
+    /// editor's text tool, on Runebender's text engine.
     Text,
 }
 
@@ -90,7 +90,7 @@ pub(crate) struct Workspace {
     pub(crate) document_id: u64,
     /// The live document's private agent endpoint, serviced on the UI thread.
     #[cfg(unix)]
-    pub(crate) live: Option<runebender_core::document::live_socket::Server>,
+    pub(crate) live: Option<runebender::document::live_socket::Server>,
 
     pub(crate) font: FontModel,
     pub(crate) palette: Arc<Palette>,
@@ -116,7 +116,7 @@ pub(crate) struct Workspace {
     /// Writing direction for the text tool, or `None` for automatic.
     /// The chips that set it are in the title bar, which is why this is
     /// application state and not the buffer's.
-    pub(crate) text_dir: Option<runebender_core::text::buffer::TextDirection>,
+    pub(crate) text_dir: Option<runebender::text::buffer::TextDirection>,
     /// OpenType features disabled for text-tool and preview shaping.
     pub(crate) text_features_disabled: std::collections::HashSet<String>,
     /// Optional shaping script and language selected in the preview controls.
@@ -196,7 +196,7 @@ pub(crate) struct Workspace {
     /// Active OKLCH theme id (dark | gray | light).
     pub(crate) theme_id: &'static str,
     /// Reference corner for the Coordinates fields (the 9-point picker).
-    pub(crate) coord_quadrant: runebender_core::outline::path::Quadrant,
+    pub(crate) coord_quadrant: runebender::outline::path::Quadrant,
     pub(crate) coord_x_buf: String,
     pub(crate) coord_y_buf: String,
     pub(crate) coord_w_buf: String,
@@ -394,7 +394,7 @@ impl AppState {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |duration| duration.as_nanos()),
             ));
-            let font = runebender_core::document::new_font::new_font("Untitled", "Regular", 400);
+            let font = runebender::document::new_font::new_font("Untitled", "Regular", 400);
             match font.save(&path) {
                 Ok(()) => {
                     self.open_path(&path);
@@ -502,7 +502,7 @@ pub(crate) struct TextContext {
     pub(crate) editor_text: String,
     pub(crate) has_text_session: bool,
     pub(crate) preview_text: String,
-    pub(crate) direction: Option<runebender_core::text::buffer::TextDirection>,
+    pub(crate) direction: Option<runebender::text::buffer::TextDirection>,
     pub(crate) features_disabled: std::collections::HashSet<String>,
     pub(crate) script: Option<String>,
     pub(crate) language: Option<String>,

@@ -135,11 +135,11 @@ fn nodes_choices(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> 
         .map(String::from);
     let options: Vec<String> = match node.type_name.as_str() {
         "core.master" => app.font.master_names().clone(),
-        "core.model" => runebender_core::document::nodes_run::installed(None, false)
+        "core.model" => runebender::document::nodes_run::installed(None, false)
             .into_iter()
             .map(|(n, _)| n)
             .collect(),
-        "core.adapter" => runebender_core::document::nodes_run::installed(None, true)
+        "core.adapter" => runebender::document::nodes_run::installed(None, true)
             .into_iter()
             .map(|(n, _)| n)
             .collect(),

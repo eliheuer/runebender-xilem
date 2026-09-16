@@ -5,7 +5,7 @@
 //! font, and a run through core.
 //!
 //! Core owns the file, the registry, the layout and the runner
-//! (`runebender_core::document::nodes`, `nodes_run` and `ui::nodes`).
+//! (`runebender::document::nodes`, `nodes_run` and `ui::nodes`).
 //! This module finds the files, opens one, validates it, runs it on a thread, and
 //! hand the widget what it draws. The widget owns the pan, the
 //! selection and the drag, and sends the graph back when it changes.
@@ -14,9 +14,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use runebender_core::document::nodes::{NodeGraph, Problem, Registry};
-use runebender_core::document::nodes_run::{self, Event, RunReport, Status};
-use runebender_core::document::proposal;
+use runebender::document::nodes::{NodeGraph, Problem, Registry};
+use runebender::document::nodes_run::{self, Event, RunReport, Status};
+use runebender::document::proposal;
 
 use crate::edit::local_ai::{foreground_is_current, foreground_revisions};
 use crate::{Mode, Workspace};

@@ -4,7 +4,7 @@
 //! Files: opening a project, reloading it when the sources change, saving, and a new font.
 
 use crate::*;
-use runebender_core::outline::glyph_paths::round_units;
+use runebender::outline::glyph_paths::round_units;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -295,7 +295,7 @@ impl Workspace {
             rail_cell_size: design::RAIL_CELL_SIZE,
             axis_values,
             theme_id,
-            coord_quadrant: runebender_core::outline::path::Quadrant::Center,
+            coord_quadrant: runebender::outline::path::Quadrant::Center,
             coord_x_buf: String::new(),
             coord_y_buf: String::new(),
             coord_w_buf: String::new(),
@@ -336,7 +336,7 @@ impl Workspace {
             features_edited: false,
             features_status: None,
             #[cfg(unix)]
-            live: runebender_core::document::live_socket::Server::start()
+            live: runebender::document::live_socket::Server::start()
                 .map_err(|e| eprintln!("Live tools unavailable: {e}"))
                 .ok(),
         };
@@ -555,7 +555,7 @@ impl Workspace {
             self.note = "Save or discard changes before creating a new font".into();
             return;
         }
-        let font = runebender_core::document::new_font::new_font("Untitled", "Regular", 400);
+        let font = runebender::document::new_font::new_font("Untitled", "Regular", 400);
         let dir = self
             .font
             .source()
@@ -591,7 +591,7 @@ mod tests {
     #[test]
     fn imported_babelfont_starts_unsaved() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("crates/runebender-core/tests/fixtures/babelfont/Basic.babelfont");
+            .join("tests/fixtures/babelfont/Basic.babelfont");
         let workspace = Workspace::open(&path).expect("the Babelfont fixture opens");
         assert!(workspace.modified, "an imported copy needs to be saved");
         assert!(workspace.font.project.masters[0].dirty);
@@ -784,7 +784,7 @@ mod tests {
         assert_eq!(workspace.font.master_count(), 2);
         assert_eq!(workspace.font.master_name(0), "Regular");
         assert_eq!(workspace.font.master_name(1), "Bold");
-        let arabic = runebender_core::ui::sidebar::language_groups()
+        let arabic = runebender::ui::sidebar::language_groups()
             .iter()
             .position(|group| group.label == "Arabic")
             .expect("the Arabic script filter exists");
@@ -946,7 +946,7 @@ mod tests {
         workspace.set_editor_text("B beside beh \u{0628}".into());
         workspace.preview_text = "B preview \u{0628}".into();
         workspace.preview_visible = false;
-        workspace.text_dir = Some(runebender_core::text::buffer::TextDirection::RightToLeft);
+        workspace.text_dir = Some(runebender::text::buffer::TextDirection::RightToLeft);
         workspace.text_features_disabled.insert("rlig".into());
         workspace.text_script = Some("arab".into());
         workspace.text_language = Some("ur".into());
@@ -978,7 +978,7 @@ mod tests {
         assert!(!workspace.preview_visible);
         assert_eq!(
             workspace.text_dir,
-            Some(runebender_core::text::buffer::TextDirection::RightToLeft)
+            Some(runebender::text::buffer::TextDirection::RightToLeft)
         );
         assert!(workspace.text_features_disabled.contains("rlig"));
         assert_eq!(workspace.text_script.as_deref(), Some("arab"));
@@ -1718,7 +1718,7 @@ mod tests {
         assert_eq!(workspace.session.glyph.components.len(), 1);
         workspace.undo_active_edit(true);
         assert!(
-            runebender_core::document::composites::component_alignment_disabled(
+            runebender::document::composites::component_alignment_disabled(
                 &workspace.session.glyph.components[0]
             )
         );
