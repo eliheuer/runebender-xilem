@@ -6,19 +6,20 @@
 // The browser shares editor code whose desktop-only actions are intentionally dormant.
 #![cfg_attr(target_arch = "wasm32", allow(dead_code))]
 
-mod actions;
+mod app;
+
+// Keep the application vocabulary available at the crate root. This lets views
+// say `crate::workspace` and `crate::view` while the files themselves live under
+// the single `app/` boundary described in ARCHITECTURE.md.
 #[cfg(target_arch = "wasm32")]
-mod browser;
+pub(crate) use app::browser;
 #[cfg(not(target_arch = "wasm32"))]
-mod cli;
-mod edit;
+pub(crate) use app::cli;
 #[cfg(not(target_arch = "wasm32"))]
-mod launch;
-mod model;
-mod platform;
-mod view;
-mod widgets;
-mod workspace;
+pub(crate) use app::launch;
+pub(crate) use app::{
+    actions, editor as edit, font_model as model, platform, view, widgets, workspace,
+};
 
 use std::path::Path as FsPath;
 use std::sync::Arc;

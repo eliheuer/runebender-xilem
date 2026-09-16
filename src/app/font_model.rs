@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The font model: core's `Project` (one `Master` per source, each
+//! The application-facing font model: the engine's `Project` (one `Master` per source, each
 //! with its own undo pile), plus the denormalized per-glyph cache the
 //! grid paints from. The shell reads the active master through
 //! [`FontModel::font`] and writes through [`FontModel::font_mut`]; the
@@ -17,7 +17,7 @@ use runebender::document::proposal;
 use runebender::outline::glyph_paths;
 
 /// One designspace axis, in user coordinates with its map into design
-/// coordinates. Core's `AxisInfo` keeps only the design-space extents;
+/// coordinates. The engine's `AxisInfo` keeps only the design-space extents;
 /// the map is read off the designspace document here.
 #[derive(Clone, Debug)]
 pub(crate) struct Axis {
@@ -39,7 +39,7 @@ impl Axis {
         )
     }
 
-    /// Convert a user-coordinate value to the normalized coordinate Core stores.
+    /// Convert a user-coordinate value to the normalized coordinate the engine stores.
     pub(crate) fn user_to_normalized(&self, value: f64) -> f64 {
         let (min, default, max) = self.design_extents();
         runebender::document::var_model::normalize_value(
@@ -50,7 +50,7 @@ impl Axis {
         )
     }
 
-    /// Convert Core's normalized coordinate back to the user's axis scale.
+    /// Convert the engine's normalized coordinate back to the user's axis scale.
     pub(crate) fn normalized_to_user(&self, value: f64) -> f64 {
         let (min, default, max) = self.design_extents();
         let design = runebender::document::var_model::denormalize_value(value, min, default, max);
@@ -119,7 +119,7 @@ pub(crate) struct GlyphEntry {
     pub name: String,
     pub codepoint: Option<char>,
     pub advance: f64,
-    /// Full outline (contours plus resolved components), shared with core's entry.
+    /// Full outline (contours plus resolved components), shared with the engine's entry.
     pub outline: Arc<BezPath>,
     /// Ink box of the outline (zero when empty).
     pub ink: Rect,
@@ -149,9 +149,9 @@ impl GlyphEntry {
 }
 
 pub(crate) struct FontModel {
-    /// Core's project: the masters, the designspace, the undo piles.
+    /// The engine project: the masters, the designspace, and the undo piles.
     pub project: Project,
-    /// The active master's glyphs, in core's order, so an index here
+    /// The active master's glyphs, in engine order, so an index here
     /// is an index into the master.
     pub glyphs: Vec<GlyphEntry>,
     pub axes: Vec<Axis>,
@@ -475,7 +475,7 @@ impl FontModel {
     }
 
     /// The given master's axis location in user coordinates, one per axis,
-    /// mapping Core's stored normalized location back through the axis map.
+    /// mapping the engine's stored normalized location back through the axis map.
     pub(crate) fn master_axis_values(&self, index: usize) -> Vec<f64> {
         let loc = self.project.master_locations.get(index);
         self.axes
@@ -499,7 +499,7 @@ impl FontModel {
         if self.project.masters.len() < 2 || self.axes.is_empty() {
             return None;
         }
-        // Core already stores master locations normalized. Normalize the
+        // The engine already stores master locations normalized. Normalize the
         // user-coordinate slider location once, preserving any axis map.
         let target: std::collections::HashMap<String, f64> = self
             .axes
@@ -775,7 +775,7 @@ impl FontModel {
             .count()
     }
 
-    /// How many glyphs the masters disagree about, by core's check.
+    /// How many glyphs the masters disagree about, by the engine's check.
     pub(crate) fn incompatible_count(&self) -> usize {
         if self.project.masters.len() < 2 {
             return 0;

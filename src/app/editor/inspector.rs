@@ -232,7 +232,7 @@ impl Workspace {
         if !scale.is_finite() || (scale - 1.0).abs() < 1e-9 {
             return;
         }
-        // Core's transform is in a frame centered on the selection bounds.
+        // The engine transform is in a frame centered on the selection bounds.
         let reference = self.coord_quadrant.point_in_dspace_rect(bounds) - bounds.center();
         let (sx, sy) = if width { (scale, 1.0) } else { (1.0, scale) };
         let transform = kurbo::Affine::translate(-reference)

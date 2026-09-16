@@ -5,6 +5,9 @@ repository; sibling repositories are not workspace members.
 
 ## Architecture
 
+Read `ARCHITECTURE.md` before moving code or adding a subsystem. It is the
+canonical source map and includes a change-routing guide for humans and agents.
+
 The package produces the `runebender` executable and its internal library target.
 A font path starts the Xilem editor; a subcommand runs headlessly before window
 setup. Modules under `src/analysis`, `src/document`, `src/formats`, `src/outline`,
@@ -18,14 +21,13 @@ interpolation, selection, and undo in those modules when they can be shared.
 |---|---|
 | `src/lib.rs` | font-engine module root |
 | `src/main.rs` | executable composition root |
-| `src/cli.rs` | arguments and headless adapters |
-| `src/launch.rs` | native event loop and window setup |
-| `src/workspace.rs` | application and open-document state |
-| `src/actions.rs` | one action table for menus and shortcuts |
-| `src/edit/` | application editing commands and session adapters |
-| `src/platform/` | files, watching, live endpoints, and screenshots |
-| `src/view/` | application views and canvas widgets |
-| `src/widgets/` | reusable widgets missing from the framework |
+| `src/app/` | all Xilem application and runtime code |
+| `src/app/cli.rs` | arguments and headless adapters |
+| `src/app/editor/` | editing commands, sessions, and inspectors |
+| `src/app/editor/tools/` | named editor tools and tool-like workflows |
+| `src/app/platform/` | files, watching, live endpoints, and screenshots |
+| `src/app/view/` | application views and canvas widgets |
+| `src/app/widgets/` | reusable widgets missing from the framework |
 | `src/{analysis,document,formats,outline,text,ui}/` | font engine by concern |
 | `web/` | browser host for the shared widget tree |
 

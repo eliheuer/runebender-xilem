@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! Nodes in the app: the open `.nodes.json`, the files beside the
-//! font, and a run through core.
+//! font, and a run through the font engine.
 //!
-//! Core owns the file, the registry, the layout and the runner
+//! The font engine owns the file, registry, layout, and runner
 //! (`runebender::document::nodes`, `nodes_run` and `ui::nodes`).
 //! This module finds the files, opens one, validates it, runs it on a thread, and
 //! hand the widget what it draws. The widget owns the pan, the
@@ -28,7 +28,7 @@ pub(crate) enum RowState {
     Waiting,
     /// Running; the text is the tool's progress, when it has any.
     Running(Option<String>),
-    /// Ended as core said, with one line about it.
+    /// Ended with the engine's status and one line about it.
     Done(Status, Option<String>),
 }
 
@@ -195,7 +195,7 @@ impl Workspace {
         self.scan_nodes_files();
     }
 
-    /// The registry: core's types plus what font-ml declared.
+    /// The registry: built-in engine types plus what font-ml declared.
     pub(crate) fn node_registry(&self) -> Registry {
         let mut registry = Registry::core();
         // Live canvas actions are currently implemented by the GPUI shell.
@@ -397,7 +397,7 @@ impl Workspace {
         if self.modified && !self.save() {
             return;
         }
-        // Give Core the project source so `core.master` can resolve a
+        // Give the engine the project source so `core.master` can resolve a
         // sibling designspace master. The job identity remains the
         // active UFO path below.
         let font = self.font.document_source().to_path_buf();

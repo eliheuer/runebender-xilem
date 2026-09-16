@@ -37,7 +37,7 @@ impl RawProxy for BrowserProxy {
 
 fn demo_state() -> AppState {
     let data: serde_json::Value =
-        serde_json::from_str(include_str!("../web/demo-font.json")).unwrap();
+        serde_json::from_str(include_str!("../../web/demo-font.json")).unwrap();
     let mut font = norad::Font::new();
     font.font_info.family_name = Some("Virtua Grotesk".into());
     font.font_info.style_name = Some("Regular".into());
@@ -61,9 +61,9 @@ fn demo_state() -> AppState {
     project.masters[0] =
         runebender::document::project::Master::from_font(font, "VirtuaGrotesk-Regular.ufo".into());
     let mut workspace = Workspace::from_model(FontModel::from_project(project)).unwrap();
-    // Open a real, editable Core graph in memory so Nodes is useful on first visit.
+    // Open a real, editable graph in memory so Nodes is useful on first visit.
     workspace.new_nodes_file();
-    let graph = serde_json::from_str(include_str!("../web/demo.nodes.json")).unwrap();
+    let graph = serde_json::from_str(include_str!("../../web/demo.nodes.json")).unwrap();
     workspace.nodes_changed(graph);
     workspace.nodes.graph.as_mut().unwrap().path = "example.nodes.json".into();
     workspace.mode = Mode::Overview;

@@ -4,10 +4,10 @@
 //! The nodes canvas: the open `.nodes.json` as boxes and wires, drawn
 //! by Vello.
 //!
-//! The layout is core's (`runebender::ui::nodes`): where every
+//! The layout comes from the font engine (`runebender::ui::nodes`): where every
 //! box, port and wire sits, in canvas units, and what is under a
 //! point. This widget adds the paint calls and the mouse, the same
-//! way the glyph editor does: core's `ViewPort` for pan and zoom, one
+//! way the glyph editor does: the engine's `ViewPort` for pan and zoom, one
 //! drag enum, and a `Painter`. Vello rasterizes the paths with edge
 //! coverage so rings, wires, and keylines are anti-aliased.
 

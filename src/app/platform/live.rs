@@ -1,7 +1,7 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Service core's live document mailbox through Xilem's application messages.
+//! Service the font engine's live document mailbox through Xilem application messages.
 
 use crate::Workspace;
 

@@ -261,7 +261,7 @@ enum NodesAction {
         #[arg(long)]
         tool: Option<PathBuf>,
     },
-    /// Every node type: core's, plus what font-ml declares.
+    /// Every node type: the engine's, plus what font-ml declares.
     Types {
         /// The font-ml binary.
         #[arg(long)]
@@ -943,7 +943,7 @@ fn compose_cmd(source: &Path, glyphs: Option<&[String]>, write: bool, json: bool
     exit::OK
 }
 
-/// Every node type: core's, then font-ml's tasks when the tool
+/// Every node type: the engine's, then font-ml's tasks when the tool
 /// answers. `tool` is Some(name) when it answered, so a caller can
 /// tell "not installed" from "declares nothing".
 fn node_registry(tool: Option<&Path>) -> (nodes::Registry, Option<String>) {

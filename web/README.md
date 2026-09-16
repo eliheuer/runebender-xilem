@@ -1,7 +1,7 @@
 # Runebender in the browser
 
 This is the desktop application's Xilem/Masonry widget tree, compiled to WASM.
-`src/browser.rs` embeds that tree in a browser host, sends real input through
+`src/app/browser.rs` embeds that tree in a browser host, sends real input through
 Masonry, and paints its retained scene into a canvas using Vello CPU. There is
 no screenshot player and no separate JavaScript implementation of the editor.
 

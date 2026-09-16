@@ -54,7 +54,8 @@ them separate for review and explicit installation.
 
 ## Workspace
 
-- `src/`: font data and operations, command line, platform adapters, Xilem views,
+- `src/lib.rs` and its domain modules: font data, operations, formats, and shaping.
+- `src/app/`: the command line, editor interaction, platform adapters, Xilem views,
   and widgets.
 - `web/`: the same Xilem/Masonry widget tree compiled to a self-contained WASM
   demo. It uses an in-memory bundled font and does not save user files.
@@ -64,6 +65,7 @@ them separate for review and explicit installation.
   live-editor MCP server.
 
 The user documentation is at [runebender.org](https://runebender.org/docs/).
+The developer-facing source map is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Develop
 

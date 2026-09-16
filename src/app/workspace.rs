@@ -42,7 +42,7 @@ pub(crate) enum Tool {
     Text,
 }
 
-/// The Core history entries which make up one overview action. Glyph names
+/// The font-engine history entries which make up one overview action. Glyph names
 /// remain stable across per-master sort orders, and `master` keeps an Undo
 /// after a master switch attached to the source the user actually changed.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -99,11 +99,11 @@ pub(crate) struct Workspace {
     pub(crate) selected: Option<usize>,
     pub(crate) multi_selected: Arc<std::collections::HashSet<usize>>,
     /// Atomic glyph batches edited from the overview, newest at the end.
-    /// Core still owns each glyph snapshot; this records which snapshots make
+    /// The font engine still owns each glyph snapshot; this records which snapshots make
     /// one user action so a multi-selection mark change undoes once.
     pub(crate) overview_undo: Vec<OverviewEditBatch>,
     pub(crate) overview_redo: Vec<OverviewEditBatch>,
-    /// Cross-master metadata changes, ordered with the active glyph's Core pile.
+    /// Cross-master metadata changes, ordered with the active glyph's engine history.
     pub(crate) metadata_undo: Vec<MetadataEdit>,
     pub(crate) metadata_redo: Vec<MetadataEdit>,
     pub(crate) filter: String,
@@ -311,7 +311,7 @@ impl AppState {
     /// Opens `path` as the current document without discarding a document when
     /// core rejects the new source.
     ///
-    /// Core owns format dispatch and conversion through [`Workspace::open`].
+    /// The font engine owns format dispatch and conversion through [`Workspace::open`].
     /// This application boundary only changes which workspace the window shows.
     pub(crate) fn open_path(&mut self, path: &std::path::Path) -> bool {
         if self

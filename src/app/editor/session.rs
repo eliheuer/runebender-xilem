@@ -1539,7 +1539,7 @@ impl Workspace {
     }
 
     /// Undo in the active editing context. Overview actions may change a
-    /// multi-selection, so their per-glyph Core snapshots travel as one batch.
+    /// multi-selection, so their per-glyph engine snapshots travel as one batch.
     pub(crate) fn undo_active_edit(&mut self, redo: bool) {
         if matches!(self.mode, Mode::Editor(_)) {
             self.undo_open_glyph(redo);
@@ -1668,7 +1668,7 @@ impl Workspace {
     pub(crate) fn on_active_master(&self) -> bool {
         match self.font.project.master_locations.get(self.font.active()) {
             Some(m) => self.font.axes.iter().enumerate().all(|(i, a)| {
-                // Axis values are user coordinates; Core stores normalized locations.
+                // Axis values are user coordinates; the engine stores normalized locations.
                 let cur =
                     a.user_to_normalized(self.axis_values.get(i).copied().unwrap_or(a.default));
                 let mst = m.get(&a.name).copied().unwrap_or(0.0);
@@ -1714,7 +1714,7 @@ impl Workspace {
         if let Mode::Editor(index) = self.mode {
             // Inspector fields edit a cloned `Session` directly rather than
             // travelling through the canvas rebuild hook. Move their pending
-            // history into Core before replacing the live glyph, just as
+            // history into the engine before replacing the live glyph, just as
             // `sync_session_from` does for pointer and keyboard edits.
             let mut session = (*self.session).clone();
             let name = session.glyph_name.clone();
