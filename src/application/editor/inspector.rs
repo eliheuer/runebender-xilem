@@ -58,7 +58,7 @@ impl Workspace {
     fn font_data_snapshot(&self) -> Vec<FontDataSnapshot> {
         self.font
             .project
-            .masters
+            .sources()
             .iter()
             .map(|master| FontDataSnapshot {
                 groups: master.font.groups.clone(),
@@ -108,10 +108,10 @@ impl Workspace {
     }
 
     fn apply_font_data_snapshot(&mut self, values: &[FontDataSnapshot]) -> bool {
-        if values.len() != self.font.project.masters.len() {
+        if values.len() != self.font.project.sources().len() {
             return false;
         }
-        for (master, value) in self.font.project.masters.iter_mut().zip(values) {
+        for (master, value) in self.font.project.edit_sources().iter_mut().zip(values) {
             if master.font.groups != value.groups || master.font.kerning != value.kerning {
                 master.kerning_dirty = true;
                 master.dirty = true;
@@ -708,7 +708,7 @@ impl Workspace {
     /// Drop one kerning pair from the active master.
     pub(crate) fn delete_kern_pair(&mut self, first: &str, second: &str) {
         let history = self.font_data_history_context();
-        let master = self.font.master_mut();
+        let mut master = self.font.master_mut();
         let Some(seconds) = master.font.kerning.get_mut(first) else {
             return;
         };
@@ -724,6 +724,7 @@ impl Workspace {
         master.kerning_dirty = true;
         self.modified = true;
         self.note = format!("Removed {first} · {second}");
+        drop(master);
         self.finish_font_data_history(history, "kerning pair deletion");
     }
 
@@ -745,7 +746,7 @@ impl Workspace {
             self.note = "a kerning pair needs two names".into();
             return;
         };
-        let master = self.font.master_mut();
+        let mut master = self.font.master_mut();
         if master
             .font
             .kerning
@@ -761,6 +762,7 @@ impl Workspace {
         master.kerning_dirty = true;
         self.modified = true;
         self.note = format!("{first} \u{00b7} {second} = {value}");
+        drop(master);
         self.finish_font_data_history(history, "kerning pair");
     }
 
@@ -781,7 +783,7 @@ impl Workspace {
             return;
         };
         let mut added = 0_usize;
-        for master in &mut self.font.project.masters {
+        for master in self.font.project.edit_sources().iter_mut() {
             let members = master.font.groups.entry(group_name.clone()).or_default();
             let before = members.len();
             for name in &names {
@@ -811,7 +813,7 @@ impl Workspace {
     pub(crate) fn remove_from_group(&mut self, full_group: &str, member: &str) {
         let history = self.font_data_history_context();
         let mut removed = 0_usize;
-        for master in &mut self.font.project.masters {
+        for master in self.font.project.edit_sources().iter_mut() {
             let mut emptied = false;
             let mut changed = false;
             if let Some(members) = master.font.groups.get_mut(full_group) {
@@ -864,7 +866,12 @@ impl Workspace {
     pub(crate) fn revert_features(&mut self) {
         self.features_buf = self.font.font().features.clone();
         self.features_edited = false;
-        self.modified = self.font.project.masters.iter().any(|master| master.dirty);
+        self.modified = self
+            .font
+            .project
+            .sources()
+            .iter()
+            .any(|master| master.dirty);
         self.features_status = Some("Reverted feature draft".into());
     }
 

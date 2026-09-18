@@ -53,6 +53,66 @@ Existing tools use guarded source projections while they migrate to glyph/layer 
 Undo, redo and external reload must cross the same boundary.
 Never treat a missing source, an invalid coordinate map, or incompatible interpolation structures as successful conversion.
 
+## Implemented boundary
+
+The selected dependency is upstream Babelfont at the exact revision above, with `default-features = false` and `types,glyphs` enabled.
+The private coordinate adapter uses its `Axis` conversions.
+The variation adapter uses the same `fontdrasil` 1.0.0 backend as that revision, with `RoundingBehaviour::None` for editable f64 values.
+This replaces the local hand-written variation-model implementation without converting glyph geometry to Babelfont's narrower layer model.
+Neither dependency's types appear in the application-facing API.
+
+Project now owns a glyph-keyed store of layers and glyph-free source metadata templates.
+`SourceId`, `LayerId`, `VariableGlyph` and `GlyphSource` describe identity and participation independently of editor selection.
+`glyph_sources` includes only layers that participate in that glyph's model, so intermediate and missing non-default layers are genuinely glyph-local.
+`edit_layer` and `undo_layer` address a layer directly; default-layer history remains shared with the existing editor commands.
+Source order is fixed until reload.
+
+Existing Norad editing algorithms run on source projections through scoped guards.
+Guards reconcile changed glyphs, added/deleted layers and source metadata into the owned store before another Project call is possible.
+The projections deliberately retain full payloads while those tools migrate, which costs memory and a comparison pass on each scoped edit.
+Save and interpolation read canonical glyph layers, not whichever projection is selected in the editor.
+Live edits, experiments, proposal installation, source switching, browser edits, undo and reload have been routed through this boundary.
+The old source cache and single-source operations now live in `document/source.rs`.
+
+Interpolation checks contour segmentation and point types, component base order, unique matching anchors, finite values and distinct locations.
+It varies horizontal/vertical advances, contour coordinates, anchor positions and component affine coefficients.
+Components resolve recursively at the target location, with missing/cyclic references reported as errors.
+Pair kerning resolves each source's explicit/group fallback before interpolation and keeps fractional values.
+Non-varying metadata comes from the default source, and auxiliary layer metadata remains untouched by interpolation.
+The application no longer has a separate point-only interpolation path.
+
+## Format contract
+
+| Input | Editable representation and save behavior |
+|---|---|
+| UFO | One variable Project source; all layers, exact glyph payloads, font info, libs, features, groups, kerning, images and data remain in UFO adapters. |
+| Designspace | Continuous axes and maps, full sources, sparse layer sources within those UFOs, named instances, rules and typed metadata remain in the document; save writes canonical UFOs and edited Designspace metadata. |
+| Python Babelfont NFSF directory | Multiple sources, mapped axes, static instances, intermediate/background/named layers, supported names/metrics, contours, components, anchors, Unicode, export flags, feature text and fractional kerning import into new UFO/Designspace destinations; the source package is never rewritten. |
+| Rust Babelfont JSON | Explicitly rejected; it is a different format from the existing Python importer and currently lacks a lossless editable adapter. |
+| Glyphs and compiled TTF/OTF | Existing conversion/import paths remain behind Project; this change does not turn those existing importers into lossless original-format editors. |
+
+Unknown Python package fields fail during decoding.
+Localized names beyond the default string, unsupported metrics, guides/hints, feature objects, variable-instance ranges and contour transforms fail explicitly.
+Original layer/source identifiers and background status are retained under one documented UFO lib key.
+Includes in Python package feature text remain unsupported because the relative source tree is not copied.
+Glyph-specific intermediate locations sharing a UFO layer name must agree; conflicting locations are rejected rather than merged.
+
+Designspace XML is checked before typed decoding so unsupported elements/attributes cannot disappear on save.
+Coordinates that cannot round-trip through Norad's Designspace numeric representation are rejected.
+Discrete axes, cross-axis mappings, anisotropic coordinates, unknown/duplicate source axes, missing mapped-default sources, missing files/layers, and layer-only UFOs without a full source fail explicitly.
+Re-interpolation from multiple remaining sources also requires a default source; one remaining source can still be copied directly.
+Designspace rules are preserved and retain the existing preview substitution path.
+This is an explicit supported subset, not a claim of universal Designspace or Babelfont compatibility.
+
+## Regression evidence
+
+`tests/babelfont_contract.rs` demonstrates the upstream width and kerning blockers against the selected dependency.
+`tests/variable_project.rs` uses a mapped two-axis fixture with an intermediate layer and an auxiliary-only glyph.
+It exercises exact geometry, anchors, recursive components, sparse participation, fractional group kerning, active-source independence, layer history, invalid input, and complete supported source round-trips.
+The Babelfont importer tests open a multi-source package, save and reopen its new Designspace, and compare original package bytes.
+Existing CLI, shaping, live-document, source switching, save-as, reload, metadata and undo tests remain part of the full native gate.
+The browser quality matrix checks actual dragging, undo/redo, text input, themes and idle rendering against the shared Project code.
+
 ## Baseline inventory
 
 `src/document/project.rs` combines Master UFO ownership, paint caches, undo, loaders, Designspace metadata and interpolation in one module.

@@ -81,7 +81,7 @@ pub fn fork(
     if project.experiments.versions.len() >= 16 || project.experiments.versions.contains_key(name) {
         return Err("experiment already exists or the 16-version limit was reached".into());
     }
-    let source = project.masters.get(root).ok_or("unknown master")?;
+    let source = project.sources().get(root).ok_or("unknown master")?;
     let (font, base) = match parent {
         Some(parent) => {
             let v = project
@@ -120,15 +120,9 @@ pub fn apply(
     kerning: bool,
     keep_structure: bool,
 ) -> Result<Vec<String>, String> {
-    let v = project
-        .experiments
-        .versions
-        .get(name)
-        .ok_or("unknown experiment")?;
-    let root = project
-        .masters
-        .get_mut(v.root)
-        .ok_or("missing root master")?;
+    let (mut sources, experiments) = project.editing_parts();
+    let v = experiments.versions.get(name).ok_or("unknown experiment")?;
+    let root = sources.get_mut(v.root).ok_or("missing root master")?;
     let mut changes = Vec::new();
     let mut seen = std::collections::HashSet::new();
     for name in names {
@@ -178,7 +172,7 @@ pub fn apply(
         root.dirty = true;
     }
     let names: Vec<String> = changes.iter().map(|(name, _, _)| name.clone()).collect();
-    project.experiments.applied.push(Applied {
+    experiments.applied.push(Applied {
         root: v.root,
         glyphs: changes,
         kerning_after_revision: if kern.is_some() {
@@ -188,6 +182,7 @@ pub fn apply(
         },
         kerning: kern,
     });
+    drop(sources);
     for name in &names {
         project.recheck_compat(name);
     }
@@ -197,12 +192,12 @@ pub fn apply(
 /// Undo the most recent experiment application if its affected data is still unchanged.
 /// Refuses to overwrite later edits. Leaves unrelated changes alone and does not save.
 pub fn undo_apply(project: &mut Project) -> Result<(usize, Vec<String>), String> {
-    let last = project
-        .experiments
+    let (mut sources, experiments) = project.editing_parts();
+    let last = experiments
         .applied
         .last()
         .ok_or("no experiment application to undo")?;
-    let root = &mut project.masters[last.root];
+    let root = &mut sources[last.root];
     for (name, _, after) in &last.glyphs {
         if root.font.get_glyph(name) != Some(after) {
             return Err(format!("cannot undo: {name} changed after application"));
@@ -213,7 +208,7 @@ pub fn undo_apply(project: &mut Project) -> Result<(usize, Vec<String>), String>
     {
         return Err("cannot undo: kerning changed after application".into());
     }
-    let last = project.experiments.applied.pop().unwrap();
+    let last = experiments.applied.pop().unwrap();
     for (name, before, _) in &last.glyphs {
         let index = *root.name_map.get(name).ok_or("missing glyph cache entry")?;
         root.record_undo(index);
@@ -228,6 +223,7 @@ pub fn undo_apply(project: &mut Project) -> Result<(usize, Vec<String>), String>
         root.dirty = true;
     }
     let names: Vec<String> = last.glyphs.into_iter().map(|(name, _, _)| name).collect();
+    drop(sources);
     for name in &names {
         project.recheck_compat(name);
     }
@@ -241,11 +237,13 @@ mod tests {
 
     #[test]
     fn redraw_and_transaction_undo_refresh_family_compatibility() {
-        let mut p = Project::new_font("synthetic.ufo".into());
-        p.masters.push(Master::from_font(
-            p.masters[0].font.clone(),
-            "second.ufo".into(),
-        ));
+        let font = Project::new_font("synthetic.ufo".into())
+            .source_snapshot(super::super::variable::SourceId(0))
+            .unwrap();
+        let doc = crate::document::font_memory::designspace_from_str(r#"<designspace format="5.0"><axes><axis name="Weight" tag="wght" minimum="0" default="0" maximum="1"/></axes><sources><source filename="first.ufo"><location><dimension name="Weight" xvalue="0"/></location></source><source filename="second.ufo"><location><dimension name="Weight" xvalue="1"/></location></source></sources></designspace>"#).unwrap();
+        let mut p =
+            Project::from_designspace(doc, |path| Ok(Master::from_font(font.clone(), path.into())))
+                .unwrap();
         p.compute_compat();
         assert!(p.compat["A"]);
         fork(&mut p, 0, "drawing", None, "test").unwrap();
@@ -291,19 +289,19 @@ mod tests {
                 true
             );
         }
-        assert!(p.masters[0].font.kerning.is_empty());
-        let index = p.masters[0].name_map["B"];
-        p.masters[0].set_advance(index, 731.0);
+        assert!(p.sources()[0].font.kerning.is_empty());
+        let index = p.sources()[0].name_map["B"];
+        p.edit_sources()[0].set_advance(index, 731.0);
         apply(&mut p, "a", &[], true, true).unwrap();
-        assert_eq!(p.masters[0].font.kerning["A"]["V"], -40.0);
+        assert_eq!(p.sources()[0].font.kerning["A"]["V"], -40.0);
         assert_eq!(
             p.experiments.versions["b"].master.font.kerning["A"]["V"],
             -80.0
         );
         assert!(apply(&mut p, "b", &[], true, true).is_err());
         undo_apply(&mut p).unwrap();
-        assert!(p.masters[0].font.kerning.is_empty());
-        assert_eq!(p.masters[0].font.get_glyph("B").unwrap().width, 731.0);
+        assert!(p.sources()[0].font.kerning.is_empty());
+        assert_eq!(p.sources()[0].font.get_glyph("B").unwrap().width, 731.0);
     }
 
     #[test]
@@ -313,14 +311,20 @@ mod tests {
         let v = p.experiments.versions.get_mut("a").unwrap();
         v.master.font.get_glyph_mut("A").unwrap().width = 700.0;
         v.master.font.get_glyph_mut("B").unwrap().width = 710.0;
-        let original_a = p.masters[0].font.get_glyph("A").unwrap().width;
-        p.masters[0].font.get_glyph_mut("B").unwrap().width = 999.0;
+        let original_a = p.sources()[0].font.get_glyph("A").unwrap().width;
+        p.edit_sources()[0].font.get_glyph_mut("B").unwrap().width = 999.0;
         assert!(apply(&mut p, "a", &["A".into(), "B".into()], false, true).is_err());
-        assert_eq!(p.masters[0].font.get_glyph("A").unwrap().width, original_a);
+        assert_eq!(
+            p.sources()[0].font.get_glyph("A").unwrap().width,
+            original_a
+        );
         apply(&mut p, "a", &["A".into()], false, true).unwrap();
-        let index = p.masters[0].name_map["A"];
-        assert!(p.masters[0].undo(index));
-        assert_eq!(p.masters[0].font.get_glyph("A").unwrap().width, original_a);
+        let index = p.sources()[0].name_map["A"];
+        assert!(p.edit_sources()[0].undo(index));
+        assert_eq!(
+            p.sources()[0].font.get_glyph("A").unwrap().width,
+            original_a
+        );
         assert!(undo_apply(&mut p).is_err());
     }
 

@@ -83,6 +83,8 @@ second set of module names to keep in sync.
 | Change a panel | `application/view/panels/` | matching editor or document module |
 | Change reusable control styling | `application/view/recipes.rs` | `application/view/design.rs`, `theme.rs` |
 | Add a file format | `formats/` | dispatch in `document/project.rs` |
+| Change variable-font ownership or source edits | `document/project.rs`, `document/variable.rs` | `document/source.rs` compatibility projections |
+| Change axis conversion or interpolation | `document/axis.rs`, `document/var_model.rs`, `document/interpolation.rs` | `formats/designspace.rs` |
 | Add a headless command | `application/cli.rs` | operation in the matching library domain |
 | Change native or browser hosting | `application/platform/`, `application/launch.rs`, `application/browser.rs` | none |
 
@@ -94,6 +96,33 @@ For a first reading, follow this path:
 4. `src/application/editor/session.rs` — understand one active glyph-editing session.
 5. `src/application/view/render.rs` — see how the application modes compose their views.
 6. `src/lib.rs` — enter the reusable font domains as needed.
+
+## Variable font document
+
+`document::project::Project` owns a variable font, even when opened from a single UFO.
+`document::variable` stores one glyph with all of its source, intermediate and auxiliary layers, addressed by `SourceId` and `LayerId`.
+`Project::glyph_sources` identifies the subset participating in that glyph's interpolation; an auxiliary layer does not become a source merely by existing.
+Source ordering is fixed during a document session, and reload constructs a new Project.
+
+`document::source::Master` is a compatibility UFO projection with source-local history and paint caches.
+Project exposes immutable projections through `sources()` and scoped mutations through `edit_source`, `edit_sources`, and `active_font_mut`.
+Dropping an edit guard reconciles additions, removals, geometry and metadata into canonical glyph storage before the next Project operation.
+Use `edit_layer` and `undo_layer` for a specific glyph layer without switching the active editor source.
+Default-layer edits share the existing editor history, while auxiliary layers have independent histories.
+Do not introduce another mutable source-font accessor.
+
+Project save materializes UFOs from canonical layers and glyph-free metadata templates, preserving font info, libs, layer order, features, kerning, groups, images and data.
+The templates and projections currently duplicate some data to preserve compatibility with existing Norad algorithms.
+They are not separate editable documents.
+Native reload, live edits, proposals, experiments and browser edits cross the same scoped mutation boundary.
+
+`document::axis` wraps pinned Babelfont coordinate conversion without exposing its types.
+`document::var_model` wraps the fontdrasil variation backend used by Babelfont, retaining f64 values with rounding disabled.
+`document::interpolation` checks structure and interpolates advances, contours, anchors and component transforms using each glyph's own sources.
+Component outlines resolve recursively at the same location, with explicit failures for missing or cyclic components.
+The application reads these results instead of maintaining a second interpolation implementation.
+
+The [dependency and format decision](docs/variable-project-decision.md) records the upstream precision blocker, exact references, preservation policy and supported boundaries.
 
 ## Adding a tool
 

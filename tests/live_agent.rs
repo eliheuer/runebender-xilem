@@ -24,7 +24,10 @@ fn cli_and_mcp_share_one_unsaved_authorized_document() {
             .as_nanos()
     ));
     let mut project = Project::new_font(font_path.clone());
-    project.masters[0].add_glyph("live_test", 731.0).unwrap();
+    project
+        .active_font_mut()
+        .add_glyph("live_test", 731.0)
+        .unwrap();
     let editor = std::thread::spawn(move || {
         let deadline = Instant::now() + Duration::from_secs(10);
         for _ in 0..7 {

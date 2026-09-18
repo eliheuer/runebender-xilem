@@ -1,772 +1,33 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The open document: one or more master UFOs, optionally tied
-//! together by a designspace.
+//! The open variable font: glyph-local layers, axes, sources, instances and history.
 //!
-//! [`Master`] is one UFO with its bookkeeping (what changed since the
-//! last save) and a paint-ready cache of every glyph ([`GlyphEntry`]:
-//! outlines as kurbo paths, points, anchors, ink box), kept in the
-//! order the glyph grid shows. [`Project`] holds the masters, the axes
-//! and their locations, the variation model, named instances, and
-//! sparse brace sources, and answers interpolation questions across
-//! them. Nothing here knows how a glyph is drawn on screen; the
-//! front-ends read the cache and paint it.
+//! Project owns canonical glyphs through `variable`; `source` provides guarded
+//! UFO compatibility projections and paint caches for existing tools.
+//! Save and interpolation read canonical glyph layers. Format adapters preserve
+//! source metadata and retain explicit persistence destinations.
+//! No application or platform state belongs in the document model.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use kurbo::BezPath;
 
-use crate::document::history::EditHistory;
-use crate::document::proposal::{self, Installed, ProposalError};
+pub use super::source::{GlyphEntry, GlyphPoint, Master, extract_anchors, extract_points};
+use super::variable::{
+    GlyphSource, LayerId, SourceEdit, SourceId, SourcesEdit, VariableData, VariableGlyph,
+};
 use crate::document::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
 use crate::formats::lib_keys::{hoi_quad_at, read_hoi_intermediates};
-use crate::outline::glyph_ops::{self as ops, CurveOp, GlyphSnapshot};
-use crate::ui::theme::{self, Theme};
-
-/// The mark label a glyph carries. Labels are palette names shared by
-/// every theme, so snapping against the default theme is enough here;
-/// the front-end maps a label to the current theme's colour.
-fn mark_label(glyph: &norad::Glyph) -> Option<String> {
-    static DEFAULT: OnceLock<Theme> = OnceLock::new();
-    let theme =
-        DEFAULT.get_or_init(|| theme::load_theme("gray").expect("the built-in gray theme loads"));
-    theme::mark_label_for_glyph(glyph, theme)
-}
-
-/// One control point of a contour, in font units, with its identity
-/// inside the glyph so edits can address it.
-#[derive(Debug, Clone, Copy)]
-pub struct GlyphPoint {
-    /// X coordinate in font units.
-    pub x: f64,
-    /// Y coordinate in font units.
-    pub y: f64,
-    /// True for an on-curve point, false for a control point.
-    pub on_curve: bool,
-    /// True when the on-curve point's handles are kept collinear.
-    pub smooth: bool,
-    /// True for a point in a hyperbezier contour, which is drawn in
-    /// its own color.
-    pub hyper: bool,
-    /// Index of the contour that owns this point.
-    pub contour: usize,
-    /// Index of the point within its contour.
-    pub index: usize,
-}
-
-#[derive(Debug)]
-/// One glyph, ready to paint: outline in font units (Y-up), advance
-/// width, and identifying info.
-pub struct GlyphEntry {
-    /// Glyph name.
-    pub name: Arc<str>,
-    /// The glyph's Unicode codepoint, if it has one.
-    pub codepoint: Option<char>,
-    /// Contours + components combined (grid, preview).
-    pub path: Arc<BezPath>,
-    /// The glyph's own contours only (editor fill).
-    pub contour_path: Arc<BezPath>,
-    /// Resolved components only (editor, distinct color).
-    pub component_path: Arc<BezPath>,
-    /// Every control point of the glyph's own contours.
-    pub points: Arc<Vec<GlyphPoint>>,
-    /// Anchors as `(name, x, y)` in font units.
-    pub anchors: Arc<Vec<(Arc<str>, f64, f64)>>,
-    /// Advance width in font units.
-    pub advance: f64,
-    /// Base glyph names of the glyph's components, in order.
-    pub component_names: Arc<Vec<Arc<str>>>,
-    /// Mark label ("red", "green", …) from the glyph lib, if any.
-    pub mark: Option<Arc<str>>,
-    /// The outline's bounding box, kept so the grid does not walk every
-    /// path element again on every frame.
-    pub ink: kurbo::Rect,
-}
-
-#[derive(Debug)]
-/// One UFO master with its change tracking and a paint-ready glyph cache.
-pub struct Master {
-    /// The loaded UFO.
-    pub font: norad::Font,
-    /// Names of glyphs edited since load/save (partial saves).
-    pub modified_glyphs: HashSet<String>,
-    /// glyph name → glif path relative to the UFO root (memory hosts).
-    pub glif_paths: HashMap<String, String>,
-    /// Kerning changed since load/save.
-    pub kerning_dirty: bool,
-    /// glyph name → index into `glyphs`. Text buffer sorts carry
-    /// names, including unencoded ligature glyphs from shaping.
-    pub name_map: HashMap<String, usize>,
-    /// Path of the UFO on disk, or a virtual path for in-memory hosts.
-    pub source_path: PathBuf,
-    /// Units per em from fontinfo, or 1000 when unset.
-    pub units_per_em: f64,
-    /// Ascender from fontinfo, in font units.
-    pub ascender: f64,
-    /// Descender from fontinfo, in font units (usually negative).
-    pub descender: f64,
-    /// Optional guides: drawn only when fontinfo defines them, like
-    /// the web's metric guides.
-    pub x_height: Option<f64>,
-    /// Cap height from fontinfo, if defined.
-    pub cap_height: Option<f64>,
-    /// Paint-ready entries in glyph grid order.
-    pub glyphs: Vec<GlyphEntry>,
-    /// Bumped when the glyph list itself changes: a glyph added,
-    /// removed, or renamed. Caches keyed on the list use it to tell.
-    pub revision: u64,
-    /// True when anything changed since the last load or save.
-    pub dirty: bool,
-    /// The undo pile, one stack per glyph. Shells push and pop here
-    /// and hold no snapshots of their own.
-    pub history: EditHistory,
-}
-
-/// Collects a glyph's anchors as `(name, x, y)`. An unnamed anchor gets an empty name.
-pub fn extract_anchors(glyph: &norad::Glyph) -> Vec<(Arc<str>, f64, f64)> {
-    glyph
-        .anchors
-        .iter()
-        .map(|a| {
-            (
-                a.name
-                    .as_ref()
-                    .map(|n| n.to_string())
-                    .unwrap_or_default()
-                    .into(),
-                a.x,
-                a.y,
-            )
-        })
-        .collect()
-}
-
-/// Collects every contour point of a glyph as [`GlyphPoint`] values, in contour order.
-pub fn extract_points(glyph: &norad::Glyph) -> Vec<GlyphPoint> {
-    glyph
-        .contours
-        .iter()
-        .enumerate()
-        .flat_map(|(ci, c)| {
-            let hyper = crate::outline::path::hyper_model::norad_contour_is_hyper(c);
-            c.points.iter().enumerate().map(move |(pi, p)| GlyphPoint {
-                x: p.x,
-                y: p.y,
-                on_curve: p.typ != norad::PointType::OffCurve,
-                smooth: p.smooth,
-                hyper,
-                contour: ci,
-                index: pi,
-            })
-        })
-        .collect()
-}
-
-impl Master {
-    /// Run an op on the named glyph's norad data, then rebuild caches.
-    pub fn edit_glyph<R>(
-        &mut self,
-        glyph_index: usize,
-        op: impl FnOnce(&mut norad::Glyph) -> R,
-    ) -> Option<R> {
-        let name = self.glyphs[glyph_index].name.to_string();
-        let result = self
-            .font
-            .default_layer_mut()
-            .get_glyph_mut(name.as_str())
-            .map(op)?;
-        self.dirty = true;
-        self.modified_glyphs.insert(name.clone());
-        self.rebuild_entry(glyph_index);
-        self.realign_after_edit(&name);
-        Some(result)
-    }
-
-    /// Re-place anchor-locked components after a glyph edit, so
-    /// accents follow their base live.
-    ///
-    /// The edited glyph's own components realign first, seeded by
-    /// its own anchors, the open-glyph behavior. Then every
-    /// composite that places the glyph realigns.
-    pub fn realign_after_edit(&mut self, edited: &str) {
-        use crate::document::composites as comp;
-        let mut targets: Vec<(String, bool)> = vec![(edited.to_string(), true)];
-        for user in comp::composites_using(&self.font, edited) {
-            if user != edited {
-                targets.push((user, false));
-            }
-        }
-        for (name, seed_own) in targets {
-            let Some(glyph) = self.font.get_glyph(name.as_str()) else {
-                continue;
-            };
-            if glyph.components.is_empty() {
-                continue;
-            }
-            let mut copy = glyph.clone();
-            if comp::realign_glyph(&self.font, &mut copy, seed_own) {
-                if let Some(slot) = self.font.default_layer_mut().get_glyph_mut(name.as_str()) {
-                    *slot = copy;
-                }
-                self.modified_glyphs.insert(name.clone());
-                self.dirty = true;
-                if let Some(&i) = self.name_map.get(&name) {
-                    self.rebuild_entry(i);
-                }
-            }
-        }
-    }
-
-    /// Rebuild every cache from the norad font, after a glyph is
-    /// added or removed; bookkeeping fields survive.
-    pub fn refresh_from_font(&mut self) {
-        let font = std::mem::replace(&mut self.font, norad::Font::new());
-        let mut fresh = Self::from_font(font, self.source_path.clone());
-        // The glyph list has been rebuilt: anything cached against it
-        // (the grid's order, for one) has to notice.
-        fresh.revision = self.revision.wrapping_add(1);
-        fresh.dirty = self.dirty;
-        fresh.kerning_dirty = self.kerning_dirty;
-        fresh.modified_glyphs = std::mem::take(&mut self.modified_glyphs);
-        fresh.glif_paths = std::mem::take(&mut self.glif_paths);
-        fresh.history = std::mem::take(&mut self.history);
-        *self = fresh;
-    }
-
-    /// Add an empty glyph. Returns its index in the sorted list.
-    pub fn add_glyph(&mut self, name: &str, width: f64) -> Option<usize> {
-        if self.name_map.contains_key(name) {
-            return None;
-        }
-        let mut glyph = norad::Glyph::new(name);
-        glyph.width = width;
-        self.font.default_layer_mut().insert_glyph(glyph);
-        self.dirty = true;
-        self.modified_glyphs.insert(name.to_string());
-        self.refresh_from_font();
-        self.name_map.get(name).copied()
-    }
-
-    /// Remove a glyph outright.
-    pub fn remove_glyph(&mut self, name: &str) -> bool {
-        if self.font.default_layer_mut().remove_glyph(name).is_none() {
-            return false;
-        }
-        self.dirty = true;
-        self.modified_glyphs.remove(name);
-        self.history.clear_glyph(name);
-        self.refresh_from_font();
-        true
-    }
-
-    /// Loads a UFO from disk and builds the glyph cache.
-    pub fn load(path: &Path) -> Result<Self, norad::error::FontLoadError> {
-        let font = norad::Font::load(path)?;
-        Ok(Self::from_font(font, path.to_path_buf()))
-    }
-
-    /// Build the model from an already-assembled font, for in-memory
-    /// hosts: web builds and embedded demo data.
-    pub fn from_font(font: norad::Font, source_path: PathBuf) -> Self {
-        let info = &font.font_info;
-        let units_per_em = info.units_per_em.map(|v| v.as_f64()).unwrap_or(1000.0);
-        let ascender = info.ascender.unwrap_or(units_per_em * 0.8);
-        let descender = info.descender.unwrap_or(-(units_per_em * 0.2));
-        let x_height = info.x_height;
-        let cap_height = info.cap_height;
-
-        let mut glyphs: Vec<GlyphEntry> = font
-            .default_layer()
-            .iter()
-            .map(|glyph| {
-                let path = Arc::new(crate::outline::glyph_paths::glyph_to_bezpath(glyph, &font));
-                GlyphEntry {
-                    name: glyph.name().to_string().into(),
-                    codepoint: glyph.codepoints.iter().next(),
-                    ink: {
-                        use kurbo::Shape as _;
-                        path.bounding_box()
-                    },
-                    path: path.clone(),
-                    contour_path: Arc::new(crate::outline::glyph_paths::contours_to_bezpath(glyph)),
-                    component_path: Arc::new(crate::outline::glyph_paths::components_to_bezpath(
-                        glyph, &font,
-                    )),
-                    points: Arc::new(extract_points(glyph)),
-                    anchors: Arc::new(extract_anchors(glyph)),
-                    advance: glyph.width,
-                    component_names: Arc::new(
-                        glyph
-                            .components
-                            .iter()
-                            .map(|c| c.base.to_string().into())
-                            .collect(),
-                    ),
-                    mark: mark_label(glyph).map(Arc::<str>::from),
-                }
-            })
-            .collect();
-        // Unicode order, unencoded glyphs after, each group by name.
-        glyphs.sort_by(|a, b| match (a.codepoint, b.codepoint) {
-            (Some(x), Some(y)) => x.cmp(&y).then_with(|| a.name.cmp(&b.name)),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => a.name.cmp(&b.name),
-        });
-
-        let name_map = glyphs
-            .iter()
-            .enumerate()
-            .map(|(i, g)| (g.name.to_string(), i))
-            .collect();
-
-        Self {
-            font,
-            modified_glyphs: HashSet::new(),
-            glif_paths: HashMap::new(),
-            kerning_dirty: false,
-            name_map,
-            source_path,
-            units_per_em,
-            ascender,
-            descender,
-            x_height,
-            cap_height,
-            glyphs,
-            revision: 0,
-            dirty: false,
-            history: EditHistory::new(),
-        }
-    }
-
-    /// Rebuilds one glyph's cached paths, points, anchors, advance, and mark from the font. Does nothing when the glyph is missing.
-    pub fn rebuild_entry(&mut self, glyph_index: usize) {
-        let name = self.glyphs[glyph_index].name.to_string();
-        let Some(glyph) = self.font.get_glyph(name.as_str()) else {
-            return;
-        };
-        let glyph_advance = glyph.width;
-        let path = Arc::new(crate::outline::glyph_paths::glyph_to_bezpath(
-            glyph, &self.font,
-        ));
-        let contour_path = Arc::new(crate::outline::glyph_paths::contours_to_bezpath(glyph));
-        let component_path = Arc::new(crate::outline::glyph_paths::components_to_bezpath(
-            glyph, &self.font,
-        ));
-        let component_names: Arc<Vec<Arc<str>>> = Arc::new(
-            glyph
-                .components
-                .iter()
-                .map(|c| c.base.to_string().into())
-                .collect(),
-        );
-        let points = Arc::new(extract_points(glyph));
-        let anchors = Arc::new(extract_anchors(glyph));
-        let ink = {
-            use kurbo::Shape as _;
-            path.bounding_box()
-        };
-        let entry = &mut self.glyphs[glyph_index];
-        entry.ink = ink;
-        entry.path = path;
-        entry.contour_path = contour_path;
-        entry.component_path = component_path;
-        entry.component_names = component_names;
-        entry.points = points;
-        entry.anchors = anchors;
-        entry.advance = glyph_advance;
-        entry.mark = mark_label(glyph).map(Arc::<str>::from);
-    }
-
-    /// Clone a glyph's editable state for undo snapshots.
-    pub fn snapshot_contours(&self, glyph_index: usize) -> Option<GlyphSnapshot> {
-        let name = self.glyphs[glyph_index].name.to_string();
-        self.font.get_glyph(name.as_str()).map(ops::snapshot)
-    }
-
-    /// Replace a glyph's editable state (undo/redo) and rebuild caches.
-    pub fn restore_contours(&mut self, glyph_index: usize, snapshot: GlyphSnapshot) {
-        self.edit_glyph(glyph_index, |g| ops::restore(g, snapshot));
-    }
-
-    // ---- the undo pile ----
-
-    fn glyph_name(&self, glyph_index: usize) -> Option<String> {
-        self.glyphs.get(glyph_index).map(|g| g.name.to_string())
-    }
-
-    /// Records the glyph's state as a new undo step. Call before an
-    /// edit. Does nothing for an index out of range.
-    pub fn record_undo(&mut self, glyph_index: usize) {
-        let Some(name) = self.glyph_name(glyph_index) else {
-            return;
-        };
-        if let Some(glyph) = self.font.get_glyph(name.as_str()) {
-            self.history.record(&name, glyph);
-        }
-    }
-
-    /// Folds the glyph's current state into the latest undo step,
-    /// for the moves inside one drag.
-    pub fn amend_undo(&mut self, glyph_index: usize) {
-        let Some(name) = self.glyph_name(glyph_index) else {
-            return;
-        };
-        if let Some(glyph) = self.font.get_glyph(name.as_str()) {
-            self.history.amend(&name, glyph);
-        }
-    }
-
-    /// Drops the latest undo step, for an edit that changed nothing.
-    pub fn discard_last_undo(&mut self, glyph_index: usize) -> bool {
-        self.glyph_name(glyph_index)
-            .is_some_and(|name| self.history.discard_last(&name))
-    }
-
-    /// Undoes the glyph's latest step and rebuilds its caches.
-    pub fn undo(&mut self, glyph_index: usize) -> bool {
-        let Some(name) = self.glyph_name(glyph_index) else {
-            return false;
-        };
-        let mut history = std::mem::take(&mut self.history);
-        let done = self
-            .edit_glyph(glyph_index, |g| history.undo(&name, g))
-            .unwrap_or(false);
-        self.history = history;
-        done
-    }
-
-    /// Redoes the glyph's latest undone step and rebuilds its caches.
-    pub fn redo(&mut self, glyph_index: usize) -> bool {
-        let Some(name) = self.glyph_name(glyph_index) else {
-            return false;
-        };
-        let mut history = std::mem::take(&mut self.history);
-        let done = self
-            .edit_glyph(glyph_index, |g| history.redo(&name, g))
-            .unwrap_or(false);
-        self.history = history;
-        done
-    }
-
-    /// Whether the glyph has a step to undo.
-    pub fn can_undo(&self, glyph_index: usize) -> bool {
-        self.glyph_name(glyph_index)
-            .is_some_and(|name| self.history.can_undo(&name))
-    }
-
-    /// How many steps the glyph can undo.
-    pub fn undo_depth(&self, glyph_index: usize) -> usize {
-        self.glyph_name(glyph_index)
-            .map_or(0, |name| self.history.undo_depth(&name))
-    }
-
-    /// Whether the glyph has a step to redo.
-    pub fn can_redo(&self, glyph_index: usize) -> bool {
-        self.glyph_name(glyph_index)
-            .is_some_and(|name| self.history.can_redo(&name))
-    }
-
-    // ---- proposals ----
-
-    /// Installs a task's proposal: each proposed glyph replaces its
-    /// foreground glyph as one undo step, and leaves the proposal
-    /// layer. `only` limits the install to those glyphs. With
-    /// `keep_structure`, a glyph whose point structure differs is
-    /// skipped and stays proposed. A glyph the foreground lacks is
-    /// always skipped. The layer goes when it is empty.
-    pub fn install_proposal(
-        &mut self,
-        task: &str,
-        only: Option<&[String]>,
-        keep_structure: bool,
-    ) -> Result<Installed, ProposalError> {
-        // Core's install does the work; this master records an undo
-        // step for each glyph first and rebuilds its cache after.
-        let name_map = self.name_map.clone();
-        let mut touched: Vec<usize> = Vec::new();
-        let done = {
-            let history = &mut self.history;
-            let mut before = |name: &str, glyph: &norad::Glyph| {
-                if let Some(&index) = name_map.get(name) {
-                    history.record(name, glyph);
-                    touched.push(index);
-                }
-            };
-            proposal::install(&mut self.font, task, only, keep_structure, &mut before)?
-        };
-        for index in touched {
-            self.rebuild_entry(index);
-            self.modified_glyphs
-                .insert(self.glyphs[index].name.to_string());
-        }
-        if !done.installed.is_empty() || done.layer_removed {
-            self.dirty = true;
-        }
-        Ok(done)
-    }
-
-    /// Drops a task's proposal without installing it.
-    pub fn discard_proposal(&mut self, task: &str) -> Result<usize, ProposalError> {
-        let count = proposal::discard(&mut self.font, task)?;
-        self.dirty = true;
-        Ok(count)
-    }
-
-    /// Moves an anchor to `(x, y)`. Ignores an out-of-range anchor index.
-    pub fn set_anchor(&mut self, glyph_index: usize, anchor: usize, x: f64, y: f64) {
-        self.edit_glyph(glyph_index, |g| {
-            if let Some(a) = g.anchors.get_mut(anchor) {
-                a.x = x;
-                a.y = y;
-            }
-        });
-    }
-
-    /// Adds an anchor at `(x, y)` named `anchor.N`, where `N` is the current anchor count.
-    pub fn add_anchor(&mut self, glyph_index: usize, x: f64, y: f64) {
-        self.edit_glyph(glyph_index, |g| {
-            let n = g.anchors.len();
-            let name = norad::Name::new(&format!("anchor.{n}")).ok();
-            g.anchors.push(norad::Anchor::new(x, y, name, None, None));
-        });
-    }
-
-    /// Removes the anchor at `anchor`. Ignores an out-of-range index.
-    pub fn delete_anchor(&mut self, glyph_index: usize, anchor: usize) {
-        self.edit_glyph(glyph_index, |g| {
-            if anchor < g.anchors.len() {
-                g.anchors.remove(anchor);
-            }
-        });
-    }
-
-    /// Set several points at once (multi-point drag).
-    pub fn set_points(&mut self, glyph_index: usize, updates: &ops::PointUpdates) {
-        self.edit_glyph(glyph_index, |g| ops::set_points(g, updates));
-    }
-
-    /// Start a new open contour at (x, y). Returns its index.
-    pub fn start_hyper_contour(&mut self, glyph_index: usize, x: f64, y: f64) -> Option<usize> {
-        self.edit_glyph(glyph_index, |g| {
-            crate::outline::glyph_ops::start_hyper_contour(g, x, y)
-        })
-    }
-
-    /// Appends a point to an open hyperbezier contour. `corner` makes it a corner rather than a smooth point.
-    pub fn append_hyper_point(
-        &mut self,
-        glyph_index: usize,
-        contour: usize,
-        x: f64,
-        y: f64,
-        corner: bool,
-    ) {
-        self.edit_glyph(glyph_index, |g| {
-            crate::outline::glyph_ops::append_hyper_point(g, contour, x, y, corner);
-        });
-    }
-
-    /// Closes an open hyperbezier contour.
-    pub fn close_hyper_contour(&mut self, glyph_index: usize, contour: usize) {
-        self.edit_glyph(glyph_index, |g| {
-            crate::outline::glyph_ops::close_hyper_contour(g, contour);
-        });
-    }
-
-    /// Starts a new open cubic contour at `(x, y)` for the pen tool. Returns its index.
-    pub fn start_contour(&mut self, glyph_index: usize, x: f64, y: f64) -> Option<usize> {
-        self.edit_glyph(glyph_index, |g| ops::start_contour(g, x, y))
-    }
-
-    /// Append a segment to an open contour (pen tool).
-    pub fn append_segment(
-        &mut self,
-        glyph_index: usize,
-        contour: usize,
-        controls: Option<((f64, f64), (f64, f64))>,
-        x: f64,
-        y: f64,
-        smooth: bool,
-    ) {
-        self.edit_glyph(glyph_index, |g| {
-            ops::append_segment(g, contour, controls, x, y, smooth);
-        });
-    }
-
-    /// Close an open contour.
-    pub fn close_contour(
-        &mut self,
-        glyph_index: usize,
-        contour: usize,
-        controls: Option<((f64, f64), (f64, f64))>,
-    ) {
-        self.edit_glyph(glyph_index, |g| ops::close_contour(g, contour, controls));
-    }
-
-    /// Delete an unfinished pen contour: a single stray point.
-    pub fn remove_contour_if_degenerate(&mut self, glyph_index: usize, contour: usize) {
-        self.edit_glyph(glyph_index, |g| {
-            ops::remove_contour_if_degenerate(g, contour);
-        });
-    }
-
-    /// Delete points. See `crate::outline::glyph_ops`.
-    pub fn delete_points(
-        &mut self,
-        glyph_index: usize,
-        selected: &HashSet<(usize, usize)>,
-    ) -> bool {
-        self.edit_glyph(glyph_index, |g| ops::delete_points(g, selected))
-            .unwrap_or(false)
-    }
-
-    /// Toggle smooth/corner on the selected on-curve points.
-    pub fn toggle_smooth(
-        &mut self,
-        glyph_index: usize,
-        selected: &HashSet<(usize, usize)>,
-    ) -> bool {
-        self.edit_glyph(glyph_index, |g| ops::toggle_smooth(g, selected))
-            .unwrap_or(false)
-    }
-
-    /// Apply a curve-quality op to the selection or whole glyph.
-    pub fn curve_op(
-        &mut self,
-        glyph_index: usize,
-        selected: &HashSet<(usize, usize)>,
-        op: CurveOp,
-    ) -> bool {
-        self.edit_glyph(glyph_index, |g| ops::curve_op(g, selected, op))
-            .unwrap_or(false)
-    }
-
-    /// Ink bounds of a glyph in design units, `None` when empty.
-    pub fn ink_bounds(&self, glyph_index: usize) -> Option<kurbo::Rect> {
-        use kurbo::Shape;
-        let path = &self.glyphs[glyph_index].path;
-        if path.elements().is_empty() {
-            None
-        } else {
-            Some(path.bounding_box())
-        }
-    }
-
-    /// Sets the advance width in font units and marks the master dirty.
-    pub fn set_advance(&mut self, glyph_index: usize, width: f64) {
-        let name = self.glyphs[glyph_index].name.to_string();
-        if let Some(glyph) = self.font.default_layer_mut().get_glyph_mut(name.as_str()) {
-            glyph.width = width;
-            self.dirty = true;
-        }
-        self.rebuild_metrics(glyph_index);
-    }
-
-    /// Shift a glyph's ink horizontally (LSB edits).
-    pub fn shift_ink(&mut self, glyph_index: usize, dx: f64) {
-        self.edit_glyph(glyph_index, |g| ops::shift_ink(g, dx));
-    }
-
-    /// Copies the glyph's advance width from the font into the cached entry.
-    pub fn rebuild_metrics(&mut self, glyph_index: usize) {
-        let name = self.glyphs[glyph_index].name.to_string();
-        if let Some(glyph) = self.font.get_glyph(name.as_str()) {
-            self.glyphs[glyph_index].advance = glyph.width;
-        }
-    }
-
-    /// Replace a glyph's components with their resolved contours.
-    pub fn decompose(&mut self, glyph_index: usize) -> bool {
-        let name = self.glyphs[glyph_index].name.to_string();
-        let Some(glyph) = self.font.get_glyph(name.as_str()) else {
-            return false;
-        };
-        if glyph.components.is_empty() {
-            return false;
-        }
-        let resolved =
-            crate::outline::component_ops::resolved_component_contours(&self.font, glyph);
-        self.edit_glyph(glyph_index, |g| {
-            g.contours.extend(resolved);
-            g.components.clear();
-        });
-        true
-    }
-
-    /// Contours that contain any selected point; all contours when
-    /// the selection is empty.
-    pub fn contours_for_copy(
-        &self,
-        glyph_index: usize,
-        selected: &HashSet<(usize, usize)>,
-    ) -> Vec<norad::Contour> {
-        let name = self.glyphs[glyph_index].name.to_string();
-        let Some(glyph) = self.font.get_glyph(name.as_str()) else {
-            return Vec::new();
-        };
-        if selected.is_empty() {
-            return glyph.contours.clone();
-        }
-        glyph
-            .contours
-            .iter()
-            .enumerate()
-            .filter(|(ci, _)| selected.iter().any(|(c, _)| c == ci))
-            .map(|(_, c)| c.clone())
-            .collect()
-    }
-
-    /// Appends copied contours to the glyph and rebuilds its cache. Does nothing for an empty slice.
-    pub fn paste_contours(&mut self, glyph_index: usize, contours: &[norad::Contour]) {
-        if contours.is_empty() {
-            return;
-        }
-        let name = self.glyphs[glyph_index].name.to_string();
-        if let Some(glyph) = self.font.default_layer_mut().get_glyph_mut(name.as_str()) {
-            glyph.contours.extend(contours.iter().cloned());
-            self.dirty = true;
-        }
-        self.rebuild_entry(glyph_index);
-    }
-
-    /// Union all contours to remove overlap. Returns false when
-    /// nothing changed.
-    pub fn remove_overlap(&mut self, glyph_index: usize) -> bool {
-        let name = self.glyphs[glyph_index].name.to_string();
-        let Some(unioned) = self
-            .font
-            .get_glyph(name.as_str())
-            .and_then(ops::remove_overlap)
-        else {
-            return false;
-        };
-        self.edit_glyph(glyph_index, |g| g.contours = unioned);
-        true
-    }
-
-    /// Insert a rectangle or ellipse contour spanning `rect`.
-    pub fn add_shape_contour(&mut self, glyph_index: usize, rect: kurbo::Rect, ellipse: bool) {
-        self.edit_glyph(glyph_index, |g| ops::add_shape_contour(g, rect, ellipse));
-    }
-
-    /// Writes the master back to `source_path` and clears all dirty flags.
-    pub fn save(&mut self) -> Result<(), norad::error::FontWriteError> {
-        self.font.save(&self.source_path)?;
-        self.dirty = false;
-        self.modified_glyphs.clear();
-        self.kerning_dirty = false;
-        Ok(())
-    }
-}
 
 /// One designspace axis, in design coordinates.
 #[derive(Debug, Clone)]
 pub struct AxisInfo {
+    /// User-coordinate axis and its validated mapping.
+    pub user: super::axis::Axis,
     /// Axis name as written in the designspace.
     pub name: String,
     /// Four-letter OpenType axis tag.
@@ -780,11 +41,12 @@ pub struct AxisInfo {
 }
 
 #[derive(Debug)]
-/// An open project: one or more master UFOs, optionally tied together
-/// by a designspace document.
+/// An open variable font with canonical glyph-local layers and source metadata.
+/// UFO projections support existing tools through scoped edits.
 pub struct Project {
-    /// The loaded masters, in designspace source order.
-    pub masters: Vec<Master>,
+    /// Compatibility projections, in fixed source order; never directly mutable outside Project.
+    masters: Vec<Master>,
+    variable: VariableData,
     /// Index into `masters` of the master being edited.
     pub active: usize,
     /// Style names for the master switcher, one per master.
@@ -793,7 +55,7 @@ pub struct Project {
     pub axes: Vec<AxisInfo>,
     /// Normalized (-1..1) location of each master, by axis name.
     pub master_locations: Vec<Location>,
-    /// The variation model over `master_locations`, if there is more than one master.
+    /// Font-wide variation model; glyph interpolation uses its own participating sources.
     pub model: Option<VariationModel>,
     /// Current preview location, normalized, by axis name.
     pub location: Location,
@@ -914,10 +176,22 @@ impl Project {
         let font = crate::document::new_font::new_font("Untitled", "Regular", 400);
         let mut model = Master::from_font(font, path);
         model.dirty = true;
+        Self::from_source(model)
+    }
+
+    /// Build a project from one format-adapter source projection.
+    pub fn from_source(model: Master) -> Self {
+        let name = model
+            .font
+            .font_info
+            .style_name
+            .clone()
+            .unwrap_or_else(|| "Regular".into());
         let mut project = Self {
+            variable: VariableData::default(),
             masters: vec![model],
             active: 0,
-            master_names: vec!["Regular".into()],
+            master_names: vec![name.into()],
             axes: Vec::new(),
             master_locations: Vec::new(),
             model: None,
@@ -930,6 +204,7 @@ impl Project {
             brace: Vec::new(),
             experiments: super::experiments::Experiments::default(),
         };
+        project.variable = VariableData::from_sources(&project.masters);
         project.compute_compat();
         project
     }
@@ -940,12 +215,13 @@ impl Project {
         if project.export_source.is_none() {
             project.export_source = Some(path.to_path_buf());
         }
+        project.variable = VariableData::from_sources(&project.masters);
         project.compute_compat();
         Ok(project)
     }
 
     /// Loads a project by file type without filling in `export_source` or computing compatibility. Prefer [`Project::load`].
-    pub fn load_inner(path: &Path) -> Result<Self, String> {
+    fn load_inner(path: &Path) -> Result<Self, String> {
         let glyphs_ext = path.extension().and_then(|e| e.to_str()).map(|e| {
             if e.eq_ignore_ascii_case("glyphspackage") {
                 GlyphsSource::Package
@@ -998,40 +274,28 @@ impl Project {
             project.export_source = Some(open);
             return Ok(project);
         }
-        if path.extension().is_some_and(|e| {
-            e.eq_ignore_ascii_case("ttf")
-                || e.eq_ignore_ascii_case("otf")
-                || e.eq_ignore_ascii_case("babelfont")
-        }) {
-            // A binary or basic Babelfont source opens as an editable in-memory UFO.
-            // Save writes that UFO next to the source — never over
-            // it — and Export compiles from the UFO.
-            let is_babelfont = path
-                .extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("babelfont"));
-            let font = if is_babelfont {
-                crate::formats::babelfont_import::import_babelfont(path)?
-            } else {
-                import_binary_font(path)?
-            };
+        if path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("babelfont"))
+        {
+            return crate::formats::babelfont_import::import_project(path);
+        }
+        if path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("ttf") || e.eq_ignore_ascii_case("otf"))
+        {
+            let font = import_binary_font(path)?;
             let name: Arc<str> = font
                 .font_info
                 .style_name
                 .clone()
                 .unwrap_or_else(|| "Regular".into())
                 .into();
-            let mut ufo_path = path.with_extension("ufo");
-            if is_babelfont {
-                let stem = path.file_stem().unwrap_or_default().to_string_lossy();
-                let mut index = 1;
-                while ufo_path.exists() {
-                    ufo_path = path.with_file_name(format!("{stem}-import-{index}.ufo"));
-                    index += 1;
-                }
-            }
+            let ufo_path = path.with_extension("ufo");
             let mut model = Master::from_font(font, ufo_path.clone());
             model.dirty = true;
             let mut project = Self {
+                variable: VariableData::default(),
                 masters: vec![model],
                 active: 0,
                 master_names: vec![name],
@@ -1047,12 +311,12 @@ impl Project {
                 brace: Vec::new(),
                 experiments: super::experiments::Experiments::default(),
             };
+            project.variable = VariableData::from_sources(&project.masters);
             project.compute_compat();
             return Ok(project);
         }
         if path.extension().is_some_and(|e| e == "designspace") {
-            let doc = norad::designspace::DesignSpaceDocument::load(path)
-                .map_err(|e| format!("{}: {e}", path.display()))?;
+            let doc = crate::formats::designspace::load(path)?;
             let dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
             return Self::from_designspace(doc, move |filename| {
                 let ufo_path = dir.join(filename);
@@ -1069,6 +333,7 @@ impl Project {
                 .unwrap_or_else(|| "Regular".into())
                 .into();
             Ok(Self {
+                variable: VariableData::default(),
                 masters: vec![model],
                 active: 0,
                 master_names: vec![name],
@@ -1093,143 +358,177 @@ impl Project {
         doc: norad::designspace::DesignSpaceDocument,
         mut load_master: impl FnMut(&str) -> Result<Master, String>,
     ) -> Result<Self, String> {
+        if doc
+            .axis_mappings
+            .as_ref()
+            .is_some_and(|mappings| !mappings.is_empty())
         {
-            let mut seen = HashSet::new();
-            let mut masters = Vec::new();
-            let mut master_names = Vec::new();
-            let mut default_index = 0_usize;
-            // The source whose location matches every axis default is
-            // the default master; open on that one.
-            let defaults: HashMap<&str, f32> = doc
-                .axes
+            return Err("cross-axis mappings are not supported by the preview model".into());
+        }
+        let mut names = HashSet::new();
+        let mut tags = HashSet::new();
+        let mut axes = Vec::new();
+        for a in &doc.axes {
+            if !names.insert(a.name.clone()) || !tags.insert(a.tag.clone()) {
+                return Err("designspace axes must have unique names and tags".into());
+            }
+            if a.values.as_ref().is_some_and(|values| !values.is_empty()) {
+                return Err(format!("{}: discrete axes are not yet supported", a.name));
+            }
+            let mut map: Vec<_> = a
+                .map
                 .iter()
-                .map(|a| (a.name.as_str(), a.default))
+                .flatten()
+                .map(|m| (f64::from(m.input), f64::from(m.output)))
                 .collect();
-            // Axis metadata (design coordinates; avar maps ignored
-            // for now, which matches sources that don't use them).
-            let axes: Vec<AxisInfo> = doc
-                .axes
-                .iter()
-                .map(|a| AxisInfo {
-                    name: a.name.clone(),
-                    tag: a.tag.clone().into(),
-                    min: a.minimum.unwrap_or(a.default) as f64,
-                    default: a.default as f64,
-                    max: a.maximum.unwrap_or(a.default) as f64,
-                })
-                .collect();
-            let mut master_locations = Vec::new();
-            let mut master_files: Vec<String> = Vec::new();
-            // Sparse sources (a `layer` attribute) are brace layers:
-            // per-glyph intermediates, resolved after the masters.
-            let normalize_loc = |dims: &[norad::designspace::Dimension]| {
-                let mut location = Location::new();
-                for axis in &axes {
-                    let raw = dims
-                        .iter()
-                        .find(|d| d.name == axis.name)
-                        .and_then(|d| d.xvalue.or(d.uservalue))
-                        .map(|v| v as f64)
-                        .unwrap_or(axis.default);
-                    location.insert(
-                        axis.name.clone(),
-                        crate::document::var_model::normalize_value(
-                            raw,
-                            axis.min,
-                            axis.default,
-                            axis.max,
-                        ),
-                    );
-                }
-                location
+            map.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let user = super::axis::Axis {
+                name: a.name.clone(),
+                tag: a.tag.clone(),
+                min: f64::from(a.minimum.unwrap_or(a.default)),
+                default: f64::from(a.default),
+                max: f64::from(a.maximum.unwrap_or(a.default)),
+                map,
             };
-            let mut layer_sources: Vec<(String, String, Location)> = Vec::new();
-            for source in &doc.sources {
-                if let Some(layer) = &source.layer {
-                    layer_sources.push((
-                        source.filename.clone(),
-                        layer.clone(),
-                        normalize_loc(&source.location),
+            user.validate()?;
+            axes.push(AxisInfo {
+                name: a.name.clone(),
+                tag: a.tag.clone().into(),
+                min: user.user_to_design(user.min),
+                default: user.user_to_design(user.default),
+                max: user.user_to_design(user.max),
+                user,
+            });
+        }
+        let normalize = |dimensions: &[norad::designspace::Dimension]| -> Result<Location, String> {
+            let mut seen = HashSet::new();
+            for dimension in dimensions {
+                if !names.contains(&dimension.name) || !seen.insert(&dimension.name) {
+                    return Err(format!(
+                        "unknown or duplicate source axis {}",
+                        dimension.name
                     ));
-                    continue;
                 }
-                if !seen.insert(source.filename.clone()) {
-                    continue; // duplicate full-source entries
+                if dimension.yvalue.is_some()
+                    || (dimension.xvalue.is_some() && dimension.uservalue.is_some())
+                {
+                    return Err(format!(
+                        "{}: anisotropic or ambiguous source coordinates are unsupported",
+                        dimension.name
+                    ));
                 }
-                let model = load_master(&source.filename)?;
-                let is_default = source.location.iter().all(|d| {
-                    let value = d.xvalue.or(d.uservalue).unwrap_or(0.0);
-                    defaults
-                        .get(d.name.as_str())
-                        .is_some_and(|v| (*v - value).abs() < f32::EPSILON)
-                });
-                if is_default {
-                    default_index = masters.len();
+                if dimension.xvalue.is_none() && dimension.uservalue.is_none() {
+                    return Err(format!("{}: missing coordinate value", dimension.name));
                 }
-                // Normalized location for the interpolation model.
-                let mut location = Location::new();
-                for axis in &axes {
-                    let raw = source
-                        .location
-                        .iter()
-                        .find(|d| d.name == axis.name)
-                        .and_then(|d| d.xvalue.or(d.uservalue))
-                        .map(|v| v as f64)
-                        .unwrap_or(axis.default);
-                    location.insert(
-                        axis.name.clone(),
-                        crate::document::var_model::normalize_value(
-                            raw,
-                            axis.min,
-                            axis.default,
-                            axis.max,
-                        ),
-                    );
+                if dimension
+                    .xvalue
+                    .or(dimension.uservalue)
+                    .is_some_and(|value| !value.is_finite())
+                {
+                    return Err(format!("{}: non-finite source coordinate", dimension.name));
                 }
-                master_locations.push(location);
-                let name = source
+            }
+            Ok(axes
+                .iter()
+                .map(|axis| {
+                    let dimension = dimensions.iter().find(|d| d.name == axis.name);
+                    let value = if let Some(user) = dimension.and_then(|d| d.uservalue) {
+                        axis.user.user_to_normalized(f64::from(user))
+                    } else {
+                        axis.user.design_to_normalized(
+                            dimension
+                                .and_then(|d| d.xvalue)
+                                .map(f64::from)
+                                .unwrap_or(axis.default),
+                        )
+                    };
+                    (axis.name.clone(), value)
+                })
+                .collect())
+        };
+        for instance in &doc.instances {
+            normalize(&instance.location)?;
+        }
+        let mut masters = Vec::new();
+        let mut master_names = Vec::new();
+        let mut master_locations = Vec::new();
+        let mut files = Vec::new();
+        for source in doc.sources.iter().filter(|s| s.layer.is_none()) {
+            if files.contains(&source.filename) {
+                return Err(format!(
+                    "duplicate full source file {} is not editable independently",
+                    source.filename
+                ));
+            }
+            let location = normalize(&source.location)?;
+            if master_locations.contains(&location) {
+                return Err("duplicate full source locations are ambiguous".into());
+            }
+            masters.push(load_master(&source.filename)?);
+            files.push(source.filename.clone());
+            master_names.push(
+                source
                     .stylename
                     .clone()
-                    .unwrap_or_else(|| source.filename.clone());
-                masters.push(model);
-                master_names.push(name.into());
-                master_files.push(source.filename.clone());
-            }
-            if masters.is_empty() {
-                return Err("designspace has no sources".into());
-            }
-            let model = (masters.len() > 1).then(|| VariationModel::new(&master_locations));
-            let location = axes.iter().map(|a| (a.name.clone(), 0.0)).collect();
-            let brace: Vec<BraceSource> = layer_sources
-                .into_iter()
-                .filter_map(|(filename, layer, location)| {
-                    let master = master_files.iter().position(|f| *f == filename)?;
-                    Some(BraceSource {
-                        master,
-                        layer,
-                        location,
-                    })
-                })
-                .collect();
-            let mut project = Self {
-                active: default_index,
-                masters,
-                master_names,
-                axes,
-                master_locations,
-                model,
-                location,
-                compat: HashMap::new(),
-                export_source: None,
-                instances: Vec::new(),
-                ds_doc: Some(doc),
-                ds_dirty: false,
-                brace,
-                experiments: super::experiments::Experiments::default(),
-            };
-            project.refresh_instances_from_doc();
-            Ok(project)
+                    .unwrap_or_else(|| source.filename.clone())
+                    .into(),
+            );
+            master_locations.push(location);
         }
+        if masters.is_empty() {
+            return Err("designspace has no full sources".into());
+        }
+        let default_index = master_locations
+            .iter()
+            .position(|loc| loc.values().all(|v| v.abs() < 1e-9))
+            .ok_or("designspace has no source at the mapped default location")?;
+        let mut brace = Vec::new();
+        for source in doc.sources.iter().filter(|s| s.layer.is_some()) {
+            let layer = source.layer.as_ref().expect("filtered layer source");
+            let master = files
+                .iter()
+                .position(|file| file == &source.filename)
+                .ok_or_else(|| {
+                    format!(
+                        "layer source {} requires a full source from the same UFO",
+                        source.filename
+                    )
+                })?;
+            if masters[master].font.layers.get(layer).is_none() {
+                return Err(format!("{}: missing source layer {layer}", source.filename));
+            }
+            brace.push(BraceSource {
+                master,
+                layer: layer.clone(),
+                location: normalize(&source.location)?,
+            });
+        }
+        let variable = VariableData::from_sources(&masters);
+        let model = if masters.len() > 1 || !brace.is_empty() {
+            Some(VariationModel::new(&master_locations)?)
+        } else {
+            None
+        };
+        let location = axes.iter().map(|axis| (axis.name.clone(), 0.0)).collect();
+        let mut project = Self {
+            masters,
+            variable,
+            active: default_index,
+            master_names,
+            axes,
+            master_locations,
+            model,
+            location,
+            compat: HashMap::new(),
+            export_source: None,
+            instances: Vec::new(),
+            ds_doc: Some(doc),
+            ds_dirty: false,
+            brace,
+            experiments: super::experiments::Experiments::default(),
+        };
+        project.refresh_instances_from_doc();
+        Ok(project)
     }
 
     /// Structural signature used for interpolation compatibility:
@@ -1244,9 +543,7 @@ impl Project {
     /// structure disagrees, with contour and point counts. None when
     /// compatible or single-master.
     pub fn compat_detail(&self, name: &str) -> Option<String> {
-        if self.masters.len() < 2 || self.compat.get(name).copied().unwrap_or(true) {
-            return None;
-        }
+        let error = self.try_interpolated_at(name, &Location::new()).err()?;
         let first_sig = Self::glyph_signature(&self.masters[0], name);
         let first_name = &self.master_names[0];
         let describe = |sig: &Option<Vec<Vec<norad::PointType>>>| match sig {
@@ -1267,9 +564,7 @@ impl Project {
                 describe(&sig),
             ));
         }
-        // Same counts everywhere: the disagreement is point types
-        // (a curve against a line somewhere).
-        Some("point types differ between masters".into())
+        Some(error)
     }
 
     /// Rebuild the Instances display rows (name + normalized
@@ -1290,22 +585,18 @@ impl Project {
                     .into();
                 let mut location = Location::new();
                 for axis in &self.axes {
-                    let raw = inst
-                        .location
-                        .iter()
-                        .find(|d| d.name == axis.name)
-                        .and_then(|d| d.xvalue.or(d.uservalue))
-                        .map(|v| v as f64)
-                        .unwrap_or(axis.default);
-                    location.insert(
-                        axis.name.clone(),
-                        crate::document::var_model::normalize_value(
-                            raw,
-                            axis.min,
-                            axis.default,
-                            axis.max,
-                        ),
-                    );
+                    let dimension = inst.location.iter().find(|d| d.name == axis.name);
+                    let value = if let Some(user) = dimension.and_then(|d| d.uservalue) {
+                        axis.user.user_to_normalized(f64::from(user))
+                    } else {
+                        axis.user.design_to_normalized(
+                            dimension
+                                .and_then(|d| d.xvalue)
+                                .map(f64::from)
+                                .unwrap_or(axis.default),
+                        )
+                    };
+                    location.insert(axis.name.clone(), value);
                 }
                 (name, location)
             })
@@ -1314,24 +605,13 @@ impl Project {
 
     /// Check one glyph's compatibility across all masters.
     pub fn check_compat(&self, name: &str) -> bool {
-        let mut signatures = self.masters.iter().map(|m| Self::glyph_signature(m, name));
-        let Some(first) = signatures.next().flatten() else {
-            return false;
-        };
-        signatures.all(|s| s.as_ref() == Some(&first))
+        self.try_interpolated_at(name, &Location::new()).is_ok()
     }
 
     /// Recompute the whole compatibility map (load / reload).
     pub fn compute_compat(&mut self) {
         self.compat.clear();
-        if self.masters.len() < 2 {
-            return;
-        }
-        let names: Vec<String> = self.masters[self.active]
-            .glyphs
-            .iter()
-            .map(|g| g.name.to_string())
-            .collect();
+        let names: Vec<String> = self.glyph_names().map(str::to_owned).collect();
         for name in names {
             let ok = self.check_compat(&name);
             self.compat.insert(name, ok);
@@ -1340,9 +620,6 @@ impl Project {
 
     /// Recheck one glyph after editing.
     pub fn recheck_compat(&mut self, name: &str) {
-        if self.masters.len() < 2 {
-            return;
-        }
         let ok = self.check_compat(name);
         self.compat.insert(name.to_string(), ok);
     }
@@ -1354,80 +631,113 @@ impl Project {
     /// other source it is a straight copy. This is Re-Interpolate in
     /// Glyphs.
     pub fn reinterpolated_from_others(&self, glyph_name: &str) -> Result<norad::Glyph, String> {
-        let flatten = |glyph: &norad::Glyph| {
-            let mut v = vec![glyph.width];
-            for contour in &glyph.contours {
-                for p in &contour.points {
-                    v.push(p.x);
-                    v.push(p.y);
-                }
-            }
-            v
-        };
-        let mut values: Vec<Vec<f64>> = Vec::new();
-        let mut locations: Vec<Location> = Vec::new();
-        let mut template: Option<norad::Glyph> = None;
-        for (mi, master) in self.masters.iter().enumerate() {
-            if mi == self.active {
-                continue;
-            }
-            let Some(glyph) = master.font.get_glyph(glyph_name) else {
-                continue;
-            };
-            values.push(flatten(glyph));
-            locations.push(self.master_locations[mi].clone());
-            if template.is_none() {
-                template = Some(glyph.clone());
-            }
+        let (layers, locations) =
+            self.interpolation_layers(glyph_name, Some(SourceId(self.active)))?;
+        if layers.len() == 1 {
+            return Ok(layers[0].clone());
         }
-        for b in &self.brace {
-            if b.master == self.active {
-                continue;
-            }
-            let Some(glyph) = self
-                .masters
-                .get(b.master)
-                .and_then(|m| m.font.layers.get(&b.layer))
-                .and_then(|l| l.get_glyph(glyph_name))
-            else {
-                continue;
-            };
-            values.push(flatten(glyph));
-            locations.push(b.location.clone());
-        }
-        let Some(mut template) = template else {
-            return Err("No other master holds this glyph".into());
-        };
-        let len = values[0].len();
-        if values.iter().any(|v| v.len() != len) {
-            return Err("Other masters are not point-compatible".into());
-        }
-        let out = if values.len() == 1 {
-            values.remove(0)
-        } else {
-            VariationModel::new(&locations)
-                .interpolate(&values, &self.master_locations[self.active])
-        };
-        let mut it = out.iter().copied();
-        template.width = it.next().unwrap_or(template.width);
-        for contour in template.contours.iter_mut() {
-            for p in contour.points.iter_mut() {
-                p.x = it.next().unwrap_or(p.x);
-                p.y = it.next().unwrap_or(p.y);
-            }
-        }
-        Ok(template)
+        super::interpolation::interpolate(&layers, &locations, &self.master_locations[self.active])
     }
 
-    /// The interpolation at the current location as a combined path and advance width, using the active master to resolve components.
+    /// The current instance's path and advance, resolving every component at that location.
     pub fn interpolated_glyph(&self, glyph_name: &str) -> Option<(BezPath, f64)> {
         let glyph = self.interpolated_norad_glyph(glyph_name)?;
-        let advance = glyph.width;
-        let base = &self.masters[self.active];
         Some((
-            crate::outline::glyph_paths::glyph_to_bezpath(&glyph, &base.font),
-            advance,
+            self.interpolated_outline_at(glyph_name, &self.location)
+                .ok()?,
+            glyph.width,
         ))
+    }
+
+    /// Resolve an interpolated outline, failing on missing or cyclic components.
+    pub fn interpolated_outline_at(
+        &self,
+        glyph_name: &str,
+        location: &Location,
+    ) -> Result<BezPath, String> {
+        fn resolve(
+            project: &Project,
+            name: &str,
+            location: &Location,
+            seen: &mut HashSet<String>,
+        ) -> Result<BezPath, String> {
+            if seen.len() >= 64 || !seen.insert(name.to_owned()) {
+                return Err(format!(
+                    "{name}: cyclic or excessively deep component graph"
+                ));
+            }
+            let glyph = project.try_interpolated_at(name, location)?;
+            let mut path = crate::outline::glyph_paths::contours_to_bezpath(&glyph);
+            for component in &glyph.components {
+                let outline = resolve(project, &component.base, location, seen)?;
+                let transform = crate::outline::glyph_paths::component_affine(&component.transform);
+                path.extend((transform * outline).elements().iter().copied());
+            }
+            seen.remove(name);
+            Ok(path)
+        }
+        resolve(self, glyph_name, location, &mut HashSet::new())
+    }
+
+    /// Interpolate resolved glyph-pair kerning, including each source's group fallback.
+    pub fn interpolated_kerning_at(
+        &self,
+        left: &str,
+        right: &str,
+        location: &Location,
+    ) -> Result<f64, String> {
+        if location
+            .keys()
+            .any(|name| !self.axes.iter().any(|axis| &axis.name == name))
+            || location.values().any(|value| !value.is_finite())
+        {
+            return Err("invalid kerning interpolation location".into());
+        }
+        let values: Vec<_> = self
+            .masters
+            .iter()
+            .map(|source| {
+                let pairs = source
+                    .font
+                    .kerning
+                    .iter()
+                    .map(|(left, rights)| {
+                        (
+                            left.to_string(),
+                            rights
+                                .iter()
+                                .map(|(right, value)| (right.to_string(), *value))
+                                .collect(),
+                        )
+                    })
+                    .collect();
+                let groups = source
+                    .font
+                    .groups
+                    .iter()
+                    .map(|(name, members)| {
+                        (
+                            name.to_string(),
+                            members.iter().map(ToString::to_string).collect(),
+                        )
+                    })
+                    .collect();
+                vec![super::model::kerning::lookup_kerning(
+                    &pairs, &groups, left, None, right, None,
+                )]
+            })
+            .collect();
+        if values.iter().flatten().any(|value| !value.is_finite()) {
+            return Err("non-finite source kerning".into());
+        }
+        if values.len() == 1 {
+            return Ok(values[0][0]);
+        }
+        let model = self
+            .model
+            .as_ref()
+            .ok_or("project has no variation model")?;
+        Ok(model.interpolate(&values, location)?[0])
     }
 
     /// The interpolation at the current location as a norad glyph,
@@ -1446,61 +756,24 @@ impl Project {
     /// default master's own coordinates: trajectory sampling needs
     /// the whole axis, ends included.
     pub fn interpolated_at(&self, glyph_name: &str, location: &Location) -> Option<norad::Glyph> {
-        self.model.as_ref()?;
-        let flatten = |glyph: &norad::Glyph| {
-            let mut v = vec![glyph.width];
-            for contour in &glyph.contours {
-                for p in &contour.points {
-                    v.push(p.x);
-                    v.push(p.y);
-                }
-            }
-            v
-        };
-        // Flatten [advance, x0, y0, x1, y1, ...] per master.
-        let mut values: Vec<Vec<f64>> = Vec::with_capacity(self.masters.len());
-        for master in &self.masters {
-            values.push(flatten(master.font.get_glyph(glyph_name)?));
+        self.try_interpolated_at(glyph_name, location).ok()
+    }
+
+    /// Interpolate this glyph's sources, with explicit failure reasons.
+    /// Missing glyphs in non-default sources produce a sparse per-glyph model.
+    pub fn try_interpolated_at(
+        &self,
+        glyph_name: &str,
+        location: &Location,
+    ) -> Result<norad::Glyph, String> {
+        if location
+            .keys()
+            .any(|name| !self.axes.iter().any(|axis| &axis.name == name))
+        {
+            return Err("interpolation references an unknown axis".into());
         }
-        // Brace layers holding this glyph join the master set: the
-        // model grows their locations, per glyph (Glyphs' intermediate
-        // layers).
-        let mut brace_locations: Vec<Location> = Vec::new();
-        for b in &self.brace {
-            let Some(glyph) = self
-                .masters
-                .get(b.master)
-                .and_then(|m| m.font.layers.get(&b.layer))
-                .and_then(|l| l.get_glyph(glyph_name))
-            else {
-                continue;
-            };
-            values.push(flatten(glyph));
-            brace_locations.push(b.location.clone());
-        }
-        let len = values[0].len();
-        if values.iter().any(|v| v.len() != len) {
-            return None; // point-incompatible sources
-        }
-        let out = if brace_locations.is_empty() {
-            self.model.as_ref()?.interpolate(&values, location)
-        } else {
-            let mut locations = self.master_locations.clone();
-            locations.extend(brace_locations);
-            VariationModel::new(&locations).interpolate(&values, location)
-        };
-        // Rebuild on the default master's structure.
-        let base = &self.masters[self.active];
-        let mut glyph = base.font.get_glyph(glyph_name)?.clone();
-        let mut it = out.iter().copied();
-        let advance = it.next()?;
-        for contour in glyph.contours.iter_mut() {
-            for p in contour.points.iter_mut() {
-                p.x = it.next()?;
-                p.y = it.next()?;
-            }
-        }
-        glyph.width = advance;
+        let (layers, locations) = self.interpolation_layers(glyph_name, None)?;
+        let mut glyph = super::interpolation::interpolate(&layers, &locations, location)?;
         // HOI: nodes with an intermediate point follow their exact
         // quadratic, overriding the piecewise answer the baked brace
         // layers gave the model — the bake stays for compilers, the
@@ -1545,7 +818,64 @@ impl Project {
                 }
             }
         }
-        Some(glyph)
+        Ok(glyph)
+    }
+
+    fn interpolation_layers(
+        &self,
+        glyph_name: &str,
+        excluding: Option<SourceId>,
+    ) -> Result<(Vec<&norad::Glyph>, Vec<Location>), String> {
+        let sources = self.glyph_sources(glyph_name)?;
+        let glyph = self.variable_glyph(glyph_name).expect("validated glyph");
+        let mut layers = Vec::new();
+        let mut locations = Vec::new();
+        for source in sources {
+            if excluding == Some(source.layer.source) {
+                continue;
+            }
+            layers.push(glyph.layer(&source.layer).expect("validated source layer"));
+            locations.push(source.location);
+        }
+        Ok((layers, locations))
+    }
+
+    /// The sources participating in one glyph, independent of active editor selection.
+    /// Missing non-default layers are sparse; auxiliary layers are not sources.
+    pub fn glyph_sources(&self, glyph_name: &str) -> Result<Vec<GlyphSource>, String> {
+        let glyph = self
+            .variable_glyph(glyph_name)
+            .ok_or_else(|| format!("unknown glyph {glyph_name}"))?;
+        let mut sources = Vec::new();
+        for (index, source) in self.masters.iter().enumerate() {
+            let id = LayerId {
+                source: SourceId(index),
+                name: source.font.default_layer().name().to_string(),
+            };
+            if glyph.layer(&id).is_some() {
+                sources.push(GlyphSource {
+                    layer: id,
+                    location: self
+                        .master_locations
+                        .get(index)
+                        .cloned()
+                        .unwrap_or_default(),
+                });
+            }
+        }
+        for source in &self.brace {
+            let id = LayerId {
+                source: SourceId(source.master),
+                name: source.layer.clone(),
+            };
+            if glyph.layer(&id).is_some() {
+                sources.push(GlyphSource {
+                    layer: id,
+                    location: source.location.clone(),
+                });
+            }
+        }
+        Ok(sources)
     }
 
     /// The masters at the low and high end of the first axis (by
@@ -1668,8 +998,183 @@ impl Project {
     }
 
     /// The master being edited, mutably.
-    pub fn active_font_mut(&mut self) -> &mut Master {
-        &mut self.masters[self.active]
+    pub fn active_font_mut(&mut self) -> SourceEdit<'_> {
+        self.edit_source(SourceId(self.active))
+            .expect("active source exists")
+    }
+
+    /// Read-only source projections for rendering and legacy outline algorithms.
+    pub fn sources(&self) -> &[Master] {
+        &self.masters
+    }
+
+    /// Edit one source projection and reconcile its changes into glyph-local layers.
+    pub fn edit_source(&mut self, id: SourceId) -> Option<SourceEdit<'_>> {
+        Some(SourceEdit {
+            source: self.masters.get_mut(id.0)?,
+            data: &mut self.variable,
+            id,
+        })
+    }
+
+    /// Edit multiple source projections in one scope.
+    pub fn edit_sources(&mut self) -> SourcesEdit<'_> {
+        SourcesEdit {
+            sources: &mut self.masters,
+            data: &mut self.variable,
+        }
+    }
+
+    pub(crate) fn editing_parts(
+        &mut self,
+    ) -> (SourcesEdit<'_>, &mut super::experiments::Experiments) {
+        (
+            SourcesEdit {
+                sources: &mut self.masters,
+                data: &mut self.variable,
+            },
+            &mut self.experiments,
+        )
+    }
+
+    /// The variable glyph, independent of the active source or preview location.
+    pub fn variable_glyph(&self, name: &str) -> Option<&VariableGlyph> {
+        self.variable.glyphs.get(name)
+    }
+
+    /// All glyph names, including glyphs found only in sparse or auxiliary layers.
+    pub fn glyph_names(&self) -> impl Iterator<Item = &str> {
+        self.variable.glyphs.keys().map(String::as_str)
+    }
+
+    /// Materialize a source for a format adapter from canonical glyph/layer storage.
+    pub fn source_snapshot(&self, source: SourceId) -> Option<norad::Font> {
+        self.variable.source_font(source)
+    }
+
+    /// Edit a particular glyph layer without changing the active editor source.
+    /// Returns false for a missing layer or an unchanged payload.
+    pub fn edit_layer(
+        &mut self,
+        name: &str,
+        layer: &LayerId,
+        edit: impl FnOnce(&mut norad::Glyph),
+    ) -> bool {
+        let Some(before) = self
+            .variable_glyph(name)
+            .and_then(|g| g.layer(layer))
+            .cloned()
+        else {
+            return false;
+        };
+        let mut after = before.clone();
+        edit(&mut after);
+        if after == before || after.name() != before.name() {
+            return false;
+        }
+        let default_layer = self.masters[layer.source.0]
+            .font
+            .default_layer()
+            .name()
+            .as_str()
+            == layer.name;
+        if default_layer {
+            self.masters[layer.source.0].history.record(name, &before);
+        } else {
+            self.variable
+                .histories
+                .entry(layer.clone())
+                .or_default()
+                .record(name, &before);
+        }
+        self.install_layer_payload(name, layer, after);
+        true
+    }
+
+    fn install_layer_payload(&mut self, name: &str, layer: &LayerId, payload: norad::Glyph) {
+        {
+            let mut source = self.edit_source(layer.source).expect("validated source");
+            source
+                .font
+                .layers
+                .get_mut(&layer.name)
+                .expect("validated layer")
+                .insert_glyph(payload);
+            source.dirty = true;
+            source.modified_glyphs.insert(name.to_owned());
+            if let Some(&index) = source.name_map.get(name) {
+                source.rebuild_entry(index);
+            }
+        }
+        self.recheck_compat(name);
+    }
+
+    /// Replay the history belonging to a glyph layer, without switching editor sources.
+    /// Set `redo` to replay a previously undone edit.
+    pub fn undo_layer(&mut self, name: &str, layer: &LayerId, redo: bool) -> bool {
+        let Some(mut glyph) = self
+            .variable_glyph(name)
+            .and_then(|g| g.layer(layer))
+            .cloned()
+        else {
+            return false;
+        };
+        let default_layer = self.masters[layer.source.0]
+            .font
+            .default_layer()
+            .name()
+            .as_str()
+            == layer.name;
+        let history = if default_layer {
+            &mut self.masters[layer.source.0].history
+        } else {
+            self.variable.histories.entry(layer.clone()).or_default()
+        };
+        let changed = if redo {
+            history.redo(name, &mut glyph)
+        } else {
+            history.undo(name, &mut glyph)
+        };
+        if changed {
+            self.install_layer_payload(name, layer, glyph);
+        }
+        changed
+    }
+
+    /// Save every source from the variable project, then its Designspace metadata.
+    pub fn save(&mut self) -> Result<(), String> {
+        for index in 0..self.masters.len() {
+            let font = self
+                .source_snapshot(SourceId(index))
+                .ok_or("missing source data")?;
+            let source = &mut self.masters[index];
+            if let Some(parent) = source
+                .source_path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+            {
+                std::fs::create_dir_all(parent)
+                    .map_err(|error| format!("{}: {error}", parent.display()))?;
+            }
+            font.save(&source.source_path)
+                .map_err(|error| format!("{}: {error}", source.source_path.display()))?;
+            source.dirty = false;
+            source.modified_glyphs.clear();
+            source.kerning_dirty = false;
+        }
+        if self.ds_dirty {
+            let path = self
+                .export_source
+                .as_deref()
+                .ok_or("designspace has no save destination")?;
+            self.ds_doc
+                .as_ref()
+                .ok_or("designspace document is unavailable")?
+                .save(path)
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+            self.ds_dirty = false;
+        }
+        Ok(())
     }
 }
 
@@ -1679,13 +1184,12 @@ mod tests {
     use crate::analysis::measure::joining_band;
     use crate::formats::lib_keys::write_hoi_intermediates;
     use crate::formats::metrics_keys::{read_metrics_key, write_metrics_key};
-    use crate::outline::glyph_ops as ops;
     use crate::testing::fonts;
 
     #[test]
     fn designspace_loads_with_masters() {
         let project = Project::load(&fonts::designspace()).expect("designspace loads");
-        assert_eq!(project.masters.len(), 2, "regular + bold");
+        assert_eq!(project.sources().len(), 2, "regular + bold");
         assert!(project.master_names.iter().any(|n| n.contains("Bold")));
         // Active master is the default location (Regular).
         assert!(!project.master_names[project.active].contains("Bold"));
@@ -1726,47 +1230,6 @@ mod tests {
     }
 
     #[test]
-    fn a_proposal_installs_one_undo_step_per_glyph() {
-        use crate::document::proposal;
-        let mut master = Master::load(&fonts::regular_ufo()).expect("fixture");
-        let h = master.name_map["H"];
-        let o = master.name_map["O"];
-        let before_h = master.snapshot_contours(h).expect("H is drawn");
-        let mut moved = master.font.get_glyph("H").expect("H").clone();
-        for c in &mut moved.contours {
-            for p in &mut c.points {
-                p.x += 20.0;
-            }
-        }
-        moved.width += 40.0;
-        let mut broken = master.font.get_glyph("O").expect("O").clone();
-        broken.contours.pop();
-        proposal::write(&mut master.font, "bolden", [moved, broken]).expect("written");
-
-        let done = master
-            .install_proposal("bolden", None, true)
-            .expect("the proposal exists");
-        assert_eq!(done.installed, ["H"]);
-        assert_eq!(
-            done.skipped.len(),
-            1,
-            "O breaks structure and stays proposed"
-        );
-        assert!(!done.layer_removed);
-        assert_eq!(master.glyphs[h].advance, before_h.width + 40.0);
-        assert!(master.can_undo(h));
-        assert!(!master.can_undo(o));
-
-        assert!(master.undo(h));
-        assert_eq!(master.glyphs[h].advance, before_h.width);
-        assert!(master.redo(h));
-        assert_eq!(master.glyphs[h].advance, before_h.width + 40.0);
-
-        assert_eq!(master.discard_proposal("bolden").expect("present"), 1);
-        assert!(proposal::list(&master.font).is_empty());
-    }
-
-    #[test]
     fn brace_layer_refines_interpolation() {
         let mut project = Project::load(&fonts::designspace()).expect("loads");
         // Freeze n's Regular outline into a {500} brace layer, then
@@ -1787,14 +1250,14 @@ mod tests {
             );
             l
         };
-        let mut frozen = project.masters[0]
+        let mut frozen = project.sources()[0]
             .font
             .get_glyph(name)
             .expect("has n")
             .clone();
         let orig = frozen.contours[0].points[0].x;
         frozen.contours[0].points[0].x = orig + 40.0;
-        project.masters[0]
+        project.edit_sources()[0]
             .font
             .layers
             .get_or_create_layer("{500}")
@@ -1822,9 +1285,9 @@ mod tests {
         let mut project = Project::load(&fonts::designspace()).expect("loads");
         // Two masters: rebuilding the active one from "the others"
         // must reproduce the other master exactly.
-        assert_eq!(project.masters.len(), 2);
+        assert_eq!(project.sources().len(), 2);
         project.active = 0;
-        let expected = project.masters[1]
+        let expected = project.sources()[1]
             .font
             .get_glyph("H")
             .expect("bold has H")
@@ -1889,12 +1352,12 @@ mod tests {
     fn metrics_keys_sync_roundtrip() {
         // n's LSB copied onto h in both masters through the lib key.
         let mut project = Project::load(&fonts::designspace()).expect("loads");
-        for master in project.masters.iter_mut() {
+        for master in project.edit_sources().iter_mut() {
             let glyph = master.font.get_glyph_mut("h").expect("has h");
             write_metrics_key(glyph, true, "=n+10");
         }
         // Emulate command_sync_metrics' inner pass directly.
-        for master in project.masters.iter_mut() {
+        for master in project.edit_sources().iter_mut() {
             let n = master.name_map["n"];
             let h = master.name_map["h"];
             let target = master.ink_bounds(n).unwrap().x0 + 10.0;
@@ -1920,18 +1383,19 @@ mod tests {
         let axis = project.axes[0].clone();
         let (lo, hi) = project.axis_end_masters().expect("two ends");
         let a = {
-            let g = project.masters[lo].font.get_glyph(name).unwrap();
+            let g = project.sources()[lo].font.get_glyph(name).unwrap();
             let p = &g.contours[0].points[0];
             (p.x, p.y)
         };
         let b = {
-            let g = project.masters[hi].font.get_glyph(name).unwrap();
+            let g = project.sources()[hi].font.get_glyph(name).unwrap();
             let p = &g.contours[0].points[0];
             (p.x, p.y)
         };
         let q = ((a.0 + b.0) / 2.0 + 80.0, (a.1 + b.1) / 2.0 + 40.0);
         {
-            let g = project.masters[lo].font.get_glyph_mut(name).unwrap();
+            let mut sources = project.edit_sources();
+            let g = sources[lo].font.get_glyph_mut(name).unwrap();
             let mut map = HashMap::new();
             map.insert((0_usize, 0_usize), q);
             write_hoi_intermediates(g, &map);
@@ -1973,7 +1437,7 @@ mod tests {
         let tracks = project
             .trajectory_samples(name, 10)
             .expect("samples with plain masters");
-        let regular = project.masters[0].font.get_glyph(name).unwrap();
+        let regular = project.sources()[0].font.get_glyph(name).unwrap();
         let first_point = &regular.contours[0].points[0];
         // The t=0 end of every track is the Regular master exactly.
         assert!(
@@ -1990,7 +1454,7 @@ mod tests {
         let axis = project.axes[0].clone();
         let mut frozen = regular.clone();
         frozen.contours[0].points[0].x += 60.0;
-        project.masters[0]
+        project.edit_sources()[0]
             .font
             .layers
             .get_or_create_layer("{550}")
@@ -2088,312 +1552,6 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_restore_roundtrip() {
-        let mut model = Master::load(&fonts::regular_ufo()).expect("load");
-        let index = model
-            .glyphs
-            .iter()
-            .position(|g| g.name.as_ref() == "a")
-            .unwrap();
-        let before = model.snapshot_contours(index).unwrap();
-        let p0 = model.glyphs[index].points[0];
-        model.set_points(index, &[((p0.contour, p0.index), (p0.x + 25.0, p0.y))]);
-        assert_ne!(model.glyphs[index].points[0].x, p0.x);
-        model.restore_contours(index, before);
-        assert_eq!(model.glyphs[index].points[0].x, p0.x);
-        assert_eq!(model.glyphs[index].points[0].y, p0.y);
-    }
-
-    #[test]
-    fn pen_primitives_build_a_closed_contour() {
-        let mut model = Master::load(&fonts::regular_ufo()).expect("load");
-        let index = model
-            .glyphs
-            .iter()
-            .position(|g| g.name.as_ref() == "space")
-            .unwrap();
-        let base_contours = model.snapshot_contours(index).unwrap().contours.len();
-
-        let c = model.start_contour(index, 0.0, 0.0).unwrap();
-        model.append_segment(index, c, None, 100.0, 0.0, false); // line
-        model.append_segment(
-            index,
-            c,
-            Some(((130.0, 40.0), (130.0, 80.0))),
-            100.0,
-            120.0,
-            true,
-        ); // curve
-        model.close_contour(index, c, None);
-
-        let contours = model.snapshot_contours(index).unwrap().contours;
-        assert_eq!(contours.len(), base_contours + 1);
-        let new = &contours[c];
-        assert!(new.is_closed(), "contour should be closed");
-        // move->line conversion on close + 2 on-curves + 2 off-curves
-        assert_eq!(new.points.len(), 5);
-        assert_eq!(new.points[0].typ, norad::PointType::Line);
-        assert!(new.points[4].smooth);
-        // The outline cache rebuilt and is drawable.
-        assert!(!model.glyphs[index].path.elements().is_empty());
-
-        // Degenerate contour cleanup: a single stray point goes away.
-        let c2 = model.start_contour(index, 5.0, 5.0).unwrap();
-        model.remove_contour_if_degenerate(index, c2);
-        assert_eq!(
-            model.snapshot_contours(index).unwrap().contours.len(),
-            base_contours + 1
-        );
-    }
-
-    #[test]
-    fn delete_and_smooth_operations() {
-        let mut model = Master::load(&fonts::regular_ufo()).expect("load");
-        let index = model
-            .glyphs
-            .iter()
-            .position(|g| g.name.as_ref() == "space")
-            .unwrap();
-
-        // Build a closed square with one curved corner:
-        // (0,0) -line- (100,0) -line- (100,100) -curve- (0,100) -close-
-        let c = model.start_contour(index, 0.0, 0.0).unwrap();
-        model.append_segment(index, c, None, 100.0, 0.0, false);
-        model.append_segment(index, c, None, 100.0, 100.0, false);
-        model.append_segment(
-            index,
-            c,
-            Some(((80.0, 130.0), (20.0, 130.0))),
-            0.0,
-            100.0,
-            true,
-        );
-        model.close_contour(index, c, None);
-        let count_points =
-            |m: &Master| m.snapshot_contours(index).unwrap().contours[c].points.len();
-        assert_eq!(count_points(&model), 6); // 4 on + 2 off
-
-        // Toggle smooth on the curve's endpoint.
-        let curve_end_index = model.glyphs[index]
-            .points
-            .iter()
-            .find(|p| p.contour == c && p.x == 0.0 && p.y == 100.0)
-            .map(|p| (p.contour, p.index))
-            .unwrap();
-        let sel: HashSet<_> = [curve_end_index].into();
-        assert!(model.toggle_smooth(index, &sel));
-
-        // Delete one off-curve: the curve segment becomes a line.
-        let off = model.glyphs[index]
-            .points
-            .iter()
-            .find(|p| p.contour == c && !p.on_curve)
-            .map(|p| (p.contour, p.index))
-            .unwrap();
-        let sel: HashSet<_> = [off].into();
-        assert!(model.delete_points(index, &sel));
-        assert_eq!(count_points(&model), 4); // pure quad now
-        let snapshot = model.snapshot_contours(index).unwrap();
-        let contour_data = &snapshot.contours[c];
-        assert!(contour_data.is_closed());
-        assert!(
-            contour_data
-                .points
-                .iter()
-                .all(|p| p.typ != norad::PointType::OffCurve)
-        );
-
-        // Delete an on-curve point: square becomes a triangle.
-        let corner = model.glyphs[index]
-            .points
-            .iter()
-            .find(|p| p.contour == c && p.x == 100.0 && p.y == 0.0)
-            .map(|p| (p.contour, p.index))
-            .unwrap();
-        let sel: HashSet<_> = [corner].into();
-        assert!(model.delete_points(index, &sel));
-        assert_eq!(count_points(&model), 3);
-
-        // Delete everything: the contour disappears.
-        let all: HashSet<_> = model.glyphs[index]
-            .points
-            .iter()
-            .filter(|p| p.contour == c)
-            .map(|p| (p.contour, p.index))
-            .collect();
-        assert!(model.delete_points(index, &all));
-        assert!(model.snapshot_contours(index).unwrap().contours.len() <= c);
-    }
-
-    #[test]
-    fn curve_ops_run_via_shared_core() {
-        let mut model = Master::load(&fonts::regular_ufo()).expect("load");
-        let index = model
-            .glyphs
-            .iter()
-            .position(|g| g.name.as_ref() == "o")
-            .unwrap();
-        let none = HashSet::new();
-        let before: Vec<(f64, f64)> = model.glyphs[index]
-            .points
-            .iter()
-            .map(|p| (p.x, p.y))
-            .collect();
-        // Balance evens handle tension; on a real glyph something moves.
-        let changed = model.curve_op(index, &none, CurveOp::Balance);
-        let after: Vec<(f64, f64)> = model.glyphs[index]
-            .points
-            .iter()
-            .map(|p| (p.x, p.y))
-            .collect();
-        if changed {
-            assert_ne!(before, after);
-        }
-        // On-curve points never move under balance.
-        for (i, p) in model.glyphs[index].points.iter().enumerate() {
-            if p.on_curve {
-                assert_eq!(before[i], (p.x, p.y), "on-curve moved at {i}");
-            }
-        }
-        // Harmonize and optimize execute without panicking and keep
-        // the outline drawable.
-        model.curve_op(index, &none, CurveOp::Harmonize);
-        model.curve_op(index, &none, CurveOp::Optimize(0.12));
-        assert!(!model.glyphs[index].path.elements().is_empty());
-    }
-
-    #[test]
-    fn metric_edits() {
-        let mut model = Master::load(&fonts::regular_ufo()).expect("load");
-        let index = model
-            .glyphs
-            .iter()
-            .position(|g| g.name.as_ref() == "n")
-            .unwrap();
-        let ink = model.ink_bounds(index).unwrap();
-        let advance = model.glyphs[index].advance;
-
-        // Width edit changes only the advance.
-        model.set_advance(index, advance + 20.0);
-        assert_eq!(model.glyphs[index].advance, advance + 20.0);
-        assert_eq!(model.ink_bounds(index).unwrap().x0, ink.x0);
-
-        // LSB edit shifts the ink, advance untouched.
-        model.shift_ink(index, 10.0);
-        let ink2 = model.ink_bounds(index).unwrap();
-        assert_eq!(ink2.x0, ink.x0 + 10.0);
-        assert_eq!(ink2.x1, ink.x1 + 10.0);
-        assert_eq!(model.glyphs[index].advance, advance + 20.0);
-        assert!(model.dirty);
-    }
-
-    #[test]
-    fn smooth_handle_constraint_keeps_collinearity() {
-        let mut model = Master::load(&fonts::regular_ufo()).expect("load");
-        let index = model
-            .glyphs
-            .iter()
-            .position(|g| g.name.as_ref() == "space")
-            .unwrap();
-        // Two curve segments joined at a smooth point (100,100):
-        let c = model.start_contour(index, 0.0, 0.0).unwrap();
-        model.append_segment(
-            index,
-            c,
-            Some(((40.0, 60.0), (60.0, 100.0))),
-            100.0,
-            100.0,
-            true,
-        );
-        model.append_segment(
-            index,
-            c,
-            Some(((140.0, 100.0), (180.0, 60.0))),
-            200.0,
-            0.0,
-            false,
-        );
-        model.close_contour(index, c, None);
-
-        // Points in contour c: find indices of the incoming handle
-        // (60,100), the smooth point (100,100), the outgoing (140,100).
-        let find = |m: &Master, x: f64, y: f64| {
-            m.glyphs[index]
-                .points
-                .iter()
-                .find(|p| p.contour == c && p.x == x && p.y == y)
-                .map(|p| p.index)
-                .unwrap()
-        };
-        let incoming = find(&model, 60.0, 100.0);
-        let outgoing = find(&model, 140.0, 100.0);
-
-        // Drag the incoming handle downward; the outgoing must rotate
-        // to stay collinear through (100,100).
-        model.set_points(index, &[((c, incoming), (60.0, 80.0))]);
-        model.edit_glyph(index, |g| ops::constrain_smooth_neighbor(g, c, incoming));
-        let pts = &model.glyphs[index].points;
-        let out_pt = pts
-            .iter()
-            .find(|p| p.contour == c && p.index == outgoing)
-            .unwrap();
-        // Collinearity: cross product of (anchor-incoming) and
-        // (outgoing-anchor) near zero (integer rounding allowed).
-        let cross = (100.0 - 60.0) * (out_pt.y - 100.0) - (100.0 - 80.0) * (out_pt.x - 100.0);
-        assert!(
-            cross.abs() <= 60.0,
-            "not collinear enough: {cross} ({}, {})",
-            out_pt.x,
-            out_pt.y
-        );
-        // Length preserved (was 40).
-        let len = ((out_pt.x - 100.0_f64).powi(2) + (out_pt.y - 100.0_f64).powi(2)).sqrt();
-        assert!((len - 40.0).abs() < 2.0, "length changed: {len}");
-    }
-
-    #[test]
-    fn anchor_lifecycle_with_undo_snapshot() {
-        let mut model = Master::load(&fonts::regular_ufo()).expect("load");
-        let index = model
-            .glyphs
-            .iter()
-            .position(|g| g.name.as_ref() == "n")
-            .unwrap();
-        let before = model.snapshot_contours(index).unwrap();
-        let base = model.glyphs[index].anchors.len();
-
-        model.add_anchor(index, 200.0, 500.0);
-        assert_eq!(model.glyphs[index].anchors.len(), base + 1);
-        model.set_anchor(index, base, 210.0, 490.0);
-        assert_eq!(model.glyphs[index].anchors[base].1, 210.0);
-        model.delete_anchor(index, base);
-        assert_eq!(model.glyphs[index].anchors.len(), base);
-
-        // Snapshot restore also brings anchors and width back.
-        model.add_anchor(index, 1.0, 2.0);
-        model.set_advance(index, 999.0);
-        model.restore_contours(index, before);
-        assert_eq!(model.glyphs[index].anchors.len(), base);
-        assert_ne!(model.glyphs[index].advance, 999.0);
-    }
-
-    #[test]
-    fn kerning_lookup_and_exception() {
-        let mut model = Master::load(&fonts::regular_ufo()).expect("load");
-        // Group fallback resolves (VirtuaGrotesk has kern groups); the
-        // exact value doesn't matter, just that lookup doesn't panic
-        // and exceptions override.
-        let base = crate::document::font_ops::kern_value(&model.font, "A", "V");
-        crate::document::font_ops::set_kern_pair(&mut model.font, "A", "V", base - 14.0);
-        assert_eq!(
-            crate::document::font_ops::kern_value(&model.font, "A", "V"),
-            base - 14.0
-        );
-        // Unrelated pair unaffected by the exception.
-        let _ = crate::document::font_ops::kern_value(&model.font, "o", "o");
-    }
-
-    #[test]
     fn interpolation_at_midpoint() {
         let mut project = Project::load(&fonts::designspace()).expect("designspace");
         assert!(project.model.is_some(), "two masters, model expected");
@@ -2407,8 +1565,8 @@ mod tests {
             .expect("compatible masters interpolate");
         assert!(!path.elements().is_empty());
         // The interpolated advance sits between the two masters'.
-        let a0 = project.masters[0].font.get_glyph("n").unwrap().width;
-        let a1 = project.masters[1].font.get_glyph("n").unwrap().width;
+        let a0 = project.sources()[0].font.get_glyph("n").unwrap().width;
+        let a1 = project.sources()[1].font.get_glyph("n").unwrap().width;
         let (lo, hi) = (a0.min(a1), a0.max(a1));
         assert!(
             advance >= lo - 1e-6 && advance <= hi + 1e-6,
@@ -2422,139 +1580,19 @@ mod tests {
     }
 
     #[test]
-    fn shape_contours() {
-        let mut model = Master::load(&fonts::regular_ufo()).expect("load");
-        let index = model
-            .glyphs
-            .iter()
-            .position(|g| g.name.as_ref() == "space")
-            .unwrap();
-        let base = model.snapshot_contours(index).unwrap().contours.len();
-        let rect = kurbo::Rect::new(10.0, 20.0, 110.0, 220.0);
-        model.add_shape_contour(index, rect, false);
-        model.add_shape_contour(index, rect, true);
-        let contours = model.snapshot_contours(index).unwrap().contours;
-        assert_eq!(contours.len(), base + 2);
-        let square = &contours[base];
-        assert_eq!(square.points.len(), 4);
-        assert!(square.is_closed());
-        let circle = &contours[base + 1];
-        assert_eq!(circle.points.len(), 12); // 4 on + 8 off
-        assert!(circle.is_closed());
-        // Ellipse extremes touch the rect edges.
-        let xs: Vec<f64> = circle.points.iter().map(|p| p.x).collect();
-        assert_eq!(xs.iter().cloned().fold(f64::MAX, f64::min), 10.0);
-        assert_eq!(xs.iter().cloned().fold(f64::MIN, f64::max), 110.0);
-    }
-
-    #[test]
     fn compat_map_flags_structure_changes() {
         let mut project = Project::load(&fonts::designspace()).expect("designspace");
         // Demo masters are interpolation-compatible for letters.
         assert_eq!(project.compat.get("n"), Some(&true));
         // Break compatibility in one master and recheck.
-        let idx = project.masters[0]
+        let idx = project.sources()[0]
             .glyphs
             .iter()
             .position(|g| g.name.as_ref() == "n")
             .unwrap();
         let rect = kurbo::Rect::new(0.0, 0.0, 50.0, 50.0);
-        project.masters[0].add_shape_contour(idx, rect, false);
+        project.edit_sources()[0].add_shape_contour(idx, rect, false);
         project.recheck_compat("n");
         assert_eq!(project.compat.get("n"), Some(&false));
-    }
-
-    #[test]
-    fn decompose_components() {
-        let mut model = Master::load(&fonts::regular_ufo()).expect("load");
-        let index = model
-            .glyphs
-            .iter()
-            .position(|g| !g.component_names.is_empty())
-            .expect("demo font has composite glyphs");
-        use kurbo::Shape;
-        let area_before = model.glyphs[index].path.area().abs();
-        let contours_before = model.snapshot_contours(index).unwrap().contours.len();
-        assert!(model.decompose(index));
-        let snap = model.snapshot_contours(index).unwrap();
-        assert!(snap.components.is_empty());
-        assert!(snap.contours.len() > contours_before);
-        // The rendered ink is essentially unchanged (integer rounding).
-        let area_after = model.glyphs[index].path.area().abs();
-        assert!(
-            (area_before - area_after).abs() / area_before.max(1.0) < 0.02,
-            "area changed too much: {area_before} -> {area_after}"
-        );
-        assert!(model.glyphs[index].component_names.is_empty());
-    }
-
-    #[test]
-    fn remove_overlap_unions_contours() {
-        use kurbo::Shape;
-        let mut model = Master::load(&fonts::regular_ufo()).expect("load");
-        let index = model
-            .glyphs
-            .iter()
-            .position(|g| g.name.as_ref() == "space")
-            .unwrap();
-        // Two overlapping squares: union area = 100*100 + 100*100 - 50*50.
-        model.add_shape_contour(index, kurbo::Rect::new(0.0, 0.0, 100.0, 100.0), false);
-        model.add_shape_contour(index, kurbo::Rect::new(50.0, 50.0, 150.0, 150.0), false);
-        assert!(model.remove_overlap(index));
-        let snap = model.snapshot_contours(index).unwrap();
-        assert_eq!(snap.contours.len(), 1, "union should merge to one contour");
-        let area = model.glyphs[index].path.area().abs();
-        assert!(
-            (area - 17500.0).abs() < 100.0,
-            "union area wrong: {area} (expected ~17500)"
-        );
-        assert!(snap.contours[0].is_closed());
-    }
-
-    #[test]
-    fn move_point_and_save_roundtrip() {
-        let src = fonts::regular_ufo();
-        let tmp = std::env::temp_dir().join("rbg-save-test.ufo");
-        if tmp.exists() {
-            std::fs::remove_dir_all(&tmp).unwrap();
-        }
-        let copy_options = fonts::copy_dir(&src, &tmp).is_ok();
-        assert!(copy_options, "copying test UFO failed");
-
-        let mut model = Master::load(&tmp).expect("load");
-        let index = model
-            .glyphs
-            .iter()
-            .position(|g| g.name.as_ref() == "a")
-            .expect("glyph a");
-        let before = model.glyphs[index].points[0];
-        model.set_points(
-            index,
-            &[(
-                (before.contour, before.index),
-                (before.x + 10.0, before.y + 5.0),
-            )],
-        );
-        assert!(model.dirty);
-        let after = model.glyphs[index].points[0];
-        assert_eq!(after.x, before.x + 10.0);
-        assert_eq!(after.y, before.y + 5.0);
-        model.save().expect("save");
-        assert!(!model.dirty);
-
-        let reloaded = Master::load(&tmp).expect("reload");
-        let entry = reloaded
-            .glyphs
-            .iter()
-            .find(|g| g.name.as_ref() == "a")
-            .unwrap();
-        let p = entry
-            .points
-            .iter()
-            .find(|p| p.contour == before.contour && p.index == before.index)
-            .unwrap();
-        assert_eq!(p.x, before.x + 10.0);
-        assert_eq!(p.y, before.y + 5.0);
-        std::fs::remove_dir_all(&tmp).ok();
     }
 }

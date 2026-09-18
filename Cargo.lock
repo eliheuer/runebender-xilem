@@ -4357,6 +4357,7 @@ dependencies = [
  "clap",
  "copypasta",
  "fea-rs 0.22.0",
+ "fontdrasil 1.0.0",
  "glyphslib",
  "harfrust",
  "image",

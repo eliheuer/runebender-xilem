@@ -397,9 +397,9 @@ impl Workspace {
         if glyphs.is_empty() {
             return Err(format!("font-ml left no {layer_name} layer"));
         }
-        let font = self.font.font_mut();
+        let mut font = self.font.font_mut();
         font.layers.remove(&layer_name);
-        let summary = proposal::write(font, task, glyphs).map_err(|e| e.to_string())?;
+        let summary = proposal::write(&mut font, task, glyphs).map_err(|e| e.to_string())?;
         self.modified = true;
         Ok(summary)
     }
@@ -453,8 +453,8 @@ impl Workspace {
 
     /// Drop a waiting proposal without installing it.
     pub(crate) fn discard_proposal(&mut self, task: &str) {
-        let font = self.font.font_mut();
-        match proposal::discard(font, task) {
+        let mut font = self.font.font_mut();
+        match proposal::discard(&mut font, task) {
             Ok(n) => {
                 self.modified = true;
                 self.note = format!("Discarded {n} proposed glyphs");
@@ -464,6 +464,7 @@ impl Workspace {
         if self.ai.preview_task.as_deref() == Some(task) {
             self.ai.preview_task = None;
         }
+        drop(font);
         self.refresh_proposals();
     }
 

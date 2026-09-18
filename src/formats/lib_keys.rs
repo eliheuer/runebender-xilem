@@ -14,6 +14,35 @@ use kurbo::BezPath;
 use crate::outline::glyph_ops::bezpath_to_contour;
 use crate::outline::glyph_paths::contour_to_bezpath;
 
+/// Original Python Babelfont layer identity retained when importing into UFO.
+pub const BABELFONT_LAYER_KEY: &str = "com.runebender.babelfontLayer";
+
+/// Read the source id, layer id and background status of an imported layer.
+pub fn read_babelfont_layer(glyph: &norad::Glyph) -> Option<(&str, Option<&str>, bool)> {
+    let value = glyph.lib.get(BABELFONT_LAYER_KEY)?.as_dictionary()?;
+    Some((
+        value.get("source")?.as_string()?,
+        value.get("id").and_then(plist::Value::as_string),
+        value.get("background")?.as_boolean()?,
+    ))
+}
+
+/// Preserve the original identity without treating it as an editable UFO identifier.
+pub fn write_babelfont_layer(
+    glyph: &mut norad::Glyph,
+    source: &str,
+    id: Option<&str>,
+    background: bool,
+) {
+    let mut value = plist::Dictionary::new();
+    value.insert("source".into(), source.into());
+    if let Some(id) = id {
+        value.insert("id".into(), id.into());
+    }
+    value.insert("background".into(), background.into());
+    glyph.lib.insert(BABELFONT_LAYER_KEY.into(), value.into());
+}
+
 /// Proposal glyph lib key recording its foreground revision and design intent.
 pub const PROPOSAL_BASE_KEY: &str = "com.runebender.proposalBase";
 

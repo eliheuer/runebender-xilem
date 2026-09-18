@@ -70,6 +70,22 @@ CI checks the locked dependency graph against RustSec with
 These controls detect published advisories and dependency drift; they do not claim
 that Runebender's maintainers have audited every third-party crate.
 
+## Variable project and format adapters
+
+The Project owns glyph-local layers, but existing Norad tools still use guarded full-source projections and paint caches.
+This duplicates some data and reconciles changes at the end of each scoped edit.
+Font-wide metadata remains in UFO preservation templates, and new source insertion or reordering is not exposed during an open session.
+
+The pinned Babelfont model cannot preserve exact UFO advances or fractional kerning, so it is not the canonical glyph store.
+Its axis conversion and fontdrasil variation backend are used through private adapters with editable-value rounding disabled.
+Rust Babelfont JSON is explicitly unsupported; Python directory packages have a separate checked import path that saves to new UFO/Designspace files.
+
+Unsupported Designspace extensions, discrete axes, cross-axis mappings, anisotropic coordinates and layer-only UFO sources fail explicitly.
+Interpolation needs a default glyph layer, compatible contours/components/anchors and finite coordinates.
+Auxiliary layers are preserved and individually editable; they do not automatically participate in interpolation.
+Glyph metadata and guides are retained from the default source rather than interpolated.
+See [the format contract and upstream evidence](variable-project-decision.md) for the exact supported subset.
+
 ## Reproducible evidence
 
 - `docs/parity/2026-09-11/REAL-WORK-TRIAL.md` records a disposable-font editing,

@@ -18,5 +18,6 @@ pub mod metrics_keys;
 pub mod svg;
 
 pub mod designbot;
+pub mod designspace;
 
 pub mod metaballs;

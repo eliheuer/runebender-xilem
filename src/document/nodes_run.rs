@@ -847,7 +847,7 @@ fn master_path(project: &Project, name: Option<&str>) -> Result<PathBuf, String>
             })?,
     };
     project
-        .masters
+        .sources()
         .get(index)
         .map(|m| m.source_path.clone())
         .ok_or_else(|| "the family has no master".to_string())

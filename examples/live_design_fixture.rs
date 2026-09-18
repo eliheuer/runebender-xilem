@@ -8,11 +8,9 @@
 fn main() {
     use runebender::document::{live, live_socket::Server, project::Project};
     let mut project = Project::new_font("synthetic-not-saved.ufo".into());
-    project.masters[0].add_glyph("image_probe", 600.0).unwrap();
-    let glyph = project.masters[0]
-        .font
-        .get_glyph_mut("image_probe")
-        .unwrap();
+    let mut source = project.active_font_mut();
+    source.add_glyph("image_probe", 600.0).unwrap();
+    let glyph = source.font.get_glyph_mut("image_probe").unwrap();
     glyph.contours.push(norad::Contour::new(
         [(50.0, 0.0), (300.0, 700.0), (550.0, 0.0)]
             .into_iter()
@@ -20,8 +18,9 @@ fn main() {
             .collect(),
         None,
     ));
+    drop(source);
     if let Some(path) = std::env::args().nth(1) {
-        project.masters[0].font.save(path).unwrap();
+        project.sources()[0].font.save(path).unwrap();
         return;
     }
     let server = Server::start().unwrap();

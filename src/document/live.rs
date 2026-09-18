@@ -164,7 +164,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
     if name == "project_info" {
         return Ok(
             json!({"ok": true, "live": true, "project": project.export_source,
-            "active_master": project.active, "masters": project.masters.iter().enumerate()
+            "active_master": project.active, "masters": project.sources().iter().enumerate()
                 .map(|(index, master)| json!({"index": index, "source": master.source_path,
                     "dirty": master.dirty, "name": project.master_names.get(index)}))
                 .collect::<Vec<_>>()}),
@@ -195,7 +195,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             .as_u64()
             .and_then(|v| usize::try_from(v).ok())
             .ok_or("master must be a nonnegative integer")?,
-        None if project.masters.len() == 1 => 0,
+        None if project.sources().len() == 1 => 0,
         None => return Err("master is required for a family; call project_info first".into()),
     };
     let branch = object
@@ -246,10 +246,10 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             json!({"ok":true,"master":index,"installed":{"installed":installed},"root_changed":true}),
         );
     }
+    let (mut sources, experiments) = project.editing_parts();
     let master = match branch {
         Some(name) => {
-            let v = project
-                .experiments
+            let v = experiments
                 .versions
                 .get_mut(name)
                 .ok_or("unknown experiment")?;
@@ -258,7 +258,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             }
             &mut v.master
         }
-        None => project.masters.get_mut(index).ok_or("unknown master")?,
+        None => sources.get_mut(index).ok_or("unknown master")?,
     };
     let layer = object
         .get("layer")
@@ -469,8 +469,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
         )
         && result["ok"] == true
     {
-        let v = project
-            .experiments
+        let v = experiments
             .versions
             .get_mut(branch)
             .ok_or("unknown branch")?;
@@ -481,7 +480,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             .push(json!({"tool":name,"reason":object.get("reason"),"task":object.get("task")}));
     }
     if let Some(scene) = result.get("scene") {
-        project.experiments.proofs.insert(
+        experiments.proofs.insert(
             format!("{index}:{}", branch.unwrap_or("root")),
             scene.clone(),
         );
@@ -496,8 +495,10 @@ mod tests {
     #[test]
     fn unsaved_reads_proposals_install_and_undo_share_one_document() {
         let mut project = Project::new_font("never-saved.ufo".into());
-        let index = project.masters[0].add_glyph("live_test", 400.0).unwrap();
-        project.masters[0].set_advance(index, 512.0);
+        let index = project.edit_sources()[0]
+            .add_glyph("live_test", 400.0)
+            .unwrap();
+        project.edit_sources()[0].set_advance(index, 512.0);
         let read = call(&mut project, "read_glyph", &json!({"glyph": "live_test"}));
         assert_eq!(read["advance"], 512.0);
         let batch = json!({"task": "spacing", "reason": "more room", "edits": [{
@@ -506,16 +507,16 @@ mod tests {
         }]});
         assert_eq!(call(&mut project, "propose_edits", &batch)["ok"], true);
         assert_eq!(
-            project.masters[0]
+            project.sources()[0]
                 .font
                 .get_glyph("live_test")
                 .unwrap()
                 .width,
             512.0
         );
-        assert!(project.masters[0].dirty);
+        assert!(project.sources()[0].dirty);
         assert_eq!(call(&mut project, "propose_edits", &batch)["ok"], false);
-        let master = &mut project.masters[0];
+        let master = &mut project.edit_sources()[0];
         assert_eq!(
             master
                 .install_proposal("spacing", None, true)
@@ -531,7 +532,7 @@ mod tests {
     #[test]
     fn drawing_requires_explicit_structure_choice_and_undo_restores_blank() {
         let mut project = Project::new_font("never-saved.ufo".into());
-        let index = project.masters[0].add_glyph("draft", 500.0).unwrap();
+        let index = project.edit_sources()[0].add_glyph("draft", 500.0).unwrap();
         let revision =
             call(&mut project, "read_glyph", &json!({"glyph":"draft"}))["revision"].clone();
         let result = call(
@@ -556,7 +557,7 @@ mod tests {
                 .is_some_and(|error| error.contains("explicit user authorization"))
         );
         assert!(
-            project.masters[0]
+            project.sources()[0]
                 .font
                 .get_glyph("draft")
                 .unwrap()
@@ -577,7 +578,7 @@ mod tests {
         );
         assert_eq!(applied["installed"]["installed"], json!(["draft"]));
         assert_eq!(
-            project.masters[0]
+            project.sources()[0]
                 .font
                 .get_glyph("draft")
                 .unwrap()
@@ -585,18 +586,18 @@ mod tests {
                 .len(),
             1
         );
-        assert!(project.masters[0].undo(index));
+        assert!(project.edit_sources()[0].undo(index));
         assert!(
-            project.masters[0]
+            project.sources()[0]
                 .font
                 .get_glyph("draft")
                 .unwrap()
                 .contours
                 .is_empty()
         );
-        assert!(project.masters[0].redo(index));
+        assert!(project.edit_sources()[0].redo(index));
         assert_eq!(
-            project.masters[0]
+            project.sources()[0]
                 .font
                 .get_glyph("draft")
                 .unwrap()
@@ -609,10 +610,12 @@ mod tests {
     #[test]
     fn inventory_finds_unicode_and_marks_without_changing_font() {
         let mut project = Project::new_font("never-saved.ufo".into());
-        project.masters[0].add_glyph("eight", 500.0);
-        let glyph = project.masters[0].font.get_glyph_mut("eight").unwrap();
+        project.edit_sources()[0].add_glyph("eight", 500.0);
+        let mut sources = project.edit_sources();
+        let glyph = sources[0].font.get_glyph_mut("eight").unwrap();
         glyph.codepoints.insert('8');
         crate::ui::theme::set_glyph_mark(glyph, Some("green"));
+        drop(sources);
         let result = call(
             &mut project,
             "glyph_inventory",
@@ -629,9 +632,11 @@ mod tests {
     #[test]
     fn edits_after_read_reject_the_entire_proposal() {
         let mut project = Project::new_font("never-saved.ufo".into());
-        let index = project.masters[0].add_glyph("live_test", 400.0).unwrap();
+        let index = project.edit_sources()[0]
+            .add_glyph("live_test", 400.0)
+            .unwrap();
         let read = call(&mut project, "read_glyph", &json!({"glyph": "live_test"}));
-        project.masters[0].set_advance(index, 450.0);
+        project.edit_sources()[0].set_advance(index, 450.0);
         let result = call(
             &mut project,
             "propose_edits",
@@ -640,7 +645,7 @@ mod tests {
             "expected_revision": read["revision"], "operations": [{"op": "set_width", "width": 500.0}]}]}),
         );
         assert_eq!(result["ok"], false);
-        assert!(proposal::list(&project.masters[0].font).is_empty());
+        assert!(proposal::list(&project.sources()[0].font).is_empty());
     }
 
     #[test]

@@ -48,7 +48,7 @@ pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(
                         app.ai.installed_order.extend(installed.iter().cloned());
                         app.after_font_change(&installed);
                     }
-                    app.modified |= app.font.project.masters.iter().any(|master| master.dirty);
+                    app.modified |= app.font.project.sources().iter().any(|master| master.dirty);
                     app.refresh_proposals();
                 }
             },

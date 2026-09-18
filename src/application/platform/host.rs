@@ -70,7 +70,7 @@ impl Workspace {
     }
 
     pub(crate) fn from_model(font: FontModel) -> Result<Self, String> {
-        let modified = font.project.ds_dirty || font.project.masters.iter().any(|m| m.dirty);
+        let modified = font.project.ds_dirty || font.project.sources().iter().any(|m| m.dirty);
         let source_roots = source_roots(&font);
         let source_fingerprint = source_fingerprint(&source_roots);
         let features_buf = font.font().features.clone();
@@ -606,7 +606,7 @@ mod tests {
             .join("tests/fixtures/babelfont/Basic.babelfont");
         let workspace = Workspace::open(&path).expect("the Babelfont fixture opens");
         assert!(workspace.modified, "an imported copy needs to be saved");
-        assert!(workspace.font.project.masters[0].dirty);
+        assert!(workspace.font.project.sources()[0].dirty);
         assert!(!path.with_extension("ufo").exists());
     }
 
@@ -855,7 +855,7 @@ mod tests {
         let original_fonts: Vec<norad::Font> = workspace
             .font
             .project
-            .masters
+            .sources()
             .iter()
             .map(|master| master.font.clone())
             .collect();
@@ -915,7 +915,7 @@ mod tests {
         assert_eq!(reopened_r.anchors.len(), original_anchor_count + 1);
 
         for (master_index, original) in original_fonts.into_iter().enumerate() {
-            let mut normalized = reopened.font.project.masters[master_index].font.clone();
+            let mut normalized = reopened.font.project.sources()[master_index].font.clone();
             if master_index == 0 {
                 let original_r = original
                     .get_glyph("R")
@@ -1241,7 +1241,7 @@ mod tests {
         workspace.open_glyph(index);
 
         workspace.set_unicode_from_buf("U+0628".into());
-        for master in &workspace.font.project.masters {
+        for master in workspace.font.project.sources() {
             assert_eq!(
                 master
                     .font
@@ -1254,7 +1254,7 @@ mod tests {
             );
         }
         workspace.undo_active_edit(false);
-        assert!(workspace.font.project.masters.iter().all(|master| {
+        assert!(workspace.font.project.sources().iter().all(|master| {
             master
                 .font
                 .get_glyph("A")
@@ -1263,7 +1263,7 @@ mod tests {
                 .is_empty()
         }));
         workspace.undo_active_edit(true);
-        assert!(workspace.font.project.masters.iter().all(|master| {
+        assert!(workspace.font.project.sources().iter().all(|master| {
             master
                 .font
                 .get_glyph("A")
@@ -1278,7 +1278,7 @@ mod tests {
             workspace
                 .font
                 .project
-                .masters
+                .sources()
                 .iter()
                 .all(|master| master.font.get_glyph("beh.test").is_some())
         );
@@ -1287,7 +1287,7 @@ mod tests {
             workspace
                 .font
                 .project
-                .masters
+                .sources()
                 .iter()
                 .all(|master| master.font.get_glyph("A").is_some())
         );
@@ -1296,14 +1296,14 @@ mod tests {
             workspace
                 .font
                 .project
-                .masters
+                .sources()
                 .iter()
                 .all(|master| master.font.get_glyph("beh.test").is_some())
         );
 
         workspace.back_to_overview();
         workspace.overview_set_unicode("0041".into());
-        assert!(workspace.font.project.masters.iter().all(|master| {
+        assert!(workspace.font.project.sources().iter().all(|master| {
             master
                 .font
                 .get_glyph("beh.test")
@@ -1312,7 +1312,7 @@ mod tests {
                 .contains('A')
         }));
         workspace.undo_active_edit(false);
-        assert!(workspace.font.project.masters.iter().all(|master| {
+        assert!(workspace.font.project.sources().iter().all(|master| {
             master
                 .font
                 .get_glyph("beh.test")
@@ -1339,7 +1339,7 @@ mod tests {
 
         assert!(workspace.save());
         let reopened = Workspace::open(&designspace).expect("saved masters reopen");
-        for master in &reopened.font.project.masters {
+        for master in reopened.font.project.sources() {
             let glyph = master.font.get_glyph("beh.test").expect("rename persisted");
             assert!(glyph.codepoints.contains('A'));
         }
@@ -1373,7 +1373,8 @@ mod tests {
             Some("interpolated")
         );
 
-        let glyph = workspace.font.project.masters[1]
+        let mut sources = workspace.font.project.edit_sources();
+        let glyph = sources[1]
             .font
             .get_glyph_mut("A")
             .expect("A exists in the second master");
@@ -1387,6 +1388,7 @@ mod tests {
             None,
         ));
         glyph.contours.push(contour);
+        drop(sources);
         workspace.font.project.recheck_compat("A");
 
         let status = workspace
@@ -1414,7 +1416,7 @@ mod tests {
             .expect("the fixture lib is written");
         }
         let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
-        for master in &mut workspace.font.project.masters {
+        for master in workspace.font.project.edit_sources().iter_mut() {
             let layer = master
                 .font
                 .layers
@@ -1456,7 +1458,7 @@ mod tests {
 
         let reopened = Workspace::open(&copied_designspace).expect("the copied project reopens");
         assert_eq!(reopened.font.master_names(), ["Regular", "Bold"]);
-        for master in &reopened.font.project.masters {
+        for master in reopened.font.project.sources() {
             assert_eq!(
                 master
                     .font

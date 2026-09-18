@@ -1,281 +1,123 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Designspace interpolation: a port of fontTools' `VariationModel`
-//! (the same algorithm Fontra's `var-model.js` implements), plus the
-//! glyph-level glue that turns a set of master `.glif`s into an
-//! interpolated one at an arbitrary location.
+//! Checked variation math behind Runebender-owned locations.
 //!
-//! Locations here are always **normalized** to −1..1 per axis; the
-//! caller normalizes against the designspace axis min/default/max
-//! before handing them over, exactly as fontTools does.
-//!
-//! The model is: for a set of master locations, derive one support
-//! ("tent") per master, express each master's outline as a delta from
-//! the ones before it, then evaluate at a target location by summing
-//! the deltas scaled by their supports.
+//! The backend is fontdrasil, the same model used by pinned Babelfont.
+//! Keep editable values as f64 and disable compiler rounding. The backend never
+//! receives whole UFO glyphs, so it cannot narrow advances or discard metadata.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-/// A per-axis tent: `(lower, peak, upper)` in normalized coordinates.
-pub type Support = HashMap<String, (f64, f64, f64)>;
-/// A normalized designspace location, axis tag → value.
+use fontdrasil::coords::{NormalizedCoord, NormalizedLocation};
+use fontdrasil::types::Tag;
+use fontdrasil::variations::RoundingBehaviour;
+
+/// A normalized designspace location, axis name to value, with omitted axes at zero.
 pub type Location = HashMap<String, f64>;
 
-/// How much a support contributes at `location`.
-///
-/// This is fontTools' `supportScalar` without the `extrapolate` and
-/// `ot` special cases: the editor never evaluates outside the
-/// designspace box.
-pub fn support_scalar(location: &Location, support: &Support) -> f64 {
-    let mut scalar = 1.0;
-    for (axis, &(lower, peak, upper)) in support {
-        if peak == 0.0 {
-            continue;
-        }
-        if lower > peak || peak > upper {
-            continue;
-        }
-        if lower < 0.0 && upper > 0.0 {
-            continue;
-        }
-        let v = location.get(axis).copied().unwrap_or(0.0);
-        if v == peak {
-            continue;
-        }
-        if v <= lower || upper <= v {
-            return 0.0;
-        }
-        if v < peak {
-            scalar *= (v - lower) / (peak - lower);
-        } else {
-            scalar *= (upper - v) / (upper - peak);
-        }
-    }
-    scalar
-}
-
+/// Runebender's checked adapter to Babelfont's variation-math dependency.
 #[derive(Debug)]
-/// The interpolation model for one set of master locations.
 pub struct VariationModel {
-    /// Master order after sorting, as indices into the input list.
-    pub sort_order: Vec<usize>,
-    /// One support per master, in sorted order.
-    pub supports: Vec<Support>,
-    /// `delta_weights[i][j]` = how much delta `j` already contributes
-    /// at master `i`, so master `i`'s own delta can subtract it out.
-    pub delta_weights: Vec<Vec<(usize, f64)>>,
+    backend: fontdrasil::variations::VariationModel,
+    axes: BTreeMap<String, Tag>,
+    locations: Vec<NormalizedLocation>,
 }
 
 impl VariationModel {
-    /// Build a model for the given master locations. Locations must be normalized to -1..1 per axis.
-    /// The first location in sorted order becomes the base master.
-    pub fn new(locations: &[Location]) -> Self {
-        let sort_order = sort_locations(locations);
-        let sorted: Vec<Location> = sort_order.iter().map(|&i| locations[i].clone()).collect();
-        let supports = compute_supports(&sorted);
-        let delta_weights = compute_delta_weights(&sorted, &supports);
-        Self {
-            sort_order,
-            supports,
-            delta_weights,
+    /// Build a model with unique, finite source locations and a default source.
+    /// Source coordinates must be normalized to -1..1.
+    pub fn new(locations: &[Location]) -> Result<Self, String> {
+        if locations.is_empty() {
+            return Err("variation model needs at least one source".into());
         }
-    }
-
-    /// Scalars to apply to each master's *delta* at `location`, in
-    /// sorted order.
-    pub fn support_scalars(&self, location: &Location) -> Vec<f64> {
-        self.supports
+        let names: BTreeSet<_> = locations
             .iter()
-            .map(|support| support_scalar(location, support))
-            .collect()
-    }
-
-    /// Turn per-master values into deltas. `values` is in the
-    /// caller's original order; the result is in sorted order.
-    pub fn deltas(&self, values: &[Vec<f64>]) -> Vec<Vec<f64>> {
-        let mut deltas: Vec<Vec<f64>> = Vec::with_capacity(values.len());
-        for (i, &source) in self.sort_order.iter().enumerate() {
-            let mut delta = values[source].clone();
-            for &(j, weight) in &self.delta_weights[i] {
-                for (d, prev) in delta.iter_mut().zip(&deltas[j]) {
-                    *d -= prev * weight;
-                }
-            }
-            deltas.push(delta);
-        }
-        deltas
-    }
-
-    /// Evaluate interpolated values at `location`.
-    pub fn interpolate(&self, values: &[Vec<f64>], location: &Location) -> Vec<f64> {
-        let deltas = self.deltas(values);
-        let scalars = self.support_scalars(location);
-        let width = values.first().map_or(0, Vec::len);
-        let mut out = vec![0.0; width];
-        for (delta, scalar) in deltas.iter().zip(scalars) {
-            if scalar == 0.0 {
-                continue;
-            }
-            for (o, d) in out.iter_mut().zip(delta) {
-                *o += d * scalar;
-            }
-        }
-        out
-    }
-}
-
-/// Sort masters by how special they are: on-axis masters first,
-/// then by number of axes involved, then by axis names and values.
-///
-/// The order decides which master narrows which support. This is
-/// the order fontTools uses.
-fn sort_locations(locations: &[Location]) -> Vec<usize> {
-    let mut axis_points: HashMap<String, HashSet<u64>> = HashMap::new();
-    for location in locations {
-        let on_axis: Vec<&String> = location
-            .iter()
-            .filter(|&(_, &v)| v != 0.0)
-            .map(|(axis, _)| axis)
+            .flat_map(|loc| loc.keys().cloned())
             .collect();
-        if on_axis.len() != 1 {
-            continue;
+        let mut axes = BTreeMap::new();
+        for (index, name) in names.into_iter().enumerate() {
+            // The backend needs tags, while the public API uses full axis names.
+            // Private synthetic tags preserve deterministic name order without
+            // truncating or colliding user names; they are never serialized.
+            let index = u32::try_from(index).map_err(|_| "too many variation axes")?;
+            axes.insert(name, Tag::new(&index.to_be_bytes()));
         }
-        let axis = on_axis[0];
-        let value = location[axis];
-        axis_points
-            .entry(axis.clone())
-            .or_default()
-            .insert(value.to_bits());
-    }
-
-    let mut order: Vec<usize> = (0..locations.len()).collect();
-    order.sort_by(|&a, &b| key(&locations[a], &axis_points).cmp(&key(&locations[b], &axis_points)));
-    order
-}
-
-/// The master sort key, flattened into a tuple of orderable parts.
-/// This is fontTools' `getMasterLocationsSortKeyFunc`.
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-struct SortKey {
-    rank: usize,
-    on_point_count: usize,
-    axis_names: Vec<String>,
-    signs: Vec<i8>,
-    magnitudes: Vec<u64>,
-}
-
-fn key(location: &Location, axis_points: &HashMap<String, HashSet<u64>>) -> SortKey {
-    let mut used: Vec<(&String, f64)> = location
-        .iter()
-        .filter(|&(_, &v)| v != 0.0)
-        .map(|(axis, &v)| (axis, v))
-        .collect();
-    used.sort_by(|a, b| a.0.cmp(b.0));
-
-    let on_point_count = used
-        .iter()
-        .filter(|(axis, value)| {
-            axis_points
-                .get(*axis)
-                .is_some_and(|points| points.contains(&value.to_bits()))
-        })
-        .count();
-
-    SortKey {
-        rank: used.len(),
-        // More on-axis hits sort earlier, so negate by subtracting.
-        on_point_count: used.len() - on_point_count,
-        axis_names: used.iter().map(|(axis, _)| (*axis).clone()).collect(),
-        signs: used
+        let locations: Vec<_> = locations
             .iter()
-            .map(|(_, v)| if *v < 0.0 { -1_i8 } else { 1_i8 })
-            .collect(),
-        magnitudes: used.iter().map(|(_, v)| v.abs().to_bits()).collect(),
+            .map(|loc| convert_location(&axes, loc))
+            .collect::<Result<_, _>>()?;
+        let unique: HashSet<_> = locations.iter().cloned().collect();
+        if unique.len() != locations.len() {
+            return Err("duplicate glyph-source location".into());
+        }
+        if !locations
+            .iter()
+            .any(|loc| loc.iter().all(|(_, value)| value.to_f64() == 0.0))
+        {
+            return Err("variation model needs a source at the default location".into());
+        }
+        let backend =
+            fontdrasil::variations::VariationModel::new(unique, axes.values().copied().collect());
+        Ok(Self {
+            backend,
+            axes,
+            locations,
+        })
+    }
+
+    /// Interpolate equally sized vectors in source order without rounding editable values.
+    pub fn interpolate(
+        &self,
+        values: &[Vec<f64>],
+        location: &Location,
+    ) -> Result<Vec<f64>, String> {
+        if values.len() != self.locations.len()
+            || values.iter().flatten().any(|value| !value.is_finite())
+        {
+            return Err("interpolation requires finite values for every source".into());
+        }
+        let location = convert_location(&self.axes, location)?;
+        let points = self
+            .locations
+            .iter()
+            .cloned()
+            .zip(values.iter().cloned())
+            .collect();
+        let deltas = self
+            .backend
+            .deltas_with_rounding(&points, RoundingBehaviour::None)
+            .map_err(|error| error.to_string())?;
+        let result = self.backend.interpolate_from_deltas(&location, &deltas);
+        if result.iter().any(|value| !value.is_finite()) {
+            return Err("non-finite interpolation result".into());
+        }
+        Ok(result)
     }
 }
 
-/// Compute each master's support: its tent starts as its own peak
-/// spanning the whole axis, then gets narrowed by every earlier
-/// master whose region it overlaps. This is fontTools' support
-/// computation.
-fn compute_supports(locations: &[Location]) -> Vec<Support> {
-    let mut supports: Vec<Support> = Vec::with_capacity(locations.len());
-
-    for (i, location) in locations.iter().enumerate() {
-        let mut support: Support = HashMap::new();
-        for (axis, &value) in location {
-            if value == 0.0 {
-                continue;
-            }
-            let tent = if value > 0.0 {
-                (0.0, value, 1.0)
-            } else {
-                (-1.0, value, 0.0)
-            };
-            support.insert(axis.clone(), tent);
-        }
-
-        for other in locations.iter().take(i) {
-            // Only masters whose axes are a subset and which sit
-            // inside this support can narrow it.
-            if other
-                .iter()
-                .any(|(axis, &v)| v != 0.0 && !support.contains_key(axis))
-            {
-                continue;
-            }
-            if support.keys().any(|axis| {
-                let v = other.get(axis).copied().unwrap_or(0.0);
-                v == 0.0
-            }) {
-                continue;
-            }
-            let relevant = support.iter().all(|(axis, &(lower, peak, upper))| {
-                let v = other.get(axis).copied().unwrap_or(0.0);
-                v > lower && v < upper && v != peak
-            });
-            if !relevant {
-                continue;
-            }
-
-            // Narrow on the axis where the other master is closest to
-            // our peak — fontTools picks the smallest resulting tent.
-            let mut best: Option<(String, (f64, f64, f64), f64)> = None;
-            for (axis, &(lower, peak, upper)) in &support {
-                let v = other[axis];
-                let (new_lower, new_upper) = if v > peak { (lower, v) } else { (v, upper) };
-                let width = new_upper - new_lower;
-                if best.as_ref().is_none_or(|(_, _, w)| width < *w) {
-                    best = Some((axis.clone(), (new_lower, peak, new_upper), width));
-                }
-            }
-            if let Some((axis, tent, _)) = best {
-                support.insert(axis, tent);
-            }
-        }
-
-        supports.push(support);
+fn convert_location(
+    axes: &BTreeMap<String, Tag>,
+    location: &Location,
+) -> Result<NormalizedLocation, String> {
+    if location.keys().any(|name| !axes.contains_key(name))
+        || location
+            .values()
+            .any(|value| !value.is_finite() || !(-1.0..=1.0).contains(value))
+    {
+        return Err(
+            "interpolation requires known axes and finite normalized coordinates in -1..1".into(),
+        );
     }
-
-    supports
-}
-
-/// `delta_weights[i]` lists earlier deltas that already contribute at
-/// master `i`, with how much.
-fn compute_delta_weights(locations: &[Location], supports: &[Support]) -> Vec<Vec<(usize, f64)>> {
-    let mut weights = Vec::with_capacity(locations.len());
-    for (i, location) in locations.iter().enumerate() {
-        let mut row = Vec::new();
-        for (j, support) in supports.iter().enumerate().take(i) {
-            let scalar = support_scalar(location, support);
-            if scalar != 0.0 {
-                row.push((j, scalar));
-            }
-        }
-        weights.push(row);
-    }
-    weights
+    Ok(axes
+        .iter()
+        .map(|(name, tag)| {
+            (
+                *tag,
+                NormalizedCoord::new(location.get(name).copied().unwrap_or(0.0)),
+            )
+        })
+        .collect())
 }
 
 /// Normalize a design-space value against `(min, default, max)`, the
@@ -334,9 +176,9 @@ mod tests {
 
     #[test]
     fn two_master_axis_interpolates_linearly() {
-        let model = VariationModel::new(&[loc(&[("wght", 0.0)]), loc(&[("wght", 1.0)])]);
+        let model = VariationModel::new(&[loc(&[("wght", 0.0)]), loc(&[("wght", 1.0)])]).unwrap();
         let values = vec![vec![100.0, 0.0], vec![300.0, 10.0]];
-        let mid = model.interpolate(&values, &loc(&[("wght", 0.5)]));
+        let mid = model.interpolate(&values, &loc(&[("wght", 0.5)])).unwrap();
         assert!((mid[0] - 200.0).abs() < 1e-9);
         assert!((mid[1] - 5.0).abs() < 1e-9);
     }
@@ -347,10 +189,13 @@ mod tests {
             loc(&[("wght", 0.0)]),
             loc(&[("wght", 1.0)]),
             loc(&[("wght", 0.5)]),
-        ]);
+        ])
+        .unwrap();
         let values = vec![vec![100.0], vec![300.0], vec![150.0]];
         for (location, expected) in [(0.0, 100.0), (0.5, 150.0), (1.0, 300.0)] {
-            let got = model.interpolate(&values, &loc(&[("wght", location)]));
+            let got = model
+                .interpolate(&values, &loc(&[("wght", location)]))
+                .unwrap();
             assert!(
                 (got[0] - expected).abs() < 1e-9,
                 "at {location}: got {got:?}, want {expected}"
@@ -367,9 +212,10 @@ mod tests {
             loc(&[("wght", 0.0)]),
             loc(&[("wght", 1.0)]),
             loc(&[("wght", 0.5)]),
-        ]);
+        ])
+        .unwrap();
         let values = vec![vec![0.0], vec![100.0], vec![80.0]];
-        let quarter = model.interpolate(&values, &loc(&[("wght", 0.25)]));
+        let quarter = model.interpolate(&values, &loc(&[("wght", 0.25)])).unwrap();
         assert!(quarter[0] > 25.0, "expected bend, got {quarter:?}");
     }
 
@@ -380,9 +226,12 @@ mod tests {
             loc(&[("wght", 1.0), ("wdth", 0.0)]),
             loc(&[("wght", 0.0), ("wdth", 1.0)]),
             loc(&[("wght", 1.0), ("wdth", 1.0)]),
-        ]);
+        ])
+        .unwrap();
         let values = vec![vec![0.0], vec![10.0], vec![100.0], vec![110.0]];
-        let mid = model.interpolate(&values, &loc(&[("wght", 0.5), ("wdth", 0.5)]));
+        let mid = model
+            .interpolate(&values, &loc(&[("wght", 0.5), ("wdth", 0.5)]))
+            .unwrap();
         assert!((mid[0] - 55.0).abs() < 1e-9, "got {mid:?}");
     }
 

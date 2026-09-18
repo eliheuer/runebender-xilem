@@ -565,11 +565,19 @@ fn open_master(path: &Path, json: bool) -> Result<Master, i32> {
     {
         let project = runebender::document::project::Project::load(path)
             .map_err(|e| fail(json, exit::USAGE, &e))?;
-        return project
-            .masters
-            .into_iter()
-            .next()
-            .ok_or_else(|| fail(json, exit::USAGE, "Babelfont has no master"));
+        if project.sources().len() != 1 {
+            return Err(fail(
+                json,
+                exit::USAGE,
+                "this command requires a single source; open the variable project in the editor",
+            ));
+        }
+        return Ok(Master::from_font(
+            project
+                .source_snapshot(runebender::document::variable::SourceId(0))
+                .expect("one source"),
+            project.sources()[0].source_path.clone(),
+        ));
     }
     Master::load(path).map_err(|e| fail(json, exit::USAGE, &format!("{}: {e}", path.display())))
 }
@@ -1165,11 +1173,11 @@ fn font_master(font: &Path, master: Option<usize>) -> Result<PathBuf, String> {
     let project = runebender::document::project::Project::load(font)?;
     let index = match master {
         Some(index) => index,
-        None if project.masters.len() == 1 => 0,
+        None if project.sources().len() == 1 => 0,
         None => return Err("master is required for a family; call project_info first".into()),
     };
     project
-        .masters
+        .sources()
         .get(index)
         .map(|m| m.source_path.clone())
         .ok_or_else(|| format!("no master at index {index}"))
@@ -1177,7 +1185,7 @@ fn font_master(font: &Path, master: Option<usize>) -> Result<PathBuf, String> {
 
 fn project_info(font: &Path) -> serde_json::Value {
     match runebender::document::project::Project::load(font) {
-        Ok(p) => json!({"ok": true, "project": font, "masters": p.masters.iter().enumerate()
+        Ok(p) => json!({"ok": true, "project": font, "masters": p.sources().iter().enumerate()
             .map(|(index, m)| json!({"index": index, "name": p.master_names[index].as_ref(), "source": m.source_path}))
             .collect::<Vec<_>>()}),
         Err(e) => json!({"ok": false, "error": e}),

@@ -14,105 +14,11 @@ use kurbo::{BezPath, Rect};
 use runebender::analysis::category::GlyphCategory;
 use runebender::document::project::{Master, Project};
 use runebender::document::proposal;
+use runebender::document::variable::{SourceEdit, SourceFontEdit};
 use runebender::outline::glyph_paths;
 
-/// One designspace axis, in user coordinates with its map into design
-/// coordinates. The engine's `AxisInfo` keeps only the design-space extents;
-/// the map is read off the designspace document here.
-#[derive(Clone, Debug)]
-pub(crate) struct Axis {
-    pub name: String,
-    pub tag: String,
-    pub min: f64,
-    pub default: f64,
-    pub max: f64,
-    /// avar-style piecewise map, (`user_input`, `design_output`) pairs. Empty = identity.
-    pub map: Vec<(f64, f64)>,
-}
+pub(crate) use runebender::document::axis::Axis;
 
-impl Axis {
-    fn design_extents(&self) -> (f64, f64, f64) {
-        (
-            self.user_to_design(self.min),
-            self.user_to_design(self.default),
-            self.user_to_design(self.max),
-        )
-    }
-
-    /// Convert a user-coordinate value to the normalized coordinate the engine stores.
-    pub(crate) fn user_to_normalized(&self, value: f64) -> f64 {
-        let (min, default, max) = self.design_extents();
-        runebender::document::var_model::normalize_value(
-            self.user_to_design(value),
-            min,
-            default,
-            max,
-        )
-    }
-
-    /// Convert the engine's normalized coordinate back to the user's axis scale.
-    pub(crate) fn normalized_to_user(&self, value: f64) -> f64 {
-        let (min, default, max) = self.design_extents();
-        let design = runebender::document::var_model::denormalize_value(value, min, default, max);
-        self.design_to_user(design)
-    }
-
-    /// Map a user-coordinate value to design coordinates via the piecewise map.
-    pub(crate) fn user_to_design(&self, v: f64) -> f64 {
-        if self.map.len() < 2 {
-            return v;
-        }
-        let m = &self.map;
-        if v <= m[0].0 {
-            return m[0].1;
-        }
-        if v >= m[m.len() - 1].0 {
-            return m[m.len() - 1].1;
-        }
-        for w in m.windows(2) {
-            let (x0, y0) = w[0];
-            let (x1, y1) = w[1];
-            if v >= x0 && v <= x1 {
-                let t = if (x1 - x0).abs() < 1e-9 {
-                    0.0
-                } else {
-                    (v - x0) / (x1 - x0)
-                };
-                return y0 + t * (y1 - y0);
-            }
-        }
-        v
-    }
-
-    /// Inverse of `user_to_design`: map a design-coordinate value back to
-    /// user coordinates via the piecewise map. Identity when unmapped.
-    pub(crate) fn design_to_user(&self, v: f64) -> f64 {
-        if self.map.len() < 2 {
-            return v;
-        }
-        let m = &self.map;
-        if v <= m[0].1 {
-            return m[0].0;
-        }
-        if v >= m[m.len() - 1].1 {
-            return m[m.len() - 1].0;
-        }
-        for w in m.windows(2) {
-            let (x0, y0) = w[0];
-            let (x1, y1) = w[1];
-            let (lo, hi) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
-            if v >= lo && v <= hi {
-                let t = if (y1 - y0).abs() < 1e-9 {
-                    0.0
-                } else {
-                    (v - y0) / (y1 - y0)
-                };
-                return x0 + t * (x1 - x0);
-            }
-        }
-        v
-    }
-}
 /// Everything the grid and previews need for one glyph, without touching norad.
 #[derive(Clone)]
 pub(crate) struct GlyphEntry {
@@ -164,36 +70,7 @@ impl FontModel {
     }
 
     pub(crate) fn from_project(project: Project) -> Self {
-        let axes = project
-            .ds_doc
-            .as_ref()
-            .map(|doc| {
-                doc.axes
-                    .iter()
-                    .map(|a| Axis {
-                        name: a.name.clone(),
-                        tag: a.tag.clone(),
-                        min: a.minimum.unwrap_or(a.default) as f64,
-                        default: a.default as f64,
-                        max: a.maximum.unwrap_or(a.default) as f64,
-                        map: a
-                            .map
-                            .as_ref()
-                            .map(|ms| {
-                                let mut v: Vec<(f64, f64)> = ms
-                                    .iter()
-                                    .map(|m| (m.input as f64, m.output as f64))
-                                    .collect();
-                                v.sort_by(|a, b| {
-                                    a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
-                                });
-                                v
-                            })
-                            .unwrap_or_default(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let axes = project.axes.iter().map(|axis| axis.user.clone()).collect();
         let mut model = Self {
             project,
             glyphs: Vec::new(),
@@ -229,7 +106,7 @@ impl FontModel {
         self.project.active_font()
     }
 
-    pub(crate) fn master_mut(&mut self) -> &mut Master {
+    pub(crate) fn master_mut(&mut self) -> SourceEdit<'_> {
         self.project.active_font_mut()
     }
 
@@ -240,10 +117,8 @@ impl FontModel {
 
     /// The active master's font, to write. Marks the master dirty; a
     /// caller that changes glyph outlines refreshes the cache after.
-    pub(crate) fn font_mut(&mut self) -> &mut norad::Font {
-        let master = self.master_mut();
-        master.dirty = true;
-        &mut master.font
+    pub(crate) fn font_mut(&mut self) -> SourceFontEdit<'_> {
+        self.master_mut().into_font()
     }
 
     pub(crate) fn source(&self) -> &FsPath {
@@ -262,7 +137,7 @@ impl FontModel {
     /// Whether every master source is writable according to its filesystem mode.
     pub(crate) fn is_writable(&self) -> bool {
         self.project
-            .masters
+            .sources()
             .iter()
             .all(|master| save_target_is_writable(&master.source_path))
     }
@@ -301,7 +176,7 @@ impl FontModel {
 
     pub(crate) fn master_paths(&self) -> Vec<PathBuf> {
         self.project
-            .masters
+            .sources()
             .iter()
             .map(|m| m.source_path.clone())
             .collect()
@@ -310,7 +185,7 @@ impl FontModel {
     /// Switch the active master. Each master keeps its own edits, so
     /// nothing is flushed; the cache is rebuilt for the new one.
     pub(crate) fn set_active(&mut self, index: usize) {
-        if index >= self.project.masters.len() || index == self.project.active {
+        if index >= self.project.sources().len() || index == self.project.active {
             return;
         }
         self.project.active = index;
@@ -342,7 +217,7 @@ impl FontModel {
                 .then(|| name.chars().next())
                 .flatten()
         });
-        for master in &mut self.project.masters {
+        for master in self.project.edit_sources().iter_mut() {
             if master.font.get_glyph(name).is_some() {
                 continue;
             }
@@ -379,7 +254,7 @@ impl FontModel {
         self.font().get_glyph(source)?;
         let taken: std::collections::HashSet<String> = self
             .project
-            .masters
+            .sources()
             .iter()
             .flat_map(|master| master.name_map.keys().cloned())
             .collect();
@@ -391,7 +266,7 @@ impl FontModel {
             name = format!("{stem}.{counter:03}");
         }
 
-        for master in &mut self.project.masters {
+        for master in self.project.edit_sources().iter_mut() {
             let Some(original) = master.font.get_glyph(source).cloned() else {
                 continue;
             };
@@ -415,7 +290,7 @@ impl FontModel {
     /// Remove `name` from every master and refresh the active-master cache.
     pub(crate) fn remove_glyph(&mut self, name: &str) -> bool {
         let mut removed = false;
-        for master in &mut self.project.masters {
+        for master in self.project.edit_sources().iter_mut() {
             if master.font.get_glyph(name).is_some() {
                 master.remove_glyph(name);
                 removed = true;
@@ -436,7 +311,7 @@ impl FontModel {
     /// build.
     pub(crate) fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
         let mut renamed = false;
-        for master in &mut self.project.masters {
+        for master in self.project.edit_sources().iter_mut() {
             if runebender::document::font_ops::rename_glyph(&mut master.font, old, new) {
                 master.dirty = true;
                 let _ = master.history.rename_glyph(old, new);
@@ -452,26 +327,7 @@ impl FontModel {
 
     /// Save every master to its UFO.
     pub(crate) fn save(&mut self) -> Result<(), String> {
-        for master in &mut self.project.masters {
-            master
-                .save()
-                .map_err(|e| format!("{}: {e}", master.source_path.display()))?;
-        }
-        if self.project.ds_dirty {
-            let path = self
-                .project
-                .export_source
-                .as_deref()
-                .ok_or_else(|| "designspace has no save destination".to_string())?;
-            self.project
-                .ds_doc
-                .as_ref()
-                .ok_or_else(|| "designspace document is unavailable".to_string())?
-                .save(path)
-                .map_err(|error| format!("{}: {error}", path.display()))?;
-            self.project.ds_dirty = false;
-        }
-        Ok(())
+        self.project.save()
     }
 
     /// The given master's axis location in user coordinates, one per axis,
@@ -496,7 +352,7 @@ impl FontModel {
         glyph_name: &str,
         location: &std::collections::HashMap<String, f64>,
     ) -> Option<BezPath> {
-        if self.project.masters.len() < 2 || self.axes.is_empty() {
+        if self.project.model.is_none() || self.axes.is_empty() {
             return None;
         }
         // The engine already stores master locations normalized. Normalize the
@@ -509,90 +365,19 @@ impl FontModel {
                 (ax.name.clone(), ax.user_to_normalized(v))
             })
             .collect();
-        self.interpolate_outline_depth(glyph_name, &self.project.master_locations, &target, 0)
-    }
-
-    fn interpolate_outline_depth(
-        &self,
-        glyph_name: &str,
-        locations: &[std::collections::HashMap<String, f64>],
-        target: &std::collections::HashMap<String, f64>,
-        depth: u8,
-    ) -> Option<BezPath> {
-        use runebender::document::var_model::VariationModel;
-        if depth > 8 {
-            return None;
-        }
-        let glyphs: Vec<&norad::Glyph> = self
-            .project
-            .masters
-            .iter()
-            .map(|m| m.font.get_glyph(glyph_name))
-            .collect::<Option<Vec<_>>>()?;
-        // Value vector: width, then each contour point x/y, then each
-        // component's x/y offset (matching runebender-web's interpolateGlif).
-        let vector = |g: &norad::Glyph| -> Vec<f64> {
-            let mut v = vec![g.width];
-            for c in &g.contours {
-                for p in &c.points {
-                    v.push(p.x);
-                    v.push(p.y);
-                }
-            }
-            for comp in &g.components {
-                v.push(comp.transform.x_offset);
-                v.push(comp.transform.y_offset);
-            }
-            v
-        };
-        let vectors: Vec<Vec<f64>> = glyphs.iter().map(|g| vector(g)).collect();
-        let width = vectors[0].len();
-        if vectors.iter().any(|v| v.len() != width) {
-            return None; // incompatible masters: fall back to no preview
-        }
-        let model = VariationModel::new(locations);
-        let out = model.interpolate(&vectors, target);
-        // Rebuild on the active master's structure as a template.
-        let mut g = glyphs.get(self.project.active).copied()?.clone();
-        let mut i = 1_usize; // skip width
-        for c in &mut g.contours {
-            for p in &mut c.points {
-                p.x = out[i];
-                p.y = out[i + 1];
-                i += 2;
-            }
-        }
-        let mut path = glyph_paths::contours_to_bezpath(&g);
-        // Resolve components: interpolate each base recursively and apply the
-        // interpolated offset (keeping the template's scale/skew).
-        for comp in &g.components {
-            let (dx, dy) = (out[i], out[i + 1]);
-            i += 2;
-            let mut xform = comp.transform;
-            xform.x_offset = dx;
-            xform.y_offset = dy;
-            if let Some(base) =
-                self.interpolate_outline_depth(&comp.base, locations, target, depth + 1)
-            {
-                path.extend(
-                    (glyph_paths::component_affine(&xform) * base)
-                        .elements()
-                        .iter()
-                        .copied(),
-                );
-            }
-        }
-        Some(path)
+        self.project
+            .interpolated_outline_at(glyph_name, &target)
+            .ok()
     }
 
     /// How many masters the family has.
     pub(crate) fn master_count(&self) -> usize {
-        self.project.masters.len()
+        self.project.sources().len()
     }
 
     /// One master's font, the active one's edits included.
     pub(crate) fn master_font(&self, index: usize) -> Option<&norad::Font> {
-        self.project.masters.get(index).map(|m| &m.font)
+        self.project.sources().get(index).map(|m| &m.font)
     }
 
     /// Short display names for the masters: the common family prefix is
@@ -638,7 +423,7 @@ impl FontModel {
         which: &std::collections::HashSet<usize>,
     ) -> Vec<BezPath> {
         self.project
-            .masters
+            .sources()
             .iter()
             .enumerate()
             .filter(|(i, _)| which.contains(i) && *i != self.project.active)
@@ -693,7 +478,7 @@ impl FontModel {
         contours: Vec<norad::Contour>,
         width: f64,
     ) {
-        let font = self.font_mut();
+        let mut font = self.font_mut();
         let Ok(layer) = font.layers.get_or_create_layer("public.background") else {
             return;
         };
@@ -743,7 +528,7 @@ impl FontModel {
     /// writes all of them rather than only the active one.
     pub(crate) fn set_kern_group(&mut self, glyph: &str, first_side: bool, group: &str) -> bool {
         let mut changed = false;
-        for master in &mut self.project.masters {
+        for master in self.project.edit_sources().iter_mut() {
             if runebender::document::font_ops::set_kern_group(
                 &mut master.font,
                 glyph,
@@ -777,7 +562,7 @@ impl FontModel {
 
     /// How many glyphs the masters disagree about, by the engine's check.
     pub(crate) fn incompatible_count(&self) -> usize {
-        if self.project.masters.len() < 2 {
+        if self.project.sources().len() < 2 {
             return 0;
         }
         self.glyphs
@@ -856,7 +641,7 @@ impl FontModel {
     /// Exact codepoint lists for `name`, one per master.
     pub(crate) fn glyph_codepoints(&self, name: &str) -> Option<Vec<Vec<char>>> {
         self.project
-            .masters
+            .sources()
             .iter()
             .map(|master| {
                 master
@@ -869,17 +654,17 @@ impl FontModel {
 
     /// Replace `name`'s codepoints in every master from an exact snapshot.
     pub(crate) fn set_glyph_codepoints(&mut self, name: &str, values: &[Vec<char>]) -> bool {
-        if values.len() != self.project.masters.len()
+        if values.len() != self.project.sources().len()
             || self
                 .project
-                .masters
+                .sources()
                 .iter()
                 .any(|master| !master.name_map.contains_key(name))
         {
             return false;
         }
         let mut changed = false;
-        for (master, codepoints) in self.project.masters.iter_mut().zip(values) {
+        for (master, codepoints) in self.project.edit_sources().iter_mut().zip(values) {
             let index = master.name_map[name];
             let different = master
                 .font
@@ -983,7 +768,7 @@ mod tests {
 
         let copy = model.duplicate_glyph("A").expect("A duplicates");
         assert_eq!(copy, "A.001");
-        for (master, width) in model.project.masters.iter().zip([500.0, 620.0]) {
+        for (master, width) in model.project.sources().iter().zip([500.0, 620.0]) {
             let glyph = master.font.get_glyph(&copy).expect("the copy exists");
             assert_eq!(glyph.width, width);
             assert_eq!(glyph.contours.len(), 1);
@@ -993,7 +778,7 @@ mod tests {
         assert!(
             model
                 .project
-                .masters
+                .sources()
                 .iter()
                 .all(|master| master.font.get_glyph(&copy).is_none())
         );

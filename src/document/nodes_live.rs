@@ -122,7 +122,7 @@ pub fn resolve(graph: &NodeGraph, project: &Project, id: u32) -> Result<Version,
             )
             .map_err(|_| "master index is too large")?;
             project
-                .masters
+                .sources()
                 .get(master)
                 .ok_or("source master is no longer loaded")?;
             return Ok(Version {

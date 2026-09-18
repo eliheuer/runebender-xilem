@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn live_kerning_changes_positioned_outlines_in_the_scene() {
         let mut project = crate::document::project::Project::new_font("synthetic.ufo".into());
-        let master = &mut project.masters[0];
+        let master = &mut project.edit_sources()[0];
         for name in ["A", "V"] {
             let glyph = master.font.get_glyph_mut(name).unwrap();
             glyph.width = 600.0;

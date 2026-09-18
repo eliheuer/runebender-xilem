@@ -15,8 +15,8 @@ No release has been published yet.
 - Added outline, component, anchor, metric, kerning/group, metadata, multi-master, and proof
   editing workflows with shared Undo/Redo.
 - Added editable metaball sources, cubic conversion, and whole-font conversion.
-- Added basic single-master Babelfont import while preserving source packages; variable
-  sources and extra layers are rejected explicitly.
+- Added Python Babelfont package import with multiple sources, mapped axes, instances, intermediate and auxiliary layers.
+  Saving writes new UFO/Designspace files and preserves the original package; unsupported metadata fails explicitly.
 - Added a bidi-aware text tool with Arabic shaping, IME composition, clipboard actions,
   keyboard selection, OpenType feature and language controls, and per-tab state.
 - Added Nodes workflows for font operations, local-model tasks, independent experiment
@@ -32,6 +32,9 @@ No release has been published yet.
 
 ### Changed
 
+- Made Project own variable glyphs and their layers, with guarded UFO projections for existing editing tools and shared history.
+- Unified mapped-axis conversion and glyph-local interpolation behind Runebender-owned APIs using pinned Babelfont and fontdrasil adapters.
+  Interpolation preserves fractional advances and kerning and varies anchors and component transforms.
 - Consolidated the font engine, command line, and Xilem application into one `runebender`
   package and executable.
 - Grouped Xilem runtime code under `src/application`, moved named editor tools into
@@ -47,6 +50,7 @@ No release has been published yet.
 
 ### Fixed
 
+- Reject unsupported Designspace fields, invalid mappings, missing sources and incompatible glyph structures before they can be silently dropped or misinterpreted.
 - Prevented external reloads, stale model results, or stale proposals from overwriting
   unsaved or subsequently edited document state.
 - Made glyph-name, Unicode, mark-color, metric, and multi-master edits atomic and

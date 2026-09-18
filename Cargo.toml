@@ -111,6 +111,8 @@ norad = "0.18"
 # Keep the variable-model backend private to document/variable and formats.
 # Do not enable its lossy UFO conversion or compiler in the editor.
 babelfont = { git = "https://github.com/simoncozens/babelfont-rs", rev = "29bdedbbfa7d3150b651dbd7c94fce6b79677ca4", default-features = false, features = ["types", "glyphs"] }
+# Coordinate types for the private Babelfont adapter; already required by Babelfont.
+fontdrasil = "=1.0.0"
 kurbo = "0.13"
 linesweeper = "0.4"
 # Reads compiled TTF/OTF outlines.

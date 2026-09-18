@@ -151,7 +151,7 @@ impl Workspace {
                 true
             });
         } else {
-            let master = self.font.master_mut();
+            let mut master = self.font.master_mut();
             if let Some(original) = master.font.get_glyph(&name).cloned() {
                 master.history.record(&name, &original);
             }
@@ -159,6 +159,7 @@ impl Workspace {
                 glyph.contours = rebuilt.contours;
                 glyph.width = rebuilt.width;
             });
+            drop(master);
             self.font.refresh_entry(index);
             self.cells = Arc::new(cells_of(&self.font, &self.palette));
             self.modified = true;
@@ -176,7 +177,7 @@ impl Workspace {
         let mut adjusted = 0;
         for _ in 0..5 {
             let mut moved = false;
-            for master in &mut self.font.project.masters {
+            for master in self.font.project.edit_sources().iter_mut() {
                 let keyed: Vec<_> = (0..master.glyphs.len())
                     .filter_map(|index| {
                         let glyph = master.font.get_glyph(master.glyphs[index].name.as_ref())?;
@@ -326,8 +327,11 @@ impl Workspace {
             .map(|glyph| glyph.name.clone())
             .collect();
         let only = (!names.is_empty()).then_some(names);
-        let report =
-            runebender::document::compose::compose(self.font.font_mut(), only.as_deref(), true);
+        let report = runebender::document::compose::compose(
+            &mut self.font.font_mut(),
+            only.as_deref(),
+            true,
+        );
         let proposed = report.proposed().len();
         let current = report
             .derived
@@ -353,7 +357,7 @@ impl Workspace {
         };
         let active = self.font.active();
         let mut baked = 0;
-        for (master_index, master) in self.font.project.masters.iter_mut().enumerate() {
+        for (master_index, master) in self.font.project.edit_sources().iter_mut().enumerate() {
             let Some(glyph_index) = master.name_map.get(&name).copied() else {
                 continue;
             };
@@ -439,7 +443,7 @@ impl Workspace {
         let targets = self
             .font
             .project
-            .masters
+            .sources()
             .iter()
             .map(|master| {
                 master
@@ -492,7 +496,7 @@ impl Workspace {
                         .map_err(|error| format!("{}: {error}", source.filename))?;
                     self.font
                         .project
-                        .masters
+                        .sources()
                         .iter()
                         .zip(&targets)
                         .find(|(master, _)| {
@@ -530,7 +534,7 @@ impl Workspace {
         } else if let Some(target) = targets.first() {
             self.font.project.export_source = Some(target.clone());
         }
-        for (master, target) in self.font.project.masters.iter_mut().zip(targets) {
+        for (master, target) in self.font.project.edit_sources().iter_mut().zip(targets) {
             master.source_path = target;
             master.dirty = true;
         }

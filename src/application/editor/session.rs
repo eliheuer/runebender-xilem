@@ -1477,7 +1477,7 @@ impl Workspace {
         {
             self.metadata_redo.clear();
         }
-        let master = self.font.master_mut();
+        let mut master = self.font.master_mut();
         for op in session.pending.drain(..) {
             match op {
                 HistoryOp::Record(glyph) => {
@@ -1488,6 +1488,7 @@ impl Workspace {
                 }
             }
         }
+        drop(master);
         self.session = Arc::new(session.clone());
         // Keep the panel's advance field in step after canvas edits
         // (sidebearing/advance drags). This path is never hit by typing in
@@ -1505,7 +1506,7 @@ impl Workspace {
         if self.metadata_history_step(redo) {
             return;
         }
-        let master = self.font.master_mut();
+        let mut master = self.font.master_mut();
         let done = if redo {
             master.redo(index)
         } else {
@@ -1520,6 +1521,7 @@ impl Workspace {
             .into();
             return;
         }
+        drop(master);
         self.font.refresh_entry(index);
         let Some(glyph) = self
             .font
@@ -1570,7 +1572,11 @@ impl Workspace {
             .into();
             return;
         };
-        let Some(master) = self.font.project.masters.get_mut(batch.master) else {
+        let Some(mut master) = self
+            .font
+            .project
+            .edit_source(runebender::document::variable::SourceId(batch.master))
+        else {
             self.note = "Undo target is no longer available".into();
             return;
         };
@@ -1583,6 +1589,7 @@ impl Workspace {
                 }
             }
         }
+        drop(master);
         if batch.master == self.font.active() {
             self.font.rebuild_cache();
         }
@@ -1730,7 +1737,7 @@ impl Workspace {
             {
                 self.metadata_redo.clear();
             }
-            let master = self.font.master_mut();
+            let mut master = self.font.master_mut();
             for op in session.pending.drain(..) {
                 match op {
                     HistoryOp::Record(glyph) => {
@@ -1741,6 +1748,7 @@ impl Workspace {
                     }
                 }
             }
+            drop(master);
             let glyph = session.glyph.clone();
             self.session = Arc::new(session);
             self.font.replace_glyph(index, glyph);

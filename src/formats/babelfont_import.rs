@@ -1,11 +1,12 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Basic, read-only import of single-master `.babelfont` directory packages.
+//! Read-only import of Python `.babelfont` directory packages into variable projects.
 //! The package format follows simoncozens/babelfont's `convertors/nfsf.py`.
 //! Import brings outlines, components, anchors, widths, Unicode, names, metrics,
-//! and kerning into a UFO. Variable sources and additional layers are rejected.
-//! Saving the imported font writes UFO; it never rewrites the source package.
+//! and kerning into exact UFO payloads, including multiple sources and extra layers.
+//! Saving writes new UFO/Designspace files; it never rewrites the source package.
+//! Unsupported fields fail explicitly instead of being silently omitted.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
@@ -15,7 +16,12 @@ use serde::Deserialize;
 use serde_json::Value;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Info {
+    #[serde(default)]
+    date: Option<String>,
+    #[serde(default)]
+    features: Value,
     #[serde(default = "default_upm")]
     upm: f64,
     masters: Vec<SourceMaster>,
@@ -37,6 +43,7 @@ fn yes() -> bool {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SourceMaster {
     id: String,
     name: Value,
@@ -44,9 +51,12 @@ struct SourceMaster {
     metrics: BTreeMap<String, f64>,
     #[serde(default)]
     kerning: BTreeMap<String, f64>,
+    #[serde(default)]
+    location: BTreeMap<String, f64>,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SourceGlyph {
     name: String,
     #[serde(default)]
@@ -56,7 +66,12 @@ struct SourceGlyph {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Layer {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    id: Option<String>,
     #[serde(rename = "_master")]
     master: String,
     #[serde(default)]
@@ -72,6 +87,7 @@ struct Layer {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SourceAnchor {
     name: String,
     x: f64,
@@ -79,6 +95,7 @@ struct SourceAnchor {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Shape {
     #[serde(rename = "ref")]
     reference: Option<String>,
@@ -102,13 +119,205 @@ fn localized(value: &Value) -> Option<String> {
         .map(str::to_owned)
 }
 
+fn validate_localized(value: &Value) -> Result<(), String> {
+    if value.is_string()
+        || value.is_null()
+        || value
+            .as_object()
+            .is_some_and(|map| map.len() == 1 && map.get("dflt").is_some_and(Value::is_string))
+    {
+        Ok(())
+    } else {
+        Err("localized Babelfont names beyond the default string are not supported".into())
+    }
+}
+
+/// Import a Python Babelfont package as a variable project without writing its source.
+/// Sources and intermediate layers receive new UFO/Designspace save destinations.
+pub fn import_project(path: &Path) -> Result<crate::document::project::Project, String> {
+    use crate::document::project::{Master, Project};
+    use norad::designspace::{Axis, AxisMapping, DesignSpaceDocument, Dimension, Instance, Source};
+
+    if !path.is_dir() {
+        return Err("this importer expects a Python Babelfont directory package; Rust Babelfont JSON is a different format".into());
+    }
+    let info: Info = read_json(&path.join("info.json"))?;
+    let names: BTreeMap<String, Value> = read_json(&path.join("names.json"))?;
+    let glyphs: Vec<SourceGlyph> = read_json(&path.join("glyphs.json"))?;
+    let mut ids = HashSet::new();
+    if info.masters.is_empty() || info.masters.iter().any(|m| !ids.insert(&m.id)) {
+        return Err("Babelfont needs distinct source ids".into());
+    }
+    let mut doc = DesignSpaceDocument {
+        format: 5.0,
+        ..Default::default()
+    };
+    for axis in &info.axes {
+        let fields = axis.as_object().ok_or("axis must be an object")?;
+        if fields.keys().any(|key| {
+            !["name", "tag", "min", "default", "max", "map", "hidden"].contains(&key.as_str())
+        }) {
+            return Err("unsupported Babelfont axis field".into());
+        }
+        let tag = axis["tag"].as_str().ok_or("axis needs a tag")?;
+        validate_localized(&axis["name"])?;
+        let name = localized(&axis["name"]).unwrap_or_else(|| tag.into());
+        let mut map = Vec::new();
+        if let Some(pairs) = axis.get("map").filter(|v| !v.is_null()) {
+            for pair in pairs.as_array().ok_or("axis map must be an array")? {
+                if pair.as_array().is_none_or(|pair| pair.len() != 2) {
+                    return Err("axis map entries must be [user, design] pairs".into());
+                }
+                map.push(AxisMapping {
+                    input: coordinate(&pair[0])?,
+                    output: coordinate(&pair[1])?,
+                });
+            }
+        }
+        doc.axes.push(Axis {
+            name,
+            tag: tag.into(),
+            minimum: Some(coordinate(&axis["min"])?),
+            default: coordinate(&axis["default"])?,
+            maximum: Some(coordinate(&axis["max"])?),
+            map: (!map.is_empty()).then_some(map),
+            hidden: axis["hidden"].as_bool().unwrap_or(false),
+            ..Default::default()
+        });
+    }
+    let dimensions = |location: &BTreeMap<String, f64>| -> Result<Vec<Dimension>, String> {
+        if location
+            .keys()
+            .any(|tag| !doc.axes.iter().any(|a| &a.tag == tag))
+        {
+            return Err("source location references an unknown axis".into());
+        }
+        doc.axes
+            .iter()
+            .filter_map(|axis| location.get(&axis.tag).map(|value| (axis, value)))
+            .map(|(axis, value)| {
+                Ok(Dimension {
+                    name: axis.name.clone(),
+                    xvalue: Some(coordinate(&Value::from(*value))?),
+                    ..Default::default()
+                })
+            })
+            .collect()
+    };
+    let mut sources = Vec::new();
+    for (index, master) in info.masters.iter().enumerate() {
+        let (font, intermediates) = import_master(path, &info, master, &names, &glyphs)?;
+        let filename = format!("source-{index}.ufo");
+        doc.sources.push(Source {
+            filename: filename.clone(),
+            name: Some(master.id.clone()),
+            stylename: localized(&master.name),
+            location: dimensions(&master.location)?,
+            ..Default::default()
+        });
+        for (layer, location) in intermediates {
+            let location = doc
+                .axes
+                .iter()
+                .zip(location)
+                .map(|(axis, value)| (axis.tag.clone(), value))
+                .collect();
+            doc.sources.push(Source {
+                filename: filename.clone(),
+                layer: Some(layer),
+                location: dimensions(&location)?,
+                ..Default::default()
+            });
+        }
+        sources.push(font);
+    }
+    for instance in &info.instances {
+        validate_localized(&instance["name"])?;
+        let fields = instance.as_object().ok_or("instance must be an object")?;
+        if fields
+            .keys()
+            .any(|key| !["name", "location", "variable"].contains(&key.as_str()))
+        {
+            return Err("unsupported Babelfont instance metadata".into());
+        }
+        if instance["variable"].as_bool() == Some(true) {
+            return Err("variable named-instance ranges are not supported".into());
+        }
+        let location = serde_json::from_value(instance["location"].clone())
+            .map_err(|e| format!("instance location: {e}"))?;
+        doc.instances.push(Instance {
+            name: localized(&instance["name"]),
+            stylename: localized(&instance["name"]),
+            location: dimensions(&location)?,
+            ..Default::default()
+        });
+    }
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+    let single = sources.len() == 1
+        && doc.axes.is_empty()
+        && doc.sources.len() == 1
+        && doc.instances.is_empty();
+    let mut destination = if single {
+        path.with_extension("ufo")
+    } else {
+        path.with_file_name(format!("{stem}-import"))
+    };
+    let mut index = 1;
+    while destination.exists() {
+        destination = path.with_file_name(if single {
+            format!("{stem}-import-{index}.ufo")
+        } else {
+            format!("{stem}-import-{index}")
+        });
+        index += 1;
+    }
+    let mut project = if single {
+        let mut source = Master::from_font(sources.remove(0), destination.clone());
+        source.dirty = true;
+        Project::from_source(source)
+    } else {
+        let mut fonts: BTreeMap<_, _> = sources
+            .into_iter()
+            .enumerate()
+            .map(|(index, font)| (format!("source-{index}.ufo"), font))
+            .collect();
+        Project::from_designspace(doc, |filename| {
+            let mut source = Master::from_font(
+                fonts.remove(filename).ok_or("missing imported source")?,
+                destination.join(filename),
+            );
+            source.dirty = true;
+            Ok(source)
+        })?
+    };
+    project.export_source = Some(if single {
+        destination
+    } else {
+        destination.join("font.designspace")
+    });
+    project.ds_dirty = !single;
+    Ok(project)
+}
+
+fn coordinate(value: &Value) -> Result<f32, String> {
+    let number = value.as_f64().ok_or("coordinate must be a number")?;
+    let narrowed: f32 = number
+        .to_string()
+        .parse()
+        .map_err(|_| "coordinate cannot be represented")?;
+    if !number.is_finite() || narrowed.to_string().parse::<f64>().ok() != Some(number) {
+        return Err("coordinate cannot round-trip through the Designspace adapter".into());
+    }
+    Ok(narrowed)
+}
+
 /// Read a single-master Babelfont package as an editable UFO, without writing files.
 ///
 /// Requires `info.json`, `names.json`, `glyphs.json`, and the indexed `.nfsglyph`
 /// files. Rejects multiple masters, axes, instances, additional/background layers,
 /// invalid nodes, missing components, and malformed metadata. Features containing
 /// external includes are rejected because their paths cannot survive UFO import.
-/// Guides, hints, production names, and application-specific metadata are not imported.
+/// Unsupported guides, hints, production names and application metadata are rejected.
 pub fn import_babelfont(path: &Path) -> Result<Font, String> {
     let info: Info = read_json(&path.join("info.json"))?;
     if info.masters.len() != 1 || !info.axes.is_empty() || !info.instances.is_empty() {
@@ -116,14 +325,61 @@ pub fn import_babelfont(path: &Path) -> Result<Font, String> {
             "Babelfont import currently supports one master without axes or instances".into(),
         );
     }
+    let names: BTreeMap<String, Value> = read_json(&path.join("names.json"))?;
+    let source_glyphs: Vec<SourceGlyph> = read_json(&path.join("glyphs.json"))?;
+    let (font, _) = import_master(path, &info, &info.masters[0], &names, &source_glyphs)?;
+    if font.layers.len() != 1 {
+        return Err("only one foreground layer is supported by the single-font adapter".into());
+    }
+    Ok(font)
+}
+
+fn import_master(
+    path: &Path,
+    info: &Info,
+    master: &SourceMaster,
+    names: &BTreeMap<String, Value>,
+    source_glyphs: &[SourceGlyph],
+) -> Result<(Font, BTreeMap<String, Vec<f64>>), String> {
     if !info.upm.is_finite() || info.upm <= 0.0 {
         return Err("Babelfont units per em must be positive and finite".into());
     }
-    let names: BTreeMap<String, Value> = read_json(&path.join("names.json"))?;
-    let source_glyphs: Vec<SourceGlyph> = read_json(&path.join("glyphs.json"))?;
-    let master = &info.masters[0];
+    let mut intermediates = BTreeMap::new();
+    if !info.features.is_null()
+        && info
+            .features
+            .as_object()
+            .is_none_or(|value| !value.is_empty())
+    {
+        return Err("Babelfont feature objects are unsupported; use features.fea".into());
+    }
+    if master
+        .metrics
+        .keys()
+        .any(|name| !["ascender", "descender", "capHeight", "xHeight"].contains(&name.as_str()))
+    {
+        return Err("unsupported Babelfont source metric".into());
+    }
     let mut font = Font::default();
-    font.font_info.family_name = names.get("familyName").and_then(localized);
+    validate_localized(&master.name)?;
+    for (name, value) in names {
+        validate_localized(value)?;
+        let target = match name.as_str() {
+            "familyName" => &mut font.font_info.family_name,
+            "copyright" => &mut font.font_info.copyright,
+            "trademark" => &mut font.font_info.trademark,
+            "designer" => &mut font.font_info.open_type_name_designer,
+            "designerURL" => &mut font.font_info.open_type_name_designer_url,
+            "manufacturer" => &mut font.font_info.open_type_name_manufacturer,
+            "manufacturerURL" => &mut font.font_info.open_type_name_manufacturer_url,
+            "license" => &mut font.font_info.open_type_name_license,
+            "licenseURL" => &mut font.font_info.open_type_name_license_url,
+            "description" => &mut font.font_info.open_type_name_description,
+            _ => return Err(format!("unsupported Babelfont name field {name}")),
+        };
+        *target = localized(value);
+    }
+    font.font_info.open_type_head_created = info.date.as_ref().map(|date| date.replace('-', "/"));
     font.font_info.style_name = localized(&master.name);
     font.font_info.units_per_em = Some(
         info.upm
@@ -140,7 +396,7 @@ pub fn import_babelfont(path: &Path) -> Result<Font, String> {
     }
     let mut filenames = HashSet::new();
     let mut skipped = Vec::new();
-    for source in &source_glyphs {
+    for source in source_glyphs {
         Name::new(&source.name).map_err(|e| format!("glyph name: {e}"))?;
         // Babelfont uses fontTools' UFO filename convention, then appends the suffix.
         let mut filename =
@@ -150,76 +406,121 @@ pub fn import_babelfont(path: &Path) -> Result<Font, String> {
             return Err("Babelfont glyph filenames collide".into());
         }
         let layers: Vec<Layer> = read_json(&path.join("glyphs").join(filename))?;
-        if layers.len() != 1
-            || layers[0].master != master.id
-            || layers[0].is_background
-            || layers[0].location.is_some()
+        if layers
+            .iter()
+            .any(|layer| !info.masters.iter().any(|m| m.id == layer.master))
         {
-            return Err(format!(
-                "{}: only one foreground layer for the source master is supported",
-                source.name
-            ));
+            return Err(format!("{}: unknown layer master", source.name));
         }
-        let layer = &layers[0];
-        let mut glyph = Glyph::new(&source.name);
-        glyph.width = layer.width;
-        for cp in &source.codepoints {
-            glyph.codepoints.insert(
-                char::from_u32(*cp)
-                    .ok_or_else(|| format!("{}: invalid Unicode value {cp}", source.name))?,
-            );
-        }
-        for anchor in &layer.anchors {
-            glyph.anchors.push(Anchor::new(
-                anchor.x,
-                anchor.y,
-                Some(Name::new(&anchor.name).map_err(|e| e.to_string())?),
-                None,
-                None,
-            ));
-        }
-        for shape in &layer.shapes {
-            if let Some(reference) = &shape.reference {
-                if !shape.nodes.is_empty() || !glyph_names.contains(reference.as_str()) {
-                    return Err(format!("{}: invalid component {reference}", source.name));
+        let mut default_seen = false;
+        let mut named_seen = HashSet::new();
+        for layer in layers.iter().filter(|layer| layer.master == master.id) {
+            let is_default =
+                !layer.is_background && layer.location.is_none() && layer.name.is_none();
+            let layer_name = if is_default {
+                if default_seen {
+                    return Err(format!("{}: multiple foreground layers", source.name));
                 }
-                let t = shape.transform.unwrap_or([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
-                glyph.components.push(Component::new(
-                    Name::new(reference).map_err(|e| e.to_string())?,
-                    norad::AffineTransform {
-                        x_scale: t[0],
-                        xy_scale: t[1],
-                        yx_scale: t[2],
-                        y_scale: t[3],
-                        x_offset: t[4],
-                        y_offset: t[5],
-                    },
+                default_seen = true;
+                "public.default".to_string()
+            } else {
+                layer
+                    .name
+                    .clone()
+                    .or_else(|| layer.is_background.then(|| "public.background".to_string()))
+                    .or_else(|| layer.id.clone())
+                    .ok_or("additional Babelfont layer needs a name or id")?
+            };
+            if !named_seen.insert(layer_name.clone()) {
+                return Err(format!("{}: duplicate layer {layer_name}", source.name));
+            }
+            if let Some(location) = &layer.location {
+                if location.len() != info.axes.len() || location.iter().any(|v| !v.is_finite()) {
+                    return Err(format!(
+                        "{}: invalid intermediate layer location",
+                        source.name
+                    ));
+                }
+                if let Some(previous) = intermediates.insert(layer_name.clone(), location.clone())
+                    && previous != *location
+                {
+                    return Err(format!(
+                        "{layer_name}: conflicting glyph-specific locations"
+                    ));
+                }
+            }
+            let mut glyph = Glyph::new(&source.name);
+            super::lib_keys::write_babelfont_layer(
+                &mut glyph,
+                &layer.master,
+                layer.id.as_deref(),
+                layer.is_background,
+            );
+            glyph.width = layer.width;
+            for cp in &source.codepoints {
+                glyph.codepoints.insert(
+                    char::from_u32(*cp)
+                        .ok_or_else(|| format!("{}: invalid Unicode value {cp}", source.name))?,
+                );
+            }
+            for anchor in &layer.anchors {
+                glyph.anchors.push(Anchor::new(
+                    anchor.x,
+                    anchor.y,
+                    Some(Name::new(&anchor.name).map_err(|e| e.to_string())?),
+                    None,
                     None,
                 ));
-            } else {
-                let mut points = shape
-                    .nodes
-                    .iter()
-                    .map(point)
-                    .collect::<Result<Vec<_>, _>>()?;
-                if !shape.closed {
-                    let first = points.first_mut().ok_or("empty open contour")?;
-                    if first.typ == PointType::OffCurve {
-                        return Err("open contour starts with an off-curve point".into());
-                    }
-                    first.typ = PointType::Move;
-                }
-                glyph.contours.push(Contour::new(points, None));
             }
+            for shape in &layer.shapes {
+                if let Some(reference) = &shape.reference {
+                    if !shape.nodes.is_empty() || !glyph_names.contains(reference.as_str()) {
+                        return Err(format!("{}: invalid component {reference}", source.name));
+                    }
+                    let t = shape.transform.unwrap_or([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+                    glyph.components.push(Component::new(
+                        Name::new(reference).map_err(|e| e.to_string())?,
+                        norad::AffineTransform {
+                            x_scale: t[0],
+                            xy_scale: t[1],
+                            yx_scale: t[2],
+                            y_scale: t[3],
+                            x_offset: t[4],
+                            y_offset: t[5],
+                        },
+                        None,
+                    ));
+                } else {
+                    if shape.transform.is_some() {
+                        return Err("Babelfont contour transforms are unsupported".into());
+                    }
+                    let mut points = shape
+                        .nodes
+                        .iter()
+                        .map(point)
+                        .collect::<Result<Vec<_>, _>>()?;
+                    if !shape.closed {
+                        let first = points.first_mut().ok_or("empty open contour")?;
+                        if first.typ == PointType::OffCurve {
+                            return Err("open contour starts with an off-curve point".into());
+                        }
+                        first.typ = PointType::Move;
+                    }
+                    glyph.contours.push(Contour::new(points, None));
+                }
+            }
+            // Norad validates contour topology on serialization; fail before the editor sees it.
+            glyph
+                .encode_xml()
+                .map_err(|e| format!("{}: {e}", source.name))?;
+            if !source.exported && is_default {
+                skipped.push(plist::Value::String(source.name.clone()));
+            }
+            font.layers
+                .get_or_create_layer(&layer_name)
+                .map_err(|e| e.to_string())?
+                .insert_glyph(glyph);
         }
-        // Norad validates contour topology on serialization; fail before the editor sees it.
-        glyph
-            .encode_xml()
-            .map_err(|e| format!("{}: {e}", source.name))?;
-        if !source.exported {
-            skipped.push(plist::Value::String(source.name.clone()));
-        }
-        font.default_layer_mut().insert_glyph(glyph);
     }
     for (prefix, groups) in [
         ("public.kern1.", &info.first_kern_groups),
@@ -267,13 +568,13 @@ pub fn import_babelfont(path: &Path) -> Result<Font, String> {
             return Err("Babelfont features with includes are not supported yet".into());
         }
     }
-    Ok(font)
+    Ok((font, intermediates))
 }
 
 fn point(node: &Value) -> Result<ContourPoint, String> {
     let fields = node
         .as_array()
-        .filter(|n| n.len() == 3 || n.len() == 4)
+        .filter(|n| n.len() == 3)
         .ok_or("node must be [x, y, type]")?;
     let x = fields[0].as_f64().ok_or("invalid node x")?;
     let y = fields[1].as_f64().ok_or("invalid node y")?;
@@ -384,7 +685,7 @@ mod tests {
         std::fs::create_dir(&occupied).unwrap();
         std::fs::write(occupied.join("sentinel"), "keep").unwrap();
         let mut project = Project::load(&package).unwrap();
-        let master = &mut project.masters[0];
+        let master = &mut project.edit_sources()[0];
         assert!(master.dirty);
         assert!(!master.source_path.exists());
         master.font.get_glyph_mut("A").unwrap().width = 701.0;
@@ -405,6 +706,108 @@ mod tests {
             std::fs::read_to_string(occupied.join("sentinel")).unwrap(),
             "keep"
         );
+    }
+
+    #[test]
+    fn variable_package_preserves_sources_layers_and_original_files() {
+        let scratch = scratch();
+        let package = scratch.0.join("Basic.babelfont");
+        let info_path = package.join("info.json");
+        let mut info: Value = read_json(&info_path).unwrap();
+        info["axes"] = serde_json::json!([{
+            "name": "Weight", "tag": "wght", "min": 100, "default": 100,
+            "max": 900, "map": [[100, 0], [900, 100]]
+        }]);
+        info["masters"][0]["location"] = serde_json::json!({"wght": 0});
+        let mut heavy = info["masters"][0].clone();
+        heavy["id"] = "M2".into();
+        heavy["name"] = "Heavy".into();
+        heavy["location"] = serde_json::json!({"wght": 100});
+        info["masters"].as_array_mut().unwrap().push(heavy);
+        info["instances"] = serde_json::json!([{
+            "name": "Medium", "location": {"wght": 50}
+        }]);
+        std::fs::write(&info_path, info.to_string()).unwrap();
+        let mut originals = BTreeMap::new();
+        for file in std::fs::read_dir(package.join("glyphs")).unwrap() {
+            let path = file.unwrap().path();
+            let mut layers: Vec<Value> = read_json(&path).unwrap();
+            let mut heavy = layers[0].clone();
+            heavy["_master"] = "M2".into();
+            heavy["id"] = "heavy-layer".into();
+            heavy["width"] = 800.123_456_789.into();
+            layers.push(heavy);
+            if path.file_name().unwrap() == "A_.nfsglyph" {
+                let mut intermediate = layers[0].clone();
+                intermediate["name"] = "intermediate".into();
+                intermediate["location"] = serde_json::json!([50]);
+                intermediate["width"] = 731.123_456_789.into();
+                layers.push(intermediate);
+                let mut background = layers[0].clone();
+                background["isBackground"] = true.into();
+                layers.push(background);
+            }
+            let bytes = serde_json::to_vec(&layers).unwrap();
+            std::fs::write(&path, &bytes).unwrap();
+            originals.insert(path, bytes);
+        }
+        originals.insert(info_path.clone(), std::fs::read(info_path).unwrap());
+        let mut project = Project::load(&package).unwrap();
+        assert_eq!(project.sources().len(), 2);
+        assert_eq!(project.instances[0].1["Weight"], 0.5);
+        assert_eq!(
+            project
+                .try_interpolated_at("A", &[("Weight".into(), 0.5)].into())
+                .unwrap()
+                .width,
+            731.123_456_789
+        );
+        let layer = crate::document::variable::LayerId {
+            source: crate::document::variable::SourceId(0),
+            name: "public.background".into(),
+        };
+        assert_eq!(
+            super::super::lib_keys::read_babelfont_layer(
+                project.variable_glyph("A").unwrap().layer(&layer).unwrap()
+            ),
+            Some(("M1", Some("A-M1"), true))
+        );
+        let destination = project.export_source.clone().unwrap();
+        assert!(!destination.exists());
+        project.save().unwrap();
+        let reloaded = Project::load(&destination).unwrap();
+        assert_eq!(reloaded.sources().len(), 2);
+        assert_eq!(reloaded.variable_glyph("A").unwrap().layers().count(), 4);
+        assert_eq!(
+            reloaded
+                .try_interpolated_at("A", &[("Weight".into(), 0.5)].into())
+                .unwrap()
+                .width,
+            731.123_456_789
+        );
+        for (path, bytes) in originals {
+            assert_eq!(std::fs::read(path).unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn unsupported_package_metadata_is_an_error() {
+        let scratch = scratch();
+        let package = scratch.0.join("Basic.babelfont");
+        let path = package.join("names.json");
+        let names = std::fs::read(&path).unwrap();
+        std::fs::write(
+            &path,
+            br#"{"familyName":{"dflt":"Example","fr":"Exemple"}}"#,
+        )
+        .unwrap();
+        assert!(import_project(&package).unwrap_err().contains("localized"));
+        std::fs::write(&path, names).unwrap();
+        let path = package.join("glyphs/A_.nfsglyph");
+        let mut layers: Vec<Value> = read_json(&path).unwrap();
+        layers[0]["guides"] = serde_json::json!([{"x": 10}]);
+        std::fs::write(&path, serde_json::to_vec(&layers).unwrap()).unwrap();
+        assert!(import_project(&package).unwrap_err().contains("guides"));
     }
 
     #[test]
