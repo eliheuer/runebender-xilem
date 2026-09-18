@@ -520,6 +520,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "babelfont"
+version = "0.2.1"
+source = "git+https://github.com/simoncozens/babelfont-rs?rev=29bdedbbfa7d3150b651dbd7c94fce6b79677ca4#29bdedbbfa7d3150b651dbd7c94fce6b79677ca4"
+dependencies = [
+ "chrono",
+ "csv",
+ "fea-rs-ast",
+ "fontdrasil 1.0.0",
+ "glyphslib",
+ "indexmap 2.14.0",
+ "itertools 0.14.0",
+ "kurbo 0.13.1",
+ "log",
+ "num-traits",
+ "ordered-float",
+ "paste",
+ "regex",
+ "roxmltree 0.21.1",
+ "serde",
+ "serde_json",
+ "smol_str 0.3.6",
+ "sr-aef",
+ "thiserror 2.0.20",
+ "typeshare",
+ "unicode-normalization",
+ "uuid",
+ "write-fonts 0.52.0",
+]
+
+[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -787,8 +817,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link",
 ]
 
@@ -1043,6 +1075,27 @@ checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
 dependencies = [
  "generic-array",
  "typenum",
+]
+
+[[package]]
+name = "csv"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52cd9d68cf7efc6ddfaaee42e7288d3a99d613d4b50f76ce9827ae0c6e14f938"
+dependencies = [
+ "csv-core",
+ "itoa",
+ "ryu",
+ "serde_core",
+]
+
+[[package]]
+name = "csv-core"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "704a3c26996a80471189265814dbc2c257598b96b8a7feae2d31ace646bb9782"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -1336,13 +1389,45 @@ checksum = "c6acd5f994d5b0a5945942bd7db366873ab4304143b37c7e4008283475c87a1a"
 dependencies = [
  "ansi_term",
  "env_logger",
- "fontdrasil",
+ "fontdrasil 0.4.0",
  "indexmap 2.14.0",
  "log",
  "ordered-float",
  "smol_str 0.3.6",
  "thiserror 2.0.20",
- "write-fonts",
+ "write-fonts 0.44.1",
+]
+
+[[package]]
+name = "fea-rs"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5709503cad4c8bd7092135f9c2e2ac077c3649f0fd128c924bf3bd666ff24f32"
+dependencies = [
+ "ansi_term",
+ "fontdrasil 1.0.0",
+ "indexmap 2.14.0",
+ "log",
+ "ordered-float",
+ "smol_str 0.3.6",
+ "thiserror 2.0.20",
+ "tracing-subscriber",
+ "write-fonts 0.52.0",
+]
+
+[[package]]
+name = "fea-rs-ast"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9381e48cfcc6efc4e3a23bf2899b748a85d66c83919af98a3e92df1abde6822"
+dependencies = [
+ "fea-rs 1.0.0",
+ "indexmap 2.14.0",
+ "itertools 0.14.0",
+ "log",
+ "read-fonts 0.36.0",
+ "smol_str 0.3.6",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -1421,6 +1506,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e64eb721ca85a34323425f4041adc5d82704d3782d5f8f03793bc012419dce23"
 dependencies = [
  "bytemuck",
+ "serde",
 ]
 
 [[package]]
@@ -1459,7 +1545,22 @@ dependencies = [
  "serde",
  "smol_str 0.3.6",
  "thiserror 2.0.20",
- "write-fonts",
+ "write-fonts 0.44.1",
+]
+
+[[package]]
+name = "fontdrasil"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f91acc7fba7639e042ba0b65ade604406921bff9b3304a722145ee707f4741e5"
+dependencies = [
+ "kurbo 0.13.1",
+ "log",
+ "ordered-float",
+ "serde",
+ "smol_str 0.3.6",
+ "thiserror 2.0.20",
+ "write-fonts 0.52.0",
 ]
 
 [[package]]
@@ -4089,6 +4190,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "read-fonts"
+version = "0.43.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "005c8acf251756c478b0bf402885bfd88a1476020c4c7e6060edc1aa68da38ea"
+dependencies = [
+ "bytemuck",
+ "font-types 0.12.4",
+ "once_cell",
+ "serde",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4239,10 +4352,11 @@ dependencies = [
 name = "runebender"
 version = "0.1.0"
 dependencies = [
+ "babelfont",
  "base64",
  "clap",
  "copypasta",
- "fea-rs",
+ "fea-rs 0.22.0",
  "glyphslib",
  "harfrust",
  "image",
@@ -4271,7 +4385,7 @@ dependencies = [
  "unicode-general-category",
  "unicode-normalization",
  "winit",
- "write-fonts",
+ "write-fonts 0.44.1",
  "xilem",
 ]
 
@@ -4345,6 +4459,12 @@ dependencies = [
  "unicode-properties",
  "unicode-script",
 ]
+
+[[package]]
+name = "ryu"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "safe_arch"
@@ -4667,6 +4787,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "skrifa"
+version = "0.46.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4febebda507fb889c545a37a135517769d1391941013561292897961d1887d6"
+dependencies = [
+ "bytemuck",
+ "read-fonts 0.43.3",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4797,6 +4927,18 @@ version = "0.3.0"
 source = "git+https://github.com/linebender/spline?rev=83f46cbfebb1f5d6042059c867719c0010073d42#83f46cbfebb1f5d6042059c867719c0010073d42"
 dependencies = [
  "kurbo 0.9.5",
+]
+
+[[package]]
+name = "sr-aef"
+version = "0.1.0"
+source = "git+https://github.com/simoncozens/babelfont-rs?rev=29bdedbbfa7d3150b651dbd7c94fce6b79677ca4#29bdedbbfa7d3150b651dbd7c94fce6b79677ca4"
+dependencies = [
+ "fea-rs-ast",
+ "fontdrasil 1.0.0",
+ "indexmap 2.14.0",
+ "skrifa 0.46.2",
+ "smol_str 0.3.6",
 ]
 
 [[package]]
@@ -5318,6 +5460,28 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+
+[[package]]
+name = "typeshare"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da1bf9fe204f358ffea7f8f779b53923a20278b3ab8e8d97962c5e1b3a54edb7"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "typeshare-annotation",
+]
+
+[[package]]
+name = "typeshare-annotation"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "621963e302416b389a1ec177397e9e62de849a78bd8205d428608553def75350"
+dependencies = [
+ "quote",
+ "syn 2.0.119",
+]
 
 [[package]]
 name = "uds_windows"
@@ -6376,6 +6540,20 @@ dependencies = [
  "kurbo 0.12.0",
  "log",
  "read-fonts 0.36.0",
+ "serde",
+]
+
+[[package]]
+name = "write-fonts"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "843cebb7bd36359861dbce43d54ac8b33dfdf7b80a95913adc1ef7c7bb881e62"
+dependencies = [
+ "font-types 0.12.4",
+ "indexmap 2.14.0",
+ "kurbo 0.13.1",
+ "log",
+ "read-fonts 0.43.3",
  "serde",
 ]
 
