@@ -3,7 +3,7 @@
 
 //! Service the font engine's live document mailbox through Xilem application messages.
 
-use crate::Workspace;
+use crate::application::workspace::Workspace;
 
 /// Pumps the mailbox on the UI thread; socket workers never touch font data.
 pub(crate) fn with_live<V: xilem::WidgetView<Workspace>>(

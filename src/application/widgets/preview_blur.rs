@@ -46,7 +46,7 @@ pub(crate) fn render(
         }
         let mut scene = Scene::new();
         let mut painter = Painter::new(&mut scene);
-        let filters = [Filter::blur(crate::view::render::px32(sigma))];
+        let filters = [Filter::blur(crate::application::view::render::px32(sigma))];
         painter.with_group(GroupRef::new().with_filters(&filters), |painter| {
             for path in paths {
                 painter.fill(&(transform * path), color).draw();

@@ -3,12 +3,24 @@
 
 //! The info panel's sections: layers, axes, paths, coordinates, curves, measure, background, marks, font info.
 
-use crate::{
-    ButtonShape, ControlSize, Dim, Dimensions, FlexSpacer, Length, Mode, Palette, Radius, Region,
-    Session, Space, Stroke, Style, TextSize, WidgetView, Workspace, button, design,
-    direction_chips, icon_button, label, recipes, sized_box, tab_chip, text_input, xcolumn, xrow,
+use crate::application::editor::session::Session;
+use crate::application::view::chrome::direction_chips;
+use crate::application::view::design::{
+    ButtonShape, ControlSize, Radius, Region, Space, Stroke, TextSize, column as xcolumn,
+    row as xrow,
 };
+use crate::application::view::panels::tabs::tab_chip;
+use crate::application::view::recipes::button;
+use crate::application::view::theme::Palette;
+use crate::application::view::{design, label, recipes, text_input};
+use crate::application::widgets::icon_button;
+use crate::application::workspace::{Mode, Workspace};
+use masonry::layout::{Dim, Length};
+use masonry::properties::Dimensions;
+use xilem::WidgetView;
+use xilem::style::Style;
 use xilem::view::FlexExt as _;
+use xilem::view::{FlexSpacer, sized_box};
 
 /// Reference underlays, distinct from document masters. GPUI keeps this
 /// section folded in the overview, so the inspector stays a concise map of
@@ -301,7 +313,7 @@ pub(crate) fn shaping_section(app: &Workspace) -> impl WidgetView<Workspace> + u
 }
 
 pub(crate) fn transformations_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use crate::edit::session::BoolOp;
+    use crate::application::editor::session::BoolOp;
     use icon_button::icon_button;
     let pal = &app.palette;
     let fg = pal.text_muted;
@@ -533,10 +545,10 @@ pub(crate) fn tbtn(
 /// GPUI keeps this panel up whether or not anything is selected, so the
 /// inspector does not jump.
 pub(crate) fn coordinates_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use crate::view::design::{
+    use crate::application::view::design::{
         COORD_LABEL_WIDTH, COORD_PICKER_EDGE, COORD_PICKER_GAP, COORD_PICKER_INSET,
     };
-    use crate::widgets::quadrant_picker::quadrant_grid;
+    use crate::application::widgets::quadrant_picker::quadrant_grid;
     use runebender::outline::path::Quadrant;
     const QUADRANTS: [Quadrant; 9] = [
         Quadrant::TopLeft,

@@ -3,10 +3,10 @@
 
 //! Live browser host for the same desktop Xilem/Masonry widget tree.
 //! DOM input is delivered to Masonry; every frame comes from its retained scene.
-use crate::model::FontModel;
-use crate::view::render::root_logic;
-use crate::workspace::{AppState, Mode, Workspace};
-use crate::{UI_FONT, default_property_set};
+use crate::application::font_model::FontModel;
+use crate::application::view::render::root_logic;
+use crate::application::view::{UI_FONT, default_property_set};
+use crate::application::workspace::{AppState, Mode, Workspace};
 use masonry::app::{
     RenderRoot, RenderRootOptions, RenderRootSignal, VisualLayerKind, WindowSizePolicy,
 };
@@ -489,8 +489,8 @@ impl BrowserEditor {
 }
 
 /// Desktop-only actions give feedback without touching the browser's sample document.
-pub(crate) fn desktop_action(action: crate::widgets::shortcuts::AppAction) -> bool {
-    use crate::widgets::shortcuts::AppAction as A;
+pub(crate) fn desktop_action(action: crate::application::widgets::shortcuts::AppAction) -> bool {
+    use crate::application::widgets::shortcuts::AppAction as A;
     matches!(
         action,
         A::Save | A::SaveAs | A::OpenFont | A::NewFont | A::RevertToSaved | A::ExportFont | A::Quit

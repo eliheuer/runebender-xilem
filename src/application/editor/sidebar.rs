@@ -3,8 +3,13 @@
 
 //! The sidebar's filters and the grid selection.
 
-use crate::{Arc, Cell, CellMetrics, GlyphCategory, Mode, Sel, Sort, Workspace, design, model};
+use crate::application::font_model as model;
+use crate::application::view::canvas::grid::{Cell, CellMetrics};
+use crate::application::view::design;
+use crate::application::workspace::{Mode, Sel, Sort, Workspace};
+use runebender::GlyphCategory;
 use runebender::outline::glyph_paths::round_units;
+use std::sync::Arc;
 
 impl Workspace {
     /// The cells that pass the current search + category filter. The two

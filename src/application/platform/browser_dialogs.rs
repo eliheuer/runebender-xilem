@@ -22,6 +22,6 @@ pub(crate) fn svg(_: &Path) -> Option<PathBuf> {
 pub(crate) fn confirm_revert() -> bool {
     false
 }
-pub(crate) fn dirty_decision(_: &str) -> crate::DirtyDecision {
-    crate::DirtyDecision::Cancel
+pub(crate) fn dirty_decision(_: &str) -> crate::application::workspace::DirtyDecision {
+    crate::application::workspace::DirtyDecision::Cancel
 }

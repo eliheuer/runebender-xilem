@@ -3,11 +3,16 @@
 
 //! The info panel's fields, and what typing in them does to the font.
 
-use crate::{
-    Arc, FontDataSnapshot, FontModel, MetadataEdit, Mode, OverviewEditBatch, Session, Workspace,
-    canvas, cells_of, metric_bufs,
+use crate::application::editor::session::Session;
+use crate::application::font_model::FontModel;
+use crate::application::view::canvas;
+use crate::application::view::canvas::grid::cells_of;
+use crate::application::view::panels::sections::metric_bufs;
+use crate::application::workspace::{
+    FontDataSnapshot, MetadataEdit, Mode, OverviewEditBatch, Workspace,
 };
 use runebender::outline::glyph_paths::round_units;
+use std::sync::Arc;
 
 fn mark_cloud(font: &FontModel, base: &norad::Glyph) -> Vec<Arc<kurbo::BezPath>> {
     let base_anchors: Vec<_> = base
@@ -1088,7 +1093,7 @@ mod size_tests {
 
     #[test]
     fn kerning_and_groups_validate_refresh_shaping_and_roundtrip() {
-        use crate::edit::text_tool::{TextInputs, TextState};
+        use crate::application::editor::tools::text::{TextInputs, TextState};
 
         let path = disposable_font("kerning-roundtrip");
         let mut font = norad::Font::new();

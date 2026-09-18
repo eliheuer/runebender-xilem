@@ -1,4 +1,7 @@
-# See https://rust-lang.github.io/rustfmt for more information.
+# Follow https://linebender.org/wiki/formatting-scheme/.
+# See https://rust-lang.github.io/rustfmt for configuration details.
+# Linebender uses rustfmt's 100-column default; keep it explicit here.
+max_width = 100
 newline_style = "Unix"
 use_field_init_shorthand = true
 single_line_let_else_max_width = 0

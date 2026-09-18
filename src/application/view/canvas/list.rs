@@ -5,11 +5,19 @@
 //! the bottom bar's List box: a mark cell, the name, Unicode, width,
 //! LSB, RSB, the two kerning groups, and the category.
 
-use crate::{
-    Dim, Dimensions, Length, Radius, Region, Space, Stroke, Style, TextSize, WidgetView, Workspace,
-    button, label, portal, sized_box, xcolumn, xrow,
+use crate::application::view::design::{
+    Radius, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
 };
+use crate::application::view::label;
+use crate::application::view::recipes::button;
+use crate::application::widgets::scroll_viewport::portal;
+use crate::application::workspace::Workspace;
+use masonry::layout::{Dim, Length};
+use masonry::properties::Dimensions;
+use xilem::WidgetView;
+use xilem::style::Style;
 use xilem::view::FlexExt as _;
+use xilem::view::sized_box;
 
 /// Column widths for the compact list layout.
 const W_UNI: f64 = 68.0;

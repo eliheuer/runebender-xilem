@@ -3,17 +3,29 @@
 
 //! The info panel: which sections show for the grid and for a glyph.
 
-use crate::{
-    ControlSize, Dim, Dimensions, Length, Mode, Palette, Radius, Region, Space, Stroke, Style,
-    TextSize, Tool, WidgetView, Workspace, axes_section, background_section, compare_section,
-    coordinates_section, curves_section, design, dimensions_section, features_section,
-    font_advanced_section, font_info_section, groups_section, input_typography, kerning_section,
-    label, layers_section, mark_section, masters_section, measure_section, path_operations_section,
-    recipes, related_section, shaping_section, sized_box, text_input, transformations_section,
-    xcolumn, xrow,
+use crate::application::view::design::{
+    ControlSize, Radius, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
 };
+use crate::application::view::panels::editor_info::{
+    compare_section, dimensions_section, features_section, groups_section, kerning_section,
+    related_section,
+};
+use crate::application::view::panels::sections::{
+    axes_section, background_section, coordinates_section, curves_section, font_advanced_section,
+    font_info_section, layers_section, mark_section, masters_section, measure_section,
+    path_operations_section, shaping_section, transformations_section,
+};
+use crate::application::view::theme::Palette;
+use crate::application::view::{design, label, recipes, text_input};
+use crate::application::widgets::input_typography;
+use crate::application::workspace::{Mode, Tool, Workspace};
+use masonry::layout::{Dim, Length};
+use masonry::properties::Dimensions;
 use runebender::outline::glyph_paths::round_units;
+use xilem::WidgetView;
+use xilem::style::Style;
 use xilem::view::FlexExt as _;
+use xilem::view::sized_box;
 
 pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;

@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use crate::Workspace;
+use crate::application::workspace::Workspace;
 
 /// One export in progress.
 #[derive(Clone)]

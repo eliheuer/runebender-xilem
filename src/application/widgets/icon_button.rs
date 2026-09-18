@@ -18,7 +18,7 @@ use runebender::ui::theme::toolbar_icons;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::view::design::{RAIL_TAB_ICON, RAIL_TAB_RADIUS};
+use crate::application::view::design::{RAIL_TAB_ICON, RAIL_TAB_RADIUS};
 
 const TILE: f64 = 24.0;
 

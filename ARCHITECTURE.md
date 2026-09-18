@@ -65,9 +65,9 @@ workspace → font_model + font engine
 font engine -X→ Xilem, Masonry, dialogs, or window state
 ```
 
-`main.rs` re-exports a few application modules at crate scope so existing call sites can use
-readable paths such as `crate::view` and `crate::workspace`. The files still have one physical
-home under `application/`.
+`main.rs` only selects the command-line or graphical launch path. Application modules import
+dependencies from their real locations under `application/`; there is no crate-root prelude or
+second set of module names to keep in sync.
 
 ## Where do I make a change?
 

@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use crate::Workspace;
+use crate::application::workspace::Workspace;
 
 /// Sent when the sources on disk have changed and settled.
 #[derive(Debug)]

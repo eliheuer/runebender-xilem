@@ -4,6 +4,10 @@ Runebender's native editor, headless tools, and reusable font engine live in the
 The browser host is a separate Cargo workspace under `web/` that reuses the root sources through a small compatibility package.
 Sibling repositories are not workspace members; do not modify them unless a task explicitly spans repositories.
 
+Before changing Rust or documentation, read and follow the
+[Linebender formatting scheme](https://linebender.org/wiki/formatting-scheme/).
+The repository records its stable rustfmt settings in `.rustfmt.toml`, and CI verifies them.
+
 ## Architecture
 
 Read `ARCHITECTURE.md` before moving code or adding a subsystem.
@@ -82,7 +86,7 @@ Record an honest support limit in `docs/known-limitations.md` when a failure can
 
 ## Rust conventions
 
-- Follow the current Linebender canonical lint and rustfmt sets.
+- Follow the current Linebender canonical lint set and the formatting scheme linked above.
 - Every public library item needs a useful doc comment.
 - An in-place edit returns whether or how much it changed.
 - A UFO lib key has one constant, reader, and writer.
@@ -92,7 +96,7 @@ Record an honest support limit in `docs/known-limitations.md` when a failure can
 
 ## Documentation conventions
 
-- Follow the Linebender formatting scheme: put each prose sentence on its own source line.
+- Put each prose sentence on its own source line, as required by the Linebender formatting scheme.
 - Update `ARCHITECTURE.md`, `DESIGN.md`, or `docs/known-limitations.md` when a change invalidates their guidance.
 
 ## Dependency policy

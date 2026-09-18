@@ -3,24 +3,38 @@
 
 //! The render tree: how the workspace's state becomes a frame.
 
+use crate::application::actions;
+use crate::application::editor::tools::{chat, local_ai, nodes};
+use crate::application::platform::export;
 #[cfg(unix)]
-use crate::platform::live;
+use crate::application::platform::live;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::platform::watch;
-use crate::view::design::{DOCK_WIDTH, PROOF_STRIP_HEIGHT};
+use crate::application::platform::watch;
+use crate::application::view::chrome::{marks_bar, status, titlebar};
+use crate::application::view::design::{DOCK_WIDTH, PROOF_STRIP_HEIGHT};
+use crate::application::view::design::{Space, Stroke, TextSize};
+use crate::application::view::panels::editor::{editor_pane, overview};
+use crate::application::view::panels::info::info_panel;
+use crate::application::view::panels::nodes::nodes_pane;
+use crate::application::view::panels::preview::{glyph_preview, preview_strip};
+use crate::application::view::panels::tabs::{editor_nav, sidebar};
+use crate::application::view::{design, label};
+use crate::application::widgets::menu_shell;
+use crate::application::widgets::scroll_viewport::portal;
 #[cfg(target_os = "macos")]
-use crate::widgets::shortcuts;
-use crate::{
-    AppState, CrossAxisAlignment, Dim, Dimensions, Length, Mode, Space, Stroke, Style, TextSize,
-    WidgetView, Workspace, actions, canvas, chat, design, editor_nav, editor_pane, export,
-    flex_col, glyph_preview, info_panel, label, local_ai, marks_bar, menu_shell, nodes, nodes_pane,
-    overview, portal, preview_strip, sidebar, sized_box, status, titlebar,
-};
+use crate::application::widgets::shortcuts;
+use crate::application::workspace::{AppState, Mode, Workspace};
 use masonry::layout::UnitPoint;
+use masonry::layout::{Dim, Length};
+use masonry::properties::Dimensions;
+use masonry::properties::types::CrossAxisAlignment;
 use xilem::Color;
+use xilem::WidgetView;
 use xilem::core::lens;
+use xilem::style::Style;
 use xilem::view::FlexExt as _;
 use xilem::view::ZStackExt as _;
+use xilem::view::{canvas, flex_col, sized_box};
 
 /// A kurbo value as the `f32` a Vello text size or stroke width
 /// takes.
@@ -126,7 +140,7 @@ where
     B: WidgetView<State>,
     C: WidgetView<State>,
 {
-    use crate::view::design::{CENTER_MIN_WIDTH, DOCK_MIN_WIDTH, SPLITTER_HIT_WIDTH};
+    use crate::application::view::design::{CENTER_MIN_WIDTH, DOCK_MIN_WIDTH, SPLITTER_HIT_WIDTH};
     let left = edge_keyline(left, KeylineEdge::Right, outline);
     let columns = xilem::view::split(left, middle)
         .split_point_from_start(Length::px(if collapsed { 0.0 } else { DOCK_WIDTH }))
@@ -540,7 +554,7 @@ fn export_pump<V: WidgetView<Workspace>>(
 #[cfg(test)]
 mod tab_tests {
     use super::*;
-    use crate::Tool;
+    use crate::application::workspace::Tool;
     use std::sync::Arc;
 
     /// A two-glyph UFO on disk, because `Workspace::open` takes a path. Each
@@ -861,7 +875,7 @@ mod panel_resize_tests {
         let view = logic();
         let (pod, mut state) = view.build(&mut ctx, &mut ());
         let mut h = TestHarness::create_with_size(
-            crate::default_property_set(),
+            crate::application::view::default_property_set(),
             pod.new_widget,
             (1280, 650),
         );
@@ -897,7 +911,10 @@ mod panel_resize_tests {
         h.mouse_button_press(None);
         h.mouse_move(Point::new(20.0, 100.0));
         h.mouse_button_release(None);
-        assert_eq!(widths(&h).0, crate::view::design::DOCK_MIN_WIDTH);
+        assert_eq!(
+            widths(&h).0,
+            crate::application::view::design::DOCK_MIN_WIDTH
+        );
     }
 
     #[test]
@@ -918,7 +935,7 @@ mod panel_resize_tests {
         let view = logic(true);
         let (pod, mut state) = view.build(&mut ctx, &mut ());
         let mut h = TestHarness::create_with_size(
-            crate::default_property_set(),
+            crate::application::view::default_property_set(),
             pod.new_widget,
             (1280, 650),
         );
@@ -968,7 +985,7 @@ mod panel_resize_tests {
         let view = logic();
         let (pod, mut state) = view.build(&mut ctx, &mut ());
         let mut h = TestHarness::create_with_size(
-            crate::default_property_set(),
+            crate::application::view::default_property_set(),
             pod.new_widget,
             (800, 651),
         );
@@ -1000,7 +1017,10 @@ mod panel_resize_tests {
         h.mouse_button_press(None);
         h.mouse_move(Point::new(400.0, 748.0));
         h.mouse_button_release(None);
-        assert_eq!(heights(&h).1, crate::view::design::PROOF_MIN_HEIGHT);
+        assert_eq!(
+            heights(&h).1,
+            crate::application::view::design::PROOF_MIN_HEIGHT
+        );
     }
 
     #[test]
@@ -1023,7 +1043,7 @@ mod panel_resize_tests {
         let view = logic(320.0);
         let (pod, mut state) = view.build(&mut ctx, &mut ());
         let mut h = TestHarness::create_with_size(
-            crate::default_property_set(),
+            crate::application::view::default_property_set(),
             pod.new_widget,
             (246, 682),
         );
@@ -1067,8 +1087,11 @@ mod panel_resize_tests {
                 .padding(Length::px(8.0))
                 .background_color(masonry::peniko::Color::from_rgb8(177, 177, 177));
             let (pod, _) = view.build(&mut ctx, &mut ());
-            let mut h =
-                TestHarness::create_with_size(crate::default_property_set(), pod.new_widget, size);
+            let mut h = TestHarness::create_with_size(
+                crate::application::view::default_property_set(),
+                pod.new_widget,
+                size,
+            );
             let baseline = h.render();
             h.mouse_move(start);
             h.mouse_button_press(None);

@@ -22,7 +22,7 @@ pub(crate) fn selectable_text<State, Action>(
     SelectableText {
         content: content.into(),
         color: None,
-        size: crate::TextSize::Body.px(),
+        size: crate::application::view::design::TextSize::Body.px(),
         phantom: PhantomData,
     }
 }
@@ -60,7 +60,9 @@ impl<State: 'static, Action: 'static> View<State, Action, ViewCtx>
 
     fn build(&self, ctx: &mut ViewCtx, _: &mut State) -> (Self::Element, Self::ViewState) {
         let text_area = TextArea::new_immutable(&self.content)
-            .with_style(StyleProperty::FontFamily(crate::UI_FONT_FAMILY.into()))
+            .with_style(StyleProperty::FontFamily(
+                crate::application::view::UI_FONT_FAMILY.into(),
+            ))
             .with_style(StyleProperty::FontSize(self.size))
             .with_word_wrap(true);
         let mut props = PropertySet::new();

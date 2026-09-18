@@ -3,14 +3,21 @@
 
 //! Local Chat transcript, model selection, prompt, and process controls.
 
-use crate::edit::chat::ChatEntry;
-use crate::widgets::selectable_text::selectable_text;
-use crate::{
-    Dim, Dimensions, Radius, Region, Space, Stroke, Style, TextSize, WidgetView, Workspace, label,
-    portal, recipes, sized_box, xcolumn, xrow,
+use crate::application::editor::tools::chat::ChatEntry;
+use crate::application::view::design::{
+    Radius, Region, Space, Stroke, TextSize, column as xcolumn, row as xrow,
 };
+use crate::application::view::{label, recipes};
+use crate::application::widgets::scroll_viewport::portal;
+use crate::application::widgets::selectable_text::selectable_text;
+use crate::application::workspace::Workspace;
+use masonry::layout::Dim;
+use masonry::properties::Dimensions;
 use xilem::Color;
+use xilem::WidgetView;
+use xilem::style::Style;
 use xilem::view::FlexExt as _;
+use xilem::view::sized_box;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TranscriptKind {

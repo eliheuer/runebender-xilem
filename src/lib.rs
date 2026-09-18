@@ -1,27 +1,27 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Runebender's font engine.
+//! Reusable font-editing code for Runebender.
 //!
-//! The `runebender` package contains both this library target and the
-//! Xilem application. The executable uses these modules for its editor
-//! and for headless subcommands.
+//! The graphical editor and headless commands share this library.
+//! UFO and Designspace are Runebender's first-class formats.
+//! Importers support most other common font formats.
+//! The current project model stores each editable master as a `norad::Font`.
+//! A [`document::project::Project`] groups one or more masters with their designspace data.
+//! Text preview builds a temporary, outline-free OpenType font for shaping.
 //!
-//! The in-memory font is `norad::Font`. Every function here takes
-//! norad types, or kurbo geometry, and returns the same. The
-//! directories group the modules by what they do to a font:
-//!
-//! - [`outline`]: what changes a shape. Point and segment edits, the
-//!   knife, cleanup, effects, conversion, emboldening, and the
-//!   segment maths in `outline::path`.
-//! - [`analysis`]: what reads a font. Measurement, curvature,
-//!   categories, search.
-//! - [`formats`]: lib keys, and every format besides UFO.
-//! - [`document`]: the open font and its family. `Master`, `Project`,
-//!   interpolation, composites, in-memory fonts.
-//! - [`text`]: shaping, joining rules, and the text buffer.
-//! - [`ui`]: toolkit-independent editor data: themes, sidebar filters,
-//!   selection, undo, and viewport state.
+//! - [`analysis`] computes measurements, curvature, categories, and search results.
+//!   It borrows the in-memory source model and does not change it.
+//! - [`document`] owns the loaded UFO masters and their designspace metadata.
+//!   It also handles interpolation, edit history, proposed changes, and node workflows.
+//! - [`formats`] interprets UFO lib keys and reads or writes data at the document boundary.
+//!   Its converters cover Glyphs sources, OpenType binaries, SVG, and traced images.
+//! - [`outline`] converts UFO contours to editable paths and performs geometric operations.
+//!   Edited paths are written back to a `norad::Glyph`.
+//! - [`text`] builds layout from the source's glyphs, metrics, anchors, and OpenType feature code.
+//!   It also owns the editable text buffer used by the Text tool.
+//! - [`ui`] contains selection, undo, viewport, theme, sidebar, and node-layout data.
+//!   Front-ends share these types without making the library depend on their GUI toolkits.
 
 // LINEBENDER LINT SET - lib.rs - v4
 // See https://linebender.org/wiki/canonical-lints/
@@ -31,9 +31,8 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 // END LINEBENDER LINT SET
 
-// Cargo exposes the application's optional dependencies to this library target
-// whenever the default `application` feature is enabled. The executable uses them; these
-// imports keep `unused_crate_dependencies` useful for the engine dependencies.
+// Cargo enables package features for both targets. These anonymous imports stop the library's
+// dependency lint from flagging dependencies used only by the application executable.
 #[cfg(all(feature = "application", target_os = "macos"))]
 use muda as _;
 #[cfg(feature = "application")]
@@ -42,15 +41,18 @@ use {
     notify as _, regex as _, rfd as _, tokio as _, winit as _, xilem as _,
 };
 
+// These modules form the public, domain-oriented font-engine API.
 pub mod analysis;
 pub mod document;
 pub mod formats;
 pub mod outline;
+// Test fixtures stay private so downstream crates cannot depend on them.
 #[cfg(test)]
 mod testing;
 pub mod text;
 pub mod ui;
 
+// Common data types are available at the crate root; other APIs stay under their domain module.
 pub use analysis::category::GlyphCategory;
 pub use document::model::GlyphMetadata;
 pub use formats::mark_color::MarkColor;

@@ -7,11 +7,14 @@
 //! This panel lives in the editor's left rail. Rows come from the tool: a task font-ml
 //! gains appears here with no change to this file.
 
-use crate::edit::nodes::file_label;
-use crate::{
-    FlexSpacer, Length, Mode, Region, Style, TextSize, WidgetView, Workspace, label, recipes,
-    xcolumn, xrow,
-};
+use crate::application::editor::tools::nodes::file_label;
+use crate::application::view::design::{Region, TextSize, column as xcolumn, row as xrow};
+use crate::application::view::{label, recipes};
+use crate::application::workspace::{Mode, Workspace};
+use masonry::layout::Length;
+use xilem::WidgetView;
+use xilem::style::Style;
+use xilem::view::FlexSpacer;
 
 pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;

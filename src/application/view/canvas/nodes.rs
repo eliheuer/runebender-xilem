@@ -32,11 +32,11 @@ use xilem::Color;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
-use crate::Workspace;
-use crate::edit::nodes::RowState;
-use crate::view::theme::Palette;
-use crate::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
-use crate::widgets::text_label::{self, Anchor};
+use crate::application::editor::tools::nodes::RowState;
+use crate::application::view::theme::Palette;
+use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
+use crate::application::widgets::text_label::{self, Anchor};
+use crate::application::workspace::Workspace;
 
 /// What the canvas tells the app.
 #[derive(Debug, Clone)]
@@ -105,7 +105,10 @@ impl NodesWidget {
         if let MenuAction::AddNode(type_name) = action {
             let id = this.widget.graph.add(
                 &type_name,
-                [crate::px32(nl::snap(at.x)), crate::px32(nl::snap(at.y))],
+                [
+                    crate::application::view::render::px32(nl::snap(at.x)),
+                    crate::application::view::render::px32(nl::snap(at.y)),
+                ],
             );
             this.widget.selected = Some(id);
             this.widget.relayout();
@@ -241,7 +244,7 @@ impl Widget for NodesWidget {
             painter.stroke(&path, &Stroke::new(wire_w), ink).draw();
         };
 
-        let text_px = crate::px32((13.0 * zoom).clamp(6.0, 40.0));
+        let text_px = crate::application::view::render::px32((13.0 * zoom).clamp(6.0, 40.0));
         for nb in &self.boxes {
             let selected = self.selected == Some(nb.id);
             let mark = nb.mark().and_then(|m| pal.mark(m));
@@ -513,8 +516,12 @@ impl Widget for NodesWidget {
                         let (id, start, origin) = (*id, *start, *origin);
                         if let Some(node) = self.graph.node_mut(id) {
                             node.pos = [
-                                crate::px32(nl::snap(f64::from(origin[0]) + (at.x - start.x))),
-                                crate::px32(nl::snap(f64::from(origin[1]) + (at.y - start.y))),
+                                crate::application::view::render::px32(nl::snap(
+                                    f64::from(origin[0]) + (at.x - start.x),
+                                )),
+                                crate::application::view::render::px32(nl::snap(
+                                    f64::from(origin[1]) + (at.y - start.y),
+                                )),
                             ];
                         }
                         self.relayout();

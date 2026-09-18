@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
-use crate::Workspace;
+use crate::application::workspace::Workspace;
 
 /// One visible transcript row.
 #[derive(Debug, Clone, PartialEq)]

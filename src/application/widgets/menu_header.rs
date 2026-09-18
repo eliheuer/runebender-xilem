@@ -3,13 +3,20 @@
 
 //! Document identity and controls beside the in-window application menus.
 
-use crate::widgets::text_label::{self, Anchor};
-use crate::{
-    AppState, CrossAxisAlignment, Dim, Dimensions, Mode, Space, Style, TextSize, WidgetView,
-    Workspace, canvas, flex_row, header_tools, label, sized_box, tab_strip,
-};
+use crate::application::view::chrome::header_tools;
+use crate::application::view::design::{Space, TextSize};
+use crate::application::view::label;
+use crate::application::view::panels::tabs::tab_strip;
+use crate::application::widgets::text_label::{self, Anchor};
+use crate::application::workspace::{AppState, Mode, Workspace};
+use masonry::layout::Dim;
+use masonry::properties::Dimensions;
+use masonry::properties::types::CrossAxisAlignment;
+use xilem::WidgetView;
 use xilem::core::lens;
+use xilem::style::Style;
 use xilem::view::FlexExt as _;
+use xilem::view::{canvas, flex_row, sized_box};
 
 fn document(app: &mut Workspace) -> Box<xilem::AnyWidgetView<Workspace>> {
     let title = app

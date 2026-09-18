@@ -30,10 +30,10 @@ use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
 
-use crate::view::canvas::editor::EditorWidget;
-use crate::view::canvas::nodes::NodesWidget;
-use crate::view::theme::Palette;
-use crate::widgets::text_label::{self, Anchor};
+use crate::application::view::canvas::editor::EditorWidget;
+use crate::application::view::canvas::nodes::NodesWidget;
+use crate::application::view::theme::Palette;
+use crate::application::widgets::text_label::{self, Anchor};
 use runebender::outline::glyph_paths::round_units;
 
 /// Row height, and the menu's width. Fixed, because a context menu that
@@ -50,7 +50,7 @@ const PAD: f64 = 4.0;
 #[derive(Clone)]
 pub(crate) enum MenuAction {
     /// Run a session operation, and report whether the glyph changed.
-    Op(fn(&mut crate::edit::session::Session) -> bool),
+    Op(fn(&mut crate::application::editor::session::Session) -> bool),
     /// Add an anchor where the menu was opened.
     AddAnchor,
     /// Add a node of this type where the menu was opened, on the

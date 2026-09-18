@@ -20,7 +20,9 @@ use std::sync::{Arc, Mutex};
 
 use runebender::document::proposal::{self, ProposalSummary};
 
-use crate::{Mode, Session, Workspace, cells_of};
+use crate::application::editor::session::Session;
+use crate::application::view::canvas::grid::cells_of;
+use crate::application::workspace::{Mode, Workspace};
 
 /// One task as `font-ml tasks --json` describes it, kept to what a
 /// row needs. No task name is written in this crate. Read by hand

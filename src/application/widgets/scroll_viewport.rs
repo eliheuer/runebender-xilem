@@ -226,7 +226,7 @@ mod tests {
             .prepare()
             .with_props(Background::Color(fill));
         let mut harness = TestHarness::create_with_size(
-            crate::default_property_set(),
+            crate::application::view::default_property_set(),
             ScrollViewport::new(widgets::Portal::new(content)).prepare(),
             (200, 200),
         );

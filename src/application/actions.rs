@@ -22,8 +22,8 @@
 //! Linux and Windows use the in-window menu bar drawn with Masonry's layer
 //! system. They do not initialize `muda` or its global event channel.
 
-use crate::widgets::shortcuts::AppAction;
-use crate::{AppState, Tool};
+use crate::application::widgets::shortcuts::AppAction;
+use crate::application::workspace::{AppState, Mode, Sel, Sort, Tool};
 use masonry::core::keyboard::{Key, Modifiers, NamedKey};
 
 /// One row of the application's action table.
@@ -114,30 +114,30 @@ impl Entry {
                 A::Quit | A::NewFont | A::OpenFont | A::Theme(_)
             );
         };
-        let editor = matches!(app.mode, crate::Mode::Editor(_));
+        let editor = matches!(app.mode, Mode::Editor(_));
         match self.action {
             A::Save => app.modified && app.font.is_writable(),
             A::ExportFont => app.export_job.is_none(),
             A::Undo => match app.mode {
-                crate::Mode::Editor(index) => {
+                Mode::Editor(index) => {
                     app.font.master().can_undo(index) || app.can_metadata_history_step(false)
                 }
-                crate::Mode::Overview => {
+                Mode::Overview => {
                     !app.overview_undo.is_empty() || app.can_metadata_history_step(false)
                 }
                 _ => false,
             },
             A::Redo => match app.mode {
-                crate::Mode::Editor(index) => {
+                Mode::Editor(index) => {
                     app.font.master().can_redo(index) || app.can_metadata_history_step(true)
                 }
-                crate::Mode::Overview => {
+                Mode::Overview => {
                     !app.overview_redo.is_empty() || app.can_metadata_history_step(true)
                 }
                 _ => false,
             },
             A::MetaballsToCubic | A::MetaballGroupsToCubic => editor,
-            A::FontMetaballsToCubic => matches!(app.mode, crate::Mode::Overview),
+            A::FontMetaballsToCubic => matches!(app.mode, Mode::Overview),
             A::Copy | A::SelectAll => editor,
             A::Paste => editor && !app.clipboard.is_empty(),
             A::CopySelectedGlyphs => app.selected.is_some() || !app.multi_selected.is_empty(),
@@ -171,7 +171,7 @@ impl Entry {
             | A::CubicsToQuads
             | A::ZoomToFit => editor,
             A::FilterOffset | A::FilterExtrude | A::FilterRoughen | A::FilterSlant => editor,
-            A::GenerateMissing => matches!(app.sel, crate::Sel::Filter(_)),
+            A::GenerateMissing => matches!(app.sel, Sel::Filter(_)),
             A::DuplicateGlyph | A::RemoveGlyph | A::BakeMasks | A::ExportGlyphSvg => {
                 app.selected.is_some()
             }
@@ -191,8 +191,8 @@ impl Entry {
         use AppAction as A;
         let workspace = app.workspace.as_ref();
         match self.action {
-            A::SortByName => workspace.map(|app| app.sort == crate::Sort::Name),
-            A::SortByUnicode => workspace.map(|app| app.sort == crate::Sort::Unicode),
+            A::SortByName => workspace.map(|app| app.sort == Sort::Name),
+            A::SortByUnicode => workspace.map(|app| app.sort == Sort::Unicode),
             A::Theme(id) => Some(app.theme_id == id),
             A::ShowAllMasters => workspace.map(|app| app.show_all_masters),
             A::GridDots => workspace.map(|app| !app.view.grid_lines),
@@ -909,7 +909,7 @@ pub(crate) fn action_enabled(action: AppAction, app: &AppState) -> bool {
         return app
             .workspace
             .as_ref()
-            .is_some_and(|workspace| matches!(workspace.mode, crate::Mode::Editor(_)));
+            .is_some_and(|workspace| matches!(workspace.mode, Mode::Editor(_)));
     }
     if action == AppAction::EndSpacePan {
         return app.workspace.is_some();
@@ -1146,7 +1146,7 @@ mod platform {
     use muda::{CheckMenuItem, Menu, MenuId, MenuItem, MenuItemKind, Submenu};
 
     use super::{ACTIONS, MENUS};
-    use crate::widgets::shortcuts::AppAction;
+    use crate::application::widgets::shortcuts::AppAction;
 
     thread_local! {
         /// The menu is built once and held for the life of the process:
@@ -1185,7 +1185,7 @@ mod platform {
     ///
     /// Must run on the main thread, which is where the view function runs.
     /// Later calls update enabled and checked state without rebuilding the bar.
-    pub(crate) fn install(app: &crate::AppState) {
+    pub(crate) fn install(app: &crate::application::workspace::AppState) {
         if IDS.get().is_some() {
             MENU.with(|slot| {
                 if let Some((_, items)) = slot.borrow().as_ref() {
@@ -1347,9 +1347,9 @@ mod platform {
 
 #[cfg(not(target_os = "macos"))]
 mod platform {
-    /// The native menu is macOS-only; [`crate::widgets::menu_shell`] owns the
+    /// The native menu is macOS-only; [`crate::application::widgets::menu_shell`] owns the
     /// in-window menu on these platforms.
-    pub(crate) fn install(_app: &crate::AppState) {}
+    pub(crate) fn install(_app: &crate::application::workspace::AppState) {}
 }
 
 pub(crate) use platform::install;

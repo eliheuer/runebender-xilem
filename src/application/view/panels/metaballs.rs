@@ -3,8 +3,14 @@
 
 //! The live metaball inspector, shown beside the glyph while its tool is active.
 
-use crate::edit::metaballs::MetaballSelection;
-use crate::{Arc, Region, Style, TextSize, WidgetView, Workspace, button, label, recipes, xcolumn};
+use crate::application::editor::tools::metaballs::MetaballSelection;
+use crate::application::view::design::{Region, TextSize, column as xcolumn};
+use crate::application::view::recipes::button;
+use crate::application::view::{label, recipes};
+use crate::application::workspace::Workspace;
+use std::sync::Arc;
+use xilem::WidgetView;
+use xilem::style::Style;
 
 pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;

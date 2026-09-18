@@ -9,14 +9,19 @@
 //! selected Master, Model or Adapter node offers its choices in a
 //! second row.
 
-use crate::edit::nodes::file_label;
-use crate::view::canvas::nodes::{NodesEvent, nodes_canvas};
-use crate::{
-    CrossAxisAlignment, Dim, Dimensions, FlexSpacer, Length, Region, Space, Style, TextSize,
-    WidgetView, Workspace, bottom_keyline, design, flex_col, label, recipes, sized_box, xcolumn,
-    xrow,
-};
+use crate::application::editor::tools::nodes::file_label;
+use crate::application::view::canvas::nodes::{NodesEvent, nodes_canvas};
+use crate::application::view::design::{Region, Space, TextSize, column as xcolumn, row as xrow};
+use crate::application::view::render::bottom_keyline;
+use crate::application::view::{design, label, recipes};
+use crate::application::workspace::Workspace;
+use masonry::layout::{Dim, Length};
+use masonry::properties::Dimensions;
+use masonry::properties::types::CrossAxisAlignment;
+use xilem::WidgetView;
+use xilem::style::Style;
 use xilem::view::FlexExt as _;
+use xilem::view::{FlexSpacer, flex_col, sized_box};
 
 pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::Either;

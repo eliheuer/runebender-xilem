@@ -3,10 +3,15 @@
 
 //! What the menus and shortcuts call. One method is the whole of one user-facing command.
 
-use crate::{
-    Arc, Mode, Palette, Sel, Session, Sort, Tool, Workspace, canvas, cells_of, dialogs, session,
-    shortcuts,
-};
+use crate::application::editor::session;
+use crate::application::editor::session::Session;
+use crate::application::platform::dialogs;
+use crate::application::view::canvas;
+use crate::application::view::canvas::grid::cells_of;
+use crate::application::view::theme::Palette;
+use crate::application::widgets::shortcuts;
+use crate::application::workspace::{Mode, Sel, Sort, Tool, Workspace};
+use std::sync::Arc;
 
 const SAMPLE_STRINGS: &[&str] = &[
     "HHOHOHOO",
@@ -833,7 +838,7 @@ impl Workspace {
 
     pub(crate) fn dispatch(&mut self, action: shortcuts::AppAction) {
         #[cfg(target_arch = "wasm32")]
-        if crate::browser::desktop_action(action) {
+        if crate::application::browser::desktop_action(action) {
             self.note =
                 "This demo keeps edits in this tab. Use the desktop app to open or save fonts."
                     .into();

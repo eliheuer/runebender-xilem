@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{cell::RefCell, rc::Rc};
 
-use crate::default_property_set;
+use crate::application::view::default_property_set;
 use masonry::app::{
     RenderRoot, RenderRootOptions, RenderRootSignal, VisualLayerKind, WindowSizePolicy,
 };
@@ -135,7 +135,9 @@ pub(crate) fn render_to<State, V, F>(
     );
     process_layer_signals(&mut root, &signals);
 
-    root.register_fonts(xilem::Blob::new(Arc::new(crate::UI_FONT)));
+    root.register_fonts(xilem::Blob::new(Arc::new(
+        crate::application::view::UI_FONT,
+    )));
 
     // One rebuild, so a view that fills its scene there is drawn. The
     // canvas view is the reason: it records nothing until rebuild.

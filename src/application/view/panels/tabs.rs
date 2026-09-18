@@ -4,16 +4,35 @@
 //! The left edge: the tab strip, the editor's rail, and the sidebar of
 //! categories, languages, and filters.
 
-use crate::view::design::{RAIL_TAB_ACTIVE_HEIGHT, RAIL_TAB_HEIGHT, RAIL_TAB_INACTIVE_HEIGHT};
-use crate::{
-    Arc, ButtonShape, ControlSize, CrossAxisAlignment, Dim, Dimensions, FlexSpacer, GlyphCategory,
-    GridEvent, Length, Mode, Palette, Radius, Region, Sel, Space, Stroke, Style, TextSize,
-    WidgetView, Workspace, axes_section, button, canvas, chat_panel, design, flex_col, flex_row,
-    grid, icon_button, input_typography, label, local_ai_panel, portal, recipes, sized_box,
-    text_input, top_keyline, xcolumn, xrow,
+use crate::application::view::canvas::grid::{GridEvent, grid};
+use crate::application::view::design::{
+    ButtonShape, ControlSize, Radius, Region, Space, Stroke, TextSize, column as xcolumn,
+    row as xrow,
 };
+use crate::application::view::design::{
+    RAIL_TAB_ACTIVE_HEIGHT, RAIL_TAB_HEIGHT, RAIL_TAB_INACTIVE_HEIGHT,
+};
+use crate::application::view::panels::chat::chat_panel;
+use crate::application::view::panels::local_ai::local_ai_panel;
+use crate::application::view::panels::sections::axes_section;
+use crate::application::view::recipes::button;
+use crate::application::view::render::top_keyline;
+use crate::application::view::theme::Palette;
+use crate::application::view::{design, label, recipes, text_input};
+use crate::application::widgets::icon_button::icon_button;
+use crate::application::widgets::input_typography;
+use crate::application::widgets::scroll_viewport::portal;
+use crate::application::workspace::{Mode, Sel, Workspace};
+use masonry::layout::{Dim, Length};
+use masonry::properties::Dimensions;
+use masonry::properties::types::CrossAxisAlignment;
+use runebender::GlyphCategory;
+use std::sync::Arc;
 use xilem::Color;
+use xilem::WidgetView;
+use xilem::style::Style;
 use xilem::view::FlexExt as _;
+use xilem::view::{FlexSpacer, canvas, flex_col, flex_row, sized_box};
 
 /// The editor rail's implemented navigation panels.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -292,7 +311,7 @@ fn rail_tabs(app: &Workspace, editing: bool) -> impl WidgetView<Workspace> + use
 
 /// The glyph grid owns its inset; padding the whole rail would count it twice.
 fn editor_glyph_rail(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use crate::view::design::{RAIL_CELL_MAX, RAIL_CELL_MIN, STATUS_SLIDER_WIDTH};
+    use crate::application::view::design::{RAIL_CELL_MAX, RAIL_CELL_MIN, STATUS_SLIDER_WIDTH};
     let cells = app.filtered_cells();
     let count = cells.len();
     let current = match app.mode {

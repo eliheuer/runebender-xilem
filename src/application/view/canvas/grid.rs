@@ -22,13 +22,13 @@ use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Color, Pod, ViewCtx};
 
-use crate::model::FontModel;
-use crate::view::design::{
+use crate::application::font_model::FontModel;
+use crate::application::view::design::{
     GRID_CELL_SELECTED_SHADOW_OFFSET, GRID_CELL_SHADOW_OFFSET, Stroke as DesignStroke,
 };
-use crate::view::render::px32;
-use crate::view::theme::Palette;
-use crate::widgets::text_label::{self, Anchor};
+use crate::application::view::render::px32;
+use crate::application::view::theme::Palette;
+use crate::application::widgets::text_label::{self, Anchor};
 use runebender::outline::glyph_paths::round_units;
 
 const GAP: f64 = 8.0;
@@ -936,9 +936,9 @@ mod thumbnail_tests {
                     .collect(),
             ),
             metrics: CellMetrics {
-                cell: crate::view::design::RAIL_CELL_SIZE,
-                padding: crate::view::design::RAIL_GRID_INSET,
-                padding_y: crate::view::design::RAIL_GRID_INSET,
+                cell: crate::application::view::design::RAIL_CELL_SIZE,
+                padding: crate::application::view::design::RAIL_GRID_INSET,
+                padding_y: crate::application::view::design::RAIL_GRID_INSET,
                 captions_below: false,
                 ascender: 800.0,
                 descender: -200.0,
@@ -1001,7 +1001,7 @@ mod thumbnail_tests {
         use masonry_testing::TestHarness;
 
         let mut harness = TestHarness::create_with_size(
-            crate::default_property_set(),
+            crate::application::view::default_property_set(),
             NewWidget::new(rail()),
             (246, 538),
         );
@@ -1048,7 +1048,7 @@ mod thumbnail_tests {
         use masonry_testing::TestHarness;
 
         let mut harness = TestHarness::create_with_size(
-            crate::default_property_set(),
+            crate::application::view::default_property_set(),
             NewWidget::new(rail()),
             (246, 538),
         );
@@ -1074,7 +1074,7 @@ mod thumbnail_tests {
         let mut widget = rail();
         widget.selected = Some(50);
         let mut harness = TestHarness::create_with_size(
-            crate::default_property_set(),
+            crate::application::view::default_property_set(),
             NewWidget::new(widget),
             (246, 538),
         );
@@ -1125,7 +1125,7 @@ mod thumbnail_tests {
         use masonry_testing::TestHarness;
 
         let mut harness = TestHarness::create_with_size(
-            crate::default_property_set(),
+            crate::application::view::default_property_set(),
             NewWidget::new(rail()),
             (246, 538),
         );

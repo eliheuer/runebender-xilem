@@ -11,30 +11,30 @@
 //! are candidates for the framework's parts list. Each graduates when a
 //! second application needs the same one.
 
-use crate::widgets::input_typography;
+use crate::application::widgets::input_typography;
 
-use crate::view::design::{
+use crate::application::view::design::{
     ButtonShape, ControlSize, ROW_MARKER_BULLET_RADIUS, ROW_MARKER_CHEVRON_LONG,
     ROW_MARKER_CHEVRON_SHORT, ROW_MARKER_CHEVRON_TIP, ROW_MARKER_SIZE, Radius, Region, Space,
     Stroke, TextSize,
 };
-use crate::view::design::{column, row};
-use crate::{label, text_input};
+use crate::application::view::design::{column, row};
+use crate::application::view::{label, text_input};
 use masonry::layout::{Dim, Length};
 use masonry::properties::Dimensions;
 use xilem::WidgetView;
 use xilem::style::Style;
 use xilem::view::{FlexSpacer, button as xilem_button, canvas, sized_box};
 
-use crate::Workspace;
-use crate::view::theme::Palette;
+use crate::application::view::theme::Palette;
+use crate::application::workspace::Workspace;
 
 /// The application's base button.
 ///
 /// Xilem's stock button is rounded. Runebender panel controls are square so
-/// their keylines can join neighboring rows and controls. All view code gets
-/// this factory through `crate::*`; deliberately circular controls override
-/// the radius with [`ButtonShape::Circular`].
+/// their keylines can join neighboring rows and controls. View modules import
+/// this factory directly; deliberately circular controls override the radius
+/// with [`ButtonShape::Circular`].
 pub(crate) fn button<V, F>(
     child: V,
     on_click: F,
@@ -108,7 +108,7 @@ where
         Region::List,
         (
             sized_box(body).padding(masonry::properties::Padding::from_vh(
-                Length::px(crate::view::design::INSPECTOR_VERTICAL_INSET),
+                Length::px(crate::application::view::design::INSPECTOR_VERTICAL_INSET),
                 Space::Md.length(),
             )),
             sized_box(label(""))
@@ -361,7 +361,7 @@ pub(crate) fn list_row_marked<F: Fn(&mut Workspace) + Send + Sync + 'static>(
             move |app: &mut Workspace| on_click(app),
         )
         .padding(masonry::properties::Padding::horizontal(Length::px(
-            crate::view::design::SIDEBAR_ROW_INSET,
+            crate::application::view::design::SIDEBAR_ROW_INSET,
         )))
         .background_color(bg)
         .border_color(border)

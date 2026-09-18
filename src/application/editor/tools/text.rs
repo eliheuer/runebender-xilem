@@ -17,7 +17,7 @@ use std::sync::Arc;
 use masonry::kurbo::{Affine, BezPath, Point};
 use runebender::text::buffer::{TextBuffer, TextDirection, TextGlyphInventory, TextKerningModel};
 
-use crate::model::FontModel;
+use crate::application::font_model::FontModel;
 
 /// What the view can carry.
 ///

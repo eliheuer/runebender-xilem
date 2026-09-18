@@ -9,8 +9,13 @@
 //! `runebender::outline::glyph_ops` and `point_ops` applies without conversion.
 //! The editor island owns the session; the app receives copies of the glyph.
 
-use crate::{Arc, Mode, Tab, TextContext, Tool, Workspace, cells_of, host, metaballs, metric_bufs};
+use crate::application::editor::tools::metaballs;
+use crate::application::platform::host;
+use crate::application::view::canvas::grid::cells_of;
+use crate::application::view::panels::sections::metric_bufs;
+use crate::application::workspace::{Mode, Tab, TextContext, Tool, Workspace};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};
 use runebender::outline::glyph_ops::{self, PointId};

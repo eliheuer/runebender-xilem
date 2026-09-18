@@ -3,13 +3,16 @@
 
 //! Live metaball selection, gestures, and inspector commands.
 
-use crate::{Arc, Mode, OverviewEditBatch, Session, Workspace, cells_of};
+use crate::application::editor::session::Session;
+use crate::application::view::canvas::grid::cells_of;
+use crate::application::workspace::{Mode, OverviewEditBatch, Workspace};
 use runebender::formats::metaballs::{
     Metaball, MetaballGroup, Metaballs, read_metaballs, write_metaballs,
 };
 use runebender::outline::metaballs::{OutlineOptions, collapse};
 use runebender::ui::editing::edit_types::EditType;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 #[derive(Clone, Default)]
 pub(crate) struct MetaballSelection {
@@ -325,7 +328,7 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Tool;
+    use crate::application::workspace::Tool;
 
     #[test]
     fn live_sources_save_reopen_convert_and_undo_in_xilem() {

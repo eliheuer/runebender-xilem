@@ -68,7 +68,7 @@ pub(crate) fn confirm_revert() -> bool {
 }
 
 /// Ask how to handle unsaved edits before a destructive application action.
-pub(crate) fn dirty_decision(action: &str) -> crate::DirtyDecision {
+pub(crate) fn dirty_decision(action: &str) -> crate::application::workspace::DirtyDecision {
     let result = rfd::MessageDialog::new()
         .set_level(rfd::MessageLevel::Warning)
         .set_title("Unsaved Changes")
@@ -80,12 +80,14 @@ pub(crate) fn dirty_decision(action: &str) -> crate::DirtyDecision {
         ))
         .show();
     match result {
-        rfd::MessageDialogResult::Yes => crate::DirtyDecision::Save,
-        rfd::MessageDialogResult::No => crate::DirtyDecision::Discard,
-        rfd::MessageDialogResult::Custom(label) if label == "Save" => crate::DirtyDecision::Save,
-        rfd::MessageDialogResult::Custom(label) if label == "Discard" => {
-            crate::DirtyDecision::Discard
+        rfd::MessageDialogResult::Yes => crate::application::workspace::DirtyDecision::Save,
+        rfd::MessageDialogResult::No => crate::application::workspace::DirtyDecision::Discard,
+        rfd::MessageDialogResult::Custom(label) if label == "Save" => {
+            crate::application::workspace::DirtyDecision::Save
         }
-        _ => crate::DirtyDecision::Cancel,
+        rfd::MessageDialogResult::Custom(label) if label == "Discard" => {
+            crate::application::workspace::DirtyDecision::Discard
+        }
+        _ => crate::application::workspace::DirtyDecision::Cancel,
     }
 }

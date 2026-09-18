@@ -22,7 +22,7 @@ thread_local! {
     static FONT_CX: RefCell<FontContext> = RefCell::new({
         let mut cx = FontContext::new();
         cx.collection
-            .register_fonts(xilem::Blob::new(std::sync::Arc::new(crate::UI_FONT)), None);
+            .register_fonts(xilem::Blob::new(std::sync::Arc::new(crate::application::view::UI_FONT)), None);
         cx
     });
     static LAYOUT_CX: RefCell<LayoutContext<BrushIndex>> = RefCell::new(LayoutContext::new());
@@ -52,7 +52,9 @@ pub(crate) fn draw(
             let mut layout_cx = layout_cx.borrow_mut();
             let mut builder = layout_cx.ranged_builder(&mut font_cx, text, 1.0, true);
             builder.push_default(StyleProperty::FontSize(size));
-            builder.push_default(masonry::parley::FontFamily::named(crate::UI_FONT_FAMILY));
+            builder.push_default(masonry::parley::FontFamily::named(
+                crate::application::view::UI_FONT_FAMILY,
+            ));
             builder.push_default(StyleProperty::Brush(BrushIndex(0)));
             let mut layout: Layout<BrushIndex> = builder.build(text);
             layout.break_all_lines(None);
@@ -78,7 +80,9 @@ pub(crate) fn width(text: &str, size: f32) -> f64 {
             let mut layouts = layout_cx.borrow_mut();
             let mut builder = layouts.ranged_builder(&mut fonts, text, 1.0, true);
             builder.push_default(StyleProperty::FontSize(size));
-            builder.push_default(masonry::parley::FontFamily::named(crate::UI_FONT_FAMILY));
+            builder.push_default(masonry::parley::FontFamily::named(
+                crate::application::view::UI_FONT_FAMILY,
+            ));
             let mut layout: Layout<BrushIndex> = builder.build(text);
             layout.break_all_lines(None);
             f64::from(layout.width())

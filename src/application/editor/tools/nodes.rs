@@ -18,8 +18,8 @@ use runebender::document::nodes::{NodeGraph, Problem, Registry};
 use runebender::document::nodes_run::{self, Event, RunReport, Status};
 use runebender::document::proposal;
 
-use crate::edit::local_ai::{foreground_is_current, foreground_revisions};
-use crate::{Mode, Workspace};
+use crate::application::editor::tools::local_ai::{foreground_is_current, foreground_revisions};
+use crate::application::workspace::{Mode, Workspace};
 
 /// How one node looks between runs.
 #[derive(Debug, Clone, PartialEq)]
@@ -657,7 +657,7 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .filter_map(crate::edit::local_ai::TaskRow::from_value)
+            .filter_map(crate::application::editor::tools::local_ai::TaskRow::from_value)
             .collect();
         let mut registry = Registry::core();
         assert_eq!(registry.add_tool("font-ml", &json), rows.len());

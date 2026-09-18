@@ -3,11 +3,16 @@
 
 //! The launch path: the event loop, the window, and the first frame.
 
-use crate::view::render::root_logic;
-use crate::{
-    AppState, Arc, EventLoopBuilder, EventLoopError, FsPath, LogicalSize, UI_FONT, Xilem,
-    default_property_set, screenshot, sized_box,
-};
+use crate::application::platform::screenshot;
+use crate::application::view::render::root_logic;
+use crate::application::view::{UI_FONT, default_property_set};
+use crate::application::workspace::AppState;
+use std::path::Path as FsPath;
+use std::sync::Arc;
+use winit::dpi::LogicalSize;
+use winit::error::EventLoopError;
+use xilem::view::sized_box;
+use xilem::{EventLoopBuilder, Xilem};
 
 pub(crate) fn run(
     event_loop: EventLoopBuilder,

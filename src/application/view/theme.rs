@@ -266,7 +266,7 @@ impl Palette {
         };
         let a = self.mark(stops[i]).unwrap_or(self.text).components;
         let b = self.mark(stops[i + 1]).unwrap_or(self.text).components;
-        let f = crate::view::render::px32(f);
+        let f = crate::application::view::render::px32(f);
         Color::new([
             a[0] + (b[0] - a[0]) * f,
             a[1] + (b[1] - a[1]) * f,

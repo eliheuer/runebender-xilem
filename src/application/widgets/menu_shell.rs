@@ -21,28 +21,32 @@ use masonry::core::{
 };
 use masonry::imaging::Painter;
 use masonry::kurbo::{Axis, Line, Point, Rect, Size, Stroke};
-use masonry::layout::{LenReq, Length};
+use masonry::layout::{Dim, LenReq, Length};
+use masonry::properties::Dimensions;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
+use xilem::style::Style as _;
+use xilem::view::{FlexExt as _, flex_col, sized_box};
 use xilem::{Pod, ViewCtx, WidgetView};
 
-use crate::AppState;
-use crate::actions::{ACTIONS, MENUS};
-use crate::view::theme::Palette;
-use crate::widgets::shortcuts::AppAction;
-use crate::widgets::text_label::{self, Anchor};
+use crate::application::actions::{ACTIONS, MENUS};
+use crate::application::view::design::Space;
+use crate::application::view::theme::Palette;
+use crate::application::widgets::shortcuts::AppAction;
+use crate::application::widgets::text_label::{self, Anchor};
+use crate::application::workspace::AppState;
 use runebender::outline::glyph_paths::round_units;
 
 #[path = "menu_header.rs"]
 mod header;
 
-const BAR_HEIGHT: f64 = crate::view::design::TITLEBAR_HEIGHT;
+const BAR_HEIGHT: f64 = crate::application::view::design::TITLEBAR_HEIGHT;
 
 /// Platforms without an OS menu share one application header row.
 pub(crate) fn in_window() -> bool {
     !cfg!(target_os = "macos") || std::env::var("RUNEBENDER_IN_WINDOW_MENU").is_ok()
 }
 const TITLE_SIZE: f32 = 13.0;
-const TITLE_PAD: f64 = crate::view::design::Space::Md.px();
+const TITLE_PAD: f64 = Space::Md.px();
 const ROW_HEIGHT: f64 = 24.0;
 const POPUP_PAD: f64 = 4.0;
 const POPUP_WIDTH: f64 = 220.0;
@@ -78,7 +82,9 @@ fn menu_at(point: Point) -> Option<usize> {
         .find_map(|(index, _)| title_rect(index).contains(point).then_some(index))
 }
 
-fn indexed_entries(menu: usize) -> impl Iterator<Item = (usize, &'static crate::actions::Entry)> {
+fn indexed_entries(
+    menu: usize,
+) -> impl Iterator<Item = (usize, &'static crate::application::actions::Entry)> {
     ACTIONS
         .iter()
         .enumerate()
@@ -497,7 +503,9 @@ impl Widget for MenuShell {
             ctx.request_render();
             return;
         }
-        if let Some(action) = crate::actions::action_for_key_in_window(&key.key, key.modifiers) {
+        if let Some(action) =
+            crate::application::actions::action_for_key_in_window(&key.key, key.modifiers)
+        {
             if ACTIONS
                 .iter()
                 .position(|entry| entry.action == action)
@@ -1138,7 +1146,6 @@ pub(crate) fn menu_shell<V: WidgetView<AppState>>(
     palette: Arc<Palette>,
     app: &AppState,
 ) -> MenuShellView<impl WidgetView<AppState>> {
-    use crate::*;
     use masonry::properties::Padding;
     let menu_width: f64 = MENUS.iter().map(|title| title_width(title)).sum();
     let row = sized_box(header::view(app))
@@ -1213,7 +1220,7 @@ where
         if message.remaining_path().is_empty() {
             return match message.take_message::<AppAction>() {
                 Some(action) => {
-                    if crate::actions::action_enabled(*action, app) {
+                    if crate::application::actions::action_enabled(*action, app) {
                         app.dispatch(*action);
                     }
                     MessageResult::Action(())

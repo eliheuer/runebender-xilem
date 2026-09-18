@@ -3,10 +3,16 @@
 
 //! The preview strip and the glyph preview.
 
-use crate::{
-    ControlSize, Dim, Dimensions, Space, Style, WidgetView, Workspace, canvas, design,
-    preview_blur, sized_box, text_tool,
-};
+use crate::application::editor::tools::text as text_tool;
+use crate::application::view::design;
+use crate::application::view::design::{ControlSize, Space};
+use crate::application::widgets::preview_blur;
+use crate::application::workspace::Workspace;
+use masonry::layout::Dim;
+use masonry::properties::Dimensions;
+use xilem::WidgetView;
+use xilem::style::Style;
+use xilem::view::{canvas, sized_box};
 
 pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use masonry::imaging::Painter;

@@ -3,21 +3,33 @@
 
 //! The bars around the canvas: the titlebar, the header tools, the status bar.
 
-use crate::view::design::{
+use crate::application::editor::tools::nodes;
+use crate::application::view::design::{
+    ButtonShape, ControlSize, Region, Space, Stroke, TextSize, row as xrow,
+};
+use crate::application::view::design::{
     MARK_CLEAR_CROSS_HALF, MARK_SELECTED_RING_INSET, MARK_SWATCH_DIAMETER, MARK_SWATCH_GAP,
     STATUS_ICON_SIZE, TITLEBAR_HEIGHT,
 };
-use crate::widgets::icon_button::{IconMark, mark_button};
-use crate::{
-    ButtonShape, ControlSize, Dim, Dimensions, Length, Mode, Palette, Region, Space, Stroke, Style,
-    TextSize, Tool, WidgetView, Workspace, button, canvas, drag_region, flex_col, icon_button,
-    label, nodes, recipes, sized_box, tab_chip, tab_strip, top_keyline, xrow,
-};
+use crate::application::view::panels::tabs::{tab_chip, tab_strip};
+use crate::application::view::recipes::button;
+use crate::application::view::render::top_keyline;
+use crate::application::view::theme::Palette;
+use crate::application::view::{label, recipes};
+use crate::application::widgets::drag_region::drag_region;
+use crate::application::widgets::icon_button::icon_button;
+use crate::application::widgets::icon_button::{IconMark, mark_button};
+use crate::application::workspace::{Mode, Tool, Workspace};
+use masonry::layout::{Dim, Length};
+use masonry::properties::Dimensions;
 use masonry::properties::Padding;
 use masonry::properties::types::CrossAxisAlignment;
 use xilem::Color;
+use xilem::WidgetView;
+use xilem::style::Style;
 use xilem::view::FlexExt as _;
 use xilem::view::flex_row;
+use xilem::view::{canvas, flex_col, sized_box};
 
 /// The title bar for document identity, editor tools, and tabs.
 ///
@@ -432,7 +444,7 @@ where
 
 /// Compact editor footer: proof appearance controls surround the live status.
 fn editor_status(app: &Workspace, text: String) -> impl WidgetView<Workspace> + use<> {
-    use crate::view::design::STATUS_SLIDER_WIDTH;
+    use crate::application::view::design::STATUS_SLIDER_WIDTH;
     let pal = &app.palette;
     sized_box(
         xrow(

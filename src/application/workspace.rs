@@ -3,10 +3,17 @@
 
 //! The editor's state: the `Workspace` struct and the types it is made of.
 
-use crate::{
-    Arc, Cell, FontModel, GlyphCategory, Palette, Rail, Session, canvas, chat, dialogs, export,
-    local_ai, nodes, shortcuts,
-};
+use crate::application::editor::session::Session;
+use crate::application::editor::tools::{chat, local_ai, nodes};
+use crate::application::font_model::FontModel;
+use crate::application::platform::{dialogs, export};
+use crate::application::view::canvas;
+use crate::application::view::canvas::grid::Cell;
+use crate::application::view::panels::tabs::Rail;
+use crate::application::view::theme::Palette;
+use crate::application::widgets::shortcuts;
+use runebender::GlyphCategory;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Sort {
@@ -360,7 +367,7 @@ impl AppState {
     /// welcome screen.
     pub(crate) fn dispatch(&mut self, action: shortcuts::AppAction) {
         #[cfg(target_arch = "wasm32")]
-        if crate::browser::desktop_action(action) {
+        if crate::application::browser::desktop_action(action) {
             if let Some(workspace) = self.workspace.as_mut() {
                 workspace.note =
                     "This demo keeps edits in this tab. Use the desktop app to open or save fonts."

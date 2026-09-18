@@ -3,7 +3,13 @@
 
 //! The overview and the editor pane.
 
-use crate::{Arc, GridEvent, WidgetView, Workspace, canvas, editor, grid, text_tool};
+use crate::application::editor::tools::text as text_tool;
+use crate::application::view::canvas;
+use crate::application::view::canvas::editor::editor;
+use crate::application::view::canvas::grid::{GridEvent, grid};
+use crate::application::workspace::Workspace;
+use std::sync::Arc;
+use xilem::WidgetView;
 
 pub(crate) fn overview(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::Either;

@@ -3,12 +3,20 @@
 
 //! Files: opening a project, reloading it when the sources change, saving, and a new font.
 
-use crate::{
-    Arc, FontModel, FsPath, GlyphCategory, Mode, Palette, Rail, Sel, Session, Sort, Tab,
-    TextContext, Tool, Workspace, canvas, cells_of, chat, design, local_ai, metric_bufs, nodes,
-};
+use crate::application::editor::session::Session;
+use crate::application::editor::tools::{chat, local_ai, nodes};
+use crate::application::font_model::FontModel;
+use crate::application::view::canvas::grid::cells_of;
+use crate::application::view::panels::sections::metric_bufs;
+use crate::application::view::panels::tabs::Rail;
+use crate::application::view::theme::Palette;
+use crate::application::view::{canvas, design};
+use crate::application::workspace::{Mode, Sel, Sort, Tab, TextContext, Tool, Workspace};
+use runebender::GlyphCategory;
 use runebender::outline::glyph_paths::round_units;
 use std::hash::{Hash, Hasher};
+use std::path::Path as FsPath;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The next identity for an in-memory document session.
@@ -590,7 +598,7 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::widgets::shortcuts;
+    use crate::application::widgets::shortcuts;
 
     #[test]
     fn imported_babelfont_starts_unsaved() {

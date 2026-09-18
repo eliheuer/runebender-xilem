@@ -12,8 +12,3 @@ pub(crate) mod inspector;
 pub(crate) mod session;
 pub(crate) mod sidebar;
 pub(crate) mod tools;
-
-// These aliases preserve concise call sites (`edit::text_tool`, for example)
-// while the filesystem groups every user-selectable tool in one place.
-pub(crate) use tools::text as text_tool;
-pub(crate) use tools::{chat, local_ai, metaballs, nodes};

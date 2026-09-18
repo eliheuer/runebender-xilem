@@ -19,11 +19,11 @@ fn style_placeholder(mut input: WidgetMut<'_, TextInput>) {
     let mut label = TextInput::placeholder_mut(&mut input);
     Label::insert_style(
         &mut label,
-        StyleProperty::FontFamily(crate::UI_FONT_FAMILY.into()),
+        StyleProperty::FontFamily(crate::application::view::UI_FONT_FAMILY.into()),
     );
     Label::insert_style(
         &mut label,
-        StyleProperty::FontSize(crate::TextSize::Body.px()),
+        StyleProperty::FontSize(crate::application::view::design::TextSize::Body.px()),
     );
 }
 
@@ -81,16 +81,16 @@ pub(crate) fn input_typography<V>(input: V) -> InputTypographyView<V> {
     InputTypographyView(input)
 }
 impl<V> ViewMarker for InputTypographyView<V> {}
-impl<V> View<crate::Workspace, (), ViewCtx> for InputTypographyView<V>
+impl<V> View<crate::application::workspace::Workspace, (), ViewCtx> for InputTypographyView<V>
 where
-    V: WidgetView<crate::Workspace, Widget = TextInput>,
+    V: WidgetView<crate::application::workspace::Workspace, Widget = TextInput>,
 {
     type Element = Pod<InputTypography>;
     type ViewState = V::ViewState;
     fn build(
         &self,
         ctx: &mut ViewCtx,
-        state: &mut crate::Workspace,
+        state: &mut crate::application::workspace::Workspace,
     ) -> (Self::Element, Self::ViewState) {
         let (child, state) = self.0.build(ctx, state);
         (
@@ -106,7 +106,7 @@ where
         state: &mut Self::ViewState,
         ctx: &mut ViewCtx,
         mut element: Mut<'_, Self::Element>,
-        app: &mut crate::Workspace,
+        app: &mut crate::application::workspace::Workspace,
     ) {
         let mut child = InputTypography::child_mut(&mut element);
         self.0
@@ -127,7 +127,7 @@ where
         state: &mut Self::ViewState,
         message: &mut MessageCtx,
         mut element: Mut<'_, Self::Element>,
-        app: &mut crate::Workspace,
+        app: &mut crate::application::workspace::Workspace,
     ) -> MessageResult<()> {
         self.0.message(
             state,
@@ -150,8 +150,12 @@ mod tests {
     #[test]
     fn placeholder_and_typed_text_have_identical_ink_bounds() {
         let text = TextArea::new_editable("")
-            .with_style(StyleProperty::FontFamily(crate::UI_FONT_FAMILY.into()))
-            .with_style(StyleProperty::FontSize(crate::TextSize::Body.px()))
+            .with_style(StyleProperty::FontFamily(
+                crate::application::view::UI_FONT_FAMILY.into(),
+            ))
+            .with_style(StyleProperty::FontSize(
+                crate::application::view::design::TextSize::Body.px(),
+            ))
             .prepare()
             .with_props(ContentColor::new(masonry::peniko::Color::BLACK));
         let input = TextInput::from_text_area(text)
@@ -160,7 +164,7 @@ mod tests {
             .prepare()
             .with_props(PlaceholderColor::new(masonry::peniko::Color::BLACK));
         let mut harness = TestHarness::create_with_size(
-            crate::default_property_set(),
+            crate::application::view::default_property_set(),
             InputTypography {
                 child: input.to_pod(),
             }
@@ -191,8 +195,12 @@ mod tests {
     fn focused_descenders_and_numeric_text_fit_the_shared_control_height() {
         let contents = "gyp -123.45";
         let text = TextArea::new_editable(contents)
-            .with_style(StyleProperty::FontFamily(crate::UI_FONT_FAMILY.into()))
-            .with_style(StyleProperty::FontSize(crate::TextSize::Body.px()))
+            .with_style(StyleProperty::FontFamily(
+                crate::application::view::UI_FONT_FAMILY.into(),
+            ))
+            .with_style(StyleProperty::FontSize(
+                crate::application::view::design::TextSize::Body.px(),
+            ))
             .prepare()
             .with_props(ContentColor::new(masonry::peniko::Color::BLACK));
         let input = TextInput::from_text_area(text)
@@ -200,7 +208,7 @@ mod tests {
             .prepare()
             .with_props(PlaceholderColor::new(masonry::peniko::Color::BLACK));
         let mut harness = TestHarness::create_with_size(
-            crate::default_property_set(),
+            crate::application::view::default_property_set(),
             InputTypography {
                 child: input.to_pod(),
             }
@@ -235,13 +243,16 @@ mod tests {
                 std::process::id()
             ));
             let path_string = path.to_string_lossy().into_owned();
-            crate::platform::screenshot::render_to(
+            crate::application::platform::screenshot::render_to(
                 contents.to_owned(),
                 xilem::Color::BLACK,
                 |state| {
-                    xilem::view::sized_box(crate::text_input(state.clone(), |_, _| ()))
-                        .width(Length::px(170.0))
-                        .height(Length::px(28.0))
+                    xilem::view::sized_box(crate::application::view::text_input(
+                        state.clone(),
+                        |_, _| (),
+                    ))
+                    .width(Length::px(170.0))
+                    .height(Length::px(28.0))
                 },
                 (170, 28),
                 1.0,

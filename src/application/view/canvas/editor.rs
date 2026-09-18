@@ -22,14 +22,14 @@ use runebender::outline::glyph_ops::PointId;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
-use crate::Tool;
-use crate::Workspace;
-use crate::edit::session::Session;
-use crate::view::theme::Palette;
-use crate::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
-use crate::widgets::text_label::{self, Anchor};
+use crate::application::editor::session::Session;
+use crate::application::view::theme::Palette;
+use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
+use crate::application::widgets::text_label::{self, Anchor};
+use crate::application::workspace::Tool;
+use crate::application::workspace::Workspace;
 
-use crate::view::design::{
+use crate::application::view::design::{
     ANCHOR_DIAMOND_SCALE, METRICS_CARD_BOTTOM, METRICS_CARD_HEADER as PANEL_HEADER,
     METRICS_CARD_HEIGHT as PANEL_HEIGHT, METRICS_CARD_INSET as PANEL_PAD,
     METRICS_CARD_WIDTH as PANEL_WIDTH, METRICS_FIELD_GAP, METRICS_FIELD_HEIGHT as PANEL_ROW,
@@ -214,7 +214,7 @@ fn direction_marker_shape(
 
 /// Metric heights shared by every text sort, deduplicated so equal font
 /// metrics do not paint darker than their neighbours.
-fn text_sort_metric_ys(metrics: &crate::edit::session::Metrics) -> Vec<f64> {
+fn text_sort_metric_ys(metrics: &crate::application::editor::session::Metrics) -> Vec<f64> {
     let mut ys = vec![
         metrics.descender,
         0.0,
@@ -230,7 +230,7 @@ fn text_sort_metric_ys(metrics: &crate::edit::session::Metrics) -> Vec<f64> {
 }
 
 /// The reduced set used for the inward corner marks in Text mode.
-fn text_sort_corner_ys(metrics: &crate::edit::session::Metrics) -> Vec<f64> {
+fn text_sort_corner_ys(metrics: &crate::application::editor::session::Metrics) -> Vec<f64> {
     let mut ys = vec![
         metrics.descender,
         0.0,
@@ -408,9 +408,9 @@ pub(crate) struct EditorWidget {
     /// Background layer and reference glyph, drawn under everything.
     underlay: Underlay,
     /// The tab's text composition, kept while outline tools edit one sort.
-    text: Option<crate::edit::text_tool::TextState>,
+    text: Option<crate::application::editor::tools::text::TextState>,
     /// The master the buffer was built from.
-    text_inputs: Option<crate::edit::text_tool::TextInputs>,
+    text_inputs: Option<crate::application::editor::tools::text::TextInputs>,
     size: Size,
     drag: Drag,
     /// Last cursor position in design space, for the pen preview segment.
@@ -715,7 +715,7 @@ impl EditorWidget {
                     text_label::draw(
                         painter,
                         Point::new(
-                            rect.x0 + crate::view::design::INPUT_HORIZONTAL_INSET,
+                            rect.x0 + crate::application::view::design::INPUT_HORIZONTAL_INSET,
                             baseline,
                         ),
                         &value,
@@ -783,7 +783,7 @@ impl EditorWidget {
     fn active_sort_origin(&self) -> Point {
         self.text
             .as_ref()
-            .and_then(crate::edit::text_tool::TextState::active_origin)
+            .and_then(crate::application::editor::tools::text::TextState::active_origin)
             .unwrap_or(Point::ORIGIN)
     }
 
@@ -1210,7 +1210,7 @@ impl Widget for EditorWidget {
                     }
                     let color = pal
                         .role("designGridCoarse")
-                        .with_alpha(crate::view::render::px32(alpha));
+                        .with_alpha(crate::application::view::render::px32(alpha));
                     if self.view.grid_lines {
                         painter.stroke(&marks, &Stroke::new(0.5), color).draw();
                     } else {
@@ -1425,7 +1425,8 @@ impl Widget for EditorWidget {
                     if marks.is_empty() {
                         continue;
                     }
-                    let color = grid_color.with_alpha(crate::view::render::px32(alpha));
+                    let color =
+                        grid_color.with_alpha(crate::application::view::render::px32(alpha));
                     if self.view.grid_lines {
                         painter
                             .stroke(&marks, &Stroke::new(line_width), color)
@@ -2246,7 +2247,8 @@ impl Widget for EditorWidget {
                     true
                 }
                 Key::Named(NamedKey::Escape) => {
-                    self.session.metaballs = crate::edit::metaballs::MetaballSelection::default();
+                    self.session.metaballs =
+                        crate::application::editor::tools::metaballs::MetaballSelection::default();
                     true
                 }
                 _ => false,
@@ -2493,7 +2495,7 @@ pub(crate) struct EditorView<F> {
     ghosts: Arc<Vec<kurbo::BezPath>>,
     interp: Option<Arc<kurbo::BezPath>>,
     underlay: Underlay,
-    text: Option<crate::edit::text_tool::TextInputs>,
+    text: Option<crate::application::editor::tools::text::TextInputs>,
     focus_target: Arc<std::sync::Mutex<Option<WidgetId>>>,
     on_event: F,
 }
@@ -2515,7 +2517,7 @@ pub(crate) fn editor<F: Fn(&mut Workspace, EditorEvent) + 'static>(
     ghosts: Arc<Vec<kurbo::BezPath>>,
     interp: Option<Arc<kurbo::BezPath>>,
     underlay: Underlay,
-    text: Option<crate::edit::text_tool::TextInputs>,
+    text: Option<crate::application::editor::tools::text::TextInputs>,
     focus_target: Arc<std::sync::Mutex<Option<WidgetId>>>,
     on_event: F,
 ) -> EditorView<F> {
@@ -2633,7 +2635,7 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
             text: self
                 .text
                 .as_ref()
-                .map(crate::edit::text_tool::TextState::new),
+                .map(crate::application::editor::tools::text::TextState::new),
             text_inputs: self.text.clone(),
             size: Size::ZERO,
             drag: Drag::None,
@@ -2724,7 +2726,9 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
                         .as_ref()
                         .is_some_and(|old| !inputs.same_context(old)) =>
                 {
-                    element.widget.text = Some(crate::edit::text_tool::TextState::new(inputs));
+                    element.widget.text = Some(
+                        crate::application::editor::tools::text::TextState::new(inputs),
+                    );
                     element.widget.fit_text();
                     element.ctx.request_layout();
                 }
@@ -2732,7 +2736,9 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
                 // been typed and re-read the metrics.
                 (Some(inputs), Some(state)) => state.refresh(inputs),
                 (Some(inputs), None) => {
-                    element.widget.text = Some(crate::edit::text_tool::TextState::new(inputs));
+                    element.widget.text = Some(
+                        crate::application::editor::tools::text::TextState::new(inputs),
+                    );
                     element.widget.fit_text();
                     element.ctx.request_layout();
                 }
@@ -2914,7 +2920,7 @@ mod tests {
 
         let mut editor = widget();
         editor.tool = Tool::Text;
-        editor.text = Some(crate::edit::text_tool::TextState::test_buffer());
+        editor.text = Some(crate::application::editor::tools::text::TextState::test_buffer());
         let mut harness =
             TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
         harness.focus_on(Some(harness.root_id()));
@@ -2988,7 +2994,7 @@ mod tests {
     #[test]
     fn outline_tools_use_the_active_sorts_origin() {
         let mut editor = widget();
-        let mut text = crate::edit::text_tool::TextState::test_buffer();
+        let mut text = crate::application::editor::tools::text::TextState::test_buffer();
         assert!(text.buffer.insert_character('B'));
         assert!(text.buffer.activate_sort(1));
         editor.text = Some(text);
@@ -3011,7 +3017,7 @@ mod tests {
         use masonry::core::Ime;
         use masonry::core::keyboard::{Code, KeyboardEvent, Modifiers};
         let mut editor = widget();
-        editor.text = Some(crate::edit::text_tool::TextState::test_buffer());
+        editor.text = Some(crate::application::editor::tools::text::TextState::test_buffer());
         let mut harness =
             TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
         harness.focus_on(Some(harness.root_id()));
@@ -3191,7 +3197,7 @@ mod tests {
         use masonry::core::keyboard::{Code, KeyboardEvent};
         let mut editor = widget();
         editor.tool = Tool::Text;
-        editor.text = Some(crate::edit::text_tool::TextState::test_buffer());
+        editor.text = Some(crate::application::editor::tools::text::TextState::test_buffer());
         let mut harness =
             TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
         harness.focus_on(Some(harness.root_id()));
@@ -3211,7 +3217,7 @@ mod tests {
     #[test]
     fn select_double_click_activates_the_composed_sort() {
         let mut editor = widget();
-        let mut text = crate::edit::text_tool::TextState::test_buffer();
+        let mut text = crate::application::editor::tools::text::TextState::test_buffer();
         assert!(text.buffer.insert_character('B'));
         editor.text = Some(text);
         editor.tool = Tool::Select;
@@ -3261,7 +3267,7 @@ mod tests {
 
     #[test]
     fn text_sort_metric_heights_match_the_web_renderer() {
-        let metrics = crate::edit::session::Metrics {
+        let metrics = crate::application::editor::session::Metrics {
             upm: 1000.0,
             ascender: 750.0,
             descender: -250.0,

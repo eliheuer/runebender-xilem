@@ -23,7 +23,7 @@ use masonry::layout::{LenReq, Length};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx, WidgetView};
 
-use crate::{AppState, Tool};
+use crate::application::workspace::{AppState, Tool};
 
 /// Workspace-level actions a shortcut or a menu item can fire.
 // Some variants are only constructed by the menu table, which the
@@ -206,7 +206,7 @@ impl Widget for ShortcutHost {
         if key.state != KeyState::Down {
             return;
         }
-        if let Some(action) = crate::actions::action_for_key(&key.key, key.modifiers) {
+        if let Some(action) = crate::application::actions::action_for_key(&key.key, key.modifiers) {
             ctx.submit_action::<AppAction>(action);
             ctx.set_handled();
         }
@@ -304,7 +304,7 @@ where
         if message.remaining_path().is_empty() {
             return match message.take_message::<AppAction>() {
                 Some(action) => {
-                    if crate::actions::action_enabled(*action, app) {
+                    if crate::application::actions::action_enabled(*action, app) {
                         app.dispatch(*action);
                     }
                     MessageResult::Action(())
