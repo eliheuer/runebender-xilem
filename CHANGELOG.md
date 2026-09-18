@@ -34,8 +34,8 @@ No release has been published yet.
 
 - Consolidated the font engine, command line, and Xilem application into one `runebender`
   package and executable.
-- Grouped Xilem runtime code under `src/app`, moved named editor tools into
-  `src/app/editor/tools`, and added a contributor-facing architecture map.
+- Grouped Xilem runtime code under `src/application`, moved named editor tools into
+  `src/application/editor/tools`, and added a contributor-facing architecture map.
 - Reworked the editor's menus, title bar, sidebars, inspectors, glyph grid, proof strip,
   Nodes canvas, resizing, and theme roles around shared Linebender-style design tokens and
   GPUI behavior references.

@@ -17,7 +17,7 @@ engine.
    `workspace` over generic names such as `manager`, `service`, or `utils`.
 3. **Separate behavior from presentation.** Font operations do not depend on Xilem. Views show
    state; editor modules interpret user intent; the font engine performs reusable operations.
-4. **Keep roots small.** `src/` contains `main.rs`, `lib.rs`, the `app/` boundary, and the font
+4. **Keep roots small.** `src/` contains `main.rs`, `lib.rs`, the `application/` boundary, and the font
    engine's domain modules. Application implementation files do not accumulate beside the roots.
 5. **Teach through module headers.** Every module root says what belongs there and, when useful,
    points to the next layer involved in the same feature.
@@ -34,7 +34,7 @@ src/
 ├── outline/               reusable geometry and outline operations
 ├── text/                  shaping, joining, features, text layout
 ├── ui/                    toolkit-independent editor data
-└── app/                   Xilem application
+└── application/           Xilem application
     ├── mod.rs             application map
     ├── actions.rs         shared menu and shortcut action table
     ├── cli.rs             headless command adapter
@@ -56,7 +56,7 @@ src/
 The desired dependency direction is:
 
 ```text
-main.rs → app → runebender library
+main.rs → application → runebender library
              ↘ Xilem / Masonry / platform adapters
 
 view → workspace + editor
@@ -67,39 +67,39 @@ font engine -X→ Xilem, Masonry, dialogs, or window state
 
 `main.rs` re-exports a few application modules at crate scope so existing call sites can use
 readable paths such as `crate::view` and `crate::workspace`. The files still have one physical
-home under `app/`.
+home under `application/`.
 
 ## Where do I make a change?
 
 | Goal | Start here | Related engine code |
 |---|---|---|
-| Add or change an editor tool | `app/editor/tools/` | usually `outline/` or `text/` |
-| Change Metaballs | `app/editor/tools/metaballs.rs` | `outline/metaballs.rs`, `formats/metaballs.rs` |
-| Change text-mode interaction | `app/editor/tools/text.rs` | `text/buffer/`, `text/shape.rs` |
-| Change Nodes interaction | `app/editor/tools/nodes.rs` | `document/nodes*.rs`, `ui/nodes.rs` |
-| Change selection or undo | `app/editor/session.rs` | `ui/editing/`, `document/history.rs` |
-| Add a menu item or shortcut | `app/actions.rs` | `app/editor/commands.rs` |
-| Change the edit canvas | `app/view/canvas/editor.rs` | `app/editor/session.rs` |
-| Change a panel | `app/view/panels/` | matching editor or document module |
-| Change reusable control styling | `app/view/recipes.rs` | `app/view/design.rs`, `theme.rs` |
+| Add or change an editor tool | `application/editor/tools/` | usually `outline/` or `text/` |
+| Change Metaballs | `application/editor/tools/metaballs.rs` | `outline/metaballs.rs`, `formats/metaballs.rs` |
+| Change text-mode interaction | `application/editor/tools/text.rs` | `text/buffer/`, `text/shape.rs` |
+| Change Nodes interaction | `application/editor/tools/nodes.rs` | `document/nodes*.rs`, `ui/nodes.rs` |
+| Change selection or undo | `application/editor/session.rs` | `ui/editing/`, `document/history.rs` |
+| Add a menu item or shortcut | `application/actions.rs` | `application/editor/commands.rs` |
+| Change the edit canvas | `application/view/canvas/editor.rs` | `application/editor/session.rs` |
+| Change a panel | `application/view/panels/` | matching editor or document module |
+| Change reusable control styling | `application/view/recipes.rs` | `application/view/design.rs`, `theme.rs` |
 | Add a file format | `formats/` | dispatch in `document/project.rs` |
-| Add a headless command | `app/cli.rs` | operation in the matching library domain |
-| Change native or browser hosting | `app/platform/`, `app/launch.rs`, `app/browser.rs` | none |
+| Add a headless command | `application/cli.rs` | operation in the matching library domain |
+| Change native or browser hosting | `application/platform/`, `application/launch.rs`, `application/browser.rs` | none |
 
 For a first reading, follow this path:
 
 1. `src/main.rs` — decide between a headless command and the editor.
-2. `src/app/mod.rs` — see the application pieces.
-3. `src/app/workspace.rs` and `font_model.rs` — understand application state.
-4. `src/app/editor/session.rs` — understand one active glyph-editing session.
-5. `src/app/view/render.rs` — see how the application modes compose their views.
+2. `src/application/mod.rs` — see the application pieces.
+3. `src/application/workspace.rs` and `font_model.rs` — understand application state.
+4. `src/application/editor/session.rs` — understand one active glyph-editing session.
+5. `src/application/view/render.rs` — see how the application modes compose their views.
 6. `src/lib.rs` — enter the reusable font domains as needed.
 
 ## Adding a tool
 
-1. Put interaction state and pointer/key behavior in `app/editor/tools/<tool>.rs`.
+1. Put interaction state and pointer/key behavior in `application/editor/tools/<tool>.rs`.
 2. Put reusable geometry or font mutations in the matching library domain, most often `outline/`.
-3. Put canvas painting in `app/view/canvas/` and controls in `app/view/panels/`.
+3. Put canvas painting in `application/view/canvas/` and controls in `application/view/panels/`.
 4. Add its command and shortcut to the shared action table rather than creating a second dispatch
    path.
 5. Test the font operation without a window; test interaction with the smallest useful Masonry
@@ -125,7 +125,7 @@ This layout borrows principles rather than copying another editor's technology c
   roots small and groups code by durable roles such as widgets, properties, passes, and views.
 - [Fontra](https://github.com/fontra/fontra) makes editor, font overview, font info, core, and
   storage backends visible in its directory structure.
-- [Shift](https://github.com/shift-editor/shift) documents explicit app/domain boundaries, named
+- [Shift](https://github.com/shift-editor/shift) documents explicit application/domain boundaries, named
   tool and command locations, and a file-size review guideline. Runebender adopts the navigation
   discipline without adopting Shift's multi-package architecture.
 - [Counterpunch](https://github.com/counterpunchspace/editor) maintains prominent architecture and

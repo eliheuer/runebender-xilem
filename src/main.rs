@@ -3,27 +3,28 @@
 
 //! A font editor built on the Linebender ecosystem.
 
-// The browser shares editor code whose desktop-only actions are intentionally dormant.
+// The browser build reuses this desktop crate root, so some platform-only actions
+// are compiled but unused on WASM.
 #![cfg_attr(
     target_arch = "wasm32",
     allow(
         dead_code,
-        reason = "the browser shares desktop modules whose platform actions are dormant"
+        reason = "the browser reuses desktop modules with platform-only actions"
     )
 )]
 
-mod app;
+mod application;
 
 // Keep the application vocabulary available at the crate root. This lets views
 // say `crate::workspace` and `crate::view` while the files themselves live under
-// the single `app/` boundary described in ARCHITECTURE.md.
+// the single `application/` boundary described in ARCHITECTURE.md.
 #[cfg(target_arch = "wasm32")]
-pub(crate) use app::browser;
+pub(crate) use application::browser;
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) use app::cli;
+pub(crate) use application::cli;
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) use app::launch;
-pub(crate) use app::{
+pub(crate) use application::launch;
+pub(crate) use application::{
     actions, editor as edit, font_model as model, platform, view, widgets, workspace,
 };
 

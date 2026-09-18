@@ -8,9 +8,9 @@ make state legible without decoration, and remain stable while values change.
 Use a semantic token, never a one-off visual value.
 
 - Colors come from the font engine's `themes/runebender.theme.json` through
-  `src/app/view/theme.rs`.
-- Space, sizes, radii, strokes, and type come from `src/app/view/design.rs`.
-- Repeated control structures belong in `src/app/view/recipes.rs`.
+  `src/application/view/theme.rs`.
+- Space, sizes, radii, strokes, and type come from `src/application/view/design.rs`.
+- Repeated control structures belong in `src/application/view/recipes.rs`.
 
 A new color needs a named role in every shipped theme. A new measurement needs
 a place in the application scale and a reason it is not an existing token.

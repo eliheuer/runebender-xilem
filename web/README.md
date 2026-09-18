@@ -1,7 +1,7 @@
 # Runebender in the browser
 
 This is the desktop application's Xilem/Masonry widget tree, compiled to WASM.
-`src/app/browser.rs` embeds that tree in a browser host, sends real input through
+`src/application/browser.rs` embeds that tree in a browser host, sends real input through
 Masonry, and paints its retained scene into a canvas using Vello CPU. There is
 no screenshot player and no separate JavaScript implementation of the editor.
 
@@ -50,7 +50,7 @@ With Playwright installed, run `node web/quality.cjs`. The default matrix covers
 1×, 2×, and 1.25× displays; 1000–1440px windows; density changes without reload;
 actual outline dragging and undo/redo; painted zoom; splitter cursors; themes;
 keyboard focus; paste; composition events; and the Nodes canvas. It also checks
-that the app does not continually repaint while idle.
+that the application does not continually repaint while idle.
 
 Environment variables:
 

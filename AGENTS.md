@@ -21,13 +21,13 @@ Keep font mutations, analysis, formats, shaping, interpolation, selection, and u
 |---|---|
 | `src/lib.rs` | font-engine module root |
 | `src/main.rs` | executable composition root |
-| `src/app/` | all Xilem application and runtime code |
-| `src/app/cli.rs` | arguments and headless adapters |
-| `src/app/editor/` | editing commands, sessions, and inspectors |
-| `src/app/editor/tools/` | named editor tools and tool-like workflows |
-| `src/app/platform/` | files, watching, live endpoints, and screenshots |
-| `src/app/view/` | application views and canvas widgets |
-| `src/app/widgets/` | reusable widgets missing from the framework |
+| `src/application/` | all Xilem application and runtime code |
+| `src/application/cli.rs` | arguments and headless adapters |
+| `src/application/editor/` | editing commands, sessions, and inspectors |
+| `src/application/editor/tools/` | named editor tools and tool-like workflows |
+| `src/application/platform/` | files, watching, live endpoints, and screenshots |
+| `src/application/view/` | application views and canvas widgets |
+| `src/application/widgets/` | reusable widgets missing from the framework |
 | `src/{analysis,document,formats,outline,text,ui}/` | font engine by concern |
 | `web/` | separate browser workspace for the shared widget tree |
 
