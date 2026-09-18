@@ -38,6 +38,14 @@ WebAssembly SIMD so Vello CPU uses its vectorized renderer. No WebGPU or
 cross-origin-isolation headers are required. Browser dependencies remain separate
 from the desktop lockfile.
 
+Lint browser-specific code with warnings denied while excluding the generated upstream adapter:
+
+```sh
+CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='-C target-feature=+simd128' \
+cargo clippy --manifest-path web/Cargo.toml --locked \
+  --target wasm32-unknown-unknown --no-deps -- -D warnings
+```
+
 With Playwright installed, run `node web/quality.cjs`. The default matrix covers
 1×, 2×, and 1.25× displays; 1000–1440px windows; density changes without reload;
 actual outline dragging and undo/redo; painted zoom; splitter cursors; themes;

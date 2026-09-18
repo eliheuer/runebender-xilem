@@ -3,6 +3,7 @@ name = "runebender-xilem-browser"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0 OR MIT"
+publish = false
 [dependencies]
 xilem_masonry = { path = "../target/xilem_masonry" }
 masonry = { git = "https://github.com/linebender/xilem", rev = "b81d8d7a", default-features = false }

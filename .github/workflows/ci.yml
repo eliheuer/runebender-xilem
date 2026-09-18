@@ -62,9 +62,20 @@ jobs:
         with:
           toolchain: ${{ env.RUST_STABLE_VER }}
           components: clippy
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: clippy
         run: cargo clippy --workspace --all-targets --locked
+      - name: Prepare browser adapter
+        if: runner.os == 'Linux'
+        run: python3 web/prepare.py
+      - name: Browser clippy
+        if: runner.os == 'Linux'
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS: -C target-feature=+simd128
+        run: >-
+          cargo clippy --manifest-path web/Cargo.toml --locked
+          --target wasm32-unknown-unknown --no-deps -- -D warnings
       - name: doc
         run: cargo doc --workspace --no-deps --locked
       - name: test

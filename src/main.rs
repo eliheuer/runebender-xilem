@@ -4,7 +4,13 @@
 //! A font editor built on the Linebender ecosystem.
 
 // The browser shares editor code whose desktop-only actions are intentionally dormant.
-#![cfg_attr(target_arch = "wasm32", allow(dead_code))]
+#![cfg_attr(
+    target_arch = "wasm32",
+    allow(
+        dead_code,
+        reason = "the browser shares desktop modules whose platform actions are dormant"
+    )
+)]
 
 mod app;
 

@@ -168,13 +168,13 @@ where
                         }
                     }
                     RenderRootSignal::NewLayer(_, widget, position) => {
-                        self.root.add_layer(widget, position)
+                        self.root.add_layer(widget, position);
                     }
                     RenderRootSignal::RemoveLayer(id) => {
                         self.root.remove_layer(id);
                     }
                     RenderRootSignal::RepositionLayer(id, position) => {
-                        self.root.reposition_layer(id, position)
+                        self.root.reposition_layer(id, position);
                     }
                     RenderRootSignal::RequestRedraw => self.dirty = true,
                     RenderRootSignal::StartIme => self.ime_active = true,
@@ -427,6 +427,11 @@ where
     Box::new(host)
 }
 #[wasm_bindgen]
+#[expect(
+    unnameable_types,
+    missing_debug_implementations,
+    reason = "this opaque handle is exported to JavaScript rather than as a Rust API"
+)]
 pub struct BrowserEditor {
     host: Box<dyn BrowserApp>,
 }

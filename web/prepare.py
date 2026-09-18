@@ -14,6 +14,7 @@ name = "xilem_masonry"
 version = "0.4.0"
 edition = "2024"
 license = "Apache-2.0"
+publish = false
 [features]
 default = []
 [dependencies]
