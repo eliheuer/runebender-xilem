@@ -3,11 +3,23 @@
 
 //! The render tree: how the workspace's state becomes a frame.
 
+#[cfg(unix)]
+use crate::platform::live;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::platform::watch;
 use crate::view::design::{DOCK_WIDTH, PROOF_STRIP_HEIGHT};
-use crate::*;
+#[cfg(target_os = "macos")]
+use crate::widgets::shortcuts;
+use crate::{
+    AppState, CrossAxisAlignment, Dim, Dimensions, Length, Mode, Space, Stroke, Style, TextSize,
+    WidgetView, Workspace, actions, canvas, chat, design, editor_nav, editor_pane, export,
+    flex_col, glyph_preview, info_panel, label, local_ai, marks_bar, menu_shell, nodes, nodes_pane,
+    overview, portal, preview_strip, sidebar, sized_box, status, titlebar,
+};
 use masonry::layout::UnitPoint;
 use xilem::Color;
 use xilem::core::lens;
+use xilem::view::FlexExt as _;
 use xilem::view::ZStackExt as _;
 
 /// A kurbo value as the `f32` a Vello text size or stroke width
@@ -528,6 +540,8 @@ fn export_pump<V: WidgetView<Workspace>>(
 #[cfg(test)]
 mod tab_tests {
     use super::*;
+    use crate::Tool;
+    use std::sync::Arc;
 
     /// A two-glyph UFO on disk, because `Workspace::open` takes a path. Each
     /// test gets its own directory so they can run in parallel.

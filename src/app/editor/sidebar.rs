@@ -3,7 +3,7 @@
 
 //! The sidebar's filters and the grid selection.
 
-use crate::*;
+use crate::{Arc, Cell, CellMetrics, GlyphCategory, Mode, Sel, Sort, Workspace, design, model};
 use runebender::outline::glyph_paths::round_units;
 
 impl Workspace {

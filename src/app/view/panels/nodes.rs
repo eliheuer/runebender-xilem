@@ -11,7 +11,12 @@
 
 use crate::edit::nodes::file_label;
 use crate::view::canvas::nodes::{NodesEvent, nodes_canvas};
-use crate::*;
+use crate::{
+    CrossAxisAlignment, Dim, Dimensions, FlexSpacer, Length, Region, Space, Style, TextSize,
+    WidgetView, Workspace, bottom_keyline, design, flex_col, label, recipes, sized_box, xcolumn,
+    xrow,
+};
+use xilem::view::FlexExt as _;
 
 pub(crate) fn nodes_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::Either;

@@ -3,7 +3,7 @@
 
 //! Live metaball selection, gestures, and inspector commands.
 
-use crate::*;
+use crate::{Arc, Mode, OverviewEditBatch, Session, Workspace, cells_of};
 use runebender::formats::metaballs::{
     Metaball, MetaballGroup, Metaballs, read_metaballs, write_metaballs,
 };
@@ -325,6 +325,7 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Tool;
 
     #[test]
     fn live_sources_save_reopen_convert_and_undo_in_xilem() {

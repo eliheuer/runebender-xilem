@@ -5,8 +5,12 @@
 
 use crate::edit::chat::ChatEntry;
 use crate::widgets::selectable_text::selectable_text;
-use crate::*;
+use crate::{
+    Dim, Dimensions, Radius, Region, Space, Stroke, Style, TextSize, WidgetView, Workspace, label,
+    portal, recipes, sized_box, xcolumn, xrow,
+};
 use xilem::Color;
+use xilem::view::FlexExt as _;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TranscriptKind {

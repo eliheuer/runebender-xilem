@@ -5,8 +5,15 @@
 //! categories, languages, and filters.
 
 use crate::view::design::{RAIL_TAB_ACTIVE_HEIGHT, RAIL_TAB_HEIGHT, RAIL_TAB_INACTIVE_HEIGHT};
-use crate::*;
+use crate::{
+    Arc, ButtonShape, ControlSize, CrossAxisAlignment, Dim, Dimensions, FlexSpacer, GlyphCategory,
+    GridEvent, Length, Mode, Palette, Radius, Region, Sel, Space, Stroke, Style, TextSize,
+    WidgetView, Workspace, axes_section, button, canvas, chat_panel, design, flex_col, flex_row,
+    grid, icon_button, input_typography, label, local_ai_panel, portal, recipes, sized_box,
+    text_input, top_keyline, xcolumn, xrow,
+};
 use xilem::Color;
+use xilem::view::FlexExt as _;
 
 /// The editor rail's implemented navigation panels.
 #[derive(Clone, Copy, PartialEq, Eq)]

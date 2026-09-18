@@ -3,7 +3,10 @@
 
 //! Files: opening a project, reloading it when the sources change, saving, and a new font.
 
-use crate::*;
+use crate::{
+    Arc, FontModel, FsPath, GlyphCategory, Mode, Palette, Rail, Sel, Session, Sort, Tab,
+    TextContext, Tool, Workspace, canvas, cells_of, chat, design, local_ai, metric_bufs, nodes,
+};
 use runebender::outline::glyph_paths::round_units;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -587,6 +590,7 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::widgets::shortcuts;
 
     #[test]
     fn imported_babelfont_starts_unsaved() {

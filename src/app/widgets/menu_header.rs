@@ -4,8 +4,12 @@
 //! Document identity and controls beside the in-window application menus.
 
 use crate::widgets::text_label::{self, Anchor};
-use crate::*;
+use crate::{
+    AppState, CrossAxisAlignment, Dim, Dimensions, Mode, Space, Style, TextSize, WidgetView,
+    Workspace, canvas, flex_row, header_tools, label, sized_box, tab_strip,
+};
 use xilem::core::lens;
+use xilem::view::FlexExt as _;
 
 fn document(app: &mut Workspace) -> Box<xilem::AnyWidgetView<Workspace>> {
     let title = app

@@ -3,8 +3,17 @@
 
 //! The info panel: which sections show for the grid and for a glyph.
 
-use crate::*;
+use crate::{
+    ControlSize, Dim, Dimensions, Length, Mode, Palette, Radius, Region, Space, Stroke, Style,
+    TextSize, Tool, WidgetView, Workspace, axes_section, background_section, compare_section,
+    coordinates_section, curves_section, design, dimensions_section, features_section,
+    font_advanced_section, font_info_section, groups_section, input_typography, kerning_section,
+    label, layers_section, mark_section, masters_section, measure_section, path_operations_section,
+    recipes, related_section, shaping_section, sized_box, text_input, transformations_section,
+    xcolumn, xrow,
+};
 use runebender::outline::glyph_paths::round_units;
+use xilem::view::FlexExt as _;
 
 pub(crate) fn info_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;

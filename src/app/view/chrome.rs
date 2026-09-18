@@ -8,10 +8,15 @@ use crate::view::design::{
     STATUS_ICON_SIZE, TITLEBAR_HEIGHT,
 };
 use crate::widgets::icon_button::{IconMark, mark_button};
-use crate::*;
+use crate::{
+    ButtonShape, ControlSize, Dim, Dimensions, Length, Mode, Palette, Region, Space, Stroke, Style,
+    TextSize, Tool, WidgetView, Workspace, button, canvas, drag_region, flex_col, icon_button,
+    label, nodes, recipes, sized_box, tab_chip, tab_strip, top_keyline, xrow,
+};
 use masonry::properties::Padding;
 use masonry::properties::types::CrossAxisAlignment;
 use xilem::Color;
+use xilem::view::FlexExt as _;
 use xilem::view::flex_row;
 
 /// The title bar for document identity, editor tools, and tabs.

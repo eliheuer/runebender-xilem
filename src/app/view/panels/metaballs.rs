@@ -4,7 +4,7 @@
 //! The live metaball inspector, shown beside the glyph while its tool is active.
 
 use crate::edit::metaballs::MetaballSelection;
-use crate::*;
+use crate::{Arc, Region, Style, TextSize, WidgetView, Workspace, button, label, recipes, xcolumn};
 
 pub(crate) fn panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;

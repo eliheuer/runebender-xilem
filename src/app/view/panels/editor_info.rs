@@ -8,7 +8,12 @@
 //! and offers Generate and Apply; editing the text by hand waits for
 //! a text area.
 
-use crate::*;
+use crate::{
+    ControlSize, Dim, Dimensions, Length, Palette, Radius, Region, Space, Stroke, Style, TextSize,
+    WidgetView, Workspace, button, design, label, portal, recipes, sized_box, text_input, xcolumn,
+    xrow,
+};
+use xilem::view::FlexExt as _;
 
 /// A folding section header with its body, the way `info.rs` builds
 /// the Glyph section.

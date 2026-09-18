@@ -3,7 +3,10 @@
 
 //! What the menus and shortcuts call. One method is the whole of one user-facing command.
 
-use crate::*;
+use crate::{
+    Arc, Mode, Palette, Sel, Session, Sort, Tool, Workspace, canvas, cells_of, dialogs, session,
+    shortcuts,
+};
 
 const SAMPLE_STRINGS: &[&str] = &[
     "HHOHOHOO",

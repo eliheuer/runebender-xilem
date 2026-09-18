@@ -3,7 +3,10 @@
 
 //! The info panel's fields, and what typing in them does to the font.
 
-use crate::*;
+use crate::{
+    Arc, FontDataSnapshot, FontModel, MetadataEdit, Mode, OverviewEditBatch, Session, Workspace,
+    canvas, cells_of, metric_bufs,
+};
 use runebender::outline::glyph_paths::round_units;
 
 fn mark_cloud(font: &FontModel, base: &norad::Glyph) -> Vec<Arc<kurbo::BezPath>> {

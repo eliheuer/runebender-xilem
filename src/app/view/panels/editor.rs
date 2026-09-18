@@ -3,7 +3,7 @@
 
 //! The overview and the editor pane.
 
-use crate::*;
+use crate::{Arc, GridEvent, WidgetView, Workspace, canvas, editor, grid, text_tool};
 
 pub(crate) fn overview(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use xilem::core::one_of::Either;

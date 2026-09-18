@@ -3,7 +3,10 @@
 
 //! The editor's state: the `Workspace` struct and the types it is made of.
 
-use crate::*;
+use crate::{
+    Arc, Cell, FontModel, GlyphCategory, Palette, Rail, Session, canvas, chat, dialogs, export,
+    local_ai, nodes, shortcuts,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Sort {

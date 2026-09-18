@@ -9,7 +9,7 @@
 //! `runebender::outline::glyph_ops` and `point_ops` applies without conversion.
 //! The editor island owns the session; the app receives copies of the glyph.
 
-use crate::*;
+use crate::{Arc, Mode, Tab, TextContext, Tool, Workspace, cells_of, host, metaballs, metric_bufs};
 use std::collections::{HashMap, HashSet};
 
 use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};

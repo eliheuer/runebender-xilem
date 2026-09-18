@@ -3,7 +3,12 @@
 
 //! The info panel's sections: layers, axes, paths, coordinates, curves, measure, background, marks, font info.
 
-use crate::*;
+use crate::{
+    ButtonShape, ControlSize, Dim, Dimensions, FlexSpacer, Length, Mode, Palette, Radius, Region,
+    Session, Space, Stroke, Style, TextSize, WidgetView, Workspace, button, design,
+    direction_chips, icon_button, label, recipes, sized_box, tab_chip, text_input, xcolumn, xrow,
+};
+use xilem::view::FlexExt as _;
 
 /// Reference underlays, distinct from document masters. GPUI keeps this
 /// section folded in the overview, so the inspector stays a concise map of

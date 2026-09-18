@@ -8,7 +8,10 @@
 //! gains appears here with no change to this file.
 
 use crate::edit::nodes::file_label;
-use crate::*;
+use crate::{
+    FlexSpacer, Length, Mode, Region, Style, TextSize, WidgetView, Workspace, label, recipes,
+    xcolumn, xrow,
+};
 
 pub(crate) fn local_ai_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;

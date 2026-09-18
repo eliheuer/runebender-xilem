@@ -25,9 +25,22 @@
 
 // LINEBENDER LINT SET - lib.rs - v4
 // See https://linebender.org/wiki/canonical-lints/
+#![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![warn(clippy::print_stdout, clippy::print_stderr)]
 #![cfg_attr(target_pointer_width = "64", warn(clippy::trivially_copy_pass_by_ref))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 // END LINEBENDER LINT SET
+
+// Cargo exposes the application's optional dependencies to this library target
+// whenever the default `app` feature is enabled. The executable uses them; these
+// imports keep `unused_crate_dependencies` useful for the engine dependencies.
+#[cfg(all(feature = "app", target_os = "macos"))]
+use muda as _;
+#[cfg(feature = "app")]
+use {
+    base64 as _, clap as _, copypasta as _, image as _, imaging_vello_cpu as _, masonry as _,
+    notify as _, regex as _, rfd as _, tokio as _, winit as _, xilem as _,
+};
 
 pub mod analysis;
 pub mod document;

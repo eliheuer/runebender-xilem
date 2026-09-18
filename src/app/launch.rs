@@ -3,7 +3,11 @@
 
 //! The launch path: the event loop, the window, and the first frame.
 
-use crate::*;
+use crate::view::render::root_logic;
+use crate::{
+    AppState, Arc, EventLoopBuilder, EventLoopError, FsPath, LogicalSize, UI_FONT, Xilem,
+    default_property_set, screenshot, sized_box,
+};
 
 pub(crate) fn run(
     event_loop: EventLoopBuilder,

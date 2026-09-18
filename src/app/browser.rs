@@ -3,7 +3,10 @@
 
 //! Live browser host for the same desktop Xilem/Masonry widget tree.
 //! DOM input is delivered to Masonry; every frame comes from its retained scene.
-use crate::*;
+use crate::model::FontModel;
+use crate::view::render::root_logic;
+use crate::workspace::{AppState, Mode, Workspace};
+use crate::{UI_FONT, default_property_set};
 use masonry::app::{
     RenderRoot, RenderRootOptions, RenderRootSignal, VisualLayerKind, WindowSizePolicy,
 };
@@ -19,10 +22,12 @@ use masonry::ui_events::{
     keyboard::{Code, Key, KeyState, KeyboardEvent, Modifiers, NamedKey},
     pointer::*,
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 use wasm_bindgen::prelude::*;
+use xilem::WidgetView;
 use xilem::core::ViewPathTracker;
 use xilem::core::{DynMessage, MessageCtx, ProxyError, RawProxy, SendMessage, ViewId};
+use xilem::view::sized_box;
 
 #[derive(Debug)]
 struct BrowserProxy;

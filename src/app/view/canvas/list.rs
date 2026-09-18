@@ -5,7 +5,11 @@
 //! the bottom bar's List box: a mark cell, the name, Unicode, width,
 //! LSB, RSB, the two kerning groups, and the category.
 
-use crate::*;
+use crate::{
+    Dim, Dimensions, Length, Radius, Region, Space, Stroke, Style, TextSize, WidgetView, Workspace,
+    button, label, portal, sized_box, xcolumn, xrow,
+};
+use xilem::view::FlexExt as _;
 
 /// Column widths for the compact list layout.
 const W_UNI: f64 = 68.0;

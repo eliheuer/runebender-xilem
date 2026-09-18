@@ -3,7 +3,10 @@
 
 //! The preview strip and the glyph preview.
 
-use crate::*;
+use crate::{
+    ControlSize, Dim, Dimensions, Space, Style, WidgetView, Workspace, canvas, design,
+    preview_blur, sized_box, text_tool,
+};
 
 pub(crate) fn preview_strip(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     use masonry::imaging::Painter;
