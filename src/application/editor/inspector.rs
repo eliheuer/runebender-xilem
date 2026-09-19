@@ -462,6 +462,9 @@ impl Workspace {
             }
             | MetadataEdit::DocumentLayer {
                 glyph, undo_depth, ..
+            }
+            | MetadataEdit::SourceStructure {
+                glyph, undo_depth, ..
             } => (glyph, *undo_depth),
         };
         let current_name = match self.mode {
@@ -552,6 +555,38 @@ impl Workspace {
                 }
                 format!("{} {label}", if redo { "Redid" } else { "Undid" })
             }
+            MetadataEdit::SourceStructure {
+                glyph,
+                label,
+                before,
+                after,
+                ..
+            } => {
+                let expected = if redo {
+                    before.as_ref()
+                } else {
+                    after.as_ref()
+                };
+                let replacement = if redo {
+                    after.as_ref()
+                } else {
+                    before.as_ref()
+                };
+                if self.font.project.document_snapshot() != *expected
+                    || self.font.project.undo_sources(redo) != Ok(true)
+                    || self.font.project.document_snapshot() != *replacement
+                {
+                    return false;
+                }
+                self.font.rebuild_cache();
+                let Some(address) = self.font.active_layer_address(glyph) else {
+                    return false;
+                };
+                if !self.reload_canonical_layer(&address) {
+                    return false;
+                }
+                format!("{} {label}", if redo { "Redid" } else { "Undid" })
+            }
         };
         if redo {
             self.metadata_redo.pop();
@@ -587,6 +622,9 @@ impl Workspace {
             }
             | MetadataEdit::DocumentLayer {
                 glyph, undo_depth, ..
+            }
+            | MetadataEdit::SourceStructure {
+                glyph, undo_depth, ..
             } => (glyph, *undo_depth),
         };
         let current_name = match self.mode {
@@ -619,8 +657,21 @@ impl Workspace {
             }
             _ => true,
         };
+        let source_structure_available = match edit {
+            MetadataEdit::SourceStructure { before, after, .. } => {
+                self.font.project.has_source_history(redo)
+                    && self.font.project.document_snapshot()
+                        == *(if redo {
+                            before.as_ref()
+                        } else {
+                            after.as_ref()
+                        })
+            }
+            _ => true,
+        };
         source_metadata_available
             && document_layer_available
+            && source_structure_available
             && current_name == Some(expected.as_str())
             && self
                 .font

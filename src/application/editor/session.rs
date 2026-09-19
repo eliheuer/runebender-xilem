@@ -382,6 +382,7 @@ impl Session {
 
     /// Materialize a detached UFO value only for an application boundary that still consumes the
     /// legacy codec. It is never retained as Session state.
+    #[cfg(test)]
     pub(crate) fn compatibility_glyph(&self) -> Option<norad::Glyph> {
         self.current_transaction()
             .map(CanonicalLayerTransaction::compatibility_glyph)

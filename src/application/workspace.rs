@@ -88,6 +88,13 @@ pub(crate) enum MetadataEdit {
         label: String,
         undo_depth: usize,
     },
+    SourceStructure {
+        glyph: String,
+        label: String,
+        before: Box<runebender::document::variable::DocumentSnapshot>,
+        after: Box<runebender::document::variable::DocumentSnapshot>,
+        undo_depth: usize,
+    },
 }
 
 pub(crate) struct Workspace {

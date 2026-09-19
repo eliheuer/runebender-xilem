@@ -306,8 +306,8 @@ git diff --check
 - Direct canonical draft operations now own filters, cleanup, transforms, shapes, anchors, images, boolean operations, knife cuts, curve conversion, re-interpolation and mask baking.
 - Place Image installs bytes through a stable-source Project operation and attaches the image through the layer draft; it no longer mutates `FontModel::font_mut().images`.
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
-- The only remaining production bridge callers are background send and swap; compatibility projection helpers remain test-only while M13 removes the bridge itself.
-- `FontModel` still exposes mutable source/font access for Unicode, metrics formulas, local-model workflow boundaries, source retargeting and background layers; those callers remain M06/M13 work rather than completion claims.
+- No production application caller materializes or reconciles a whole glyph; compatibility projection helpers remain test-only while M13 removes the bridge itself.
+- `FontModel` still exposes mutable source/font access for Unicode, metrics formulas, local-model workflow boundaries and source retargeting; those callers remain M06/M13 work rather than completion claims.
 - Pen, Rectangle, Ellipse and Knife Pointer Cancel paths now have real widget-event coverage.
 
 ## Canonical Session storage and history cutover
@@ -538,6 +538,37 @@ git diff --check
 Both focused application regressions and the complete binary suite passed.
 Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
 
+## Direct canonical background-layer slice
+
+Implementation commit: `Edit backgrounds without source projections`.
+Resolve its exact ID with `git log --format=%H --grep='^Edit backgrounds without source projections$' -1`.
+Affected paths: `src/application/editor/commands.rs`, `src/application/editor/inspector.rs`, `src/application/editor/session.rs`, `src/application/font_model.rs`, `src/application/workspace.rs` and this log.
+
+Reviewed core commit `4b3cdb3` replaces long-lived UFO templates with explicit glyph-free `SourceFormatData`.
+Reviewed core commit `340c537` builds background read, send, swap and clear operations on that canonical structure.
+The operations preserve auxiliary-layer metadata and contour/component paint order, validate no-ops, publish atomically and replay through guarded SourceFrame history in standalone UFO and Designspace documents.
+
+The application now renders the background directly from its canonical layer view.
+Send, Swap and Clear call the Project operations without reading or mutating a source projection.
+Each changed action records its exact before/after canonical document states in application history, so normal editor Undo/Redo can verify that the matching SourceFrame operation is still next before replaying it.
+Swap and history replay rebuild the derived cache and reload the open canonical Session; legacy `Master.history` remains untouched.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::commands::tests::background_actions_use_atomic_canonical_source_history -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+CARGO_BUILD_JOBS=1 ./web/build.sh
+CARGO_BUILD_JOBS=1 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='-C target-feature=+simd128' cargo clippy --manifest-path web/Cargo.toml --locked --target wasm32-unknown-unknown --no-deps -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused application regression covers no-op suppression, send, swap, clear, normal editor undo/redo, zero legacy Master history and save/reopen persistence.
+The complete binary suite passed 172 tests with four documented model or external-font tests ignored.
+Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
+
 ## Next action
 
-Delete the finite bridge list above, replace remaining `FontModel::font_mut`, `master_mut`, `edit_sources` and legacy history callers with canonical Project operations, then remove the bridge itself during M13.
+Replace remaining `FontModel::font_mut`, `master_mut`, `edit_sources` and legacy history callers with canonical Project operations, then remove the test-only compatibility bridge itself during M13.

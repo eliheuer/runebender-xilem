@@ -1282,18 +1282,44 @@ impl Workspace {
         };
     }
 
-    /// Copy the open glyph's outline into the UFO background layer.
+    /// Copy the open glyph's outline into the canonical background layer.
     pub(crate) fn send_to_background(&mut self) {
         if !matches!(self.mode, Mode::Editor(_)) {
             return;
         }
         let name = self.session.glyph_name.clone();
-        let Some(foreground) = self.session.compatibility_glyph() else {
+        let Some(index) = self.font.index_of(&name) else {
             return;
         };
-        let contours = foreground.contours;
-        let width = self.session.advance();
-        self.font.send_to_background(&name, contours, width);
+        let Some(address) = self.font.active_layer_address(&name) else {
+            return;
+        };
+        let undo_depth = self.font.master().undo_depth(index);
+        let before = self.font.project.document_snapshot();
+        match self
+            .font
+            .project
+            .copy_document_layer_to_background(&address)
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                self.show_background = true;
+                self.note = "background is already current".into();
+                return;
+            }
+            Err(error) => {
+                self.note = format!("Background: {error}");
+                return;
+            }
+        }
+        self.metadata_undo.push(MetadataEdit::SourceStructure {
+            glyph: name,
+            label: "send to background".into(),
+            before: Box::new(before),
+            after: Box::new(self.font.project.document_snapshot()),
+            undo_depth,
+        });
+        self.metadata_redo.clear();
         self.show_background = true;
         self.modified = true;
         self.note = "sent to background".into();
@@ -1305,17 +1331,52 @@ impl Workspace {
             return;
         }
         let name = self.session.glyph_name.clone();
-        let Some(background) = self.font.background_contours(&name) else {
+        let Some(index) = self.font.index_of(&name) else {
+            return;
+        };
+        let Some(address) = self.font.active_layer_address(&name) else {
+            return;
+        };
+        let source = address.layer.source;
+        if self
+            .font
+            .project
+            .document_background_layer(&name, source)
+            .is_none()
+        {
             self.note = "no background to swap".into();
             return;
-        };
-        let Some(foreground) = self.session.compatibility_glyph() else {
+        }
+        let undo_depth = self.font.master().undo_depth(index);
+        let before = self.font.project.document_snapshot();
+        match self
+            .font
+            .project
+            .swap_document_layer_with_background(&address)
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                self.note = "foreground and background are unchanged".into();
+                return;
+            }
+            Err(error) => {
+                self.note = format!("Background: {error}");
+                return;
+            }
+        }
+        self.metadata_undo.push(MetadataEdit::SourceStructure {
+            glyph: name.clone(),
+            label: "swap background".into(),
+            before: Box::new(before),
+            after: Box::new(self.font.project.document_snapshot()),
+            undo_depth,
+        });
+        self.metadata_redo.clear();
+        self.font.rebuild_cache();
+        if !self.reload_canonical_layer(&address) {
+            self.note = "The swapped foreground could not be reloaded".into();
             return;
-        };
-        let foreground = foreground.contours;
-        let width = self.session.advance();
-        self.apply_op(move |session| session.replace_imported_contours(&background));
-        self.font.send_to_background(&name, foreground, width);
+        }
         self.modified = true;
         self.note = "swapped with background".into();
     }
@@ -1326,7 +1387,33 @@ impl Workspace {
             return;
         }
         let name = self.session.glyph_name.clone();
-        self.font.clear_background(&name);
+        let Some(index) = self.font.index_of(&name) else {
+            return;
+        };
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
+            return;
+        };
+        let undo_depth = self.font.master().undo_depth(index);
+        let before = self.font.project.document_snapshot();
+        match self.font.project.clear_document_background(&name, source) {
+            Ok(true) => {}
+            Ok(false) => {
+                self.note = "no background to clear".into();
+                return;
+            }
+            Err(error) => {
+                self.note = format!("Background: {error}");
+                return;
+            }
+        }
+        self.metadata_undo.push(MetadataEdit::SourceStructure {
+            glyph: name,
+            label: "clear background".into(),
+            before: Box::new(before),
+            after: Box::new(self.font.project.document_snapshot()),
+            undo_depth,
+        });
+        self.metadata_redo.clear();
         self.modified = true;
         self.note = "cleared background".into();
     }
@@ -1475,6 +1562,149 @@ mod tests {
         workspace.undo_active_edit(true);
         assert_eq!(projected_glyph(&workspace.session).contours.len(), 2);
 
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn background_actions_use_atomic_canonical_source_history() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-canonical-background-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(rectangle("A", 0.0, 100.0));
+        font.save(&path).expect("the fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let index = workspace.font.index_of("A").expect("A exists");
+        workspace.open_glyph(index);
+        let source = workspace
+            .font
+            .project
+            .source_id(0)
+            .expect("source identity");
+        let foreground = workspace
+            .font
+            .active_layer_address("A")
+            .expect("foreground address");
+
+        workspace.send_to_background();
+        let (_, background) = workspace
+            .font
+            .project
+            .document_background_layer("A", source)
+            .expect("send creates the background");
+        assert_eq!(background.width(), 500.0);
+        assert_eq!(
+            background
+                .contours()
+                .next()
+                .unwrap()
+                .points()
+                .next()
+                .unwrap()
+                .position()
+                .x,
+            0.0
+        );
+        assert_eq!(workspace.metadata_undo.len(), 1);
+        workspace.send_to_background();
+        assert_eq!(workspace.metadata_undo.len(), 1, "a no-op adds no history");
+
+        let replacement = rectangle("A", 200.0, 300.0).contours;
+        workspace.apply_op(move |session| session.replace_imported_contours(&replacement));
+        assert_eq!(workspace.metadata_undo.len(), 2);
+        workspace.swap_background();
+        assert_eq!(workspace.metadata_undo.len(), 3);
+        assert_eq!(workspace.font.master().undo_depth(index), 0);
+        let foreground_x = workspace
+            .font
+            .project
+            .document_layer("A", &foreground.layer)
+            .unwrap()
+            .contours()
+            .next()
+            .unwrap()
+            .points()
+            .next()
+            .unwrap()
+            .position()
+            .x;
+        let background_x = workspace
+            .font
+            .project
+            .document_background_layer("A", source)
+            .unwrap()
+            .1
+            .contours()
+            .next()
+            .unwrap()
+            .points()
+            .next()
+            .unwrap()
+            .position()
+            .x;
+        assert_eq!((foreground_x, background_x), (0.0, 200.0));
+
+        workspace.undo_active_edit(false);
+        assert_eq!(
+            projected_glyph(&workspace.session).contours[0].points[0].x,
+            200.0
+        );
+        assert_eq!(
+            workspace
+                .font
+                .project
+                .document_background_layer("A", source)
+                .unwrap()
+                .1
+                .contours()
+                .next()
+                .unwrap()
+                .points()
+                .next()
+                .unwrap()
+                .position()
+                .x,
+            0.0
+        );
+        workspace.undo_active_edit(true);
+        assert_eq!(
+            projected_glyph(&workspace.session).contours[0].points[0].x,
+            0.0
+        );
+
+        workspace.clear_background();
+        assert!(
+            workspace
+                .font
+                .project
+                .document_background_layer("A", source)
+                .is_none()
+        );
+        workspace.undo_active_edit(false);
+        assert!(
+            workspace
+                .font
+                .project
+                .document_background_layer("A", source)
+                .is_some()
+        );
+        assert!(workspace.save());
+
+        let reopened = Workspace::open(&path).expect("the saved fixture reopens");
+        assert!(
+            reopened
+                .font
+                .project
+                .document_background_layer("A", source)
+                .is_some()
+        );
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 
