@@ -44,6 +44,7 @@ No release has been published yet.
 - Built interpolated sources as atomic canonical document transactions, preserving exact metadata and undo while assigning fresh object identities to the new source.
 - Moved Designspace structure, font information, component alignment, mark color, metrics keys and formulas, metaball payloads, and HOI intermediate points into typed canonical document storage with guarded edits and UFO boundary projection.
 - Moved quadratic, cubic, hyperbezier, corner-rounding, handle-harmonizing, handle-balancing, and handle-optimization operations onto canonical contours.
+- Moved hyperbezier pen creation, point appending, and closure onto typed canonical contours with stable object identities.
 - Moved explicit mask baking onto canonical contours and cleared the persisted mask key only after successful subtraction.
 - Moved selected and whole-layer metaball collapse onto staged canonical layer edits that retain live groups until conversion succeeds.
 - Made image placement install validated source resources through Project without mutable UFO-font access.

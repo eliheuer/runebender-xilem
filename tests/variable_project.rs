@@ -1187,6 +1187,96 @@ fn canonical_pen_builds_closed_contours_with_stable_new_identities() {
 }
 
 #[test]
+fn canonical_hyper_pen_uses_stable_typed_contours() {
+    let scratch = Scratch::new();
+    let mut font = Font::new();
+    font.default_layer_mut()
+        .insert_glyph(Glyph::new("hyper-pen"));
+    let source_path = scratch.0.join("HyperPen.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+
+    let mut identities = None;
+    project
+        .edit_document_layer("hyper-pen", &layer_id, |draft| {
+            let (contour, start) = draft.start_hyper_contour(kurbo::Point::new(0.0, 0.0))?;
+            let smooth = draft.append_hyper_point(contour, kurbo::Point::new(200.0, 0.0), false)?;
+            let corner =
+                draft.append_hyper_point(contour, kurbo::Point::new(200.0, 200.0), true)?;
+            draft.close_hyper_contour(contour)?;
+            identities = Some((contour, start, smooth, corner));
+            Ok(())
+        })
+        .unwrap();
+    let (contour_id, start_id, smooth_id, corner_id) = identities.unwrap();
+    let layer = project.document_layer("hyper-pen", &layer_id).unwrap();
+    let contour = layer.contours().next().unwrap();
+    assert_eq!(contour.id(), contour_id);
+    assert!(contour.is_hyper());
+    assert!(contour.is_closed());
+    assert_eq!(
+        contour.points().map(|point| point.id()).collect::<Vec<_>>(),
+        [start_id, smooth_id, corner_id]
+    );
+
+    let mut expected = Glyph::new("hyper-pen");
+    let legacy = runebender::outline::glyph_ops::start_hyper_contour(&mut expected, 0.0, 0.0);
+    runebender::outline::glyph_ops::append_hyper_point(&mut expected, legacy, 200.0, 0.0, false);
+    runebender::outline::glyph_ops::append_hyper_point(&mut expected, legacy, 200.0, 200.0, true);
+    runebender::outline::glyph_ops::close_hyper_contour(&mut expected, legacy);
+    let projected = project.glyph_layer("hyper-pen", &layer_id).unwrap();
+    assert_eq!(projected.contours[0].points, expected.contours[0].points);
+    assert!(
+        projected.contours[0]
+            .identifier()
+            .is_some_and(|identifier| identifier.as_ref().contains("hyperbezier"))
+    );
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    let mut ordinary_id = None;
+    assert_eq!(
+        project.edit_document_layer("hyper-pen", &layer_id, |draft| {
+            let (ordinary, _) = draft.start_contour(kurbo::Point::new(400.0, 0.0))?;
+            ordinary_id = Some(ordinary);
+            draft.append_hyper_point(ordinary, kurbo::Point::new(500.0, 0.0), false)?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::NotHyperContour(
+            ordinary_id.unwrap()
+        ))
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+    assert_eq!(
+        project.edit_document_layer("hyper-pen", &layer_id, |draft| {
+            draft.start_hyper_contour(kurbo::Point::new(f64::INFINITY, 0.0))?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::NonFinite)
+    );
+
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let reloaded_contour = reloaded
+        .document_layer("hyper-pen", &reloaded_layer)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap();
+    assert!(reloaded_contour.is_hyper());
+    assert!(reloaded_contour.is_closed());
+}
+
+#[test]
 fn canonical_shape_creation_matches_existing_geometry_with_stable_identities() {
     let scratch = Scratch::new();
     let mut font = Font::new();

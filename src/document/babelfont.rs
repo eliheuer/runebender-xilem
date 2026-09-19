@@ -955,6 +955,125 @@ impl LayerEditDraft {
         Ok(ids)
     }
 
+    /// Start a new open editable hyperbezier contour at `position`.
+    ///
+    /// The typed hyperbezier kind is authoritative and a fresh UFO identifier is retained as its
+    /// compatibility-boundary marker. Returns the stable contour and initial-point identities.
+    pub fn start_hyper_contour(
+        &mut self,
+        position: kurbo::Point,
+    ) -> Result<(ContourId, PointId), DocumentEditError> {
+        ensure_finite(&[position.x, position.y])?;
+        let contour_id = ContourId::next();
+        let (point_id, point, preserved_point) =
+            new_document_point(position, NodeType::Move, false);
+        let mut path = babelfont::Path {
+            nodes: vec![point],
+            closed: false,
+            ..babelfont::Path::default()
+        };
+        write_id(&mut path.format_specific, contour_id.0);
+        self.layer.shapes.push(Shape::Path(path));
+        self.preserved.contours.push(PreservedContour {
+            id: contour_id,
+            hyper: true,
+            metadata: ObjectMetadata {
+                identifier: Some(fresh_hyper_identifier()),
+                lib: None,
+            },
+            points: vec![preserved_point],
+        });
+        Ok((contour_id, point_id))
+    }
+
+    /// Append one smooth or corner on-curve point to an open hyperbezier contour.
+    ///
+    /// Returns the stable identity assigned to the new point.
+    pub fn append_hyper_point(
+        &mut self,
+        contour: ContourId,
+        position: kurbo::Point,
+        corner: bool,
+    ) -> Result<PointId, DocumentEditError> {
+        ensure_finite(&[position.x, position.y])?;
+        let shape_index = self
+            .contour_shape_index(contour)
+            .ok_or(DocumentEditError::MissingContour(contour))?;
+        let preserved_index = self
+            .preserved
+            .contours
+            .iter()
+            .position(|candidate| candidate.id == contour)
+            .expect("canonical contour preservation");
+        if !self.preserved.contours[preserved_index].hyper {
+            return Err(DocumentEditError::NotHyperContour(contour));
+        }
+        let Shape::Path(path) = &self.layer.shapes[shape_index] else {
+            unreachable!("located contour is a path");
+        };
+        if path.closed
+            || path
+                .nodes
+                .first()
+                .is_none_or(|node| node.nodetype != NodeType::Move)
+        {
+            return Err(DocumentEditError::NotOpenContour(contour));
+        }
+        let (id, node, preserved) = new_document_point(
+            position,
+            if corner {
+                NodeType::Line
+            } else {
+                NodeType::Curve
+            },
+            !corner,
+        );
+        let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
+            unreachable!("located contour is a path");
+        };
+        path.nodes.push(node);
+        self.preserved.contours[preserved_index]
+            .points
+            .push(preserved);
+        Ok(id)
+    }
+
+    /// Close an editable hyperbezier contour through its starting point.
+    ///
+    /// The initial move becomes a smooth hyper point without inserting replacement topology.
+    pub fn close_hyper_contour(&mut self, contour: ContourId) -> Result<(), DocumentEditError> {
+        let shape_index = self
+            .contour_shape_index(contour)
+            .ok_or(DocumentEditError::MissingContour(contour))?;
+        let preserved = self
+            .preserved
+            .contours
+            .iter()
+            .find(|candidate| candidate.id == contour)
+            .expect("canonical contour preservation");
+        if !preserved.hyper {
+            return Err(DocumentEditError::NotHyperContour(contour));
+        }
+        let Shape::Path(path) = &self.layer.shapes[shape_index] else {
+            unreachable!("located contour is a path");
+        };
+        if path.closed
+            || path
+                .nodes
+                .first()
+                .is_none_or(|node| node.nodetype != NodeType::Move)
+        {
+            return Err(DocumentEditError::NotOpenContour(contour));
+        }
+        let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
+            unreachable!("located contour is a path");
+        };
+        path.closed = true;
+        path.nodes[0].nodetype = NodeType::Curve;
+        path.nodes[0].smooth = true;
+        Ok(())
+    }
+
     /// Add a closed rectangle or ellipse contour spanning `rect`.
     ///
     /// Returns the stable contour identity and point identities in contour order.
@@ -4111,6 +4230,8 @@ pub enum DocumentEditError {
     MissingContour(ContourId),
     /// The requested contour is already closed or lacks an initial move point.
     NotOpenContour(ContourId),
+    /// The requested contour does not carry the editable hyperbezier kind.
+    NotHyperContour(ContourId),
     /// A persistent drag omitted an automatically affected point's start position.
     MissingDragOrigin(PointId),
     /// The requested endpoints do not identify one direct on-curve segment.
@@ -4139,6 +4260,9 @@ impl std::fmt::Display for DocumentEditError {
             Self::MissingPoint(id) => write!(formatter, "point {id:?} does not exist"),
             Self::MissingContour(id) => write!(formatter, "contour {id:?} does not exist"),
             Self::NotOpenContour(id) => write!(formatter, "contour {id:?} is not open"),
+            Self::NotHyperContour(id) => {
+                write!(formatter, "contour {id:?} is not an editable hyperbezier")
+            }
             Self::MissingDragOrigin(id) => {
                 write!(formatter, "point {id:?} is missing its drag-start position")
             }

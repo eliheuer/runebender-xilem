@@ -116,6 +116,7 @@ Persistent point drags capture stable origins for selected points, carried handl
 They also shift contour points and anchors together for left-sidebearing edits while exact advance changes remain explicit metric operations.
 Direct line-to-cubic conversion inserts newly identified canonical controls and sets every accepted geometric-line endpoint to cubic while retaining endpoint identity and metadata, including on wraparound closing segments.
 Direct topology operations create pen, rectangle and ellipse contours with stable identities before any UFO projection is refreshed.
+The hyperbezier pen creates, appends and closes typed canonical hyper contours directly, retaining stable on-curve identities and a fresh UFO compatibility marker.
 Direct segment subdivision supports stored-endpoint lines, quadratics and cubics, preserving existing control identities and metadata while assigning fresh identities to inserted topology and rejecting nonfinite computed geometry before mutation.
 Quadratic subdivision represents stored and implied endpoints explicitly; it validates that implied pairs still belong to a quadratic chain and materializes a midpoint before moving either defining control.
 Direct point deletion rebuilds only affected canonical contours from surviving objects, retaining their identities and source metadata while removing dependent incoming controls; deleting a quadratic control materializes its implied endpoints and replaces only that segment with a line.

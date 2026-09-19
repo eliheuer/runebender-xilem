@@ -2261,3 +2261,28 @@ The focused regression compares selected conversion with the established UFO-bou
 The metaball unit suite and full variable-project suite passed, as did warning-denied library/test Clippy.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 The M06 application callers still need to invoke this direct draft operation before the explicit-conversion portion of M04 can close.
+
+### Direct canonical hyperbezier drawing
+
+Evidence commit: `Draw canonical hyperbeziers directly` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Draw canonical hyperbeziers directly$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+`LayerEditDraft` now starts typed hyperbezier contours, appends smooth or corner on-curve points and closes them through stable `ContourId` and `PointId` values.
+The editable kind remains canonical typed preservation data, paired with a fresh unique hyperbezier identifier retained for the UFO compatibility boundary.
+Ordinary contours and already closed contours are rejected before mutation, and nonfinite points cannot enter the draft.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_hyper_pen_uses_stable_typed_contours -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --lib --tests --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused regression matches the established hyper-pen point semantics, verifies stable typed identities, rejects an ordinary contour atomically and saves and reloads the editable hyper kind.
+The full variable-project suite and warning-denied library/test Clippy passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+The M06 caller still needs to consume these draft operations before the corresponding temporary bridge paths can be deleted.
