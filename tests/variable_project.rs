@@ -11,8 +11,10 @@ use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointTy
 use runebender::document::LayerPointType;
 use runebender::document::canonical_metadata::{KerningParticipant, KerningSide};
 use runebender::document::font_memory::designspace_from_str;
+use runebender::document::history::{HistoryDirection, HistoryReplayError};
 use runebender::document::project::{
-    DocumentEditOutcome, DocumentHistoryError, DocumentSourceMetadataHistoryError, Master, Project,
+    DocumentEditOutcome, DocumentHistoryError, DocumentHistoryReplayOutcome,
+    DocumentSourceMetadataHistoryError, Master, Project,
 };
 use runebender::document::var_model::Location;
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
@@ -5679,6 +5681,74 @@ fn canonical_layer_snapshot_restore_is_atomic_and_stale_safe() {
     assert!(matches!(outcome, DocumentEditOutcome::Changed { .. }));
     assert_eq!(project.glyph_layer("A", &layer).unwrap(), after_projection);
     assert_eq!(project.capture_document_layer(&address), Some(after));
+}
+
+#[test]
+fn owned_layer_transactions_commit_guardedly_and_replay_project_history() {
+    let (_scratch, mut project, _fonts) = adversarial_fixture();
+    let layer = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let address = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer,
+    };
+    let original_width = project.document_layer("A", &address.layer).unwrap().width();
+
+    let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+    transaction
+        .draft_mut()
+        .set_width(original_width + 31.25)
+        .unwrap();
+    let DocumentEditOutcome::Changed { change, .. } = project
+        .commit_document_layer_transaction(transaction)
+        .unwrap()
+    else {
+        panic!("changed transaction did not commit")
+    };
+    assert!(change.metrics_changed());
+    assert_eq!(
+        project.document_layer_history_depth(&address, HistoryDirection::Undo),
+        1
+    );
+
+    let DocumentHistoryReplayOutcome::Changed { change, .. } = project
+        .replay_document_layer_history(&address, HistoryDirection::Undo)
+        .unwrap()
+    else {
+        panic!("undo did not replay")
+    };
+    assert!(change.metrics_changed());
+    assert_eq!(
+        project.document_layer("A", &address.layer).unwrap().width(),
+        original_width
+    );
+    assert!(project.can_replay_document_layer_history(&address, HistoryDirection::Redo));
+
+    let stale = project.begin_document_layer_transaction(&address).unwrap();
+    project
+        .edit_document_layer("A", &address.layer, |draft| {
+            draft.set_height(1_234.5)?;
+            Ok(())
+        })
+        .unwrap();
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project.commit_document_layer_transaction(stale),
+        Err(DocumentHistoryError::StaleLayer(address.clone()))
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+    assert_eq!(
+        project.replay_document_layer_history(&address, HistoryDirection::Redo),
+        Err(HistoryReplayError::Stale)
+    );
+    assert_eq!(
+        project.document_layer_history_depth(&address, HistoryDirection::Redo),
+        1
+    );
 }
 
 #[test]

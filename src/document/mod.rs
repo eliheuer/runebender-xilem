@@ -23,7 +23,7 @@ pub use babelfont::{
     LayerPointType, LayerShapeView, LayerView, PastedContours, PointId, PointView,
     QuadraticSegmentInsertion,
 };
-pub use variable::CanonicalSourceMetadataSnapshot;
+pub use variable::{CanonicalSourceMetadataSnapshot, CanonicalSourceStructureSnapshot};
 pub mod canonical_metadata;
 pub mod compile;
 mod compile_metadata;

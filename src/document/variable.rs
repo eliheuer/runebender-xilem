@@ -59,6 +59,17 @@ impl CanonicalSourceMetadataSnapshot {
     pub fn source_ids(&self) -> impl Iterator<Item = SourceId> + '_ {
         self.metadata.keys().copied()
     }
+
+    pub(super) fn changed_sources(&self, other: &Self) -> Vec<SourceId> {
+        self.metadata
+            .keys()
+            .chain(other.metadata.keys())
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .filter(|source| self.metadata.get(source) != other.metadata.get(source))
+            .collect()
+    }
 }
 
 pub(super) enum SourceMetadataRestoreError {
@@ -132,6 +143,33 @@ pub struct DocumentSnapshot {
     glyphs: BTreeMap<String, VariableGlyph>,
     source_metadata: BTreeMap<SourceId, SourceMetadata>,
     source_ids: Vec<SourceId>,
+}
+
+/// Opaque canonical source and layer structure for guarded document transactions.
+///
+/// This snapshot owns Babelfont geometry, exact glyph preservation payloads, stable source
+/// identities, canonical source metadata and the immutable Norad templates needed to preserve
+/// source-format data during persistence. It deliberately excludes edit histories, derived
+/// compiler data, the document revision and the source-id allocator.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CanonicalSourceStructureSnapshot {
+    glyph_geometry: babelfont::GlyphList,
+    glyphs: BTreeMap<String, VariableGlyph>,
+    templates: BTreeMap<SourceId, norad::Font>,
+    source_metadata: BTreeMap<SourceId, SourceMetadata>,
+    source_ids: Vec<SourceId>,
+}
+
+impl CanonicalSourceStructureSnapshot {
+    /// Stable source identities in display order.
+    pub fn source_ids(&self) -> &[SourceId] {
+        &self.source_ids
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum SourceStructureRestoreError {
+    Stale,
 }
 
 impl DocumentSnapshot {
@@ -253,6 +291,57 @@ impl VariableData {
         CanonicalSourceMetadataSnapshot {
             metadata: self.source_metadata.clone(),
         }
+    }
+
+    pub(super) fn source_structure_snapshot(&self) -> CanonicalSourceStructureSnapshot {
+        CanonicalSourceStructureSnapshot {
+            glyph_geometry: self.font.glyphs.clone(),
+            glyphs: self.glyphs.clone(),
+            templates: self.templates.clone(),
+            source_metadata: self.source_metadata.clone(),
+            source_ids: self.source_ids.clone(),
+        }
+    }
+
+    pub(super) fn source_structure_matches(
+        &self,
+        snapshot: &CanonicalSourceStructureSnapshot,
+    ) -> bool {
+        self.source_structure_snapshot() == *snapshot
+    }
+
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the source-history lane will consume this guarded structural boundary"
+        )
+    )]
+    pub(super) fn restore_source_structure_if_current(
+        &mut self,
+        expected: &CanonicalSourceStructureSnapshot,
+        replacement: CanonicalSourceStructureSnapshot,
+    ) -> Result<bool, SourceStructureRestoreError> {
+        if !self.source_structure_matches(expected) {
+            return Err(SourceStructureRestoreError::Stale);
+        }
+        if expected == &replacement {
+            return Ok(false);
+        }
+        let required_next_source = replacement
+            .source_ids
+            .iter()
+            .map(|source| source.0.saturating_add(1))
+            .max()
+            .unwrap_or(0);
+        self.font.glyphs = replacement.glyph_geometry;
+        self.glyphs = replacement.glyphs;
+        self.templates = replacement.templates;
+        self.source_metadata = replacement.source_metadata;
+        self.source_ids = replacement.source_ids;
+        self.next_source = self.next_source.max(required_next_source);
+        self.revision = self.revision.wrapping_add(1);
+        Ok(true)
     }
 
     pub(super) fn restore_source_metadata_if_current(
@@ -771,5 +860,61 @@ impl Drop for SourcesEdit<'_> {
             let id = self.data.source_ids[index];
             source.dirty |= self.data.update_source(id, &source.font);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use norad::{Font, Glyph};
+
+    use super::*;
+
+    #[test]
+    fn structural_restore_is_guarded_and_preserves_history_and_allocator() {
+        let mut original = Font::new();
+        let layer_name = original.default_layer().name().to_string();
+        original.default_layer_mut().insert_glyph(Glyph::new("A"));
+        let source = Master::from_font(original.clone(), PathBuf::from("Original.ufo"));
+        let mut data = VariableData::from_sources(&[source]);
+        let before = data.source_structure_snapshot();
+        let layer = LayerId {
+            source: SourceId(0),
+            name: layer_name,
+        };
+        data.histories.insert(
+            layer.clone(),
+            crate::document::history::EditHistory::default(),
+        );
+        data.next_source = 17;
+
+        let mut edited = original;
+        edited.default_layer_mut().insert_glyph(Glyph::new("B"));
+        assert!(data.update_source(SourceId(0), &edited));
+        let after = data.source_structure_snapshot();
+        let revision = data.revision;
+
+        assert_eq!(
+            data.restore_source_structure_if_current(&after, before.clone()),
+            Ok(true)
+        );
+        assert_eq!(data.source_structure_snapshot(), before);
+        assert!(data.histories.contains_key(&layer));
+        assert_eq!(data.next_source, 17);
+        assert_eq!(data.revision, revision.wrapping_add(1));
+
+        let restored_revision = data.revision;
+        assert_eq!(
+            data.restore_source_structure_if_current(&before, before.clone()),
+            Ok(false)
+        );
+        assert_eq!(data.revision, restored_revision);
+        assert_eq!(
+            data.restore_source_structure_if_current(&after, before),
+            Err(SourceStructureRestoreError::Stale)
+        );
+        assert_eq!(data.revision, restored_revision);
+        assert!(data.histories.contains_key(&layer));
     }
 }

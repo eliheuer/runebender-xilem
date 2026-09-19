@@ -102,6 +102,51 @@ pub enum DocumentEditOutcome {
     },
 }
 
+/// Result of replaying one Project-owned canonical history step.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DocumentHistoryReplayOutcome {
+    /// The addressed history pile had no step in the requested direction.
+    Empty {
+        /// Current document revision, unchanged by this operation.
+        revision: u64,
+    },
+    /// The step committed and produced this exact invalidation scope.
+    Changed {
+        /// Document revision after the replay.
+        revision: u64,
+        /// Exact layers and metadata invalidated by the replay.
+        change: DocumentChange,
+    },
+}
+
+/// An owned canonical layer edit based on one guarded document snapshot.
+///
+/// Callers may clone and mutate the draft without borrowing Project. Commit succeeds only while
+/// the addressed live layer still equals the captured base and records one Project-owned history
+/// step for a real change.
+#[derive(Clone, Debug)]
+pub struct CanonicalLayerTransaction {
+    base: super::CanonicalLayerSnapshot,
+    draft: super::LayerEditDraft,
+}
+
+impl CanonicalLayerTransaction {
+    /// Stable glyph-layer address captured when this transaction began.
+    pub fn address(&self) -> &GlyphLayerAddress {
+        self.base.address()
+    }
+
+    /// Read the owned canonical edit draft.
+    pub fn draft(&self) -> &super::LayerEditDraft {
+        &self.draft
+    }
+
+    /// Mutate the owned canonical edit draft.
+    pub fn draft_mut(&mut self) -> &mut super::LayerEditDraft {
+        &mut self.draft
+    }
+}
+
 /// Why a guarded canonical layer-history replay could not commit.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DocumentHistoryError {
@@ -216,6 +261,8 @@ pub struct Project {
     masters: Vec<Master>,
     pub(super) variable: VariableData,
     source_history: sources::SourceHistory,
+    document_history: super::history::DocumentHistory,
+    source_metadata_history: super::history::SourceMetadataHistory,
     /// Index into `masters` of the master being edited.
     pub active: usize,
     /// Style names for the master switcher, one per master.
@@ -389,6 +436,8 @@ impl Project {
         let mut project = Self {
             variable: VariableData::default(),
             source_history: sources::SourceHistory::default(),
+            document_history: super::history::DocumentHistory::default(),
+            source_metadata_history: super::history::SourceMetadataHistory::default(),
             masters: vec![model],
             active: 0,
             master_names: vec![name.into()],
@@ -497,6 +546,8 @@ impl Project {
             let mut project = Self {
                 variable: VariableData::default(),
                 source_history: sources::SourceHistory::default(),
+                document_history: super::history::DocumentHistory::default(),
+                source_metadata_history: super::history::SourceMetadataHistory::default(),
                 masters: vec![model],
                 active: 0,
                 master_names: vec![name],
@@ -536,6 +587,8 @@ impl Project {
             Ok(Self {
                 variable: VariableData::default(),
                 source_history: sources::SourceHistory::default(),
+                document_history: super::history::DocumentHistory::default(),
+                source_metadata_history: super::history::SourceMetadataHistory::default(),
                 masters: vec![model],
                 active: 0,
                 master_names: vec![name],
@@ -716,6 +769,8 @@ impl Project {
             masters,
             variable,
             source_history: sources::SourceHistory::default(),
+            document_history: super::history::DocumentHistory::default(),
+            source_metadata_history: super::history::SourceMetadataHistory::default(),
             active: default_index,
             master_names,
             axes,
@@ -1315,11 +1370,139 @@ impl Project {
         self.variable.snapshot()
     }
 
+    /// Begin an owned canonical layer transaction without borrowing the project.
+    pub fn begin_document_layer_transaction(
+        &self,
+        address: &GlyphLayerAddress,
+    ) -> Result<CanonicalLayerTransaction, DocumentHistoryError> {
+        let base = self
+            .capture_document_layer(address)
+            .ok_or_else(|| DocumentHistoryError::MissingLayer(address.clone()))?;
+        let (layer, preserved) = base.clone().into_parts();
+        Ok(CanonicalLayerTransaction {
+            base,
+            draft: super::LayerEditDraft::new(layer, preserved),
+        })
+    }
+
+    /// Commit an owned canonical layer transaction and record one Project-owned history step.
+    ///
+    /// A stale base or address mismatch leaves the document and its history unchanged. An
+    /// unchanged draft records no step and does not advance the document revision.
+    pub fn commit_document_layer_transaction(
+        &mut self,
+        transaction: CanonicalLayerTransaction,
+    ) -> Result<DocumentEditOutcome, DocumentHistoryError> {
+        let address = transaction.base.address().clone();
+        let before = transaction.base;
+        let (layer, preserved) = transaction.draft.into_parts();
+        let replacement = super::CanonicalLayerSnapshot::new(address.clone(), layer, preserved);
+        let outcome = self.restore_document_layer_if_current(&address, &before, replacement)?;
+        if matches!(outcome, DocumentEditOutcome::Changed { .. }) {
+            let recorded = self.record_document_layer_history(&address, before)?;
+            debug_assert!(
+                recorded,
+                "a changed transaction must record one history step"
+            );
+        }
+        Ok(outcome)
+    }
+
     /// Capture canonical metadata for the complete current source set.
     ///
     /// Stable source identities make the snapshot independent of display order.
     pub fn capture_document_source_metadata(&self) -> CanonicalSourceMetadataSnapshot {
         self.variable.source_metadata_snapshot()
+    }
+
+    /// Capture the complete canonical source-metadata set before a history transaction.
+    pub fn begin_document_source_metadata_history(&self) -> CanonicalSourceMetadataSnapshot {
+        super::history::SourceMetadataHistory::capture(self)
+    }
+
+    /// Record the live source-metadata set after a completed transaction.
+    pub fn record_document_source_metadata_history(
+        &mut self,
+        before: CanonicalSourceMetadataSnapshot,
+    ) -> bool {
+        let mut history = std::mem::take(&mut self.source_metadata_history);
+        let recorded = history.record_completed(self, before);
+        self.source_metadata_history = history;
+        recorded
+    }
+
+    /// Extend the newest source-metadata history transaction with the live state.
+    pub fn coalesce_document_source_metadata_history(
+        &mut self,
+        previous: &CanonicalSourceMetadataSnapshot,
+    ) -> bool {
+        let mut history = std::mem::take(&mut self.source_metadata_history);
+        let coalesced = history.coalesce_completed(self, previous);
+        self.source_metadata_history = history;
+        coalesced
+    }
+
+    /// Drop the newest source-metadata undo transaction.
+    pub fn discard_document_source_metadata_history(&mut self) -> bool {
+        self.source_metadata_history.discard_last()
+    }
+
+    /// Whether Project-owned source-metadata history can replay in `direction`.
+    pub fn can_replay_document_source_metadata_history(
+        &self,
+        direction: super::history::HistoryDirection,
+    ) -> bool {
+        self.source_metadata_history.can_replay(direction)
+    }
+
+    /// Number of Project-owned source-metadata steps available in `direction`.
+    pub fn document_source_metadata_history_depth(
+        &self,
+        direction: super::history::HistoryDirection,
+    ) -> usize {
+        self.source_metadata_history.depth(direction)
+    }
+
+    /// Replay one Project-owned whole-source metadata transaction.
+    pub fn replay_document_source_metadata_history(
+        &mut self,
+        direction: super::history::HistoryDirection,
+    ) -> Result<
+        DocumentHistoryReplayOutcome,
+        super::history::HistoryReplayError<DocumentSourceMetadataHistoryError>,
+    > {
+        let before = self.capture_document_source_metadata();
+        let mut history = std::mem::take(&mut self.source_metadata_history);
+        let replayed = history.replay(self, direction);
+        self.source_metadata_history = history;
+        match replayed? {
+            super::history::HistoryReplayOutcome::Empty => {
+                Ok(DocumentHistoryReplayOutcome::Empty {
+                    revision: self.variable.revision,
+                })
+            }
+            super::history::HistoryReplayOutcome::Applied => {
+                let after = self.capture_document_source_metadata();
+                let affected = before.changed_sources(&after);
+                Ok(DocumentHistoryReplayOutcome::Changed {
+                    revision: self.variable.revision,
+                    change: DocumentChange {
+                        affected_layers: Vec::new(),
+                        dependent_layers: Vec::new(),
+                        source_metadata: affected,
+                        geometry: false,
+                        metrics: false,
+                        metadata: true,
+                        compilation: true,
+                    },
+                })
+            }
+        }
+    }
+
+    /// Forget all Project-owned source-metadata history.
+    pub fn clear_document_source_metadata_history(&mut self) {
+        self.source_metadata_history.clear();
     }
 
     /// Restore all canonical source metadata only when the live snapshot still matches.
@@ -1372,6 +1555,126 @@ impl Project {
         address: &GlyphLayerAddress,
     ) -> Option<super::CanonicalLayerSnapshot> {
         self.variable.layer_snapshot(address)
+    }
+
+    /// Capture one canonical layer before a Project-owned history transaction.
+    pub fn begin_document_layer_history(
+        &self,
+        address: &GlyphLayerAddress,
+    ) -> Result<super::CanonicalLayerSnapshot, DocumentHistoryError> {
+        super::history::DocumentHistory::capture(self, address)
+    }
+
+    /// Record the live layer after a completed Project-owned history transaction.
+    pub fn record_document_layer_history(
+        &mut self,
+        address: &GlyphLayerAddress,
+        before: super::CanonicalLayerSnapshot,
+    ) -> Result<bool, DocumentHistoryError> {
+        let mut history = std::mem::take(&mut self.document_history);
+        let recorded = history.record_completed(self, address, before);
+        self.document_history = history;
+        recorded
+    }
+
+    /// Extend the newest history step with the live result of a repeated gesture edit.
+    pub fn coalesce_document_layer_history(
+        &mut self,
+        address: &GlyphLayerAddress,
+        previous: &super::CanonicalLayerSnapshot,
+    ) -> Result<bool, DocumentHistoryError> {
+        let mut history = std::mem::take(&mut self.document_history);
+        let coalesced = history.coalesce_completed(self, address, previous);
+        self.document_history = history;
+        coalesced
+    }
+
+    /// Drop the newest undo step for an operation that produced no usable edit.
+    pub fn discard_document_layer_history(&mut self, address: &GlyphLayerAddress) -> bool {
+        self.document_history.discard_last(address)
+    }
+
+    /// Whether one addressed Project-owned layer pile can replay in `direction`.
+    pub fn can_replay_document_layer_history(
+        &self,
+        address: &GlyphLayerAddress,
+        direction: super::history::HistoryDirection,
+    ) -> bool {
+        self.document_history.can_replay(address, direction)
+    }
+
+    /// Number of Project-owned layer steps available in `direction`.
+    pub fn document_layer_history_depth(
+        &self,
+        address: &GlyphLayerAddress,
+        direction: super::history::HistoryDirection,
+    ) -> usize {
+        self.document_history.depth(address, direction)
+    }
+
+    /// Replay one Project-owned canonical layer step with its exact invalidation scope.
+    pub fn replay_document_layer_history(
+        &mut self,
+        address: &GlyphLayerAddress,
+        direction: super::history::HistoryDirection,
+    ) -> Result<
+        DocumentHistoryReplayOutcome,
+        super::history::HistoryReplayError<DocumentHistoryError>,
+    > {
+        let before = self.capture_document_layer(address).ok_or_else(|| {
+            super::history::HistoryReplayError::Apply(DocumentHistoryError::MissingLayer(
+                address.clone(),
+            ))
+        })?;
+        let mut history = std::mem::take(&mut self.document_history);
+        let replayed = history.replay(self, address, direction);
+        self.document_history = history;
+        match replayed? {
+            super::history::HistoryReplayOutcome::Empty => {
+                Ok(DocumentHistoryReplayOutcome::Empty {
+                    revision: self.variable.revision,
+                })
+            }
+            super::history::HistoryReplayOutcome::Applied => {
+                let after = self.capture_document_layer(address).ok_or_else(|| {
+                    super::history::HistoryReplayError::Apply(DocumentHistoryError::MissingLayer(
+                        address.clone(),
+                    ))
+                })?;
+                let delta = after.delta_from(&before).ok_or_else(|| {
+                    super::history::HistoryReplayError::Apply(
+                        DocumentHistoryError::AddressMismatch(address.clone()),
+                    )
+                })?;
+                Ok(DocumentHistoryReplayOutcome::Changed {
+                    revision: self.variable.revision,
+                    change: DocumentChange {
+                        affected_layers: vec![address.clone()],
+                        dependent_layers: self.variable.dependent_component_layers(&address.glyph),
+                        source_metadata: Vec::new(),
+                        geometry: delta.geometry,
+                        metrics: delta.metrics,
+                        metadata: delta.metadata,
+                        compilation: true,
+                    },
+                })
+            }
+        }
+    }
+
+    /// Move all Project-owned layer histories during one committed glyph rename.
+    pub fn rename_document_layer_history_glyph(&mut self, old: &str, new: &str) -> bool {
+        self.document_history.rename_glyph(old, new)
+    }
+
+    /// Forget every Project-owned layer history for a permanently removed glyph.
+    pub fn clear_document_layer_history_glyph(&mut self, name: &str) {
+        self.document_history.clear_glyph(name);
+    }
+
+    /// Forget one Project-owned layer history pile after permanent layer removal.
+    pub fn clear_document_layer_history(&mut self, address: &GlyphLayerAddress) {
+        self.document_history.clear_layer(address);
     }
 
     /// Restore a canonical layer only when its live state still equals `expected`.

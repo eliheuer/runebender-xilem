@@ -207,6 +207,16 @@ impl CanonicalLayerSnapshot {
         &self.address
     }
 
+    pub(super) fn delta_from(&self, previous: &Self) -> Option<LayerDelta> {
+        if self.address != previous.address {
+            return None;
+        }
+        Some(
+            LayerEditDraft::new(self.layer.clone(), self.preserved.clone())
+                .delta_from(&previous.layer, &previous.preserved),
+        )
+    }
+
     /// Rebind this snapshot during one explicitly authorized glyph rename.
     ///
     /// Both the complete current address and unchanged layer identity must match.
