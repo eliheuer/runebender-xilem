@@ -136,6 +136,7 @@ The committed `DocumentChange` identifies direct and component-dependent layers 
 Source-wide feature text, groups and exact fractional kerning have canonical ownership in `VariableData` by stable `SourceId` and change through `edit_document_source_metadata`; UFO templates no longer retain second editable values for them.
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.
 `CanonicalLayerSnapshot` captures one opaque addressed layer with the same geometry and extensions; guarded restore compares the complete live state before replacing it, advances the revision once and refreshes the compatibility projection without recording legacy history.
+`CanonicalSourceMetadataSnapshot` captures feature text, groups and exact kerning for the complete stable source set; guarded whole-snapshot restore ignores display reorder, rejects stale or changed source sets and refreshes all affected projections in one revision.
 Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact extensions first, then refresh only the affected compatibility projection.
 `document/sources.rs` owns structural transactions and their guarded undo history; removing a source never deletes its UFO directory.
 

@@ -11,7 +11,9 @@ use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointTy
 use runebender::document::LayerPointType;
 use runebender::document::canonical_metadata::{KerningParticipant, KerningSide};
 use runebender::document::font_memory::designspace_from_str;
-use runebender::document::project::{DocumentEditOutcome, DocumentHistoryError, Master, Project};
+use runebender::document::project::{
+    DocumentEditOutcome, DocumentHistoryError, DocumentSourceMetadataHistoryError, Master, Project,
+};
 use runebender::document::var_model::Location;
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 
@@ -5478,6 +5480,95 @@ fn canonical_source_metadata_edits_are_atomic_and_round_trip_exactly() {
         reloaded.source_snapshot(source).unwrap().kerning,
         projected.kerning
     );
+}
+
+#[test]
+fn canonical_source_metadata_snapshot_restore_is_atomic_and_order_independent() {
+    let (_scratch, mut project) = fixture();
+    let source = SourceId(1);
+    let before = project.capture_document_source_metadata();
+    assert_eq!(
+        before.source_ids().collect::<Vec<_>>(),
+        [SourceId(0), SourceId(1), SourceId(2), SourceId(3)]
+    );
+    let old_feature_text = project.document_feature_text(source).unwrap().to_owned();
+    project
+        .edit_document_source_metadata(source, |draft| {
+            draft.set_feature_text("feature kern { pos A V -123; } kern;".into());
+            Ok(())
+        })
+        .unwrap();
+    let after = project.capture_document_source_metadata();
+    assert_ne!(after, before);
+    assert!(project.move_source(source, 0).unwrap());
+
+    let revision = project.document_revision();
+    let outcome = project
+        .restore_document_source_metadata_if_current(&after, before.clone())
+        .unwrap();
+    let DocumentEditOutcome::Changed {
+        revision: restored_revision,
+        change,
+    } = outcome
+    else {
+        panic!("changed source metadata must restore")
+    };
+    assert_eq!(restored_revision, revision.wrapping_add(1));
+    assert_eq!(change.source_metadata(), &[source]);
+    assert!(change.metadata_changed());
+    assert!(change.requires_compilation());
+    assert_eq!(project.source_index(source), Some(0));
+    assert_eq!(
+        project.document_feature_text(source),
+        Some(old_feature_text.as_str())
+    );
+    assert_eq!(
+        project.source_snapshot(source).unwrap().features,
+        old_feature_text
+    );
+
+    let unchanged_revision = project.document_revision();
+    assert_eq!(
+        project
+            .restore_document_source_metadata_if_current(&before, before.clone())
+            .unwrap(),
+        DocumentEditOutcome::Unchanged {
+            revision: unchanged_revision
+        }
+    );
+
+    project
+        .edit_document_source_metadata(SourceId(0), |draft| {
+            draft.set_feature_text("feature liga { sub A B by C; } liga;".into());
+            Ok(())
+        })
+        .unwrap();
+    let stale_document = project.document_snapshot();
+    let stale_revision = project.document_revision();
+    assert_eq!(
+        project.restore_document_source_metadata_if_current(&before, after.clone()),
+        Err(DocumentSourceMetadataHistoryError::Stale)
+    );
+    assert_eq!(project.document_snapshot(), stale_document);
+    assert_eq!(project.document_revision(), stale_revision);
+
+    let four_sources = project.capture_document_source_metadata();
+    project
+        .add_interpolated_source("Medium", "Medium.ufo", &location(0.25, 0.0))
+        .unwrap();
+    let five_sources = project.capture_document_source_metadata();
+    let mismatched_document = project.document_snapshot();
+    let mismatched_revision = project.document_revision();
+    assert_eq!(
+        project.restore_document_source_metadata_if_current(&four_sources, four_sources.clone()),
+        Err(DocumentSourceMetadataHistoryError::SourceSetMismatch)
+    );
+    assert_eq!(
+        project.restore_document_source_metadata_if_current(&five_sources, four_sources),
+        Err(DocumentSourceMetadataHistoryError::SourceSetMismatch)
+    );
+    assert_eq!(project.document_snapshot(), mismatched_document);
+    assert_eq!(project.document_revision(), mismatched_revision);
 }
 
 #[test]

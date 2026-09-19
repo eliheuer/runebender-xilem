@@ -54,6 +54,7 @@ No release has been published yet.
   GPUI behavior references.
 - Centralized document history so outline, metric, metadata, kerning, proposal, and
   experiment changes use the same guarded Undo/Redo model.
+- Added atomic whole-source metadata snapshots for guarded history across source reordering.
 - Improved browser rendering for Retina and fractional scales, WASM SIMD, native cursors,
   focus, paste, composition, splitters, and idle repaint behavior.
 - Reduced themes to Dark, Gray (default), and Light.

@@ -17,8 +17,9 @@ use kurbo::BezPath;
 
 pub use super::source::{GlyphEntry, GlyphPoint, Master, extract_anchors, extract_points};
 use super::variable::{
-    DocumentSnapshot, GlyphLayerAddress, GlyphSource, GlyphView, LayerId, SourceEdit, SourceId,
-    SourceMetadataEditDraft, SourcesEdit, VariableData, VariableGlyph,
+    CanonicalSourceMetadataSnapshot, DocumentSnapshot, GlyphLayerAddress, GlyphSource, GlyphView,
+    LayerId, SourceEdit, SourceId, SourceMetadataEditDraft, SourceMetadataRestoreError,
+    SourcesEdit, VariableData, VariableGlyph,
 };
 use crate::document::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
@@ -111,6 +112,28 @@ pub enum DocumentHistoryError {
     /// A snapshot captured for another glyph-layer address was supplied.
     AddressMismatch(GlyphLayerAddress),
 }
+
+/// Why a guarded whole-source metadata replay could not commit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DocumentSourceMetadataHistoryError {
+    /// The live project or replacement has a different stable source set.
+    SourceSetMismatch,
+    /// Source metadata changed after the history entry was recorded.
+    Stale,
+}
+
+impl std::fmt::Display for DocumentSourceMetadataHistoryError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SourceSetMismatch => {
+                formatter.write_str("canonical source metadata has a different source set")
+            }
+            Self::Stale => formatter.write_str("canonical source metadata changed after capture"),
+        }
+    }
+}
+
+impl std::error::Error for DocumentSourceMetadataHistoryError {}
 
 impl std::fmt::Display for DocumentHistoryError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1276,6 +1299,54 @@ impl Project {
         self.variable.snapshot()
     }
 
+    /// Capture canonical metadata for the complete current source set.
+    ///
+    /// Stable source identities make the snapshot independent of display order.
+    pub fn capture_document_source_metadata(&self) -> CanonicalSourceMetadataSnapshot {
+        self.variable.source_metadata_snapshot()
+    }
+
+    /// Restore all canonical source metadata only when the live snapshot still matches.
+    ///
+    /// Source-set mismatches and stale values leave the document, revision and compatibility
+    /// projections unchanged. A changed replacement commits once and refreshes every affected
+    /// source projection.
+    pub fn restore_document_source_metadata_if_current(
+        &mut self,
+        expected: &CanonicalSourceMetadataSnapshot,
+        replacement: CanonicalSourceMetadataSnapshot,
+    ) -> Result<DocumentEditOutcome, DocumentSourceMetadataHistoryError> {
+        let affected = self
+            .variable
+            .restore_source_metadata_if_current(expected, replacement)
+            .map_err(|error| match error {
+                SourceMetadataRestoreError::SourceSetMismatch => {
+                    DocumentSourceMetadataHistoryError::SourceSetMismatch
+                }
+                SourceMetadataRestoreError::Stale => DocumentSourceMetadataHistoryError::Stale,
+            })?;
+        if affected.is_empty() {
+            return Ok(DocumentEditOutcome::Unchanged {
+                revision: self.variable.revision,
+            });
+        }
+        for source in &affected {
+            self.synchronize_compatibility_source_metadata(*source);
+        }
+        Ok(DocumentEditOutcome::Changed {
+            revision: self.variable.revision,
+            change: DocumentChange {
+                affected_layers: Vec::new(),
+                dependent_layers: Vec::new(),
+                source_metadata: affected,
+                geometry: false,
+                metrics: false,
+                metadata: true,
+                compilation: true,
+            },
+        })
+    }
+
     /// Capture one complete canonical layer for undo, redo or guarded replacement.
     ///
     /// The opaque snapshot contains Babelfont geometry and exact preservation extensions without
@@ -1392,6 +1463,22 @@ impl Project {
                 revision: self.variable.revision,
             });
         }
+        self.synchronize_compatibility_source_metadata(source);
+        Ok(DocumentEditOutcome::Changed {
+            revision: self.variable.revision,
+            change: DocumentChange {
+                affected_layers: Vec::new(),
+                dependent_layers: Vec::new(),
+                source_metadata: vec![source],
+                geometry: false,
+                metrics: false,
+                metadata: true,
+                compilation: true,
+            },
+        })
+    }
+
+    fn synchronize_compatibility_source_metadata(&mut self, source: SourceId) {
         let index = self
             .source_index(source)
             .expect("canonical source metadata retains its source");
@@ -1408,18 +1495,6 @@ impl Project {
         )
         .expect("canonical source metadata must remain writable as UFO");
         self.masters[index].dirty = true;
-        Ok(DocumentEditOutcome::Changed {
-            revision: self.variable.revision,
-            change: DocumentChange {
-                affected_layers: Vec::new(),
-                dependent_layers: Vec::new(),
-                source_metadata: vec![source],
-                geometry: false,
-                metrics: false,
-                metadata: true,
-                compilation: true,
-            },
-        })
     }
 
     fn synchronize_compatibility_layer(&mut self, name: &str, layer: &LayerId) {

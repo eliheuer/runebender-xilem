@@ -46,6 +46,26 @@ struct SourceMetadata {
     font_metadata: super::canonical_metadata::CanonicalFontMetadata,
 }
 
+/// Opaque canonical metadata for the complete current source set.
+///
+/// Values are keyed by stable source identity and do not encode display order or UFO maps.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CanonicalSourceMetadataSnapshot {
+    metadata: BTreeMap<SourceId, SourceMetadata>,
+}
+
+impl CanonicalSourceMetadataSnapshot {
+    /// Stable source identities contained in this snapshot.
+    pub fn source_ids(&self) -> impl Iterator<Item = SourceId> + '_ {
+        self.metadata.keys().copied()
+    }
+}
+
+pub(super) enum SourceMetadataRestoreError {
+    SourceSetMismatch,
+    Stale,
+}
+
 /// Owned edit draft for source-wide metadata with canonical ownership.
 #[derive(Clone, Debug)]
 pub struct SourceMetadataEditDraft {
@@ -227,6 +247,38 @@ impl VariableData {
             source_metadata: self.source_metadata.clone(),
             source_ids: self.source_ids.clone(),
         }
+    }
+
+    pub(super) fn source_metadata_snapshot(&self) -> CanonicalSourceMetadataSnapshot {
+        CanonicalSourceMetadataSnapshot {
+            metadata: self.source_metadata.clone(),
+        }
+    }
+
+    pub(super) fn restore_source_metadata_if_current(
+        &mut self,
+        expected: &CanonicalSourceMetadataSnapshot,
+        replacement: CanonicalSourceMetadataSnapshot,
+    ) -> Result<Vec<SourceId>, SourceMetadataRestoreError> {
+        let live_sources: Vec<_> = self.source_metadata.keys().copied().collect();
+        let expected_sources: Vec<_> = expected.metadata.keys().copied().collect();
+        let replacement_sources: Vec<_> = replacement.metadata.keys().copied().collect();
+        if live_sources != expected_sources || expected_sources != replacement_sources {
+            return Err(SourceMetadataRestoreError::SourceSetMismatch);
+        }
+        if self.source_metadata != expected.metadata {
+            return Err(SourceMetadataRestoreError::Stale);
+        }
+        let affected = live_sources
+            .into_iter()
+            .filter(|source| self.source_metadata.get(source) != replacement.metadata.get(source))
+            .collect::<Vec<_>>();
+        if affected.is_empty() {
+            return Ok(affected);
+        }
+        self.source_metadata = replacement.metadata;
+        self.revision = self.revision.wrapping_add(1);
+        Ok(affected)
     }
 
     pub(super) fn glyph_view(&self, name: &str) -> Option<GlyphView<'_>> {

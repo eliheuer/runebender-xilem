@@ -1847,3 +1847,29 @@ git diff --check
 The two canonical interpolation unit tests, two Project interpolation regressions, two compiler metadata unit tests, nine variable compiler tests and the canonical unsaved pipeline regression passed.
 Warning-denied library/test Clippy, formatting and diff checks passed.
 M08 and M09 remain incomplete because the output presentation path, source structure, canonical glyph metadata and remaining font information still use compatibility adapters.
+
+### Guarded whole-source metadata snapshots
+
+Evidence commit: `Add guarded source metadata snapshots` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Add guarded source metadata snapshots$' -1`.
+Affected paths: `src/document/variable.rs`, `src/document/project.rs`, `src/document/mod.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+`CanonicalSourceMetadataSnapshot` is an opaque cloneable value containing canonical feature text plus `CanonicalFontMetadata` for the complete source set keyed by stable `SourceId`.
+It does not contain UFO maps or display ordering.
+`Project::capture_document_source_metadata` records the whole scope, and `restore_document_source_metadata_if_current` validates the live and replacement source sets before comparing expected values.
+A stale value or missing, added or mismatched source identity leaves contents, projections and revision unchanged.
+A real replacement installs every source value atomically, advances the revision once, refreshes only affected compatibility projections and reports ordinary metadata plus compilation invalidation.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_source_metadata_snapshot_restore_is_atomic_and_order_independent -- --exact --test-threads=1
+cargo clippy --locked --test variable_project --lib -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The regression passed changed and unchanged replay after source reorder, stale rejection and both expected-live and replacement source-set mismatch cases.
+All failed cases retained the complete canonical document and exact revision.
+This supplies the atomic Project boundary required by `TransactionHistory<CanonicalSourceMetadataSnapshot>`; document-owned placement and application caller migration remain M05/M06 work.
