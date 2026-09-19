@@ -273,22 +273,21 @@ impl Project {
         super::compile_metadata::rules(self, &mut font)?;
         font.source = Some(self.sources()[default].source_path.join("features.fea"));
         font.masters.clear();
+        let default_metadata = self
+            .document_font_metadata(default_id)
+            .expect("default source metadata");
         super::compile_metadata::apply_groups(
             &mut font,
-            source.groups.iter().map(|(name, members)| {
-                (
-                    name.to_string(),
-                    members.iter().map(ToString::to_string).collect(),
-                )
-            }),
+            default_metadata
+                .groups()
+                .iter()
+                .map(|(name, members)| (name.clone(), members.clone())),
         );
         for (index, source) in self.sources().iter().enumerate() {
+            let source_id = self.source_id(index).expect("source identity");
             let mut master = babelfont::Master::new(
                 self.master_names[index].as_ref(),
-                self.source_id(index)
-                    .expect("source identity")
-                    .0
-                    .to_string(),
+                source_id.0.to_string(),
                 self.design_location(self.master_locations.get(index).unwrap_or(&Location::new()))?,
             );
             let info = &source.font.font_info;
@@ -309,11 +308,16 @@ impl Project {
             }
             super::compile_metadata::apply_kerning(
                 &mut master,
-                source.font.kerning.iter().flat_map(|(left, pairs)| {
-                    pairs
-                        .iter()
-                        .map(|(right, value)| (left.to_string(), right.to_string(), *value))
-                }),
+                self.document_font_metadata(source_id)
+                    .expect("source metadata")
+                    .kerning_pairs()
+                    .map(|(left, right, value)| {
+                        (
+                            left.as_raw_name().to_owned(),
+                            right.as_raw_name().to_owned(),
+                            value,
+                        )
+                    }),
             )?;
             font.masters.push(master);
         }
