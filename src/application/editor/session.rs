@@ -5,9 +5,9 @@
 //! and the tabs that hold them: opening a glyph, parking and resuming,
 //! switching masters, and the axis location.
 //!
-//! Point selection uses stable canonical identities.
-//! The remaining outline algorithms still operate on a compatibility `norad::Glyph` projection,
-//! with tuple indices confined to adapters inside this module until their draft APIs land.
+//! Selection, gestures and outline commands use stable canonical identities and owned layer
+//! transactions.
+//! UFO contours and images appear only as explicit import or format-boundary payloads.
 
 use crate::application::editor::tools::metaballs;
 use crate::application::font_model::FontModel;
