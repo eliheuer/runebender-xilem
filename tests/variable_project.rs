@@ -4438,6 +4438,111 @@ fn canonical_boolean_and_overlap_replacement_clear_old_topology_metadata() {
 }
 
 #[test]
+fn canonical_mask_baking_replaces_topology_and_clears_the_boundary_key() {
+    let scratch = Scratch::new();
+    let square = |x0: f64, y0: f64, x1: f64, y1: f64, label: &str| {
+        let mut contour = Contour::new(
+            [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+                .into_iter()
+                .map(|(x, y)| {
+                    ContourPoint::new(
+                        x,
+                        y,
+                        PointType::Line,
+                        false,
+                        Some(Name::new(label).unwrap()),
+                        None,
+                    )
+                })
+                .collect(),
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        contour.replace_lib(object_lib(label));
+        contour
+    };
+    let mut glyph = Glyph::new("mask-bake");
+    glyph.contours = vec![
+        square(0.0, 0.0, 200.0, 200.0, "keep"),
+        square(100.0, 50.0, 250.0, 150.0, "mask"),
+    ];
+    runebender::formats::lib_keys::write_masks(&mut glyph, &[1].into());
+    let mut expected = glyph.clone();
+    assert!(runebender::formats::lib_keys::bake_masks(&mut expected));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let source_path = scratch.0.join("MaskBake.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let old_contours: Vec<_> = project
+        .document_layer("mask-bake", &layer_id)
+        .unwrap()
+        .contours()
+        .map(|contour| contour.id())
+        .collect();
+
+    project
+        .edit_document_layer("mask-bake", &layer_id, |draft| {
+            assert!(draft.bake_masks()?);
+            Ok(())
+        })
+        .unwrap();
+    let layer = project.document_layer("mask-bake", &layer_id).unwrap();
+    assert!(
+        layer
+            .contours()
+            .all(|contour| !old_contours.contains(&contour.id()))
+    );
+    let projected = project.glyph_layer("mask-bake", &layer_id).unwrap();
+    assert!(runebender::formats::lib_keys::read_masks(&projected).is_empty());
+    let actual = runebender::outline::glyph_paths::contours_to_bezpath(&projected);
+    let expected_path = runebender::outline::glyph_paths::contours_to_bezpath(&expected);
+    let actual: Vec<_> = actual.segments().collect();
+    let expected: Vec<_> = expected_path.segments().collect();
+    assert!(
+        actual.len() == expected.len()
+            && (0..actual.len()).any(|offset| {
+                actual
+                    .iter()
+                    .enumerate()
+                    .all(|(index, segment)| *segment == expected[(index + offset) % expected.len()])
+            }),
+        "canonical mask baking changed the established outline geometry"
+    );
+    assert!(projected.contours.iter().all(|contour| {
+        contour.identifier().is_none()
+            && contour.lib().is_none()
+            && contour.points.iter().all(|point| {
+                point.name.is_none() && point.identifier().is_none() && point.lib().is_none()
+            })
+    }));
+
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("mask-bake", &layer_id, |draft| {
+                assert!(!draft.bake_masks()?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    assert_eq!(
+        reloaded.glyph_layer("mask-bake", &reloaded_layer).unwrap(),
+        projected
+    );
+}
+
+#[test]
 fn canonical_boolean_successfully_clears_empty_results() {
     let scratch = Scratch::new();
     for (case, operation, right_x) in [

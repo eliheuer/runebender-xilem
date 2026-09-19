@@ -2150,6 +2150,31 @@ All 12 knife tests and the canonical knife integration regression passed after s
 Warning-denied library/test Clippy passed, and the unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 The M06 caller still needs to invoke this direct draft operation before M04's explicit-conversion checkbox can close.
 
+### Direct canonical mask baking
+
+Evidence commit: `Bake masks from canonical contours` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Bake masks from canonical contours$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+`LayerEditDraft::bake_masks` now decodes valid mask contour indices at the persisted-key boundary, subtracts those canonical paths from the unmasked paths, and replaces the result without materializing or reconciling a UFO glyph.
+The mask key is removed only after Linesweeper returns a valid result and canonical topology replacement succeeds.
+Replacement contours and points receive fresh identities and empty source metadata under the established boolean-result policy.
+Invalid or out-of-range entries cannot select nonexistent contours, an empty or all-mask selection is a no-op, and a second bake records no change.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_mask_baking_replaces_topology_and_clears_the_boundary_key -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --lib --tests --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused bake regression and all 66 variable-project tests passed established outline geometry, fresh replacement identities and metadata, key removal, no-op replay and save/reopen persistence.
+Warning-denied library/test Clippy passed, and the unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+Mask storage remains an opaque persisted-key boundary rather than a typed contour-identity extension, so M04's special-source ownership item remains open until that field moves and the M06 command uses this direct draft operation.
+
 ### Imported-format publication safety
 
 Evidence commit: `Make imported font publication explicit` (the commit containing this substep).

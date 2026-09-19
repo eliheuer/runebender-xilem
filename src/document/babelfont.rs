@@ -1798,6 +1798,61 @@ impl LayerEditDraft {
         self.replace_contours_with_paths(&paths)
     }
 
+    /// Permanently subtract contours marked as masks from the other canonical contours.
+    ///
+    /// Mask indices are decoded only at this explicit UFO-key boundary. Successful replacement
+    /// clears the key and assigns fresh identities and empty source metadata to the result.
+    pub fn bake_masks(&mut self) -> Result<bool, DocumentEditError> {
+        let Some(values) = self
+            .preserved
+            .lib
+            .get(crate::formats::lib_keys::MASKS_KEY)
+            .and_then(plist::Value::as_array)
+        else {
+            return Ok(false);
+        };
+        let contour_count = self.view().contours().count();
+        let masks: HashSet<_> = values
+            .iter()
+            .filter_map(plist::Value::as_unsigned_integer)
+            .filter_map(|value| usize::try_from(value).ok())
+            .filter(|index| *index < contour_count)
+            .collect();
+        if masks.is_empty() || masks.len() == contour_count {
+            return Ok(false);
+        }
+        let mut keep = kurbo::BezPath::new();
+        let mut cut = kurbo::BezPath::new();
+        for (index, contour) in self.view().contours().enumerate() {
+            let path = crate::outline::path::Path::from_document_contour(contour).to_bezpath();
+            let destination = if masks.contains(&index) {
+                &mut cut
+            } else {
+                &mut keep
+            };
+            destination.extend(path.elements().iter().copied());
+        }
+        let Ok(result) = linesweeper::binary_op(
+            &keep,
+            &cut,
+            linesweeper::FillRule::NonZero,
+            linesweeper::BinaryOp::Difference,
+        ) else {
+            return Ok(false);
+        };
+        let paths = result
+            .contours()
+            .map(|contour| contour.path.clone())
+            .collect::<Vec<_>>();
+        let changed = self.replace_contours_with_paths(&paths)?;
+        if changed {
+            self.preserved
+                .lib
+                .remove(crate::formats::lib_keys::MASKS_KEY);
+        }
+        Ok(changed)
+    }
+
     /// Cut canonical contours along the line from `p0` to `p1`.
     ///
     /// Missed contours retain their stable identities and exact source metadata. Every contour
