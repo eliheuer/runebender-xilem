@@ -218,6 +218,23 @@ The compose CLI proposal and generated-font integration regression passed.
 The complete binary suite passed 166 tests with four documented model or external-font tests ignored.
 Warning-denied workspace/all-target Clippy, formatting and diff checks passed.
 
+## Canonical glyph-inspection caller slice
+
+Implementation commit: `Read CLI glyph analysis from Project`.
+Resolve its exact ID with `git log --format=%H --grep='^Read CLI glyph analysis from Project$' -1`.
+Affected path: `src/application/cli.rs` and this log.
+
+The agent CLI's `read_glyph` helper now loads `Project`, selects its stable source and calls `analysis::glyph::read_project_glyph`.
+The JSON schema and `glif-sha256:` revision contract remain unchanged, while bounds now use complete canonical smart-component, metaball and nested-component rendering.
+
+Executed evidence:
+
+```sh
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources CARGO_BUILD_JOBS=1 cargo test --locked --test cli exact_edits_round_trip_without_rewriting_foreground -- --exact --nocapture
+```
+
+The focused read, proposal revision guard and foreground-preservation regression passed.
+
 ## Remaining application callers
 
 - `application/editor/session.rs` still stores and mutates a `norad::Glyph`, resolved Norad component contours and pending Norad history records.

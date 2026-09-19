@@ -1304,11 +1304,14 @@ fn self_json(args: &[String]) -> serde_json::Value {
 
 /// One glyph as the model reads it.
 fn read_glyph(source: &Path, name: &str, layer: Option<&str>) -> serde_json::Value {
-    let font = match Font::load(source) {
-        Ok(f) => f,
-        Err(e) => return json!({ "ok": false, "error": e.to_string() }),
+    let project = match runebender::document::project::Project::load(source) {
+        Ok(project) => project,
+        Err(error) => return json!({ "ok": false, "error": error }),
     };
-    runebender::analysis::glyph::read_glyph(&font, name, layer)
+    let Some(source_id) = project.document_sources().next().map(|source| source.id()) else {
+        return json!({ "ok": false, "error": "the font has no source" });
+    };
+    runebender::analysis::glyph::read_project_glyph(&project, source_id, name, layer)
 }
 
 /// Searches the documentation folders for passages that match.
