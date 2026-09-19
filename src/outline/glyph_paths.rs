@@ -1,11 +1,15 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Norad glyph contours → kurbo `BezPath`, shared by all Runebender
-//! editors. Components resolve recursively through the font.
+//! Font outline contours → kurbo `BezPath`, shared by all Runebender editors.
+//!
+//! New document callers read canonical layers directly.
+//! Norad entry points remain for compatibility callers and format adapters.
 
 use kurbo::{Affine, BezPath, Point};
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
+
+use crate::document::{ContourView, LayerPointType, LayerView};
 
 /// Round a design-space value to whole units.
 ///
@@ -54,6 +58,17 @@ pub fn contours_to_bezpath(glyph: &Glyph) -> BezPath {
     let mut path = BezPath::new();
     for contour in &glyph.contours {
         append_contour(&mut path, contour);
+    }
+    path
+}
+
+/// Convert one canonical document layer's ordinary contours without constructing a UFO glyph.
+///
+/// Hyperbezier contours remain on their dedicated conversion path until that tool is migrated.
+pub fn ordinary_layer_contours_to_bezpath(layer: LayerView<'_>) -> BezPath {
+    let mut path = BezPath::new();
+    for contour in layer.contours() {
+        append_document_contour(&mut path, contour);
     }
     path
 }
@@ -310,11 +325,21 @@ fn pt(p: &ContourPoint) -> Point {
     Point::new(p.x, p.y)
 }
 
-fn is_on_curve(p: &ContourPoint) -> bool {
-    matches!(
-        p.typ,
-        PointType::Move | PointType::Line | PointType::Curve | PointType::QCurve
-    )
+#[derive(Clone, Copy)]
+struct OutlinePoint {
+    position: Point,
+    kind: LayerPointType,
+}
+
+fn append_document_contour(path: &mut BezPath, contour: ContourView<'_>) {
+    let points: Vec<_> = contour
+        .points()
+        .map(|point| OutlinePoint {
+            position: point.position(),
+            kind: point.point_type(),
+        })
+        .collect();
+    append_points(path, &points, contour.is_closed());
 }
 
 fn append_contour(path: &mut BezPath, contour: &Contour) {
@@ -329,47 +354,86 @@ fn append_contour(path: &mut BezPath, contour: &Contour) {
         crate::outline::path::Path::from_contour(&ws).append_to_bezpath(path);
         return;
     }
-    let Some(start_idx) = points.iter().position(is_on_curve) else {
-        // All-off-curve (TrueType implied on-curve) contour: skip for now.
+    let points: Vec<_> = points
+        .iter()
+        .map(|point| OutlinePoint {
+            position: pt(point),
+            kind: match point.typ {
+                PointType::Move => LayerPointType::Move,
+                PointType::Line => LayerPointType::Line,
+                PointType::OffCurve => LayerPointType::OffCurve,
+                PointType::Curve => LayerPointType::Curve,
+                PointType::QCurve => LayerPointType::QCurve,
+            },
+        })
+        .collect();
+    append_points(
+        path,
+        &points,
+        points
+            .first()
+            .is_none_or(|point| point.kind != LayerPointType::Move),
+    );
+}
+
+fn append_points(path: &mut BezPath, points: &[OutlinePoint], closed: bool) {
+    if points.is_empty() {
+        return;
+    }
+    let Some(start_idx) = points
+        .iter()
+        .position(|point| point.kind != LayerPointType::OffCurve)
+    else {
+        if closed {
+            let start = points[points.len() - 1]
+                .position
+                .midpoint(points[0].position);
+            path.move_to(start);
+            for (index, point) in points.iter().enumerate() {
+                let next = points[(index + 1) % points.len()].position;
+                path.quad_to(point.position, point.position.midpoint(next));
+            }
+            path.close_path();
+        }
         return;
     };
-    let open = points[0].typ == PointType::Move;
-    let rotated: Vec<&ContourPoint> = points[start_idx..]
+    let rotated: Vec<_> = points[start_idx..]
         .iter()
         .chain(points[..start_idx].iter())
+        .copied()
         .collect();
 
-    path.move_to(pt(rotated[0]));
+    path.move_to(rotated[0].position);
 
     let mut off_curves: Vec<Point> = Vec::with_capacity(2);
     // For a closed contour the segment list wraps around to the start
     // point; for an open one it ends at the last point.
     let n = rotated.len();
-    let idx_range: Vec<usize> = if open {
-        (1..n).collect()
-    } else {
+    let idx_range: Vec<usize> = if closed {
         (1..=n).map(|i| i % n).collect()
+    } else {
+        (1..n).collect()
     };
     for i in idx_range {
         let p = rotated[i];
-        match p.typ {
-            PointType::OffCurve => off_curves.push(pt(p)),
-            PointType::Line | PointType::Move => {
+        match p.kind {
+            LayerPointType::OffCurve => off_curves.push(p.position),
+            LayerPointType::Line | LayerPointType::Move => {
                 off_curves.clear();
-                path.line_to(pt(p));
+                path.line_to(p.position);
             }
-            PointType::Curve => {
+            LayerPointType::Curve => {
                 match off_curves.len() {
-                    2 => path.curve_to(off_curves[0], off_curves[1], pt(p)),
-                    1 => path.quad_to(off_curves[0], pt(p)),
-                    _ => path.line_to(pt(p)),
+                    2 => path.curve_to(off_curves[0], off_curves[1], p.position),
+                    1 => path.quad_to(off_curves[0], p.position),
+                    _ => path.line_to(p.position),
                 }
                 off_curves.clear();
             }
-            PointType::QCurve => {
+            LayerPointType::QCurve => {
                 // Expand implied on-curves between consecutive quad
                 // off-curves.
-                let target = pt(p);
+                let target = p.position;
                 match off_curves.len() {
                     0 => path.line_to(target),
                     1 => path.quad_to(off_curves[0], target),
@@ -389,7 +453,7 @@ fn append_contour(path: &mut BezPath, contour: &Contour) {
             }
         }
     }
-    if !open {
+    if closed {
         path.close_path();
     }
 }

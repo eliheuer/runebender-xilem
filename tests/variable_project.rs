@@ -468,6 +468,76 @@ fn document_views_read_exact_canonical_layers_and_stable_source_identity() {
 }
 
 #[test]
+fn canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics() {
+    let scratch = Scratch::new();
+    let point = |x, y, typ| ContourPoint::new(x, y, typ, false, None, None);
+    let mut glyph = Glyph::new("paths");
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Line),
+            point(100.0, 0.0, PointType::Line),
+            point(100.0, 100.0, PointType::Line),
+            point(0.0, 100.0, PointType::Line),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(150.0, 0.0, PointType::Move),
+            point(250.0, 100.0, PointType::Line),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(300.0, 0.0, PointType::Line),
+            point(350.0, 100.0, PointType::OffCurve),
+            point(450.0, 100.0, PointType::OffCurve),
+            point(500.0, 0.0, PointType::QCurve),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(600.0, 0.0, PointType::OffCurve),
+            point(700.0, 100.0, PointType::OffCurve),
+            point(800.0, 0.0, PointType::OffCurve),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph.clone());
+    font.default_layer_mut().insert_glyph(Glyph::new("empty"));
+    let project = Project::from_source(Master::from_font(font, scratch.0.join("Paths.ufo")));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+
+    let legacy = runebender::outline::glyph_paths::contours_to_bezpath(&glyph);
+    let canonical = runebender::outline::glyph_paths::ordinary_layer_contours_to_bezpath(
+        project.document_layer("paths", &layer_id).unwrap(),
+    );
+    assert_eq!(canonical, legacy);
+    assert_eq!(
+        canonical
+            .elements()
+            .iter()
+            .filter(|element| matches!(element, kurbo::PathEl::QuadTo(_, _)))
+            .count(),
+        5,
+        "explicit and implied quadratic segments were not preserved"
+    );
+    assert!(
+        runebender::outline::glyph_paths::ordinary_layer_contours_to_bezpath(
+            project.document_layer("empty", &layer_id).unwrap(),
+        )
+        .is_empty(),
+        "empty canonical glyph produced a path"
+    );
+}
+
+#[test]
 fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let layer_id = project

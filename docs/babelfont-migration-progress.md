@@ -1,6 +1,6 @@
 # Babelfont migration progress
 
-Status: **IN PROGRESS — M00–M02 complete; M03 is dependency-ready**.
+Status: **IN PROGRESS — M00–M02 complete; M03 active**.
 The definition of complete and milestone dependencies remain in [the checklist](babelfont-migration-checklist.md).
 Canonical queries, layer and source-metadata edits, snapshots and auxiliary-layer structure now operate on Babelfont plus typed extensions.
 The remaining migration milestones still own ordinary topology tools, history replacement, application callers, broader metadata, interpolation, compilation, experiments and removal of compatibility state.
@@ -487,5 +487,40 @@ git diff --check
 ```
 
 The focused revision regression and all 19 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+## M03 — Migrate geometry queries and ordinary point operations
+
+Status: active.
+
+### Canonical contour path conversion substep
+
+Evidence commit: `Convert canonical contours directly to paths` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Convert canonical contours directly to paths$' -1`.
+Affected paths: `src/outline/glyph_paths.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md` and this log.
+
+`ordinary_layer_contours_to_bezpath` now converts a canonical `LayerView` directly to a Kurbo path without constructing a Norad glyph.
+The canonical and compatibility entry points share one point-sequence converter so their ordinary line, cubic and quadratic behavior cannot drift while callers migrate.
+The converter retains explicit open contours, cyclic closed contours and implied on-curve points between consecutive quadratic controls.
+All-off-curve closed quadratic contours now produce their implied segments instead of being silently omitted.
+
+The fixture comparison covers closed lines, an open contour, consecutive quadratic controls, an all-off-curve contour and an empty glyph.
+It requires exact `BezPath` equality between canonical and compatibility inputs and separately verifies the expected implied quadratic segments.
+Component resolution, mixed shape ordering, point and anchor extraction, hit-testing inputs and analysis callers remain for the next M03 substeps, so no M03 checklist item is complete yet.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics -- --exact --test-threads=1
+cargo test --locked --lib outline::glyph_paths -- --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused canonical path test, both smart-component compatibility tests and all 20 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
