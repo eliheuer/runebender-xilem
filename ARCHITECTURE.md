@@ -130,6 +130,8 @@ Quadratic control runs are normalized to explicit implied joins only inside the 
 Cleanup, coordinate rounding, path-direction correction, cubic-handle fitting and extrema insertion mutate canonical contours while retaining every surviving object's identity and source metadata.
 Learned and model-predicted embolden operations move canonical points in place, preserving topology, identities and exact source metadata.
 Component decomposition resolves nested canonical layer shapes, rounds transformed output at the existing command boundary, preserves source names and libraries and assigns fresh identities to the pasted contours.
+Editable hyperbezier kind is an explicit contour-preservation field rather than an inference from the current UFO identifier; copy, duplicate and decomposition assign fresh hyper-marked UFO identifiers without changing the contour kind.
+Stroke expansion, offset, extrusion and roughening consume canonical paths directly; replaced topology receives fresh identities and empty source metadata while untargeted contours, components and anchors retain their exact objects.
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
 Source-wide feature text has canonical ownership in `VariableData` and changes through `edit_document_source_metadata`; UFO templates no longer retain a second feature-text value.
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.

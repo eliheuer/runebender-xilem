@@ -4,9 +4,9 @@
 //! Outline effects: operations that produce a new shape from a contour.
 //!
 //! Expand a stroke, offset, extrude, roughen, apply a corner component,
-//! and bolden by a learned per-point offset. Every function takes a
-//! `norad::Glyph`, edits it in place, and reports whether anything
-//! changed.
+//! and bolden by a learned per-point offset. Geometry helpers operate on
+//! Kurbo paths so the canonical document and legacy UFO adapter share the
+//! same algorithms.
 
 use std::collections::{HashMap, HashSet};
 
@@ -14,6 +14,218 @@ use kurbo::{Affine, BezPath, PathEl};
 
 use crate::outline::glyph_ops::bezpath_to_contour;
 use crate::outline::glyph_paths::{contour_to_bezpath, point_key, round_units};
+
+fn split_subpaths(path: &BezPath) -> Vec<BezPath> {
+    let mut paths = Vec::new();
+    let mut current = BezPath::new();
+    for element in path.elements() {
+        if matches!(element, PathEl::MoveTo(_)) && !current.elements().is_empty() {
+            paths.push(current);
+            current = BezPath::new();
+        }
+        current.push(*element);
+    }
+    if !current.elements().is_empty() {
+        paths.push(current);
+    }
+    paths
+}
+
+fn rounded_closed_path(path: &BezPath) -> BezPath {
+    let mut output = BezPath::new();
+    for element in path.elements() {
+        match element {
+            PathEl::MoveTo(point) => output.move_to(point.round()),
+            PathEl::LineTo(point) => output.line_to(point.round()),
+            PathEl::QuadTo(control, point) => output.quad_to(control.round(), point.round()),
+            PathEl::CurveTo(first, second, point) => {
+                output.curve_to(first.round(), second.round(), point.round());
+            }
+            PathEl::ClosePath => output.close_path(),
+        }
+    }
+    if !matches!(output.elements().last(), Some(PathEl::ClosePath)) {
+        output.close_path();
+    }
+    output
+}
+
+/// Return the closed subpaths produced by stroking one path.
+pub fn expanded_stroke_paths(path: &BezPath, width: f64) -> Vec<BezPath> {
+    if !width.is_finite() || width <= 0.0 || path.is_empty() {
+        return Vec::new();
+    }
+    let style = kurbo::Stroke::new(width);
+    let stroked = kurbo::stroke(
+        path.elements().iter().copied(),
+        &style,
+        &kurbo::StrokeOpts::default(),
+        0.25,
+    );
+    split_subpaths(&stroked)
+        .iter()
+        .map(rounded_closed_path)
+        .collect()
+}
+
+/// Offset a set of paths by unioning or subtracting their stroke band.
+///
+/// `Some` reports a successful geometry operation, including a valid empty result.
+pub fn offset_paths(paths: &[BezPath], delta: f64) -> Option<Vec<BezPath>> {
+    if !delta.is_finite() || delta == 0.0 || paths.is_empty() {
+        return None;
+    }
+    let mut combined = BezPath::new();
+    let mut band = BezPath::new();
+    let style = kurbo::Stroke::new(delta.abs() * 2.0);
+    let opts = kurbo::StrokeOpts::default();
+    for path in paths {
+        band.extend(
+            kurbo::stroke(path.elements().iter().copied(), &style, &opts, 0.25)
+                .elements()
+                .iter()
+                .copied(),
+        );
+        combined.extend(path.elements().iter().copied());
+    }
+    let operation = if delta > 0.0 {
+        linesweeper::BinaryOp::Union
+    } else {
+        linesweeper::BinaryOp::Difference
+    };
+    let result =
+        linesweeper::binary_op(&combined, &band, linesweeper::FillRule::NonZero, operation).ok()?;
+    Some(
+        result
+            .contours()
+            .map(|contour| rounded_closed_path(&contour.path))
+            .collect(),
+    )
+}
+
+/// Sweep paths along an angle and return the resulting silhouette or side faces.
+///
+/// `Some` reports a successful geometry operation, including a valid empty result.
+pub fn extruded_paths(
+    paths: &[BezPath],
+    offset: f64,
+    angle_degrees: f64,
+    keep_front: bool,
+) -> Option<Vec<BezPath>> {
+    if !offset.is_finite() || !angle_degrees.is_finite() || offset <= 0.0 || paths.is_empty() {
+        return None;
+    }
+    let (sin, cos) = (-angle_degrees).to_radians().sin_cos();
+    let delta = kurbo::Vec2::new(offset * cos, offset * sin);
+    let mut combined = BezPath::new();
+    let mut front = BezPath::new();
+    for path in paths {
+        front.extend(path.elements().iter().copied());
+        combined.extend(path.elements().iter().copied());
+        combined.extend((Affine::translate(delta) * path).elements().iter().copied());
+        let mut walls = BezPath::new();
+        for segment in path.segments() {
+            use kurbo::ParamCurve as _;
+            let (a, b) = (segment.eval(0.0), segment.eval(1.0));
+            let (a2, b2) = (a + delta, b + delta);
+            let area = (b.x - a.x) * (b2.y - a.y) - (b2.x - a.x) * (b.y - a.y);
+            let quad = if area >= 0.0 {
+                [a, b, b2, a2]
+            } else {
+                [a, a2, b2, b]
+            };
+            walls.move_to(quad[0]);
+            walls.line_to(quad[1]);
+            walls.line_to(quad[2]);
+            walls.line_to(quad[3]);
+            walls.close_path();
+        }
+        combined.extend(walls.elements().iter().copied());
+    }
+    let silhouette = linesweeper::binary_op(
+        &combined,
+        &BezPath::new(),
+        linesweeper::FillRule::NonZero,
+        linesweeper::BinaryOp::Union,
+    )
+    .ok()?;
+    let mut merged = BezPath::new();
+    for contour in silhouette.contours() {
+        merged.extend(contour.path.elements().iter().copied());
+    }
+    if keep_front {
+        return Some(
+            split_subpaths(&merged)
+                .iter()
+                .map(rounded_closed_path)
+                .collect(),
+        );
+    }
+    let result = linesweeper::binary_op(
+        &merged,
+        &front,
+        linesweeper::FillRule::NonZero,
+        linesweeper::BinaryOp::Difference,
+    )
+    .ok()?;
+    Some(
+        result
+            .contours()
+            .map(|contour| rounded_closed_path(&contour.path))
+            .collect(),
+    )
+}
+
+/// Flatten and jitter one path using a deterministic shared random state.
+pub fn roughened_path(
+    path: &BezPath,
+    segment_length: f64,
+    horizontal: f64,
+    vertical: f64,
+    state: &mut u64,
+) -> Option<BezPath> {
+    use kurbo::ParamCurve as _;
+    use kurbo::ParamCurveArclen as _;
+
+    if !segment_length.is_finite()
+        || !horizontal.is_finite()
+        || !vertical.is_finite()
+        || segment_length < 1.0
+    {
+        return None;
+    }
+    let mut jitter = |amount: f64| {
+        *state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        let unit = (*state >> 11) as f64 / (1_u64 << 53) as f64;
+        (unit * 2.0 - 1.0) * amount
+    };
+    let mut points = Vec::new();
+    for segment in path.segments() {
+        let length = segment.arclen(0.5);
+        let steps =
+            usize::try_from(round_units((length / segment_length).ceil().max(1.0))).unwrap_or(1);
+        for step in 0..steps {
+            let parameter = step as f64 / steps as f64;
+            let point = segment.eval(parameter);
+            points.push(kurbo::Point::new(
+                (point.x + jitter(horizontal)).round(),
+                (point.y + jitter(vertical)).round(),
+            ));
+        }
+    }
+    if points.len() < 3 {
+        return None;
+    }
+    let mut output = BezPath::new();
+    output.move_to(points[0]);
+    for point in &points[1..] {
+        output.line_to(*point);
+    }
+    output.close_path();
+    Some(output)
+}
 
 /// Replace targeted contours with the outline of a stroke of the
 /// given width.
@@ -28,8 +240,6 @@ pub fn expand_stroke_contours(
     selected: &HashSet<usize>,
     width: f64,
 ) -> bool {
-    let style = kurbo::Stroke::new(width);
-    let opts = kurbo::StrokeOpts::default();
     let empty = HashMap::new();
     let mut out: Vec<norad::Contour> = Vec::new();
     let mut any = false;
@@ -40,26 +250,12 @@ pub fn expand_stroke_contours(
             continue;
         }
         let path = contour_to_bezpath(contour);
-        let stroked = kurbo::stroke(path.elements().iter().copied(), &style, &opts, 0.25);
-        // One stroked outline can be several subpaths (a closed
-        // skeleton keeps its counter).
-        let mut sub = BezPath::new();
         let mut made = false;
-        for el in stroked.elements() {
-            if matches!(el, PathEl::MoveTo(_)) && !sub.elements().is_empty() {
-                if let Some(c) = bezpath_to_contour(&sub, &empty) {
-                    out.push(c);
-                    made = true;
-                }
-                sub = BezPath::new();
+        for output in expanded_stroke_paths(&path, width) {
+            if let Some(contour) = bezpath_to_contour(&output, &empty) {
+                out.push(contour);
+                made = true;
             }
-            sub.push(*el);
-        }
-        if !sub.elements().is_empty()
-            && let Some(c) = bezpath_to_contour(&sub, &empty)
-        {
-            out.push(c);
-            made = true;
         }
         if made {
             any = true;
@@ -84,30 +280,8 @@ pub fn expand_stroke_contours(
 ///
 /// Returns false when nothing changed.
 pub fn offset_glyph_contours(glyph: &mut norad::Glyph, delta: f64) -> bool {
-    if delta == 0.0 || glyph.contours.is_empty() {
-        return false;
-    }
-    let mut combined = BezPath::new();
-    let mut band = BezPath::new();
-    let style = kurbo::Stroke::new(delta.abs() * 2.0);
-    let opts = kurbo::StrokeOpts::default();
-    for contour in &glyph.contours {
-        let path = contour_to_bezpath(contour);
-        band.extend(
-            kurbo::stroke(path.elements().iter().copied(), &style, &opts, 0.25)
-                .elements()
-                .iter()
-                .copied(),
-        );
-        combined.extend(path.elements().iter().copied());
-    }
-    let op = if delta > 0.0 {
-        linesweeper::BinaryOp::Union
-    } else {
-        linesweeper::BinaryOp::Difference
-    };
-    let Ok(result) = linesweeper::binary_op(&combined, &band, linesweeper::FillRule::NonZero, op)
-    else {
+    let paths: Vec<_> = glyph.contours.iter().map(contour_to_bezpath).collect();
+    let Some(result) = offset_paths(&paths, delta) else {
         return false;
     };
     let smooth_at: HashMap<(i64, i64), bool> = glyph
@@ -118,8 +292,8 @@ pub fn offset_glyph_contours(glyph: &mut norad::Glyph, delta: f64) -> bool {
         .map(|p| (point_key(p.x, p.y), p.smooth))
         .collect();
     let mut contours: Vec<norad::Contour> = Vec::new();
-    for contour in result.contours() {
-        if let Some(c) = bezpath_to_contour(&contour.path, &smooth_at) {
+    for path in result {
+        if let Some(c) = bezpath_to_contour(&path, &smooth_at) {
             contours.push(c);
         }
     }
@@ -143,85 +317,16 @@ pub fn extrude_glyph_contours(
     angle_degrees: f64,
     keep_front: bool,
 ) -> bool {
-    if offset <= 0.0 || glyph.contours.is_empty() {
+    let paths: Vec<_> = glyph.contours.iter().map(contour_to_bezpath).collect();
+    let Some(result) = extruded_paths(&paths, offset, angle_degrees, keep_front) else {
         return false;
-    }
-    let (sin, cos) = (-angle_degrees).to_radians().sin_cos();
-    let d = kurbo::Vec2::new(offset * cos, offset * sin);
-    let mut combined = BezPath::new();
-    let mut front = BezPath::new();
-    for contour in &glyph.contours {
-        let path = contour_to_bezpath(contour);
-        front.extend(path.elements().iter().copied());
-        combined.extend(path.elements().iter().copied());
-        combined.extend((Affine::translate(d) * &path).elements().iter().copied());
-        // Wall quads, each wound positive so the nonzero union eats
-        // them all the same way.
-        let mut walls = BezPath::new();
-        for seg in path.segments() {
-            use kurbo::ParamCurve as _;
-            let (a, b) = (seg.eval(0.0), seg.eval(1.0));
-            let (a2, b2) = (a + d, b + d);
-            let area = (b.x - a.x) * (b2.y - a.y) - (b2.x - a.x) * (b.y - a.y);
-            let quad = if area >= 0.0 {
-                [a, b, b2, a2]
-            } else {
-                [a, a2, b2, b]
-            };
-            walls.move_to(quad[0]);
-            walls.line_to(quad[1]);
-            walls.line_to(quad[2]);
-            walls.line_to(quad[3]);
-            walls.close_path();
-        }
-        combined.extend(walls.elements().iter().copied());
-    }
-    let empty = BezPath::new();
-    let Ok(silhouette) = linesweeper::binary_op(
-        &combined,
-        &empty,
-        linesweeper::FillRule::NonZero,
-        linesweeper::BinaryOp::Union,
-    ) else {
-        return false;
-    };
-    let mut merged = BezPath::new();
-    for contour in silhouette.contours() {
-        merged.extend(contour.path.elements().iter().copied());
-    }
-    let result = if keep_front {
-        merged
-    } else {
-        let Ok(cut) = linesweeper::binary_op(
-            &merged,
-            &front,
-            linesweeper::FillRule::NonZero,
-            linesweeper::BinaryOp::Difference,
-        ) else {
-            return false;
-        };
-        let mut out = BezPath::new();
-        for contour in cut.contours() {
-            out.extend(contour.path.elements().iter().copied());
-        }
-        out
     };
     let empty_map = HashMap::new();
     let mut contours: Vec<norad::Contour> = Vec::new();
-    let mut sub = BezPath::new();
-    for el in result.elements() {
-        if matches!(el, PathEl::MoveTo(_)) && !sub.elements().is_empty() {
-            if let Some(c) = bezpath_to_contour(&sub, &empty_map) {
-                contours.push(c);
-            }
-            sub = BezPath::new();
+    for path in result {
+        if let Some(contour) = bezpath_to_contour(&path, &empty_map) {
+            contours.push(contour);
         }
-        sub.push(*el);
-    }
-    if !sub.elements().is_empty()
-        && let Some(c) = bezpath_to_contour(&sub, &empty_map)
-    {
-        contours.push(c);
     }
     if contours.is_empty() {
         return false;
@@ -245,46 +350,21 @@ pub fn roughen_glyph_contours(
     v: f64,
     seed: u64,
 ) -> bool {
-    use kurbo::ParamCurve as _;
-    use kurbo::ParamCurveArclen as _;
-    if segment_length < 1.0 {
+    if !segment_length.is_finite() || !h.is_finite() || !v.is_finite() || segment_length < 1.0 {
         return false;
     }
     // A tiny LCG: deterministic per seed, no clock, no dependency.
     let mut state = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-    let mut jitter = |amount: f64| {
-        state = state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        let unit = (state >> 11) as f64 / (1_u64 << 53) as f64;
-        (unit * 2.0 - 1.0) * amount
-    };
     let mut changed = false;
     for (ci, contour) in glyph.contours.iter_mut().enumerate() {
         if !(selected.is_empty() || selected.contains(&ci)) {
             continue;
         }
         let path = contour_to_bezpath(&*contour);
-        let mut points: Vec<norad::ContourPoint> = Vec::new();
-        for seg in path.segments() {
-            let len = seg.arclen(0.5);
-            let steps =
-                usize::try_from(round_units((len / segment_length).ceil().max(1.0))).unwrap_or(1);
-            for step in 0..steps {
-                let t = step as f64 / steps as f64;
-                let p = seg.eval(t);
-                points.push(norad::ContourPoint::new(
-                    (p.x + jitter(h)).round(),
-                    (p.y + jitter(v)).round(),
-                    norad::PointType::Line,
-                    false,
-                    None,
-                    None,
-                ));
-            }
-        }
-        if points.len() >= 3 {
-            *contour = norad::Contour::new(points, None);
+        if let Some(path) = roughened_path(&path, segment_length, h, v, &mut state)
+            && let Some(replacement) = bezpath_to_contour(&path, &HashMap::new())
+        {
+            *contour = replacement;
             changed = true;
         }
     }

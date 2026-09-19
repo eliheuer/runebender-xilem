@@ -1689,3 +1689,40 @@ Warning-denied Clippy, public API documentation, formatting and diff checks pass
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
 The next M04 substep moves the remaining topology-replacing outline effects onto canonical geometry.
+
+### Hyperbezier copy preservation and canonical filter effects
+
+Evidence commit: `Preserve hyper copies and port canonical filters` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Preserve hyper copies and port canonical filters$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/outline/effects.rs`, `tests/variable_project.rs`, `docs/babelfont-field-ownership.md`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Independent review found that copy, duplicate and component decomposition replaced a hyperbezier contour's identifying UFO string with an ordinary UUID.
+Because editable hyper kind was inferred from that string, the copied contour rendered as a polygon despite retaining the same stored points.
+Canonical contour preservation now owns the hyperbezier kind explicitly.
+Copies and repeated component bases retain that kind while receiving distinct document identities and fresh UFO identifiers that still encode the format convention.
+The regression covers copy, duplicate, two identity components referencing one base, curved rendering and save-reopen persistence.
+
+Stroke expansion, offset, extrusion and roughening now consume canonical Kurbo paths through shared geometry helpers.
+The canonical transaction preserves untargeted contours, components and anchors exactly, while every replaced contour and point receives a fresh identity and empty source metadata.
+Effect results round at the existing command boundary, and successful empty whole-layer results remain valid replacements.
+Nonfinite parameters fail before mutation.
+The regression compares each filter with the established geometry, checks targeted identity and metadata behavior, verifies no-op atomicity and saves and reopens every result.
+
+Executed evidence:
+
+```sh
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project canonical_hyper_copy_duplicate_and_decomposition_retain_editable_kind -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project canonical_filter_effects_replace_only_targeted_topology -- --exact --test-threads=1
+cargo test --locked --lib outline::effects -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused hyperbezier and filter regressions, all four effect unit tests and all 54 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep moves corner application and rounded-corner replacement onto canonical geometry, then addresses explicit hyperbezier conversion and special outline extensions.

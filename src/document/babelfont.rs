@@ -54,6 +54,7 @@ object_id!(
 #[derive(Clone, Debug, PartialEq)]
 struct PreservedContour {
     id: ContourId,
+    hyper: bool,
     metadata: ObjectMetadata,
     points: Vec<PreservedPoint>,
 }
@@ -446,11 +447,7 @@ impl<'a> ContourView<'a> {
 
     /// Whether this contour uses Runebender's editable hyperbezier convention.
     pub fn is_hyper(self) -> bool {
-        self.preserved
-            .metadata
-            .identifier
-            .as_ref()
-            .is_some_and(|identifier| identifier.as_ref().contains("hyper"))
+        self.preserved.hyper
     }
 
     /// Copy this contour with its canonical geometry and exact source metadata.
@@ -638,6 +635,7 @@ impl LayerEditDraft {
         self.layer.shapes.push(Shape::Path(path));
         self.preserved.contours.push(PreservedContour {
             id: contour_id,
+            hyper: false,
             metadata: ObjectMetadata {
                 identifier: None,
                 lib: None,
@@ -885,6 +883,7 @@ impl LayerEditDraft {
         self.layer.shapes.push(Shape::Path(path));
         self.preserved.contours.push(PreservedContour {
             id: contour_id,
+            hyper: false,
             metadata: ObjectMetadata {
                 identifier: None,
                 lib: None,
@@ -949,10 +948,15 @@ impl LayerEditDraft {
                 Shape::Path(path),
                 PreservedContour {
                     id: contour_id,
+                    hyper: copied.preserved.hyper,
                     metadata: ObjectMetadata {
-                        identifier: (copied.preserved.metadata.identifier.is_some()
-                            || copied.preserved.metadata.lib.is_some())
-                        .then(norad::Identifier::from_uuidv4),
+                        identifier: if copied.preserved.hyper {
+                            Some(fresh_hyper_identifier())
+                        } else {
+                            (copied.preserved.metadata.identifier.is_some()
+                                || copied.preserved.metadata.lib.is_some())
+                            .then(norad::Identifier::from_uuidv4)
+                        },
                         lib: copied.preserved.metadata.lib.clone(),
                     },
                     points,
@@ -1408,6 +1412,132 @@ impl LayerEditDraft {
         Ok(true)
     }
 
+    fn selected_contour_ids(
+        &self,
+        selected: &[PointId],
+    ) -> Result<HashSet<ContourId>, DocumentEditError> {
+        for id in selected {
+            if self.node(*id).is_none() {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+        }
+        if selected.is_empty() {
+            return Ok(self.view().contours().map(ContourView::id).collect());
+        }
+        let selected: HashSet<_> = selected.iter().copied().collect();
+        Ok(self
+            .view()
+            .contours()
+            .filter(|contour| contour.points().any(|point| selected.contains(&point.id())))
+            .map(ContourView::id)
+            .collect())
+    }
+
+    /// Replace selected contours with stroked outlines.
+    ///
+    /// An empty selection targets every contour. Replaced contours receive fresh identities and
+    /// empty source metadata; untargeted contours, components and anchors remain unchanged.
+    pub fn expand_stroke(
+        &mut self,
+        selected: &[PointId],
+        width: f64,
+    ) -> Result<bool, DocumentEditError> {
+        ensure_finite(&[width])?;
+        if width <= 0.0 {
+            return Ok(false);
+        }
+        let selected = self.selected_contour_ids(selected)?;
+        let replacements: HashMap<_, _> = self
+            .view()
+            .contours()
+            .filter(|contour| selected.contains(&contour.id()))
+            .filter_map(|contour| {
+                let path = crate::outline::path::Path::from_document_contour(contour).to_bezpath();
+                let paths = crate::outline::effects::expanded_stroke_paths(&path, width);
+                (!paths.is_empty()).then_some((contour.id(), paths))
+            })
+            .collect();
+        self.replace_selected_contours_with_paths(&replacements)
+    }
+
+    /// Offset every canonical contour outward or inward.
+    ///
+    /// All output contours receive fresh identities and empty source metadata. Components and
+    /// anchors remain unchanged. A successful empty result removes every contour.
+    pub fn offset_contours(&mut self, delta: f64) -> Result<bool, DocumentEditError> {
+        ensure_finite(&[delta])?;
+        let paths: Vec<_> = self
+            .view()
+            .contours()
+            .map(|contour| crate::outline::path::Path::from_document_contour(contour).to_bezpath())
+            .collect();
+        let Some(paths) = crate::outline::effects::offset_paths(&paths, delta) else {
+            return Ok(false);
+        };
+        self.replace_contours_with_paths(&paths)
+    }
+
+    /// Extrude every canonical contour along an angle.
+    ///
+    /// All output contours receive fresh identities and empty source metadata. Components and
+    /// anchors remain unchanged. A successful empty result removes every contour.
+    pub fn extrude_contours(
+        &mut self,
+        offset: f64,
+        angle_degrees: f64,
+        keep_front: bool,
+    ) -> Result<bool, DocumentEditError> {
+        ensure_finite(&[offset, angle_degrees])?;
+        let paths: Vec<_> = self
+            .view()
+            .contours()
+            .map(|contour| crate::outline::path::Path::from_document_contour(contour).to_bezpath())
+            .collect();
+        let Some(paths) =
+            crate::outline::effects::extruded_paths(&paths, offset, angle_degrees, keep_front)
+        else {
+            return Ok(false);
+        };
+        self.replace_contours_with_paths(&paths)
+    }
+
+    /// Flatten and jitter selected canonical contours deterministically.
+    ///
+    /// An empty selection targets every contour. Replaced contours receive fresh identities and
+    /// empty source metadata; untargeted contours, components and anchors remain unchanged.
+    pub fn roughen_contours(
+        &mut self,
+        selected: &[PointId],
+        segment_length: f64,
+        horizontal: f64,
+        vertical: f64,
+        seed: u64,
+    ) -> Result<bool, DocumentEditError> {
+        ensure_finite(&[segment_length, horizontal, vertical])?;
+        if segment_length < 1.0 {
+            return Ok(false);
+        }
+        let selected = self.selected_contour_ids(selected)?;
+        let mut state = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let mut replacements = HashMap::new();
+        for contour in self.view().contours() {
+            if !selected.contains(&contour.id()) {
+                continue;
+            }
+            let path = crate::outline::path::Path::from_document_contour(contour).to_bezpath();
+            if let Some(path) = crate::outline::effects::roughened_path(
+                &path,
+                segment_length,
+                horizontal,
+                vertical,
+                &mut state,
+            ) {
+                replacements.insert(contour.id(), vec![path]);
+            }
+        }
+        self.replace_selected_contours_with_paths(&replacements)
+    }
+
     /// Apply a boolean operation to canonical contours and replace their topology.
     ///
     /// Union combines every contour. Other operations use the first contour as the left operand
@@ -1609,6 +1739,7 @@ impl LayerEditDraft {
             replacements.push(Shape::Path(output));
             preserved.push(PreservedContour {
                 id: contour_id,
+                hyper: false,
                 metadata: ObjectMetadata {
                     identifier: None,
                     lib: None,
@@ -1637,6 +1768,118 @@ impl LayerEditDraft {
         Ok(true)
     }
 
+    fn replacement_contour_from_path(
+        path: &kurbo::BezPath,
+        smooth_at: &HashMap<(i64, i64), bool>,
+    ) -> Result<Option<(Shape, PreservedContour)>, DocumentEditError> {
+        let mut path = babelfont::Path::from(path.clone());
+        ensure_finite(
+            &path
+                .nodes
+                .iter()
+                .flat_map(|node| [node.x, node.y])
+                .collect::<Vec<_>>(),
+        )?;
+        let on_curve_count = path
+            .nodes
+            .iter()
+            .filter(|node| node.nodetype != NodeType::OffCurve)
+            .count();
+        if on_curve_count < if path.closed { 1 } else { 2 } {
+            return Ok(None);
+        }
+        let contour_id = ContourId::next();
+        write_id(&mut path.format_specific, contour_id.0);
+        let points = path
+            .nodes
+            .iter_mut()
+            .map(|node| {
+                if node.nodetype != NodeType::OffCurve {
+                    node.smooth = smooth_at
+                        .get(&crate::outline::glyph_paths::point_key(node.x, node.y))
+                        .copied()
+                        .unwrap_or(false);
+                }
+                let point_id = PointId::next();
+                write_id(&mut node.format_specific, point_id.0);
+                PreservedPoint {
+                    id: point_id,
+                    name: None,
+                    metadata: ObjectMetadata {
+                        identifier: None,
+                        lib: None,
+                    },
+                }
+            })
+            .collect();
+        Ok(Some((
+            Shape::Path(path),
+            PreservedContour {
+                id: contour_id,
+                hyper: false,
+                metadata: ObjectMetadata {
+                    identifier: None,
+                    lib: None,
+                },
+                points,
+            },
+        )))
+    }
+
+    fn replace_selected_contours_with_paths(
+        &mut self,
+        replacements: &HashMap<ContourId, Vec<kurbo::BezPath>>,
+    ) -> Result<bool, DocumentEditError> {
+        if replacements.is_empty() {
+            return Ok(false);
+        }
+        let smooth_at: HashMap<_, _> = self
+            .layer
+            .paths()
+            .flat_map(|path| &path.nodes)
+            .filter(|node| node.nodetype != NodeType::OffCurve)
+            .map(|node| {
+                (
+                    crate::outline::glyph_paths::point_key(node.x, node.y),
+                    node.smooth,
+                )
+            })
+            .collect();
+        let mut shapes = Vec::new();
+        let mut preserved = Vec::new();
+        for shape in &self.layer.shapes {
+            let Shape::Path(path) = shape else {
+                shapes.push(shape.clone());
+                continue;
+            };
+            let contour_id =
+                ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+            let Some(paths) = replacements.get(&contour_id) else {
+                shapes.push(shape.clone());
+                preserved.push(
+                    self.preserved
+                        .contours
+                        .iter()
+                        .find(|candidate| candidate.id == contour_id)
+                        .expect("canonical contour preservation")
+                        .clone(),
+                );
+                continue;
+            };
+            for path in paths {
+                if let Some((shape, metadata)) =
+                    Self::replacement_contour_from_path(path, &smooth_at)?
+                {
+                    shapes.push(shape);
+                    preserved.push(metadata);
+                }
+            }
+        }
+        self.layer.shapes = shapes;
+        self.preserved.contours = preserved;
+        Ok(true)
+    }
+
     fn replace_contours_with_paths(
         &mut self,
         paths: &[kurbo::BezPath],
@@ -1657,55 +1900,11 @@ impl LayerEditDraft {
         let mut replacements = Vec::with_capacity(paths.len());
         let mut preserved = Vec::with_capacity(paths.len());
         for path in paths {
-            let mut path = babelfont::Path::from(path.clone());
-            ensure_finite(
-                &path
-                    .nodes
-                    .iter()
-                    .flat_map(|node| [node.x, node.y])
-                    .collect::<Vec<_>>(),
-            )?;
-            let on_curve_count = path
-                .nodes
-                .iter()
-                .filter(|node| node.nodetype != NodeType::OffCurve)
-                .count();
-            if on_curve_count < if path.closed { 1 } else { 2 } {
-                continue;
+            if let Some((shape, metadata)) = Self::replacement_contour_from_path(path, &smooth_at)?
+            {
+                replacements.push(shape);
+                preserved.push(metadata);
             }
-            let contour_id = ContourId::next();
-            write_id(&mut path.format_specific, contour_id.0);
-            let points = path
-                .nodes
-                .iter_mut()
-                .map(|node| {
-                    if node.nodetype != NodeType::OffCurve {
-                        node.smooth = smooth_at
-                            .get(&crate::outline::glyph_paths::point_key(node.x, node.y))
-                            .copied()
-                            .unwrap_or(false);
-                    }
-                    let point_id = PointId::next();
-                    write_id(&mut node.format_specific, point_id.0);
-                    PreservedPoint {
-                        id: point_id,
-                        name: None,
-                        metadata: ObjectMetadata {
-                            identifier: None,
-                            lib: None,
-                        },
-                    }
-                })
-                .collect();
-            replacements.push(Shape::Path(path));
-            preserved.push(PreservedContour {
-                id: contour_id,
-                metadata: ObjectMetadata {
-                    identifier: None,
-                    lib: None,
-                },
-                points,
-            });
         }
         let changed = had_contours || !replacements.is_empty();
         let insert_at = self
@@ -3349,6 +3548,12 @@ fn read_id(format: &babelfont::FormatSpecific) -> Option<u64> {
     format.get(OBJECT_ID_KEY)?.as_u64()
 }
 
+fn fresh_hyper_identifier() -> norad::Identifier {
+    let unique = norad::Identifier::from_uuidv4();
+    let identifier = format!("hyperbezier-{}", unique.as_ref());
+    norad::Identifier::new(&identifier).expect("generated hyperbezier identifier is valid")
+}
+
 #[expect(
     clippy::cast_possible_truncation,
     reason = "the UFO projection retains the exact advance"
@@ -3408,6 +3613,7 @@ pub(super) fn layer_from_ufo(
         layer.shapes.push(Shape::Path(path));
         contours.push(PreservedContour {
             id: contour_id,
+            hyper: crate::outline::path::hyper_model::norad_contour_is_hyper(contour),
             metadata: ObjectMetadata::new(contour.identifier(), contour.lib()),
             points,
         });

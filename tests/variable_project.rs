@@ -3518,6 +3518,441 @@ fn canonical_copy_paste_and_duplicate_assign_fresh_identities() {
 }
 
 #[test]
+fn canonical_hyper_copy_duplicate_and_decomposition_retain_editable_kind() {
+    let scratch = Scratch::new();
+    let hyper_contour = Contour::new(
+        [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+            .into_iter()
+            .map(|(x, y)| ContourPoint::new(x, y, PointType::Curve, true, None, None))
+            .collect(),
+        Some(norad::Identifier::new("review-hyperbezier").unwrap()),
+    );
+    let mut copy_glyph = Glyph::new("hyper-copy");
+    copy_glyph.contours.push(hyper_contour.clone());
+    let mut base = Glyph::new("hyper-base");
+    base.contours.push(hyper_contour);
+    let mut target = Glyph::new("hyper-components");
+    for x_offset in [0.0, 200.0] {
+        target.components.push(Component::new(
+            Name::new("hyper-base").unwrap(),
+            norad::AffineTransform {
+                x_offset,
+                ..Default::default()
+            },
+            None,
+        ));
+    }
+    let mut font = Font::new();
+    for glyph in [copy_glyph, base, target] {
+        font.default_layer_mut().insert_glyph(glyph);
+    }
+    let source_path = scratch.0.join("HyperCopies.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+
+    let layer = project.document_layer("hyper-copy", &layer_id).unwrap();
+    let original = layer.contours().next().unwrap();
+    let original_point = original.points().next().unwrap().id();
+    let copied = layer.copy_contours(&[]).unwrap();
+    assert!(original.is_hyper());
+    project
+        .edit_document_layer("hyper-copy", &layer_id, |draft| {
+            assert_eq!(draft.paste_contours(&copied)?.contours.len(), 1);
+            assert_eq!(
+                draft
+                    .duplicate_contours(&[original_point], kurbo::Vec2::new(20.0, 20.0))?
+                    .contours
+                    .len(),
+                1
+            );
+            Ok(())
+        })
+        .unwrap();
+    let copied_layer = project.document_layer("hyper-copy", &layer_id).unwrap();
+    assert_eq!(copied_layer.contours().count(), 3);
+    for contour in copied_layer.contours() {
+        assert!(contour.is_hyper());
+        assert!(
+            runebender::outline::path::Path::from_document_contour(contour)
+                .to_bezpath()
+                .elements()
+                .iter()
+                .any(|element| matches!(element, kurbo::PathEl::CurveTo(..)))
+        );
+    }
+    let projected_copy = project.glyph_layer("hyper-copy", &layer_id).unwrap();
+    let identifiers: Vec<_> = projected_copy
+        .contours
+        .iter()
+        .map(|contour| contour.identifier().unwrap().as_ref().to_owned())
+        .collect();
+    assert_eq!(
+        identifiers.len(),
+        identifiers.iter().collect::<HashSet<_>>().len()
+    );
+    assert!(
+        identifiers
+            .iter()
+            .all(|identifier| identifier.contains("hyper"))
+    );
+
+    let target_layer = project
+        .document_layer("hyper-components", &layer_id)
+        .unwrap();
+    let resolved = runebender::outline::component_ops::resolved_document_component_contours(
+        target_layer,
+        |name| project.document_layer(name, &layer_id),
+    )
+    .unwrap();
+    assert_eq!(resolved.len(), 2);
+    project
+        .edit_document_layer("hyper-components", &layer_id, |draft| {
+            assert!(draft.decompose_components(&resolved)?);
+            Ok(())
+        })
+        .unwrap();
+    let target_layer = project
+        .document_layer("hyper-components", &layer_id)
+        .unwrap();
+    assert_eq!(target_layer.contours().count(), 2);
+    assert!(target_layer.contours().all(|contour| contour.is_hyper()));
+    let projected_target = project.glyph_layer("hyper-components", &layer_id).unwrap();
+    assert_eq!(projected_target.contours.len(), 2);
+    assert_ne!(
+        projected_target.contours[0].identifier(),
+        projected_target.contours[1].identifier()
+    );
+    assert!(projected_target.contours.iter().all(|contour| {
+        contour
+            .identifier()
+            .is_some_and(|identifier| identifier.as_ref().contains("hyper"))
+    }));
+
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    assert!(
+        reloaded
+            .document_layer("hyper-copy", &reloaded_layer)
+            .unwrap()
+            .contours()
+            .all(|contour| contour.is_hyper())
+    );
+    assert!(
+        reloaded
+            .document_layer("hyper-components", &reloaded_layer)
+            .unwrap()
+            .contours()
+            .all(|contour| contour.is_hyper())
+    );
+}
+
+#[test]
+fn canonical_filter_effects_replace_only_targeted_topology() {
+    let scratch = Scratch::new();
+    let cyclic_paths_equal = |first: &kurbo::BezPath, second: &kurbo::BezPath| {
+        let first: Vec<_> = first.segments().collect();
+        let second: Vec<_> = second.segments().collect();
+        first.len() == second.len()
+            && (0..first.len()).any(|offset| {
+                first
+                    .iter()
+                    .enumerate()
+                    .all(|(index, segment)| *segment == second[(index + offset) % second.len()])
+            })
+    };
+    let point = |x, y, kind, label: &str| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            kind,
+            false,
+            Some(Name::new(label).unwrap()),
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        point.replace_lib(object_lib(label));
+        point
+    };
+    let square = |x: f64, label: &str| {
+        let mut contour = Contour::new(
+            vec![
+                point(x, 0.0, PointType::Line, &format!("{label}-a")),
+                point(x + 100.0, 0.0, PointType::Line, &format!("{label}-b")),
+                point(x + 100.0, 100.0, PointType::Line, &format!("{label}-c")),
+                point(x, 100.0, PointType::Line, &format!("{label}-d")),
+            ],
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        contour.replace_lib(object_lib(label));
+        contour
+    };
+    let mut stroke = Glyph::new("effect-stroke");
+    let mut skeleton = Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move, "stroke-a"),
+            point(100.0, 0.0, PointType::Line, "stroke-b"),
+        ],
+        Some(norad::Identifier::new("stroke-source").unwrap()),
+    );
+    skeleton.replace_lib(object_lib("stroke-source"));
+    stroke.contours = vec![skeleton, square(300.0, "stroke-untouched")];
+    let mut component = Component::new(
+        Name::new("effect-base").unwrap(),
+        norad::AffineTransform::default(),
+        Some(norad::Identifier::new("effect-component").unwrap()),
+    );
+    component.replace_lib(object_lib("effect-component"));
+    stroke.components.push(component.clone());
+    let mut anchor = Anchor::new(
+        50.0,
+        150.0,
+        Some(Name::new("top").unwrap()),
+        None,
+        Some(norad::Identifier::new("effect-anchor").unwrap()),
+    );
+    anchor.replace_lib(object_lib("effect-anchor"));
+    stroke.anchors.push(anchor.clone());
+    let mut offset = Glyph::new("effect-offset");
+    offset.contours.push(square(0.0, "offset-source"));
+    let mut extrude = Glyph::new("effect-extrude");
+    extrude.contours.push(square(0.0, "extrude-source"));
+    let mut roughen = Glyph::new("effect-roughen");
+    roughen.contours = vec![
+        square(0.0, "roughen-source"),
+        square(300.0, "roughen-untouched"),
+    ];
+    let mut hyper = Glyph::new("effect-hyper");
+    hyper.contours.push(Contour::new(
+        [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+            .into_iter()
+            .map(|(x, y)| ContourPoint::new(x, y, PointType::Curve, true, None, None))
+            .collect(),
+        Some(norad::Identifier::new("effect-hyperbezier").unwrap()),
+    ));
+    let base = Glyph::new("effect-base");
+
+    let mut expected_stroke = stroke.clone();
+    assert!(runebender::outline::effects::expand_stroke_contours(
+        &mut expected_stroke,
+        &[0].into(),
+        40.0
+    ));
+    let mut expected_offset = offset.clone();
+    assert!(runebender::outline::effects::offset_glyph_contours(
+        &mut expected_offset,
+        10.0
+    ));
+    let mut expected_extrude = extrude.clone();
+    assert!(runebender::outline::effects::extrude_glyph_contours(
+        &mut expected_extrude,
+        40.0,
+        30.0,
+        false
+    ));
+    let mut expected_roughen = roughen.clone();
+    assert!(runebender::outline::effects::roughen_glyph_contours(
+        &mut expected_roughen,
+        &[0].into(),
+        10.0,
+        4.0,
+        4.0,
+        7
+    ));
+    let mut expected_hyper = hyper.clone();
+    assert!(runebender::outline::effects::offset_glyph_contours(
+        &mut expected_hyper,
+        10.0
+    ));
+
+    let mut font = Font::new();
+    for glyph in [stroke, offset, extrude, roughen, hyper, base] {
+        font.default_layer_mut().insert_glyph(glyph);
+    }
+    let source_path = scratch.0.join("CanonicalEffects.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+
+    let stroke_layer = project.document_layer("effect-stroke", &layer_id).unwrap();
+    let stroke_contours: Vec<_> = stroke_layer.contours().collect();
+    let stroke_target = stroke_contours[0].points().next().unwrap().id();
+    let stroke_old_id = stroke_contours[0].id();
+    let stroke_untouched_id = stroke_contours[1].id();
+    let stroke_untouched_points: Vec<_> = stroke_contours[1]
+        .points()
+        .map(|point| point.id())
+        .collect();
+    let component_id = stroke_layer.components().next().unwrap().id();
+    let anchor_id = stroke_layer.anchors().next().unwrap().id();
+    project
+        .edit_document_layer("effect-stroke", &layer_id, |draft| {
+            assert!(draft.expand_stroke(&[stroke_target], 40.0)?);
+            Ok(())
+        })
+        .unwrap();
+
+    let rough_layer = project.document_layer("effect-roughen", &layer_id).unwrap();
+    let rough_contours: Vec<_> = rough_layer.contours().collect();
+    let rough_target = rough_contours[0].points().next().unwrap().id();
+    let rough_old_id = rough_contours[0].id();
+    let rough_untouched_id = rough_contours[1].id();
+    project
+        .edit_document_layer("effect-roughen", &layer_id, |draft| {
+            assert!(draft.roughen_contours(&[rough_target], 10.0, 4.0, 4.0, 7)?);
+            Ok(())
+        })
+        .unwrap();
+    project
+        .edit_document_layer("effect-offset", &layer_id, |draft| {
+            assert!(draft.offset_contours(10.0)?);
+            Ok(())
+        })
+        .unwrap();
+    project
+        .edit_document_layer("effect-extrude", &layer_id, |draft| {
+            assert!(draft.extrude_contours(40.0, 30.0, false)?);
+            Ok(())
+        })
+        .unwrap();
+    project
+        .edit_document_layer("effect-hyper", &layer_id, |draft| {
+            assert!(draft.offset_contours(10.0)?);
+            Ok(())
+        })
+        .unwrap();
+
+    for (name, expected) in [
+        ("effect-stroke", &expected_stroke),
+        ("effect-offset", &expected_offset),
+        ("effect-extrude", &expected_extrude),
+        ("effect-roughen", &expected_roughen),
+        ("effect-hyper", &expected_hyper),
+    ] {
+        let projected = project.glyph_layer(name, &layer_id).unwrap();
+        assert_eq!(projected.contours.len(), expected.contours.len());
+        for (actual, expected) in projected.contours.iter().zip(&expected.contours) {
+            assert!(
+                cyclic_paths_equal(
+                    &runebender::outline::glyph_paths::contour_to_bezpath(actual),
+                    &runebender::outline::glyph_paths::contour_to_bezpath(expected)
+                ),
+                "{name} geometry differs"
+            );
+        }
+    }
+    let stroke_layer = project.document_layer("effect-stroke", &layer_id).unwrap();
+    let stroke_contours: Vec<_> = stroke_layer.contours().collect();
+    assert!(
+        stroke_contours[..stroke_contours.len() - 1]
+            .iter()
+            .all(|contour| contour.id() != stroke_old_id)
+    );
+    assert_eq!(stroke_contours.last().unwrap().id(), stroke_untouched_id);
+    assert_eq!(
+        stroke_contours
+            .last()
+            .unwrap()
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        stroke_untouched_points
+    );
+    assert_eq!(stroke_layer.components().next().unwrap().id(), component_id);
+    assert_eq!(stroke_layer.anchors().next().unwrap().id(), anchor_id);
+    let projected_stroke = project.glyph_layer("effect-stroke", &layer_id).unwrap();
+    assert_eq!(projected_stroke.components, [component]);
+    assert_eq!(projected_stroke.anchors, [anchor]);
+    assert_eq!(
+        projected_stroke.contours.last().unwrap(),
+        expected_stroke.contours.last().unwrap()
+    );
+    assert!(
+        projected_stroke.contours[..projected_stroke.contours.len() - 1]
+            .iter()
+            .all(|contour| {
+                contour.identifier().is_none()
+                    && contour.lib().is_none()
+                    && contour.points.iter().all(|point| {
+                        point.name.is_none()
+                            && point.identifier().is_none()
+                            && point.lib().is_none()
+                    })
+            })
+    );
+
+    let rough_layer = project.document_layer("effect-roughen", &layer_id).unwrap();
+    let rough_contours: Vec<_> = rough_layer.contours().collect();
+    assert_ne!(rough_contours[0].id(), rough_old_id);
+    assert_eq!(rough_contours[1].id(), rough_untouched_id);
+    assert!(
+        project
+            .document_layer("effect-hyper", &layer_id)
+            .unwrap()
+            .contours()
+            .all(|contour| !contour.is_hyper())
+    );
+    for name in ["effect-offset", "effect-extrude"] {
+        assert!(
+            project
+                .glyph_layer(name, &layer_id)
+                .unwrap()
+                .contours
+                .iter()
+                .all(|contour| contour.identifier().is_none() && contour.lib().is_none())
+        );
+    }
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("effect-offset", &layer_id, |draft| {
+                assert!(!draft.offset_contours(0.0)?);
+                assert!(!draft.extrude_contours(0.0, 30.0, false)?);
+                assert!(!draft.roughen_contours(&[], 0.5, 4.0, 4.0, 7)?);
+                assert_eq!(
+                    draft.expand_stroke(&[], f64::INFINITY),
+                    Err(runebender::document::DocumentEditError::NonFinite)
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+
+    let projected: Vec<_> = [
+        "effect-stroke",
+        "effect-offset",
+        "effect-extrude",
+        "effect-roughen",
+        "effect-hyper",
+    ]
+    .into_iter()
+    .map(|name| (name, project.glyph_layer(name, &layer_id).unwrap()))
+    .collect();
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    for (name, glyph) in projected {
+        assert_eq!(reloaded.glyph_layer(name, &reloaded_layer).unwrap(), glyph);
+    }
+}
+
+#[test]
 fn canonical_boolean_and_overlap_replacement_clear_old_topology_metadata() {
     let scratch = Scratch::new();
     let cyclic_paths_equal = |first: &kurbo::BezPath, second: &kurbo::BezPath| {
