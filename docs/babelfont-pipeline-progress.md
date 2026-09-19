@@ -41,6 +41,7 @@ Baseline: `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
   Canonical contour conversion retains open/closed state, quadratic and cubic roles, and hyperbezier rendering; the remaining UFO materialization is limited to explicit compatibility write callers awaiting their owning source/application cutovers.
 - `12764cc` (`Read interpolation structure canonically`) removes live interpolation reads of legacy axes, master locations, brace sources, instance/rule projections and the cached variation model.
   Full and sparse glyph participation, mapped coordinates, kerning interpolation, source snapping, instance display data, rules, trajectory sampling and HOI endpoints now use the Project-owned canonical Designspace by stable identity.
+- `4b79ef0` (`Test canonical rule and instance projections`) proves mapped rule evaluation and instance display reconstruction still work after the legacy axes, locations, instances and preservation document are cleared.
 
 ## Executed checks
 
