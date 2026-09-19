@@ -5434,6 +5434,8 @@ fn canonical_source_metadata_edits_are_atomic_and_round_trip_exactly() {
     assert!(matches!(outcome, DocumentEditOutcome::Changed { .. }));
     assert_eq!(project.document_revision(), revision.wrapping_add(1));
     assert_eq!(project.document_font_metadata(source), Some(&edited));
+    assert!(project.sources()[0].dirty);
+    assert!(project.sources()[0].kerning_dirty);
     let projected = project.source_snapshot(source).unwrap();
     assert_eq!(projected.kerning["public.kern1.A"]["V"], -63.625);
     assert_eq!(

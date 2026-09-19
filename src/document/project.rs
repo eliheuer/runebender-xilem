@@ -1801,19 +1801,26 @@ impl Project {
         let index = self
             .source_index(source)
             .expect("canonical source metadata retains its source");
-        self.masters[index].font.features = self
+        let feature_text = self
             .variable
             .feature_text(source)
             .expect("committed metadata")
             .to_owned();
-        super::font_ops::write_canonical_metadata_to_ufo(
-            &mut self.masters[index].font,
-            self.variable
-                .font_metadata(source)
-                .expect("committed metadata"),
-        )
-        .expect("canonical source metadata must remain writable as UFO");
-        self.masters[index].dirty = true;
+        let font_metadata = self
+            .variable
+            .font_metadata(source)
+            .expect("committed metadata")
+            .clone();
+        let source = &mut self.masters[index];
+        let kerning_changed = match super::font_ops::canonical_metadata_from_ufo(&source.font) {
+            Ok(current) => current != font_metadata,
+            Err(_) => true,
+        };
+        source.font.features = feature_text;
+        super::font_ops::write_canonical_metadata_to_ufo(&mut source.font, &font_metadata)
+            .expect("canonical source metadata must remain writable as UFO");
+        source.dirty = true;
+        source.kerning_dirty |= kerning_changed;
     }
 
     fn synchronize_compatibility_layer(&mut self, name: &str, layer: &LayerId) {
