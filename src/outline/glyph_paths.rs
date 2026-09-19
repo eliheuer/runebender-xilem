@@ -90,9 +90,10 @@ pub fn contours_to_bezpath(glyph: &Glyph) -> BezPath {
     path
 }
 
-/// Convert one canonical document layer's ordinary contours without constructing a UFO glyph.
+/// Convert one canonical document layer's contours without constructing a UFO glyph.
 ///
-/// Hyperbezier contours remain on their dedicated conversion path until that tool is migrated.
+/// Hyperbezier contours use their spline solver; ordinary cubic and quadratic contours use their
+/// point types directly.
 pub fn ordinary_layer_contours_to_bezpath(layer: LayerView<'_>) -> BezPath {
     let mut path = BezPath::new();
     for contour in layer.contours() {
@@ -101,9 +102,7 @@ pub fn ordinary_layer_contours_to_bezpath(layer: LayerView<'_>) -> BezPath {
     path
 }
 
-/// Convert one canonical ordinary contour without constructing a UFO contour.
-///
-/// Hyperbezier contours remain on their dedicated conversion path until that tool is migrated.
+/// Convert one canonical contour without constructing a UFO contour.
 pub fn ordinary_contour_to_bezpath(contour: ContourView<'_>) -> BezPath {
     let mut path = BezPath::new();
     append_document_contour(&mut path, contour);
@@ -407,6 +406,34 @@ struct OutlinePoint {
 }
 
 fn append_document_contour(path: &mut BezPath, contour: ContourView<'_>) {
+    if contour.is_hyper() {
+        let contour = crate::outline::path::hyper_model::Contour {
+            points: contour
+                .points()
+                .map(|point| crate::outline::path::hyper_model::ContourPoint {
+                    x: point.position().x,
+                    y: point.position().y,
+                    smooth: point.is_smooth(),
+                    point_type: match point.point_type() {
+                        LayerPointType::Move | LayerPointType::Curve => {
+                            crate::outline::path::hyper_model::PointType::Hyper
+                        }
+                        LayerPointType::Line => {
+                            crate::outline::path::hyper_model::PointType::HyperCorner
+                        }
+                        LayerPointType::OffCurve => {
+                            crate::outline::path::hyper_model::PointType::OffCurve
+                        }
+                        LayerPointType::QCurve => {
+                            crate::outline::path::hyper_model::PointType::QCurve
+                        }
+                    },
+                })
+                .collect(),
+        };
+        crate::outline::path::Path::from_contour(&contour).append_to_bezpath(path);
+        return;
+    }
     let points: Vec<_> = contour
         .points()
         .map(|point| OutlinePoint {
@@ -580,6 +607,40 @@ fn append_points(path: &mut BezPath, points: &[OutlinePoint], closed: bool) {
     }
     if closed {
         path.close_path();
+    }
+}
+
+#[cfg(test)]
+mod canonical_render_tests {
+    use super::*;
+    use crate::document::project::Project;
+    use crate::document::source::Master;
+    use crate::document::variable::SourceId;
+
+    #[test]
+    fn canonical_hyperbezier_matches_the_ufo_boundary() {
+        let mut glyph = Glyph::new("hyper");
+        glyph.contours.push(Contour::new(
+            vec![
+                ContourPoint::new(0.0, 0.0, PointType::Curve, true, None, None),
+                ContourPoint::new(100.0, 200.0, PointType::Curve, true, None, None),
+                ContourPoint::new(200.0, 0.0, PointType::Line, false, None, None),
+            ],
+            Some(norad::Identifier::new("hyper-canonical-parity").unwrap()),
+        ));
+        let mut font = Font::default();
+        font.default_layer_mut().insert_glyph(glyph.clone());
+        let project = Project::from_source(Master::from_font(font, "Hyper.ufo".into()));
+        let id = project
+            .document_source(SourceId(0))
+            .expect("default source")
+            .default_layer();
+        let canonical = project.document_layer("hyper", &id).expect("hyper layer");
+
+        assert_eq!(
+            ordinary_layer_contours_to_bezpath(canonical),
+            contours_to_bezpath(&glyph)
+        );
     }
 }
 
