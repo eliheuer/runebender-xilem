@@ -1814,3 +1814,36 @@ git diff --check
 
 The focused stale-address, cross-layer and successful rename cases passed while retaining exact width and note values.
 The M05 integration must still preflight destination collisions and rebind every before/after value across undo and redo atomically before it is accepted.
+
+### Canonical interpolation and compiler metadata inputs
+
+Evidence commits: `Interpolate canonical layer geometry directly`, `Preserve canonical shape order in interpolation`, `Check compiler snapshot quantization`, `Normalize compiler metadata inputs`, `Compile canonical groups and kerning directly` and `Use canonical interpolation inputs`.
+Resolve their exact IDs with `git log --format='%H %s' --grep='canonical layer geometry\|canonical shape order\|compiler snapshot quantization\|compiler metadata inputs\|canonical groups and kerning\|canonical interpolation inputs'`.
+Affected paths: `src/document/interpolation.rs`, `src/document/compile.rs`, `src/document/compile_metadata.rs`, `src/document/babelfont.rs`, `src/document/project.rs`, `tests/canonical_pipeline.rs`, `tests/variable_compile.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Interpolation now validates and combines borrowed canonical `LayerView` values without converting every source to a UFO glyph.
+It retains the default layer's shape order, closure, point roles, smooth flags, names and stable identities while interpolating exact `f64` advances, coordinates, named anchors and all six affine coefficients.
+Current application-facing callers still materialize one final UFO result after interpolation; removing that output adapter remains M06/M08 work.
+Kerning interpolation resolves each stable source's `CanonicalFontMetadata` directly.
+
+Compiler snapshot construction now reads canonical groups and typed exact kerning pairs by `SourceId` without consulting compatibility font maps.
+UPM, metrics and kerning quantization reject nonfinite and out-of-range values before integer conversion and never modify canonical inputs.
+The unsaved pipeline regression changes fractional kerning in the default and non-default sources, verifies one revision and compilation invalidation per edit, checks exact source snapshots, then confirms changed compiled bytes and the expected checked integer kerning in shaped advances.
+
+Executed evidence:
+
+```sh
+cargo test --locked --lib document::interpolation::tests -- --test-threads=1
+cargo test --locked --lib document::compile_metadata::tests -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project interpolation_is_glyph_local_and_independent_of_selected_source -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project interpolation_preserves_precision_and_varies_anchors_and_components -- --exact --test-threads=1
+cargo test --locked --test variable_compile -- --test-threads=1
+cargo test --locked --test canonical_pipeline -- --test-threads=1
+cargo clippy --locked --lib --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The two canonical interpolation unit tests, two Project interpolation regressions, two compiler metadata unit tests, nine variable compiler tests and the canonical unsaved pipeline regression passed.
+Warning-denied library/test Clippy, formatting and diff checks passed.
+M08 and M09 remain incomplete because the output presentation path, source structure, canonical glyph metadata and remaining font information still use compatibility adapters.

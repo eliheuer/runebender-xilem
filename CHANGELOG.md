@@ -44,6 +44,7 @@ No release has been published yet.
 - Made Project own variable glyphs and their layers, with guarded UFO projections for existing editing tools and shared history.
 - Unified mapped-axis conversion and glyph-local interpolation behind Runebender-owned APIs using pinned Babelfont and fontdrasil adapters.
   Interpolation preserves fractional advances and kerning and varies anchors and component transforms.
+- Switched interpolation inputs and compiled group/kerning snapshots to canonical document values, preserving layer paint order and checking numeric quantization.
 - Consolidated the font engine, command line, and Xilem application into one `runebender`
   package and executable.
 - Grouped Xilem runtime code under `src/application`, moved named editor tools into

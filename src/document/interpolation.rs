@@ -239,40 +239,32 @@ pub(super) fn interpolate_layers(
     })
 }
 
-/// Transitional adapter for Project callers that still return UFO glyphs.
+/// Interpolate canonical layers and materialize one transitional UFO result.
 ///
-/// The interpolation itself runs over canonical layer views. M08 integration removes this
-/// materialization once Project and application callers consume `InterpolatedLayer` directly.
-pub(super) fn interpolate(
-    glyphs: &[norad::Glyph],
+/// The UFO value is created only after interpolation and retains the default layer's exact
+/// preservation payload.
+pub(super) fn interpolate_projected(
+    layers: &[LayerView<'_>],
     locations: &[Location],
     target: &Location,
 ) -> Result<norad::Glyph, String> {
     let default = locations
         .iter()
-        .position(|l| l.values().all(|v| v.abs() < 1e-9))
+        .position(|location| location.values().all(|value| value.abs() < 1e-9))
         .ok_or("glyph has no layer at the default location")?;
-    let base = glyphs.get(default).ok_or("missing default glyph")?;
-    let canonical: Vec<_> = glyphs
-        .iter()
-        .enumerate()
-        .map(|(index, glyph)| {
-            super::babelfont::layer_from_ufo(
-                glyph,
-                &super::variable::LayerId {
-                    source: super::variable::SourceId(index),
-                    name: "interpolation-compatibility".into(),
-                },
-                index == default,
-            )
-        })
-        .collect();
-    let layers: Vec<_> = canonical
-        .iter()
-        .map(|(layer, preserved)| LayerView::new(layer, preserved))
-        .collect();
-    let output = interpolate_layers(&layers, locations, target)?;
-    let mut glyph = base.clone();
+    let base = layers
+        .get(default)
+        .copied()
+        .ok_or("missing default layer")?;
+    let output = interpolate_layers(layers, locations, target)?;
+    apply_to_ufo(base.project(), &output, base)
+}
+
+fn apply_to_ufo(
+    mut glyph: norad::Glyph,
+    output: &InterpolatedLayer,
+    base: LayerView<'_>,
+) -> Result<norad::Glyph, String> {
     if output.glyph_name != glyph.name().as_str()
         || output
             .codepoints
@@ -290,7 +282,7 @@ pub(super) fn interpolate(
         .contours
         .iter_mut()
         .zip(output.contours())
-        .zip(layers[default].contours())
+        .zip(base.contours())
     {
         if output.id != source.id() || output.closed != source.is_closed() {
             return Err("canonical interpolation changed default contour structure".into());
@@ -316,7 +308,7 @@ pub(super) fn interpolate(
         .anchors
         .iter_mut()
         .zip(&output.anchors)
-        .zip(layers[default].anchors())
+        .zip(base.anchors())
     {
         if output.id != source.id() || output.name != source.name() {
             return Err("canonical interpolation changed default anchor structure".into());
@@ -328,7 +320,7 @@ pub(super) fn interpolate(
         .components
         .iter_mut()
         .zip(output.components())
-        .zip(layers[default].components())
+        .zip(base.components())
     {
         if output.id != source.id() || output.reference != source.reference() {
             return Err("canonical interpolation changed default component structure".into());

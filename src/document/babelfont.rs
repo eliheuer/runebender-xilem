@@ -285,6 +285,10 @@ impl<'a> LayerView<'a> {
         Self { layer, preserved }
     }
 
+    pub(super) fn project(self) -> norad::Glyph {
+        project_layer(self.layer, self.preserved)
+    }
+
     /// The exact horizontal advance from the document extension.
     pub fn width(self) -> f64 {
         self.preserved.width

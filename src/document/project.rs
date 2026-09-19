@@ -814,9 +814,13 @@ impl Project {
         let (layers, locations) =
             self.interpolation_layers(glyph_name, self.source_id(self.active))?;
         if layers.len() == 1 {
-            return Ok(layers[0].clone());
+            return Ok(layers[0].project());
         }
-        super::interpolation::interpolate(&layers, &locations, &self.master_locations[self.active])
+        super::interpolation::interpolate_projected(
+            &layers,
+            &locations,
+            &self.master_locations[self.active],
+        )
     }
 
     /// The current instance's path and advance, resolving every component at that location.
@@ -874,37 +878,16 @@ impl Project {
             return Err("invalid kerning interpolation location".into());
         }
         let values: Vec<_> = self
-            .masters
+            .variable
+            .source_ids
             .iter()
             .map(|source| {
-                let pairs = source
-                    .font
-                    .kerning
-                    .iter()
-                    .map(|(left, rights)| {
-                        (
-                            left.to_string(),
-                            rights
-                                .iter()
-                                .map(|(right, value)| (right.to_string(), *value))
-                                .collect(),
-                        )
-                    })
-                    .collect();
-                let groups = source
-                    .font
-                    .groups
-                    .iter()
-                    .map(|(name, members)| {
-                        (
-                            name.to_string(),
-                            members.iter().map(ToString::to_string).collect(),
-                        )
-                    })
-                    .collect();
-                vec![super::model::kerning::lookup_kerning(
-                    &pairs, &groups, left, None, right, None,
-                )]
+                vec![
+                    self.document_font_metadata(*source)
+                        .expect("source identity retains canonical metadata")
+                        .resolved_kerning(left, right)
+                        .unwrap_or(0.0),
+                ]
             })
             .collect();
         if values.iter().flatten().any(|value| !value.is_finite()) {
@@ -953,7 +936,7 @@ impl Project {
             return Err("interpolation references an unknown axis".into());
         }
         let (layers, locations) = self.interpolation_layers(glyph_name, None)?;
-        let mut glyph = super::interpolation::interpolate(&layers, &locations, location)?;
+        let mut glyph = super::interpolation::interpolate_projected(&layers, &locations, location)?;
         // HOI: nodes with an intermediate point follow their exact
         // quadratic, overriding the piecewise answer the baked brace
         // layers gave the model — the bake stays for compilers, the
@@ -1005,7 +988,7 @@ impl Project {
         &self,
         glyph_name: &str,
         excluding: Option<SourceId>,
-    ) -> Result<(Vec<norad::Glyph>, Vec<Location>), String> {
+    ) -> Result<(Vec<super::LayerView<'_>>, Vec<Location>), String> {
         let sources = self.glyph_sources(glyph_name)?;
         let mut layers = Vec::new();
         let mut locations = Vec::new();
@@ -1014,7 +997,7 @@ impl Project {
                 continue;
             }
             layers.push(
-                self.glyph_layer(glyph_name, &source.layer)
+                self.document_layer(glyph_name, &source.layer)
                     .expect("validated source layer"),
             );
             locations.push(source.location);

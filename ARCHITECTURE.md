@@ -153,13 +153,13 @@ Native reload, live edits, proposals, experiments and browser edits cross the sa
 
 `document::axis` wraps pinned Babelfont coordinate conversion without exposing its types.
 `document::var_model` wraps the fontdrasil variation backend used by Babelfont, retaining f64 values with rounding disabled.
-`document::interpolation` checks structure and interpolates advances, contours, anchors and component transforms using each glyph's own sources.
+`document::interpolation` reads canonical layer views directly, checks structure and paint order and interpolates exact advances, contours, anchors and six-coefficient component transforms using each glyph's own sources.
 Component outlines resolve recursively at the same location, with explicit failures for missing or cyclic components.
 The application reads these results instead of maintaining a second interpolation implementation.
 
 `document::compile` builds a complete Babelfont snapshot and compiles it with fontc in Rust.
 The same immutable OpenType bytes feed HarfRust shaping, Skrifa variable outlines and TTF export.
-`document::compile_metadata` supplies UFO metadata and Designspace rules to that compiler.
+`document::compile_metadata` quantizes immutable canonical group and kerning inputs and still adapts remaining UFO metadata plus Designspace rules for that compiler.
 The native preview worker coalesces pending edits and publishes only the current revision; slider changes reuse the compiled font.
 The browser currently compiles synchronously and downloads exported bytes through a thin platform binding.
 Application source controls live in `application/editor/sources.rs`; views dispatch commands and never perform font mutations themselves.
