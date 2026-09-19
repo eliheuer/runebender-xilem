@@ -758,7 +758,7 @@ mod tests {
         };
         assert_eq!(
             super::super::lib_keys::read_babelfont_layer(
-                project.variable_glyph("A").unwrap().layer(&layer).unwrap()
+                &project.glyph_layer("A", &layer).unwrap()
             ),
             Some(("M1", Some("A-M1"), true))
         );
@@ -767,7 +767,7 @@ mod tests {
         project.save().unwrap();
         let reloaded = Project::load(&destination).unwrap();
         assert_eq!(reloaded.sources().len(), 2);
-        assert_eq!(reloaded.variable_glyph("A").unwrap().layers().count(), 4);
+        assert_eq!(reloaded.variable_glyph("A").unwrap().layer_ids().count(), 4);
         assert_eq!(
             reloaded
                 .try_interpolated_at("A", &[("Weight".into(), 0.5)].into())

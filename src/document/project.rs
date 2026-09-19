@@ -863,16 +863,18 @@ impl Project {
         &self,
         glyph_name: &str,
         excluding: Option<SourceId>,
-    ) -> Result<(Vec<&norad::Glyph>, Vec<Location>), String> {
+    ) -> Result<(Vec<norad::Glyph>, Vec<Location>), String> {
         let sources = self.glyph_sources(glyph_name)?;
-        let glyph = self.variable_glyph(glyph_name).expect("validated glyph");
         let mut layers = Vec::new();
         let mut locations = Vec::new();
         for source in sources {
             if excluding == Some(source.layer.source) {
                 continue;
             }
-            layers.push(glyph.layer(&source.layer).expect("validated source layer"));
+            layers.push(
+                self.glyph_layer(glyph_name, &source.layer)
+                    .expect("validated source layer"),
+            );
             locations.push(source.location);
         }
         Ok((layers, locations))
@@ -890,7 +892,7 @@ impl Project {
                 source: self.source_id(index).expect("source index"),
                 name: source.font.default_layer().name().to_string(),
             };
-            if glyph.layer(&id).is_some() {
+            if glyph.has_layer(&id) {
                 sources.push(GlyphSource {
                     layer: id,
                     location: self
@@ -906,7 +908,7 @@ impl Project {
                 source: self.source_id(source.master).expect("brace source index"),
                 name: source.layer.clone(),
             };
-            if glyph.layer(&id).is_some() {
+            if glyph.has_layer(&id) {
                 sources.push(GlyphSource {
                     layer: id,
                     location: source.location.clone(),
@@ -1094,6 +1096,11 @@ impl Project {
         self.variable.glyphs.get(name)
     }
 
+    /// Materialize one glyph layer for a format boundary or transitional caller.
+    pub fn glyph_layer(&self, name: &str, layer: &LayerId) -> Option<norad::Glyph> {
+        self.variable.project_layer(name, layer)
+    }
+
     /// All glyph names, including glyphs found only in sparse or auxiliary layers.
     pub fn glyph_names(&self) -> impl Iterator<Item = &str> {
         self.variable.glyphs.keys().map(String::as_str)
@@ -1112,11 +1119,7 @@ impl Project {
         layer: &LayerId,
         edit: impl FnOnce(&mut norad::Glyph),
     ) -> bool {
-        let Some(before) = self
-            .variable_glyph(name)
-            .and_then(|g| g.layer(layer))
-            .cloned()
-        else {
+        let Some(before) = self.glyph_layer(name, layer) else {
             return false;
         };
         let mut after = before.clone();
@@ -1162,11 +1165,7 @@ impl Project {
     /// Replay the history belonging to a glyph layer, without switching editor sources.
     /// Set `redo` to replay a previously undone edit.
     pub fn undo_layer(&mut self, name: &str, layer: &LayerId, redo: bool) -> bool {
-        let Some(mut glyph) = self
-            .variable_glyph(name)
-            .and_then(|g| g.layer(layer))
-            .cloned()
-        else {
+        let Some(mut glyph) = self.glyph_layer(name, layer) else {
             return false;
         };
         let index = self

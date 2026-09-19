@@ -48,16 +48,14 @@ pub struct VariableGlyph {
 }
 
 impl VariableGlyph {
-    /// All of this glyph's layers, with stable addresses.
-    pub fn layers(&self) -> impl Iterator<Item = (&LayerId, &norad::Glyph)> {
-        self.layers.iter().map(|(id, layer)| (id, layer.glyph()))
+    /// Stable addresses of all of this glyph's layers.
+    pub fn layer_ids(&self) -> impl Iterator<Item = &LayerId> {
+        self.layers.keys()
     }
 
-    /// The exact editable payload at a layer address.
-    pub fn layer(&self, id: &LayerId) -> Option<&norad::Glyph> {
-        self.layers
-            .get(id)
-            .map(super::babelfont::LayerPreservation::glyph)
+    /// Whether this glyph has a layer at the stable address.
+    pub fn has_layer(&self, id: &LayerId) -> bool {
+        self.layers.contains_key(id)
     }
 }
 
@@ -136,20 +134,29 @@ impl VariableData {
                 name: layer.name().to_string(),
             };
             for payload in layer.iter() {
-                let glyph = self.glyphs.entry(payload.name().to_string()).or_default();
-                if glyph
-                    .layers
-                    .get(&id)
-                    .map(super::babelfont::LayerPreservation::glyph)
-                    != Some(payload)
-                {
+                let name = payload.name().as_str();
+                let key = super::babelfont::layer_key(&id);
+                let unchanged = self
+                    .glyphs
+                    .get(name)
+                    .and_then(|glyph| glyph.layers.get(&id))
+                    .zip(
+                        self.font
+                            .glyphs
+                            .get(name)
+                            .and_then(|glyph| glyph.get_layer(&key)),
+                    )
+                    .is_some_and(|(preserved, layer)| {
+                        super::babelfont::project_layer(layer, preserved) == *payload
+                    });
+                if !unchanged {
                     let (layer, preserved) = super::babelfont::layer_from_ufo(
                         payload,
                         &id,
                         layer.name() == font.default_layer().name(),
                     );
+                    let glyph = self.glyphs.entry(payload.name().to_string()).or_default();
                     glyph.layers.insert(id.clone(), preserved);
-                    let name = payload.name().as_str();
                     if self.font.glyphs.get(name).is_none() {
                         self.font.glyphs.0.push(babelfont::Glyph::new(name));
                     }
@@ -233,6 +240,16 @@ impl VariableData {
             }
         }
         Some(font)
+    }
+
+    pub(super) fn project_layer(&self, name: &str, id: &LayerId) -> Option<norad::Glyph> {
+        let preserved = self.glyphs.get(name)?.layers.get(id)?;
+        let layer = self
+            .font
+            .glyphs
+            .get(name)?
+            .get_layer(&super::babelfont::layer_key(id))?;
+        Some(super::babelfont::project_layer(layer, preserved))
     }
 }
 

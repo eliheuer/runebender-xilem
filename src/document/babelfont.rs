@@ -42,25 +42,60 @@ object_id!(AnchorId);
 #[derive(Clone, Debug)]
 struct PreservedContour {
     id: ContourId,
-    points: Vec<PointId>,
+    metadata: ObjectMetadata,
+    points: Vec<PreservedPoint>,
 }
 
-/// Exact UFO payload plus stable identities for one transitional glyph layer.
-///
-/// The payload remains until M01 moves each field into typed extensions, but
-/// projection already follows object identity instead of array position.
+#[derive(Clone, Debug)]
+struct PreservedPoint {
+    id: PointId,
+    name: Option<norad::Name>,
+    metadata: ObjectMetadata,
+}
+
+#[derive(Clone, Debug)]
+struct PreservedComponent {
+    id: ComponentId,
+    transform: norad::AffineTransform,
+    metadata: ObjectMetadata,
+}
+
+#[derive(Clone, Debug)]
+struct PreservedAnchor {
+    id: AnchorId,
+    color: Option<norad::Color>,
+    metadata: ObjectMetadata,
+}
+
+#[derive(Clone, Debug)]
+struct ObjectMetadata {
+    identifier: Option<norad::Identifier>,
+    lib: Option<plist::Dictionary>,
+}
+
+impl ObjectMetadata {
+    fn new(identifier: Option<&norad::Identifier>, lib: Option<&plist::Dictionary>) -> Self {
+        Self {
+            identifier: identifier.cloned(),
+            lib: lib.cloned(),
+        }
+    }
+}
+
+/// Exact UFO values and object metadata that Babelfont cannot represent faithfully.
 #[derive(Clone, Debug)]
 pub(super) struct LayerPreservation {
-    glyph: norad::Glyph,
+    name: String,
+    width: f64,
+    height: f64,
+    codepoints: norad::Codepoints,
+    note: Option<String>,
+    guidelines: Vec<norad::Guideline>,
+    image: Option<norad::Image>,
+    lib: plist::Dictionary,
     contours: Vec<PreservedContour>,
-    components: Vec<ComponentId>,
-    anchors: Vec<AnchorId>,
-}
-
-impl LayerPreservation {
-    pub(super) fn glyph(&self) -> &norad::Glyph {
-        &self.glyph
-    }
+    components: Vec<PreservedComponent>,
+    anchors: Vec<PreservedAnchor>,
 }
 
 fn write_id(format: &mut babelfont::FormatSpecific, id: u64) {
@@ -94,7 +129,7 @@ pub(super) fn layer_from_ufo(
     let mut contours = Vec::with_capacity(glyph.contours.len());
     for contour in &glyph.contours {
         let contour_id = ContourId::next();
-        let mut point_ids = Vec::with_capacity(contour.points.len());
+        let mut points = Vec::with_capacity(contour.points.len());
         let mut path = babelfont::Path {
             closed: contour.is_closed(),
             ..babelfont::Path::default()
@@ -105,7 +140,11 @@ pub(super) fn layer_from_ufo(
             .iter()
             .map(|point| {
                 let point_id = PointId::next();
-                point_ids.push(point_id);
+                points.push(PreservedPoint {
+                    id: point_id,
+                    name: point.name.clone(),
+                    metadata: ObjectMetadata::new(point.identifier(), point.lib()),
+                });
                 let mut node = Node {
                     x: point.x,
                     y: point.y,
@@ -126,7 +165,8 @@ pub(super) fn layer_from_ufo(
         layer.shapes.push(Shape::Path(path));
         contours.push(PreservedContour {
             id: contour_id,
-            points: point_ids,
+            metadata: ObjectMetadata::new(contour.identifier(), contour.lib()),
+            points,
         });
     }
     let mut components = Vec::with_capacity(glyph.components.len());
@@ -140,7 +180,11 @@ pub(super) fn layer_from_ufo(
         };
         write_id(&mut output.format_specific, component_id.0);
         layer.shapes.push(Shape::Component(output));
-        components.push(component_id);
+        components.push(PreservedComponent {
+            id: component_id,
+            transform: component.transform,
+            metadata: ObjectMetadata::new(component.identifier(), component.lib()),
+        });
     }
     let mut anchors = Vec::with_capacity(glyph.anchors.len());
     layer.anchors = glyph
@@ -148,7 +192,11 @@ pub(super) fn layer_from_ufo(
         .iter()
         .map(|anchor| {
             let anchor_id = AnchorId::next();
-            anchors.push(anchor_id);
+            anchors.push(PreservedAnchor {
+                id: anchor_id,
+                color: anchor.color,
+                metadata: ObjectMetadata::new(anchor.identifier(), anchor.lib()),
+            });
             let mut output = Anchor {
                 x: anchor.x,
                 y: anchor.y,
@@ -166,7 +214,14 @@ pub(super) fn layer_from_ufo(
     (
         layer,
         LayerPreservation {
-            glyph: glyph.clone(),
+            name: glyph.name().to_string(),
+            width: glyph.width,
+            height: glyph.height,
+            codepoints: glyph.codepoints.clone(),
+            note: glyph.note.clone(),
+            guidelines: glyph.guidelines.clone(),
+            image: glyph.image.clone(),
+            lib: glyph.lib.clone(),
             contours,
             components,
             anchors,
@@ -185,8 +240,15 @@ fn affine(t: norad::AffineTransform) -> kurbo::Affine {
     reason = "compare with the original narrowed Babelfont advance"
 )]
 pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> norad::Glyph {
-    let mut glyph = preserved.glyph.clone();
-    if layer.width != preserved.glyph.width as f32 {
+    let mut glyph = norad::Glyph::new(&preserved.name);
+    glyph.width = preserved.width;
+    glyph.height = preserved.height;
+    glyph.codepoints.clone_from(&preserved.codepoints);
+    glyph.note.clone_from(&preserved.note);
+    glyph.guidelines.clone_from(&preserved.guidelines);
+    glyph.image.clone_from(&preserved.image);
+    glyph.lib.clone_from(&preserved.lib);
+    if layer.width != preserved.width as f32 {
         glyph.width = f64::from(layer.width);
     }
     glyph.contours = layer
@@ -194,56 +256,42 @@ pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> nor
         .map(|path| {
             let preserved_contour = read_id(&path.format_specific)
                 .and_then(|id| preserved.contours.iter().find(|item| item.id.0 == id));
-            let mut contour = preserved_contour
-                .and_then(|item| {
-                    let index = preserved
-                        .contours
-                        .iter()
-                        .position(|other| other.id == item.id)?;
-                    preserved.glyph.contours.get(index).cloned()
-                })
-                .unwrap_or_default();
-            contour.points = path
+            let points = path
                 .nodes
                 .iter()
                 .map(|node| {
                     let original = read_id(&node.format_specific).and_then(|id| {
                         let item = preserved_contour?;
-                        let index = item.points.iter().position(|point| point.0 == id)?;
-                        let contour_index = preserved
-                            .contours
-                            .iter()
-                            .position(|other| other.id == item.id)?;
-                        preserved
-                            .glyph
-                            .contours
-                            .get(contour_index)?
-                            .points
-                            .get(index)
+                        item.points.iter().find(|point| point.id.0 == id)
                     });
-                    let mut point = original.cloned().unwrap_or_else(|| {
-                        norad::ContourPoint::new(
-                            0.0,
-                            0.0,
-                            norad::PointType::Line,
-                            false,
-                            None,
-                            None,
-                        )
-                    });
-                    point.x = node.x;
-                    point.y = node.y;
-                    point.smooth = node.smooth;
-                    point.typ = match node.nodetype {
+                    let typ = match node.nodetype {
                         NodeType::Move => norad::PointType::Move,
                         NodeType::Line => norad::PointType::Line,
                         NodeType::OffCurve => norad::PointType::OffCurve,
                         NodeType::Curve => norad::PointType::Curve,
                         NodeType::QCurve => norad::PointType::QCurve,
                     };
+                    let mut point = norad::ContourPoint::new(
+                        node.x,
+                        node.y,
+                        typ,
+                        node.smooth,
+                        original.and_then(|item| item.name.clone()),
+                        original.and_then(|item| item.metadata.identifier.clone()),
+                    );
+                    if let Some(lib) = original.and_then(|item| item.metadata.lib.clone()) {
+                        point.replace_lib(lib);
+                    }
                     point
                 })
                 .collect();
+            let mut contour = norad::Contour::new(
+                points,
+                preserved_contour.and_then(|item| item.metadata.identifier.clone()),
+            );
+            if let Some(lib) = preserved_contour.and_then(|item| item.metadata.lib.clone()) {
+                contour.replace_lib(lib);
+            }
             contour
         })
         .collect();
@@ -251,26 +299,32 @@ pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> nor
         .components()
         .map(|component| {
             let base = norad::Name::new(&component.reference).expect("validated glyph name");
-            let original = read_id(&component.format_specific).and_then(|id| {
-                let index = preserved.components.iter().position(|item| item.0 == id)?;
-                preserved.glyph.components.get(index)
-            });
-            let mut output = original.cloned().unwrap_or_else(|| {
-                norad::Component::new(base.clone(), norad::AffineTransform::default(), None)
-            });
-            output.base = base;
-            let original: babelfont::DecomposedAffine = affine(output.transform).into();
-            if original != component.transform {
+            let original = read_id(&component.format_specific)
+                .and_then(|id| preserved.components.iter().find(|item| item.id.0 == id));
+            let exact =
+                original.map_or_else(norad::AffineTransform::default, |item| item.transform);
+            let decomposed: babelfont::DecomposedAffine = affine(exact).into();
+            let transform = if decomposed == component.transform {
+                exact
+            } else {
                 let [x_scale, xy_scale, yx_scale, y_scale, x_offset, y_offset] =
                     component.transform.as_affine().as_coeffs();
-                output.transform = norad::AffineTransform {
+                norad::AffineTransform {
                     x_scale,
                     xy_scale,
                     yx_scale,
                     y_scale,
                     x_offset,
                     y_offset,
-                };
+                }
+            };
+            let mut output = norad::Component::new(
+                base,
+                transform,
+                original.and_then(|item| item.metadata.identifier.clone()),
+            );
+            if let Some(lib) = original.and_then(|item| item.metadata.lib.clone()) {
+                output.replace_lib(lib);
             }
             output
         })
@@ -279,17 +333,19 @@ pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> nor
         .anchors
         .iter()
         .map(|anchor| {
-            let original = read_id(&anchor.format_specific).and_then(|id| {
-                let index = preserved.anchors.iter().position(|item| item.0 == id)?;
-                preserved.glyph.anchors.get(index)
-            });
-            let mut output = original
-                .cloned()
-                .unwrap_or_else(|| norad::Anchor::new(0.0, 0.0, None, None, None));
-            output.x = anchor.x;
-            output.y = anchor.y;
-            output.name = (!anchor.name.is_empty())
-                .then(|| norad::Name::new(&anchor.name).expect("validated anchor name"));
+            let original = read_id(&anchor.format_specific)
+                .and_then(|id| preserved.anchors.iter().find(|item| item.id.0 == id));
+            let mut output = norad::Anchor::new(
+                anchor.x,
+                anchor.y,
+                (!anchor.name.is_empty())
+                    .then(|| norad::Name::new(&anchor.name).expect("validated anchor name")),
+                original.and_then(|item| item.color),
+                original.and_then(|item| item.metadata.identifier.clone()),
+            );
+            if let Some(lib) = original.and_then(|item| item.metadata.lib.clone()) {
+                output.replace_lib(lib);
+            }
             output
         })
         .collect();

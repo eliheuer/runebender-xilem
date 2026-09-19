@@ -230,7 +230,7 @@ fn source_undo_refuses_to_overwrite_later_edits_and_layer_operations_preserve_ot
         name: original.default_layer().name().to_string(),
     };
     let layer = project.add_glyph_layer("A", &from, "backup").unwrap();
-    assert!(project.variable_glyph("A").unwrap().layer(&layer).is_some());
+    assert!(project.glyph_layer("A", &layer).is_some());
     project.edit_layer("A", &from, |glyph| glyph.width += 10.0);
     assert!(project.undo_sources(false).is_err());
     assert!(project.undo_layer("A", &from, false));
@@ -238,10 +238,10 @@ fn source_undo_refuses_to_overwrite_later_edits_and_layer_operations_preserve_ot
     assert_eq!(project.source_snapshot(SourceId(0)).unwrap(), original);
     assert!(project.undo_sources(true).unwrap());
     project.remove_glyph_layer("A", &layer).unwrap();
-    assert!(project.variable_glyph("A").unwrap().layer(&layer).is_none());
-    assert!(project.variable_glyph("A").unwrap().layer(&from).is_some());
+    assert!(project.glyph_layer("A", &layer).is_none());
+    assert!(project.glyph_layer("A", &from).is_some());
     assert!(project.undo_sources(false).unwrap());
-    assert!(project.variable_glyph("A").unwrap().layer(&layer).is_some());
+    assert!(project.glyph_layer("A", &layer).is_some());
 }
 
 #[test]
@@ -352,21 +352,13 @@ fn layer_edits_and_history_round_trip_all_source_data() {
         source: SourceId(0),
         name: "intermediate".into(),
     };
-    let original = project
-        .variable_glyph("A")
-        .unwrap()
-        .layer(&layer)
-        .unwrap()
-        .clone();
+    let original = project.glyph_layer("A", &layer).unwrap();
     assert!(project.edit_layer("A", &layer, |g| {
         g.width = 731.123_456_789;
         g.note = Some("edited".into());
     }));
     assert!(project.undo_layer("A", &layer, false));
-    assert_eq!(
-        project.variable_glyph("A").unwrap().layer(&layer),
-        Some(&original)
-    );
+    assert_eq!(project.glyph_layer("A", &layer), Some(original));
     assert!(project.undo_layer("A", &layer, true));
     let before: Vec<_> = (0..4)
         .map(|i| project.source_snapshot(SourceId(i)).unwrap())
@@ -406,15 +398,7 @@ fn guarded_legacy_edits_commit_to_canonical_layers_before_save() {
         source: SourceId(0),
         name: "public.default".into(),
     };
-    assert_eq!(
-        project
-            .variable_glyph("B")
-            .unwrap()
-            .layer(&layer)
-            .unwrap()
-            .width,
-        712.25
-    );
+    assert_eq!(project.glyph_layer("B", &layer).unwrap().width, 712.25);
     assert!(project.undo_layer("B", &layer, false));
     assert_eq!(
         project

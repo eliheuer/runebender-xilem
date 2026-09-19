@@ -53,7 +53,7 @@ fn values(glyph: &norad::Glyph, base: &norad::Glyph) -> Vec<f64> {
 }
 
 pub(super) fn interpolate(
-    glyphs: &[&norad::Glyph],
+    glyphs: &[norad::Glyph],
     locations: &[Location],
     target: &Location,
 ) -> Result<norad::Glyph, String> {
@@ -93,7 +93,7 @@ pub(super) fn interpolate(
     }
     let mut iter = output.into_iter();
     let mut next = || iter.next().expect("validated interpolation dimensions");
-    let mut glyph = (*base).clone();
+    let mut glyph = base.clone();
     glyph.width = next();
     glyph.height = next();
     for contour in &mut glyph.contours {

@@ -151,3 +151,43 @@ The two Babelfont contract and 12 variable-project tests passed with zero failur
 The existing `block v0.1.6` future-incompatibility notice remains a dependency notice, not a test failure.
 
 Remaining M01 work: replace the complete preserving glyph with typed exact-value and metadata extensions, retain identity through compatibility reconciliation, add the full adversarial no-op/edit/undo/save fixture, and execute M01 acceptance.
+
+### Typed layer preservation substep
+
+Evidence commit: `Replace preserving glyph mirrors with typed layer data` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Replace preserving glyph mirrors with typed layer data$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/document/variable.rs`, `src/document/project.rs`, `src/document/interpolation.rs`, `src/document/sources.rs`, `src/document/compile.rs`, the affected integration tests, the checklist and this log.
+
+`LayerPreservation` no longer contains a `norad::Glyph`.
+It owns exact horizontal and vertical advances, Unicode, note, guidelines, image placement, glyph lib, exact six-coefficient component transforms and identity-keyed contour/point/component/anchor metadata.
+Babelfont remains the sole stored owner of ordinary geometry.
+The adapter constructs temporary Norad glyphs only when a source-format or unmigrated compatibility caller requests a materialized layer.
+
+`VariableGlyph` now exposes stable layer addresses and layer presence rather than references into a persistent Norad glyph mirror.
+`Project::glyph_layer` is the explicit transitional materialization entry point used by interpolation, compilation metadata, auxiliary-layer commands and remaining tests.
+Moving those consumers onto direct document queries remains M03, M08 and M09 work; this change does not misclassify their temporary conversions as the final architecture.
+
+Compatibility reconciliation compares a temporary projection with the incoming UFO glyph before replacing canonical geometry or incrementing its revision.
+No-op scoped access therefore remains a no-op.
+An actual compatibility edit rebuilds typed preservation and Babelfont geometry together, while object identity inside direct Babelfont projection continues to prevent positional metadata attachment.
+
+Executed evidence:
+
+```sh
+cargo test --locked --lib document::babelfont::tests:: -- --test-threads=1
+cargo test --locked --test babelfont_contract --test variable_project --test variable_compile -- --test-threads=1
+cargo clippy --locked --lib -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The identity unit test and all 20 focused integration tests passed with zero failures or ignored tests.
+Warning-denied library Clippy and formatting passed.
+The existing `block v0.1.6` future-incompatibility notice remains unchanged.
+A source search confirms that `document/babelfont.rs` and `document/variable.rs` no longer store `glyph: norad::Glyph` or `BTreeMap<LayerId, norad::Glyph>`.
+
+The typed extensions still use narrow Norad leaf values for codec metadata such as identifiers, colors, guidelines and image placement.
+Those are no longer geometry or complete glyph mirrors, and M07/M12/M13 still own replacing their remaining public/runtime exposure and enforcing the final codec allowlist.
+The glyph-free `norad::Font` source templates and full Master compatibility fonts also remain tracked for M12/M13; this substep does not claim the final architecture.
+
+Remaining M01 work: retain object identity through compatibility reconciliation, add adversarial fixtures for colliding `f32` widths, fractional metadata and every object kind, then execute no-op/edit/undo/save acceptance.

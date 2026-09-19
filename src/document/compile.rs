@@ -349,18 +349,19 @@ impl Project {
                     layer.location = Some(self.design_location(&source.location)?);
                 }
             }
-            if let Some(default_glyph) = self.variable_glyph(&glyph.name).and_then(|g| {
-                g.layer(&LayerId {
+            if let Some(default_glyph) = self.glyph_layer(
+                &glyph.name,
+                &LayerId {
                     source: self.source_id(default).expect("default source identity"),
                     name: self.sources()[default]
                         .font
                         .default_layer()
                         .name()
                         .to_string(),
-                })
-            }) {
+                },
+            ) {
                 glyph.codepoints = default_glyph.codepoints.iter().map(u32::from).collect();
-                glyph.category = super::compile_metadata::glyph_category(source, default_glyph)?;
+                glyph.category = super::compile_metadata::glyph_category(source, &default_glyph)?;
             }
         }
         font.instances = self

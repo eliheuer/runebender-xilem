@@ -475,9 +475,7 @@ impl Project {
     ) -> Result<LayerId, String> {
         let index = self.source_index(from.source).ok_or("unknown source")?;
         let payload = self
-            .variable_glyph(glyph)
-            .and_then(|g| g.layer(from))
-            .cloned()
+            .glyph_layer(glyph, from)
             .ok_or("missing source glyph layer")?;
         let mut font = self.masters[index].font.clone();
         let target = font
@@ -503,11 +501,7 @@ impl Project {
         if self.masters[index].font.default_layer().name().as_str() == id.name {
             return Err("remove the source to remove a default layer".into());
         }
-        if self
-            .variable_glyph(glyph)
-            .and_then(|g| g.layer(id))
-            .is_none()
-        {
+        if self.glyph_layer(glyph, id).is_none() {
             return Err("missing glyph layer".into());
         }
         let before = SourceFrame::capture(self);

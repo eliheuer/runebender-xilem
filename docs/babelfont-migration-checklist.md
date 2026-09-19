@@ -147,7 +147,7 @@ Depends on: M00.
 Start in: `document/variable.rs`, `document/babelfont.rs`, `document/model/entity_id.rs`, `formats/lib_keys.rs`, the pinned Babelfont types and contract tests.
 
 - [x] Write the field-ownership contract for geometry, width/height, raw affine matrices, fractional kerning/metrics, Unicode, names, categories, guides, images, notes, libs, source/instance metadata and format-specific extensions.
-- [ ] Introduce typed exact-value/metadata extensions without complete Norad glyph/font copies; maintain one authoritative editable value for each field.
+- [x] Introduce typed exact-value/metadata extensions without complete Norad glyph/font copies; maintain one authoritative editable value for each field.
 - [x] Define identity and mapping rules for sources, layers, glyphs, contours, points, components and anchors, including rename, copy/paste, deletion, reorder and undo.
 - [x] Replace index-based preservation matching with the identity-aware design before enabling direct topology edits.
 - [ ] Add round-trip fixtures for two widths that narrow to the same `f32`, fractional kerning, six-coefficient transforms, identifiers, per-object libs, guides, images and unknown metadata.
