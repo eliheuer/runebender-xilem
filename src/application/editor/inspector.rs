@@ -24,25 +24,27 @@ fn kerning_participant(raw: &str, side: KerningSide) -> Option<KerningParticipan
     }
 }
 
-fn mark_cloud(font: &FontModel, base: &norad::Glyph) -> Vec<Arc<kurbo::BezPath>> {
-    let base_anchors: Vec<_> = base
-        .anchors
-        .iter()
-        .filter_map(|anchor| {
-            Some((
-                anchor.name.as_ref()?.to_string(),
-                kurbo::Point::new(anchor.x, anchor.y),
-            ))
-        })
-        .collect();
+fn mark_cloud(
+    font: &FontModel,
+    base_anchors: &[(String, kurbo::Point)],
+) -> Vec<Arc<kurbo::BezPath>> {
+    let Some(source) = font.project.source_id(font.active()) else {
+        return Vec::new();
+    };
+    let Some(layer_id) = font
+        .project
+        .document_source(source)
+        .map(|source| source.default_layer())
+    else {
+        return Vec::new();
+    };
     let mut placed = Vec::new();
     'candidates: for entry in &font.glyphs {
-        let Some(candidate) = font.font().get_glyph(&entry.name) else {
+        let Some(candidate) = font.project.document_layer(&entry.name, &layer_id) else {
             continue;
         };
-        for anchor in &candidate.anchors {
-            let Some(mark_name) = anchor.name.as_ref().and_then(|name| name.strip_prefix('_'))
-            else {
+        for anchor in candidate.anchors() {
+            let Some(mark_name) = anchor.name().strip_prefix('_') else {
                 continue;
             };
             let Some((_, target)) = base_anchors.iter().find(|(name, _)| name == mark_name) else {
@@ -52,8 +54,10 @@ fn mark_cloud(font: &FontModel, base: &norad::Glyph) -> Vec<Arc<kurbo::BezPath>>
                 continue;
             }
             placed.push(Arc::new(
-                kurbo::Affine::translate((target.x - anchor.x, target.y - anchor.y))
-                    * (*entry.outline).clone(),
+                kurbo::Affine::translate((
+                    target.x - anchor.position().x,
+                    target.y - anchor.position().y,
+                )) * (*entry.outline).clone(),
             ));
             if placed.len() >= 60 {
                 break 'candidates;
@@ -135,10 +139,7 @@ impl Workspace {
             .and_then(|task| self.font.proposal_outline(task, &self.session.glyph_name))
             .map(Arc::new);
         let mark_cloud = if self.show_mark_cloud {
-            self.session
-                .compatibility_glyph()
-                .map(|glyph| mark_cloud(&self.font, &glyph))
-                .unwrap_or_default()
+            mark_cloud(&self.font, &self.session.named_anchors())
         } else {
             Vec::new()
         };

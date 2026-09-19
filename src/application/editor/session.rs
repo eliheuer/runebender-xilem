@@ -384,6 +384,17 @@ impl Session {
             .collect()
     }
 
+    pub(crate) fn named_anchors(&self) -> Vec<(String, Point)> {
+        self.current_layer()
+            .into_iter()
+            .flat_map(|layer| {
+                layer
+                    .anchors()
+                    .map(|anchor| (anchor.name().to_owned(), anchor.position()))
+            })
+            .collect()
+    }
+
     pub(crate) fn handle_lines(&self) -> Vec<kurbo::Line> {
         let Some(layer) = self.current_layer() else {
             return Vec::new();

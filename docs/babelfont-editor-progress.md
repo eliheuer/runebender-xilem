@@ -306,7 +306,7 @@ git diff --check
 - Direct canonical draft operations now own filters, cleanup, transforms, shapes, anchors, images, boolean operations, knife cuts, curve conversion, re-interpolation and mask baking.
 - Place Image installs bytes through a stable-source Project operation and attaches the image through the layer draft; it no longer mutates `FontModel::font_mut().images`.
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
-- The remaining temporary bridge callers are exact and finite: pen contour materialization and close; mark-label writes; compatibility contour replacement and its test-only paste helper; background send and swap; and the mark-cloud read projection.
+- The remaining temporary bridge callers are exact and finite: pen contour materialization and close; mark-label writes; compatibility contour replacement and its test-only paste helper; and background send and swap.
 - `FontModel` still exposes mutable source/font access for overview marks, Unicode, metrics formulas, local-model workflow boundaries, source retargeting and background layers; those callers remain M06/M13 work rather than completion claims.
 - Pen, Rectangle, Ellipse and Knife Pointer Cancel paths now have real widget-event coverage.
 
@@ -421,6 +421,29 @@ git diff --check
 All four focused regressions passed.
 The complete binary suite passed 170 tests with four documented model or external-font tests ignored.
 Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
+
+## Canonical mark-cloud presentation slice
+
+Implementation commit: `Read mark clouds from canonical anchors`.
+Resolve its exact ID with `git log --format=%H --grep='^Read mark clouds from canonical anchors$' -1`.
+Affected paths: `src/application/editor/session.rs`, `src/application/editor/inspector.rs` and this log.
+
+The open Session now exposes named anchors from its current canonical layer view.
+Mark-cloud placement resolves every candidate anchor through the active Project source and combines it with the existing canonical outline cache.
+The inspector no longer materializes the open glyph or reads candidate anchors from the compatibility font for this overlay.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::inspector::size_tests::mark_cloud_places_only_marks_with_matching_anchors -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo clippy --locked --bin runebender -- -D warnings
+CARGO_BUILD_JOBS=1 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='-C target-feature=+simd128' cargo clippy --manifest-path web/Cargo.toml --locked --target wasm32-unknown-unknown --no-deps -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused canonical mark-cloud placement regression passed.
+Warning-denied native binary and browser Clippy, formatting and diff checks passed.
 
 ## Next action
 
