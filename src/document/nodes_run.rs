@@ -827,30 +827,32 @@ fn failed(id: u32, type_name: &str, error: &str, seconds: f64) -> NodeResult {
 
 /// The UFO the Font node stands for.
 fn source_master(ctx: &RunContext<'_>) -> Result<PathBuf, String> {
-    if ctx.font.extension().is_some_and(|x| x == "ufo") {
-        return Ok(ctx.font.to_path_buf());
-    }
     let project = Project::load(ctx.font)?;
     master_path(&project, ctx.master)
 }
 
 /// A master's UFO path by style name, or the first.
 fn master_path(project: &Project, name: Option<&str>) -> Result<PathBuf, String> {
-    let index = match name {
-        None => 0,
-        Some(n) => project
-            .master_names
-            .iter()
-            .position(|m| m.as_ref() == n)
+    if let Some(name) = name {
+        return project
+            .document_sources()
+            .find(|source| source.name() == name)
+            .map(|source| source.path().to_path_buf())
             .ok_or_else(|| {
-                let names: Vec<&str> = project.master_names.iter().map(AsRef::as_ref).collect();
-                format!("no master named {n}; the family has: {}", names.join(", "))
-            })?,
-    };
+                let names = project
+                    .document_sources()
+                    .map(|source| source.name())
+                    .collect::<Vec<_>>();
+                format!(
+                    "no master named {name}; the family has: {}",
+                    names.join(", ")
+                )
+            });
+    }
     project
-        .sources()
-        .get(index)
-        .map(|m| m.source_path.clone())
+        .document_sources()
+        .next()
+        .map(|source| source.path().to_path_buf())
         .ok_or_else(|| "the family has no master".to_string())
 }
 
@@ -1439,6 +1441,33 @@ fn mean_distance(a: &norad::Glyph, b: &norad::Glyph, offset: (f64, f64)) -> f64 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn source_selection_project() -> Project {
+        let document = crate::document::font_memory::designspace_from_str(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<designspace format="5.0">
+  <axes>
+    <axis name="Weight" tag="wght" minimum="400" default="400" maximum="700"/>
+  </axes>
+  <sources>
+    <source filename="Regular.ufo" stylename="Regular">
+      <location><dimension name="Weight" xvalue="400"/></location>
+    </source>
+    <source filename="Bold.ufo" stylename="Bold">
+      <location><dimension name="Weight" xvalue="700"/></location>
+    </source>
+  </sources>
+</designspace>"#,
+        )
+        .unwrap();
+        Project::from_designspace(document, |filename| {
+            Ok(Master::from_font(
+                norad::Font::new(),
+                PathBuf::from(filename),
+            ))
+        })
+        .unwrap()
+    }
 
     #[test]
     fn progress_lines_parse() {
