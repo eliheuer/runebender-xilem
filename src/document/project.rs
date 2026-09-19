@@ -824,7 +824,9 @@ impl Project {
     /// structure disagrees, with contour and point counts. None when
     /// compatible or single-master.
     pub fn compat_detail(&self, name: &str) -> Option<String> {
-        let error = self.try_interpolated_at(name, &Location::new()).err()?;
+        let error = self
+            .try_interpolated_layer_at(name, &Location::new())
+            .err()?;
         let first_sig = Self::glyph_signature(&self.masters[0], name);
         let first_name = &self.master_names[0];
         let describe = |sig: &Option<Vec<Vec<norad::PointType>>>| match sig {
@@ -886,7 +888,8 @@ impl Project {
 
     /// Check one glyph's compatibility across all masters.
     pub fn check_compat(&self, name: &str) -> bool {
-        self.try_interpolated_at(name, &Location::new()).is_ok()
+        self.try_interpolated_layer_at(name, &Location::new())
+            .is_ok()
     }
 
     /// Recompute the whole compatibility map (load / reload).
@@ -917,20 +920,34 @@ impl Project {
         if layers.len() == 1 {
             return Ok(layers[0].project());
         }
-        super::interpolation::interpolate_projected(
+        let default = locations
+            .iter()
+            .position(|location| location.values().all(|value| value.abs() < 1e-9))
+            .ok_or("glyph has no layer at the default location")?;
+        let base = layers
+            .get(default)
+            .copied()
+            .ok_or("missing default layer")?;
+        let interpolated = super::interpolation::interpolate_layers(
             &layers,
             &locations,
             &self.master_locations[self.active],
-        )
+        )?;
+        super::interpolation::project_interpolated(&interpolated, base)
     }
 
     /// The current instance's path and advance, resolving every component at that location.
     pub fn interpolated_glyph(&self, glyph_name: &str) -> Option<(BezPath, f64)> {
-        let glyph = self.interpolated_norad_glyph(glyph_name)?;
+        if self.location.values().all(|value| value.abs() < 1e-9) {
+            return None;
+        }
+        let layer = self
+            .try_interpolated_layer_at(glyph_name, &self.location)
+            .ok()?;
         Some((
             self.interpolated_outline_at(glyph_name, &self.location)
                 .ok()?,
-            glyph.width,
+            layer.width,
         ))
     }
 
@@ -951,12 +968,11 @@ impl Project {
                     "{name}: cyclic or excessively deep component graph"
                 ));
             }
-            let glyph = project.try_interpolated_at(name, location)?;
-            let mut path = crate::outline::glyph_paths::contours_to_bezpath(&glyph);
-            for component in &glyph.components {
-                let outline = resolve(project, &component.base, location, seen)?;
-                let transform = crate::outline::glyph_paths::component_affine(&component.transform);
-                path.extend((transform * outline).elements().iter().copied());
+            let layer = project.try_interpolated_layer_at(name, location)?;
+            let mut path = layer.contours_to_bezpath();
+            for component in layer.components() {
+                let outline = resolve(project, &component.reference, location, seen)?;
+                path.extend((component.transform * outline).elements().iter().copied());
             }
             seen.remove(name);
             Ok(path)
@@ -1030,12 +1046,7 @@ impl Project {
         glyph_name: &str,
         location: &Location,
     ) -> Result<norad::Glyph, String> {
-        if location
-            .keys()
-            .any(|name| !self.axes.iter().any(|axis| &axis.name == name))
-        {
-            return Err("interpolation references an unknown axis".into());
-        }
+        let interpolated = self.try_interpolated_layer_at(glyph_name, location)?;
         let (layers, locations) = self.interpolation_layers(glyph_name, None)?;
         let default = locations
             .iter()
@@ -1045,6 +1056,21 @@ impl Project {
             .get(default)
             .copied()
             .ok_or("missing default layer")?;
+        super::interpolation::project_interpolated(&interpolated, base)
+    }
+
+    fn try_interpolated_layer_at(
+        &self,
+        glyph_name: &str,
+        location: &Location,
+    ) -> Result<super::interpolation::InterpolatedLayer, String> {
+        if location
+            .keys()
+            .any(|name| !self.axes.iter().any(|axis| &axis.name == name))
+        {
+            return Err("interpolation references an unknown axis".into());
+        }
+        let (layers, locations) = self.interpolation_layers(glyph_name, None)?;
         let mut interpolated =
             super::interpolation::interpolate_layers(&layers, &locations, location)?;
         // HOI: nodes with an intermediate point follow their exact
@@ -1098,7 +1124,7 @@ impl Project {
                 }
             }
         }
-        super::interpolation::project_interpolated(&interpolated, base)
+        Ok(interpolated)
     }
 
     fn interpolation_layers(
@@ -1206,11 +1232,11 @@ impl Project {
                     axis.max,
                 ),
             );
-            let glyph = self.interpolated_at(glyph_name, &location)?;
+            let layer = self.try_interpolated_layer_at(glyph_name, &location).ok()?;
             let mut flat = Vec::new();
-            for contour in &glyph.contours {
-                for p in &contour.points {
-                    flat.push(kurbo::Point::new(p.x, p.y));
+            for contour in layer.contours() {
+                for point in &contour.points {
+                    flat.push(point.position);
                 }
             }
             if per_point.is_empty() {

@@ -417,6 +417,18 @@ fn append_document_contour(path: &mut BezPath, contour: ContourView<'_>) {
     append_points(path, &points, contour.is_closed());
 }
 
+pub(crate) fn append_canonical_points(
+    path: &mut BezPath,
+    points: impl IntoIterator<Item = (Point, LayerPointType)>,
+    closed: bool,
+) {
+    let points = points
+        .into_iter()
+        .map(|(position, kind)| OutlinePoint { position, kind })
+        .collect::<Vec<_>>();
+    append_points(path, &points, closed);
+}
+
 fn append_document_shapes<'a>(
     path: &mut BezPath,
     layer: LayerView<'a>,

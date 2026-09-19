@@ -25,14 +25,14 @@ pub(super) struct InterpolatedLayer {
 }
 
 impl InterpolatedLayer {
-    fn contours(&self) -> impl Iterator<Item = &InterpolatedContour> {
+    pub(super) fn contours(&self) -> impl Iterator<Item = &InterpolatedContour> {
         self.shapes.iter().filter_map(|shape| match shape {
             InterpolatedShape::Contour(contour) => Some(contour),
             InterpolatedShape::Component(_) => None,
         })
     }
 
-    fn components(&self) -> impl Iterator<Item = &InterpolatedComponent> {
+    pub(super) fn components(&self) -> impl Iterator<Item = &InterpolatedComponent> {
         self.shapes.iter().filter_map(|shape| match shape {
             InterpolatedShape::Contour(_) => None,
             InterpolatedShape::Component(component) => Some(component),
@@ -54,6 +54,50 @@ impl InterpolatedLayer {
             .points
             .get_mut(point_index)
     }
+
+    pub(super) fn contours_to_bezpath(&self) -> kurbo::BezPath {
+        let mut path = kurbo::BezPath::new();
+        for contour in self.contours() {
+            if contour.hyper {
+                let hyper = crate::outline::path::hyper_model::Contour {
+                    points: contour
+                        .points
+                        .iter()
+                        .map(|point| crate::outline::path::hyper_model::ContourPoint {
+                            x: point.position.x,
+                            y: point.position.y,
+                            smooth: point.smooth,
+                            point_type: match point.point_type {
+                                LayerPointType::Move | LayerPointType::Curve => {
+                                    crate::outline::path::hyper_model::PointType::Hyper
+                                }
+                                LayerPointType::Line => {
+                                    crate::outline::path::hyper_model::PointType::HyperCorner
+                                }
+                                LayerPointType::OffCurve => {
+                                    crate::outline::path::hyper_model::PointType::OffCurve
+                                }
+                                LayerPointType::QCurve => {
+                                    crate::outline::path::hyper_model::PointType::QCurve
+                                }
+                            },
+                        })
+                        .collect(),
+                };
+                crate::outline::path::Path::from_contour(&hyper).append_to_bezpath(&mut path);
+                continue;
+            }
+            crate::outline::glyph_paths::append_canonical_points(
+                &mut path,
+                contour
+                    .points
+                    .iter()
+                    .map(|point| (point.position, point.point_type)),
+                contour.closed,
+            );
+        }
+        path
+    }
 }
 
 /// One contour or component in canonical paint order.
@@ -68,6 +112,7 @@ pub(super) enum InterpolatedShape {
 pub(super) struct InterpolatedContour {
     pub(super) id: ContourId,
     pub(super) closed: bool,
+    pub(super) hyper: bool,
     pub(super) points: Vec<InterpolatedPoint>,
 }
 
@@ -108,7 +153,9 @@ fn compatible_layers(base: LayerView<'_>, other: LayerView<'_>) -> bool {
                 (LayerShapeView::Contour(a), LayerShapeView::Contour(b)) => {
                     let a_types: Vec<_> = a.points().map(|point| point.point_type()).collect();
                     let b_types: Vec<_> = b.points().map(|point| point.point_type()).collect();
-                    a.is_closed() == b.is_closed() && a_types == b_types
+                    a.is_closed() == b.is_closed()
+                        && a.is_hyper() == b.is_hyper()
+                        && a_types == b_types
                 }
                 (LayerShapeView::Component(a), LayerShapeView::Component(b)) => {
                     a.reference() == b.reference()
@@ -213,6 +260,7 @@ pub(super) fn interpolate_layers(
             LayerShapeView::Contour(contour) => InterpolatedShape::Contour(InterpolatedContour {
                 id: contour.id(),
                 closed: contour.is_closed(),
+                hyper: contour.is_hyper(),
                 points: contour
                     .points()
                     .map(|point| InterpolatedPoint {
@@ -255,27 +303,6 @@ pub(super) fn interpolate_layers(
     })
 }
 
-/// Interpolate canonical layers and materialize one transitional UFO result.
-///
-/// The UFO value is created only after interpolation and retains the default layer's exact
-/// preservation payload.
-pub(super) fn interpolate_projected(
-    layers: &[LayerView<'_>],
-    locations: &[Location],
-    target: &Location,
-) -> Result<norad::Glyph, String> {
-    let default = locations
-        .iter()
-        .position(|location| location.values().all(|value| value.abs() < 1e-9))
-        .ok_or("glyph has no layer at the default location")?;
-    let base = layers
-        .get(default)
-        .copied()
-        .ok_or("missing default layer")?;
-    let output = interpolate_layers(layers, locations, target)?;
-    project_interpolated(&output, base)
-}
-
 pub(super) fn project_interpolated(
     output: &InterpolatedLayer,
     base: LayerView<'_>,
@@ -300,7 +327,10 @@ pub(super) fn project_interpolated(
         .zip(output.contours())
         .zip(base.contours())
     {
-        if output.id != source.id() || output.closed != source.is_closed() {
+        if output.id != source.id()
+            || output.closed != source.is_closed()
+            || output.hyper != source.is_hyper()
+        {
             return Err("canonical interpolation changed default contour structure".into());
         }
         for ((point, output), source) in contour
@@ -428,6 +458,19 @@ mod tests {
         glyph
     }
 
+    fn hyper_glyph(offset: f64) -> Glyph {
+        let mut glyph = Glyph::new("hyper");
+        glyph.contours.push(Contour::new(
+            vec![
+                ContourPoint::new(0.0 + offset, 0.0, PointType::Curve, true, None, None),
+                ContourPoint::new(100.0 + offset, 200.0, PointType::Curve, true, None, None),
+                ContourPoint::new(200.0 + offset, 0.0, PointType::Line, false, None, None),
+            ],
+            Some(norad::Identifier::new("hyper-test").unwrap()),
+        ));
+        glyph
+    }
+
     #[test]
     fn canonical_interpolation_retains_default_structure_and_exact_values() {
         let base_id = LayerId {
@@ -537,6 +580,35 @@ mod tests {
             interpolate_layers(&[layers[0]], &[location(0.0)], &location(f64::NAN))
                 .unwrap_err()
                 .contains("finite")
+        );
+    }
+
+    #[test]
+    fn canonical_interpolated_path_preserves_hyperbezier_rendering() {
+        let base_id = LayerId {
+            source: SourceId(0),
+            name: "public.default".into(),
+        };
+        let other_id = LayerId {
+            source: SourceId(1),
+            name: "public.default".into(),
+        };
+        let (base_layer, base_preserved) =
+            crate::document::babelfont::layer_from_ufo(&hyper_glyph(0.0), &base_id, true);
+        let (other_layer, other_preserved) =
+            crate::document::babelfont::layer_from_ufo(&hyper_glyph(50.0), &other_id, true);
+        let base = LayerView::new(&base_layer, &base_preserved);
+        let result = interpolate_layers(
+            &[base, LayerView::new(&other_layer, &other_preserved)],
+            &[location(0.0), location(1.0)],
+            &location(0.5),
+        )
+        .unwrap();
+        let projected = project_interpolated(&result, base).unwrap();
+
+        assert_eq!(
+            result.contours_to_bezpath(),
+            crate::outline::glyph_paths::contours_to_bezpath(&projected)
         );
     }
 }
