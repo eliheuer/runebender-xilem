@@ -1,6 +1,6 @@
 # Babelfont migration progress
 
-Status: **IN PROGRESS — M00 complete; paused before M01 for main promotion**.
+Status: **IN PROGRESS — M00 complete; M01 active**.
 The definition of complete and milestone dependencies remain in [the checklist](babelfont-migration-checklist.md).
 No model ownership has changed yet.
 
@@ -97,7 +97,27 @@ M00's four acceptance steps are complete; M01–M14 remain unchecked.
 
 ### Next action
 
-The originating task requested a pause after this coherent M00 commit while it promotes authorized work to main.
-Do not start M01 until that task reports promotion complete.
-Then begin M01 with the exact-value and identity ownership contract and adversarial preservation fixtures.
+Main promotion completed at `314aa3235c372ed8d5fef7a2cddb8be3a07ad1da`; the originating task verified the actual checkout and `origin/main` at that exact commit.
+M01 has begun with the field and identity ownership contract in [Babelfont document field and identity ownership](babelfont-field-ownership.md).
+The next substep is to introduce the typed exact-value and object-metadata structures, then replace positional preservation matching before direct topology edits.
 There is no known external blocker.
+
+## M01 — Define exact values, identities and preservation ownership
+
+Status: active.
+Evidence commit: `Define Babelfont document field and identity ownership` (the commit adding the contract).
+Resolve its exact ID with `git log --diff-filter=A --format=%H -- docs/babelfont-field-ownership.md`; this avoids a self-referential commit hash.
+Affected paths: `docs/babelfont-field-ownership.md`, this log and the checklist.
+No runtime ownership changed in this substep.
+
+The ownership contract assigns geometry, exact advances, component matrices, object metadata, Unicode, names, categories, guides, images, notes, libs, font/source/instance data and opaque format extensions to one authoritative location.
+It defines typed identities and behavior for rename, insert, delete, reorder, duplicate, copy/paste, topology replacement, undo, proposals and experimental versions.
+It explicitly identifies the current full Norad payloads, templates, Master fonts, reconciliation guards and positional matching as violations still to remove.
+
+Evidence:
+
+- Inspected the pinned Babelfont layer, shape, node and anchor definitions at `29bdedbb`; layer width is `f32`, components store decomposed transforms, and object format-specific values cannot serve as a second live owner.
+- Inspected Norad 0.13.0 object identifiers, object libs, image placement and the current Runebender projection code.
+- `git diff --check` and the documentation one-sentence-per-line check run before commit.
+
+Remaining M01 work: typed extensions, identity-aware mapping, adversarial round-trip fixtures and full acceptance tests.
