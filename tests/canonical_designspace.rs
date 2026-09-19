@@ -374,7 +374,7 @@ fn unsupported_or_ambiguous_structure_is_rejected_at_import() {
 #[test]
 fn project_owns_the_canonical_designspace_and_snapshots_it() {
     let doc = fixture();
-    let project = Project::from_designspace(doc.clone(), |filename| {
+    let mut project = Project::from_designspace(doc.clone(), |filename| {
         let mut font = norad::Font::new();
         if filename == "Regular.ufo" {
             font.layers.new_layer("{650,110}").unwrap();
@@ -394,4 +394,13 @@ fn project_owns_the_canonical_designspace_and_snapshots_it() {
         canonical.compiler_structure()
     );
     assert_eq!(project.document_snapshot().designspace(), Some(canonical));
+
+    project.axes.clear();
+    project.master_locations.clear();
+    project.instances.clear();
+    project.ds_doc = None;
+    project.location = [("Width".into(), 0.5)].into();
+    assert_eq!(project.rule_substitute("A").as_deref(), Some("A.alt"));
+    project.refresh_instances_from_doc();
+    assert_eq!(project.instances[0].0.as_ref(), "Semibold Extended");
 }
