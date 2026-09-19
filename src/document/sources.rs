@@ -457,7 +457,6 @@ impl Project {
         {
             return Err("the default source must remain in the project".into());
         }
-        self.ensure_source_reindex_available()?;
         let designspace = self
             .begin_source_designspace_edit()
             .ok_or("not a Designspace")?;
@@ -503,15 +502,6 @@ impl Project {
         Ok(())
     }
 
-    fn ensure_source_reindex_available(&self) -> Result<(), String> {
-        if !self.experiments.versions.is_empty() {
-            return Err(
-                "Close live source experiments before removing or reordering sources".into(),
-            );
-        }
-        Ok(())
-    }
-
     /// Move a source to a display position without changing any source identity.
     pub fn move_source(&mut self, id: SourceId, to: usize) -> Result<bool, String> {
         let from = self.source_index(id).ok_or("unknown source")?;
@@ -521,7 +511,6 @@ impl Project {
         if from == to {
             return Ok(false);
         }
-        self.ensure_source_reindex_available()?;
         let designspace = self
             .begin_source_designspace_edit()
             .ok_or("not a Designspace")?;
