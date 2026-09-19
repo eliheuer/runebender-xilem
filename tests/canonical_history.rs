@@ -71,6 +71,16 @@ fn project_fixture() -> (Project, GlyphLayerAddress) {
     let mut font = Font::new();
     let layer_name = font.default_layer().name().to_string();
     font.default_layer_mut().insert_glyph(glyph);
+    let mut occupied = Glyph::new("B");
+    occupied.width = 700.0;
+    font.default_layer_mut().insert_glyph(occupied);
+    let auxiliary = font.layers.new_layer("background").unwrap();
+    let mut auxiliary_a = Glyph::new("A");
+    auxiliary_a.width = 450.25;
+    auxiliary.insert_glyph(auxiliary_a);
+    let mut auxiliary_b = Glyph::new("B");
+    auxiliary_b.width = 725.0;
+    auxiliary.insert_glyph(auxiliary_b);
     let project = Project::from_source(Master::from_font(
         font,
         PathBuf::from("canonical-history-fixture.ufo"),
@@ -80,6 +90,52 @@ fn project_fixture() -> (Project, GlyphLayerAddress) {
         layer: LayerId {
             source: SourceId(0),
             name: layer_name,
+        },
+    };
+    (project, address)
+}
+
+fn rename_project_glyph(project: &mut Project, source: SourceId, old: &str, new: &str) {
+    let mut font = project
+        .edit_source(source)
+        .expect("the fixture source exists")
+        .into_font();
+    let default_layer = font.default_layer().name().to_string();
+    assert!(
+        runebender::document::font_ops::rename_glyph(&mut font, old, new),
+        "fixture default-layer rename failed"
+    );
+    for layer in font.layers.iter_mut() {
+        if layer.name().as_str() != default_layer && layer.get_glyph(old).is_some() {
+            layer.rename_glyph(old, new, false).unwrap();
+        }
+    }
+}
+
+fn rename_project_fixture() -> (Project, GlyphLayerAddress) {
+    // Keep the rename fixture empty until M07 supplies the direct canonical rename.
+    // The compatibility rename then changes only the name, isolating history rebinding
+    // from the legacy guard's object-identity reconciliation.
+    let mut glyph = Glyph::new("A");
+    glyph.width = 500.125;
+    let mut font = Font::new();
+    let default_layer = font.default_layer().name().to_string();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut auxiliary = Glyph::new("A");
+    auxiliary.width = 450.25;
+    font.layers
+        .new_layer("background")
+        .unwrap()
+        .insert_glyph(auxiliary);
+    let project = Project::from_source(Master::from_font(
+        font,
+        PathBuf::from("canonical-history-rename-fixture.ufo"),
+    ));
+    let address = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer: LayerId {
+            source: SourceId(0),
+            name: default_layer,
         },
     };
     (project, address)
@@ -425,4 +481,124 @@ fn project_history_rejects_stale_replay_without_moving_the_stack() {
     assert_eq!(project.document_revision(), revision);
     assert_eq!(history.depth(&address, HistoryDirection::Undo), 1);
     assert_eq!(history.depth(&address, HistoryDirection::Redo), 0);
+}
+
+#[test]
+fn project_history_rebinds_default_and_auxiliary_undo_and_redo_after_rename() {
+    let (mut project, default_old) = rename_project_fixture();
+    let auxiliary_old = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer: LayerId {
+            source: default_old.layer.source,
+            name: "background".into(),
+        },
+    };
+    let mut history = DocumentHistory::default();
+    let default_before = DocumentHistory::capture(&project, &default_old).unwrap();
+    project
+        .edit_document_layer(&default_old.glyph, &default_old.layer, |draft| {
+            draft.set_width(600.375)?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        history
+            .record_completed(&project, &default_old, default_before)
+            .unwrap()
+    );
+    let auxiliary_before = DocumentHistory::capture(&project, &auxiliary_old).unwrap();
+    project
+        .edit_document_layer(&auxiliary_old.glyph, &auxiliary_old.layer, |draft| {
+            draft.set_width(475.875)?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        history
+            .record_completed(&project, &auxiliary_old, auxiliary_before)
+            .unwrap()
+    );
+
+    assert_eq!(
+        history.replay(&mut project, &default_old, HistoryDirection::Undo),
+        Ok(HistoryReplayOutcome::Applied)
+    );
+    rename_project_glyph(&mut project, default_old.layer.source, "A", "A.alt");
+    assert!(history.rename_glyph("A", "A.alt"));
+    let default_new = GlyphLayerAddress {
+        glyph: "A.alt".into(),
+        layer: default_old.layer,
+    };
+    let auxiliary_new = GlyphLayerAddress {
+        glyph: "A.alt".into(),
+        layer: auxiliary_old.layer,
+    };
+
+    assert_eq!(history.depth(&default_new, HistoryDirection::Redo), 1);
+    assert_eq!(history.depth(&auxiliary_new, HistoryDirection::Undo), 1);
+    assert_eq!(
+        history.replay(&mut project, &auxiliary_new, HistoryDirection::Undo),
+        Ok(HistoryReplayOutcome::Applied)
+    );
+    assert_eq!(
+        project
+            .document_layer(&auxiliary_new.glyph, &auxiliary_new.layer)
+            .unwrap()
+            .width(),
+        450.25
+    );
+    assert_eq!(
+        history.replay(&mut project, &default_new, HistoryDirection::Redo),
+        Ok(HistoryReplayOutcome::Applied)
+    );
+    assert_eq!(
+        project
+            .document_layer(&default_new.glyph, &default_new.layer)
+            .unwrap()
+            .width(),
+        600.375
+    );
+}
+
+#[test]
+fn project_history_rename_collision_leaves_every_stack_unchanged() {
+    let (mut project, a) = project_fixture();
+    let b = GlyphLayerAddress {
+        glyph: "B".into(),
+        layer: LayerId {
+            source: a.layer.source,
+            name: "background".into(),
+        },
+    };
+    let mut history = DocumentHistory::default();
+    let a_before = DocumentHistory::capture(&project, &a).unwrap();
+    project
+        .edit_document_layer(&a.glyph, &a.layer, |draft| {
+            draft.set_width(600.375)?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(history.record_completed(&project, &a, a_before).unwrap());
+    let b_before = DocumentHistory::capture(&project, &b).unwrap();
+    project
+        .edit_document_layer(&b.glyph, &b.layer, |draft| {
+            draft.set_width(750.5)?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(history.record_completed(&project, &b, b_before).unwrap());
+
+    assert!(!history.rename_glyph("A", "B"));
+    assert_eq!(history.depth(&a, HistoryDirection::Undo), 1);
+    assert_eq!(history.depth(&b, HistoryDirection::Undo), 1);
+    assert_eq!(
+        history.depth(
+            &GlyphLayerAddress {
+                glyph: "B".into(),
+                layer: a.layer.clone(),
+            },
+            HistoryDirection::Undo,
+        ),
+        0
+    );
 }

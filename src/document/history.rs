@@ -266,6 +266,53 @@ impl<S: PartialEq> CanonicalHistory<S> {
     }
 }
 
+impl<S: Clone + PartialEq> CanonicalHistory<S> {
+    fn rename_glyph_with(
+        &mut self,
+        old: &str,
+        new: &str,
+        mut rebind: impl FnMut(&GlyphLayerAddress, &GlyphLayerAddress, S) -> Option<S>,
+    ) -> bool {
+        if old == new || self.stacks.keys().any(|address| address.glyph == new) {
+            return false;
+        }
+        let old_addresses = self
+            .stacks
+            .keys()
+            .filter(|address| address.glyph == old)
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut rebound = Vec::with_capacity(old_addresses.len());
+        for old_address in &old_addresses {
+            let new_address = GlyphLayerAddress {
+                glyph: new.to_owned(),
+                layer: old_address.layer.clone(),
+            };
+            let mut stack = self
+                .stacks
+                .get(old_address)
+                .expect("the collected history address exists")
+                .clone();
+            for step in stack.undo.iter_mut().chain(&mut stack.redo) {
+                step.before = match rebind(old_address, &new_address, step.before.clone()) {
+                    Some(snapshot) => snapshot,
+                    None => return false,
+                };
+                step.after = match rebind(old_address, &new_address, step.after.clone()) {
+                    Some(snapshot) => snapshot,
+                    None => return false,
+                };
+            }
+            rebound.push((new_address, stack));
+        }
+        for old_address in old_addresses {
+            self.stacks.remove(&old_address);
+        }
+        self.stacks.extend(rebound);
+        true
+    }
+}
+
 /// Document-owned history over complete canonical layer snapshots.
 ///
 /// Callers capture the before-state, commit one or more direct document edits and
@@ -363,7 +410,12 @@ impl DocumentHistory {
 
     /// Move every canonical layer stack when a glyph is renamed.
     pub fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
-        self.layers.rename_glyph(old, new)
+        self.layers
+            .rename_glyph_with(old, new, |old_address, new_address, mut snapshot| {
+                snapshot
+                    .rebind_glyph(old_address, new_address)
+                    .then_some(snapshot)
+            })
     }
 
     /// Forget every canonical layer stack after a glyph is permanently removed.
@@ -497,6 +549,22 @@ mod tests {
     use super::*;
     use norad::{Contour, ContourPoint, PointType};
 
+    #[derive(Clone, Debug, PartialEq)]
+    struct BoundState {
+        address: GlyphLayerAddress,
+        value: i32,
+    }
+
+    fn bound_address(glyph: &str) -> GlyphLayerAddress {
+        GlyphLayerAddress {
+            glyph: glyph.into(),
+            layer: super::super::variable::LayerId {
+                source: super::super::variable::SourceId(7),
+                name: "public.default".into(),
+            },
+        }
+    }
+
     fn glyph(width: f64) -> Glyph {
         let mut g = Glyph::new("a");
         g.width = width;
@@ -596,5 +664,50 @@ mod tests {
         assert!(history.redo("a.alt", &mut current));
         assert_eq!(current.width, 600.0);
         assert!(!history.can_undo("a"));
+    }
+
+    #[test]
+    fn canonical_rename_rebinds_address_bound_undo_and_redo_atomically() {
+        let old = bound_address("a");
+        let new = bound_address("a.alt");
+        let before = BoundState {
+            address: old.clone(),
+            value: 1,
+        };
+        let after = BoundState {
+            address: old.clone(),
+            value: 2,
+        };
+        let mut history = CanonicalHistory::default();
+        assert!(history.record(old.clone(), before, after.clone()));
+        let mut live = after;
+        assert_eq!(
+            history.replay(&old, &live.clone(), HistoryDirection::Undo, |_, state| {
+                live = state.clone();
+                Ok::<_, ()>(())
+            }),
+            Ok(HistoryReplayOutcome::Applied)
+        );
+
+        assert!(
+            history.rename_glyph_with("a", "a.alt", |old, new, mut state| {
+                if &state.address != old {
+                    return None;
+                }
+                state.address = new.clone();
+                Some(state)
+            })
+        );
+        live.address = new.clone();
+        assert_eq!(history.depth(&new, HistoryDirection::Redo), 1);
+        assert_eq!(
+            history.replay(&new, &live.clone(), HistoryDirection::Redo, |_, state| {
+                live = state.clone();
+                Ok::<_, ()>(())
+            }),
+            Ok(HistoryReplayOutcome::Applied)
+        );
+        assert_eq!(live.address, new);
+        assert_eq!(live.value, 2);
     }
 }

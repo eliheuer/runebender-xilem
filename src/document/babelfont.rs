@@ -211,13 +211,6 @@ impl CanonicalLayerSnapshot {
     ///
     /// Both the complete current address and unchanged layer identity must match.
     /// Arbitrary cross-layer or stale-address rebinding is rejected without mutation.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the M05 history rename integration consumes this shared prerequisite"
-        )
-    )]
     pub(crate) fn rebind_glyph(
         &mut self,
         old: &super::variable::GlyphLayerAddress,
