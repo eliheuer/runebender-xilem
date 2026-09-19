@@ -5,7 +5,6 @@
 
 use kurbo::{Affine, BezPath, PathEl};
 
-use crate::document::project::Master;
 use crate::document::project::Project;
 use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 use crate::outline::glyph_ops::bezpath_to_contour;
@@ -113,7 +112,7 @@ pub struct ProofSheet {
 /// from; None draws the foreground. Errors name a glyph that is not
 /// there.
 pub fn proof_sheet(
-    master: &Master,
+    font: &norad::Font,
     layer: Option<&str>,
     names: &[String],
     columns: usize,
@@ -122,9 +121,9 @@ pub fn proof_sheet(
         return Err("no glyph to draw".into());
     }
     let preview = layer
-        .map(|name| crate::document::proposal::preview_font(&master.font, name))
+        .map(|name| crate::document::proposal::preview_font(font, name))
         .transpose()?;
-    let font = preview.as_ref().unwrap_or(&master.font);
+    let font = preview.as_ref().unwrap_or(font);
     let layer = match layer {
         Some(l) => Some(
             font.layers
@@ -134,7 +133,13 @@ pub fn proof_sheet(
         None => None,
     };
     let columns = columns.clamp(1, names.len());
-    let upm = master.units_per_em;
+    let upm = font
+        .font_info
+        .units_per_em
+        .map(|value| value.as_f64())
+        .unwrap_or(1000.0);
+    let ascender = font.font_info.ascender.unwrap_or(upm * 0.8);
+    let descender = font.font_info.descender.unwrap_or(-(upm * 0.2));
     let cell_w = upm * 1.2;
     let cell_h = upm * 1.4;
     let rows = names.len().div_ceil(columns);
@@ -178,12 +183,12 @@ pub fn proof_sheet(
             )
         };
         svg.push_str(&line(0.0, "#999"));
-        svg.push_str(&line(master.ascender, "#ccc"));
-        svg.push_str(&line(master.descender, "#ccc"));
-        if let Some(x) = master.x_height {
+        svg.push_str(&line(ascender, "#ccc"));
+        svg.push_str(&line(descender, "#ccc"));
+        if let Some(x) = font.font_info.x_height {
             svg.push_str(&line(x, "#bbb"));
         }
-        if let Some(c) = master.cap_height {
+        if let Some(c) = font.font_info.cap_height {
             svg.push_str(&line(c, "#bbb"));
         }
         svg.push_str(&format!(

@@ -114,14 +114,12 @@ Canonical replacements already exist: `document_source`, `document_sources`, `do
 
 The remaining non-application consumers are:
 
-- `formats/svg.rs:114` and `formats/designbot.rs:15,128` accept `Master` rather than a Project source and canonical layer view.
-- `document/live.rs:277-281` materializes a `Master` for Designbot scenes.
 - `formats/babelfont_import.rs:138-300` assembles Python multi-source imports through `Master` and `Project::from_designspace`.
 - `document/filesystem.rs:16,124-143` converts a validated `ImportedUfo` into `Master` during load.
 - `document/project/constructors.rs:57` still creates a compatibility `Master` after canonical in-memory construction.
 
 The CLI `info`, `proof`, proposal list/install/discard, agent source selection and `project_info` callers now consume Project source views and canonical proposal operations; proposal mutations save through `Project::save`.
-The remaining SVG compatibility entry point, Designbot and live proof should consume Project source views and the typed renderer.
+The remaining detached SVG entry point, Designbot and live experiment proof accept transient source-font boundary values without constructing a Master; moving the live snapshot itself to typed Project rendering remains.
 Python Babelfont and filesystem imports need a canonical multi-source constructor that accepts decoded source records and canonical Designspace data without a `Master` callback.
 
 ## Source-history cleanup in the owned lane

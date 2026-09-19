@@ -158,6 +158,7 @@ The GLIF SHA and external UFO proposal format remain explicit transient codec bo
 `document/filesystem.rs` loads complete UFO and Designspace source sets before construction and stages every save artifact before replacing live destinations.
 The native file watcher resolves nested feature includes through Project and fingerprints those dependencies with the UFO and Designspace roots so a changed external include blocks overwrite.
 Headless source information, SVG proof and proposal commands open one explicit Project source, read canonical layers and metadata, and save proposal mutations through Project persistence.
+Transient experiment proof and Designbot adapters accept detached source-font values directly and do not construct an editable Master wrapper.
 
 `document::source::Master` is a compatibility UFO projection with source-local history and paint caches.
 Project exposes immutable projections through `sources()` and scoped mutations through `edit_source`, `edit_sources`, and `active_font_mut`.

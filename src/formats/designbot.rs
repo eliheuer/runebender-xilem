@@ -5,31 +5,32 @@
 
 use serde_json::{Value, json};
 
-/// Build an isolated-glyph proof from the supplied live master or proposal layer.
+/// Build an isolated-glyph proof from the supplied source font or proposal layer.
 /// Geometry is resolved before transport; no source files are read by Designbot.
 #[allow(
     clippy::cast_possible_truncation,
     reason = "Scene dimensions are bounded positive integers"
 )]
-pub fn scene(
-    master: &crate::document::project::Master,
-    layer: Option<&str>,
-    names: &[String],
-) -> Result<Value, String> {
+pub fn scene(font: &norad::Font, layer: Option<&str>, names: &[String]) -> Result<Value, String> {
     use kurbo::Affine;
     if names.is_empty() || names.len() > 256 {
         return Err("proof requires 1 to 256 glyphs".into());
     }
     let preview = layer
-        .map(|l| crate::document::proposal::preview_font(&master.font, l))
+        .map(|l| crate::document::proposal::preview_font(font, l))
         .transpose()?;
-    let font = preview.as_ref().unwrap_or(&master.font);
+    let font = preview.as_ref().unwrap_or(font);
     let columns = names.len().min(6);
     let rows = names.len().div_ceil(columns);
     let cell = 256.0;
     let height = (rows as f64 * cell).min(2048.0);
     let reduction = height / (rows as f64 * cell);
-    let scale = 190.0 / master.units_per_em * reduction;
+    let units_per_em = font
+        .font_info
+        .units_per_em
+        .map(|value| value.as_f64())
+        .unwrap_or(1000.0);
+    let scale = 190.0 / units_per_em * reduction;
     let mut paths = Vec::new();
     let mut labels = Vec::new();
     for (i, name) in names.iter().enumerate() {
@@ -125,7 +126,7 @@ pub fn render(scene: &Value, pdf: bool) -> Result<Vec<u8>, String> {
 /// A one-page Latin kerning specimen from live outlines, shaped with harfrust.
 /// Uses UFO kerning with `kern` disabled in feature shaping to avoid double kerning.
 /// Other feature positioning remains active. Fails on unsupported text or feature errors.
-pub fn specimen(master: &crate::document::project::Master, text: &str) -> Result<Value, String> {
+pub fn specimen(font: &norad::Font, text: &str) -> Result<Value, String> {
     use crate::text::shape::{ShapingFont, ShapingGlyph, ShapingSource};
     use kurbo::Affine;
     if text.is_empty()
@@ -137,7 +138,11 @@ pub fn specimen(master: &crate::document::project::Master, text: &str) -> Result
             "MVP text proofs accept 1 to 256 basic Latin characters, with optional newlines".into(),
         );
     }
-    let font = &master.font;
+    let units_per_em = font
+        .font_info
+        .units_per_em
+        .map(|value| value.as_f64())
+        .unwrap_or(1000.0);
     let mut glyphs: Vec<_> = font
         .default_layer()
         .iter()
@@ -153,13 +158,13 @@ pub fn specimen(master: &crate::document::project::Master, text: &str) -> Result
             0,
             ShapingGlyph {
                 name: ".notdef".into(),
-                advance: master.units_per_em * 0.5,
+                advance: units_per_em * 0.5,
                 unicodes: vec![],
             },
         );
     }
     let shaper = ShapingFont::build(&ShapingSource {
-        units_per_em: master.units_per_em,
+        units_per_em,
         glyphs,
         features: font.features.clone(),
     })?;
@@ -167,7 +172,7 @@ pub fn specimen(master: &crate::document::project::Master, text: &str) -> Result
     let mut labels = Vec::new();
     let mut baseline = 742.0;
     for size in [18.0, 24.0, 36.0, 48.0] {
-        let scale = size / master.units_per_em;
+        let scale = size / units_per_em;
         labels.push(json!({"text":format!("{size} pt / live UFO kerning"),"x":30,"y":baseline+16.0,"size":10}));
         for line in text.lines() {
             let shaped = shaper.shape_with_features(line, false, &[("kern".into(), false)])?;
@@ -249,10 +254,16 @@ mod tests {
 
     #[test]
     fn live_kerning_changes_positioned_outlines_in_the_scene() {
-        let mut project = crate::document::project::Project::new_font("synthetic.ufo".into());
-        let master = &mut project.edit_sources()[0];
+        let mut font = norad::Font::new();
+        for name in [".notdef", "A", "V"] {
+            let mut glyph = norad::Glyph::new(name);
+            if let Some(codepoint) = name.chars().next().filter(|_| name.len() == 1) {
+                glyph.codepoints.insert(codepoint);
+            }
+            font.default_layer_mut().insert_glyph(glyph);
+        }
         for name in ["A", "V"] {
-            let glyph = master.font.get_glyph_mut(name).unwrap();
+            let glyph = font.get_glyph_mut(name).unwrap();
             glyph.width = 600.0;
             glyph.contours.push(norad::Contour::new(
                 [(0.0, 0.0), (250.0, 700.0), (500.0, 0.0)]
@@ -264,21 +275,19 @@ mod tests {
                 None,
             ));
         }
-        let before = specimen(master, "AV").unwrap();
-        master
-            .font
-            .kerning
+        let before = specimen(&font, "AV").unwrap();
+        font.kerning
             .entry(norad::Name::new("A").unwrap())
             .or_default()
             .insert(norad::Name::new("V").unwrap(), -40.0);
-        let after = specimen(master, "AV").unwrap();
+        let after = specimen(&font, "AV").unwrap();
         let x = |v: &Value| {
             kurbo::BezPath::from_svg(v["paths"][1]["d"].as_str().unwrap())
                 .unwrap()
                 .bounding_box()
                 .x0
         };
-        assert!((x(&after) - x(&before) + 40.0 * 18.0 / master.units_per_em).abs() < 1e-6);
+        assert!((x(&after) - x(&before) + 40.0 * 18.0 / 1000.0).abs() < 1e-6);
         assert_eq!(before["width"], 612);
         assert_eq!(before["height"], 792);
     }

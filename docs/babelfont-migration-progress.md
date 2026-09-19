@@ -2620,3 +2620,25 @@ git diff --check
 ```
 
 The focused regressions cover ordered deduplication, exact preservation of unrelated glyph data, one-revision publication, compatibility projection refresh, no-op suppression, count and later-missing-layer failure atomicity, and save/reopen persistence.
+
+### Detached proof adapters without Master
+
+Evidence commit: `Render detached proofs without Master` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Render detached proofs without Master$' -1`.
+
+The transitional SVG proof sheet and Designbot scene/specimen adapters now accept detached `norad::Font` boundary values directly instead of wrapping them in editable `Master` state.
+Live experiment rendering keeps its existing explicit snapshot boundary but no longer constructs a compatibility Master, and the canonical proof parity fixture compares the detached adapter with the Project renderer without a second wrapper.
+
+Executed evidence:
+
+```sh
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources CARGO_BUILD_JOBS=2 cargo test --locked --lib document::live:: -- --test-threads=1
+CARGO_BUILD_JOBS=2 cargo test --locked --lib formats::designbot::tests::live_kerning_changes_positioned_outlines_in_the_scene -- --exact --nocapture
+CARGO_BUILD_JOBS=2 cargo test --locked --lib document::nodes_run::tests::proof_reads_selected_layers_and_component_fallback_canonically -- --exact --nocapture
+CARGO_BUILD_JOBS=2 cargo clippy --locked --lib --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+All five live-document tests and both focused proof regressions passed.
+Warning-denied library/test Clippy, formatting and whitespace checks passed.

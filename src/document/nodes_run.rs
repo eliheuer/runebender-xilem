@@ -1792,9 +1792,8 @@ mod tests {
             .new_layer("preview")
             .unwrap()
             .insert_glyph(proposed);
-        let legacy = Master::from_font(font.clone(), PathBuf::from("Proof.ufo"));
         let expected =
-            crate::formats::svg::proof_sheet(&legacy, Some("preview"), &["A".into()], 8).unwrap();
+            crate::formats::svg::proof_sheet(&font, Some("preview"), &["A".into()], 8).unwrap();
         let project =
             Project::from_source(Master::from_font(font, PathBuf::from("CanonicalProof.ufo")));
         let selected = LayerId {

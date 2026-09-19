@@ -9,7 +9,7 @@ use super::{
     agent,
     canonical_metadata::{KerningParticipant, KerningSide},
     edit_batch,
-    project::{Master, Project},
+    project::Project,
     proposal,
     variable::SourceId,
 };
@@ -278,7 +278,6 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
         }
         None => project.source_snapshot(source).ok_or("unknown source")?,
     };
-    let master = Master::from_font(font, source_path.clone());
     let layer = object
         .get("layer")
         .map(|v| v.as_str().ok_or("layer must be a string"))
@@ -289,7 +288,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                 .get("text")
                 .and_then(Value::as_str)
                 .ok_or("text required")?;
-            json!({"ok":true,"scene":crate::formats::designbot::specimen(&master,text)?,"text":text,"kerning_revision":super::experiments::kerning_revision(project.document_font_metadata(source).ok_or("unknown source metadata")?)?})
+            json!({"ok":true,"scene":crate::formats::designbot::specimen(&font,text)?,"text":text,"kerning_revision":super::experiments::kerning_revision(project.document_font_metadata(source).ok_or("unknown source metadata")?)?})
         }
         "read_kerning" => {
             let metadata = match branch {
@@ -398,11 +397,17 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                     .proposals(),
                 None => proposal::list_project(project, source),
             };
-            json!({"ok": true, "family": master.font.font_info.family_name,
-                "style": master.font.font_info.style_name, "units_per_em": master.units_per_em,
-                "ascender": master.ascender, "descender": master.descender,
-                "x_height": master.x_height, "cap_height": master.cap_height,
-                "glyphs": master.font.default_layer().len(), "proposals": proposals})
+            let units_per_em = font
+                .font_info
+                .units_per_em
+                .map(|value| value.as_f64())
+                .unwrap_or(1000.0);
+            json!({"ok": true, "family": font.font_info.family_name,
+                "style": font.font_info.style_name, "units_per_em": units_per_em,
+                "ascender": font.font_info.ascender.unwrap_or(units_per_em * 0.8),
+                "descender": font.font_info.descender.unwrap_or(-(units_per_em * 0.2)),
+                "x_height": font.font_info.x_height, "cap_height": font.font_info.cap_height,
+                "glyphs": font.default_layer().len(), "proposals": proposals})
         }
         "glyph_inventory" => {
             let theme = crate::ui::theme::load_theme("dark").ok_or("missing built-in theme")?;
@@ -431,8 +436,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             if !(1..=256).contains(&limit) {
                 return Err("limit must be between 1 and 256".into());
             }
-            let matches: Vec<_> = master
-                .font
+            let matches: Vec<_> = font
                 .default_layer()
                 .iter()
                 .filter_map(|g| {
@@ -459,7 +463,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                 .and_then(Value::as_str)
                 .ok_or("glyph is required")?;
             match branch {
-                Some(_) => crate::analysis::glyph::read_glyph(&master.font, glyph, layer),
+                Some(_) => crate::analysis::glyph::read_glyph(&font, glyph, layer),
                 None => crate::analysis::glyph::read_project_glyph(project, source, glyph, layer),
             }
         }
@@ -471,8 +475,8 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             if names.is_empty() || names.len() > 256 {
                 return Err("live proofs require between 1 and 256 explicit glyph names".into());
             }
-            let proof = crate::formats::svg::proof_sheet(&master, layer, &names, 10)?;
-            json!({"ok": true, "svg_content": proof.svg, "metrics": proof.metrics, "scene":crate::formats::designbot::scene(&master, layer, &names)?})
+            let proof = crate::formats::svg::proof_sheet(&font, layer, &names, 10)?;
+            json!({"ok": true, "svg_content": proof.svg, "metrics": proof.metrics, "scene":crate::formats::designbot::scene(&font, layer, &names)?})
         }
         "propose_edits" => {
             let mut batch = object.clone();
