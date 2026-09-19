@@ -434,11 +434,6 @@ impl FontModel {
         self.project.sources().len()
     }
 
-    /// One master's font, the active one's edits included.
-    pub(crate) fn master_font(&self, index: usize) -> Option<&norad::Font> {
-        self.project.sources().get(index).map(|m| &m.font)
-    }
-
     /// Short display names for the masters: the common family prefix is
     /// dropped, so "Bricolage Grotesque 96pt `ExtraBold`" reads as
     /// "96pt `ExtraBold`" in a narrow inspector.
@@ -650,6 +645,43 @@ impl FontModel {
             .iter()
             .filter(|entry| !self.project.check_compat(&entry.name))
             .count()
+    }
+
+    /// Compare one source's default-layer coverage and advances with the active source.
+    pub(crate) fn source_geometry_comparison(&self, index: usize) -> Option<(usize, usize, usize)> {
+        let project = &self.project;
+        let reference_layer = project
+            .source_id(self.active())
+            .and_then(|source| project.document_source(source))?
+            .default_layer();
+        let layer = project
+            .source_id(index)
+            .and_then(|source| project.document_source(source))?
+            .default_layer();
+        let reference_glyphs: Vec<_> = project
+            .glyph_names()
+            .filter(|name| project.document_layer(name, &reference_layer).is_some())
+            .collect();
+        let glyph_count = project
+            .glyph_names()
+            .filter(|name| project.document_layer(name, &layer).is_some())
+            .count();
+        let missing = reference_glyphs
+            .iter()
+            .filter(|name| project.document_layer(name, &layer).is_none())
+            .count();
+        let advance_differences = reference_glyphs
+            .iter()
+            .filter(|name| {
+                project
+                    .document_layer(name, &layer)
+                    .zip(project.document_layer(name, &reference_layer))
+                    .is_some_and(|(candidate, reference)| {
+                        (candidate.width() - reference.width()).abs() > 0.5
+                    })
+            })
+            .count();
+        Some((glyph_count, missing, advance_differences))
     }
 
     /// The font's headline metadata, as label and value pairs.
@@ -933,6 +965,7 @@ mod tests {
 
         assert_eq!(model.master_axis_values(0), vec![400.0]);
         assert_eq!(model.master_axis_values(1), vec![700.0]);
+        assert_eq!(model.source_geometry_comparison(1), Some((1, 0, 1)));
 
         std::fs::remove_dir_all(dir).expect("the fixture is removed");
     }

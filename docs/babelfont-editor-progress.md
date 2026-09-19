@@ -60,8 +60,9 @@ Resolve its exact ID with `git log --format=%H --grep='^Read application font in
 Affected paths: `src/application/font_model.rs`, `src/application/view/panels/editor_info.rs` and this log.
 
 `FontModel` now exposes canonical source-indexed font information and resolves the active UPM, ascender and descender from it.
-The overview metadata rows and cross-master metric and kerning comparisons no longer read those values from compatibility UFO sources.
+The overview metadata rows and cross-master metrics, kerning counts, default-layer glyph coverage and advance comparisons no longer read those values from compatibility UFO sources.
 The focused regression commits an unsaved canonical family name and 2048 UPM with exact kerning metadata, then observes all values through the application query surface.
+A two-source regression also verifies canonical default-layer glyph and advance comparison.
 
 Integrated core commits `62dfaa8`, `3f48dc1` and `d9fbe05` provide typed font-info ownership, Project queries and validation-before-mutation.
 An unrelated M07 glyph-metadata accessor that arrived in the source commit's context was excluded because its backing storage is not in this lane.

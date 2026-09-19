@@ -458,7 +458,6 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
         .gap(Space::Sm);
     }
     let active = app.font.active();
-    let reference = app.font.font();
     let reference_info = app
         .font
         .font_info_at(active)
@@ -477,21 +476,7 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     let rows: Vec<_> = (0..masters)
         .filter(|&i| i != active)
         .filter_map(|i| {
-            let master = app.font.master_font(i)?;
-            let missing = reference
-                .default_layer()
-                .iter()
-                .filter(|g| master.get_glyph(g.name()).is_none())
-                .count();
-            let advance_diffs = reference
-                .default_layer()
-                .iter()
-                .filter(|g| {
-                    master
-                        .get_glyph(g.name())
-                        .is_some_and(|m| (m.width - g.width).abs() > 0.5)
-                })
-                .count();
+            let (glyph_count, missing, advance_diffs) = app.font.source_geometry_comparison(i)?;
             let mut diffs: Vec<&str> = Vec::new();
             let checks: [(&str, Pick); 4] = [
                 ("asc", |fi| fi.ascender),
@@ -514,7 +499,7 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                     readout(
                         format!(
                             "{} glyphs \u{00b7} {} missing \u{00b7} {} advance diffs \u{00b7} kerning {} vs {}{}",
-                            master.default_layer().len(),
+                            glyph_count,
                             missing,
                             advance_diffs,
                             pair_count(i),
