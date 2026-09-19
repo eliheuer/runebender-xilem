@@ -82,7 +82,14 @@ Open, hyperbezier, degenerate and non-cubic segments remain untouched, while all
 Two balance regressions brought the dedicated suite to seven passing tests.
 They cover segment selection through a handle identity, exact shared-primitive output, source metadata preservation and no-op history behavior for open contours.
 
-Optimize remains in progress in this continuation.
+`LayerEditDraft::optimize_handles` validates finite nonnegative tolerance before staging and retains the editor's whole-contour selection scope.
+An empty selection considers all eligible closed ordinary contours.
+It calls the shared `analysis::curve::optimize_contour` primitive, but writes back only handles proven to belong to explicit cubic segments.
+Quadratic controls on mixed contours therefore remain exact instead of being silently reinterpreted as cubic handles.
+Open and hyperbezier contours also remain untouched, while stable identities and source metadata stay attached to surviving points.
+
+Three optimize regressions bring the dedicated suite to ten passing tests.
+They cover empty-selection scope, exact shared-primitive output, stable identities and metadata, canonical undo, selected mixed contours, preservation of open, hyperbezier and quadratic geometry, valid zero tolerance, and caught invalid-parameter/error atomicity.
 
 ## Validation
 

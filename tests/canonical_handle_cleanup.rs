@@ -64,6 +64,15 @@ fn contour(points: Vec<ContourPoint>, label: &str) -> Contour {
     contour
 }
 
+fn hyper_contour(points: Vec<ContourPoint>, label: &str) -> Contour {
+    let mut contour = Contour::new(
+        points,
+        Some(norad::Identifier::new(&format!("hyperbezier-{label}")).unwrap()),
+    );
+    contour.replace_lib(object_lib(label));
+    contour
+}
+
 fn fixture() -> (Scratch, Project, LayerId, GlyphLayerAddress) {
     let scratch = Scratch::new();
     let source_path = scratch.0.join("Corners.ufo");
@@ -399,6 +408,24 @@ fn handle_fixture() -> (Scratch, Project, LayerId, GlyphLayerAddress) {
         ],
         "open-handles",
     ));
+    glyph.contours.push(contour(
+        vec![
+            point(400.0, 0.0, PointType::QCurve, "mixed-start"),
+            point(420.0, 80.0, PointType::OffCurve, "mixed-cubic-a"),
+            point(480.0, 80.0, PointType::OffCurve, "mixed-cubic-b"),
+            point(500.0, 0.0, PointType::Curve, "mixed-cubic-end"),
+            point(450.0, -80.0, PointType::OffCurve, "mixed-quadratic"),
+        ],
+        "mixed-handles",
+    ));
+    glyph.contours.push(hyper_contour(
+        vec![
+            point(600.0, 0.0, PointType::Curve, "hyper-a"),
+            point(680.0, 120.0, PointType::Curve, "hyper-b"),
+            point(760.0, 0.0, PointType::Curve, "hyper-c"),
+        ],
+        "handles",
+    ));
     let mut other = Glyph::new("other-handle");
     other.contours.push(contour(
         vec![
@@ -626,5 +653,201 @@ fn balance_ignores_open_and_unselected_segments_without_history() {
         project.document_layer_history_depth(&address, HistoryDirection::Undo),
         0,
         "a no-op balance records no history"
+    );
+}
+
+#[test]
+fn optimize_empty_selection_moves_cubic_handles_with_stable_identity_and_history() {
+    let (_scratch, mut project, layer, address) = handle_fixture();
+    let before_projection = project.glyph_layer("handles", &layer).unwrap();
+    let before = project.document_layer("handles", &layer).unwrap();
+    let points: Vec<_> = before.contours().next().unwrap().points().collect();
+    let identities: Vec<_> = points.iter().map(|point| point.id()).collect();
+    let positions: Vec<_> = points.iter().map(|point| point.position()).collect();
+    let input: Vec<_> = points
+        .iter()
+        .map(|point| runebender::analysis::curve::OptPoint {
+            p: point.position(),
+            on: point.point_type() != LayerPointType::OffCurve,
+            smooth: point.is_smooth(),
+        })
+        .collect();
+    let expected = runebender::analysis::curve::optimize_contour(&input, 0.12);
+    let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+    assert!(transaction.draft_mut().optimize_handles(&[], 0.12).unwrap());
+    assert!(matches!(
+        project
+            .commit_document_layer_transaction(transaction)
+            .unwrap(),
+        DocumentEditOutcome::Changed { .. }
+    ));
+
+    let after = project.document_layer("handles", &layer).unwrap();
+    let points: Vec<_> = after.contours().next().unwrap().points().collect();
+    assert_eq!(
+        points.iter().map(|point| point.id()).collect::<Vec<_>>(),
+        identities,
+        "optimize preserves every stable point identity"
+    );
+    for (index, point) in points.iter().enumerate() {
+        let expected_position = if point.point_type() == LayerPointType::OffCurve {
+            expected[index]
+        } else {
+            positions[index]
+        };
+        assert_eq!(
+            point.position(),
+            expected_position,
+            "unexpected optimized position at point {index}"
+        );
+    }
+    let projected = project.glyph_layer("handles", &layer).unwrap();
+    assert_eq!(
+        projected.contours[0].points[1].name.as_deref(),
+        Some("out-adjacent")
+    );
+    let expected_lib = object_lib("out-adjacent");
+    assert_eq!(projected.contours[0].points[1].lib(), Some(&expected_lib));
+
+    assert!(matches!(
+        project
+            .replay_document_layer_history(&address, HistoryDirection::Undo)
+            .unwrap(),
+        DocumentHistoryReplayOutcome::Changed { .. }
+    ));
+    assert_eq!(
+        project.glyph_layer("handles", &layer),
+        Some(before_projection),
+        "undo restores the exact source projection"
+    );
+}
+
+#[test]
+fn optimize_preserves_open_hyper_and_quadratic_geometry() {
+    let (_scratch, mut project, layer, _address) = handle_fixture();
+    let before = project.document_layer("handles", &layer).unwrap();
+    let contours: Vec<_> = before.contours().collect();
+    let before_positions: Vec<Vec<_>> = contours
+        .iter()
+        .map(|contour| contour.points().map(|point| point.position()).collect())
+        .collect();
+    let before_ids: Vec<Vec<_>> = contours
+        .iter()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+    let selected = [
+        contours[1].points().nth(1).unwrap().id(),
+        contours[2].points().nth(1).unwrap().id(),
+        contours[3].points().next().unwrap().id(),
+    ];
+
+    assert!(matches!(
+        project
+            .edit_document_layer("handles", &layer, |draft| {
+                assert!(draft.optimize_handles(&selected, 0.12)?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Changed { .. }
+    ));
+
+    let after = project.document_layer("handles", &layer).unwrap();
+    let contours: Vec<_> = after.contours().collect();
+    let after_ids: Vec<Vec<_>> = contours
+        .iter()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+    assert_eq!(
+        after_ids, before_ids,
+        "optimize preserves stable identities"
+    );
+    assert_eq!(
+        contours[1]
+            .points()
+            .map(|point| point.position())
+            .collect::<Vec<_>>(),
+        before_positions[1],
+        "open contour remains exact"
+    );
+    assert_eq!(
+        contours[3]
+            .points()
+            .map(|point| point.position())
+            .collect::<Vec<_>>(),
+        before_positions[3],
+        "hyperbezier contour remains exact"
+    );
+    assert_eq!(
+        contours[2].points().nth(4).unwrap().position(),
+        before_positions[2][4],
+        "quadratic control on a mixed contour remains exact"
+    );
+    assert_ne!(
+        contours[2].points().nth(1).unwrap().position(),
+        before_positions[2][1],
+        "the explicit cubic portion of a mixed contour still optimizes"
+    );
+}
+
+#[test]
+fn optimize_rejects_invalid_parameters_atomically() {
+    let (_scratch, mut project, layer, address) = handle_fixture();
+    let view = project.document_layer("handles", &layer).unwrap();
+    let open_handle = view
+        .contours()
+        .nth(1)
+        .unwrap()
+        .points()
+        .nth(1)
+        .unwrap()
+        .id();
+    let foreign = project
+        .document_layer("other-handle", &layer)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .next()
+        .unwrap()
+        .id();
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+
+    assert_eq!(
+        project
+            .edit_document_layer("handles", &layer, |draft| {
+                assert_eq!(
+                    draft.optimize_handles(&[open_handle], f64::NAN),
+                    Err(runebender::document::DocumentEditError::NonFinite)
+                );
+                assert_eq!(
+                    draft.optimize_handles(&[open_handle], f64::INFINITY),
+                    Err(runebender::document::DocumentEditError::NonFinite)
+                );
+                assert_eq!(
+                    draft.optimize_handles(&[open_handle], -0.01),
+                    Err(runebender::document::DocumentEditError::Rejected)
+                );
+                assert_eq!(
+                    draft.optimize_handles(&[foreign], 0.12),
+                    Err(runebender::document::DocumentEditError::MissingPoint(
+                        foreign
+                    ))
+                );
+                assert!(
+                    !draft.optimize_handles(&[open_handle], 0.0)?,
+                    "zero tolerance is valid and an open contour remains a no-op"
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(
+        project.document_layer_history_depth(&address, HistoryDirection::Undo),
+        0,
+        "caught validation errors record no history"
     );
 }

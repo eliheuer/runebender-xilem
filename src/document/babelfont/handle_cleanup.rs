@@ -278,6 +278,90 @@ impl LayerEditDraft {
         }
         Ok(changed)
     }
+
+    /// Optimize cubic handles on selected closed contours.
+    ///
+    /// Selecting any point puts its whole contour in scope, while an empty selection considers
+    /// every eligible contour. The shared optimizer may inspect the full contour, but only handles
+    /// belonging to explicit cubic segments are written back. This keeps quadratic controls exact
+    /// on mixed contours. Open and hyperbezier contours remain untouched.
+    pub fn optimize_handles(
+        &mut self,
+        selected: &[PointId],
+        tolerance: f64,
+    ) -> Result<bool, DocumentEditError> {
+        if !tolerance.is_finite() {
+            return Err(DocumentEditError::NonFinite);
+        }
+        if tolerance < 0.0 {
+            return Err(DocumentEditError::Rejected);
+        }
+        validate_selected_points(self, selected)?;
+        let selected: HashSet<_> = selected.iter().copied().collect();
+        let all = selected.is_empty();
+        let mut staged = self.clone();
+        let mut changed = false;
+
+        for shape_index in 0..staged.layer.shapes.len() {
+            let Shape::Path(path) = &staged.layer.shapes[shape_index] else {
+                continue;
+            };
+            let contour_id = read_id(&path.format_specific).expect("canonical contour identity");
+            let hyper = staged
+                .preserved
+                .contours
+                .iter()
+                .find(|contour| contour.id.0 == contour_id)
+                .expect("canonical contour preservation")
+                .hyper;
+            if hyper || !path.closed || path.nodes.len() < 4 {
+                continue;
+            }
+            if !all
+                && !path.nodes.iter().any(|node| {
+                    selected.contains(&PointId(
+                        read_id(&node.format_specific).expect("canonical point identity"),
+                    ))
+                })
+            {
+                continue;
+            }
+            let cubic_handles = explicit_cubic_handles(&path.nodes);
+            if !cubic_handles.iter().any(|eligible| *eligible) {
+                continue;
+            }
+            let input: Vec<_> = path
+                .nodes
+                .iter()
+                .map(|node| crate::analysis::curve::OptPoint {
+                    p: node_position(node),
+                    on: node.nodetype != NodeType::OffCurve,
+                    smooth: node.smooth,
+                })
+                .collect();
+            ensure_points_finite(&input.iter().map(|point| point.p).collect::<Vec<_>>())?;
+            let output = crate::analysis::curve::optimize_contour(&input, tolerance);
+            if output.len() != path.nodes.len() {
+                return Err(DocumentEditError::Rejected);
+            }
+            ensure_points_finite(&output)?;
+            let Shape::Path(path) = &mut staged.layer.shapes[shape_index] else {
+                unreachable!("shape kind was checked above");
+            };
+            for (index, position) in output.into_iter().enumerate() {
+                let node = &mut path.nodes[index];
+                if cubic_handles[index] && node_position(node).distance(position) > 1e-6 {
+                    node.x = position.x;
+                    node.y = position.y;
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            *self = staged;
+        }
+        Ok(changed)
+    }
 }
 
 struct RoundedContour {
@@ -545,4 +629,23 @@ fn ensure_points_finite(points: &[Point]) -> Result<(), DocumentEditError> {
 
 fn node_position(node: &Node) -> Point {
     Point::new(node.x, node.y)
+}
+
+fn explicit_cubic_handles(nodes: &[Node]) -> Vec<bool> {
+    let length = nodes.len();
+    let mut handles = vec![false; length];
+    for start in 0..length {
+        let first = (start + 1) % length;
+        let second = (start + 2) % length;
+        let end = (start + 3) % length;
+        if nodes[start].nodetype != NodeType::OffCurve
+            && nodes[first].nodetype == NodeType::OffCurve
+            && nodes[second].nodetype == NodeType::OffCurve
+            && nodes[end].nodetype == NodeType::Curve
+        {
+            handles[first] = true;
+            handles[second] = true;
+        }
+    }
+    handles
 }
