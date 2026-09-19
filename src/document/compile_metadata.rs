@@ -3,6 +3,7 @@
 
 //! UFO metadata and Designspace rules supplied to the live compiler.
 
+use super::model::glyph_metadata::OpenTypeGlyphCategory;
 use super::project::Project;
 
 const OPEN_TYPE_CATEGORIES: &str = "public.openTypeCategories";
@@ -102,18 +103,19 @@ pub(super) fn apply_kerning(
 /// Resolve a compiler category from canonical explicit data or inferred layer values.
 pub(super) fn glyph_category_from_values<'a>(
     glyph_name: &str,
-    explicit: Option<&str>,
+    explicit: Option<&OpenTypeGlyphCategory>,
     codepoints: impl IntoIterator<Item = char>,
     anchor_names: impl IntoIterator<Item = &'a str>,
 ) -> Result<babelfont::GlyphCategory, String> {
     use babelfont::GlyphCategory;
     match explicit {
-        Some("base") => return Ok(GlyphCategory::Base),
-        Some("mark") => return Ok(GlyphCategory::Mark),
-        Some("ligature") => return Ok(GlyphCategory::Ligature),
+        Some(OpenTypeGlyphCategory::Base) => return Ok(GlyphCategory::Base),
+        Some(OpenTypeGlyphCategory::Mark) => return Ok(GlyphCategory::Mark),
+        Some(OpenTypeGlyphCategory::Ligature) => return Ok(GlyphCategory::Ligature),
         Some(category) => {
             return Err(format!(
-                "{glyph_name}: unsupported OpenType category {category}"
+                "{glyph_name}: unsupported OpenType category {}",
+                category.as_source()
             ));
         }
         None => (),
@@ -145,15 +147,16 @@ pub(super) fn glyph_category_from_values<'a>(
 ///
 /// Canonical source-glyph ownership replaces this narrow boundary read when its Project query
 /// lands; codepoints, anchors and inferred categories already come from canonical layers.
-pub(super) fn explicit_glyph_category<'a>(
-    font: &'a norad::Font,
+pub(super) fn explicit_glyph_category(
+    font: &norad::Font,
     glyph_name: &str,
-) -> Option<&'a str> {
+) -> Option<OpenTypeGlyphCategory> {
     font.lib
         .get(OPEN_TYPE_CATEGORIES)
         .and_then(plist::Value::as_dictionary)
         .and_then(|categories| categories.get(glyph_name))
         .and_then(plist::Value::as_string)
+        .map(OpenTypeGlyphCategory::from_source)
 }
 
 pub(super) fn apply(font: &mut babelfont::Font, info: &norad::FontInfo) -> Result<(), String> {
@@ -404,6 +407,8 @@ mod tests {
 
     #[test]
     fn compiler_category_accepts_canonical_values_and_rejects_unknown_explicit_data() {
+        use super::super::model::glyph_metadata::OpenTypeGlyphCategory;
+
         assert_eq!(
             glyph_category_from_values("acutecomb", None, ['\u{301}'], std::iter::empty()).unwrap(),
             babelfont::GlyphCategory::Mark
@@ -413,9 +418,28 @@ mod tests {
             babelfont::GlyphCategory::Ligature
         );
         assert!(
-            glyph_category_from_values("future", Some("future-category"), [], std::iter::empty())
-                .unwrap_err()
-                .contains("unsupported OpenType category")
+            glyph_category_from_values(
+                "future",
+                Some(&OpenTypeGlyphCategory::Other("future-category".into())),
+                [],
+                std::iter::empty()
+            )
+            .unwrap_err()
+            .contains("unsupported OpenType category")
         );
+        for unsupported in [
+            OpenTypeGlyphCategory::Unassigned,
+            OpenTypeGlyphCategory::Component,
+        ] {
+            assert!(
+                glyph_category_from_values(
+                    "unsupported",
+                    Some(&unsupported),
+                    [],
+                    std::iter::empty()
+                )
+                .is_err()
+            );
+        }
     }
 }

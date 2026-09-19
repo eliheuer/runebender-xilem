@@ -350,9 +350,11 @@ impl Project {
             };
             if let Some(layer) = self.document_layer(&glyph.name, &default_layer) {
                 glyph.codepoints = layer.codepoints().map(u32::from).collect();
+                let explicit_category =
+                    super::compile_metadata::explicit_glyph_category(source, &glyph.name);
                 glyph.category = super::compile_metadata::glyph_category_from_values(
                     &glyph.name,
-                    super::compile_metadata::explicit_glyph_category(source, &glyph.name),
+                    explicit_category.as_ref(),
                     layer.codepoints(),
                     layer.anchors().map(|anchor| anchor.name()),
                 )?;
