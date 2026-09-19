@@ -3,6 +3,7 @@
 
 //! Font and glyph metadata, kerning lookup with group fallback, and entity ids.
 
+pub mod designspace;
 pub mod entity_id;
 pub mod font_info;
 pub mod glyph_metadata;
