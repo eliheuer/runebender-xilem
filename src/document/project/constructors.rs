@@ -30,6 +30,15 @@ impl Project {
         Self::from_canonical_single_source(variable, path, false, glif_paths)
     }
 
+    /// Finish an imported single-source document whose first save must create a new UFO.
+    pub(in crate::document) fn from_imported_ufo_boundary(
+        path: PathBuf,
+        font: &norad::Font,
+    ) -> Result<Self, String> {
+        let variable = VariableData::from_ufo_boundary(font)?;
+        Self::from_canonical_single_source(variable, path, true, HashMap::new())
+    }
+
     fn from_canonical_single_source(
         variable: VariableData,
         path: PathBuf,
@@ -180,5 +189,36 @@ mod tests {
                 .collect::<Vec<_>>(),
             ['A']
         );
+    }
+
+    #[test]
+    fn binary_import_uses_canonical_construction_and_preserves_an_existing_destination() {
+        let scratch = Scratch::new();
+        let binary = scratch.0.join("Imported.ttf");
+        std::fs::write(
+            &binary,
+            include_bytes!("../../../assets/fonts/VirtuaGrotesk-Regular.ttf"),
+        )
+        .unwrap();
+        let occupied = scratch.0.join("Imported.ufo");
+        std::fs::create_dir(&occupied).unwrap();
+        std::fs::write(occupied.join("sentinel"), b"keep").unwrap();
+
+        let project = Project::load(&binary).unwrap();
+        let destination = scratch.0.join("Imported-import-1.ufo");
+        let source = project.source_id(0).unwrap();
+
+        assert_eq!(
+            project.export_source.as_deref(),
+            Some(destination.as_path())
+        );
+        assert_eq!(
+            project.document_source_path(source),
+            Some(destination.as_path())
+        );
+        assert!(project.sources()[0].dirty);
+        assert!(project.document_source(source).is_some());
+        assert_eq!(std::fs::read(occupied.join("sentinel")).unwrap(), b"keep");
+        assert!(!destination.exists());
     }
 }

@@ -544,8 +544,6 @@ impl Project {
             }
         });
         if let Some(kind @ (GlyphsSource::File | GlyphsSource::Package)) = glyphs_ext {
-            // Convert the Glyphs source to UFO + designspace files in
-            // a sibling directory, then open the converted project.
             let result = match kind {
                 GlyphsSource::Package => {
                     let entries = read_glyphspackage(path)?;
@@ -556,32 +554,7 @@ impl Project {
                     crate::formats::glyphs_import::glyphs_to_ufo_files(&text)?
                 }
             };
-            let stem = path
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_else(|| "glyphs-import".into());
-            let out_dir = path
-                .parent()
-                .unwrap_or(Path::new("."))
-                .join(format!("{stem}-ufo"));
-            let mut designspace: Option<PathBuf> = None;
-            let mut first_ufo: Option<PathBuf> = None;
-            for file in &result.files {
-                let target = out_dir.join(&file.path);
-                if let Some(parent) = target.parent() {
-                    std::fs::create_dir_all(parent).map_err(|e| format!("{e}"))?;
-                }
-                std::fs::write(&target, &file.text).map_err(|e| format!("{e}"))?;
-                if file.path.ends_with(".designspace") {
-                    designspace = Some(target);
-                } else if first_ufo.is_none() && file.path.ends_with("fontinfo.plist") {
-                    first_ufo = target.parent().map(|p| p.to_path_buf());
-                }
-            }
-            let open = designspace
-                .or(first_ufo)
-                .ok_or_else(|| "conversion produced no font".to_string())?;
-            // Export compiles the converted files, not the .glyphs.
+            let open = super::filesystem::publish_glyphs_import(path, result)?;
             let mut project = Self::load_inner(&open)?;
             project.export_source = Some(open);
             return Ok(project);
@@ -597,37 +570,10 @@ impl Project {
             .is_some_and(|e| e.eq_ignore_ascii_case("ttf") || e.eq_ignore_ascii_case("otf"))
         {
             let font = import_binary_font(path)?;
-            let name: Arc<str> = font
-                .font_info
-                .style_name
-                .clone()
-                .unwrap_or_else(|| "Regular".into())
-                .into();
-            let ufo_path = path.with_extension("ufo");
-            let mut model = Master::from_font(font, ufo_path.clone());
-            model.dirty = true;
-            let mut project = Self {
-                variable: VariableData::default(),
-                source_history: sources::SourceHistory::default(),
-                document_history: super::history::DocumentHistory::default(),
-                source_metadata_history: super::history::SourceMetadataHistory::default(),
-                masters: vec![model],
-                active: 0,
-                master_names: vec![name],
-                axes: Vec::new(),
-                master_locations: vec![Location::new()],
-                model: None,
-                location: Location::new(),
-                compat: HashMap::new(),
-                export_source: Some(ufo_path),
-                instances: Vec::new(),
-                ds_doc: None,
-                ds_dirty: false,
-                brace: Vec::new(),
-                experiments: super::experiments::Experiments::default(),
-            };
-            project.variable = VariableData::from_sources(&project.masters);
-            project.compute_compat();
+            let ufo_path =
+                super::filesystem::unused_import_destination(&path.with_extension("ufo"))?;
+            let mut project = Self::from_imported_ufo_boundary(ufo_path.clone(), &font)?;
+            project.export_source = Some(ufo_path);
             return Ok(project);
         }
         match super::filesystem::ImportPlan::read(path)? {

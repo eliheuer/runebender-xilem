@@ -2149,3 +2149,22 @@ The focused hyperbezier conversion regression and all 65 variable-project tests 
 All 12 knife tests and the canonical knife integration regression passed after sharing the replacement helper.
 Warning-denied library/test Clippy passed, and the unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 The M06 caller still needs to invoke this direct draft operation before M04's explicit-conversion checkbox can close.
+
+### Imported-format publication safety
+
+Evidence commit: `Make imported font publication explicit` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Make imported font publication explicit$' -1`.
+
+Glyphs conversion now rejects every reported conversion warning before writing output.
+Generated relative paths and duplicates are checked, the complete file set is staged and reloaded through the UFO or Designspace adapter, and publication chooses an unused sibling directory instead of replacing an earlier conversion.
+
+Compiled TTF and OTF imports now enter through the common canonical single-source constructor.
+Their documented import boundary remains unchanged: names, metrics, encodings and outlines are imported, while kerning and features are not decompiled.
+An occupied sibling UFO path is preserved and the unsaved imported document receives a collision-free destination.
+
+Filesystem export preflight now compares normalized destination keys.
+It resolves existing path aliases without requiring the final destinations to exist, so `masters/../Regular.ufo`, `Regular.ufo` and an existing symlink spelling cannot select overlapping publication targets.
+
+The focused filesystem suite passed eight tests and the binary constructor regression passed.
+The remaining Python Babelfont multi-source construction path still assembles compatibility masters at its format boundary.
+Save As feature-include relocation also remains open and is not claimed by this substep.

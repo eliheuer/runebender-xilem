@@ -8,11 +8,13 @@
 //! reloads every staged artifact before any live destination is replaced.
 
 use std::collections::{BTreeMap, HashSet};
+use std::ffi::OsString;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::project::Master;
+use crate::formats::glyphs_import::ConversionResult;
 
 /// Filesystem details outside canonical ownership that must survive an ordinary save.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -233,19 +235,22 @@ impl ExportPlan {
         if let Some((path, _)) = &designspace {
             destinations.push(path);
         }
-        for (index, destination) in destinations.iter().enumerate() {
+        let mut destination_keys: Vec<PathBuf> = Vec::with_capacity(destinations.len());
+        for destination in destinations {
             if destination.as_os_str().is_empty() {
                 return Err("a filesystem export destination cannot be empty".into());
             }
-            if destinations[..index]
+            let key = destination_key(destination)?;
+            if destination_keys
                 .iter()
-                .any(|previous| paths_overlap(previous, destination))
+                .any(|previous| paths_overlap(previous, &key))
             {
                 return Err(format!(
                     "filesystem export destinations overlap at {}",
                     destination.display()
                 ));
             }
+            destination_keys.push(key);
         }
         Ok(Self {
             sources,
@@ -293,6 +298,126 @@ impl ExportPlan {
             staged.push(StagedArtifact { destination, stage });
         }
         publish(staged)
+    }
+}
+
+/// Stage, validate and publish one converted Glyphs file set without replacing existing output.
+pub(crate) fn publish_glyphs_import(
+    source: &Path,
+    result: ConversionResult,
+) -> Result<PathBuf, String> {
+    if !result.warnings.is_empty() {
+        return Err(format!(
+            "Glyphs conversion reported unsupported data:\n- {}",
+            result.warnings.join("\n- ")
+        ));
+    }
+    let stem = source
+        .file_stem()
+        .filter(|stem| !stem.is_empty())
+        .ok_or_else(|| format!("invalid Glyphs source path {}", source.display()))?
+        .to_string_lossy();
+    let parent = source.parent().unwrap_or(Path::new("."));
+    let preferred = parent.join(format!("{stem}-ufo"));
+    let destination = unused_import_destination(&preferred)?;
+    let stage = fresh_sibling(&destination, "import")?;
+    let staged = StagedArtifact {
+        destination: destination.clone(),
+        stage,
+    };
+    let open_relative = stage_generated_files(&staged.stage, result)?;
+    ImportPlan::read(&staged.stage.join(&open_relative))
+        .map_err(|error| format!("staged Glyphs conversion is invalid: {error}"))?;
+    if path_entry_exists(&staged.destination)? {
+        return Err(format!(
+            "generated import destination appeared while staging: {}",
+            staged.destination.display()
+        ));
+    }
+    fs::rename(&staged.stage, &staged.destination).map_err(|error| {
+        format!(
+            "could not publish generated import {}: {error}",
+            staged.destination.display()
+        )
+    })?;
+    let open = staged.destination.join(open_relative);
+    Ok(open)
+}
+
+/// Choose a sibling destination for an imported source without replacing an existing path.
+pub(crate) fn unused_import_destination(preferred: &Path) -> Result<PathBuf, String> {
+    if !path_entry_exists(preferred)? {
+        return Ok(preferred.to_path_buf());
+    }
+    let parent = preferred.parent().unwrap_or(Path::new("."));
+    let stem = preferred
+        .file_stem()
+        .filter(|stem| !stem.is_empty())
+        .ok_or_else(|| format!("invalid import destination {}", preferred.display()))?
+        .to_string_lossy();
+    let extension = preferred
+        .extension()
+        .map(|extension| extension.to_os_string());
+    for index in 1..=1_024 {
+        let mut name = OsString::from(format!("{stem}-import-{index}"));
+        if let Some(extension) = &extension {
+            name.push(".");
+            name.push(extension);
+        }
+        let candidate = parent.join(name);
+        if !path_entry_exists(&candidate)? {
+            return Ok(candidate);
+        }
+    }
+    Err(format!(
+        "could not choose an unused import destination beside {}",
+        preferred.display()
+    ))
+}
+
+fn stage_generated_files(root: &Path, result: ConversionResult) -> Result<PathBuf, String> {
+    fs::create_dir_all(root).map_err(|error| format!("{}: {error}", root.display()))?;
+    let mut paths = HashSet::new();
+    let mut designspaces = Vec::new();
+    let mut ufo_roots = Vec::new();
+    for file in result.files {
+        let relative = PathBuf::from(file.path);
+        validate_relative_path(&relative, "generated import")?;
+        if !paths.insert(relative.clone()) {
+            return Err(format!(
+                "generated import contains duplicate path {}",
+                relative.display()
+            ));
+        }
+        if relative
+            .extension()
+            .is_some_and(|extension| extension == "designspace")
+        {
+            designspaces.push(relative.clone());
+        } else if relative
+            .file_name()
+            .is_some_and(|name| name == "fontinfo.plist")
+            && relative
+                .parent()
+                .and_then(Path::extension)
+                .is_some_and(|extension| extension == "ufo")
+        {
+            ufo_roots.push(relative.parent().unwrap().to_path_buf());
+        }
+        let destination = root.join(&relative);
+        let parent = destination
+            .parent()
+            .ok_or_else(|| format!("invalid generated path {}", relative.display()))?;
+        fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
+        fs::write(&destination, file.text)
+            .map_err(|error| format!("{}: {error}", destination.display()))?;
+    }
+    match (designspaces.as_slice(), ufo_roots.as_slice()) {
+        ([designspace], [_first, ..]) => Ok(designspace.clone()),
+        ([], [ufo]) => Ok(ufo.clone()),
+        ([], []) => Err("Glyphs conversion produced no UFO".into()),
+        ([], _) => Err("Glyphs conversion produced multiple UFOs without a Designspace".into()),
+        (_, _) => Err("Glyphs conversion produced multiple Designspace files".into()),
     }
 }
 
@@ -412,7 +537,7 @@ fn fresh_sibling(path: &Path, purpose: &str) -> Result<PathBuf, String> {
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        if !candidate.exists() {
+        if !path_entry_exists(&candidate)? {
             return Ok(candidate);
         }
     }
@@ -424,6 +549,48 @@ fn fresh_sibling(path: &Path, purpose: &str) -> Result<PathBuf, String> {
 
 fn paths_overlap(left: &Path, right: &Path) -> bool {
     left == right || left.starts_with(right) || right.starts_with(left)
+}
+
+fn path_entry_exists(path: &Path) -> Result<bool, String> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!("{}: {error}", path.display())),
+    }
+}
+
+fn destination_key(path: &Path) -> Result<PathBuf, String> {
+    let mut key = if path.is_absolute() {
+        PathBuf::new()
+    } else {
+        let current =
+            std::env::current_dir().map_err(|error| format!("current directory: {error}"))?;
+        fs::canonicalize(&current).map_err(|error| format!("{}: {error}", current.display()))?
+    };
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => key.push(prefix.as_os_str()),
+            Component::RootDir => key.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                key.pop();
+            }
+            Component::Normal(part) => {
+                let candidate = key.join(part);
+                match fs::symlink_metadata(&candidate) {
+                    Ok(_) => {
+                        key = fs::canonicalize(&candidate)
+                            .map_err(|error| format!("{}: {error}", candidate.display()))?;
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        key = candidate;
+                    }
+                    Err(error) => return Err(format!("{}: {error}", candidate.display())),
+                }
+            }
+        }
+    }
+    Ok(key)
 }
 
 fn remove_any(path: &Path) {
@@ -459,12 +626,16 @@ fn capture_preserved_files(root: &Path, font: &norad::Font) -> Result<PreservedF
 }
 
 fn validate_relative_file(path: &Path) -> Result<(), String> {
+    validate_relative_path(path, "preserved GLIF")
+}
+
+fn validate_relative_path(path: &Path, label: &str) -> Result<(), String> {
     if path.as_os_str().is_empty()
         || path
             .components()
-            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+            .any(|component| !matches!(component, Component::Normal(_)))
     {
-        return Err(format!("unsafe preserved GLIF path {}", path.display()));
+        return Err(format!("unsafe {label} path {}", path.display()));
     }
     Ok(())
 }
@@ -544,6 +715,7 @@ mod tests {
     use super::*;
     use crate::document::project::Project;
     use crate::document::variable::SourceId;
+    use crate::formats::glyphs_import::{ConversionResult, ConvertedFile};
 
     struct Scratch(PathBuf);
 
@@ -701,6 +873,174 @@ mod tests {
                     .contains("runebender-stage")),
             "failed staging must clean its temporary artifacts"
         );
+    }
+
+    #[test]
+    fn export_preflight_rejects_normalized_destination_aliases() {
+        let scratch = Scratch::new("destination-alias");
+        let error = ExportPlan::new(
+            vec![
+                empty_source(scratch.0.join("masters/../Regular.ufo")),
+                empty_source(scratch.0.join("Regular.ufo")),
+            ],
+            None,
+        )
+        .unwrap_err();
+        assert!(error.contains("destinations overlap"), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn export_preflight_rejects_existing_symlink_aliases() {
+        let scratch = Scratch::new("destination-symlink");
+        let alias = scratch.0.join("alias");
+        std::os::unix::fs::symlink(&scratch.0, &alias).unwrap();
+        let error = ExportPlan::new(
+            vec![
+                empty_source(scratch.0.join("Regular.ufo")),
+                empty_source(alias.join("Regular.ufo")),
+            ],
+            None,
+        )
+        .unwrap_err();
+        assert!(error.contains("destinations overlap"), "{error}");
+    }
+
+    #[test]
+    fn glyphs_warnings_fail_before_creating_output() {
+        let scratch = Scratch::new("glyphs-warning");
+        let source = scratch.0.join("Example.glyphs");
+        let result = ConversionResult {
+            family_name: "Example".into(),
+            files: Vec::new(),
+            warnings: vec!["A (Regular): unsupported layer".into()],
+        };
+        let error = publish_glyphs_import(&source, result).unwrap_err();
+        assert!(error.contains("unsupported layer"), "{error}");
+        assert!(!scratch.0.join("Example-ufo").exists());
+    }
+
+    #[test]
+    fn glyphs_output_uses_a_validated_collision_free_destination() {
+        let scratch = Scratch::new("glyphs-collision");
+        let source = scratch.0.join("Example.glyphs");
+        let occupied = scratch.0.join("Example-ufo");
+        fs::create_dir(&occupied).unwrap();
+        fs::write(occupied.join("sentinel"), b"keep").unwrap();
+
+        let open = publish_glyphs_import(&source, generated_ufo()).unwrap();
+
+        assert_eq!(
+            open,
+            scratch.0.join("Example-ufo-import-1/Example-Regular.ufo")
+        );
+        assert_eq!(fs::read(occupied.join("sentinel")).unwrap(), b"keep");
+        assert_eq!(
+            norad::Font::load(&open)
+                .unwrap()
+                .font_info
+                .style_name
+                .as_deref(),
+            Some("Regular")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn imported_output_does_not_replace_a_dangling_symlink() {
+        let scratch = Scratch::new("import-symlink");
+        let preferred = scratch.0.join("Imported.ufo");
+        std::os::unix::fs::symlink(scratch.0.join("missing"), &preferred).unwrap();
+
+        let destination = unused_import_destination(&preferred).unwrap();
+
+        assert_eq!(destination, scratch.0.join("Imported-import-1.ufo"));
+        assert!(
+            fs::symlink_metadata(preferred)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+    }
+
+    #[test]
+    fn glyphs_output_rejects_unsafe_paths_without_publication() {
+        let scratch = Scratch::new("glyphs-path");
+        let source = scratch.0.join("Example.glyphs");
+        let result = ConversionResult {
+            family_name: "Example".into(),
+            files: vec![ConvertedFile {
+                path: "../outside".into(),
+                text: "payload".into(),
+            }],
+            warnings: Vec::new(),
+        };
+        let error = publish_glyphs_import(&source, result).unwrap_err();
+        assert!(error.contains("unsafe generated import path"), "{error}");
+        assert!(!scratch.0.join("Example-ufo").exists());
+        assert!(!scratch.0.join("outside").exists());
+    }
+
+    fn empty_source(destination: PathBuf) -> SourceExport {
+        SourceExport {
+            destination,
+            font: norad::Font::default(),
+            preserved: PreservedFiles::default(),
+        }
+    }
+
+    fn generated_ufo() -> ConversionResult {
+        let files = [
+            (
+                "Example-Regular.ufo/metainfo.plist",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>creator</key><string>org.runebender.test</string>
+  <key>formatVersion</key><integer>3</integer>
+</dict></plist>
+"#,
+            ),
+            (
+                "Example-Regular.ufo/fontinfo.plist",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>familyName</key><string>Example</string>
+  <key>styleName</key><string>Regular</string>
+</dict></plist>
+"#,
+            ),
+            (
+                "Example-Regular.ufo/layercontents.plist",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><array>
+  <array><string>public.default</string><string>glyphs</string></array>
+</array></plist>
+"#,
+            ),
+            (
+                "Example-Regular.ufo/glyphs/contents.plist",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>A</key><string>A_.glif</string></dict></plist>
+"#,
+            ),
+            (
+                "Example-Regular.ufo/glyphs/A_.glif",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="A" format="2"><advance width="600"/><unicode hex="0041"/></glyph>
+"#,
+            ),
+        ]
+        .into_iter()
+        .map(|(path, text)| ConvertedFile {
+            path: path.into(),
+            text: text.into(),
+        })
+        .collect();
+        ConversionResult {
+            family_name: "Example".into(),
+            files,
+            warnings: Vec::new(),
+        }
     }
 
     fn write_ufo(path: &Path, style: &str, extra_layers: bool) {
