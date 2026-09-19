@@ -210,3 +210,90 @@ fn compiler_snapshot_reads_canonical_source_glyph_metadata() {
     assert!(!std::sync::Arc::ptr_eq(&before, &after));
     assert_ne!(before.bytes, after.bytes);
 }
+
+#[test]
+fn compiler_snapshot_drops_cleared_canonical_font_info() {
+    let mut font = Font::new();
+    font.font_info.family_name = Some("Snapshot Clearing".into());
+    font.font_info.style_name = Some("Regular".into());
+    font.font_info.units_per_em = Some(1000_u32.into());
+    font.font_info.ascender = Some(800.0);
+    font.font_info.open_type_hhea_ascender = Some(810);
+    font.font_info.copyright = Some("Stale copyright".into());
+    font.font_info.open_type_name_designer = Some("Stale designer".into());
+    font.font_info.open_type_head_flags = Some(vec![0, 3]);
+    font.font_info.open_type_os2_vendor_id = Some("TEST".into());
+    font.font_info.note = Some("Stale note".into());
+    font.font_info.version_major = Some(7);
+    font.font_info.version_minor = Some(8);
+    let mut glyph = Glyph::new(".notdef");
+    glyph.width = 600.0;
+    glyph.contours.push(Contour::new(
+        vec![
+            ContourPoint::new(50.0, 0.0, PointType::Line, false, None, None),
+            ContourPoint::new(550.0, 0.0, PointType::Line, false, None, None),
+            ContourPoint::new(550.0, 700.0, PointType::Line, false, None, None),
+            ContourPoint::new(50.0, 700.0, PointType::Line, false, None, None),
+        ],
+        None,
+    ));
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project = Project::from_source(Master::from_font(font, "Clearing.ufo".into()));
+
+    let before = project.babelfont_snapshot().unwrap();
+    assert!(!before.names.copyright.is_empty());
+    assert!(!before.names.designer.is_empty());
+    assert_eq!(
+        before.custom_ot_values.os2_vendor_id,
+        Some(babelfont::Tag::new(b"TEST"))
+    );
+    assert_eq!(before.version, (7, 8));
+    assert_eq!(
+        before.masters[0]
+            .metrics
+            .get(&babelfont::MetricType::HheaAscender),
+        Some(&810)
+    );
+
+    let mut info = project.document_font_info(SourceId(0)).unwrap().clone();
+    info.metrics.ascender = None;
+    info.open_type_metrics.hhea_ascender = None;
+    info.names.copyright = None;
+    info.names.designer = None;
+    info.open_type.head_flags = None;
+    info.open_type.vendor_id = None;
+    info.note = None;
+    info.version_major = None;
+    info.version_minor = None;
+    let outcome = project
+        .edit_document_source_metadata(SourceId(0), |draft| {
+            assert!(draft.set_font_info(info));
+            Ok(())
+        })
+        .unwrap();
+    assert!(matches!(outcome, DocumentEditOutcome::Changed { .. }));
+
+    let snapshot = project.babelfont_snapshot().unwrap();
+    assert!(snapshot.names.copyright.is_empty());
+    assert!(snapshot.names.designer.is_empty());
+    assert_eq!(snapshot.note, None);
+    assert_eq!(snapshot.version, (1, 0));
+    assert_eq!(snapshot.custom_ot_values.head_flags, None);
+    assert_eq!(snapshot.custom_ot_values.os2_vendor_id, None);
+    assert!(
+        !snapshot.masters[0]
+            .metrics
+            .contains_key(&babelfont::MetricType::Ascender)
+    );
+    assert!(
+        !snapshot.masters[0]
+            .metrics
+            .contains_key(&babelfont::MetricType::HheaAscender)
+    );
+
+    assert_eq!(snapshot.masters.len(), 1);
+    let glyph = snapshot.glyphs.get(".notdef").unwrap();
+    assert_eq!(glyph.layers.len(), 1);
+    assert_eq!(glyph.layers[0].width, 600.0);
+    assert_eq!(glyph.layers[0].paths().count(), 1);
+}

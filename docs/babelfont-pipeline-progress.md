@@ -27,6 +27,8 @@ Baseline: `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
 - `68d7f23` (`Compile through canonical font info values`) makes compiler metadata adapters consume `CanonicalFontInfo` rather than Norad `FontInfo`.
 - `62e4a6b` (`Compile canonical font info directly`) removes the temporary boundary decode and reads canonical names, UPM, metrics and OpenType values by stable `SourceId`.
   Its regression proves exact unsaved UPM retention, one compiler-only quantization, one revision, invalidation, changed output bytes and fresh compiled-cache publication.
+- This continuation makes the compiler metadata overlay authoritative when canonical optional values are cleared.
+  Names, the vendor ID and per-master metrics no longer survive from the cloned Babelfont snapshot after their canonical values become absent, while glyph geometry and structure remain unchanged.
 - `cbb4c2b` (`Add canonical Designspace structure model`) adds stable axis, source, instance and rule identities; exact mapped locations; full and sparse source descriptors; checked structural edits; immutable compiler inputs; and an explicit checked Norad import/export boundary.
   The model accepts Project-assigned source and layer identities, preserves supported source ordering and metadata, and rejects unsupported cross-axis, discrete and anisotropic data.
 - `1aeee24` (`Own canonical Designspace in Project`) installs that model in variable `Project` data and exposes `Project::document_designspace` plus an owned immutable `Project::compiler_structure` snapshot.
@@ -64,6 +66,7 @@ Baseline: `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
 - `cargo test --locked --test canonical_metadata -- --test-threads=1`: 8 passed.
 - `cargo test --locked --test canonical_font_info -- --test-threads=1`: 3 passed.
 - `cargo test --locked --test canonical_pipeline -- --test-threads=1`: 2 passed.
+- `CARGO_BUILD_JOBS=2 cargo test --locked --test variable_compile --test canonical_pipeline -- --test-threads=1`: 10 and 3 passed.
 - `cargo test --locked --test canonical_designspace -- --test-threads=1`: 5 passed.
 - `cargo test --locked --test compiler_include_path -- --test-threads=1`: 2 passed.
 - `cargo test --locked --lib text::features::tests:: -- --test-threads=1`: 5 passed.
@@ -71,6 +74,7 @@ Baseline: `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
 - `cargo test --locked --lib outline::glyph_paths:: -- --test-threads=1`: 10 passed.
 - `cargo test --locked --test variable_project canonical_component_resolution_matches_legacy_and_reports_broken_graphs -- --exact --test-threads=1`: 1 passed.
 - `cargo clippy --locked --lib --tests -- -D warnings`: passed.
+- `CARGO_BUILD_JOBS=2 cargo clippy --locked --lib --test variable_compile --test canonical_pipeline -- -D warnings`: passed.
 - `cargo fmt --all --check`: passed.
 - `git diff --check`: passed.
 

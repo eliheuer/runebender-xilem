@@ -142,7 +142,14 @@ pub(super) fn glyph_category_from_values<'a>(
 }
 
 pub(super) fn apply(font: &mut babelfont::Font, info: &CanonicalFontInfo) -> Result<(), String> {
-    macro_rules! names { ($($target:ident => $source:ident),* $(,)?) => { $(if let Some(value) = &info.names.$source { font.names.$target = value.as_str().into(); })* }; }
+    macro_rules! names {
+        ($($target:ident => $source:ident),* $(,)?) => {
+            $(font.names.$target = info.names.$source.as_ref().map_or_else(
+                Default::default,
+                |value| value.as_str().into(),
+            );)*
+        };
+    }
     names! {
         copyright => copyright, trademark => trademark, designer => designer,
         designer_url => designer_url, manufacturer => manufacturer,
@@ -186,14 +193,15 @@ pub(super) fn apply(font: &mut babelfont::Font, info: &CanonicalFontInfo) -> Res
             OpenTypeWidthClass::ExtraExpanded => 8,
             OpenTypeWidthClass::UltraExpanded => 9,
         });
-    if let Some(vendor) = &info.open_type.vendor_id {
-        font.custom_ot_values.os2_vendor_id = Some(babelfont::Tag::new(
+    font.custom_ot_values.os2_vendor_id = match &info.open_type.vendor_id {
+        Some(vendor) => Some(babelfont::Tag::new(
             vendor
                 .as_bytes()
                 .try_into()
                 .map_err(|_| "vendor ID must have four bytes")?,
-        ));
-    }
+        )),
+        None => None,
+    };
     Ok(())
 }
 
@@ -201,7 +209,14 @@ pub(super) fn metrics(
     master: &mut babelfont::Master,
     info: &CanonicalFontInfo,
 ) -> Result<(), String> {
-    macro_rules! metrics { ($($target:ident => $source:ident),* $(,)?) => { $(if let Some(value) = info.open_type_metrics.$source { master.metrics.insert(babelfont::MetricType::$target, value); })* }; }
+    master.metrics.clear();
+    macro_rules! metrics {
+        ($($target:ident => $source:ident),* $(,)?) => {
+            $(if let Some(value) = info.open_type_metrics.$source {
+                master.metrics.insert(babelfont::MetricType::$target, value);
+            })*
+        };
+    }
     metrics! {
         HheaAscender => hhea_ascender, HheaDescender => hhea_descender,
         HheaLineGap => hhea_line_gap, HheaCaretSlopeRise => hhea_caret_slope_rise,
