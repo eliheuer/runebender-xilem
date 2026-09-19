@@ -319,6 +319,19 @@ pub struct LayerEditDraft {
     preserved: LayerPreservation,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct LayerDelta {
+    pub(super) geometry: bool,
+    pub(super) metrics: bool,
+    pub(super) metadata: bool,
+}
+
+impl LayerDelta {
+    pub(super) fn is_empty(self) -> bool {
+        !(self.geometry || self.metrics || self.metadata)
+    }
+}
+
 impl LayerEditDraft {
     pub(super) fn new(layer: Layer, preserved: LayerPreservation) -> Self {
         Self { layer, preserved }
@@ -328,8 +341,41 @@ impl LayerEditDraft {
         (self.layer, self.preserved)
     }
 
-    pub(super) fn unchanged_from(&self, layer: &Layer, preserved: &LayerPreservation) -> bool {
-        self.layer == *layer && self.preserved == *preserved
+    pub(super) fn delta_from(&self, layer: &Layer, preserved: &LayerPreservation) -> LayerDelta {
+        let metrics =
+            self.preserved.width != preserved.width || self.preserved.height != preserved.height;
+        let exact_components = |items: &[PreservedComponent]| {
+            items
+                .iter()
+                .map(|item| (item.id, item.transform))
+                .collect::<Vec<_>>()
+        };
+        let geometry = self.layer.shapes != layer.shapes
+            || self.layer.anchors != layer.anchors
+            || exact_components(&self.preserved.components)
+                != exact_components(&preserved.components);
+        let metadata = self.preserved.name != preserved.name
+            || self.preserved.codepoints != preserved.codepoints
+            || self.preserved.note != preserved.note
+            || self.preserved.guidelines != preserved.guidelines
+            || self.preserved.image != preserved.image
+            || self.preserved.lib != preserved.lib
+            || self.preserved.contours != preserved.contours
+            || self
+                .preserved
+                .components
+                .iter()
+                .map(|item| (item.id, &item.metadata))
+                .ne(preserved
+                    .components
+                    .iter()
+                    .map(|item| (item.id, &item.metadata)))
+            || self.preserved.anchors != preserved.anchors;
+        LayerDelta {
+            geometry,
+            metrics,
+            metadata,
+        }
     }
 
     /// Read the draft using the same canonical view as a committed layer.

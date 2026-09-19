@@ -319,3 +319,36 @@ The unchanged `block v0.1.6` future-incompatibility notice remains a dependency 
 
 M02's first checklist item is complete.
 The next substep is richer change information for geometry, metrics, dependent components and compilation, followed by document-level metadata and structural transaction coverage.
+
+### Canonical change information substep
+
+Evidence commit: `Report canonical document changes` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Report canonical document changes$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/document/variable.rs`, `src/document/project.rs`, `tests/variable_project.rs`, `tests/variable_compile.rs`, `ARCHITECTURE.md` and this log.
+
+Changed layer transactions now return a `DocumentChange` with the direct glyph-layer address, every canonical layer containing a component that references the edited glyph, and separate geometry, exact-metrics, metadata, source-metadata and compilation invalidation signals.
+The change classification compares the finished draft with canonical before-state, so an operation that changes and then restores a value still produces no change.
+Dependent-layer discovery reads Babelfont components across the canonical glyph map and does not inspect Master projections.
+
+The adversarial fixture now includes a component dependency from every B source layer to A.
+Its transaction test verifies four dependent B layers are reported after editing A, with geometry, metrics and compilation marked stale while metadata and source metadata remain unchanged.
+The compiler regression consumes the same compilation signal and still proves the cached preview is replaced.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_layer_transactions_commit_atomically_and_skip_noops -- --exact --test-threads=1
+cargo test --locked --test variable_compile canonical_layer_transaction_invalidates_compiled_preview -- --exact --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+Both focused transaction tests passed.
+Warning-denied Clippy passed for library and integration-test targets, and public API documentation built successfully.
+Formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+M02's broader change-information item remains open until source-metadata and structural transactions emit the same contract.
+The next substep is a canonical source-metadata transaction with atomic rollback, precise source and compilation invalidation and no mutation through a Norad font.

@@ -17,7 +17,8 @@ use kurbo::BezPath;
 
 pub use super::source::{GlyphEntry, GlyphPoint, Master, extract_anchors, extract_points};
 use super::variable::{
-    GlyphSource, GlyphView, LayerId, SourceEdit, SourceId, SourcesEdit, VariableData, VariableGlyph,
+    GlyphLayerAddress, GlyphSource, GlyphView, LayerId, SourceEdit, SourceId, SourcesEdit,
+    VariableData, VariableGlyph,
 };
 use crate::document::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
@@ -84,7 +85,7 @@ impl<'a> SourceView<'a> {
 }
 
 /// Result of applying one canonical layer edit draft.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LayerEditOutcome {
     /// The draft matched the current layer exactly and did not commit.
     Unchanged {
@@ -95,7 +96,58 @@ pub enum LayerEditOutcome {
     Changed {
         /// Document revision after the commit.
         revision: u64,
+        /// Exact invalidation scope produced by the transaction.
+        change: DocumentChange,
     },
+}
+
+/// Invalidation scope produced by one committed document transaction.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DocumentChange {
+    affected_layers: Vec<GlyphLayerAddress>,
+    dependent_layers: Vec<GlyphLayerAddress>,
+    source_metadata: Vec<SourceId>,
+    geometry: bool,
+    metrics: bool,
+    metadata: bool,
+    compilation: bool,
+}
+
+impl DocumentChange {
+    /// Layers directly mutated by the transaction.
+    pub fn affected_layers(&self) -> &[GlyphLayerAddress] {
+        &self.affected_layers
+    }
+
+    /// Layers whose components reference a directly affected glyph.
+    pub fn dependent_layers(&self) -> &[GlyphLayerAddress] {
+        &self.dependent_layers
+    }
+
+    /// Sources whose source-wide metadata changed.
+    pub fn source_metadata(&self) -> &[SourceId] {
+        &self.source_metadata
+    }
+
+    /// Whether ordinary geometry or component transforms changed.
+    pub fn geometry_changed(&self) -> bool {
+        self.geometry
+    }
+
+    /// Whether exact horizontal or vertical metrics changed.
+    pub fn metrics_changed(&self) -> bool {
+        self.metrics
+    }
+
+    /// Whether layer or object metadata changed.
+    pub fn metadata_changed(&self) -> bool {
+        self.metadata
+    }
+
+    /// Whether derived compilation data must be rebuilt.
+    pub fn requires_compilation(&self) -> bool {
+        self.compilation
+    }
 }
 
 #[derive(Debug)]
@@ -1203,14 +1255,27 @@ impl Project {
             .layer_edit_draft(name, layer)
             .ok_or(super::LayerEditError::MissingLayer)?;
         edit(&mut draft)?;
-        if !self.variable.commit_layer_edit(name, layer, draft) {
+        let Some(delta) = self.variable.commit_layer_edit(name, layer, draft) else {
             return Ok(LayerEditOutcome::Unchanged {
                 revision: self.variable.revision,
             });
-        }
+        };
+        let change = DocumentChange {
+            affected_layers: vec![GlyphLayerAddress {
+                glyph: name.to_owned(),
+                layer: layer.clone(),
+            }],
+            dependent_layers: self.variable.dependent_component_layers(name),
+            source_metadata: Vec::new(),
+            geometry: delta.geometry,
+            metrics: delta.metrics,
+            metadata: delta.metadata,
+            compilation: true,
+        };
         self.synchronize_compatibility_layer(name, layer);
         Ok(LayerEditOutcome::Changed {
             revision: self.variable.revision,
+            change,
         })
     }
 

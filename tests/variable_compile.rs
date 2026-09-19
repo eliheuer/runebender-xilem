@@ -174,12 +174,21 @@ fn canonical_layer_transaction_invalidates_compiled_preview() {
             Ok(())
         })
         .unwrap();
+    let LayerEditOutcome::Changed {
+        revision: changed_revision,
+        change,
+    } = outcome
+    else {
+        panic!("canonical edit reported no change");
+    };
     assert_eq!(
-        outcome,
-        LayerEditOutcome::Changed {
-            revision: revision + 1
-        },
+        changed_revision,
+        revision + 1,
         "canonical edit reported the wrong revision"
+    );
+    assert!(
+        change.requires_compilation(),
+        "advance edit did not invalidate compilation"
     );
     assert_eq!(
         project.document_layer("A", &layer).unwrap().width(),

@@ -31,6 +31,15 @@ pub struct LayerId {
     pub name: String,
 }
 
+/// Stable address of one glyph layer in the canonical document.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct GlyphLayerAddress {
+    /// Current glyph name in the document index.
+    pub glyph: String,
+    /// Stable source and layer address for that glyph.
+    pub layer: LayerId,
+}
+
 /// A layer's participation in one glyph's variation model.
 /// Auxiliary layers remain editable without becoming interpolation sources.
 #[derive(Clone, Debug)]
@@ -155,31 +164,48 @@ impl VariableData {
         name: &str,
         id: &LayerId,
         draft: super::LayerEditDraft,
-    ) -> bool {
+    ) -> Option<super::babelfont::LayerDelta> {
         let key = super::babelfont::layer_key(id);
-        let Some(preserved) = self
+        let preserved = self
             .glyphs
             .get_mut(name)
-            .and_then(|glyph| glyph.layers.get_mut(id))
-        else {
-            return false;
-        };
-        let Some(layer) = self
+            .and_then(|glyph| glyph.layers.get_mut(id))?;
+        let layer = self
             .font
             .glyphs
             .get_mut(name)
-            .and_then(|glyph| glyph.get_layer_mut(&key))
-        else {
-            return false;
-        };
-        if draft.unchanged_from(layer, preserved) {
-            return false;
+            .and_then(|glyph| glyph.get_layer_mut(&key))?;
+        let delta = draft.delta_from(layer, preserved);
+        if delta.is_empty() {
+            return None;
         }
         let (new_layer, new_preserved) = draft.into_parts();
         *layer = new_layer;
         *preserved = new_preserved;
         self.revision = self.revision.wrapping_add(1);
-        true
+        Some(delta)
+    }
+
+    pub(super) fn dependent_component_layers(&self, name: &str) -> Vec<GlyphLayerAddress> {
+        self.glyphs
+            .iter()
+            .flat_map(|(glyph_name, glyph)| {
+                glyph.layers.keys().filter_map(move |id| {
+                    let layer = self
+                        .font
+                        .glyphs
+                        .get(glyph_name)?
+                        .get_layer(&super::babelfont::layer_key(id))?;
+                    layer
+                        .components()
+                        .any(|component| component.reference.as_str() == name)
+                        .then(|| GlyphLayerAddress {
+                            glyph: glyph_name.clone(),
+                            layer: id.clone(),
+                        })
+                })
+            })
+            .collect()
     }
 
     pub(super) fn from_sources(sources: &[Master]) -> Self {

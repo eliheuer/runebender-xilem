@@ -207,8 +207,13 @@ fn adversarial_glyph(name: &str, width: f64, offset: f64) -> Glyph {
         glyph.contours.push(contour);
     }
     for component_index in 0..2 {
+        let reference = if name == "B" && component_index == 1 {
+            "A"
+        } else {
+            "base"
+        };
         let mut component = Component::new(
-            Name::new("base").unwrap(),
+            Name::new(reference).unwrap(),
             norad::AffineTransform {
                 x_scale: 1.0 + component_index as f64 * 0.125,
                 xy_scale: 0.125 + component_index as f64 * 0.25,
@@ -510,12 +515,54 @@ fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
             Ok(())
         })
         .unwrap();
+    let LayerEditOutcome::Changed {
+        revision: changed_revision,
+        change,
+    } = changed
+    else {
+        panic!("changed draft reported no change");
+    };
     assert_eq!(
-        changed,
-        LayerEditOutcome::Changed {
-            revision: revision + 1
-        },
+        changed_revision,
+        revision + 1,
         "changed draft reported the wrong revision"
+    );
+    assert_eq!(
+        change.affected_layers(),
+        &[runebender::document::variable::GlyphLayerAddress {
+            glyph: "A".into(),
+            layer: layer_id.clone(),
+        }],
+        "transaction reported the wrong direct layer"
+    );
+    assert_eq!(
+        change.dependent_layers().len(),
+        4,
+        "every B source layer referencing A must be invalidated"
+    );
+    assert!(
+        change
+            .dependent_layers()
+            .iter()
+            .all(|address| address.glyph == "B"),
+        "dependency invalidation included an unrelated glyph"
+    );
+    assert!(
+        change.geometry_changed(),
+        "geometry change was not reported"
+    );
+    assert!(change.metrics_changed(), "metric change was not reported");
+    assert!(
+        !change.metadata_changed(),
+        "geometry edit reported a metadata change"
+    );
+    assert!(
+        change.source_metadata().is_empty(),
+        "layer edit reported source metadata"
+    );
+    assert!(
+        change.requires_compilation(),
+        "compile invalidation was not reported"
     );
     let layer = project.document_layer("A", &layer_id).unwrap();
     assert_eq!(layer.width(), 725.123_456_789, "exact width changed");
