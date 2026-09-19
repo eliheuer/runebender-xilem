@@ -698,7 +698,7 @@ fn canonical_hit_testing_matches_implied_quadratic_geometry_and_identities() {
 
 #[test]
 fn canonical_component_resolution_matches_legacy_and_reports_broken_graphs() {
-    let (_scratch, project) = fixture();
+    let (_scratch, mut project) = fixture();
     let layer_id = project
         .document_source(SourceId(0))
         .unwrap()
@@ -746,6 +746,21 @@ fn canonical_component_resolution_matches_legacy_and_reports_broken_graphs() {
         );
     }
     assert_eq!(component_path, resolved);
+
+    let proposal_layer = project
+        .add_glyph_layer("C", &layer_id, "proposal.components")
+        .expect("component user copies into a proposal layer");
+    assert!(project.document_layer("B", &proposal_layer).is_none());
+    assert_eq!(
+        project
+            .document_layer_path(&GlyphLayerAddress {
+                glyph: "C".into(),
+                layer: proposal_layer,
+            })
+            .unwrap(),
+        expected,
+        "proposal-layer components fall back to the same source's default layer"
+    );
 
     let scratch = Scratch::new();
     let component = |name: &str| {

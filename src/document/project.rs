@@ -933,6 +933,56 @@ impl Project {
     /// This repairs one broken master from the others. With one
     /// other source it is a straight copy. This is Re-Interpolate in
     /// Glyphs.
+    pub fn reinterpolate_document_layer(
+        &mut self,
+        glyph_name: &str,
+        source: SourceId,
+    ) -> Result<DocumentEditOutcome, String> {
+        let (target_layer, target) = {
+            let designspace = self
+                .document_designspace()
+                .ok_or("re-interpolate requires a variable document")?;
+            let descriptor = designspace
+                .sources()
+                .iter()
+                .find(|candidate| candidate.id() == source)
+                .ok_or("source is not in the canonical Designspace")?;
+            (
+                descriptor.default_layer.clone(),
+                descriptor.location.to_normalized(designspace.axes())?,
+            )
+        };
+        let address = GlyphLayerAddress {
+            glyph: glyph_name.to_owned(),
+            layer: target_layer,
+        };
+        let mut transaction = self
+            .begin_document_layer_transaction(&address)
+            .map_err(|error| error.to_string())?;
+        {
+            let (layers, locations) = self.interpolation_layers(glyph_name, Some(source))?;
+            if layers.len() == 1 {
+                transaction
+                    .draft_mut()
+                    .replace_layer_contours(layers[0])
+                    .map_err(|error| error.to_string())?;
+            } else {
+                let interpolated =
+                    super::interpolation::interpolate_layers(&layers, &locations, &target)?;
+                transaction
+                    .draft_mut()
+                    .replace_interpolated_contours(&interpolated)
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+        self.commit_document_layer_transaction(transaction)
+            .map_err(|error| error.to_string())
+    }
+
+    /// Materialize a compatibility glyph rebuilt from every source except the active master.
+    ///
+    /// New callers should use [`Self::reinterpolate_document_layer`], which commits the same
+    /// contours and exact width as one canonical transaction without constructing a UFO glyph.
     pub fn reinterpolated_from_others(&self, glyph_name: &str) -> Result<norad::Glyph, String> {
         let active = self.source_id(self.active).ok_or("missing active source")?;
         let designspace = self
@@ -1458,6 +1508,35 @@ impl Project {
         self.variable.layer_view(name, layer)
     }
 
+    /// Smart axes declared by one canonical component-source layer.
+    pub fn document_smart_component_axes(
+        &self,
+        name: &str,
+        layer: &LayerId,
+    ) -> Option<&super::model::smart_components::SmartComponentAxes> {
+        self.document_layer(name, layer)?.smart_component_axes()
+    }
+
+    /// One smart-axis value bound to a stable component in a canonical layer.
+    pub fn document_smart_component_value(
+        &self,
+        address: &GlyphLayerAddress,
+        component: super::ComponentId,
+        axis: &str,
+    ) -> Option<f64> {
+        self.document_layer(&address.glyph, &address.layer)?
+            .smart_component_value(component, axis)
+    }
+
+    /// Exact pole-selection metadata for one canonical smart-component source layer.
+    pub fn document_smart_component_pole(
+        &self,
+        name: &str,
+        layer: &LayerId,
+    ) -> Option<&super::model::smart_components::SmartComponentPole> {
+        self.document_layer(name, layer)?.smart_component_pole()
+    }
+
     /// Resolve one canonical glyph layer, including nested components, into rendered geometry.
     ///
     /// The layer address and every component base are resolved in the same stable source/layer
@@ -1471,8 +1550,15 @@ impl Project {
             .ok_or_else(|| {
                 crate::outline::glyph_paths::ComponentResolveError::Missing(address.glyph.clone())
             })?;
+        let default_layer = self
+            .document_source(address.layer.source)
+            .map(SourceView::default_layer);
         crate::outline::glyph_paths::ordinary_layer_to_bezpath(layer, |name| {
-            self.document_layer(name, &address.layer)
+            self.document_layer(name, &address.layer).or_else(|| {
+                default_layer
+                    .as_ref()
+                    .and_then(|layer| self.document_layer(name, layer))
+            })
         })
     }
 
@@ -2362,8 +2448,46 @@ mod tests {
                 assert!((pa.y - pb.y).abs() < 1e-6);
             }
         }
+        let source = project.source_id(0).expect("first source identity");
+        let address = GlyphLayerAddress {
+            glyph: "H".into(),
+            layer: project.document_source(source).unwrap().default_layer(),
+        };
+        let before = project
+            .capture_document_layer(&address)
+            .expect("target layer snapshot");
+        let outcome = project
+            .reinterpolate_document_layer("H", source)
+            .expect("canonical re-interpolation commits");
+        assert!(matches!(outcome, DocumentEditOutcome::Changed { .. }));
+        let installed = project
+            .glyph_layer("H", &address.layer)
+            .expect("installed layer projects at the format boundary");
+        assert_eq!(installed.width, expected.width);
+        assert_eq!(installed.contours.len(), expected.contours.len());
+        assert_eq!(
+            project.document_layer_history_depth(
+                &address,
+                super::super::history::HistoryDirection::Undo,
+            ),
+            1
+        );
+        assert!(matches!(
+            project
+                .replay_document_layer_history(
+                    &address,
+                    super::super::history::HistoryDirection::Undo,
+                )
+                .expect("canonical re-interpolation undoes"),
+            DocumentHistoryReplayOutcome::Changed { .. }
+        ));
+        assert_eq!(project.capture_document_layer(&address), Some(before));
         // A glyph missing everywhere else reports, not panics.
-        assert!(project.reinterpolated_from_others("no.such.glyph").is_err());
+        assert!(
+            project
+                .reinterpolate_document_layer("no.such.glyph", source)
+                .is_err()
+        );
     }
 
     #[test]

@@ -73,7 +73,7 @@ impl Workspace {
         let modified = font.project.ds_dirty || font.project.sources().iter().any(|m| m.dirty);
         let source_roots = source_roots(&font);
         let source_fingerprint = source_fingerprint(&source_roots);
-        let features_buf = font.feature_font().features.clone();
+        let features_buf = font.feature_text().to_owned();
         let source_name_buf = font.master_names()[font.active()].to_string();
         let theme_id: &'static str = match std::env::var("RUNEBENDER_THEME").ok().as_deref() {
             Some("dark") => "dark",

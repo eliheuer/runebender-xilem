@@ -843,7 +843,7 @@ mod tests {
             plan
         );
         assert!(plan.report.skipped.is_empty());
-        assert_eq!(plan.report.derived, [expected.clone()]);
+        assert_eq!(plan.report.derived, std::slice::from_ref(&expected));
         assert_eq!(plan.replacements.len(), 1);
         assert_eq!(plan.replacements[0].derived, expected);
         assert_eq!(
@@ -894,7 +894,7 @@ mod tests {
                 Some(&["Aacute".into()]),
                 |_| None,
             );
-            assert_eq!(plan.report.derived, [expected.clone()]);
+            assert_eq!(plan.report.derived, std::slice::from_ref(&expected));
         }
     }
 

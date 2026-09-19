@@ -144,8 +144,14 @@ pub fn ordinary_component_to_bezpath<'a>(
     let base = resolve(name).ok_or_else(|| ComponentResolveError::Missing(name.to_owned()))?;
     let mut path = BezPath::new();
     let mut stack = vec![root_name.to_owned(), name.to_owned()];
-    append_document_shapes(&mut path, base, &mut resolve, &mut stack)?;
-    Ok(component.transform() * path)
+    append_document_shapes(
+        &mut path,
+        base,
+        &mut resolve,
+        &mut stack,
+        component.transform(),
+    )?;
+    Ok(path)
 }
 
 /// One contour as a `BezPath`.

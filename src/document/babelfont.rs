@@ -21,6 +21,9 @@ use super::model::glyph_metadata::{
     COMPOSITION_RECIPE_KEY, ComponentAlignment, LEFT_METRICS_KEY, MARK_COLOR_KEY, METABALLS_KEY,
     MarkColor, Metaballs, MetricsFormula, RIGHT_METRICS_KEY, parse_metrics_key,
 };
+use super::model::smart_components::{
+    SmartComponentAxes, SmartComponentPole, SmartComponentValues,
+};
 use super::variable::LayerId;
 
 pub(super) fn layer_key(id: &LayerId) -> String {
@@ -119,6 +122,9 @@ pub(super) struct LayerPreservation {
     right_metrics_key: Option<plist::Value>,
     metaballs: Option<plist::Value>,
     composition_recipe: Option<plist::Value>,
+    smart_component_axes: Option<SmartComponentAxes>,
+    smart_component_values: Option<SmartComponentValues<ComponentId>>,
+    smart_component_pole: Option<SmartComponentPole>,
     contours: Vec<PreservedContour>,
     components: Vec<PreservedComponent>,
     anchors: Vec<PreservedAnchor>,
@@ -368,6 +374,24 @@ impl<'a> LayerView<'a> {
             Some(plist::Value::String(source)) => Ok(Some(source)),
             Some(_) => Err(DocumentEditError::InvalidLayerMetadata),
         }
+    }
+
+    /// Smart axes declared by this component-source layer.
+    pub fn smart_component_axes(self) -> Option<&'a SmartComponentAxes> {
+        self.preserved.smart_component_axes.as_ref()
+    }
+
+    /// The smart-axis value bound to one stable component identity.
+    pub fn smart_component_value(self, component: ComponentId, axis: &str) -> Option<f64> {
+        self.preserved
+            .smart_component_values
+            .as_ref()?
+            .value(component, axis)
+    }
+
+    /// Pole selection metadata attached to this source layer.
+    pub fn smart_component_pole(self) -> Option<&'a SmartComponentPole> {
+        self.preserved.smart_component_pole.as_ref()
     }
 
     /// Unicode scalar values attached to this glyph layer.
@@ -725,6 +749,9 @@ impl LayerEditDraft {
             || self.preserved.right_metrics_key != preserved.right_metrics_key
             || self.preserved.metaballs != preserved.metaballs
             || self.preserved.composition_recipe != preserved.composition_recipe
+            || self.preserved.smart_component_axes != preserved.smart_component_axes
+            || self.preserved.smart_component_values != preserved.smart_component_values
+            || self.preserved.smart_component_pole != preserved.smart_component_pole
             || self.preserved.contours != preserved.contours
             || self
                 .preserved
@@ -2058,6 +2085,158 @@ impl LayerEditDraft {
         self.layer.shapes = shapes;
         self.preserved.contours = preserved;
         Ok(changed)
+    }
+
+    /// Replace only the contours and exact width from another canonical layer.
+    pub(super) fn replace_layer_contours(
+        &mut self,
+        source: LayerView<'_>,
+    ) -> Result<bool, DocumentEditError> {
+        if source.glyph_name() != self.preserved.name {
+            return Err(DocumentEditError::InvalidLayerMetadata);
+        }
+        let current = self.view();
+        let same_contours = current.contours().count() == source.contours().count()
+            && current.contours().zip(source.contours()).all(|(a, b)| {
+                a.is_closed() == b.is_closed()
+                    && a.is_hyper() == b.is_hyper()
+                    && a.points().count() == b.points().count()
+                    && a.points().zip(b.points()).all(|(a, b)| {
+                        a.position() == b.position()
+                            && a.point_type() == b.point_type()
+                            && a.is_smooth() == b.is_smooth()
+                            && a.name() == b.name()
+                    })
+            });
+        if same_contours && self.preserved.width == source.width() {
+            return Ok(false);
+        }
+        let copied = source.copy_contours(&[])?;
+        let insert_at = self
+            .layer
+            .shapes
+            .iter()
+            .take_while(|shape| !matches!(shape, Shape::Path(_)))
+            .filter(|shape| matches!(shape, Shape::Component(_)))
+            .count();
+        self.layer
+            .shapes
+            .retain(|shape| matches!(shape, Shape::Component(_)));
+        self.preserved.contours.clear();
+        self.paste_contours(&copied)?;
+        let contour_start = self
+            .layer
+            .shapes
+            .iter()
+            .position(|shape| matches!(shape, Shape::Path(_)))
+            .unwrap_or(self.layer.shapes.len());
+        let contours = self.layer.shapes.split_off(contour_start);
+        self.layer.shapes.splice(insert_at..insert_at, contours);
+        self.set_width(source.width())?;
+        Ok(true)
+    }
+
+    /// Replace only the contours with one checked canonical interpolation result.
+    ///
+    /// The replacement receives fresh contour and point identities because its topology comes
+    /// from other source layers. Components, anchors and every non-contour layer field remain
+    /// untouched.
+    pub(super) fn replace_interpolated_contours(
+        &mut self,
+        output: &super::interpolation::InterpolatedLayer,
+    ) -> Result<bool, DocumentEditError> {
+        if output.glyph_name != self.preserved.name {
+            return Err(DocumentEditError::InvalidLayerMetadata);
+        }
+        let current = self.view();
+        let same_contours = current.contours().count() == output.contours().count()
+            && current
+                .contours()
+                .zip(output.contours())
+                .all(|(source, replacement)| {
+                    source.is_closed() == replacement.closed
+                        && source.is_hyper() == replacement.hyper
+                        && source.points().count() == replacement.points.len()
+                        && source.points().zip(&replacement.points).all(|(a, b)| {
+                            a.position() == b.position
+                                && a.point_type() == b.point_type
+                                && a.is_smooth() == b.smooth
+                                && a.name() == b.name.as_deref()
+                        })
+                });
+        if same_contours && self.preserved.width == output.width {
+            return Ok(false);
+        }
+        let mut replacements = Vec::with_capacity(output.contours().count());
+        let mut preserved = Vec::with_capacity(output.contours().count());
+        for contour in output.contours() {
+            let contour_id = ContourId::next();
+            let mut path = babelfont::Path {
+                closed: contour.closed,
+                ..babelfont::Path::default()
+            };
+            write_id(&mut path.format_specific, contour_id.0);
+            let mut points = Vec::with_capacity(contour.points.len());
+            for point in &contour.points {
+                ensure_finite(&[point.position.x, point.position.y])?;
+                let point_id = PointId::next();
+                let mut node = Node {
+                    x: point.position.x,
+                    y: point.position.y,
+                    nodetype: match point.point_type {
+                        LayerPointType::Move => NodeType::Move,
+                        LayerPointType::Line => NodeType::Line,
+                        LayerPointType::OffCurve => NodeType::OffCurve,
+                        LayerPointType::Curve => NodeType::Curve,
+                        LayerPointType::QCurve => NodeType::QCurve,
+                    },
+                    smooth: point.smooth,
+                    ..Node::default()
+                };
+                write_id(&mut node.format_specific, point_id.0);
+                path.nodes.push(node);
+                points.push(PreservedPoint {
+                    id: point_id,
+                    name: point
+                        .name
+                        .as_deref()
+                        .and_then(|name| norad::Name::new(name).ok()),
+                    metadata: ObjectMetadata {
+                        identifier: None,
+                        lib: None,
+                    },
+                });
+            }
+            replacements.push(Shape::Path(path));
+            preserved.push(PreservedContour {
+                id: contour_id,
+                hyper: contour.hyper,
+                metadata: ObjectMetadata {
+                    identifier: contour.hyper.then(fresh_hyper_identifier),
+                    lib: None,
+                },
+                points,
+            });
+        }
+        let insert_at = self
+            .layer
+            .shapes
+            .iter()
+            .take_while(|shape| !matches!(shape, Shape::Path(_)))
+            .filter(|shape| matches!(shape, Shape::Component(_)))
+            .count();
+        let mut shapes: Vec<_> = self
+            .layer
+            .shapes
+            .iter()
+            .filter(|shape| matches!(shape, Shape::Component(_)))
+            .cloned()
+            .collect();
+        shapes.splice(insert_at..insert_at, replacements);
+        self.layer.shapes = shapes;
+        self.preserved.contours = preserved;
+        self.set_width(output.width)?;
+        Ok(true)
     }
 
     /// Set the exact horizontal advance and refresh Babelfont's derived width.
@@ -3415,6 +3594,41 @@ impl LayerEditDraft {
             .ok_or(DocumentEditError::MissingComponent(id))
     }
 
+    /// Set or remove one smart-axis value bound to a stable component identity.
+    pub fn set_smart_component_value(
+        &mut self,
+        id: ComponentId,
+        axis: &str,
+        value: Option<f64>,
+    ) -> Result<bool, DocumentEditError> {
+        if !self
+            .preserved
+            .components
+            .iter()
+            .any(|component| component.id == id)
+        {
+            return Err(DocumentEditError::MissingComponent(id));
+        }
+        let Some(value) = value else {
+            return Ok(self
+                .preserved
+                .smart_component_values
+                .as_mut()
+                .and_then(|values| values.get_mut(id))
+                .is_some_and(|entry| entry.remove_value(axis)));
+        };
+        let values = self
+            .preserved
+            .smart_component_values
+            .get_or_insert_with(SmartComponentValues::default);
+        values.insert_component(id);
+        values
+            .get_mut(id)
+            .expect("inserted smart-component entry")
+            .set_value(axis, value)
+            .map_err(|_| DocumentEditError::InvalidLayerMetadata)
+    }
+
     /// Remove one component by stable identity.
     pub fn remove_component(&mut self, id: ComponentId) -> Result<bool, DocumentEditError> {
         let shape_index = self
@@ -3434,6 +3648,9 @@ impl LayerEditDraft {
             .expect("canonical component has preservation metadata");
         self.layer.shapes.remove(shape_index);
         self.preserved.components.remove(preserved_index);
+        if let Some(values) = &mut self.preserved.smart_component_values {
+            values.remove_component(id);
+        }
         Ok(true)
     }
 
@@ -4032,6 +4249,16 @@ pub(super) fn layer_from_ufo(
     let right_metrics_key = lib.remove(RIGHT_METRICS_KEY);
     let metaballs = lib.remove(METABALLS_KEY);
     let composition_recipe = lib.remove(COMPOSITION_RECIPE_KEY);
+    let component_order = components
+        .iter()
+        .map(|component| component.id)
+        .collect::<Vec<_>>();
+    let smart_component_axes = SmartComponentAxes::take_from_lib(&mut lib)
+        .expect("UFO smart-component axes must satisfy the canonical metadata contract");
+    let smart_component_values = SmartComponentValues::take_from_lib(&mut lib, &component_order)
+        .expect("UFO smart-component values must satisfy the canonical metadata contract");
+    let smart_component_pole = SmartComponentPole::take_from_lib(&mut lib)
+        .expect("UFO smart-component poles must satisfy the canonical metadata contract");
     (
         layer,
         LayerPreservation {
@@ -4048,6 +4275,9 @@ pub(super) fn layer_from_ufo(
             right_metrics_key,
             metaballs,
             composition_recipe,
+            smart_component_axes,
+            smart_component_values,
+            smart_component_pole,
             contours,
             components,
             anchors,
@@ -4062,6 +4292,16 @@ pub(super) fn copy_layer(
 ) -> (Layer, LayerPreservation) {
     let mut layer = layer.clone();
     let mut preserved = preserved.clone();
+    let old_component_order = preserved
+        .components
+        .iter()
+        .map(|component| component.id)
+        .collect::<Vec<_>>();
+    let smart_component_values = preserved.smart_component_values.as_ref().map(|values| {
+        values
+            .to_plist(&old_component_order)
+            .expect("canonical smart-component values retain their source components")
+    });
     layer.id = Some(layer_key(id));
     layer.name = Some(id.name.clone());
     layer.master = babelfont::LayerType::AssociatedWithMaster(id.source.0.to_string());
@@ -4098,6 +4338,17 @@ pub(super) fn copy_layer(
         preserved.id = AnchorId::next();
         write_id(&mut anchor.format_specific, preserved.id.0);
     }
+    if let Some(values) = smart_component_values {
+        let new_component_order = preserved
+            .components
+            .iter()
+            .map(|component| component.id)
+            .collect::<Vec<_>>();
+        preserved.smart_component_values = Some(
+            SmartComponentValues::from_plist(&values, &new_component_order)
+                .expect("copied smart-component values bind to copied components"),
+        );
+    }
     (layer, preserved)
 }
 
@@ -4110,6 +4361,17 @@ pub(super) fn reconcile_layer_from_ufo(
 ) -> (Layer, LayerPreservation) {
     let old = project_layer(previous_layer, previous);
     let (mut layer, mut preservation) = layer_from_ufo(glyph, id, default);
+    let imported_component_order = preservation
+        .components
+        .iter()
+        .map(|component| component.id)
+        .collect::<Vec<_>>();
+    let imported_smart_component_values =
+        preservation.smart_component_values.as_ref().map(|values| {
+            values
+                .to_plist(&imported_component_order)
+                .expect("freshly imported smart-component values retain their components")
+        });
 
     let mut used_contours = vec![false; old.contours.len()];
     for (index, (contour, path)) in glyph
@@ -4199,6 +4461,17 @@ pub(super) fn reconcile_layer_from_ufo(
         let id = previous.components[old_index].id;
         preservation.components[index].id = id;
         write_id(&mut shape.format_specific, id.0);
+    }
+    if let Some(values) = imported_smart_component_values {
+        let reconciled_order = preservation
+            .components
+            .iter()
+            .map(|component| component.id)
+            .collect::<Vec<_>>();
+        preservation.smart_component_values = Some(
+            SmartComponentValues::from_plist(&values, &reconciled_order)
+                .expect("reconciled smart-component values bind to reconciled components"),
+        );
     }
 
     let mut used_anchors = vec![false; old.anchors.len()];
@@ -4307,6 +4580,23 @@ pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> nor
         if let Some(value) = value {
             glyph.lib.insert(key.into(), value.clone());
         }
+    }
+    if let Some(axes) = &preserved.smart_component_axes {
+        axes.write_to_lib(&mut glyph.lib);
+    }
+    let component_order = layer
+        .components()
+        .map(|component| {
+            ComponentId(read_id(&component.format_specific).expect("canonical component identity"))
+        })
+        .collect::<Vec<_>>();
+    if let Some(values) = &preserved.smart_component_values {
+        values
+            .write_to_lib(&mut glyph.lib, &component_order)
+            .expect("canonical smart-component values retain current component identities");
+    }
+    if let Some(pole) = &preserved.smart_component_pole {
+        pole.write_to_lib(&mut glyph.lib);
     }
     if layer.width != preserved.width as f32 {
         glyph.width = f64::from(layer.width);
@@ -4610,6 +4900,104 @@ mod tests {
         assert_eq!(
             output.components[1].lib().unwrap()["component"],
             "first".into()
+        );
+    }
+
+    #[test]
+    fn smart_component_values_follow_component_identity() {
+        use super::super::model::smart_components::{
+            SMART_COMPONENT_AXES_KEY, SMART_COMPONENT_POLE_KEY, SMART_COMPONENT_VALUES_KEY,
+        };
+
+        let mut glyph = norad::Glyph::new("smart-user");
+        for name in ["part.first", "part.second"] {
+            glyph.components.push(norad::Component::new(
+                norad::Name::new(name).unwrap(),
+                norad::AffineTransform::default(),
+                None,
+            ));
+        }
+        let axis = [
+            ("name".to_string(), plist::Value::String("Width".into())),
+            (
+                "bottomValue".to_string(),
+                plist::Value::Integer(0_i64.into()),
+            ),
+            ("topValue".to_string(), plist::Value::Real(100.0)),
+        ]
+        .into_iter()
+        .collect();
+        glyph.lib.insert(
+            SMART_COMPONENT_AXES_KEY.into(),
+            plist::Value::Array(vec![plist::Value::Dictionary(axis)]),
+        );
+        glyph.lib.insert(
+            SMART_COMPONENT_VALUES_KEY.into(),
+            plist::Value::Array(vec![
+                plist::Value::Dictionary(
+                    [("Width".to_string(), plist::Value::Integer(25_i64.into()))]
+                        .into_iter()
+                        .collect(),
+                ),
+                plist::Value::Dictionary(
+                    [("Width".to_string(), plist::Value::Real(75.0))]
+                        .into_iter()
+                        .collect(),
+                ),
+            ]),
+        );
+        glyph.lib.insert(
+            SMART_COMPONENT_POLE_KEY.into(),
+            plist::Value::Dictionary(
+                [("Width".to_string(), plist::Value::Integer(2_i64.into()))]
+                    .into_iter()
+                    .collect(),
+            ),
+        );
+        let id = LayerId {
+            source: super::super::variable::SourceId(0),
+            name: "public.default".into(),
+        };
+        let (mut layer, preserved) = layer_from_ufo(&glyph, &id, true);
+        assert!(!preserved.lib.contains_key(SMART_COMPONENT_AXES_KEY));
+        assert!(!preserved.lib.contains_key(SMART_COMPONENT_VALUES_KEY));
+        assert!(!preserved.lib.contains_key(SMART_COMPONENT_POLE_KEY));
+        let view = LayerView::new(&layer, &preserved);
+        let components = view.components().map(ComponentView::id).collect::<Vec<_>>();
+        assert_eq!(
+            view.smart_component_value(components[0], "Width"),
+            Some(25.0)
+        );
+        assert_eq!(
+            view.smart_component_value(components[1], "Width"),
+            Some(75.0)
+        );
+        assert!(view.smart_component_pole().unwrap().is_top("Width"));
+
+        layer.shapes.swap(0, 1);
+        let output = project_layer(&layer, &preserved);
+        assert_eq!(
+            output.lib[SMART_COMPONENT_VALUES_KEY],
+            plist::Value::Array(vec![
+                plist::Value::Dictionary(
+                    [("Width".to_string(), plist::Value::Real(75.0))]
+                        .into_iter()
+                        .collect(),
+                ),
+                plist::Value::Dictionary(
+                    [("Width".to_string(), plist::Value::Integer(25_i64.into()))]
+                        .into_iter()
+                        .collect(),
+                ),
+            ])
+        );
+        assert_eq!(
+            output.lib[SMART_COMPONENT_AXES_KEY],
+            glyph.lib[SMART_COMPONENT_AXES_KEY]
+        );
+        assert_eq!(
+            output.lib[SMART_COMPONENT_POLE_KEY],
+            glyph.lib[SMART_COMPONENT_POLE_KEY]
         );
     }
 

@@ -1636,7 +1636,7 @@ impl Workspace {
             matches!(self.mode, Mode::Editor(_)).then(|| self.session.glyph_name.clone());
         let index = self.font.active();
         self.source_name_buf = self.font.master_names()[index].to_string();
-        self.features_buf = self.font.feature_font().features.clone();
+        self.features_buf = self.font.feature_text().to_owned();
         self.features_status = None;
         if self.show_all_masters {
             self.reference_layers = (0..self.font.master_count())

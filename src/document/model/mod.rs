@@ -8,6 +8,7 @@ pub mod entity_id;
 pub mod font_info;
 pub mod glyph_metadata;
 pub mod kerning;
+pub mod smart_components;
 
 pub use entity_id::EntityId;
 pub use glyph_metadata::GlyphMetadata;

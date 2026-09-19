@@ -249,9 +249,17 @@ impl ComponentSmartValues {
 ///
 /// The default identifier is the document's [`ComponentId`].
 /// A generic identifier keeps the boundary codec independently testable.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SmartComponentValues<Id = ComponentId> {
     entries: BTreeMap<Id, ComponentSmartValues>,
+}
+
+impl<Id> Default for SmartComponentValues<Id> {
+    fn default() -> Self {
+        Self {
+            entries: BTreeMap::new(),
+        }
+    }
 }
 
 impl<Id: Copy + Ord> SmartComponentValues<Id> {
