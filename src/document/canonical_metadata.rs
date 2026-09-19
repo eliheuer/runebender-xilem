@@ -54,6 +54,11 @@ pub enum KerningParticipant {
         /// The full `public.kern1.*` or `public.kern2.*` name.
         name: String,
     },
+    /// An imported valid name whose role cannot be classified safely.
+    ///
+    /// This preserves legacy pairs that use a kerning-group name on the opposite side.
+    /// Typed editing never treats the value as a glyph or as a side-correct group.
+    Preserved(String),
 }
 
 impl KerningParticipant {
@@ -76,7 +81,7 @@ impl KerningParticipant {
     /// The raw UFO glyph or group name.
     pub fn as_raw_name(&self) -> &str {
         match self {
-            Self::Glyph(name) | Self::Group { name, .. } => name,
+            Self::Glyph(name) | Self::Group { name, .. } | Self::Preserved(name) => name,
         }
     }
 
@@ -86,10 +91,7 @@ impl KerningParticipant {
             return Self::group(expected_side, raw);
         }
         if raw.starts_with(expected_side.opposite_prefix()) {
-            return Err(CanonicalMetadataError::WrongGroupSide {
-                name: raw.to_owned(),
-                expected: expected_side,
-            });
+            return Ok(Self::Preserved(raw.to_owned()));
         }
         Self::glyph(raw)
     }
@@ -107,6 +109,7 @@ impl KerningParticipant {
                 side: *side,
                 name: new.to_owned(),
             },
+            Self::Preserved(name) if name == old => Self::Preserved(new.to_owned()),
             _ => self.clone(),
         }
     }
@@ -215,11 +218,13 @@ pub struct CanonicalFontMetadata {
 }
 
 impl CanonicalFontMetadata {
-    /// Import raw UFO-shaped maps after validating names, pair sides and finite values.
+    /// Import raw UFO-shaped maps after validating names and finite values.
     ///
     /// Group member order and duplicates are preserved exactly.
     /// UFO permits duplicates in arbitrary groups and requires authoring tools to ignore later
     /// duplicate members in kerning groups.
+    /// A legacy group-shaped name used on the opposite pair side remains a preserved participant
+    /// so loading and saving a real source never panics or silently drops the pair.
     pub fn from_raw(
         groups: BTreeMap<String, Vec<String>>,
         kerning: BTreeMap<String, BTreeMap<String, f64>>,
@@ -440,8 +445,10 @@ impl CanonicalFontMetadata {
         let mut kerning = self.kerning.clone();
         let removed = groups.remove(name).is_some();
         if let Some(side) = side {
-            let participant = KerningParticipant::group(side, name)?;
-            kerning.retain(|(left, right), _| left != &participant && right != &participant);
+            KerningParticipant::group(side, name)?;
+            kerning.retain(|(left, right), _| {
+                left.as_raw_name() != name && right.as_raw_name() != name
+            });
         }
         if !removed && kerning == self.kerning {
             return Ok(false);
@@ -572,7 +579,9 @@ impl CanonicalFontMetadata {
         self.groups.contains_key(group)
             || self.kerning.keys().any(|(left, right)| {
                 matches!(left, KerningParticipant::Group { name, .. } if name == group)
+                    || matches!(left, KerningParticipant::Preserved(name) if name == group)
                     || matches!(right, KerningParticipant::Group { name, .. } if name == group)
+                    || matches!(right, KerningParticipant::Preserved(name) if name == group)
             })
     }
 }

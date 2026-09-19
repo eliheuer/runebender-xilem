@@ -231,6 +231,35 @@ fn nonfinite_pair_is_rejected_without_mutation() {
 }
 
 #[test]
+fn legacy_wrong_side_group_references_round_trip_without_becoming_typed_groups() {
+    let mut metadata = CanonicalFontMetadata::from_raw(
+        BTreeMap::from([("public.kern1.v".into(), vec!["v".into()])]),
+        BTreeMap::from([(
+            "A".into(),
+            BTreeMap::from([("public.kern1.v".into(), -37.625)]),
+        )]),
+    )
+    .unwrap();
+
+    assert_eq!(metadata.raw_kerning()["A"]["public.kern1.v"], -37.625);
+    assert!(matches!(
+        metadata.kerning_pairs().next(),
+        Some((KerningParticipant::Glyph(left), KerningParticipant::Preserved(right), value))
+            if left == "A" && right == "public.kern1.v" && value == -37.625
+    ));
+    assert_eq!(metadata.resolved_kerning("A", "v"), None);
+
+    assert!(
+        metadata
+            .rename_group("public.kern1.v", "public.kern1.v.alt")
+            .unwrap()
+    );
+    assert_eq!(metadata.raw_kerning()["A"]["public.kern1.v.alt"], -37.625);
+    assert!(metadata.remove_group("public.kern1.v.alt").unwrap());
+    assert!(metadata.raw_kerning().is_empty());
+}
+
+#[test]
 fn rename_updates_groups_and_both_pair_sides_atomically() {
     let mut metadata = CanonicalFontMetadata::from_raw(
         BTreeMap::from([
