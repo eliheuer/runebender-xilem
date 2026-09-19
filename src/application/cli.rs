@@ -880,6 +880,13 @@ fn proposal_discard(source: &Path, task: &str, json: bool) -> i32 {
 /// written beside `features.fea` with an include line.
 fn features_cmd(source: &Path, write: bool, json: bool) -> i32 {
     use runebender::text::features;
+    if write
+        && !source
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("ufo"))
+    {
+        return fail(json, exit::USAGE, "features --write requires a UFO source");
+    }
     let project = match runebender::document::project::Project::load(source) {
         Ok(project) => project,
         Err(error) => {
