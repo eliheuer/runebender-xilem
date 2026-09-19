@@ -150,11 +150,26 @@ impl VariableData {
                         super::babelfont::project_layer(layer, preserved) == *payload
                     });
                 if !unchanged {
-                    let (layer, preserved) = super::babelfont::layer_from_ufo(
-                        payload,
-                        &id,
-                        layer.name() == font.default_layer().name(),
-                    );
+                    let default = layer.name() == font.default_layer().name();
+                    let converted = self
+                        .glyphs
+                        .get(name)
+                        .and_then(|glyph| glyph.layers.get(&id))
+                        .zip(
+                            self.font
+                                .glyphs
+                                .get(name)
+                                .and_then(|glyph| glyph.get_layer(&key)),
+                        )
+                        .map_or_else(
+                            || super::babelfont::layer_from_ufo(payload, &id, default),
+                            |(preserved, previous)| {
+                                super::babelfont::reconcile_layer_from_ufo(
+                                    payload, &id, default, previous, preserved,
+                                )
+                            },
+                        );
+                    let (layer, preserved) = converted;
                     let glyph = self.glyphs.entry(payload.name().to_string()).or_default();
                     glyph.layers.insert(id.clone(), preserved);
                     if self.font.glyphs.get(name).is_none() {

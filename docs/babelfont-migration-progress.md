@@ -191,3 +191,31 @@ Those are no longer geometry or complete glyph mirrors, and M07/M12/M13 still ow
 The glyph-free `norad::Font` source templates and full Master compatibility fonts also remain tracked for M12/M13; this substep does not claim the final architecture.
 
 Remaining M01 work: retain object identity through compatibility reconciliation, add adversarial fixtures for colliding `f32` widths, fractional metadata and every object kind, then execute no-op/edit/undo/save acceptance.
+
+### Compatibility-reconciliation identity substep
+
+Evidence commit: `Retain object identity through compatibility reconciliation` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Retain object identity through compatibility reconciliation$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/document/variable.rs` and this log.
+
+An actual edit through the transitional Norad compatibility guard now reconciles the rebuilt Babelfont layer with its previous typed preservation data.
+Contours, points, components and anchors retain their session identities through reorder and geometry changes when a unique identifier, exact-object or metadata signature match exists.
+Ambiguous or unmatched objects receive new identities rather than inheriting metadata by position.
+This keeps identity-keyed metadata attached to the intended objects while the remaining compatibility callers migrate to direct document operations.
+
+Executed evidence:
+
+```sh
+cargo test --locked --lib document::babelfont::tests:: -- --test-threads=1
+cargo test --locked --test babelfont_contract --test variable_project --test variable_compile -- --test-threads=1
+cargo clippy --locked --lib -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The two Babelfont adapter unit tests and all 20 focused integration tests passed with zero failures or ignored tests.
+The new reconciliation test changes coordinates and transforms while reordering identified points, components and anchors, then verifies both identity retention and exact projected UFO output.
+Warning-denied library Clippy and formatting passed after simplifying one redundant component-signature expression reported by Clippy during development.
+The existing `block v0.1.6` future-incompatibility notice remains unchanged.
+
+Remaining M01 work: add the adversarial no-op/edit/undo/save fixture with colliding `f32` widths, fractional metadata and every object kind, then execute the full M01 acceptance checks.
