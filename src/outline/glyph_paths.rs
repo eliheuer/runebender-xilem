@@ -154,10 +154,37 @@ pub fn canonical_layer_to_bezpath<'a>(
     Ok(path)
 }
 
-/// Resolve one top-level canonical component into its exact rendered path.
+/// Render one top-level canonical component with its containing layer's smart values.
+///
+/// `root` is the layer that owns `component`; it supplies the component's stable smart-axis values
+/// and anchors cycle detection at the containing glyph.
+/// `resolve` selects component bases in the caller's source/layer context, while `layers` supplies
+/// every same-source layer of a component base so smart poles can participate.
+pub fn canonical_component_to_bezpath<'a>(
+    root: LayerView<'a>,
+    component: ComponentView<'a>,
+    mut resolve: impl FnMut(&str) -> Option<LayerView<'a>>,
+    mut layers: impl FnMut(&str) -> Vec<LayerView<'a>>,
+) -> Result<BezPath, ComponentResolveError> {
+    let mut path = BezPath::new();
+    let mut stack = vec![root.glyph_name().to_owned()];
+    append_rendered_component(
+        &mut path,
+        root,
+        component,
+        &mut resolve,
+        &mut layers,
+        &mut stack,
+        Affine::IDENTITY,
+    )?;
+    Ok(path)
+}
+
+/// Resolve one top-level canonical component into its ordinary structural path.
 ///
 /// `root_name` keeps cycles through the containing glyph visible even though the returned path is
 /// scoped to one component.
+/// Use [`canonical_component_to_bezpath`] when smart-component or metaball rendering is required.
 pub fn ordinary_component_to_bezpath<'a>(
     root_name: &str,
     component: ComponentView<'a>,
@@ -592,35 +619,50 @@ fn append_rendered_components<'a>(
         return Err(ComponentResolveError::TooDeep);
     }
     for component in layer.components() {
-        let name = component.reference();
-        if let Some(start) = stack.iter().position(|entry| entry == name) {
-            let mut cycle = stack[start..].to_vec();
-            cycle.push(name.to_owned());
-            return Err(ComponentResolveError::Cycle(cycle));
-        }
-        let base = resolve(name).ok_or_else(|| ComponentResolveError::Missing(name.to_owned()))?;
-        let combined = transform * component.transform();
-        if !combined.as_coeffs().iter().all(|value| value.is_finite()) {
-            return Err(ComponentResolveError::NonFinite);
-        }
-        let candidates = layers(name);
-        let smart = canonical_smart_contours(layer, component, base, &candidates);
-        stack.push(name.to_owned());
-        let result = if let Some(contours) = smart {
-            for contour in contours {
-                let mut contour_path = BezPath::new();
-                append_points(&mut contour_path, &contour.points, contour.closed);
-                append_transformed_path(path, combined, contour_path)?;
-            }
-            append_document_metaballs(path, base, combined)?;
-            append_rendered_components(path, base, resolve, layers, stack, combined)
-        } else {
-            append_rendered_layer(path, base, resolve, layers, stack, combined)
-        };
-        stack.pop();
-        result?;
+        append_rendered_component(path, layer, component, resolve, layers, stack, transform)?;
     }
     Ok(())
+}
+
+fn append_rendered_component<'a>(
+    path: &mut BezPath,
+    parent: LayerView<'a>,
+    component: ComponentView<'a>,
+    resolve: &mut impl FnMut(&str) -> Option<LayerView<'a>>,
+    layers: &mut impl FnMut(&str) -> Vec<LayerView<'a>>,
+    stack: &mut Vec<String>,
+    transform: Affine,
+) -> Result<(), ComponentResolveError> {
+    if stack.len() > 64 {
+        return Err(ComponentResolveError::TooDeep);
+    }
+    let name = component.reference();
+    if let Some(start) = stack.iter().position(|entry| entry == name) {
+        let mut cycle = stack[start..].to_vec();
+        cycle.push(name.to_owned());
+        return Err(ComponentResolveError::Cycle(cycle));
+    }
+    let base = resolve(name).ok_or_else(|| ComponentResolveError::Missing(name.to_owned()))?;
+    let combined = transform * component.transform();
+    if !combined.as_coeffs().iter().all(|value| value.is_finite()) {
+        return Err(ComponentResolveError::NonFinite);
+    }
+    let candidates = layers(name);
+    let smart = canonical_smart_contours(parent, component, base, &candidates);
+    stack.push(name.to_owned());
+    let result = if let Some(contours) = smart {
+        for contour in contours {
+            let mut contour_path = BezPath::new();
+            append_points(&mut contour_path, &contour.points, contour.closed);
+            append_transformed_path(path, combined, contour_path)?;
+        }
+        append_document_metaballs(path, base, combined)?;
+        append_rendered_components(path, base, resolve, layers, stack, combined)
+    } else {
+        append_rendered_layer(path, base, resolve, layers, stack, combined)
+    };
+    stack.pop();
+    result
 }
 
 fn append_document_metaballs(
@@ -882,6 +924,51 @@ mod canonical_render_tests {
         canonical_full_result(project, glyph, selected).unwrap()
     }
 
+    fn canonical_component_result(
+        project: &Project,
+        glyph: &str,
+        selected: &LayerId,
+        index: usize,
+    ) -> Result<BezPath, ComponentResolveError> {
+        let root = project.document_layer(glyph, selected).unwrap();
+        let component = root.components().nth(index).unwrap();
+        let default_layer = project
+            .document_source(selected.source)
+            .map(crate::document::project::SourceView::default_layer);
+        canonical_component_to_bezpath(
+            root,
+            component,
+            |name| {
+                project.document_layer(name, selected).or_else(|| {
+                    default_layer
+                        .as_ref()
+                        .and_then(|layer| project.document_layer(name, layer))
+                })
+            },
+            |name| {
+                project
+                    .document_glyph(name)
+                    .map(|glyph| {
+                        glyph
+                            .layer_ids()
+                            .filter(|layer| layer.source == selected.source)
+                            .filter_map(|layer| glyph.layer(layer))
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            },
+        )
+    }
+
+    fn canonical_component_path(
+        project: &Project,
+        glyph: &str,
+        selected: &LayerId,
+        index: usize,
+    ) -> BezPath {
+        canonical_component_result(project, glyph, selected, index).unwrap()
+    }
+
     fn assert_path_and_bounds(actual: &BezPath, expected: &BezPath) {
         assert_eq!(actual, expected);
         assert_eq!(actual.bounding_box(), expected.bounding_box());
@@ -924,6 +1011,20 @@ mod canonical_render_tests {
         ));
         let mut font = Font::default();
         font.default_layer_mut().insert_glyph(glyph.clone());
+        let mut user = Glyph::new("hyper.user");
+        user.components.push(component(
+            "hyper",
+            AffineTransform {
+                x_scale: 1.25,
+                xy_scale: 0.125,
+                yx_scale: -0.25,
+                y_scale: 0.875,
+                x_offset: 37.0,
+                y_offset: -19.0,
+            },
+        ));
+        let expected = glyph_to_bezpath(&user, &font);
+        font.default_layer_mut().insert_glyph(user);
         let project = Project::from_source(Master::from_font(font, "Hyper.ufo".into()));
         let id = project
             .document_source(SourceId(0))
@@ -934,6 +1035,10 @@ mod canonical_render_tests {
         assert_eq!(
             ordinary_layer_contours_to_bezpath(canonical),
             contours_to_bezpath(&glyph)
+        );
+        assert_path_and_bounds(
+            &canonical_component_path(&project, "hyper.user", &id, 0),
+            &expected,
         );
     }
 
@@ -977,6 +1082,10 @@ mod canonical_render_tests {
         let actual = canonical_path(&project, "top", &layer);
 
         assert_path_and_bounds(&actual, &expected);
+        assert_path_and_bounds(
+            &canonical_component_path(&project, "top", &layer, 0),
+            &expected,
+        );
     }
 
     #[test]
@@ -1010,11 +1119,15 @@ mod canonical_render_tests {
         let actual = project
             .document_layer_path(&GlyphLayerAddress {
                 glyph: "top".into(),
-                layer: selected,
+                layer: selected.clone(),
             })
             .unwrap();
 
         assert_path_and_bounds(&actual, &expected);
+        assert_path_and_bounds(
+            &canonical_component_path(&project, "top", &selected, 0),
+            &expected,
+        );
     }
 
     #[test]
@@ -1041,6 +1154,10 @@ mod canonical_render_tests {
             ordinary_layer_to_bezpath(project.document_layer("top", &layer).unwrap(), |name| {
                 project.document_layer(name, &layer)
             }),
+            Err(ComponentResolveError::NonFinite)
+        );
+        assert_eq!(
+            canonical_component_result(&project, "top", &layer, 0),
             Err(ComponentResolveError::NonFinite)
         );
     }
@@ -1110,6 +1227,10 @@ mod canonical_render_tests {
             &canonical_full_path(&project, "top", &layer),
             &nested_expected,
         );
+        assert_path_and_bounds(
+            &canonical_component_path(&project, "top", &layer, 0),
+            &nested_expected,
+        );
     }
 
     #[test]
@@ -1157,6 +1278,10 @@ mod canonical_render_tests {
 
         assert_path_and_bounds(
             &canonical_full_path(&project, "smartdemo", &layer),
+            &expected,
+        );
+        assert_path_and_bounds(
+            &canonical_component_path(&project, "smartdemo", &layer, 0),
             &expected,
         );
     }
@@ -1242,9 +1367,33 @@ mod canonical_render_tests {
                 project.document_layer(name, &layer)
             });
         let rendered = canonical_full_result(&project, "smart-0", &layer);
+        let component = canonical_component_result(&project, "smart-0", &layer, 0);
 
         assert_eq!(ordinary, Err(ComponentResolveError::TooDeep));
         assert_eq!(rendered, Err(ComponentResolveError::TooDeep));
+        assert_eq!(component, Err(ComponentResolveError::TooDeep));
+    }
+
+    #[test]
+    fn canonical_component_render_reports_a_cycle_through_its_root() {
+        let mut top = Glyph::new("top");
+        top.components
+            .push(component("top", AffineTransform::default()));
+        let mut font = Font::default();
+        font.default_layer_mut().insert_glyph(top);
+        let project = Project::from_source(Master::from_font(font, "Cycle.ufo".into()));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+
+        assert_eq!(
+            canonical_component_result(&project, "top", &layer, 0),
+            Err(ComponentResolveError::Cycle(vec![
+                "top".into(),
+                "top".into()
+            ]))
+        );
     }
 }
 

@@ -757,11 +757,23 @@ fn canonical_component_resolution_matches_legacy_and_reports_broken_graphs() {
     );
     let layer = project.document_layer("C", &layer_id).unwrap();
     let component_ids: Vec<_> = layer.components().map(|component| component.id()).collect();
-    let resolved_components =
-        runebender::outline::component_ops::resolved_document_components(layer, |name| {
-            project.document_layer(name, &layer_id)
-        })
-        .unwrap();
+    let resolved_components = runebender::outline::component_ops::resolved_document_components(
+        layer,
+        |name| project.document_layer(name, &layer_id),
+        |name| {
+            project
+                .document_glyph(name)
+                .map(|glyph| {
+                    glyph
+                        .layer_ids()
+                        .filter(|layer| layer.source == layer_id.source)
+                        .filter_map(|layer| glyph.layer(layer))
+                        .collect()
+                })
+                .unwrap_or_default()
+        },
+    )
+    .unwrap();
     assert_eq!(
         resolved_components
             .iter()
