@@ -74,6 +74,9 @@ Their drop implementations reconcile a mutated UFO back into canonical ownership
 The `font_mut` occurrences in `application/editor/tools/text.rs` and `application/editor/tools/nodes.rs` are test-only fixtures after their containing `#[cfg(test)]` boundaries.
 The `edit_sources` occurrences in `application/platform/host.rs`, `document/live.rs`, `formats/babelfont_import.rs`, `formats/designbot.rs` and `document/filesystem.rs` are likewise fixture-only at the recorded commit.
 
+Current integration update: local-AI proposal adoption, preview, list, installation, discard, Cmd+Z and dedicated Undo Install use canonical Project APIs and addressed layer history.
+`Master::install_proposal` and `Master::discard_proposal` are deleted; the standalone UFO helpers remain only for the explicit external contract and fixtures.
+
 ## Long-lived source templates and projections
 
 `VariableData.templates` is a `BTreeMap<SourceId, norad::Font>` at `src/document/variable.rs:301`.

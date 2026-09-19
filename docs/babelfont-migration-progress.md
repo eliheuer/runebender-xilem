@@ -2545,6 +2545,32 @@ The focused canonical reinterpolation regression and warning-denied library/test
 Formatting and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+### Canonical application proposals and Master wrapper removal
+
+Evidence commits: `Replay overview and proposal edits canonically` and `Remove Master proposal wrappers`.
+Resolve their exact IDs with `git log --format=%H --grep='^Replay overview and proposal edits canonically$' -1` and `git log --format=%H --grep='^Remove Master proposal wrappers$' -1`.
+
+Local-AI and live-document proposal list, preview, adoption, install and discard now use canonical Project APIs.
+Installed glyphs retain stable `GlyphLayerAddress` values and exact canonical history depths, so Cmd+Z, dedicated Undo Install and metadata-label ordering cannot consume an unrelated history step.
+Overview advance edits also commit and replay guarded canonical layer transactions without a Master-history fallback.
+
+With those production callers gone, `Master::install_proposal` and `Master::discard_proposal` are deleted together with their legacy wrapper regression.
+The guarded Project proposal, edit-batch, CLI and application regressions retain coverage for compatible install, incompatible retention, stale rejection, save/reopen, discard and undo.
+
+Executed evidence:
+
+```sh
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib document::source::tests:: -- --test-threads=1
+cargo clippy --locked --lib --bin runebender --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+All 12 remaining Master compatibility tests and warning-denied library, binary and test Clippy passed.
+The integrated application commit separately passed 173 binary tests with four documented ignores, release WASM, and strict native and browser Clippy.
+Formatting and whitespace checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
 ### Canonical headless single-source commands
 
 Evidence commit: `Run headless source commands through Project` (the commit containing this substep).

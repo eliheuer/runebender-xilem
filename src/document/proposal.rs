@@ -701,8 +701,8 @@ pub fn write(
 /// a caller records an undo step.
 /// The layer goes when it is empty.
 ///
-/// This is the whole install; `Master::install_proposal` wraps it
-/// with the master's undo pile and cache.
+/// This standalone-UFO install remains the external format-contract helper.
+/// Live documents use [`install_project`] and Project-owned history.
 pub fn install(
     font: &mut Font,
     task: &str,

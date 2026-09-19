@@ -62,6 +62,7 @@ No release has been published yet.
 - Replaced long-lived full UFO persistence templates with explicit glyph-free source-format records while preserving layer order and paths, residual metadata, images, data and opaque payloads.
 - Composition now writes complete revision-checked proposal plans atomically and keeps the foreground unchanged until explicit installation.
 - Moved live proposals and experimental versions onto stable source-identified canonical layers with revision-checked installation and Project-owned undo.
+- Removed Master-local proposal install/discard and undo wrappers after the editor and live tools moved to canonical Project proposal transactions.
 - Moved source groups and exact fractional kerning into stable source-identified canonical metadata with atomic edits and UFO boundary rehydration.
 - Made Project own variable glyphs and their layers, with guarded UFO projections for existing editing tools and shared history.
 - Unified mapped-axis conversion and glyph-local interpolation behind Runebender-owned APIs using pinned Babelfont and fontdrasil adapters.

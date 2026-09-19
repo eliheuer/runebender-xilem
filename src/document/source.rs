@@ -15,7 +15,6 @@ use std::sync::{Arc, OnceLock};
 use kurbo::BezPath;
 
 use super::history::EditHistory;
-use super::proposal::{self, Installed, ProposalError};
 use crate::outline::glyph_ops::{self as ops, CurveOp, GlyphSnapshot};
 use crate::ui::theme::{self, Theme};
 
@@ -466,52 +465,6 @@ impl Master {
             .is_some_and(|name| self.history.can_redo(&name))
     }
 
-    // ---- proposals ----
-
-    /// Installs a task's proposal: each proposed glyph replaces its
-    /// foreground glyph as one undo step, and leaves the proposal
-    /// layer. `only` limits the install to those glyphs. With
-    /// `keep_structure`, a glyph whose point structure differs is
-    /// skipped and stays proposed. A glyph the foreground lacks is
-    /// always skipped. The layer goes when it is empty.
-    pub fn install_proposal(
-        &mut self,
-        task: &str,
-        only: Option<&[String]>,
-        keep_structure: bool,
-    ) -> Result<Installed, ProposalError> {
-        // Core's install does the work; this master records an undo
-        // step for each glyph first and rebuilds its cache after.
-        let name_map = self.name_map.clone();
-        let mut touched: Vec<usize> = Vec::new();
-        let done = {
-            let history = &mut self.history;
-            let mut before = |name: &str, glyph: &norad::Glyph| {
-                if let Some(&index) = name_map.get(name) {
-                    history.record(name, glyph);
-                    touched.push(index);
-                }
-            };
-            proposal::install(&mut self.font, task, only, keep_structure, &mut before)?
-        };
-        for index in touched {
-            self.rebuild_entry(index);
-            self.modified_glyphs
-                .insert(self.glyphs[index].name.to_string());
-        }
-        if !done.installed.is_empty() || done.layer_removed {
-            self.dirty = true;
-        }
-        Ok(done)
-    }
-
-    /// Drops a task's proposal without installing it.
-    pub fn discard_proposal(&mut self, task: &str) -> Result<usize, ProposalError> {
-        let count = proposal::discard(&mut self.font, task)?;
-        self.dirty = true;
-        Ok(count)
-    }
-
     /// Moves an anchor to `(x, y)`. Ignores an out-of-range anchor index.
     pub fn set_anchor(&mut self, glyph_index: usize, anchor: usize, x: f64, y: f64) {
         self.edit_glyph(glyph_index, |g| {
@@ -771,47 +724,6 @@ impl Master {
 mod tests {
     use super::*;
     use crate::testing::fonts;
-
-    #[test]
-    fn a_proposal_installs_one_undo_step_per_glyph() {
-        use crate::document::proposal;
-        let mut master = Master::load(&fonts::regular_ufo()).expect("fixture");
-        let h = master.name_map["H"];
-        let o = master.name_map["O"];
-        let before_h = master.snapshot_contours(h).expect("H is drawn");
-        let mut moved = master.font.get_glyph("H").expect("H").clone();
-        for c in &mut moved.contours {
-            for p in &mut c.points {
-                p.x += 20.0;
-            }
-        }
-        moved.width += 40.0;
-        let mut broken = master.font.get_glyph("O").expect("O").clone();
-        broken.contours.pop();
-        proposal::write(&mut master.font, "bolden", [moved, broken]).expect("written");
-
-        let done = master
-            .install_proposal("bolden", None, true)
-            .expect("the proposal exists");
-        assert_eq!(done.installed, ["H"]);
-        assert_eq!(
-            done.skipped.len(),
-            1,
-            "O breaks structure and stays proposed"
-        );
-        assert!(!done.layer_removed);
-        assert_eq!(master.glyphs[h].advance, before_h.width + 40.0);
-        assert!(master.can_undo(h));
-        assert!(!master.can_undo(o));
-
-        assert!(master.undo(h));
-        assert_eq!(master.glyphs[h].advance, before_h.width);
-        assert!(master.redo(h));
-        assert_eq!(master.glyphs[h].advance, before_h.width + 40.0);
-
-        assert_eq!(master.discard_proposal("bolden").expect("present"), 1);
-        assert!(proposal::list(&master.font).is_empty());
-    }
 
     #[test]
     fn snapshot_restore_roundtrip() {
