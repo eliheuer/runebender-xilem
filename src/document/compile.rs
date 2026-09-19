@@ -296,11 +296,15 @@ impl Project {
                 .iter()
                 .map(|source| {
                     let normalized = source.location.to_normalized(&structure.axes)?;
+                    let resolved_path = self
+                        .document_source_path(source.id())
+                        .ok_or("canonical source identity is not loaded")?
+                        .to_path_buf();
                     Ok(CompileSourceInput {
                         id: source.id(),
                         name: source.display_name().to_owned(),
                         location: canonical_design_location(&structure.axes, &source.location)?,
-                        path: PathBuf::from(&source.filename),
+                        path: resolved_path,
                         default_layer: source.default_layer.clone(),
                         is_default: normalized.values().all(|value| value.abs() < 1e-9),
                     })

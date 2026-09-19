@@ -1379,6 +1379,14 @@ impl Project {
         })
     }
 
+    /// Read one loaded source's resolved persistence path by stable identity.
+    ///
+    /// Unlike the Designspace filename, this path is resolved against the opened document and
+    /// can therefore serve as the base for relative feature includes at a format boundary.
+    pub fn document_source_path(&self, id: SourceId) -> Option<&Path> {
+        Some(&self.masters.get(self.source_index(id)?)?.source_path)
+    }
+
     /// Read every source in current display order without its UFO projection.
     pub fn document_sources(&self) -> impl DoubleEndedIterator<Item = SourceView<'_>> {
         self.variable
