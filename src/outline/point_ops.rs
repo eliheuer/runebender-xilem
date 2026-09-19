@@ -24,6 +24,14 @@ use norad::{ContourPoint, Glyph, PointType};
 
 use crate::outline::glyph_ops::PointId;
 
+/// Representation-neutral point input for canonical and compatibility drags.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PointState {
+    pub(crate) position: kurbo::Point,
+    pub(crate) off_curve: bool,
+    pub(crate) smooth: bool,
+}
+
 /// The design grid every moved point snaps to.
 ///
 /// This is `DESIGN_GRID_SPACING` in the web editor.
@@ -171,40 +179,106 @@ fn smooth_handle_updates(
     }
 }
 
-/// The indices this contour moves for a selection.
-///
-/// These are the selected points, plus each selected on-curve
-/// point's adjacent handles unless `independent` is set. This is
-/// `selected_and_adjacent_handle_indices` in the web editor.
-fn move_indices(
-    points: &[ContourPoint],
-    selected_here: &HashSet<usize>,
+/// Calculate snapped point positions for one contour during a selection drag.
+pub(crate) fn translated_positions(
+    points: &[PointState],
+    selected: &HashSet<usize>,
+    originals: &HashMap<usize, kurbo::Point>,
+    delta: (f64, f64),
     closed: bool,
     independent: bool,
-) -> Vec<usize> {
-    let mut out: Vec<usize> = Vec::new();
-    let push = |out: &mut Vec<usize>, i: usize| {
-        if !out.contains(&i) {
-            out.push(i);
+) -> Vec<(usize, kurbo::Point)> {
+    let mut result = points.to_vec();
+    let (moved, carried_by) = {
+        let mut moved = Vec::new();
+        let mut carried_by = HashMap::new();
+        let push = |moved: &mut Vec<usize>, index| {
+            if !moved.contains(&index) {
+                moved.push(index);
+            }
+        };
+        for index in 0..points.len() {
+            if !selected.contains(&index) {
+                continue;
+            }
+            push(&mut moved, index);
+            if independent || points[index].off_curve {
+                continue;
+            }
+            for direction in [-1_isize, 1] {
+                if let Some(neighbor) = step_index(index, points.len(), closed, direction)
+                    && points[neighbor].off_curve
+                {
+                    push(&mut moved, neighbor);
+                    if !selected.contains(&neighbor) {
+                        carried_by.entry(neighbor).or_insert(index);
+                    }
+                }
+            }
         }
+        (moved, carried_by)
     };
-    for index in 0..points.len() {
-        if !selected_here.contains(&index) {
+    for &index in &moved {
+        let base = originals
+            .get(&index)
+            .copied()
+            .or_else(|| {
+                let carrier = *carried_by.get(&index)?;
+                let carrier_original = originals.get(&carrier)?;
+                let previous_delta = points[carrier].position - *carrier_original;
+                Some(points[index].position - previous_delta)
+            })
+            .unwrap_or(points[index].position);
+        result[index].position = snap_pt(base + kurbo::Vec2::new(delta.0, delta.1));
+    }
+    let mut smooth_updates = Vec::new();
+    for &index in &moved {
+        if !selected.contains(&index) || !result[index].off_curve {
             continue;
         }
-        push(&mut out, index);
-        if independent || is_off(&points[index]) {
-            continue;
-        }
-        for d in [-1_isize, 1] {
-            if let Some(nb) = step_index(index, points.len(), closed, d)
-                && is_off(&points[nb])
-            {
-                push(&mut out, nb);
+        for direction in [-1_isize, 1] {
+            let Some(anchor_index) = step_index(index, result.len(), closed, direction) else {
+                continue;
+            };
+            if result[anchor_index].off_curve || !result[anchor_index].smooth {
+                continue;
+            }
+            let Some(opposite) = step_index(anchor_index, result.len(), closed, direction) else {
+                continue;
+            };
+            if selected.contains(&opposite) {
+                continue;
+            }
+            let update = if result[opposite].off_curve {
+                mirrored_smooth_handle(
+                    result[index].position,
+                    result[anchor_index].position,
+                    result[opposite].position,
+                )
+                .map(|position| (opposite, position))
+            } else {
+                projected_smooth_handle(
+                    result[index].position,
+                    result[anchor_index].position,
+                    result[opposite].position,
+                )
+                .map(|position| (index, position))
+            };
+            if let Some(update) = update {
+                smooth_updates.push(update);
             }
         }
     }
-    out
+    for (index, position) in smooth_updates {
+        result[index].position = position;
+    }
+    result
+        .iter()
+        .zip(points)
+        .enumerate()
+        .filter(|(_, (after, before))| after.position != before.position)
+        .map(|(index, (after, _))| (index, after.position))
+        .collect()
 }
 
 /// Move the selected points by `delta`.
@@ -236,31 +310,28 @@ pub fn translate_points(
         if selected_here.is_empty() {
             continue;
         }
-        let closed = contour_is_closed(&contour.points);
-        let moved = move_indices(&contour.points, &selected_here, closed, independent);
-        for &index in &moved {
-            let base = originals
-                .get(&(ci, index))
-                .copied()
-                .unwrap_or_else(|| (contour.points[index].x, contour.points[index].y));
-            let target = snap_pt(kurbo::Point::new(base.0 + delta.0, base.1 + delta.1));
-            let point = &mut contour.points[index];
-            if point.x != target.x || point.y != target.y {
-                point.x = target.x;
-                point.y = target.y;
-                changed = true;
-            }
-        }
-        // Only handles the user actually grabbed re-aim their smooth
-        // neighbours; handles that came along for the ride with an
-        // on-curve point already moved rigidly.
-        let mut updates: Vec<(usize, kurbo::Point)> = Vec::new();
-        for &index in &moved {
-            if selected_here.contains(&index) && is_off(&contour.points[index]) {
-                smooth_handle_updates(&contour.points, &selected_here, closed, index, &mut updates);
-            }
-        }
-        for (index, p) in updates {
+        let states: Vec<_> = contour
+            .points
+            .iter()
+            .map(|point| PointState {
+                position: pos(point),
+                off_curve: is_off(point),
+                smooth: point.smooth,
+            })
+            .collect();
+        let originals: HashMap<_, _> = originals
+            .iter()
+            .filter(|((contour, _), _)| *contour == ci)
+            .map(|((_, index), &(x, y))| (*index, kurbo::Point::new(x, y)))
+            .collect();
+        for (index, p) in translated_positions(
+            &states,
+            &selected_here,
+            &originals,
+            delta,
+            contour_is_closed(&contour.points),
+            independent,
+        ) {
             let point = &mut contour.points[index];
             if point.x != p.x || point.y != p.y {
                 point.x = p.x;
@@ -418,6 +489,19 @@ mod tests {
         translate_points(&mut glyph, &selected, &originals, (10.0, 0.0), true);
         translate_points(&mut glyph, &selected, &originals, (20.0, 0.0), true);
         assert_eq!(at(&glyph, 0), (20.0, 0.0));
+    }
+
+    #[test]
+    fn selected_originals_also_anchor_carried_handles() {
+        let mut glyph = curve_glyph();
+        let selected: HashSet<PointId> = [(0, 3)].into_iter().collect();
+        let originals: HashMap<PointId, (f64, f64)> =
+            [((0, 3), (100.0, 100.0))].into_iter().collect();
+        translate_points(&mut glyph, &selected, &originals, (10.0, 0.0), false);
+        translate_points(&mut glyph, &selected, &originals, (20.0, 0.0), false);
+        assert_eq!(at(&glyph, 2), (120.0, 20.0));
+        assert_eq!(at(&glyph, 3), (120.0, 100.0));
+        assert_eq!(at(&glyph, 4), (120.0, 180.0));
     }
 
     #[test]

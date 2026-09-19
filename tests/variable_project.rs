@@ -3,7 +3,7 @@
 
 //! End-to-end contracts for canonical glyph layers and UFO/Designspace projections.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -1063,6 +1063,204 @@ fn canonical_selection_transform_matches_legacy_geometry_atomically() {
             .unwrap(),
         DocumentEditOutcome::Unchanged { revision }
     );
+}
+
+#[test]
+fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
+    fn curve_glyph(name: &str) -> Glyph {
+        let point = |x, y, typ, smooth| ContourPoint::new(x, y, typ, smooth, None, None);
+        let mut glyph = Glyph::new(name);
+        glyph.contours.push(Contour::new(
+            vec![
+                point(0.0, 0.0, PointType::Curve, false),
+                point(20.0, 0.0, PointType::OffCurve, false),
+                point(100.0, 20.0, PointType::OffCurve, false),
+                point(100.0, 100.0, PointType::Curve, true),
+                point(100.0, 180.0, PointType::OffCurve, false),
+                point(20.0, 200.0, PointType::OffCurve, false),
+                point(0.0, 200.0, PointType::Curve, false),
+                point(-20.0, 100.0, PointType::OffCurve, false),
+                point(-20.0, 50.0, PointType::OffCurve, false),
+            ],
+            None,
+        ));
+        glyph
+    }
+
+    let scratch = Scratch::new();
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(curve_glyph("drag"));
+    font.default_layer_mut().insert_glyph(glyph("other", 0.0));
+    let mut project =
+        Project::from_source(Master::from_font(font, scratch.0.join("PointDrag.ufo")));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let point_ids: Vec<_> = project
+        .document_layer("drag", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.id())
+        .collect();
+    let selected = point_ids[3];
+    let original_position = project
+        .document_layer("drag", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .nth(3)
+        .unwrap()
+        .position();
+    let initial = project.glyph_layer("drag", &layer_id).unwrap();
+    let selected_indices: HashSet<_> = [(0, 3)].into_iter().collect();
+    let mut expected = initial.clone();
+    assert!(runebender::outline::point_ops::translate_points(
+        &mut expected,
+        &selected_indices,
+        &HashMap::new(),
+        (10.0, 0.0),
+        false,
+    ));
+
+    project
+        .edit_document_layer("drag", &layer_id, |draft| {
+            assert!(draft.translate_points(
+                &[selected],
+                &[],
+                kurbo::Vec2::new(10.0, 0.0),
+                false,
+            )?);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        project.glyph_layer("drag", &layer_id).unwrap(),
+        expected,
+        "canonical on-curve drag did not carry adjacent handles like the editor"
+    );
+
+    let originals = [(selected, original_position)];
+    let mut expected = initial;
+    let legacy_originals = [((0, 3), (original_position.x, original_position.y))]
+        .into_iter()
+        .collect();
+    assert!(runebender::outline::point_ops::translate_points(
+        &mut expected,
+        &selected_indices,
+        &legacy_originals,
+        (20.0, 0.0),
+        false,
+    ));
+    project
+        .edit_document_layer("drag", &layer_id, |draft| {
+            assert!(draft.translate_points(
+                &[selected],
+                &originals,
+                kurbo::Vec2::new(20.0, 0.0),
+                false,
+            )?);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        project.glyph_layer("drag", &layer_id).unwrap(),
+        expected,
+        "successive canonical drag events accumulated instead of using drag-start positions"
+    );
+
+    let selected_handle = point_ids[4];
+    let handle_indices: HashSet<_> = [(0, 4)].into_iter().collect();
+    let mut expected = project.glyph_layer("drag", &layer_id).unwrap();
+    assert!(runebender::outline::point_ops::translate_points(
+        &mut expected,
+        &handle_indices,
+        &HashMap::new(),
+        (20.0, 20.0),
+        false,
+    ));
+    project
+        .edit_document_layer("drag", &layer_id, |draft| {
+            assert!(draft.translate_points(
+                &[selected_handle],
+                &[],
+                kurbo::Vec2::new(20.0, 20.0),
+                false,
+            )?);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        project.glyph_layer("drag", &layer_id).unwrap(),
+        expected,
+        "canonical handle drag did not preserve the smooth tangent like the editor"
+    );
+    assert_eq!(
+        project
+            .document_layer("drag", &layer_id)
+            .unwrap()
+            .contours()
+            .next()
+            .unwrap()
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        point_ids,
+        "point drag replaced stable canonical identities"
+    );
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    let missing = project
+        .document_layer("other", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .next()
+        .unwrap()
+        .id();
+    assert_eq!(
+        project
+            .edit_document_layer("drag", &layer_id, |draft| {
+                assert_eq!(
+                    draft.translate_points(&[missing], &[], kurbo::Vec2::new(10.0, 0.0), false,),
+                    Err(runebender::document::DocumentEditError::MissingPoint(
+                        missing
+                    ))
+                );
+                assert_eq!(
+                    draft.translate_points(
+                        &[selected],
+                        &[(selected, kurbo::Point::new(f64::MAX, 0.0))],
+                        kurbo::Vec2::new(f64::MAX, 0.0),
+                        false,
+                    ),
+                    Err(runebender::document::DocumentEditError::NonFinite)
+                );
+                assert_eq!(
+                    draft.translate_points(
+                        &[selected],
+                        &[],
+                        kurbo::Vec2::new(f64::NAN, 0.0),
+                        false,
+                    ),
+                    Err(runebender::document::DocumentEditError::NonFinite)
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision },
+        "caught point-drag errors leaked a partial draft mutation"
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
 }
 
 #[test]

@@ -728,3 +728,36 @@ git diff --check
 The focused transform regression and all 25 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Canonical handle-aware point-drag substep
+
+Evidence commit: `Move canonical point selections with handles` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Move canonical point selections with handles$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/outline/point_ops.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+`LayerEditDraft::translate_points` now moves stable point identities directly in canonical Babelfont paths.
+It shares the editor's representation-neutral snapping, adjacent-handle carrying and smooth-tangent logic without materializing a UFO glyph for the operation.
+All requested identities, supplied drag origins and derived coordinates are validated before the draft mutates, so callers can catch an error inside a transaction without committing a partial edit.
+
+The shared drag routine now derives carried handles' drag-start positions from their selected on-curve owner.
+This keeps carried handles rigid across repeated total-delta pointer events even though the editor records explicit origins only for selected points.
+
+The integration comparison requires canonical and compatibility glyphs to remain equal for an on-curve drag, repeated drag event and selected smooth-handle drag.
+It also verifies stable point identities and atomic rejection of a missing identity, a nonfinite delta and finite inputs whose derived coordinate overflows.
+Smoothing commands, sidebearing shifts and segment conversion remain for later M03 substeps.
+
+Executed evidence:
+
+```sh
+cargo test --locked --lib outline::point_ops -- --test-threads=1
+cargo test --locked --test variable_project canonical_point_drag_matches_legacy_handle_behavior_atomically -- --exact --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+All seven point-operation unit tests, the focused canonical comparison and all 26 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.

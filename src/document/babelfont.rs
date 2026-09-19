@@ -8,6 +8,7 @@
 //! takes geometry from Babelfont, restoring exact numbers when their corresponding
 //! Babelfont value is unchanged. Compilation is the only quantizing boundary.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use babelfont::{Anchor, Component, Layer, Node, NodeType, Shape};
@@ -470,6 +471,92 @@ impl LayerEditDraft {
         }
         node.x = position.x;
         node.y = position.y;
+        Ok(true)
+    }
+
+    /// Move selected points with the editor's snapping and smooth-handle rules.
+    ///
+    /// `originals` supplies drag-start positions, allowing repeated pointer events to apply their
+    /// total delta without accumulating intermediate snapping. An empty selection is unchanged.
+    /// Returns whether any point moved.
+    pub fn translate_points(
+        &mut self,
+        selected: &[PointId],
+        originals: &[(PointId, kurbo::Point)],
+        delta: kurbo::Vec2,
+        independent: bool,
+    ) -> Result<bool, DocumentEditError> {
+        ensure_finite(&[delta.x, delta.y])?;
+        if selected.is_empty() {
+            return Ok(false);
+        }
+        for id in selected {
+            if self.node(*id).is_none() {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+        }
+        for (id, position) in originals {
+            if self.node(*id).is_none() {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+            ensure_finite(&[position.x, position.y])?;
+        }
+
+        let selected: HashSet<_> = selected.iter().copied().collect();
+        let originals: HashMap<_, _> = originals.iter().copied().collect();
+        let mut replacements = Vec::new();
+        for path in self.layer.paths() {
+            let ids: Vec<_> = path
+                .nodes
+                .iter()
+                .map(|node| {
+                    PointId(read_id(&node.format_specific).expect("canonical point identity"))
+                })
+                .collect();
+            let selected_indices: HashSet<_> = ids
+                .iter()
+                .enumerate()
+                .filter_map(|(index, id)| selected.contains(id).then_some(index))
+                .collect();
+            if selected_indices.is_empty() {
+                continue;
+            }
+            let states: Vec<_> = path
+                .nodes
+                .iter()
+                .map(|node| crate::outline::point_ops::PointState {
+                    position: kurbo::Point::new(node.x, node.y),
+                    off_curve: node.nodetype == NodeType::OffCurve,
+                    smooth: node.smooth,
+                })
+                .collect();
+            let path_originals = ids
+                .iter()
+                .enumerate()
+                .filter_map(|(index, id)| originals.get(id).copied().map(|point| (index, point)))
+                .collect();
+            for (index, position) in crate::outline::point_ops::translated_positions(
+                &states,
+                &selected_indices,
+                &path_originals,
+                (delta.x, delta.y),
+                path.closed,
+                independent,
+            ) {
+                ensure_finite(&[position.x, position.y])?;
+                replacements.push((ids[index], position));
+            }
+        }
+        if replacements.is_empty() {
+            return Ok(false);
+        }
+        for (id, position) in replacements {
+            let node = self
+                .node_mut(id)
+                .expect("validated canonical point identity");
+            node.x = position.x;
+            node.y = position.y;
+        }
         Ok(true)
     }
 
