@@ -323,12 +323,10 @@ impl Project {
         }
         for glyph in &mut font.glyphs.0 {
             let sources = self.glyph_sources(&glyph.name)?;
-            glyph.exported = !sources.is_empty();
-            if super::model::glyph_metadata::skipped_exports(source)
-                .any(|name| name == glyph.name.as_str())
-            {
-                glyph.exported = false;
-            }
+            let source_glyph_metadata =
+                self.document_source_glyph_metadata(default_id, &glyph.name);
+            glyph.exported = !sources.is_empty()
+                && source_glyph_metadata.is_none_or(|metadata| metadata.exported());
             for source in sources {
                 let key = super::babelfont::layer_key(&source.layer);
                 if let Some(layer) = glyph.get_layer_mut(&key)
@@ -351,10 +349,10 @@ impl Project {
             if let Some(layer) = self.document_layer(&glyph.name, &default_layer) {
                 glyph.codepoints = layer.codepoints().map(u32::from).collect();
                 let explicit_category =
-                    super::compile_metadata::explicit_glyph_category(source, &glyph.name);
+                    source_glyph_metadata.and_then(|metadata| metadata.category());
                 glyph.category = super::compile_metadata::glyph_category_from_values(
                     &glyph.name,
-                    explicit_category.as_ref(),
+                    explicit_category,
                     layer.codepoints(),
                     layer.anchors().map(|anchor| anchor.name()),
                 )?;

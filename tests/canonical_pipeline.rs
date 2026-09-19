@@ -6,6 +6,7 @@
 use norad::{Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::document::canonical_metadata::KerningParticipant;
 use runebender::document::font_memory::designspace_from_str;
+use runebender::document::model::glyph_metadata::OpenTypeGlyphCategory;
 use runebender::document::project::{DocumentEditOutcome, Master, Project};
 use runebender::document::variable::SourceId;
 use runebender::text::shape::ShapingFont;
@@ -115,4 +116,37 @@ fn canonical_kerning_metadata_drives_unsaved_compilation_and_invalidation() {
     assert_ne!(before.bytes, after.bytes);
     assert_eq!(shaped_first_advance(&project, 0.0), 424.0);
     assert_eq!(shaped_first_advance(&project, 1.0), 624.0);
+}
+
+#[test]
+fn compiler_snapshot_reads_canonical_source_glyph_metadata() {
+    let mut font = Font::new();
+    font.font_info.family_name = Some("Canonical Metadata".into());
+    font.font_info.style_name = Some("Regular".into());
+    font.font_info.units_per_em = Some(1000_u32.into());
+    font.default_layer_mut().insert_glyph(Glyph::new(".notdef"));
+    font.default_layer_mut().insert_glyph(Glyph::new("A"));
+    font.lib.insert(
+        "public.skipExportGlyphs".into(),
+        plist::Value::Array(vec![plist::Value::String("A".into())]),
+    );
+    font.lib.insert(
+        "public.openTypeCategories".into(),
+        plist::Value::Dictionary(plist::Dictionary::from_iter([(
+            String::from("A"),
+            plist::Value::String("mark".into()),
+        )])),
+    );
+    let project = Project::from_source(Master::from_font(font, "Metadata.ufo".into()));
+
+    let metadata = project
+        .document_source_glyph_metadata(SourceId(0), "A")
+        .unwrap();
+    assert!(!metadata.exported());
+    assert_eq!(metadata.category(), Some(&OpenTypeGlyphCategory::Mark));
+
+    let snapshot = project.babelfont_snapshot().unwrap();
+    let glyph = snapshot.glyphs.get("A").unwrap();
+    assert!(!glyph.exported);
+    assert_eq!(glyph.category, babelfont::GlyphCategory::Mark);
 }

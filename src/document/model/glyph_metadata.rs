@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 const SKIP_EXPORT_GLYPHS: &str = "public.skipExportGlyphs";
 const OPEN_TYPE_CATEGORIES: &str = "public.openTypeCategories";
 
+#[cfg(test)]
 pub(crate) fn skipped_exports(font: &norad::Font) -> impl Iterator<Item = &str> {
     font.lib
         .get(SKIP_EXPORT_GLYPHS)

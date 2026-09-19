@@ -6,8 +6,6 @@
 use super::model::glyph_metadata::OpenTypeGlyphCategory;
 use super::project::Project;
 
-const OPEN_TYPE_CATEGORIES: &str = "public.openTypeCategories";
-
 /// Quantize an exact editable units-per-em value for OpenType compilation.
 pub(super) fn units_per_em(value: f64) -> Result<u16, String> {
     if !value.is_finite() {
@@ -141,22 +139,6 @@ pub(super) fn glyph_category_from_values<'a>(
     } else {
         GlyphCategory::Base
     })
-}
-
-/// Read the temporary UFO encoding of an explicit glyph category.
-///
-/// Canonical source-glyph ownership replaces this narrow boundary read when its Project query
-/// lands; codepoints, anchors and inferred categories already come from canonical layers.
-pub(super) fn explicit_glyph_category(
-    font: &norad::Font,
-    glyph_name: &str,
-) -> Option<OpenTypeGlyphCategory> {
-    font.lib
-        .get(OPEN_TYPE_CATEGORIES)
-        .and_then(plist::Value::as_dictionary)
-        .and_then(|categories| categories.get(glyph_name))
-        .and_then(plist::Value::as_string)
-        .map(OpenTypeGlyphCategory::from_source)
 }
 
 pub(super) fn apply(font: &mut babelfont::Font, info: &norad::FontInfo) -> Result<(), String> {
