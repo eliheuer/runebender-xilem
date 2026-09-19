@@ -30,6 +30,9 @@ pub(crate) static NEXT_TEXT_CONTEXT_ID: AtomicU64 = AtomicU64::new(1);
 fn source_roots(font: &FontModel) -> Vec<std::path::PathBuf> {
     let mut roots = font.master_paths();
     roots.push(font.document_source().to_path_buf());
+    if let Ok(dependencies) = font.project.feature_dependency_paths() {
+        roots.extend(dependencies);
+    }
     roots.sort();
     roots.dedup();
     roots
@@ -1112,6 +1115,47 @@ mod tests {
         assert!(!workspace.modified);
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn external_feature_include_changes_block_overwriting_save() {
+        let directory = std::env::temp_dir().join(format!(
+            "runebender-xilem-feature-watch-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let source = directory.join("Source.ufo");
+        std::fs::create_dir(&directory).expect("the fixture directory is created");
+        let mut font = norad::Font::new();
+        font.features = "include(../shared.fea);".into();
+        font.save(&source).expect("the source fixture saves");
+        let dependency = directory.join("shared.fea");
+        std::fs::write(&dependency, "# original dependency\n")
+            .expect("the dependency fixture saves");
+        let mut workspace = Workspace::open(&source).expect("the source fixture opens");
+        workspace.filter = "A".into();
+        workspace.new_glyph();
+        assert!(workspace.modified);
+
+        std::fs::write(&dependency, "# external replacement\n")
+            .expect("the dependency changes externally");
+
+        assert!(!workspace.save());
+        assert_eq!(
+            workspace.note,
+            "Save blocked: sources changed on disk; use Save As to preserve your edits or Revert to Saved to accept disk changes"
+        );
+        assert!(
+            norad::Font::load(&source)
+                .expect("the source remains readable")
+                .get_glyph("A")
+                .is_none(),
+            "the blocked save leaves the source untouched"
+        );
+        std::fs::remove_dir_all(directory).expect("the fixture directory is removed");
     }
 
     #[test]

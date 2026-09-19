@@ -22,6 +22,27 @@ struct SaveAsPlan {
 }
 
 impl Project {
+    /// Resolve every file read by this document's relative OpenType feature includes.
+    ///
+    /// Paths are normalized against each source UFO and include nested dependencies. Hosts use
+    /// this read-only codec boundary to watch external files alongside UFO and Designspace roots.
+    pub fn feature_dependency_paths(&self) -> Result<Vec<PathBuf>, String> {
+        let mut dependencies = Vec::new();
+        for source in self.document_sources() {
+            let text = self
+                .document_feature_text(source.id())
+                .ok_or("missing canonical feature text")?;
+            if !text.contains("include") {
+                continue;
+            }
+            let source_root = super::super::filesystem::destination_key(source.path())?;
+            dependencies.extend(feature_dependencies(&source_root, text)?);
+        }
+        dependencies.sort();
+        dependencies.dedup();
+        Ok(dependencies)
+    }
+
     /// Publish a complete copy into `directory`, then make the new paths current.
     ///
     /// Every UFO, optional Designspace and external relative feature include is staged before

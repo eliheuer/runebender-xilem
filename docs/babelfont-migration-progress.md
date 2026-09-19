@@ -2074,7 +2074,7 @@ The disposable testing copy and pinned native executable and launcher are stored
 
 This promotion is an intermediate testing checkpoint, not migration completion.
 Later isolated commits `fb629a0`, `352e513` and `7fd409b` respectively move browser construction, stale compiler-metadata clearing, and Session point-selection/clipboard state further toward the canonical architecture; they are not part of the promoted checkpoint.
-M06 application caller work, the remaining M12 CLI and watcher boundaries, M13 compatibility removal and M14 final proof remain required before the migration can be marked complete.
+M06 application caller work, the remaining M12 CLI boundary, M13 compatibility removal and M14 final proof remain required before the migration can be marked complete.
 The pinned test copy and executable are reserved for user testing and must not be modified by migration work.
 
 ### Canonical editor objects and transaction compatibility bridge
@@ -2120,7 +2120,7 @@ cargo test --locked document::filesystem::tests:: -- --test-threads=1
 ```
 
 Both focused tests passed: one preserves custom GLIF paths and opaque payloads across a canonical edit/save, and one proves an invalid later source prevents replacement of every destination.
-M12 remains active for the legacy CLI source boundary and external feature-include watcher coverage.
+M12 remains active for the legacy CLI source boundary.
 
 ### Direct canonical hyperbezier conversion
 
@@ -2322,9 +2322,8 @@ The complete native binary suite passed 168 tests with its four documented model
 Warning-denied library/test Clippy, formatting, copyright and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
-M12 still has two explicit close-out gaps.
+M12 still has one explicit close-out gap.
 The legacy CLI `open_master` and `save_master` boundary still loads and saves `Master` directly for UFO editing commands.
-External include files copied by Save As are not yet inputs to the native watcher fingerprint, so the existing watched-source conflict coverage remains limited to UFO and Designspace roots.
 
 ### Canonical native New Font
 
@@ -2346,6 +2345,27 @@ git diff --check
 ```
 
 Both focused regressions and warning-denied binary/test Clippy passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Watched external feature dependencies
+
+Evidence commit: `Watch external feature dependencies` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Watch external feature dependencies$' -1`.
+
+Project now resolves every nested file read by the canonical sources' relative OpenType feature includes.
+The native host adds those normalized paths to the same conflict fingerprint as the UFO and Designspace roots, so an externally changed include blocks Save from overwriting either the source or dependency.
+
+Executed evidence:
+
+```sh
+cargo test --locked --bin runebender external_feature_include_changes_block_overwriting_save -- --test-threads=1
+cargo test --locked --lib document::project::save_as::tests -- --test-threads=1
+cargo clippy --locked --lib --bin runebender --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The watcher conflict regression, all three Save As include tests and warning-denied library/binary test Clippy passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
 ### Glyph-free source-format preservation
