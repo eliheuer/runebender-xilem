@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 const SKIP_EXPORT_GLYPHS: &str = "public.skipExportGlyphs";
 const OPEN_TYPE_CATEGORIES: &str = "public.openTypeCategories";
-const COMPONENT_ALIGNMENT: &str = "com.glyphsapp.component.alignment";
+pub(crate) const COMPONENT_ALIGNMENT_KEY: &str = "com.glyphsapp.component.alignment";
 
 #[cfg(test)]
 pub(crate) fn skipped_exports(font: &norad::Font) -> impl Iterator<Item = &str> {
@@ -131,7 +131,7 @@ impl ComponentAlignment {
     /// Move the alignment key out of a component's otherwise opaque lib dictionary.
     pub fn take_from_lib(lib: &mut plist::Dictionary) -> Self {
         Self {
-            source: lib.remove(COMPONENT_ALIGNMENT),
+            source: lib.remove(COMPONENT_ALIGNMENT_KEY),
         }
     }
 
@@ -162,12 +162,12 @@ impl ComponentAlignment {
     /// Write the owned source value into an otherwise opaque component lib dictionary.
     pub fn write_to_lib(&self, lib: &mut plist::Dictionary) -> bool {
         match &self.source {
-            Some(value) if lib.get(COMPONENT_ALIGNMENT) == Some(value) => false,
+            Some(value) if lib.get(COMPONENT_ALIGNMENT_KEY) == Some(value) => false,
             Some(value) => {
-                lib.insert(COMPONENT_ALIGNMENT.into(), value.clone());
+                lib.insert(COMPONENT_ALIGNMENT_KEY.into(), value.clone());
                 true
             }
-            None => lib.remove(COMPONENT_ALIGNMENT).is_some(),
+            None => lib.remove(COMPONENT_ALIGNMENT_KEY).is_some(),
         }
     }
 }
@@ -909,7 +909,7 @@ mod tests {
             (plist::Value::String("future".into()), false),
         ] {
             let mut source = plist::Dictionary::from_iter([
-                (String::from(COMPONENT_ALIGNMENT), value.clone()),
+                (String::from(COMPONENT_ALIGNMENT_KEY), value.clone()),
                 (
                     String::from("future.key"),
                     plist::Value::String("exact".into()),
@@ -918,7 +918,7 @@ mod tests {
             let original = source.clone();
             let mut alignment = ComponentAlignment::take_from_lib(&mut source);
             assert_eq!(alignment.is_disabled(), disabled);
-            assert!(!source.contains_key(COMPONENT_ALIGNMENT));
+            assert!(!source.contains_key(COMPONENT_ALIGNMENT_KEY));
             assert_eq!(
                 source.get("future.key"),
                 Some(&plist::Value::String("exact".into()))
@@ -933,11 +933,11 @@ mod tests {
             assert_eq!(alignment.is_disabled(), !disabled);
             assert!(alignment.write_to_lib(&mut source));
             if disabled {
-                assert!(!source.contains_key(COMPONENT_ALIGNMENT));
+                assert!(!source.contains_key(COMPONENT_ALIGNMENT_KEY));
             } else {
                 assert_eq!(
                     source
-                        .get(COMPONENT_ALIGNMENT)
+                        .get(COMPONENT_ALIGNMENT_KEY)
                         .and_then(plist::Value::as_signed_integer),
                     Some(-1)
                 );

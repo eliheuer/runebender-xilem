@@ -14,8 +14,7 @@
 use kurbo::{Point, Vec2};
 use norad::{Component, Font, Glyph};
 
-/// The Glyphs lib key that opts a component out of anchor alignment.
-const ALIGNMENT_KEY: &str = "com.glyphsapp.component.alignment";
+use super::model::glyph_metadata::ComponentAlignment;
 
 #[derive(Debug)]
 /// One component's contribution to anchor alignment: the anchors its
@@ -35,13 +34,8 @@ pub struct AlignInput {
 /// The check reads the Glyphs alignment lib key. Returns true when
 /// the key marks the component as not aligned.
 pub fn component_alignment_disabled(component: &Component) -> bool {
-    component
-        .lib()
-        .and_then(|lib| lib.get(ALIGNMENT_KEY))
-        .is_some_and(|value| {
-            value.as_signed_integer().is_some_and(|value| value < 0)
-                || value.as_boolean() == Some(false)
-        })
+    let mut lib = component.lib().cloned().unwrap_or_default();
+    ComponentAlignment::take_from_lib(&mut lib).is_disabled()
 }
 
 /// Lock a component to its anchor or cut it loose.
@@ -50,18 +44,16 @@ pub fn component_alignment_disabled(component: &Component) -> bool {
 /// where it sits. Locking removes the key; the caller realigns
 /// afterwards to snap it home.
 pub fn set_component_alignment_disabled(component: &mut Component, disabled: bool) {
-    if disabled {
-        let mut lib = component.lib().cloned().unwrap_or_default();
-        lib.insert(
-            ALIGNMENT_KEY.to_string(),
-            plist::Value::Integer((-1).into()),
-        );
+    let mut lib = component.lib().cloned().unwrap_or_default();
+    let mut alignment = ComponentAlignment::take_from_lib(&mut lib);
+    if !alignment.set_disabled(disabled) {
+        return;
+    }
+    alignment.write_to_lib(&mut lib);
+    if lib.is_empty() {
+        component.take_lib();
+    } else {
         component.replace_lib(lib);
-    } else if let Some(lib) = component.lib_mut() {
-        lib.remove(ALIGNMENT_KEY);
-        if lib.is_empty() {
-            component.take_lib();
-        }
     }
 }
 
@@ -270,6 +262,51 @@ mod tests {
         assert!(!component_alignment_disabled(&agrave.components[1]));
         assert!(realign_glyph(&font, &mut agrave, false));
         assert_eq!(agrave.components[1].transform.x_offset, 50.0);
+    }
+
+    #[test]
+    fn component_alignment_helpers_preserve_exact_noop_spellings_and_unrelated_lib_data() {
+        use super::super::model::glyph_metadata::COMPONENT_ALIGNMENT_KEY;
+
+        let mut item = component("A", 0.0, 0.0);
+        let mut lib = plist::Dictionary::from_iter([
+            (
+                String::from(COMPONENT_ALIGNMENT_KEY),
+                plist::Value::Boolean(false),
+            ),
+            (
+                String::from("future.key"),
+                plist::Value::String("exact".into()),
+            ),
+        ]);
+        item.replace_lib(lib.clone());
+        assert!(component_alignment_disabled(&item));
+        set_component_alignment_disabled(&mut item, true);
+        assert_eq!(item.lib(), Some(&lib));
+
+        set_component_alignment_disabled(&mut item, false);
+        lib.remove(COMPONENT_ALIGNMENT_KEY);
+        assert_eq!(item.lib(), Some(&lib));
+        assert!(!component_alignment_disabled(&item));
+
+        lib.insert(
+            COMPONENT_ALIGNMENT_KEY.into(),
+            plist::Value::String("future".into()),
+        );
+        item.replace_lib(lib.clone());
+        set_component_alignment_disabled(&mut item, false);
+        assert_eq!(item.lib(), Some(&lib));
+        set_component_alignment_disabled(&mut item, true);
+        assert_eq!(
+            item.lib()
+                .and_then(|value| value.get(COMPONENT_ALIGNMENT_KEY))
+                .and_then(plist::Value::as_signed_integer),
+            Some(-1)
+        );
+        assert_eq!(
+            item.lib().and_then(|value| value.get("future.key")),
+            Some(&plist::Value::String("exact".into()))
+        );
     }
 
     #[test]
