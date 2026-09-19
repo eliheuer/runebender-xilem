@@ -3,6 +3,8 @@
 
 //! Canonical variable structure must preserve supported Designspace values exactly.
 
+use std::path::PathBuf;
+
 use norad::Name;
 use norad::designspace::{
     Axis, AxisMapping, AxisMappings, Condition, ConditionSet, DesignSpaceDocument, Dimension,
@@ -12,6 +14,7 @@ use runebender::document::model::designspace::{
     CanonicalDesignspace, CanonicalLocation, SourceDescriptor, SourceOrderEntry,
     SparseSourceDescriptor,
 };
+use runebender::document::project::{Master, Project};
 use runebender::document::var_model::Location;
 use runebender::document::variable::{LayerId, SourceId};
 
@@ -366,4 +369,29 @@ fn unsupported_or_ambiguous_structure_is_rejected_at_import() {
             .unwrap_err()
             .contains("anisotropic or ambiguous")
     );
+}
+
+#[test]
+fn project_owns_the_canonical_designspace_and_snapshots_it() {
+    let doc = fixture();
+    let project = Project::from_designspace(doc.clone(), |filename| {
+        let mut font = norad::Font::new();
+        if filename == "Regular.ufo" {
+            font.layers.new_layer("{650,110}").unwrap();
+        }
+        Ok(Master::from_font(font, PathBuf::from(filename)))
+    })
+    .unwrap();
+
+    let canonical = project.document_designspace().unwrap();
+    assert_eq!(canonical.to_norad().unwrap(), doc);
+    assert_eq!(
+        canonical.full_source_order().collect::<Vec<_>>(),
+        [SourceId(0), SourceId(1)]
+    );
+    assert_eq!(
+        project.compiler_structure().unwrap(),
+        canonical.compiler_structure()
+    );
+    assert_eq!(project.document_snapshot().designspace(), Some(canonical));
 }
