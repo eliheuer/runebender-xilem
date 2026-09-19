@@ -1240,6 +1240,41 @@ impl LayerEditDraft {
             }
             _ => return Err(DocumentEditError::NotDirectSegment(start, end)),
         };
+        match &split {
+            Split::Line(point) => ensure_finite(&[point.x, point.y])?,
+            Split::Quadratic {
+                left_control,
+                split,
+                right_control,
+                ..
+            } => ensure_finite(&[
+                left_control.x,
+                left_control.y,
+                split.x,
+                split.y,
+                right_control.x,
+                right_control.y,
+            ])?,
+            Split::Cubic {
+                left_first,
+                left_second,
+                split,
+                right_first,
+                right_second,
+                ..
+            } => ensure_finite(&[
+                left_first.x,
+                left_first.y,
+                left_second.x,
+                left_second.y,
+                split.x,
+                split.y,
+                right_first.x,
+                right_first.y,
+                right_second.x,
+                right_second.y,
+            ])?,
+        }
         let contour_id =
             ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
         let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {

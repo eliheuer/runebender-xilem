@@ -2005,6 +2005,13 @@ fn canonical_segment_insertion_preserves_existing_control_identities() {
         ],
         None,
     ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(-f64::MAX, 300.0, PointType::Move, None),
+            point(f64::MAX, 400.0, PointType::Line, None),
+        ],
+        None,
+    ));
     let original = glyph.clone();
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
@@ -2117,6 +2124,22 @@ fn canonical_segment_insertion_preserves_existing_control_identities() {
         Err(runebender::document::DocumentEditError::NotDirectSegment(
             ids[0][0], ids[1][0]
         ))
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+
+    assert_eq!(
+        project
+            .edit_document_layer("insert-segments", &layer_id, |draft| {
+                assert_eq!(
+                    draft.insert_point_on_segment(ids[4][0], ids[4][1], 0.5),
+                    Err(runebender::document::DocumentEditError::NonFinite)
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision },
+        "caught subdivision overflow committed a partial topology edit"
     );
     assert_eq!(project.document_snapshot(), snapshot);
     assert_eq!(project.document_revision(), revision);

@@ -1116,4 +1116,31 @@ The focused insertion comparison and all 33 variable-project integration tests p
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+### Segment-insertion finite-result correction
+
+Evidence commit: `Reject nonfinite canonical subdivisions` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Reject nonfinite canonical subdivisions$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Independent review found that extreme but finite endpoint coordinates could overflow during interpolation and commit an infinite inserted point.
+Every computed line, quadratic and cubic subdivision coordinate is now validated before an existing control moves or a new point is inserted.
+The regression catches the error inside the draft and requires an unchanged outcome, snapshot and revision.
+
+The independent review's exact overflow reproducer now passes.
+Its companion geometry test also passes all twelve combinations of four closed-cubic storage rotations and three split parameters.
+
+```sh
+cargo test --locked --test variable_project canonical_segment_insertion_preserves_existing_control_identities -- --exact --test-threads=1
+/private/tmp/runebender-migration-review.porJgX/segment_insertion_review_fixed --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused repository regression, both independent-review tests and all 33 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
 The next M04 substep completes point insertion at implied quadratic endpoints before point deletion.

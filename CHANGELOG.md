@@ -61,6 +61,7 @@ No release has been published yet.
 - Kept off-grid curve handles anchored to their captured drag-start positions during repeated snapped pointer updates.
 - Matched ordinary quadratic hit testing to drawn implied joins and all-off-curve contours.
 - Made line-to-curve conversion produce one cubic for zero-control quadratic segments.
+- Prevented extreme finite coordinates from committing nonfinite points during segment insertion.
 - Reject unsupported Designspace fields, invalid mappings, missing sources and incompatible glyph structures before they can be silently dropped or misinterpreted.
 - Prevented external reloads, stale model results, or stale proposals from overwriting
   unsaved or subsequently edited document state.
