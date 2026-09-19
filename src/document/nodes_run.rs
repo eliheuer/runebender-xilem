@@ -26,10 +26,11 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::document::LayerView;
 use crate::document::nodes::{Kind, NodeGraph, NodeType, Port, Registry};
 use crate::document::project::{Master, Project};
 use crate::document::proposal;
-use crate::document::variable::SourceId;
+use crate::document::variable::{LayerId, SourceId};
 
 /// A value on a wire, after a node ran.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -1041,14 +1042,17 @@ fn run_node(
                 .ok_or_else(|| format!("{layer} is not a proposal layer; install takes one"))?;
             let only = inputs.glyphs("glyphs");
             let keep = inputs.flag("keep_structure").unwrap_or(true);
-            let mut master =
-                Master::load(source).map_err(|e| format!("{}: {e}", source.display()))?;
-            let done = master
-                .install_proposal(task, (!only.is_empty()).then_some(only.as_slice()), keep)
-                .map_err(|e| e.to_string())?;
-            master
-                .save()
-                .map_err(|e| format!("{}: {e}", source.display()))?;
+            let (mut project, source_id) = load_single_source(source)?;
+            let done = proposal::install_project(
+                &mut project,
+                source_id,
+                task,
+                (!only.is_empty()).then_some(only.as_slice()),
+                keep,
+            )
+            .map_err(|e| e.to_string())?;
+            project.save()?;
+            let done = done.installed;
             let rows: Vec<Value> = done
                 .installed
                 .iter()
@@ -1354,40 +1358,59 @@ fn find_on_path(tool: &str) -> Option<PathBuf> {
 /// cheapest thing that is not nothing and the bar a model has to
 /// clear. `better` is whether the proposal beat the shift.
 pub fn compare_layer(source: &Path, layer: &str, against: &Path) -> Result<Vec<Value>, String> {
-    let font = norad::Font::load(source).map_err(|e| format!("{}: {e}", source.display()))?;
-    let other = norad::Font::load(against).map_err(|e| format!("{}: {e}", against.display()))?;
-    let proposed = font
-        .layers
-        .get(layer)
-        .ok_or_else(|| format!("{}: no layer named {layer}", source.display()))?;
+    if layer_dir(source, layer).is_none() {
+        return Err(format!("{}: no layer named {layer}", source.display()));
+    }
+    let (project, source_id) = load_single_source(source)?;
+    let (other, other_source) = load_single_source(against)?;
+    compare_project_layer(&project, source_id, layer, &other, other_source)
+}
+
+fn compare_project_layer(
+    project: &Project,
+    source: SourceId,
+    layer_name: &str,
+    other: &Project,
+    other_source: SourceId,
+) -> Result<Vec<Value>, String> {
+    let foreground = project
+        .document_source(source)
+        .ok_or("source is not in the document")?
+        .default_layer();
+    let target = other
+        .document_source(other_source)
+        .ok_or("comparison source is not in the document")?
+        .default_layer();
+    let proposed = LayerId {
+        source,
+        name: layer_name.to_owned(),
+    };
     // The mean offset from foreground to the other master, over every
     // glyph drawn compatibly in both. A font-wide number, so it does
     // not peek at the glyphs being scored more than at the rest.
     let (mut sx, mut sy, mut n) = (0.0, 0.0, 0_usize);
-    for glyph in font.default_layer().iter() {
-        let Some(target) = other.get_glyph(glyph.name()) else {
+    for name in project.glyph_names() {
+        let Some(glyph) = project.document_layer(name, &foreground) else {
             continue;
         };
-        if !proposal::compatible(glyph, target) {
+        let Some(target_layer) = other.document_layer(name, &target) else {
+            continue;
+        };
+        if !proposal::compatible_layers(glyph, target_layer) {
             continue;
         }
         // A glyph still identical in both masters is work not done,
         // not a zero offset; it stays out of the mean.
-        let moved = glyph
-            .contours
-            .iter()
-            .zip(&target.contours)
-            .flat_map(|(ca, cb)| ca.points.iter().zip(&cb.points))
-            .any(|(pa, pb)| (pb.x - pa.x).abs() >= 8.0 || (pb.y - pa.y).abs() >= 8.0);
+        let moved = layer_points(glyph)
+            .zip(layer_points(target_layer))
+            .any(|(a, b)| (b.x - a.x).abs() >= 8.0 || (b.y - a.y).abs() >= 8.0);
         if !moved {
             continue;
         }
-        for (ca, cb) in glyph.contours.iter().zip(&target.contours) {
-            for (pa, pb) in ca.points.iter().zip(&cb.points) {
-                sx += pb.x - pa.x;
-                sy += pb.y - pa.y;
-                n += 1;
-            }
+        for (a, b) in layer_points(glyph).zip(layer_points(target_layer)) {
+            sx += b.x - a.x;
+            sy += b.y - a.y;
+            n += 1;
         }
     }
     let shift = if n == 0 {
@@ -1396,24 +1419,26 @@ pub fn compare_layer(source: &Path, layer: &str, against: &Path) -> Result<Vec<V
         (sx / n as f64, sy / n as f64)
     };
     let mut rows = Vec::new();
-    for glyph in proposed.iter() {
-        let name = glyph.name().as_str();
-        let Some(target) = other.get_glyph(name) else {
+    for name in project.glyph_names() {
+        let Some(glyph) = project.document_layer(name, &proposed) else {
+            continue;
+        };
+        let Some(target_layer) = other.document_layer(name, &target) else {
             rows.push(json!({ "glyph": name, "why": "not in the other master" }));
             continue;
         };
-        let before = font.get_glyph(name);
-        if !proposal::compatible(glyph, target) {
+        let before = project.document_layer(name, &foreground);
+        if !proposal::compatible_layers(glyph, target_layer) {
             rows.push(json!({ "glyph": name, "why": "point structure differs" }));
             continue;
         }
-        let model = mean_distance(glyph, target, (0.0, 0.0));
-        let before = before.filter(|b| proposal::compatible(b, target));
-        let unchanged = before.map(|b| mean_distance(b, target, (0.0, 0.0)));
-        let shifted = before.map(|b| mean_distance(b, target, shift));
+        let model = mean_distance(glyph, target_layer, (0.0, 0.0));
+        let before = before.filter(|before| proposal::compatible_layers(*before, target_layer));
+        let unchanged = before.map(|before| mean_distance(before, target_layer, (0.0, 0.0)));
+        let shifted = before.map(|before| mean_distance(before, target_layer, shift));
         rows.push(json!({
             "glyph": name,
-            "points": glyph.contours.iter().map(|c| c.points.len()).sum::<usize>(),
+            "points": layer_points(glyph).count(),
             "model": model,
             "unchanged": unchanged,
             "shift": shifted,
@@ -1425,15 +1450,19 @@ pub fn compare_layer(source: &Path, layer: &str, against: &Path) -> Result<Vec<V
 
 /// Mean distance between matching points of two structure-compatible
 /// glyphs, with `a` moved by `offset` first.
-fn mean_distance(a: &norad::Glyph, b: &norad::Glyph, offset: (f64, f64)) -> f64 {
+fn layer_points(layer: LayerView<'_>) -> impl Iterator<Item = kurbo::Point> + '_ {
+    layer
+        .contours()
+        .flat_map(|contour| contour.points().map(|point| point.position()))
+}
+
+fn mean_distance(a: LayerView<'_>, b: LayerView<'_>, offset: (f64, f64)) -> f64 {
     let mut sum = 0.0;
     let mut n = 0_usize;
-    for (ca, cb) in a.contours.iter().zip(&b.contours) {
-        for (pa, pb) in ca.points.iter().zip(&cb.points) {
-            let (ax, ay) = (pa.x + offset.0, pa.y + offset.1);
-            sum += ((ax - pb.x).powi(2) + (ay - pb.y).powi(2)).sqrt();
-            n += 1;
-        }
+    for (a, b) in layer_points(a).zip(layer_points(b)) {
+        let (ax, ay) = (a.x + offset.0, a.y + offset.1);
+        sum += ((ax - b.x).powi(2) + (ay - b.y).powi(2)).sqrt();
+        n += 1;
     }
     if n == 0 { 0.0 } else { sum / n as f64 }
 }
@@ -1531,5 +1560,62 @@ mod tests {
             single_source_id(&project, Path::new("Regular.ufo")).unwrap(),
             SourceId(0)
         );
+    }
+
+    fn comparison_glyph(name: &str, x: f64) -> norad::Glyph {
+        let mut glyph = norad::Glyph::new(name);
+        glyph.contours.push(norad::Contour::new(
+            vec![
+                norad::ContourPoint::new(x, 0.0, norad::PointType::Line, false, None, None),
+                norad::ContourPoint::new(x + 100.0, 0.0, norad::PointType::Line, false, None, None),
+                norad::ContourPoint::new(
+                    x + 100.0,
+                    100.0,
+                    norad::PointType::Line,
+                    false,
+                    None,
+                    None,
+                ),
+                norad::ContourPoint::new(x, 100.0, norad::PointType::Line, false, None, None),
+            ],
+            None,
+        ));
+        glyph
+    }
+
+    #[test]
+    fn comparison_scores_canonical_layers_and_retains_the_shift_baseline() {
+        let mut source = norad::Font::new();
+        source
+            .default_layer_mut()
+            .insert_glyph(comparison_glyph("n", 0.0));
+        source
+            .layers
+            .new_layer("com.runebender.proposal.test")
+            .unwrap()
+            .insert_glyph(comparison_glyph("n", 50.0));
+        let source = Project::from_source(Master::from_font(source, PathBuf::from("Regular.ufo")));
+
+        let mut target = norad::Font::new();
+        target
+            .default_layer_mut()
+            .insert_glyph(comparison_glyph("n", 100.0));
+        let target = Project::from_source(Master::from_font(target, PathBuf::from("Bold.ufo")));
+
+        let rows = compare_project_layer(
+            &source,
+            SourceId(0),
+            "com.runebender.proposal.test",
+            &target,
+            SourceId(0),
+        )
+        .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["glyph"], "n");
+        assert_eq!(rows[0]["points"], 4);
+        assert_eq!(rows[0]["model"], 50.0);
+        assert_eq!(rows[0]["unchanged"], 100.0);
+        assert_eq!(rows[0]["shift"], 0.0);
+        assert_eq!(rows[0]["better"], false);
     }
 }
