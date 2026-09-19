@@ -3518,6 +3518,178 @@ fn canonical_copy_paste_and_duplicate_assign_fresh_identities() {
 }
 
 #[test]
+fn canonical_boolean_and_overlap_replacement_clear_old_topology_metadata() {
+    let scratch = Scratch::new();
+    let cyclic_paths_equal = |first: &kurbo::BezPath, second: &kurbo::BezPath| {
+        let first: Vec<_> = first.segments().collect();
+        let second: Vec<_> = second.segments().collect();
+        first.len() == second.len()
+            && (0..first.len()).any(|offset| {
+                first
+                    .iter()
+                    .enumerate()
+                    .all(|(index, segment)| *segment == second[(index + offset) % second.len()])
+            })
+    };
+    let rectangle = |x0, x1, label: &str| {
+        let mut contour = Contour::new(
+            vec![
+                ContourPoint::new(
+                    x0,
+                    0.0,
+                    PointType::Line,
+                    true,
+                    Some(Name::new(&format!("{label}-a")).unwrap()),
+                    Some(norad::Identifier::new(&format!("{label}-a")).unwrap()),
+                ),
+                ContourPoint::new(x1, 0.0, PointType::Line, false, None, None),
+                ContourPoint::new(x1, 100.0, PointType::Line, false, None, None),
+                ContourPoint::new(x0, 100.0, PointType::Line, false, None, None),
+            ],
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        contour.replace_lib(object_lib(label));
+        contour
+    };
+    let mut glyph = Glyph::new("boolean-contours");
+    glyph.contours = vec![
+        rectangle(0.0, 100.0, "left"),
+        rectangle(50.0, 150.0, "right"),
+    ];
+    let mut component = Component::new(
+        Name::new("base").unwrap(),
+        norad::AffineTransform {
+            x_offset: 12.5,
+            y_offset: 25.5,
+            ..Default::default()
+        },
+        Some(norad::Identifier::new("component-source").unwrap()),
+    );
+    component.replace_lib(object_lib("component-source"));
+    glyph.components.push(component.clone());
+    let mut anchor = Anchor::new(
+        75.25,
+        125.75,
+        Some(Name::new("top").unwrap()),
+        None,
+        Some(norad::Identifier::new("anchor-source").unwrap()),
+    );
+    anchor.replace_lib(object_lib("anchor-source"));
+    glyph.anchors.push(anchor.clone());
+    let mut expected = glyph.clone();
+    expected.contours =
+        runebender::outline::glyph_ops::boolean_contours(&glyph, linesweeper::BinaryOp::Union)
+            .unwrap();
+    let mut base = Glyph::new("base");
+    base.contours.push(rectangle(0.0, 20.0, "base-contour"));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(base);
+    font.default_layer_mut().insert_glyph(glyph);
+    let source_path = scratch.0.join("BooleanContours.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project
+        .document_layer("boolean-contours", &layer_id)
+        .unwrap();
+    let old_contours: Vec<_> = layer.contours().map(|contour| contour.id()).collect();
+    let old_points: Vec<_> = layer
+        .contours()
+        .flat_map(|contour| contour.points().map(|point| point.id()))
+        .collect();
+    let component_id = layer.components().next().unwrap().id();
+    let anchor_id = layer.anchors().next().unwrap().id();
+
+    project
+        .edit_document_layer("boolean-contours", &layer_id, |draft| {
+            assert!(draft.boolean_contours(linesweeper::BinaryOp::Union)?);
+            Ok(())
+        })
+        .unwrap();
+    let layer = project
+        .document_layer("boolean-contours", &layer_id)
+        .unwrap();
+    let new_contours: Vec<_> = layer.contours().collect();
+    assert_eq!(new_contours.len(), 1);
+    assert!(!old_contours.contains(&new_contours[0].id()));
+    assert!(
+        new_contours[0]
+            .points()
+            .all(|point| !old_points.contains(&point.id()))
+    );
+    assert_eq!(layer.components().next().unwrap().id(), component_id);
+    assert_eq!(layer.anchors().next().unwrap().id(), anchor_id);
+    assert!(
+        new_contours[0]
+            .points()
+            .any(|point| point.position() == kurbo::Point::new(0.0, 0.0) && point.is_smooth())
+    );
+    let projected = project.glyph_layer("boolean-contours", &layer_id).unwrap();
+    assert!(cyclic_paths_equal(
+        &runebender::outline::glyph_paths::contours_to_bezpath(&projected),
+        &runebender::outline::glyph_paths::contours_to_bezpath(&expected)
+    ));
+    assert_eq!(projected.components, [component.clone()]);
+    assert_eq!(projected.anchors, [anchor.clone()]);
+    assert!(projected.contours.iter().all(|contour| {
+        contour.identifier().is_none()
+            && contour.lib().is_none()
+            && contour.points.iter().all(|point| {
+                point.name.is_none() && point.identifier().is_none() && point.lib().is_none()
+            })
+    }));
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("boolean-contours", &layer_id, |draft| {
+                assert!(!draft.boolean_contours(linesweeper::BinaryOp::Difference)?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+
+    let before_overlap = runebender::outline::glyph_paths::ordinary_layer_contours_to_bezpath(
+        project
+            .document_layer("boolean-contours", &layer_id)
+            .unwrap(),
+    );
+    project
+        .edit_document_layer("boolean-contours", &layer_id, |draft| {
+            assert!(draft.remove_overlap()?);
+            Ok(())
+        })
+        .unwrap();
+    let layer = project
+        .document_layer("boolean-contours", &layer_id)
+        .unwrap();
+    assert!(cyclic_paths_equal(
+        &runebender::outline::glyph_paths::ordinary_layer_contours_to_bezpath(layer),
+        &before_overlap
+    ));
+    assert_eq!(layer.components().next().unwrap().id(), component_id);
+    assert_eq!(layer.anchors().next().unwrap().id(), anchor_id);
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    assert_eq!(
+        reloaded
+            .glyph_layer("boolean-contours", &reloaded_layer)
+            .unwrap(),
+        project.glyph_layer("boolean-contours", &layer_id).unwrap()
+    );
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);

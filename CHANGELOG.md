@@ -71,6 +71,7 @@ No release has been published yet.
 - Preserved contour metadata and surviving point identities when opening or closing paths.
 - Prevented contour opening from saving orphaned cubic or quadratic controls that cannot be reopened.
 - Added canonical contour copy, paste and offset duplication with fresh stable identities.
+- Moved boolean and overlap-removal topology replacement onto canonical paths.
 - Reject unsupported Designspace fields, invalid mappings, missing sources and incompatible glyph structures before they can be silently dropped or misinterpreted.
 - Prevented external reloads, stale model results, or stale proposals from overwriting
   unsaved or subsequently edited document state.

@@ -961,6 +961,172 @@ impl LayerEditDraft {
         self.paste_contours(&copied)
     }
 
+    /// Apply a boolean operation to canonical contours and replace their topology.
+    ///
+    /// Union combines every contour. Other operations use the first contour as the left operand
+    /// and the remaining contours as the right operand. Replacement contours receive fresh stable
+    /// identities and empty source metadata. Returns whether replacement succeeded.
+    pub fn boolean_contours(
+        &mut self,
+        operation: linesweeper::BinaryOp,
+    ) -> Result<bool, DocumentEditError> {
+        let paths: Vec<_> = self
+            .view()
+            .contours()
+            .map(crate::outline::glyph_paths::ordinary_contour_to_bezpath)
+            .collect();
+        if paths.len() < 2 {
+            return Ok(false);
+        }
+        let (left, right) = if operation == linesweeper::BinaryOp::Union {
+            let mut combined = kurbo::BezPath::new();
+            for path in &paths {
+                combined.extend(path.elements().iter().copied());
+            }
+            (combined, kurbo::BezPath::new())
+        } else {
+            let mut paths = paths.into_iter();
+            let left = paths
+                .next()
+                .expect("boolean input has at least two contours");
+            let mut right = kurbo::BezPath::new();
+            for path in paths {
+                right.extend(path.elements().iter().copied());
+            }
+            (left, right)
+        };
+        let Ok(result) =
+            linesweeper::binary_op(&left, &right, linesweeper::FillRule::NonZero, operation)
+        else {
+            return Ok(false);
+        };
+        let paths: Vec<_> = result
+            .contours()
+            .map(|contour| contour.path.clone())
+            .collect();
+        self.replace_contours_with_paths(&paths)
+    }
+
+    /// Union every canonical contour and replace their topology.
+    ///
+    /// Replacement contours receive fresh stable identities and empty source metadata. Returns
+    /// whether overlap removal succeeded.
+    pub fn remove_overlap(&mut self) -> Result<bool, DocumentEditError> {
+        let combined = crate::outline::glyph_paths::ordinary_layer_contours_to_bezpath(self.view());
+        if combined.is_empty() {
+            return Ok(false);
+        }
+        let Ok(result) = linesweeper::binary_op(
+            &combined,
+            &kurbo::BezPath::new(),
+            linesweeper::FillRule::NonZero,
+            linesweeper::BinaryOp::Union,
+        ) else {
+            return Ok(false);
+        };
+        let paths: Vec<_> = result
+            .contours()
+            .map(|contour| contour.path.clone())
+            .collect();
+        self.replace_contours_with_paths(&paths)
+    }
+
+    fn replace_contours_with_paths(
+        &mut self,
+        paths: &[kurbo::BezPath],
+    ) -> Result<bool, DocumentEditError> {
+        if paths.is_empty() {
+            return Ok(false);
+        }
+        let smooth_at: HashMap<_, _> = self
+            .layer
+            .paths()
+            .flat_map(|path| &path.nodes)
+            .filter(|node| node.nodetype != NodeType::OffCurve)
+            .map(|node| {
+                (
+                    crate::outline::glyph_paths::point_key(node.x, node.y),
+                    node.smooth,
+                )
+            })
+            .collect();
+        let mut replacements = Vec::with_capacity(paths.len());
+        let mut preserved = Vec::with_capacity(paths.len());
+        for path in paths {
+            let mut path = babelfont::Path::from(path.clone());
+            ensure_finite(
+                &path
+                    .nodes
+                    .iter()
+                    .flat_map(|node| [node.x, node.y])
+                    .collect::<Vec<_>>(),
+            )?;
+            if path
+                .nodes
+                .iter()
+                .filter(|node| node.nodetype != NodeType::OffCurve)
+                .count()
+                < 2
+            {
+                continue;
+            }
+            let contour_id = ContourId::next();
+            write_id(&mut path.format_specific, contour_id.0);
+            let points = path
+                .nodes
+                .iter_mut()
+                .map(|node| {
+                    if node.nodetype != NodeType::OffCurve {
+                        node.smooth = smooth_at
+                            .get(&crate::outline::glyph_paths::point_key(node.x, node.y))
+                            .copied()
+                            .unwrap_or(false);
+                    }
+                    let point_id = PointId::next();
+                    write_id(&mut node.format_specific, point_id.0);
+                    PreservedPoint {
+                        id: point_id,
+                        name: None,
+                        metadata: ObjectMetadata {
+                            identifier: None,
+                            lib: None,
+                        },
+                    }
+                })
+                .collect();
+            replacements.push(Shape::Path(path));
+            preserved.push(PreservedContour {
+                id: contour_id,
+                metadata: ObjectMetadata {
+                    identifier: None,
+                    lib: None,
+                },
+                points,
+            });
+        }
+        if replacements.is_empty() {
+            return Ok(false);
+        }
+        let insert_at = self
+            .layer
+            .shapes
+            .iter()
+            .take_while(|shape| !matches!(shape, Shape::Path(_)))
+            .filter(|shape| matches!(shape, Shape::Component(_)))
+            .count();
+        let mut shapes: Vec<_> = self
+            .layer
+            .shapes
+            .iter()
+            .filter(|shape| matches!(shape, Shape::Component(_)))
+            .cloned()
+            .collect();
+        shapes.splice(insert_at..insert_at, replacements);
+        self.layer.shapes = shapes;
+        self.preserved.contours = preserved;
+        Ok(true)
+    }
+
     /// Set the exact horizontal advance and refresh Babelfont's derived width.
     ///
     /// Returns whether the value changed.

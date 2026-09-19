@@ -1470,4 +1470,35 @@ The focused copy-paste regression and all 43 variable-project integration tests 
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
-The next M04 substep moves topology-replacing outline effects onto canonical layers with explicit metadata policy.
+### Canonical boolean and overlap-removal substep
+
+Evidence commit: `Replace canonical contours after boolean operations` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Replace canonical contours after boolean operations$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+`LayerEditDraft::boolean_contours` and `LayerEditDraft::remove_overlap` now feed canonical contour geometry directly to Linesweeper and install its paths without a UFO materialization or reconciliation pass.
+Topology replacement assigns fresh contour and point identities and deliberately clears names, source identifiers and object libraries because output objects cannot be matched reliably to input objects.
+Smooth flags are restored only at retained on-curve positions, matching the existing editor policy.
+Components and anchors keep their identities and exact metadata, and components retain their relative order around the replacement contour block.
+
+The integration comparison unions two overlapping rectangles through the canonical and existing operations and requires the same segments up to closed-contour rotation.
+It verifies old topology identities disappear, new identities are unique, the explicit empty-metadata policy holds, a retained smooth point stays smooth, components and anchors remain exact, and the saved UFO reopens unchanged.
+It also checks insufficient-input boolean rejection and a second canonical overlap-removal replacement.
+Boolean and overlap removal are complete within M04's second checklist item.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_boolean_and_overlap_replacement_clear_old_topology_metadata -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused boolean/overlap regression and all 44 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep moves the knife operation onto canonical geometry and replacement policy.
