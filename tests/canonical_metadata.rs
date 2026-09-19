@@ -198,6 +198,39 @@ fn removing_a_group_removes_only_its_pairs() {
 }
 
 #[test]
+fn group_rename_updates_pair_references_and_rejects_kind_changes() {
+    let mut metadata = raw_metadata();
+
+    assert!(
+        metadata
+            .rename_group("public.kern1.A", "public.kern1.Round")
+            .unwrap()
+    );
+    assert!(!metadata.groups().contains_key("public.kern1.A"));
+    assert_eq!(
+        metadata.groups().get("public.kern1.Round"),
+        Some(&vec!["A".to_string()])
+    );
+    assert_eq!(
+        metadata
+            .raw_kerning()
+            .get("public.kern1.Round")
+            .and_then(|row| row.get("public.kern2.V")),
+        Some(&-50.5)
+    );
+
+    let before = metadata.clone();
+    assert_eq!(
+        metadata.rename_group("public.kern1.Round", "com.example.renamed"),
+        Err(CanonicalMetadataError::IncompatibleGroupRename {
+            old: "public.kern1.Round".into(),
+            new: "com.example.renamed".into(),
+        })
+    );
+    assert_eq!(metadata, before);
+}
+
+#[test]
 fn glyph_metadata_preserves_exact_values_and_rejects_bad_unicode() {
     let codepoints = parse_codepoints("U+0041, 0x0391 0041").unwrap();
     let mut metadata = CanonicalGlyphMetadata::new(

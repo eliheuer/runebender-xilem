@@ -101,6 +101,16 @@ impl KerningParticipant {
         }
     }
 
+    fn renamed_group(&self, old: &str, new: &str) -> Self {
+        match self {
+            Self::Group { side, name } if name == old => Self::Group {
+                side: *side,
+                name: new.to_owned(),
+            },
+            _ => self.clone(),
+        }
+    }
+
     fn is_glyph(&self, glyph: &str) -> bool {
         matches!(self, Self::Glyph(name) if name == glyph)
     }
@@ -119,6 +129,13 @@ pub enum CanonicalMetadataError {
         name: String,
         /// The side required at this position.
         expected: KerningSide,
+    },
+    /// A rename would change an arbitrary group into a kerning group or vice versa.
+    IncompatibleGroupRename {
+        /// The current group name.
+        old: String,
+        /// The requested group name.
+        new: String,
     },
     /// A kerning value was NaN or infinite.
     NonFiniteKerning {
@@ -145,6 +162,12 @@ impl fmt::Display for CanonicalMetadataError {
                 write!(
                     f,
                     "kerning group {name:?} is not valid on the {expected:?} side"
+                )
+            }
+            Self::IncompatibleGroupRename { old, new } => {
+                write!(
+                    f,
+                    "cannot rename group {old:?} to incompatible name {new:?}"
                 )
             }
             Self::NonFiniteKerning { left, right } => {
@@ -386,6 +409,47 @@ impl CanonicalFontMetadata {
         Ok(true)
     }
 
+    /// Rename a group and every kerning pair that names it atomically.
+    ///
+    /// Arbitrary groups must remain arbitrary, and a kerning group must remain on the same side.
+    pub fn rename_group(&mut self, old: &str, new: &str) -> Result<bool, CanonicalMetadataError> {
+        validate_name(old)?;
+        validate_name(new)?;
+        let old_side = side_from_group_name(old);
+        let new_side = side_from_group_name(new);
+        if old_side != new_side {
+            return Err(CanonicalMetadataError::IncompatibleGroupRename {
+                old: old.to_owned(),
+                new: new.to_owned(),
+            });
+        }
+        if let Some(side) = old_side {
+            canonical_group_name(side, old)?;
+            canonical_group_name(side, new)?;
+        }
+        if old == new || !self.references_group(old) {
+            return Ok(false);
+        }
+        if self.references_group(new) {
+            return Err(CanonicalMetadataError::RenameCollision(new.to_owned()));
+        }
+
+        let mut groups = self.groups.clone();
+        if let Some(members) = groups.remove(old) {
+            groups.insert(new.to_owned(), members);
+        }
+        let mut kerning = BTreeMap::new();
+        for ((left, right), value) in &self.kerning {
+            let pair = (left.renamed_group(old, new), right.renamed_group(old, new));
+            if kerning.insert(pair, *value).is_some() {
+                return Err(CanonicalMetadataError::RenameCollision(new.to_owned()));
+            }
+        }
+        self.groups = groups;
+        self.kerning = kerning;
+        Ok(true)
+    }
+
     /// Rename a glyph in all groups and pair participants atomically.
     ///
     /// The caller owns the glyph table and component references.
@@ -460,6 +524,14 @@ impl CanonicalFontMetadata {
                 .kerning
                 .keys()
                 .any(|(left, right)| left.is_glyph(glyph) || right.is_glyph(glyph))
+    }
+
+    fn references_group(&self, group: &str) -> bool {
+        self.groups.contains_key(group)
+            || self.kerning.keys().any(|(left, right)| {
+                matches!(left, KerningParticipant::Group { name, .. } if name == group)
+                    || matches!(right, KerningParticipant::Group { name, .. } if name == group)
+            })
     }
 }
 
