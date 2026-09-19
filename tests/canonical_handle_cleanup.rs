@@ -426,6 +426,21 @@ fn handle_fixture() -> (Scratch, Project, LayerId, GlyphLayerAddress) {
         ],
         "handles",
     ));
+    glyph.contours.push(contour(
+        vec![
+            point(0.0, 0.0, PointType::QCurve, "quadratic-a"),
+            point(0.0, 50.0, PointType::OffCurve, "quadratic-control-a"),
+            point(-80.0, 80.0, PointType::OffCurve, "quadratic-control-b"),
+            point(-120.0, 120.0, PointType::QCurve, "quadratic-b"),
+            point(-140.0, 70.0, PointType::OffCurve, "quadratic-control-c"),
+            point(-130.0, -50.0, PointType::OffCurve, "quadratic-control-d"),
+            point(-100.0, -90.0, PointType::QCurve, "quadratic-c"),
+            point(-70.0, -50.0, PointType::OffCurve, "quadratic-control-e"),
+            point(0.0, -30.0, PointType::OffCurve, "quadratic-control-f"),
+        ],
+        "quadratic-handles",
+    ));
+    glyph.contours[4].points[0].smooth = true;
     let mut other = Glyph::new("other-handle");
     other.contours.push(contour(
         vec![
@@ -653,6 +668,44 @@ fn balance_ignores_open_and_unselected_segments_without_history() {
         project.document_layer_history_depth(&address, HistoryDirection::Undo),
         0,
         "a no-op balance records no history"
+    );
+}
+
+#[test]
+fn harmonize_and_balance_leave_quadratic_chains_atomically_unchanged() {
+    let (_scratch, mut project, layer, address) = handle_fixture();
+    let quadratic = project
+        .document_layer("handles", &layer)
+        .unwrap()
+        .contours()
+        .nth(4)
+        .unwrap();
+    let smooth_join = quadratic.points().next().unwrap().id();
+    let control = quadratic.points().nth(1).unwrap().id();
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+
+    assert_eq!(
+        project
+            .edit_document_layer("handles", &layer, |draft| {
+                assert!(
+                    !draft.harmonize_handles(&[smooth_join])?,
+                    "harmonize must not reinterpret quadratic controls"
+                );
+                assert!(
+                    !draft.balance_handles(&[control])?,
+                    "balance must not reinterpret quadratic controls"
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(
+        project.document_layer_history_depth(&address, HistoryDirection::Undo),
+        0,
+        "unsupported quadratic operations record no history"
     );
 }
 

@@ -88,8 +88,12 @@ It calls the shared `analysis::curve::optimize_contour` primitive, but writes ba
 Quadratic controls on mixed contours therefore remain exact instead of being silently reinterpreted as cubic handles.
 Open and hyperbezier contours also remain untouched, while stable identities and source metadata stay attached to surviving points.
 
-Three optimize regressions bring the dedicated suite to ten passing tests.
+Three optimize regressions initially brought the dedicated suite to ten passing tests.
 They cover empty-selection scope, exact shared-primitive output, stable identities and metadata, canonical undo, selected mixed contours, preservation of open, hyperbezier and quadratic geometry, valid zero tolerance, and caught invalid-parameter/error atomicity.
+
+Independent review then found that harmonize and balance could reinterpret two-control quadratic chains as cubic segments.
+Both operations now require explicit cubic endpoint roles before moving handles.
+A permanent atomic no-op regression brings the dedicated suite to eleven tests, and the external two-test reproducer now passes unchanged.
 
 The independently tested cleanup checkpoints are:
 
@@ -114,7 +118,7 @@ The dedicated suite passed four tests covering exact quadratic elevation, bounde
 CARGO_TARGET_DIR=/private/tmp/runebender-curve-conversion-target CARGO_BUILD_JOBS=1 cargo test --locked --test canonical_curve_conversion -- --test-threads=1
 ```
 
-The dedicated handle-cleanup suite passed ten tests covering all four operations, stable identities and metadata, mixed/open/closed/hyperbezier contours, history, no-op/error atomicity and save/reopen where topology changes:
+The dedicated handle-cleanup suite passed eleven tests covering all four operations, stable identities and metadata, cubic/quadratic/mixed/open/closed/hyperbezier contours, history, no-op/error atomicity and save/reopen where topology changes:
 
 ```sh
 CARGO_TARGET_DIR=/private/tmp/runebender-curve-conversion-target CARGO_BUILD_JOBS=1 cargo test --locked --test canonical_handle_cleanup -- --test-threads=1

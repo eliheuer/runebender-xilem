@@ -126,7 +126,7 @@ impl LayerEditDraft {
                 .find(|contour| contour.id.0 == contour_id)
                 .expect("canonical contour preservation")
                 .hyper;
-            if hyper || !path.closed || path.nodes.len() < 5 {
+            if hyper || !path.closed || path.nodes.len() < 6 {
                 continue;
             }
             let Shape::Path(path) = &mut staged.layer.shapes[shape_index] else {
@@ -138,31 +138,37 @@ impl LayerEditDraft {
             for index in 0..length {
                 let node = &original[index];
                 let id = PointId(read_id(&node.format_specific).expect("canonical point identity"));
-                if node.nodetype == NodeType::OffCurve
+                if node.nodetype != NodeType::Curve
                     || !node.smooth
                     || (!all && !selected.contains(&id))
                 {
                     continue;
                 }
                 let [
+                    previous_endpoint,
                     first_incoming,
                     adjacent_incoming,
                     adjacent_outgoing,
                     second_outgoing,
+                    next_endpoint,
                 ] = [
+                    (index + length - 3) % length,
                     (index + length - 2) % length,
                     (index + length - 1) % length,
                     (index + 1) % length,
                     (index + 2) % length,
+                    (index + 3) % length,
                 ];
-                if [
-                    first_incoming,
-                    adjacent_incoming,
-                    adjacent_outgoing,
-                    second_outgoing,
-                ]
-                .into_iter()
-                .any(|candidate| original[candidate].nodetype != NodeType::OffCurve)
+                if original[previous_endpoint].nodetype == NodeType::OffCurve
+                    || [
+                        first_incoming,
+                        adjacent_incoming,
+                        adjacent_outgoing,
+                        second_outgoing,
+                    ]
+                    .into_iter()
+                    .any(|candidate| original[candidate].nodetype != NodeType::OffCurve)
+                    || original[next_endpoint].nodetype != NodeType::Curve
                 {
                     continue;
                 }
@@ -237,7 +243,7 @@ impl LayerEditDraft {
                 if original[start].nodetype == NodeType::OffCurve
                     || original[first].nodetype != NodeType::OffCurve
                     || original[second].nodetype != NodeType::OffCurve
-                    || original[end].nodetype == NodeType::OffCurve
+                    || original[end].nodetype != NodeType::Curve
                 {
                     continue;
                 }
