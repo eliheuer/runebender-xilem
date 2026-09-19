@@ -299,69 +299,136 @@ impl Workspace {
 
     /// Apply Glyphs-style sidebearing formulas in every master.
     pub(crate) fn command_update_metrics(&mut self) {
-        use runebender::document::project::Master;
-        use runebender::formats::metrics_keys::{
-            MetricsFormula, parse_metrics_key, read_metrics_key,
+        use kurbo::Shape as _;
+        use runebender::document::project::Project;
+        use runebender::document::variable::{GlyphLayerAddress, LayerId};
+        use runebender::formats::metrics_keys::MetricsFormula;
+
+        let resolve = |project: &Project,
+                       layer: &LayerId,
+                       formula: &MetricsFormula,
+                       want_left: bool|
+         -> Option<f64> {
+            match formula {
+                MetricsFormula::Constant(value) => Some(*value),
+                MetricsFormula::Reference { glyph, mirror, op } => {
+                    let address = GlyphLayerAddress {
+                        glyph: glyph.clone(),
+                        layer: layer.clone(),
+                    };
+                    let ink = project.document_layer_path(&address).ok()?.bounding_box();
+                    let advance = project.document_layer(glyph, layer)?.width();
+                    let mut value = if want_left != *mirror {
+                        ink.x0
+                    } else {
+                        advance - ink.x1
+                    };
+                    if let Some((operator, amount)) = op {
+                        value = match operator {
+                            '+' => value + amount,
+                            '-' => value - amount,
+                            _ => value * amount,
+                        };
+                    }
+                    Some(value)
+                }
+            }
         };
 
         let mut adjusted = 0;
         for _ in 0..5 {
             let mut moved = false;
-            for master in self.font.project.edit_sources().iter_mut() {
-                let keyed: Vec<_> = (0..master.glyphs.len())
-                    .filter_map(|index| {
-                        let glyph = master.font.get_glyph(master.glyphs[index].name.as_ref())?;
-                        let left = read_metrics_key(glyph, true);
-                        let right = read_metrics_key(glyph, false);
-                        (left.is_some() || right.is_some()).then_some((index, left, right))
+            let sources = self
+                .font
+                .project
+                .document_sources()
+                .map(|source| (source.id(), source.default_layer()))
+                .collect::<Vec<_>>();
+            for (_, layer) in sources {
+                let keyed: Vec<(String, Option<MetricsFormula>, Option<MetricsFormula>)> = self
+                    .font
+                    .project
+                    .glyph_names()
+                    .filter_map(|name| {
+                        let view = self.font.project.document_layer(name, &layer)?;
+                        let left = view.metrics_formula(true).ok().flatten();
+                        let right = view.metrics_formula(false).ok().flatten();
+                        (left.is_some() || right.is_some()).then(|| (name.to_owned(), left, right))
                     })
                     .collect();
-                for (index, left, right) in keyed {
-                    let resolve = |master: &Master,
-                                   formula: &MetricsFormula,
-                                   want_left: bool|
-                     -> Option<f64> {
-                        match formula {
-                            MetricsFormula::Constant(value) => Some(*value),
-                            MetricsFormula::Reference { glyph, mirror, op } => {
-                                let reference = master.name_map.get(glyph).copied()?;
-                                let ink = master.ink_bounds(reference)?;
-                                let advance = master.glyphs[reference].advance;
-                                let mut value = if want_left != *mirror {
-                                    ink.x0
-                                } else {
-                                    advance - ink.x1
-                                };
-                                if let Some((operator, amount)) = op {
-                                    value = match operator {
-                                        '+' => value + amount,
-                                        '-' => value - amount,
-                                        _ => value * amount,
-                                    };
+                for (name, left, right) in keyed {
+                    let address = GlyphLayerAddress {
+                        glyph: name.clone(),
+                        layer: layer.clone(),
+                    };
+                    if let Some(formula) = left
+                        && let Some(target) = resolve(&self.font.project, &layer, &formula, true)
+                        && let Ok(path) = self.font.project.document_layer_path(&address)
+                    {
+                        let ink = path.bounding_box();
+                        let delta = (target - ink.x0).round();
+                        if delta != 0.0
+                            && let Ok(mut transaction) =
+                                self.font.project.begin_document_layer_transaction(&address)
+                        {
+                            let components = transaction
+                                .draft()
+                                .view()
+                                .components()
+                                .map(|component| (component.id(), component.transform()))
+                                .collect::<Vec<_>>();
+                            let edited = (|| {
+                                let draft = transaction.draft_mut();
+                                let mut changed = draft.transform_points(
+                                    &[],
+                                    kurbo::Affine::translate((delta, 0.0)),
+                                )?;
+                                for (id, transform) in components {
+                                    changed |= draft.set_component_transform(
+                                        id,
+                                        kurbo::Affine::translate((delta, 0.0)) * transform,
+                                    )?;
                                 }
-                                Some(value)
+                                Ok::<_, runebender::document::DocumentEditError>(changed)
+                            })();
+                            if edited == Ok(true)
+                                && matches!(
+                                    self.font
+                                        .project
+                                        .commit_document_layer_transaction(transaction),
+                                    Ok(runebender::document::project::DocumentEditOutcome::Changed {
+                                        ..
+                                    })
+                                )
+                            {
+                                moved = true;
+                                adjusted += 1;
                             }
                         }
-                    };
-                    if let Some(formula) = left.as_deref().and_then(parse_metrics_key)
-                        && let (Some(target), Some(ink)) =
-                            (resolve(master, &formula, true), master.ink_bounds(index))
-                    {
-                        let delta = (target - ink.x0).round();
-                        if delta != 0.0 {
-                            master.shift_ink(index, delta);
-                            moved = true;
-                            adjusted += 1;
-                        }
                     }
-                    if let Some(formula) = right.as_deref().and_then(parse_metrics_key)
-                        && let (Some(target), Some(ink)) =
-                            (resolve(master, &formula, false), master.ink_bounds(index))
+                    if let Some(formula) = right
+                        && let Some(target) = resolve(&self.font.project, &layer, &formula, false)
+                        && let Ok(path) = self.font.project.document_layer_path(&address)
+                        && let Some(advance) = self
+                            .font
+                            .project
+                            .document_layer(&name, &layer)
+                            .map(|view| view.width())
                     {
-                        let advance = master.glyphs[index].advance;
-                        let wanted = (ink.x1 + target).round();
-                        if (advance - wanted).abs() >= 1.0 {
-                            master.set_advance(index, wanted);
+                        let wanted = (path.bounding_box().x1 + target).round();
+                        if (advance - wanted).abs() >= 1.0
+                            && let Ok(mut transaction) =
+                                self.font.project.begin_document_layer_transaction(&address)
+                            && transaction.draft_mut().set_width(wanted) == Ok(true)
+                            && matches!(
+                                self.font
+                                    .project
+                                    .commit_document_layer_transaction(transaction),
+                                Ok(
+                                    runebender::document::project::DocumentEditOutcome::Changed { .. }
+                                )
+                            )
+                        {
                             moved = true;
                             adjusted += 1;
                         }
@@ -1943,6 +2010,8 @@ mod tests {
 
     #[test]
     fn update_metrics_applies_reference_keys() {
+        use kurbo::Shape as _;
+
         let path = std::env::temp_dir().join(format!(
             "runebender-xilem-update-metrics-{}-{}.ufo",
             std::process::id(),
@@ -1956,6 +2025,7 @@ mod tests {
             .insert_glyph(rectangle("n", 50.0, 450.0));
         let mut h = rectangle("h", 0.0, 400.0);
         runebender::formats::metrics_keys::write_metrics_key(&mut h, true, "=n+10");
+        runebender::formats::metrics_keys::write_metrics_key(&mut h, false, "=n");
         font.default_layer_mut().insert_glyph(h);
         font.save(&path).expect("the fixture saves");
 
@@ -1973,7 +2043,84 @@ mod tests {
         workspace.command_update_metrics();
         let h = workspace.font.index_of("h").expect("h remains present");
         assert_eq!(workspace.font.master().ink_bounds(h).unwrap().x0, 60.0);
+        assert_eq!(workspace.font.font().get_glyph("h").unwrap().width, 510.0);
+        assert_eq!(workspace.font.master().undo_depth(h), 0);
+        let address = workspace.font.active_layer_address("h").unwrap();
+        assert_eq!(
+            workspace.font.project.document_layer_history_depth(
+                &address,
+                runebender::document::history::HistoryDirection::Undo,
+            ),
+            2
+        );
+        workspace
+            .font
+            .project
+            .replay_document_layer_history(
+                &address,
+                runebender::document::history::HistoryDirection::Undo,
+            )
+            .unwrap();
+        assert_eq!(
+            workspace
+                .font
+                .project
+                .document_layer("h", &address.layer)
+                .unwrap()
+                .width(),
+            500.0
+        );
+        workspace
+            .font
+            .project
+            .replay_document_layer_history(
+                &address,
+                runebender::document::history::HistoryDirection::Undo,
+            )
+            .unwrap();
+        assert_eq!(
+            workspace
+                .font
+                .project
+                .document_layer_path(&address)
+                .unwrap()
+                .bounding_box()
+                .x0,
+            0.0
+        );
+        for _ in 0..2 {
+            workspace
+                .font
+                .project
+                .replay_document_layer_history(
+                    &address,
+                    runebender::document::history::HistoryDirection::Redo,
+                )
+                .unwrap();
+        }
         assert!(workspace.modified);
+        assert!(workspace.save());
+        let reopened = Workspace::open(&path).expect("the saved fixture reopens");
+        let address = reopened.font.active_layer_address("h").unwrap();
+        assert_eq!(
+            reopened
+                .font
+                .project
+                .document_layer("h", &address.layer)
+                .unwrap()
+                .width(),
+            510.0
+        );
+        assert_eq!(
+            reopened
+                .font
+                .project
+                .document_layer_path(&address)
+                .unwrap()
+                .bounding_box()
+                .x0,
+            60.0
+        );
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
