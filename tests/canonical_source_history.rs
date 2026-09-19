@@ -156,3 +156,23 @@ fn descriptor_replay_keeps_a_pending_layer_transaction_and_rejected_redo() {
     assert_eq!(project.document_revision(), revision.wrapping_add(1));
     assert_eq!(project.document_source(source).unwrap().location(), &target);
 }
+
+#[test]
+fn removed_source_roundtrip_preserves_auxiliary_compatibility_history() {
+    let mut project = fixture();
+    let source = SourceId(1);
+    let default = project.document_source(source).unwrap().default_layer();
+    let auxiliary = project.add_glyph_layer("A", &default, "backup").unwrap();
+    let initial_width = project.glyph_layer("A", &auxiliary).unwrap().width;
+    assert!(project.edit_layer("A", &auxiliary, |glyph| glyph.width = 750.625));
+
+    project.remove_source(source).unwrap();
+    assert!(project.undo_sources(false).unwrap());
+    assert!(project.undo_layer("A", &auxiliary, false));
+    assert_eq!(
+        project.glyph_layer("A", &auxiliary).unwrap().width,
+        initial_width
+    );
+    assert!(project.undo_layer("A", &auxiliary, true));
+    assert_eq!(project.glyph_layer("A", &auxiliary).unwrap().width, 750.625);
+}

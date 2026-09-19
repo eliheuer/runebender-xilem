@@ -90,6 +90,7 @@ impl SourceFrame {
         project: &mut Project,
         expected: &Self,
         retired_histories: &mut BTreeMap<SourceId, EditHistory>,
+        retired_layer_histories: &mut BTreeMap<LayerId, EditHistory>,
     ) -> Result<(), String> {
         if !expected.matches(project) {
             return Err("source structure changed after history capture".into());
@@ -102,6 +103,7 @@ impl SourceFrame {
         if !canonical_changed {
             project.variable.revision = project.variable.revision.wrapping_add(1);
         }
+        reconcile_compatibility_layer_histories(&mut project.variable, retired_layer_histories);
         let previous_masters = std::mem::take(&mut project.masters);
         project.master_names = self
             .sources
@@ -149,6 +151,53 @@ impl SourceFrame {
 pub(super) struct SourceHistory {
     transactions: TransactionHistory<SourceFrame>,
     retired_histories: BTreeMap<SourceId, EditHistory>,
+    retired_layer_histories: BTreeMap<LayerId, EditHistory>,
+}
+
+fn park_compatibility_layer_histories(
+    variable: &mut VariableData,
+    source: SourceId,
+    retired: &mut BTreeMap<LayerId, EditHistory>,
+) {
+    let layers = variable
+        .histories
+        .keys()
+        .filter(|layer| layer.source == source)
+        .cloned()
+        .collect::<Vec<_>>();
+    for layer in layers {
+        let history = variable
+            .histories
+            .remove(&layer)
+            .expect("the collected compatibility layer history exists");
+        retired.insert(layer, history);
+    }
+}
+
+fn reconcile_compatibility_layer_histories(
+    variable: &mut VariableData,
+    retired: &mut BTreeMap<LayerId, EditHistory>,
+) {
+    let removed_sources = variable
+        .histories
+        .keys()
+        .filter(|layer| !variable.source_ids.contains(&layer.source))
+        .map(|layer| layer.source)
+        .collect::<Vec<_>>();
+    for source in removed_sources {
+        park_compatibility_layer_histories(variable, source, retired);
+    }
+    let restored_layers = retired
+        .keys()
+        .filter(|layer| variable.source_ids.contains(&layer.source))
+        .cloned()
+        .collect::<Vec<_>>();
+    for layer in restored_layers {
+        let history = retired
+            .remove(&layer)
+            .expect("the collected retired layer history exists");
+        variable.histories.entry(layer).or_insert(history);
+    }
 }
 
 impl Project {
@@ -245,9 +294,15 @@ impl Project {
         let SourceHistory {
             transactions,
             retired_histories,
+            retired_layer_histories,
         } = &mut history;
         let replayed = transactions.replay(&current, direction, |expected, replacement| {
-            replacement.restore_if_current(self, expected, retired_histories)
+            replacement.restore_if_current(
+                self,
+                expected,
+                retired_histories,
+                retired_layer_histories,
+            )
         });
         self.source_history = history;
         match replayed {
@@ -472,6 +527,11 @@ impl Project {
         self.source_history
             .retired_histories
             .insert(id, std::mem::take(&mut removed.history));
+        park_compatibility_layer_histories(
+            &mut self.variable,
+            id,
+            &mut self.source_history.retired_layer_histories,
+        );
         self.master_names.remove(index);
         self.master_locations.remove(index);
         self.variable.source_ids.remove(index);
