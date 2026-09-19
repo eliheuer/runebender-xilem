@@ -11,6 +11,10 @@
 //! and precision outside Babelfont's schema; saving materializes its geometry
 //! through the preserving adapter rather than its lossy UFO converter.
 
+mod glyph_transactions;
+
+pub use glyph_transactions::GlyphId;
+
 use std::collections::{BTreeMap, HashSet};
 use std::ops::{Deref, DerefMut};
 
@@ -160,6 +164,7 @@ pub struct GlyphSource {
 /// One glyph across all sources, including sparse and auxiliary layers.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct VariableGlyph {
+    id: GlyphId,
     layers: BTreeMap<LayerId, super::babelfont::LayerPreservation>,
     source_metadata: BTreeMap<SourceId, super::model::glyph_metadata::CanonicalSourceGlyphMetadata>,
 }

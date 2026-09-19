@@ -25,6 +25,9 @@ use crate::document::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
 use crate::formats::lib_keys::{hoi_quad_at, read_hoi_intermediates};
 
+#[path = "project/glyph_transactions.rs"]
+mod glyph_transactions;
+pub use glyph_transactions::{CanonicalGlyphTransaction, GlyphTransactionError};
 #[path = "sources.rs"]
 mod sources;
 

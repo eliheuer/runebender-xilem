@@ -9,6 +9,7 @@
 //! Babelfont value is unchanged. Compilation is the only quantizing boundary.
 
 mod curve_conversion;
+pub(super) mod glyph_transactions;
 mod handle_cleanup;
 
 use std::collections::{HashMap, HashSet};
