@@ -56,6 +56,11 @@ impl QuadraticPath {
         &self.points
     }
 
+    /// Whether the last segment connects back to the first point.
+    pub fn is_closed(&self) -> bool {
+        self.closed
+    }
+
     /// Convert this quadratic path to a kurbo `BezPath` for rendering.
     pub fn to_bezpath(&self) -> BezPath {
         let mut path = BezPath::new();

@@ -91,6 +91,11 @@ impl HyperPath {
         &self.points
     }
 
+    /// Whether the last segment connects back to the first point.
+    pub fn is_closed(&self) -> bool {
+        self.closed
+    }
+
     /// Call after mutating points to rebuild the bezier cache.
     pub fn after_change(&mut self) {
         self.rebuild_bezier();

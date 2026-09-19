@@ -649,6 +649,47 @@ fn canonical_measurement_inputs_match_legacy_geometry() {
 }
 
 #[test]
+fn canonical_measurements_do_not_close_open_contours() {
+    let scratch = Scratch::new();
+    let contour = |first_type| {
+        Contour::new(
+            vec![
+                ContourPoint::new(0.0, 0.0, first_type, false, None, None),
+                ContourPoint::new(100.0, 0.0, PointType::Line, false, None, None),
+                ContourPoint::new(100.0, 100.0, PointType::Line, false, None, None),
+            ],
+            None,
+        )
+    };
+    let mut open = Glyph::new("open");
+    open.contours.push(contour(PointType::Move));
+    let mut closed = Glyph::new("closed");
+    closed.contours.push(contour(PointType::Line));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(open);
+    font.default_layer_mut().insert_glyph(closed);
+    let project = Project::from_source(Master::from_font(font, scratch.0.join("Measure.ufo")));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let segment_lengths = |name| {
+        runebender::analysis::measure::ordinary_layer_measurements(
+            project.document_layer(name, &layer_id).unwrap(),
+        )
+        .into_iter()
+        .filter(|measurement| {
+            measurement.kind == runebender::analysis::measure::MeasureKind::Segment
+        })
+        .map(|measurement| measurement.length)
+        .collect::<Vec<_>>()
+    };
+
+    assert_eq!(segment_lengths("open"), [100, 100]);
+    assert_eq!(segment_lengths("closed"), [100, 141, 100]);
+}
+
+#[test]
 fn canonical_point_roles_keep_contour_closure_coherent() {
     let scratch = Scratch::new();
     let point = |x, y, typ| ContourPoint::new(x, y, typ, false, None, None);

@@ -59,6 +59,11 @@ struct MeasurementPoint {
     on_curve: bool,
 }
 
+struct MeasurementContour {
+    points: Vec<MeasurementPoint>,
+    closed: bool,
+}
+
 /// Ignore spans, segments, and handles shorter than this: noise, coincident
 /// points, or near-tangent scan crossings.
 const MIN_LEN: f64 = 8.0;
@@ -88,17 +93,19 @@ struct Edge {
 /// counters, bars, including split walls like the H's. The center scan line
 /// is kept only for curve-bounded gaps, like the `o`.
 pub fn glyph_measurements(paths: &[Path]) -> Vec<Measurement> {
-    let contours: Vec<Vec<_>> = paths
+    let contours: Vec<_> = paths
         .iter()
-        .map(|path| {
-            path.points()
+        .map(|path| MeasurementContour {
+            points: path
+                .points()
                 .as_slice()
                 .iter()
                 .map(|point| MeasurementPoint {
                     point: point.point,
                     on_curve: point.is_on_curve(),
                 })
-                .collect()
+                .collect(),
+            closed: path.is_closed(),
         })
         .collect();
     let mut bez = BezPath::new();
@@ -110,12 +117,12 @@ pub fn glyph_measurements(paths: &[Path]) -> Vec<Measurement> {
 
 /// Compute live measurements directly from one canonical ordinary layer.
 pub fn ordinary_layer_measurements(layer: LayerView<'_>) -> Vec<Measurement> {
-    let contours: Vec<Vec<_>> = layer.contours().map(canonical_measurement_points).collect();
+    let contours: Vec<_> = layer.contours().map(canonical_measurement_points).collect();
     let bez = glyph_paths::ordinary_layer_contours_to_bezpath(layer);
     measurements_from_points(&contours, &bez)
 }
 
-fn canonical_measurement_points(contour: ContourView<'_>) -> Vec<MeasurementPoint> {
+fn canonical_measurement_points(contour: ContourView<'_>) -> MeasurementContour {
     let closed = contour.is_closed();
     let mut points: Vec<_> = contour
         .points()
@@ -128,34 +135,34 @@ fn canonical_measurement_points(contour: ContourView<'_>) -> Vec<MeasurementPoin
     if closed && !points.is_empty() {
         points.rotate_left(1);
     }
-    points
+    MeasurementContour { points, closed }
 }
 
-fn measurements_from_points(contours: &[Vec<MeasurementPoint>], bez: &BezPath) -> Vec<Measurement> {
+fn measurements_from_points(contours: &[MeasurementContour], bez: &BezPath) -> Vec<Measurement> {
     let mut out = Vec::new();
     let mut verticals: Vec<Edge> = Vec::new();
     let mut horizontals: Vec<Edge> = Vec::new();
 
-    for pts in contours {
+    for contour in contours {
+        let pts = &contour.points;
         let n = pts.len();
         if n < 2 {
             continue;
         }
         for i in 0..n {
             let cur = &pts[i];
-            let nxt = &pts[(i + 1) % n];
+            let next = (i + 1 < n)
+                .then_some(i + 1)
+                .or_else(|| contour.closed.then_some(0));
 
             // Handles: an off-curve point paired with its adjacent on-curve
             // anchor. Each off-curve has exactly one on-curve neighbor.
             if !cur.on_curve {
-                let prev = &pts[(i + n - 1) % n];
-                let anchor = if prev.on_curve {
-                    Some(prev)
-                } else if nxt.on_curve {
-                    Some(nxt)
-                } else {
-                    None
-                };
+                let previous = i.checked_sub(1).or_else(|| contour.closed.then_some(n - 1));
+                let anchor = previous
+                    .map(|index| &pts[index])
+                    .filter(|point| point.on_curve)
+                    .or_else(|| next.map(|index| &pts[index]).filter(|point| point.on_curve));
                 if let Some(anchor) = anchor {
                     let len = (cur.point - anchor.point).hypot();
                     if len >= MIN_LEN {
@@ -171,6 +178,10 @@ fn measurements_from_points(contours: &[Vec<MeasurementPoint>], bez: &BezPath) -
 
             // Straight segment: its own length, plus an axis-aligned edge for
             // the facing-span pass.
+            let Some(next) = next else {
+                continue;
+            };
+            let nxt = &pts[next];
             if cur.on_curve && nxt.on_curve {
                 let (a, b) = (cur.point, nxt.point);
                 let seg_len = (b - a).hypot();
@@ -454,7 +465,8 @@ pub fn side_bearings(paths: &[Path], advance: f64) -> Option<SideBearings> {
 pub fn ordinary_layer_side_bearings(layer: LayerView<'_>) -> Option<SideBearings> {
     let points: Vec<_> = layer
         .contours()
-        .flat_map(canonical_measurement_points)
+        .map(canonical_measurement_points)
+        .flat_map(|contour| contour.points)
         .filter(|point| point.on_curve)
         .map(|point| point.point)
         .collect();

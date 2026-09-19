@@ -98,6 +98,15 @@ impl Path {
         }
     }
 
+    /// Whether the last segment connects back to the first point.
+    pub fn is_closed(&self) -> bool {
+        match self {
+            Self::Cubic(cubic) => cubic.is_closed(),
+            Self::Quadratic(quadratic) => quadratic.is_closed(),
+            Self::Hyper(hyper) => hyper.is_closed(),
+        }
+    }
+
     /// Converts back to the `workspace::Contour` form used for saving and conversion.
     pub fn to_contour(&self) -> workspace::Contour {
         match self {

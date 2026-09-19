@@ -640,3 +640,34 @@ git diff --check
 The focused path-and-analysis comparison, all six curve-analysis unit tests and all 23 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Open-contour measurement correction
+
+Evidence commit: `Stop measurements at open contour endpoints` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Stop measurements at open contour endpoints$' -1`.
+Affected paths: `src/analysis/measure.rs`, `src/outline/path/`, `tests/variable_project.rs` and this log.
+
+Review found that the shared measurement algorithm treated every point list as cyclic and therefore measured an imaginary closing segment on open contours.
+Each shared measurement input now carries its explicit closure state.
+Segment and handle-neighbor traversal wraps only for closed contours, while open endpoints stop without synthesizing geometry.
+The reusable path types expose their closure state so both canonical and compatibility measurement entry points use the same corrected behavior.
+
+The regression test requires exactly two 100-unit segments for an open three-point path and retains the two edges plus 141-unit closing diagonal for the equivalent closed path.
+The existing canonical-versus-compatibility comparison continues to pass.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_measurements_do_not_close_open_contours -- --exact --test-threads=1
+cargo test --locked --test variable_project canonical_measurement_inputs_match_legacy_geometry -- --exact --test-threads=1
+cargo test --locked --lib outline::path -- --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+Both focused measurement tests, all 13 path unit tests and all 24 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
