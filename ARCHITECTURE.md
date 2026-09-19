@@ -124,7 +124,7 @@ Direct contour reversal reorders canonical points and transfers incoming segment
 Changing a closed contour's start rotates canonical nodes and preservation records together, retaining point and contour identities.
 Opening a contour removes the chosen endpoint's incoming controls, rotates the surviving on-curve point to a canonical move point and retains the surviving objects; closing changes the existing move to a line.
 Contour copy carries canonical geometry and source metadata without a UFO projection; paste and duplicate assign fresh document identities plus fresh UFO identifiers for copied objects that carry identifiers or libraries.
-Boolean and overlap operations consume canonical paths and replace the affected topology with fresh contour and point identities, empty source metadata and restored smooth flags at retained on-curve positions; components retain their identities and relative order.
+Boolean and overlap operations consume canonical paths and replace the affected topology with fresh contour and point identities, empty source metadata and restored smooth flags at retained on-curve positions; a successful empty result removes the contour block while components retain their identities and relative order.
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
 Source-wide feature text has canonical ownership in `VariableData` and changes through `edit_document_source_metadata`; UFO templates no longer retain a second feature-text value.
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.

@@ -1501,4 +1501,37 @@ The focused boolean/overlap regression and all 44 variable-project integration t
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+### Empty boolean-result correction
+
+Evidence commit: `Apply empty canonical boolean results` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Apply empty canonical boolean results$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Independent review found that the shared contour-replacement helper treated an empty path list as failure even when Linesweeper had completed successfully.
+Disjoint intersection and identical-shape difference or XOR therefore kept both original contours and reported an unchanged edit.
+
+Successful replacement now distinguishes empty topology from invalid input or engine failure.
+It removes the existing contour block and preservation records, commits the geometry change and retains component and anchor identities plus exact metadata.
+This contract also applies to overlap removal and future callers of the shared replacement helper.
+
+The repository regression covers intersection of disjoint rectangles plus difference and XOR of identical rectangles.
+Each case requires a changed revision, zero contours, exact components and anchors and a successful save-reopen cycle.
+All three exact independent-review reproducers pass.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_boolean_successfully_clears_empty_results -- --exact --test-threads=1
+/private/tmp/runebender-migration-review.porJgX/empty_boolean_review_fixed --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused empty-result regression, all three independent-review tests and all 45 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
 The next M04 substep moves the knife operation onto canonical geometry and replacement policy.

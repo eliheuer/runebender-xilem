@@ -3690,6 +3690,104 @@ fn canonical_boolean_and_overlap_replacement_clear_old_topology_metadata() {
 }
 
 #[test]
+fn canonical_boolean_successfully_clears_empty_results() {
+    let scratch = Scratch::new();
+    for (case, operation, right_x) in [
+        ("intersection", linesweeper::BinaryOp::Intersection, 200.0),
+        ("difference", linesweeper::BinaryOp::Difference, 0.0),
+        ("xor", linesweeper::BinaryOp::Xor, 0.0),
+    ] {
+        let rectangle = |x: f64| {
+            Contour::new(
+                vec![
+                    ContourPoint::new(x, 0.0, PointType::Line, false, None, None),
+                    ContourPoint::new(x + 100.0, 0.0, PointType::Line, false, None, None),
+                    ContourPoint::new(x + 100.0, 100.0, PointType::Line, false, None, None),
+                    ContourPoint::new(x, 100.0, PointType::Line, false, None, None),
+                ],
+                None,
+            )
+        };
+        let mut glyph = Glyph::new("empty-boolean");
+        glyph.contours = vec![rectangle(0.0), rectangle(right_x)];
+        let mut component = Component::new(
+            Name::new("base").unwrap(),
+            norad::AffineTransform {
+                x_offset: 12.25,
+                y_offset: 34.75,
+                ..Default::default()
+            },
+            Some(norad::Identifier::new("empty-component").unwrap()),
+        );
+        component.replace_lib(object_lib("empty-component"));
+        glyph.components.push(component.clone());
+        let mut anchor = Anchor::new(
+            50.5,
+            150.25,
+            Some(Name::new("top").unwrap()),
+            None,
+            Some(norad::Identifier::new("empty-anchor").unwrap()),
+        );
+        anchor.replace_lib(object_lib("empty-anchor"));
+        glyph.anchors.push(anchor.clone());
+        let mut base = Glyph::new("base");
+        base.contours.push(rectangle(0.0));
+        let mut font = Font::new();
+        font.default_layer_mut().insert_glyph(base);
+        font.default_layer_mut().insert_glyph(glyph);
+        let source_path = scratch.0.join(format!("EmptyBoolean-{case}.ufo"));
+        font.save(&source_path).unwrap();
+        let mut project = Project::load(&source_path).unwrap();
+        let layer_id = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        let layer = project.document_layer("empty-boolean", &layer_id).unwrap();
+        let component_id = layer.components().next().unwrap().id();
+        let anchor_id = layer.anchors().next().unwrap().id();
+        let revision = project.document_revision();
+
+        let outcome = project
+            .edit_document_layer("empty-boolean", &layer_id, |draft| {
+                assert!(draft.boolean_contours(operation)?);
+                Ok(())
+            })
+            .unwrap();
+        assert!(
+            matches!(
+                outcome,
+                DocumentEditOutcome::Changed {
+                    revision: next,
+                    ..
+                } if next == revision + 1
+            ),
+            "{case} did not commit its empty result"
+        );
+        let layer = project.document_layer("empty-boolean", &layer_id).unwrap();
+        assert_eq!(layer.contours().count(), 0, "{case} retained contours");
+        assert_eq!(layer.components().next().unwrap().id(), component_id);
+        assert_eq!(layer.anchors().next().unwrap().id(), anchor_id);
+        let projected = project.glyph_layer("empty-boolean", &layer_id).unwrap();
+        assert!(projected.contours.is_empty());
+        assert_eq!(projected.components, [component.clone()]);
+        assert_eq!(projected.anchors, [anchor.clone()]);
+
+        project.save().unwrap();
+        let reloaded = Project::load(&source_path).unwrap();
+        let reloaded_layer = reloaded
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        assert_eq!(
+            reloaded
+                .glyph_layer("empty-boolean", &reloaded_layer)
+                .unwrap(),
+            projected
+        );
+    }
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);

@@ -1035,9 +1035,7 @@ impl LayerEditDraft {
         &mut self,
         paths: &[kurbo::BezPath],
     ) -> Result<bool, DocumentEditError> {
-        if paths.is_empty() {
-            return Ok(false);
-        }
+        let had_contours = self.layer.paths().next().is_some();
         let smooth_at: HashMap<_, _> = self
             .layer
             .paths()
@@ -1104,9 +1102,7 @@ impl LayerEditDraft {
                 points,
             });
         }
-        if replacements.is_empty() {
-            return Ok(false);
-        }
+        let changed = had_contours || !replacements.is_empty();
         let insert_at = self
             .layer
             .shapes
@@ -1124,7 +1120,7 @@ impl LayerEditDraft {
         shapes.splice(insert_at..insert_at, replacements);
         self.layer.shapes = shapes;
         self.preserved.contours = preserved;
-        Ok(true)
+        Ok(changed)
     }
 
     /// Set the exact horizontal advance and refresh Babelfont's derived width.
