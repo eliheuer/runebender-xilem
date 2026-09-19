@@ -899,6 +899,24 @@ mod tests {
     }
 
     #[test]
+    fn project_plan_rejects_invalid_typed_recipe_metadata() {
+        let mut font = latin();
+        font.default_layer_mut()
+            .get_glyph_mut("Aacute")
+            .unwrap()
+            .lib
+            .insert(LIB_KEY.into(), plist::Value::Integer(7.into()));
+        let project = Project::from_source(Master::from_font(
+            font,
+            PathBuf::from("InvalidCanonicalCompose.ufo"),
+        ));
+        assert_eq!(
+            plan_project(&project, SourceId(0), Some(&["Aacute".into()])),
+            Err(DocumentEditError::InvalidLayerMetadata)
+        );
+    }
+
+    #[test]
     fn a_positional_form_takes_the_stem_recipe_with_its_suffix() {
         let mut font = Font::new();
         let layer = font.default_layer_mut();
