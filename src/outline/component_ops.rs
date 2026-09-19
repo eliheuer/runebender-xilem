@@ -8,6 +8,62 @@ use norad::{Contour, Font, Glyph};
 
 use crate::outline::glyph_paths;
 
+/// Canonical geometry resolved for one stable top-level component.
+#[derive(Clone, Debug)]
+pub struct ResolvedDocumentComponent {
+    /// Stable identity of the top-level component.
+    pub id: crate::document::ComponentId,
+    /// Exact recursively resolved path used for hit testing and selection feedback.
+    pub path: kurbo::BezPath,
+    /// Recursively resolved and rounded contour copies used by canonical decomposition.
+    pub contours: Vec<crate::document::CopiedContour>,
+}
+
+fn collect_document_component_contours<'a>(
+    layer: crate::document::LayerView<'a>,
+    transform: kurbo::Affine,
+    resolve: &mut impl FnMut(&str) -> Option<crate::document::LayerView<'a>>,
+    stack: &mut Vec<String>,
+    output: &mut Vec<crate::document::CopiedContour>,
+) -> Result<(), glyph_paths::ComponentResolveError> {
+    if stack.len() > 64 {
+        return Err(glyph_paths::ComponentResolveError::TooDeep);
+    }
+    for shape in layer.shapes() {
+        match shape {
+            crate::document::LayerShapeView::Contour(contour) => {
+                output.push(
+                    contour
+                        .copied()
+                        .transformed_rounded(transform)
+                        .ok_or(glyph_paths::ComponentResolveError::NonFinite)?,
+                );
+            }
+            crate::document::LayerShapeView::Component(component) => {
+                let name = component.reference();
+                if let Some(start) = stack.iter().position(|entry| entry == name) {
+                    let mut cycle = stack[start..].to_vec();
+                    cycle.push(name.to_owned());
+                    return Err(glyph_paths::ComponentResolveError::Cycle(cycle));
+                }
+                let base = resolve(name)
+                    .ok_or_else(|| glyph_paths::ComponentResolveError::Missing(name.to_owned()))?;
+                stack.push(name.to_owned());
+                let result = collect_document_component_contours(
+                    base,
+                    transform * component.transform(),
+                    resolve,
+                    stack,
+                    output,
+                );
+                stack.pop();
+                result?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Resolve every canonical component into transformed contour copies.
 ///
 /// Nested components use the caller's layer resolver. Geometry is rounded to integer font units,
@@ -17,52 +73,6 @@ pub fn resolved_document_component_contours<'a>(
     layer: crate::document::LayerView<'a>,
     mut resolve: impl FnMut(&str) -> Option<crate::document::LayerView<'a>>,
 ) -> Result<Vec<crate::document::CopiedContour>, glyph_paths::ComponentResolveError> {
-    fn collect<'a>(
-        layer: crate::document::LayerView<'a>,
-        transform: kurbo::Affine,
-        resolve: &mut impl FnMut(&str) -> Option<crate::document::LayerView<'a>>,
-        stack: &mut Vec<String>,
-        output: &mut Vec<crate::document::CopiedContour>,
-    ) -> Result<(), glyph_paths::ComponentResolveError> {
-        if stack.len() > 64 {
-            return Err(glyph_paths::ComponentResolveError::TooDeep);
-        }
-        for shape in layer.shapes() {
-            match shape {
-                crate::document::LayerShapeView::Contour(contour) => {
-                    output.push(
-                        contour
-                            .copied()
-                            .transformed_rounded(transform)
-                            .ok_or(glyph_paths::ComponentResolveError::NonFinite)?,
-                    );
-                }
-                crate::document::LayerShapeView::Component(component) => {
-                    let name = component.reference();
-                    if let Some(start) = stack.iter().position(|entry| entry == name) {
-                        let mut cycle = stack[start..].to_vec();
-                        cycle.push(name.to_owned());
-                        return Err(glyph_paths::ComponentResolveError::Cycle(cycle));
-                    }
-                    let base = resolve(name).ok_or_else(|| {
-                        glyph_paths::ComponentResolveError::Missing(name.to_owned())
-                    })?;
-                    stack.push(name.to_owned());
-                    let result = collect(
-                        base,
-                        transform * component.transform(),
-                        resolve,
-                        stack,
-                        output,
-                    );
-                    stack.pop();
-                    result?;
-                }
-            }
-        }
-        Ok(())
-    }
-
     let mut output = Vec::new();
     let mut stack = vec![layer.glyph_name().to_owned()];
     for component in layer.components() {
@@ -75,7 +85,7 @@ pub fn resolved_document_component_contours<'a>(
         let base = resolve(name)
             .ok_or_else(|| glyph_paths::ComponentResolveError::Missing(name.to_owned()))?;
         stack.push(name.to_owned());
-        let result = collect(
+        let result = collect_document_component_contours(
             base,
             component.transform(),
             &mut resolve,
@@ -84,6 +94,42 @@ pub fn resolved_document_component_contours<'a>(
         );
         stack.pop();
         result?;
+    }
+    Ok(output)
+}
+
+/// Resolve each top-level canonical component while retaining its stable identity.
+///
+/// The exact path supports hit testing and selection feedback. The contour copies use the existing
+/// integer-rounded decomposition contract and retain canonical source metadata.
+pub fn resolved_document_components<'a>(
+    layer: crate::document::LayerView<'a>,
+    mut resolve: impl FnMut(&str) -> Option<crate::document::LayerView<'a>>,
+) -> Result<Vec<ResolvedDocumentComponent>, glyph_paths::ComponentResolveError> {
+    let mut output = Vec::new();
+    for component in layer.components() {
+        let path = glyph_paths::ordinary_component_to_bezpath(
+            layer.glyph_name(),
+            component,
+            &mut resolve,
+        )?;
+        let name = component.reference();
+        let base = resolve(name)
+            .ok_or_else(|| glyph_paths::ComponentResolveError::Missing(name.to_owned()))?;
+        let mut contours = Vec::new();
+        let mut stack = vec![layer.glyph_name().to_owned(), name.to_owned()];
+        collect_document_component_contours(
+            base,
+            component.transform(),
+            &mut resolve,
+            &mut stack,
+            &mut contours,
+        )?;
+        output.push(ResolvedDocumentComponent {
+            id: component.id(),
+            path,
+            contours,
+        });
     }
     Ok(output)
 }

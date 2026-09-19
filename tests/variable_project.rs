@@ -712,6 +712,30 @@ fn canonical_component_resolution_matches_legacy_and_reports_broken_graphs() {
     )
     .unwrap();
     assert_eq!(resolved, expected, "canonical component outline changed");
+    let layer = project.document_layer("C", &layer_id).unwrap();
+    let component_ids: Vec<_> = layer.components().map(|component| component.id()).collect();
+    let resolved_components =
+        runebender::outline::component_ops::resolved_document_components(layer, |name| {
+            project.document_layer(name, &layer_id)
+        })
+        .unwrap();
+    assert_eq!(
+        resolved_components
+            .iter()
+            .map(|component| component.id)
+            .collect::<Vec<_>>(),
+        component_ids,
+        "top-level component identity was lost during resolution"
+    );
+    let mut component_path = kurbo::BezPath::new();
+    for component in &resolved_components {
+        component_path.extend(component.path.elements().iter().copied());
+        assert!(
+            !component.contours.is_empty(),
+            "every fixture component should resolve for decomposition"
+        );
+    }
+    assert_eq!(component_path, resolved);
 
     let scratch = Scratch::new();
     let component = |name: &str| {

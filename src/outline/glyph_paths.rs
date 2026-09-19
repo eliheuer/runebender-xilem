@@ -125,6 +125,29 @@ pub fn ordinary_layer_to_bezpath<'a>(
     Ok(path)
 }
 
+/// Resolve one top-level canonical component into its exact rendered path.
+///
+/// `root_name` keeps cycles through the containing glyph visible even though the returned path is
+/// scoped to one component.
+pub fn ordinary_component_to_bezpath<'a>(
+    root_name: &str,
+    component: crate::document::ComponentView<'a>,
+    mut resolve: impl FnMut(&str) -> Option<LayerView<'a>>,
+) -> Result<BezPath, ComponentResolveError> {
+    let name = component.reference();
+    if name == root_name {
+        return Err(ComponentResolveError::Cycle(vec![
+            root_name.to_owned(),
+            root_name.to_owned(),
+        ]));
+    }
+    let base = resolve(name).ok_or_else(|| ComponentResolveError::Missing(name.to_owned()))?;
+    let mut path = BezPath::new();
+    let mut stack = vec![root_name.to_owned(), name.to_owned()];
+    append_document_shapes(&mut path, base, &mut resolve, &mut stack)?;
+    Ok(component.transform() * path)
+}
+
 /// One contour as a `BezPath`.
 pub fn contour_to_bezpath(contour: &Contour) -> BezPath {
     let mut path = BezPath::new();
