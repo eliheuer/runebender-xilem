@@ -20,8 +20,7 @@ use std::sync::Arc;
 
 use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};
 use runebender::document::project::CanonicalLayerTransaction;
-use runebender::document::{AnchorId, ComponentId, LayerPointType, LayerView, PointId};
-use runebender::outline::glyph_ops;
+use runebender::document::{AnchorId, ComponentId, ContourId, LayerPointType, LayerView, PointId};
 use runebender::outline::glyph_paths;
 use runebender::outline::glyph_paths::round_units;
 use runebender::ui::editing::viewport::ViewPort;
@@ -113,11 +112,13 @@ pub(crate) struct Session {
     pub viewport: ViewPort,
     pub fitted: bool,
     in_drag: bool,
-    /// The contour the pen is currently extending, if any.
+    /// The ordinary contour the pen is currently extending, if any.
     pub active_contour: Option<usize>,
     /// In-progress pen points (on- and off-curve), materialized into
     /// `active_contour` on each change.
     pen: Vec<PenPt>,
+    /// The stable canonical contour the hyperbezier pen is extending.
+    active_hyper_contour: Option<ContourId>,
     /// The currently selected anchor, if any.
     pub selected_anchor: Option<AnchorId>,
     /// The selected top-level component, if any.
@@ -195,6 +196,7 @@ impl Session {
             in_drag: false,
             active_contour: None,
             pen: Vec::new(),
+            active_hyper_contour: None,
             selected_anchor: None,
             selected_component: None,
             last_transform: None,
@@ -249,6 +251,7 @@ impl Session {
             in_drag: false,
             active_contour: None,
             pen: Vec::new(),
+            active_hyper_contour: None,
             selected_anchor: None,
             selected_component: None,
             last_transform: None,
@@ -918,6 +921,10 @@ impl Session {
         self.active_anchor_drag = None;
         self.active_metric_drag = None;
         self.active_metaball_drag = None;
+        self.active_hyper_contour = self.active_hyper_contour.filter(|active| {
+            self.current_layer()
+                .is_some_and(|layer| layer.contours().any(|contour| contour.id() == *active))
+        });
         self.selection = selected_ids;
         self.refresh_metaball_preview();
         self.in_drag = false;
@@ -1061,6 +1068,17 @@ impl Session {
         !self.pen.is_empty()
     }
 
+    pub(crate) fn pen_checkpoint(&self) -> (usize, Option<usize>) {
+        (self.pen.len(), self.active_contour)
+    }
+
+    pub(crate) fn cancel_pen_gesture(&mut self, point_count: usize, active_contour: Option<usize>) {
+        self.pen.truncate(point_count);
+        self.active_contour = active_contour;
+        self.pending_canonical = None;
+        self.pending_canonical_label = None;
+    }
+
     /// Write the pen buffer into `active_contour`, creating it if needed.
     fn pen_sync(&mut self) {
         let mut points = Vec::with_capacity(self.pen.len());
@@ -1185,58 +1203,73 @@ impl Session {
     pub(crate) fn pen_cancel(&mut self) {
         self.active_contour = None;
         self.pen.clear();
+        self.active_hyper_contour = None;
     }
 
     // ---- hyperbezier pen: on-curve points only, curve solved by the spline ----
 
     /// Add a hyperbezier on-curve point (smooth), starting a contour if idle.
     pub(crate) fn hyper_add(&mut self, x: f64, y: f64, corner: bool) {
-        if self.active_contour.is_none() {
-            let mut contour = None;
-            if self.compatibility_edit("start hyperbezier", |glyph| {
-                contour = Some(glyph_ops::start_hyper_contour(glyph, x, y));
-                true
-            }) {
-                self.active_contour = contour;
-                if corner {
-                    // First point corner-ness is applied on the Move via append below.
-                }
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return;
+        };
+        if let Some(contour) = self.active_hyper_contour {
+            if transaction
+                .draft_mut()
+                .append_hyper_point(contour, Point::new(x, y), corner)
+                .is_err()
+            {
+                return;
             }
-        } else if let Some(c) = self.active_contour {
-            let _ = self.compatibility_edit("append hyperbezier", move |glyph| {
-                if c >= glyph.contours.len() {
-                    return false;
-                }
-                glyph_ops::append_hyper_point(glyph, c, x, y, corner);
-                true
-            });
+            self.pending_canonical_label = Some("append hyperbezier");
+        } else {
+            let Ok((contour, _)) = transaction
+                .draft_mut()
+                .start_hyper_contour(Point::new(x, y))
+            else {
+                return;
+            };
+            self.active_hyper_contour = Some(contour);
+            self.pending_canonical_label = Some("start hyperbezier");
         }
+        self.pending_canonical = Some(transaction);
     }
 
     pub(crate) fn hyper_close(&mut self) {
-        if let Some(c) = self.active_contour.take() {
-            let _ = self.compatibility_edit("close hyperbezier", move |glyph| {
-                if c >= glyph.contours.len() {
-                    return false;
-                }
-                glyph_ops::close_hyper_contour(glyph, c);
-                true
-            });
+        let Some(contour) = self.active_hyper_contour else {
+            return;
+        };
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return;
+        };
+        if transaction
+            .draft_mut()
+            .close_hyper_contour(contour)
+            .is_err()
+        {
+            return;
         }
+        self.active_hyper_contour = None;
+        self.pending_canonical = Some(transaction);
+        self.pending_canonical_label = Some("close hyperbezier");
     }
 
     pub(crate) fn first_contour_point(&self) -> Option<Point> {
-        let c = self.active_contour?;
+        let active = self.active_hyper_contour?;
         self.current_layer()?
             .contours()
-            .nth(c)?
+            .find(|contour| contour.id() == active)?
             .points()
             .next()
             .map(|point| point.position())
     }
 
     pub(crate) fn hyper_is_active(&self) -> bool {
-        self.active_contour.is_some() && self.pen.is_empty()
+        self.active_hyper_contour.is_some()
+    }
+
+    pub(crate) fn contour_drawing_is_active(&self) -> bool {
+        self.active_contour.is_some() || self.active_hyper_contour.is_some()
     }
 
     /// Add a closed rectangle contour.

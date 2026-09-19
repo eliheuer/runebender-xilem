@@ -379,6 +379,8 @@ enum Drag {
     Pen {
         origin: Point,
         dragging: bool,
+        point_count: usize,
+        active_contour: Option<usize>,
     },
     /// Rubber-band selection in screen space.
     Marquee {
@@ -1858,9 +1860,12 @@ impl Widget for EditorWidget {
                             self.emit(ctx, true);
                         } else {
                             let origin = self.screen_to_glyph_design(at);
+                            let (point_count, active_contour) = self.session.pen_checkpoint();
                             self.drag = Drag::Pen {
                                 origin,
                                 dragging: false,
+                                point_count,
+                                active_contour,
                             };
                         }
                         ctx.set_handled();
@@ -1947,7 +1952,7 @@ impl Widget for EditorWidget {
                     self.session.viewport.affine() * Affine::translate(active_origin);
                 if matches!(self.tool, Tool::Pen | Tool::HyperPen) {
                     self.hover = Some(glyph_design);
-                    if self.session.active_contour.is_some() {
+                    if self.session.contour_drawing_is_active() {
                         ctx.request_render();
                     }
                 }
@@ -1985,7 +1990,9 @@ impl Widget for EditorWidget {
                             ctx.request_render();
                         }
                     }
-                    Drag::Pen { origin, dragging } => {
+                    Drag::Pen {
+                        origin, dragging, ..
+                    } => {
                         let origin = *origin;
                         let to = glyph_design;
                         let moved_px = (glyph_affine * origin).distance(at);
@@ -2046,12 +2053,20 @@ impl Widget for EditorWidget {
                         self.drag = Drag::None;
                         self.emit(ctx, !cancelled);
                     }
-                    Drag::Pen { origin, dragging } => {
-                        if !dragging {
+                    Drag::Pen {
+                        origin,
+                        dragging,
+                        point_count,
+                        active_contour,
+                    } => {
+                        if cancelled {
+                            self.session
+                                .cancel_pen_gesture(*point_count, *active_contour);
+                        } else if !dragging {
                             self.session.pen_corner(origin.x, origin.y);
                         }
                         self.drag = Drag::None;
-                        self.emit(ctx, true);
+                        self.emit(ctx, !cancelled);
                     }
                     Drag::Marquee {
                         start,
@@ -2099,17 +2114,21 @@ impl Widget for EditorWidget {
                         self.emit(ctx, !cancelled);
                     }
                     Drag::Shape { start, current } => {
-                        let (s0, c0) = (*start, *current);
-                        match self.tool {
-                            Tool::Rect => self.session.add_rect(s0.x, s0.y, c0.x, c0.y),
-                            Tool::Ellipse => self.session.add_ellipse(s0.x, s0.y, c0.x, c0.y),
-                            Tool::Knife => {
-                                self.session.knife_cut(s0, c0);
+                        if !cancelled {
+                            let (s0, c0) = (*start, *current);
+                            match self.tool {
+                                Tool::Rect => self.session.add_rect(s0.x, s0.y, c0.x, c0.y),
+                                Tool::Ellipse => {
+                                    self.session.add_ellipse(s0.x, s0.y, c0.x, c0.y);
+                                }
+                                Tool::Knife => {
+                                    self.session.knife_cut(s0, c0);
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
                         self.drag = Drag::None;
-                        self.emit(ctx, true);
+                        self.emit(ctx, !cancelled);
                     }
                     Drag::Pan { .. } => self.drag = Drag::None,
                     Drag::None => {}
@@ -2389,7 +2408,7 @@ impl Widget for EditorWidget {
         }
         let (edited, handled) = match &key.key {
             Key::Named(NamedKey::Escape) => {
-                if self.session.pen_is_active() || self.session.active_contour.is_some() {
+                if self.session.pen_is_active() || self.session.contour_drawing_is_active() {
                     self.session.pen_cancel();
                     self.emit(ctx, false);
                     ctx.set_handled();
@@ -2792,6 +2811,8 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
+
     use masonry::dpi::PhysicalPosition;
     use masonry::kurbo::Shape as _;
     use masonry::theme::default_property_set;
@@ -3551,6 +3572,172 @@ mod tests {
             runebender::document::history::HistoryDirection::Redo,
         ));
         std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn pointer_cancel_restores_pen_preview_and_preserves_canonical_redo() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-editor-pen-cancel-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(projected_glyph(&session()));
+        font.save(&path).expect("the fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.open_glyph(0);
+
+        let mut pen_session = (*workspace.session).clone();
+        pen_session.pen_corner(100.0, 100.0);
+        assert_eq!(
+            workspace.sync_session_from(&mut pen_session),
+            SessionSyncOutcome::Changed
+        );
+        workspace.finish_open_glyph_refresh();
+        let selected = workspace.session.point_id_at(0, 0).unwrap();
+        Arc::make_mut(&mut workspace.session)
+            .selection
+            .insert(selected);
+        workspace.apply_op(|session| session.nudge(20.0, 0.0));
+        workspace.undo_open_glyph(false);
+
+        workspace.modified = false;
+        let baseline = projected_glyph(&workspace.session);
+        let selection = workspace.session.selection.clone();
+        let revision = workspace.font.project.document_revision();
+        let undo = workspace.metadata_undo.len();
+        let redo = workspace.metadata_redo.len();
+        let address = workspace.font.active_layer_address("A").unwrap();
+        assert!(workspace.font.project.can_replay_document_layer_history(
+            &address,
+            runebender::document::history::HistoryDirection::Redo,
+        ));
+
+        let mut editor = widget();
+        editor.session = (*workspace.session).clone();
+        editor.tool = Tool::Pen;
+        let mut harness =
+            TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+        let (from, to) = harness.edit_root_widget(|root| {
+            let affine = root.widget.glyph_affine();
+            (
+                affine * Point::new(220.0, 180.0),
+                affine * Point::new(280.0, 240.0),
+            )
+        });
+        harness.mouse_move(from);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_move(to);
+        harness.process_pointer_event(PointerEvent::Cancel(PRIMARY_MOUSE));
+
+        let mut events = Vec::new();
+        while let Some((event, _)) = harness.pop_action::<EditorEvent>() {
+            events.push(event);
+        }
+        assert!(
+            events
+                .iter()
+                .all(|event| matches!(event, EditorEvent::Selection(_))),
+            "a cancelled pen preview never emits Edited"
+        );
+        for event in events {
+            harness.edit_root_widget(|root| {
+                dispatch_editor_event(
+                    &mut workspace,
+                    &mut root.widget.session,
+                    event,
+                    |app, event| {
+                        if let EditorEvent::Selection(count) = event {
+                            app.selected_points = count;
+                        }
+                    },
+                );
+            });
+        }
+
+        harness.edit_root_widget(|root| {
+            assert_eq!(projected_glyph(&root.widget.session), baseline);
+            assert_eq!(root.widget.session.selection, selection);
+            assert!(root.widget.session.pen_is_active());
+            assert!(root.widget.session.pending_canonical.is_none());
+        });
+        assert!(!workspace.modified);
+        assert_eq!(workspace.font.project.document_revision(), revision);
+        assert_eq!(workspace.metadata_undo.len(), undo);
+        assert_eq!(workspace.metadata_redo.len(), redo);
+        assert!(workspace.font.project.can_replay_document_layer_history(
+            &address,
+            runebender::document::history::HistoryDirection::Redo,
+        ));
+
+        let next =
+            harness.edit_root_widget(|root| root.widget.glyph_affine() * Point::new(320.0, 180.0));
+        harness.mouse_move(next);
+        harness.mouse_button_press(Some(PointerButton::Primary));
+        harness.mouse_button_release(Some(PointerButton::Primary));
+        let mut edited = false;
+        while let Some((event, _)) = harness.pop_action::<EditorEvent>() {
+            harness.edit_root_widget(|root| {
+                dispatch_editor_event(
+                    &mut workspace,
+                    &mut root.widget.session,
+                    event,
+                    |app, event| match event {
+                        EditorEvent::Edited => {
+                            edited = true;
+                            app.finish_open_glyph_refresh();
+                        }
+                        EditorEvent::Selection(count) => app.selected_points = count,
+                        _ => {}
+                    },
+                );
+            });
+        }
+        assert!(edited, "the retained pen contour accepts the next point");
+        assert_eq!(
+            projected_glyph(&workspace.session)
+                .contours
+                .last()
+                .unwrap()
+                .points
+                .len(),
+            2
+        );
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn pointer_cancel_never_applies_shape_or_knife_gestures() {
+        for tool in [Tool::Rect, Tool::Ellipse, Tool::Knife] {
+            let mut editor = widget();
+            editor.tool = tool;
+            let selected = editor.session.point_id_at(0, 0).unwrap();
+            editor.session.selection.insert(selected);
+            let baseline = projected_glyph(&editor.session);
+            let mut harness =
+                TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
+            harness.mouse_move(Point::new(250.0, 150.0));
+            harness.mouse_button_press(Some(PointerButton::Primary));
+            harness.mouse_move(Point::new(350.0, 250.0));
+            harness.process_pointer_event(PointerEvent::Cancel(PRIMARY_MOUSE));
+
+            harness.edit_root_widget(|root| {
+                assert_eq!(projected_glyph(&root.widget.session), baseline);
+                assert_eq!(root.widget.session.selection, HashSet::from([selected]));
+                assert!(root.widget.session.pending_canonical.is_none());
+            });
+            while let Some((event, _)) = harness.pop_action::<EditorEvent>() {
+                assert!(
+                    matches!(event, EditorEvent::Selection(1)),
+                    "a cancelled {tool:?} gesture never emits Edited"
+                );
+            }
+        }
     }
 
     #[test]

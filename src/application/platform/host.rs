@@ -601,6 +601,7 @@ impl Workspace {
 mod tests {
     use super::*;
     use crate::application::widgets::shortcuts;
+    use masonry::kurbo::Point;
 
     fn projected_glyph(session: &Session) -> norad::Glyph {
         session
@@ -1832,6 +1833,89 @@ mod tests {
         assert_eq!(component.base.as_str(), "base");
         assert_eq!(component.transform.x_offset, 30.0);
         assert_eq!(component.transform.y_offset, 40.0);
+        std::fs::remove_dir_all(path).expect("the component fixture is removed");
+    }
+
+    #[test]
+    fn component_selection_cancel_duplicate_and_delete_keep_stable_identity() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-component-selection-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        let mut base = norad::Glyph::new("base");
+        base.contours.push(norad::Contour::new(
+            [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
+                .into_iter()
+                .map(|(x, y)| {
+                    norad::ContourPoint::new(x, y, norad::PointType::Line, false, None, None)
+                })
+                .collect(),
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(base);
+        let mut target = norad::Glyph::new("target");
+        target.components.push(norad::Component::new(
+            norad::Name::new("base").unwrap(),
+            norad::AffineTransform::default(),
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(target);
+        font.save(&path).expect("the component fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the component fixture opens");
+        let target = workspace.font.index_of("target").unwrap();
+        workspace.open_glyph(target);
+        let component = workspace
+            .session
+            .component_at(Point::new(50.0, 50.0))
+            .expect("the component is hit-testable");
+        assert!(Arc::make_mut(&mut workspace.session).select_component_id(component));
+        assert!(!Arc::make_mut(&mut workspace.session).drag_component_by(10.0, 0.0));
+        assert!(workspace.session.pending_canonical.is_none());
+
+        workspace.command_toggle_component_alignment();
+        assert_eq!(workspace.session.selected_component, Some(component));
+        assert_eq!(
+            workspace.session.component_at(Point::new(50.0, 50.0)),
+            Some(component),
+            "canonical reload rebuilds the hit-test cache without changing identity"
+        );
+
+        let mut cancelled = (*workspace.session).clone();
+        assert!(cancelled.drag_component_by(10.0, 5.0));
+        cancelled.cancel_component_drag();
+        assert!(cancelled.pending_canonical.is_none());
+        assert_eq!(
+            cancelled.component_at(Point::new(50.0, 50.0)),
+            Some(component)
+        );
+        assert_eq!(
+            projected_glyph(&cancelled).components[0].transform,
+            norad::AffineTransform::default()
+        );
+        assert_eq!(
+            workspace.sync_session_from(&mut cancelled),
+            crate::application::editor::session::SessionSyncOutcome::Unchanged
+        );
+
+        workspace.apply_op(|session| session.duplicate());
+        let duplicate = workspace
+            .session
+            .selected_component
+            .expect("the duplicate is selected by stable identity");
+        assert_ne!(duplicate, component);
+        assert!(workspace.session.component_selected(1));
+        assert_eq!(projected_glyph(&workspace.session).components.len(), 2);
+
+        workspace.apply_op(|session| session.delete_selected());
+        assert_eq!(projected_glyph(&workspace.session).components.len(), 1);
+        assert_eq!(workspace.session.selected_component, None);
+
         std::fs::remove_dir_all(path).expect("the component fixture is removed");
     }
 

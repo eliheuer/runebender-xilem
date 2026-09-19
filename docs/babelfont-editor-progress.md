@@ -306,9 +306,9 @@ git diff --check
 - Direct canonical draft operations now own filters, cleanup, transforms, shapes, anchors, images, boolean operations, knife cuts, curve conversion, re-interpolation and mask baking.
 - Place Image installs bytes through a stable-source Project operation and attaches the image through the layer draft; it no longer mutates `FontModel::font_mut().images`.
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
-- The remaining temporary bridge callers are exact and finite: pen contour materialization and close; hyperbezier start, append and close; mark-label writes; compatibility contour replacement and its test-only paste helper; background send and swap; and the mark-cloud read projection.
+- The remaining temporary bridge callers are exact and finite: pen contour materialization and close; mark-label writes; compatibility contour replacement and its test-only paste helper; background send and swap; and the mark-cloud read projection.
 - `FontModel` still exposes mutable source/font access for overview marks, Unicode, metrics formulas, local-model workflow boundaries, source retargeting and background layers; those callers remain M06/M13 work rather than completion claims.
-- Pen, Shape and Knife still need explicit Pointer Cancel coverage in the final gesture audit.
+- Pen, Rectangle, Ellipse and Knife Pointer Cancel paths now have real widget-event coverage.
 
 ## Canonical Session storage and history cutover
 
@@ -384,6 +384,43 @@ git diff --check
 
 All 166 runnable application tests passed with four documented model or external-font tests ignored.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+## Direct canonical hyper drawing and gesture-cancellation slice
+
+Implementation commit: `Draw hyperbeziers without the compatibility bridge`.
+Resolve its exact ID with `git log --format=%H --grep='^Draw hyperbeziers without the compatibility bridge$' -1`.
+Affected paths: `src/application/editor/session.rs`, `src/application/editor/commands.rs`, `src/application/platform/host.rs`, `src/application/view/canvas/editor.rs` and this log.
+
+Reviewed core commit `a1374b1` adds stable-ID `LayerEditDraft` operations to start, append and close an editable hyperbezier contour.
+The Session now retains the active `ContourId` across Project commit/reload cycles and invokes those draft operations directly.
+Hyper drawing no longer reconstructs or reconciles a detached UFO glyph.
+The application regression commits start, two append and close steps, proves the stable active contour survives each reload and verifies all four edits enter Project-owned history without touching the legacy master pile.
+
+Pointer Cancel now differs from Pointer Up for Pen, Rectangle, Ellipse and Knife gestures.
+A Pen gesture snapshots its prior buffer boundary and active contour, so cancelling a smooth-point preview discards only that preview and keeps already committed points available for continuation.
+Shape and Knife cancellation drops the gesture without invoking their edit operation.
+The real widget-event regression proves cancelled pen work preserves canonical geometry, selection, document revision, dirty state, undo depth and an existing redo step, then successfully continues the retained contour.
+A second real widget regression covers Rectangle, Ellipse and Knife cancellation.
+
+The canonical component workflow regression now also covers hit testing after Project reload, refusal to drag an anchor-locked component, component drag cancellation, duplicate selection by fresh `ComponentId` and delete clearing that selection.
+
+Executed focused evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::commands::tests::hyper_pen_commits_stable_canonical_contour_steps -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender pointer_cancel -- --nocapture --test-threads=1
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::platform::host::tests::component_selection_cancel_duplicate_and_delete_keep_stable_identity -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+CARGO_BUILD_JOBS=1 ./web/build.sh
+CARGO_BUILD_JOBS=1 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='-C target-feature=+simd128' cargo clippy --manifest-path web/Cargo.toml --locked --target wasm32-unknown-unknown --no-deps -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+All four focused regressions passed.
+The complete binary suite passed 170 tests with four documented model or external-font tests ignored.
+Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
 
 ## Next action
 

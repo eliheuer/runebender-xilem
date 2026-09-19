@@ -1526,6 +1526,64 @@ mod tests {
     }
 
     #[test]
+    fn hyper_pen_commits_stable_canonical_contour_steps() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-canonical-hyper-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(rectangle("A", 0.0, 100.0));
+        font.save(&path).expect("the fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let index = workspace.font.index_of("A").expect("A exists");
+        workspace.open_glyph(index);
+        let mut session = (*workspace.session).clone();
+
+        session.hyper_add(200.0, 0.0, false);
+        assert_eq!(
+            workspace.sync_session_from(&mut session),
+            SessionSyncOutcome::Changed
+        );
+        assert!(session.hyper_is_active());
+        assert_eq!(
+            session.first_contour_point(),
+            Some(kurbo::Point::new(200.0, 0.0))
+        );
+
+        session.hyper_add(300.0, 100.0, false);
+        assert_eq!(
+            workspace.sync_session_from(&mut session),
+            SessionSyncOutcome::Changed
+        );
+        session.hyper_add(200.0, 200.0, true);
+        assert_eq!(
+            workspace.sync_session_from(&mut session),
+            SessionSyncOutcome::Changed
+        );
+        session.hyper_close();
+        assert_eq!(
+            workspace.sync_session_from(&mut session),
+            SessionSyncOutcome::Changed
+        );
+        assert!(!session.hyper_is_active());
+
+        let glyph = projected_glyph(&session);
+        assert_eq!(glyph.contours.len(), 2);
+        assert_eq!(glyph.contours[1].points.len(), 3);
+        assert_ne!(glyph.contours[1].points[0].typ, norad::PointType::Move);
+        assert_eq!(workspace.metadata_undo.len(), 4);
+        assert_eq!(workspace.font.master().undo_depth(index), 0);
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
     fn point_drag_cancel_noop_and_commit_use_one_canonical_history_step() {
         let path = std::env::temp_dir().join(format!(
             "runebender-canonical-point-drag-{}-{}.ufo",
