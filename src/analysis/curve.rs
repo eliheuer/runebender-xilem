@@ -41,11 +41,12 @@ pub struct Cubic {
     pub start_smooth: bool,
 }
 
-/// Build the per-contour cubic segment lists from a norad glyph.
+/// Build the per-contour cubic segment lists from a UFO boundary glyph.
 ///
 /// Lines become degenerate "straight" cubics, quads elevate, and
 /// hyper contours run through the solver. The comb and continuity
-/// analyses read these lists.
+/// analyses read these lists. Document callers should use
+/// [`cubics_from_layer`] instead.
 pub fn cubics_from_norad(glyph: &norad::Glyph) -> Vec<Vec<Cubic>> {
     let mut out = Vec::new();
     for contour in &glyph.contours {
@@ -70,8 +71,8 @@ pub fn cubics_from_norad(glyph: &norad::Glyph) -> Vec<Vec<Cubic>> {
     out
 }
 
-/// Build per-contour cubic segments directly from one canonical ordinary layer.
-pub fn ordinary_cubics_from_layer(layer: LayerView<'_>) -> Vec<Vec<Cubic>> {
+/// Build per-contour cubic segments directly from one canonical glyph layer.
+pub fn cubics_from_layer(layer: LayerView<'_>) -> Vec<Vec<Cubic>> {
     layer
         .contours()
         .filter_map(|contour| {
@@ -84,6 +85,11 @@ pub fn ordinary_cubics_from_layer(layer: LayerView<'_>) -> Vec<Vec<Cubic>> {
             (!segments.is_empty()).then_some(segments)
         })
         .collect()
+}
+
+/// Compatibility name for canonical ordinary-layer curve analysis.
+pub fn ordinary_cubics_from_layer(layer: LayerView<'_>) -> Vec<Vec<Cubic>> {
+    cubics_from_layer(layer)
 }
 
 fn cubics_from_path(
