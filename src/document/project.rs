@@ -1481,18 +1481,6 @@ impl Project {
         }
     }
 
-    pub(crate) fn editing_parts(
-        &mut self,
-    ) -> (SourcesEdit<'_>, &mut super::experiments::Experiments) {
-        (
-            SourcesEdit {
-                sources: &mut self.masters,
-                data: &mut self.variable,
-            },
-            &mut self.experiments,
-        )
-    }
-
     /// The variable glyph, independent of the active source or preview location.
     pub fn variable_glyph(&self, name: &str) -> Option<&VariableGlyph> {
         self.variable.glyphs.get(name)

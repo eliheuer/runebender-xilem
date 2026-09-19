@@ -7,9 +7,16 @@ use super::{
     experiments,
     nodes::{Kind, NodeGraph, NodeType, Port},
     project::Project,
+    variable::SourceId,
 };
 use serde_json::{Value, json};
 use std::collections::HashSet;
+
+impl From<usize> for SourceId {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
+}
 
 /// Node types executed against an open editor, rather than the disk runner.
 pub fn types() -> Vec<NodeType> {
@@ -42,7 +49,7 @@ pub fn types() -> Vec<NodeType> {
             if matches!(name, "live.font" | "live.fork") {
                 ports.push(Port {
                     name: if name == "live.font" {
-                        "master"
+                        "source"
                     } else {
                         "branch"
                     }
@@ -54,7 +61,7 @@ pub fn types() -> Vec<NodeType> {
                     },
                     required: false,
                     default: None,
-                    help: "The source master or stored session result.".into(),
+                    help: "The stable source or stored session result.".into(),
                 });
             }
             ports
@@ -68,24 +75,25 @@ pub fn types() -> Vec<NodeType> {
     .collect()
 }
 
-/// A loaded master or a named session version.
+/// A loaded stable source or a named session version.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Version {
-    /// The originating master, fixed when the source node is created.
-    pub master: usize,
+    /// The originating source, fixed when the source node is created.
+    pub source: SourceId,
     /// None denotes the live root.
     pub branch: Option<String>,
 }
 
 /// Create a connected starter graph with two independent version directions.
-pub fn starter(master: usize) -> NodeGraph {
+pub fn starter(source: impl Into<SourceId>) -> NodeGraph {
+    let source_id = source.into();
     let mut graph = NodeGraph::default();
     let source = graph.add("live.font", [32.0, 32.0]);
     graph
         .node_mut(source)
         .unwrap()
         .values
-        .insert("master".into(), json!(master));
+        .insert("source".into(), json!(source_id.0));
     add_direction(&mut graph, source, [336.0, 32.0]);
     add_direction(&mut graph, source, [336.0, 416.0]);
     graph
@@ -114,19 +122,24 @@ pub fn resolve(graph: &NodeGraph, project: &Project, id: u32) -> Result<Version,
         }
         let n = graph.node(id).ok_or("missing node")?;
         if n.type_name == "live.font" {
-            let master = usize::try_from(
+            let source = usize::try_from(
                 n.values
-                    .get("master")
+                    .get("source")
                     .and_then(Value::as_u64)
-                    .unwrap_or(project.active as u64),
+                    .or_else(|| {
+                        project
+                            .source_id(project.active)
+                            .map(|source| source.0 as u64)
+                    })
+                    .ok_or("the active source is no longer loaded")?,
             )
-            .map_err(|_| "master index is too large")?;
+            .map_err(|_| "source identity is too large")?;
+            let source = SourceId(source);
             project
-                .sources()
-                .get(master)
-                .ok_or("source master is no longer loaded")?;
+                .document_source(source)
+                .ok_or("source is no longer loaded")?;
             return Ok(Version {
-                master,
+                source,
                 branch: None,
             });
         }
@@ -142,7 +155,7 @@ pub fn resolve(graph: &NodeGraph, project: &Project, id: u32) -> Result<Version,
                 .get(branch)
                 .ok_or("This session version is unavailable; create a new version")?;
             return Ok(Version {
-                master: v.root,
+                source: v.root,
                 branch: Some(branch.into()),
             });
         }
@@ -193,7 +206,7 @@ pub fn create_version(
     let name = format!("version-{i}");
     experiments::fork(
         project,
-        input.master,
+        input.source,
         &name,
         input.branch.as_deref(),
         "Node graph experiment; edit this branch through MCP",
@@ -201,7 +214,7 @@ pub fn create_version(
     let n = graph.node_mut(id).unwrap();
     n.values.insert("branch".into(), json!(name));
     Ok(Version {
-        master: input.master,
+        source: input.source,
         branch: Some(name),
     })
 }
@@ -214,18 +227,11 @@ pub fn apply(graph: &NodeGraph, project: &mut Project, id: u32) -> Result<Value,
         .branch
         .ok_or("Connect an experimental version, not the root")?;
     let version = &project.experiments.versions[&name];
-    let names: Vec<_> = version
-        .master
-        .font
-        .default_layer()
-        .iter()
-        .filter(|g| version.base.get_glyph(g.name().as_str()) != Some(*g))
-        .map(|g| g.name().to_string())
-        .collect();
+    let names = version.changed_glyphs();
     Ok(super::live::call(
         project,
         "experiment_apply",
-        &json!({"master":v.master,"branch":name,"glyphs":names,"kerning":true,"keep_structure":false}),
+        &json!({"source":v.source.0,"branch":name,"glyphs":names,"kerning":true,"keep_structure":false,"authorization":"user-approved"}),
     ))
 }
 
@@ -247,11 +253,11 @@ pub fn discard(project: &mut Project, name: &str) -> Result<(), String> {
     project
         .experiments
         .proofs
-        .remove(&format!("{}:{name}", v.root));
+        .remove(&format!("{}:{name}", v.root.0));
     Ok(())
 }
 
-/// Save a captured master to a new UFO directory. Existing destinations are refused;
+/// Save a captured version to a new UFO directory. Existing destinations are refused;
 /// the live root and its save path are unchanged. A failed write may leave a partial directory.
 pub fn save_new(font: &norad::Font, path: &std::path::Path) -> Result<(), String> {
     if path.extension().and_then(|e| e.to_str()) != Some("ufo") {
@@ -280,7 +286,7 @@ pub fn import_versions(graph: &mut NodeGraph, project: &Project) -> usize {
         let y = graph.nodes.iter().map(|n| n.pos[1]).fold(0.0_f32, f32::max) + 384.0;
         let source = match graph.nodes.iter().find(|n| {
             n.type_name == "live.font"
-                && n.values.get("master").and_then(Value::as_u64) == Some(v.root as u64)
+                && n.values.get("source").and_then(Value::as_u64) == Some(v.root.0 as u64)
         }) {
             Some(n) => n.id,
             None => {
@@ -289,7 +295,7 @@ pub fn import_versions(graph: &mut NodeGraph, project: &Project) -> usize {
                     .node_mut(id)
                     .unwrap()
                     .values
-                    .insert("master".into(), json!(v.root));
+                    .insert("source".into(), json!(v.root.0));
                 id
             }
         };
@@ -320,9 +326,10 @@ mod tests {
     #[test]
     fn agent_versions_import_once_with_their_parent_connections() {
         let mut p = Project::new_font("test.ufo".into());
-        experiments::fork(&mut p, 0, "z-parent", None, "baseline").unwrap();
-        experiments::fork(&mut p, 0, "a-child", Some("z-parent"), "direction").unwrap();
-        let mut g = starter(0);
+        let source = p.source_id(0).unwrap();
+        experiments::fork(&mut p, source, "z-parent", None, "baseline").unwrap();
+        experiments::fork(&mut p, source, "a-child", Some("z-parent"), "direction").unwrap();
+        let mut g = starter(source);
         assert_eq!(import_versions(&mut g, &p), 2);
         assert_eq!(import_versions(&mut g, &p), 0);
         let parent = g
@@ -351,29 +358,40 @@ mod tests {
     #[test]
     fn new_ufo_export_preserves_live_edits_and_refuses_overwrites() {
         let mut p = Project::new_font("never-written.ufo".into());
-        p.active_font_mut().font.font_info.family_name = Some("Unsaved family".into());
-        let mut g = starter(0);
+        let source = p.source_id(0).unwrap();
+        let mut g = starter(source);
         let version = create_version(&mut g, &mut p, 2).unwrap();
-        let font = &p.experiments.versions[version.branch.as_ref().unwrap()]
-            .master
-            .font;
+        let address = p.experiments.versions[version.branch.as_ref().unwrap()].default_address("A");
+        experiments::edit_layer(
+            &mut p,
+            version.branch.as_ref().unwrap(),
+            &address,
+            |draft| {
+                draft.set_width(777.0)?;
+                Ok(())
+            },
+        )
+        .unwrap();
+        let font = p.experiments.versions[version.branch.as_ref().unwrap()]
+            .source_snapshot(&p)
+            .unwrap();
         let dir =
             std::env::temp_dir().join(format!("runebender-node-export-{}.ufo", std::process::id()));
         assert!(!dir.exists());
-        save_new(font, &dir).unwrap();
+        save_new(&font, &dir).unwrap();
         let saved = norad::Font::load(&dir).unwrap();
-        assert_eq!(saved.font_info.family_name, Some("Unsaved family".into()));
-        assert!(save_new(font, &dir).is_err());
+        assert_eq!(saved.get_glyph("A").unwrap().width, 777.0);
+        assert!(save_new(&font, &dir).is_err());
         assert_eq!(
-            p.active_font().source_path,
-            std::path::PathBuf::from("never-written.ufo")
+            p.document_source(source).unwrap().path(),
+            std::path::Path::new("never-written.ufo")
         );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn live_outputs_cannot_connect_to_disk_tasks() {
-        let mut g = starter(0);
+        let mut g = starter(SourceId(0));
         let target = g.add("core.layer", [0.0, 0.0]);
         g.connect(1, "font", target, "source");
         assert!(
@@ -386,31 +404,29 @@ mod tests {
     #[test]
     fn forks_follow_wires_and_preserve_previous_results() {
         let mut p = Project::new_font("test.ufo".into());
-        let mut g = starter(0);
+        let source = p.source_id(0).unwrap();
+        let mut g = starter(source);
         assert!(
             g.validate(&super::super::nodes::Registry::core())
                 .is_empty()
         );
         assert!(resolve(&g, &p, 3).is_err());
         let a = create_version(&mut g, &mut p, 2).unwrap();
-        p.experiments
-            .versions
-            .get_mut(a.branch.as_ref().unwrap())
-            .unwrap()
-            .master
-            .font
-            .font_info
-            .family_name = Some("Direction A".into());
+        let address = p.experiments.versions[a.branch.as_ref().unwrap()].default_address("A");
+        experiments::edit_layer(&mut p, a.branch.as_ref().unwrap(), &address, |draft| {
+            draft.set_width(701.0)?;
+            Ok(())
+        })
+        .unwrap();
         let b = create_version(&mut g, &mut p, 4).unwrap();
         assert_ne!(a, b);
         assert_eq!(resolve(&g, &p, 3).unwrap(), a);
         assert_ne!(
             p.experiments.versions[b.branch.as_ref().unwrap()]
-                .master
-                .font
-                .font_info
-                .family_name,
-            Some("Direction A".into())
+                .layer(&address)
+                .unwrap()
+                .width(),
+            701.0
         );
         assert_eq!(create_version(&mut g, &mut p, 2).unwrap(), a);
         g.connect(2, "font", 4, "font");

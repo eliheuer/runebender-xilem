@@ -9,8 +9,18 @@ use norad::{Font, Glyph};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
+use crate::document::babelfont::{LayerEditDraft, LayerPointType, LayerView};
+use crate::document::project::Project;
 use crate::document::proposal::{self, ProposalSummary};
+use crate::document::variable::{LayerId, SourceId};
 use crate::formats::lib_keys::write_proposal_base;
+
+/// Opaque SHA-256 revision of a canonical layer encoded through the external GLIF contract.
+///
+/// The UFO value is a transient compatibility codec result, never editable document state.
+pub fn canonical_glyph_revision(layer: LayerView<'_>) -> Result<String, String> {
+    glyph_revision(&layer.project())
+}
 
 /// Opaque SHA-256 revision of a glyph's canonical GLIF, including its metadata.
 /// Returns an error if the glyph cannot be serialized. Re-read after a core upgrade.
@@ -106,6 +116,234 @@ fn finite(values: &[f64]) -> Result<(), String> {
     } else {
         Err("coordinates and widths must be finite".into())
     }
+}
+
+pub(super) fn validate_batch(batch: &EditBatch) -> Result<(), String> {
+    if batch.task.is_empty()
+        || !batch
+            .task
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "-_".contains(character))
+    {
+        return Err("task must contain only ASCII letters, digits, hyphens, or underscores".into());
+    }
+    if batch.reason.trim().is_empty() || batch.edits.is_empty() {
+        return Err("reason and edits must not be empty".into());
+    }
+    let mut seen = HashSet::new();
+    for edit in &batch.edits {
+        if !seen.insert(&edit.glyph) || edit.operations.is_empty() {
+            return Err(format!(
+                "{}: duplicate glyph or empty operations",
+                edit.glyph
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn point_at(
+    layer: LayerView<'_>,
+    contour: usize,
+    point: usize,
+) -> Result<crate::document::PointId, String> {
+    layer
+        .contours()
+        .nth(contour)
+        .and_then(|contour| contour.points().nth(point))
+        .map(|point| point.id())
+        .ok_or_else(|| format!("no point {contour}:{point}"))
+}
+
+fn replace_outline_through_contract(
+    draft: &mut LayerEditDraft,
+    layer_id: &LayerId,
+    contours: &[crate::outline::drawing::DrawingContour],
+    clear_components: bool,
+) -> Result<(), String> {
+    let mut glyph = draft.view().project();
+    glyph.contours = crate::outline::drawing::contours(contours)?;
+    if clear_components {
+        glyph.components.clear();
+    }
+    let (previous_layer, previous_preserved) = draft.clone().into_parts();
+    let default = matches!(
+        previous_layer.master,
+        babelfont::LayerType::DefaultForMaster(_)
+    );
+    let (layer, preserved) = crate::document::babelfont::reconcile_layer_from_ufo(
+        &glyph,
+        layer_id,
+        default,
+        &previous_layer,
+        &previous_preserved,
+    );
+    *draft = LayerEditDraft::new(layer, preserved);
+    Ok(())
+}
+
+/// Apply one revision-scoped batch operation to a canonical layer draft.
+///
+/// Ordinary point, component, anchor and metric changes use stable canonical identities.
+/// Complete outline replacement crosses the transient UFO codec boundary because
+/// [`Operation::SetOutline`] is part of the public UFO proposal contract.
+pub fn apply_canonical_operation(
+    draft: &mut LayerEditDraft,
+    layer_id: &LayerId,
+    operation: &Operation,
+) -> Result<(), String> {
+    match operation {
+        Operation::SetOutline {
+            contours,
+            clear_components,
+        } => replace_outline_through_contract(draft, layer_id, contours, *clear_components),
+        Operation::SetSmooth {
+            contour,
+            point,
+            smooth,
+        } => {
+            let view = draft.view();
+            let target = view
+                .contours()
+                .nth(*contour)
+                .and_then(|contour| contour.points().nth(*point))
+                .ok_or("unknown point")?;
+            if target.point_type() == LayerPointType::OffCurve {
+                return Err("off-curve point cannot be smooth".into());
+            }
+            draft
+                .set_point_smooth(target.id(), *smooth)
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        Operation::SetWidth { width } => {
+            finite(&[*width])?;
+            if *width < 0.0 {
+                return Err("advance must be nonnegative".into());
+            }
+            draft.set_width(*width).map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        Operation::SetPoint {
+            contour,
+            point,
+            x,
+            y,
+        } => {
+            finite(&[*x, *y])?;
+            let id = point_at(draft.view(), *contour, *point)?;
+            draft
+                .set_point_position(id, kurbo::Point::new(*x, *y))
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        Operation::Translate { dx, dy } => {
+            finite(&[*dx, *dy])?;
+            let points = draft
+                .view()
+                .contours()
+                .flat_map(|contour| contour.points())
+                .map(|point| (point.id(), point.position()))
+                .collect::<Vec<_>>();
+            let components = draft
+                .view()
+                .components()
+                .map(|component| (component.id(), component.transform()))
+                .collect::<Vec<_>>();
+            let anchors = draft
+                .view()
+                .anchors()
+                .map(|anchor| (anchor.id(), anchor.position()))
+                .collect::<Vec<_>>();
+            for (id, position) in points {
+                draft
+                    .set_point_position(id, position + kurbo::Vec2::new(*dx, *dy))
+                    .map_err(|error| error.to_string())?;
+            }
+            for (id, transform) in components {
+                let mut coefficients = transform.as_coeffs();
+                coefficients[4] += dx;
+                coefficients[5] += dy;
+                finite(&coefficients)?;
+                draft
+                    .set_component_transform(id, kurbo::Affine::new(coefficients))
+                    .map_err(|error| error.to_string())?;
+            }
+            for (id, position) in anchors {
+                draft
+                    .set_anchor_position(id, position + kurbo::Vec2::new(*dx, *dy))
+                    .map_err(|error| error.to_string())?;
+            }
+            Ok(())
+        }
+        Operation::SetAnchor { name, x, y } => {
+            finite(&[*x, *y])?;
+            if name.is_empty() {
+                return Err("anchor name must not be empty".into());
+            }
+            let matches = draft
+                .view()
+                .anchors()
+                .filter(|anchor| anchor.name() == name)
+                .map(|anchor| anchor.id())
+                .collect::<Vec<_>>();
+            match matches.as_slice() {
+                [] => {
+                    draft
+                        .add_anchor(name.clone(), kurbo::Point::new(*x, *y))
+                        .map_err(|error| error.to_string())?;
+                }
+                [id] => {
+                    draft
+                        .set_anchor_position(*id, kurbo::Point::new(*x, *y))
+                        .map_err(|error| error.to_string())?;
+                }
+                _ => return Err(format!("anchor {name} is ambiguous")),
+            }
+            Ok(())
+        }
+    }
+}
+
+pub(super) fn proposal_draft(
+    foreground: LayerEditDraft,
+    proposal_layer: &LayerId,
+    edit: &GlyphEdit,
+    reason: &str,
+) -> Result<LayerEditDraft, String> {
+    if canonical_glyph_revision(foreground.view())? != edit.expected_revision {
+        return Err(format!(
+            "{}: stale revision; read the glyph again",
+            edit.glyph
+        ));
+    }
+    let projected = foreground.view().project();
+    let (foreground_layer, foreground_preserved) = foreground.into_parts();
+    let (layer, preserved) = crate::document::babelfont::copy_layer(
+        &foreground_layer,
+        &foreground_preserved,
+        proposal_layer,
+    );
+    let mut draft = LayerEditDraft::new(layer, preserved);
+    for operation in &edit.operations {
+        apply_canonical_operation(&mut draft, proposal_layer, operation)
+            .map_err(|error| format!("{}: {error}", edit.glyph))?;
+    }
+    if draft.view().project() == projected {
+        return Err(format!("{}: operations make no change", edit.glyph));
+    }
+
+    let mut proposal = draft.view().project();
+    write_proposal_base(&mut proposal, &edit.expected_revision, reason);
+    let (previous_layer, previous_preserved) = draft.clone().into_parts();
+    let (layer, preserved) = crate::document::babelfont::reconcile_layer_from_ufo(
+        &proposal,
+        proposal_layer,
+        false,
+        &previous_layer,
+        &previous_preserved,
+    );
+    Ok(LayerEditDraft::new(layer, preserved))
 }
 
 fn apply(glyph: &mut Glyph, operation: &Operation) -> Result<(), String> {
@@ -209,17 +447,7 @@ fn apply(glyph: &mut Glyph, operation: &Operation) -> Result<(), String> {
 /// Errors leave `font` unchanged. Never edits the foreground or saves files.
 /// Existing proposal tasks, duplicate glyphs, stale revisions, and empty edits fail.
 pub fn propose(font: &mut Font, batch: &EditBatch) -> Result<ProposalSummary, String> {
-    if batch.task.is_empty()
-        || !batch
-            .task
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "-_".contains(c))
-    {
-        return Err("task must contain only ASCII letters, digits, hyphens, or underscores".into());
-    }
-    if batch.reason.trim().is_empty() || batch.edits.is_empty() {
-        return Err("reason and edits must not be empty".into());
-    }
+    validate_batch(batch)?;
     if font
         .layers
         .get(&proposal::layer_name(&batch.task))
@@ -227,15 +455,8 @@ pub fn propose(font: &mut Font, batch: &EditBatch) -> Result<ProposalSummary, St
     {
         return Err("proposal task already exists; use a new task name".into());
     }
-    let mut seen = HashSet::new();
     let mut proposed = Vec::new();
     for edit in &batch.edits {
-        if !seen.insert(&edit.glyph) || edit.operations.is_empty() {
-            return Err(format!(
-                "{}: duplicate glyph or empty operations",
-                edit.glyph
-            ));
-        }
         let original = font
             .get_glyph(&edit.glyph)
             .ok_or_else(|| format!("no glyph named {}", edit.glyph))?;
@@ -256,6 +477,60 @@ pub fn propose(font: &mut Font, batch: &EditBatch) -> Result<ProposalSummary, St
         proposed.push(glyph);
     }
     proposal::write(font, &batch.task, proposed).map_err(|e| e.to_string())
+}
+
+/// Validate and create a proposal in one stable source's canonical auxiliary layers.
+///
+/// The complete batch is staged before any layer is created. Foreground layers are read only;
+/// proposal metadata and the GLIF SHA revision remain the explicit external UFO contract.
+pub fn propose_project(
+    project: &mut Project,
+    source: SourceId,
+    batch: &EditBatch,
+) -> Result<ProposalSummary, String> {
+    validate_batch(batch)?;
+    if proposal::find_project(project, source, &batch.task).is_ok() {
+        return Err("proposal task already exists; use a new task name".into());
+    }
+    let foreground = project
+        .document_source(source)
+        .ok_or("unknown source")?
+        .default_layer();
+    let proposed = LayerId {
+        source,
+        name: proposal::layer_name(&batch.task),
+    };
+    let mut staged = Vec::with_capacity(batch.edits.len());
+    for edit in &batch.edits {
+        let address = crate::document::variable::GlyphLayerAddress {
+            glyph: edit.glyph.clone(),
+            layer: foreground.clone(),
+        };
+        let snapshot = project
+            .capture_document_layer(&address)
+            .ok_or_else(|| format!("no glyph named {}", edit.glyph))?;
+        let (layer, preserved) = snapshot.into_parts();
+        staged.push((
+            edit.glyph.clone(),
+            proposal_draft(
+                LayerEditDraft::new(layer, preserved),
+                &proposed,
+                edit,
+                &batch.reason,
+            )?,
+        ));
+    }
+
+    for (glyph, replacement) in staged {
+        project.add_glyph_layer(&glyph, &foreground, &proposed.name)?;
+        project
+            .edit_document_layer(&glyph, &proposed, |draft| {
+                *draft = replacement;
+                Ok(())
+            })
+            .map_err(|error| error.to_string())?;
+    }
+    proposal::find_project(project, source, &batch.task).map_err(|error| error.to_string())
 }
 
 /// Create a proposal on disk without rewriting foreground GLIFs or font metadata.
@@ -347,6 +622,8 @@ pub fn save_proposal(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::history::HistoryDirection;
+    use crate::document::variable::GlyphLayerAddress;
 
     fn fixture() -> (Font, EditBatch) {
         let mut font = Font::new();
@@ -361,6 +638,167 @@ mod tests {
             }],
         };
         (font, batch)
+    }
+
+    #[test]
+    fn canonical_project_proposal_installs_with_guarded_history() {
+        let mut project = Project::new_font("canonical.ufo".into());
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        let address = GlyphLayerAddress {
+            glyph: "A".into(),
+            layer: layer.clone(),
+        };
+        let original = project.document_layer("A", &layer).unwrap().width();
+        let revision = canonical_glyph_revision(project.document_layer("A", &layer).unwrap())
+            .expect("canonical GLIF revision");
+        let batch = EditBatch {
+            task: "canonical-spacing".into(),
+            reason: "verify canonical proposal flow".into(),
+            edits: vec![GlyphEdit {
+                glyph: "A".into(),
+                expected_revision: revision,
+                operations: vec![Operation::SetWidth {
+                    width: original + 31.0,
+                }],
+            }],
+        };
+
+        let summary = propose_project(&mut project, source, &batch).unwrap();
+        assert_eq!(summary.glyphs, ["A"]);
+        assert_eq!(
+            project.document_layer("A", &layer).unwrap().width(),
+            original
+        );
+        let installed =
+            proposal::install_project(&mut project, source, &batch.task, None, true).unwrap();
+        assert_eq!(installed.installed.installed, ["A"]);
+        assert_eq!(installed.affected, std::slice::from_ref(&address));
+        assert_eq!(installed.changes.len(), 1);
+        assert_eq!(
+            project.document_layer("A", &layer).unwrap().width(),
+            original + 31.0
+        );
+        assert!(proposal::find_project(&project, source, &batch.task).is_err());
+        project
+            .replay_document_layer_history(&address, HistoryDirection::Undo)
+            .unwrap();
+        assert_eq!(
+            project.document_layer("A", &layer).unwrap().width(),
+            original
+        );
+    }
+
+    #[test]
+    fn stale_canonical_install_keeps_the_proposal_and_does_not_mutate() {
+        let mut project = Project::new_font("canonical.ufo".into());
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        let original = project.document_layer("A", &layer).unwrap().width();
+        let batch = EditBatch {
+            task: "stale-canonical".into(),
+            reason: "verify stale guard".into(),
+            edits: vec![GlyphEdit {
+                glyph: "A".into(),
+                expected_revision: canonical_glyph_revision(
+                    project.document_layer("A", &layer).unwrap(),
+                )
+                .unwrap(),
+                operations: vec![Operation::SetWidth {
+                    width: original + 20.0,
+                }],
+            }],
+        };
+        propose_project(&mut project, source, &batch).unwrap();
+        project
+            .edit_document_layer("A", &layer, |draft| {
+                draft.set_width(original + 1.0)?;
+                Ok(())
+            })
+            .unwrap();
+        let before = project.document_revision();
+        let installed =
+            proposal::install_project(&mut project, source, &batch.task, None, true).unwrap();
+        assert!(installed.installed.installed.is_empty());
+        assert!(installed.installed.skipped[0].1.contains("stale"));
+        assert_eq!(project.document_revision(), before);
+        assert_eq!(
+            project.document_layer("A", &layer).unwrap().width(),
+            original + 1.0
+        );
+        assert!(proposal::find_project(&project, source, &batch.task).is_ok());
+    }
+
+    #[test]
+    fn adopted_external_proposals_without_a_revision_fail_closed() {
+        let mut project = Project::new_font("canonical.ufo".into());
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        let original = project.document_layer("A", &layer).unwrap().width();
+        let mut external = Font::new();
+        let snapshot = project.source_snapshot(source).unwrap();
+        let mut proposed = snapshot.get_glyph("A").unwrap().clone();
+        proposed.width = original + 90.0;
+        proposal::write(&mut external, "external", [proposed]).unwrap();
+
+        proposal::adopt_external_project(&mut project, source, &external, "external").unwrap();
+        let before = project.document_revision();
+        let installed = proposal::install_project(&mut project, source, "external", None, true)
+            .unwrap()
+            .installed;
+        assert!(installed.installed.is_empty());
+        assert!(installed.skipped[0].1.contains("unguarded"));
+        assert_eq!(project.document_revision(), before);
+        assert_eq!(
+            project.document_layer("A", &layer).unwrap().width(),
+            original
+        );
+    }
+
+    #[test]
+    fn isolated_versions_hold_and_install_canonical_proposals() {
+        let mut project = Project::new_font("canonical.ufo".into());
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        let original = project.document_layer("A", &layer).unwrap().width();
+        crate::document::experiments::fork(&mut project, source, "branch", None, "test").unwrap();
+        let batch = EditBatch {
+            task: "branch-spacing".into(),
+            reason: "verify isolated proposal".into(),
+            edits: vec![GlyphEdit {
+                glyph: "A".into(),
+                expected_revision: canonical_glyph_revision(
+                    project.experiments.versions["branch"]
+                        .layer(&project.experiments.versions["branch"].default_address("A"))
+                        .unwrap(),
+                )
+                .unwrap(),
+                operations: vec![Operation::SetWidth {
+                    width: original + 45.0,
+                }],
+            }],
+        };
+        let version = project.experiments.versions.get_mut("branch").unwrap();
+        version.propose(&batch).unwrap();
+        assert_eq!(version.proposals()[0].glyphs, ["A"]);
+        assert_eq!(
+            version
+                .install_proposal(&batch.task, None, true)
+                .unwrap()
+                .installed,
+            ["A"]
+        );
+        assert_eq!(
+            version
+                .layer(&version.default_address("A"))
+                .unwrap()
+                .width(),
+            original + 45.0
+        );
+        assert_eq!(
+            project.document_layer("A", &layer).unwrap().width(),
+            original
+        );
     }
 
     #[test]

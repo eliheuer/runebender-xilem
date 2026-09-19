@@ -138,6 +138,9 @@ Source-wide feature text, groups and exact fractional kerning have canonical own
 `CanonicalLayerSnapshot` captures one opaque addressed layer with the same geometry and extensions; guarded restore compares the complete live state before replacing it, advances the revision once and refreshes the compatibility projection without recording legacy history.
 `CanonicalSourceMetadataSnapshot` captures feature text, groups and exact kerning for the complete stable source set; guarded whole-snapshot restore ignores display reorder, rejects stale or changed source sets and refreshes all affected projections in one revision.
 Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact extensions first, then refresh only the affected compatibility projection.
+Review proposals use those auxiliary layers under stable source identities; revision-checked batches stage canonical drafts before publication, and guarded installation records Project-owned foreground history.
+Experimental versions clone canonical layer drafts and canonical source metadata for the session, and they apply selected changes only after root-baseline conflict checks.
+The GLIF SHA and external UFO proposal format remain explicit transient codec boundaries rather than editable Norad mirrors.
 `document/sources.rs` owns structural transactions and their guarded undo history; removing a source never deletes its UFO directory.
 
 `document::source::Master` is a compatibility UFO projection with source-local history and paint caches.

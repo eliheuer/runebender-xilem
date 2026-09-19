@@ -5,7 +5,14 @@
 
 use serde_json::{Value, json};
 
-use super::{agent, edit_batch, project::Project, proposal};
+use super::{
+    agent,
+    canonical_metadata::{KerningParticipant, KerningSide},
+    edit_batch,
+    project::{Master, Project},
+    proposal,
+    variable::SourceId,
+};
 
 /// Tools supported by an open editor. Disk workflows are deliberately excluded.
 pub fn tools() -> Vec<agent::Tool> {
@@ -37,7 +44,7 @@ pub fn tools() -> Vec<agent::Tool> {
         name: "glyph_inventory".into(),
         description: "Find live glyphs by mark label or Unicode scalar before selecting references and targets. Returns names, encoding, empty status and revisions. Green is a reference only when the project says so. Uses the dark theme to interpret legacy mark colors.".into(),
         parameters: json!({"type":"object", "properties": {
-            "master":{"type":"integer","minimum":0},
+            "source":{"type":"integer","minimum":0},
             "mark":{"type":"string"},
             "codepoint":{"type":"integer","minimum":0,"maximum":1114111},
             "offset":{"type":"integer","minimum":0},
@@ -51,9 +58,9 @@ pub fn tools() -> Vec<agent::Tool> {
     });
     result.push(agent::Tool {
         name: "proposal_install".into(),
-        description: "Install a reviewed proposal into the unsaved foreground, with one undo step per glyph. Only set authorization=user-approved after the user asks to apply it. Set keep_structure=false explicitly for a redraw; this can break interpolation with other masters. New glyph names must first exist in the editor. Re-proof after installation.".into(),
+        description: "Install a reviewed proposal into the unsaved foreground, with one undo step per glyph. Only set authorization=user-approved after the user asks to apply it. Set keep_structure=false explicitly for a redraw; this can break interpolation with other sources. New glyph names must first exist in the editor. Re-proof after installation.".into(),
         parameters: json!({"type":"object", "properties":{
-            "master":{"type":"integer","minimum":0},
+            "source":{"type":"integer","minimum":0},
             "task":{"type":"string"},
             "glyphs":{"type":"array","items":{"type":"string"},"minItems":1},
             "keep_structure":{"type":"boolean"}
@@ -62,7 +69,7 @@ pub fn tools() -> Vec<agent::Tool> {
     for (name, description, properties, required) in [
         (
             "experiment_fork",
-            "Fork a live master or a named experiment. Session-only; the root is unchanged. Fork a baseline once, then fork that baseline for fair A/B comparisons.",
+            "Fork a live source or a named experiment. Session-only; the root is unchanged. Fork a baseline once, then fork that baseline for fair A/B comparisons.",
             json!({"name":{"type":"string"},"parent":{"type":"string"},"reason":{"type":"string"}}),
             json!(["name", "reason"]),
         ),
@@ -86,7 +93,7 @@ pub fn tools() -> Vec<agent::Tool> {
         ),
         (
             "read_kerning",
-            "Read the complete kerning table, group membership and revision for a master or experiment.",
+            "Read the complete kerning table, group membership and revision for a source or experiment.",
             json!({}),
             json!([]),
         ),
@@ -119,7 +126,7 @@ pub fn tools() -> Vec<agent::Tool> {
             tool.name.as_str(),
             "design_context" | "project_info" | "experiment_list" | "experiment_undo_apply"
         ) {
-            tool.parameters["properties"]["master"] = json!({"type":"integer","minimum":0});
+            tool.parameters["properties"]["source"] = json!({"type":"integer","minimum":0});
             if tool.name != "experiment_fork" {
                 tool.parameters["properties"]["branch"] = json!({"type":"string","description":"Named experiment; omit to address the root."});
             }
@@ -129,9 +136,9 @@ pub fn tools() -> Vec<agent::Tool> {
 }
 
 /// Handles a call on the GUI thread. Reads include unsaved changes; proposals mark
-/// their master dirty. Explicit proposal installation changes foreground with undo;
+/// their source dirty. Explicit proposal installation changes foreground with undo;
 /// no tool saves files.
-/// Multi-master calls require an explicit master, independent of UI selection.
+/// Multi-source calls require an explicit stable source identity, independent of UI selection.
 pub fn call(project: &mut Project, name: &str, args: &Value) -> Value {
     match handle(project, name, args) {
         Ok(value) => {
@@ -162,11 +169,12 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
         );
     }
     if name == "project_info" {
+        let active_source = project.source_id(project.active).map(|source| source.0);
         return Ok(
             json!({"ok": true, "live": true, "project": project.export_source,
-            "active_master": project.active, "masters": project.sources().iter().enumerate()
-                .map(|(index, master)| json!({"index": index, "source": master.source_path,
-                    "dirty": master.dirty, "name": project.master_names.get(index)}))
+            "active_source": active_source, "sources": project.document_sources().enumerate()
+                .map(|(index, source)| json!({"index": index, "id": source.id().0,
+                    "path": source.path(), "name": source.name(), "location": source.location()}))
                 .collect::<Vec<_>>()}),
         );
     }
@@ -174,7 +182,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
         return Ok(json!({"ok":true,
             "documentation":["https://runebender.org/docs/type-design.html", "https://runebender.org/docs/mcp.html", "https://runebender.org/llms-full.txt"],
             "workflow":["Read the project DESIGN.md with your file tools and the official type-design guide with your web tools.",
-                "Confirm master indices, Unicode mapping, mark meanings, reference glyphs and target glyphs. Missing and empty are different.",
+                "Confirm stable source identities, Unicode mapping, mark meanings, reference glyphs and target glyphs. Missing and empty are different.",
                 "Read references and targets, then inspect actual proof images. If your client does not deliver images, stop visual judgments and report the limitation.",
                 "Draft explicit contours or point edits with foreground revisions. Keep green references unchanged unless asked. For multiple masters preserve compatible point structure or report incompatibility.",
                 "Proof the proposal layer with reference glyphs; compare at text and display sizes. Refine by discarding the draft and proposing from current foreground revisions.",
@@ -185,19 +193,29 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
         return Ok(super::experiments::list(project));
     }
     if name == "experiment_undo_apply" {
-        let (master, names) = super::experiments::undo_apply(project)?;
+        let (source, names) = super::experiments::undo_apply(project)?;
         return Ok(
-            json!({"ok":true,"master":master,"installed":{"installed":names},"root_changed":true}),
+            json!({"ok":true,"source":source.0,"installed":{"installed":names},"root_changed":true}),
         );
     }
-    let index = match object.get("master") {
+    let source = match object.get("source") {
         Some(value) => value
             .as_u64()
             .and_then(|v| usize::try_from(v).ok())
-            .ok_or("master must be a nonnegative integer")?,
-        None if project.sources().len() == 1 => 0,
-        None => return Err("master is required for a family; call project_info first".into()),
+            .map(SourceId)
+            .ok_or("source must be a nonnegative stable source identity")?,
+        None if project.document_sources().count() == 1 => project
+            .document_sources()
+            .next()
+            .expect("one source exists")
+            .id(),
+        None => return Err("source is required for a family; call project_info first".into()),
     };
+    let source_path = project
+        .document_source(source)
+        .ok_or("unknown or removed source")?
+        .path()
+        .to_owned();
     let branch = object
         .get("branch")
         .map(|v| v.as_str().ok_or("branch must be a string"))
@@ -215,8 +233,8 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             .get("parent")
             .map(|v| v.as_str().ok_or("parent must be a string"))
             .transpose()?;
-        super::experiments::fork(project, index, name, parent, reason)?;
-        return Ok(json!({"ok":true,"branch":name,"master":index,"session_only":true}));
+        super::experiments::fork(project, source, name, parent, reason)?;
+        return Ok(json!({"ok":true,"branch":name,"source":source.0,"session_only":true}));
     }
     if name == "experiment_apply" {
         let branch = branch.ok_or("branch is required")?;
@@ -226,9 +244,9 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             .get(branch)
             .ok_or("unknown branch")?
             .root
-            != index
+            != source
         {
-            return Err("branch belongs to another master".into());
+            return Err("branch belongs to another source".into());
         }
         let names: Vec<String> =
             serde_json::from_value(object.get("glyphs").ok_or("glyphs is required")?.clone())
@@ -243,23 +261,24 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             .ok_or("keep_structure is required")?;
         let installed = super::experiments::apply(project, branch, &names, kerning, keep)?;
         return Ok(
-            json!({"ok":true,"master":index,"installed":{"installed":installed},"root_changed":true}),
+            json!({"ok":true,"source":source.0,"installed":{"installed":installed},"root_changed":true}),
         );
     }
-    let (mut sources, experiments) = project.editing_parts();
-    let master = match branch {
+    let font = match branch {
         Some(name) => {
-            let v = experiments
+            let v = project
+                .experiments
                 .versions
-                .get_mut(name)
+                .get(name)
                 .ok_or("unknown experiment")?;
-            if v.root != index {
-                return Err("experiment belongs to another master".into());
+            if v.root != source {
+                return Err("experiment belongs to another source".into());
             }
-            &mut v.master
+            v.source_snapshot(project)?
         }
-        None => sources.get_mut(index).ok_or("unknown master")?,
+        None => project.source_snapshot(source).ok_or("unknown source")?,
     };
+    let master = Master::from_font(font, source_path.clone());
     let layer = object
         .get("layer")
         .map(|v| v.as_str().ok_or("layer must be a string"))
@@ -270,20 +289,34 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                 .get("text")
                 .and_then(Value::as_str)
                 .ok_or("text required")?;
-            json!({"ok":true,"scene":crate::formats::designbot::specimen(master,text)?,"text":text,"kerning_revision":super::experiments::kerning_revision(&master.font)?})
+            json!({"ok":true,"scene":crate::formats::designbot::specimen(&master,text)?,"text":text,"kerning_revision":super::experiments::kerning_revision(project.document_font_metadata(source).ok_or("unknown source metadata")?)?})
         }
         "read_kerning" => {
-            json!({"ok":true,"revision":super::experiments::kerning_revision(&master.font)?,"pairs":master.font.kerning,"groups":master.font.groups})
+            let metadata = match branch {
+                Some(branch) => project
+                    .experiments
+                    .versions
+                    .get(branch)
+                    .ok_or("unknown branch")?
+                    .font_metadata(),
+                None => project
+                    .document_font_metadata(source)
+                    .ok_or("unknown source metadata")?,
+            };
+            json!({"ok":true,"revision":super::experiments::kerning_revision(metadata)?,"pairs":metadata.raw_kerning(),"groups":metadata.groups()})
         }
         "experiment_kern" => {
-            if branch.is_none() {
-                return Err("kerning edits require an experiment branch".into());
-            }
+            let branch = branch.ok_or("kerning edits require an experiment branch")?;
             let revision = object
                 .get("expected_revision")
                 .and_then(Value::as_str)
                 .ok_or("expected_revision required")?;
-            if revision != super::experiments::kerning_revision(&master.font)? {
+            let version = project
+                .experiments
+                .versions
+                .get(branch)
+                .ok_or("unknown experiment")?;
+            if revision != super::experiments::kerning_revision(version.font_metadata())? {
                 return Err("stale kerning revision".into());
             }
             if object
@@ -300,7 +333,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             if pairs.is_empty() || pairs.len() > 4096 {
                 return Err("supply 1 to 4096 pairs".into());
             }
-            let mut kerning = master.font.kerning.clone();
+            let mut metadata = version.font_metadata().clone();
             for pair in pairs {
                 let left = pair
                     .get("left")
@@ -311,8 +344,8 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                     .and_then(Value::as_str)
                     .ok_or("right required")?;
                 for (key, prefix) in [(left, "public.kern1."), (right, "public.kern2.")] {
-                    if !(master.font.default_layer().contains_glyph(key)
-                        || key.starts_with(prefix) && master.font.groups.contains_key(key))
+                    if !(version.layer(&version.default_address(key)).is_some()
+                        || key.starts_with(prefix) && metadata.groups().contains_key(key))
                     {
                         return Err(format!(
                             "unknown glyph or side-specific kerning group: {key}"
@@ -320,33 +353,57 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
                     }
                 }
                 let value = pair.get("value").ok_or("value required")?;
-                if value.is_null() {
-                    if let Some(row) = kerning.get_mut(left) {
-                        row.remove(right);
-                    }
+                let value = if value.is_null() {
+                    None
                 } else {
-                    let value = value
-                        .as_f64()
-                        .filter(|v| v.is_finite() && v.abs() <= 100000.0)
-                        .ok_or("invalid kerning value")?;
-                    kerning
-                        .entry(norad::Name::new(left).map_err(|e| e.to_string())?)
-                        .or_default()
-                        .insert(norad::Name::new(right).map_err(|e| e.to_string())?, value);
-                }
+                    Some(
+                        value
+                            .as_f64()
+                            .filter(|v| v.is_finite() && v.abs() <= 100000.0)
+                            .ok_or("invalid kerning value")?,
+                    )
+                };
+                let participant = |raw: &str, side: KerningSide| {
+                    if raw.starts_with(side.prefix()) {
+                        KerningParticipant::group(side, raw)
+                    } else {
+                        KerningParticipant::glyph(raw)
+                    }
+                };
+                metadata
+                    .set_kerning_pair(
+                        participant(left, KerningSide::First).map_err(|e| e.to_string())?,
+                        participant(right, KerningSide::Second).map_err(|e| e.to_string())?,
+                        value,
+                    )
+                    .map_err(|error| error.to_string())?;
             }
-            kerning.retain(|_, row| !row.is_empty());
-            master.font.kerning = kerning;
-            master.kerning_dirty = true;
-            master.dirty = true;
-            json!({"ok":true,"revision":super::experiments::kerning_revision(&master.font)?})
+            let version = project
+                .experiments
+                .versions
+                .get_mut(branch)
+                .ok_or("unknown experiment")?;
+            if !version.set_font_metadata(metadata) {
+                return Err("kerning operations make no change".into());
+            }
+            json!({"ok":true,"revision":super::experiments::kerning_revision(version.font_metadata())?})
         }
-        "font_info" => json!({"ok": true, "family": master.font.font_info.family_name,
-            "style": master.font.font_info.style_name, "units_per_em": master.units_per_em,
-            "ascender": master.ascender, "descender": master.descender,
-            "x_height": master.x_height, "cap_height": master.cap_height,
-            "glyphs": master.font.default_layer().len(),
-            "proposals": proposal::list(&master.font)}),
+        "font_info" => {
+            let proposals = match branch {
+                Some(branch) => project
+                    .experiments
+                    .versions
+                    .get(branch)
+                    .ok_or("unknown experiment")?
+                    .proposals(),
+                None => proposal::list_project(project, source),
+            };
+            json!({"ok": true, "family": master.font.font_info.family_name,
+                "style": master.font.font_info.style_name, "units_per_em": master.units_per_em,
+                "ascender": master.ascender, "descender": master.descender,
+                "x_height": master.x_height, "cap_height": master.cap_height,
+                "glyphs": master.font.default_layer().len(), "proposals": proposals})
+        }
         "glyph_inventory" => {
             let theme = crate::ui::theme::load_theme("dark").ok_or("missing built-in theme")?;
             let mark = object
@@ -412,17 +469,24 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             if names.is_empty() || names.len() > 256 {
                 return Err("live proofs require between 1 and 256 explicit glyph names".into());
             }
-            let proof = crate::formats::svg::proof_sheet(master, layer, &names, 10)?;
-            json!({"ok": true, "svg_content": proof.svg, "metrics": proof.metrics, "scene":crate::formats::designbot::scene(master, layer, &names)?})
+            let proof = crate::formats::svg::proof_sheet(&master, layer, &names, 10)?;
+            json!({"ok": true, "svg_content": proof.svg, "metrics": proof.metrics, "scene":crate::formats::designbot::scene(&master, layer, &names)?})
         }
         "propose_edits" => {
             let mut batch = object.clone();
-            batch.remove("master");
+            batch.remove("source");
             batch.remove("branch");
             let batch: edit_batch::EditBatch =
                 serde_json::from_value(Value::Object(batch)).map_err(|e| e.to_string())?;
-            let summary = edit_batch::propose(&mut master.font, &batch)?;
-            master.dirty = true;
+            let summary = match branch {
+                Some(branch) => project
+                    .experiments
+                    .versions
+                    .get_mut(branch)
+                    .ok_or("unknown experiment")?
+                    .propose(&batch)?,
+                None => edit_batch::propose_project(project, source, &batch)?,
+            };
             json!({"ok": true, "proposal": summary})
         }
         "proposal_install" => {
@@ -441,18 +505,50 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             if only.as_ref().is_some_and(Vec::is_empty) {
                 return Err("glyphs must not be empty".into());
             }
-            let installed = master
-                .install_proposal(task, only.as_deref(), keep)
-                .map_err(|e| e.to_string())?;
+            let installed = match branch {
+                Some(branch) => project
+                    .experiments
+                    .versions
+                    .get_mut(branch)
+                    .ok_or("unknown experiment")?
+                    .install_proposal(task, only.as_deref(), keep)
+                    .map_err(|error| error.to_string())?,
+                None => {
+                    proposal::install_project(project, source, task, only.as_deref(), keep)
+                        .map_err(|error| error.to_string())?
+                        .installed
+                }
+            };
             json!({"ok":true,"installed":installed})
         }
-        "proposal_list" => json!({"ok": true, "proposals": proposal::list(&master.font)}),
+        "proposal_list" => {
+            let proposals = match branch {
+                Some(branch) => project
+                    .experiments
+                    .versions
+                    .get(branch)
+                    .ok_or("unknown experiment")?
+                    .proposals(),
+                None => proposal::list_project(project, source),
+            };
+            json!({"ok": true, "proposals": proposals})
+        }
         "proposal_discard" => {
             let task = object
                 .get("task")
                 .and_then(Value::as_str)
                 .ok_or("task is required")?;
-            let count = master.discard_proposal(task).map_err(|e| e.to_string())?;
+            let count = match branch {
+                Some(branch) => project
+                    .experiments
+                    .versions
+                    .get_mut(branch)
+                    .ok_or("unknown experiment")?
+                    .discard_proposal(task)
+                    .map_err(|error| error.to_string())?,
+                None => proposal::discard_project(project, source, task)
+                    .map_err(|error| error.to_string())?,
+            };
             json!({"ok": true, "discarded": count})
         }
         _ => return Err(format!("unsupported live tool: {name}")),
@@ -460,8 +556,8 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
     result["branch"] = json!(branch);
     result["root_changed"] = json!(branch.is_none() && name == "proposal_install");
     result["live"] = json!(true);
-    result["master"] = json!(index);
-    result["source"] = json!(master.source_path);
+    result["source_id"] = json!(source.0);
+    result["source"] = json!(source_path);
     if let Some(branch) = branch
         && matches!(
             name,
@@ -469,7 +565,8 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
         )
         && result["ok"] == true
     {
-        let v = experiments
+        let v = project
+            .experiments
             .versions
             .get_mut(branch)
             .ok_or("unknown branch")?;
@@ -480,8 +577,8 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             .push(json!({"tool":name,"reason":object.get("reason"),"task":object.get("task")}));
     }
     if let Some(scene) = result.get("scene") {
-        experiments.proofs.insert(
-            format!("{index}:{}", branch.unwrap_or("root")),
+        project.experiments.proofs.insert(
+            format!("{}:{}", source.0, branch.unwrap_or("root")),
             scene.clone(),
         );
     }
@@ -491,6 +588,7 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::history::HistoryDirection;
 
     #[test]
     fn unsaved_reads_proposals_install_and_undo_share_one_document() {
@@ -516,23 +614,40 @@ mod tests {
         );
         assert!(project.sources()[0].dirty);
         assert_eq!(call(&mut project, "propose_edits", &batch)["ok"], false);
-        let master = &mut project.edit_sources()[0];
-        assert_eq!(
-            master
-                .install_proposal("spacing", None, true)
-                .unwrap()
-                .installed,
-            ["live_test"]
+        let installed = call(
+            &mut project,
+            "proposal_install",
+            &json!({"task":"spacing","keep_structure":true,"authorization":"user-approved"}),
         );
-        assert_eq!(master.font.get_glyph("live_test").unwrap().width, 560.0);
-        assert!(master.undo(index));
-        assert_eq!(master.font.get_glyph("live_test").unwrap().width, 512.0);
+        assert_eq!(installed["installed"]["installed"], json!(["live_test"]));
+        let source = project.source_id(0).unwrap();
+        let address = super::super::variable::GlyphLayerAddress {
+            glyph: "live_test".into(),
+            layer: project.document_source(source).unwrap().default_layer(),
+        };
+        assert_eq!(
+            project
+                .document_layer("live_test", &address.layer)
+                .unwrap()
+                .width(),
+            560.0
+        );
+        project
+            .replay_document_layer_history(&address, HistoryDirection::Undo)
+            .unwrap();
+        assert_eq!(
+            project
+                .document_layer("live_test", &address.layer)
+                .unwrap()
+                .width(),
+            512.0
+        );
     }
 
     #[test]
     fn drawing_requires_explicit_structure_choice_and_undo_restores_blank() {
         let mut project = Project::new_font("never-saved.ufo".into());
-        let index = project.edit_sources()[0].add_glyph("draft", 500.0).unwrap();
+        project.edit_sources()[0].add_glyph("draft", 500.0).unwrap();
         let revision =
             call(&mut project, "read_glyph", &json!({"glyph":"draft"}))["revision"].clone();
         let result = call(
@@ -586,7 +701,14 @@ mod tests {
                 .len(),
             1
         );
-        assert!(project.edit_sources()[0].undo(index));
+        let source = project.source_id(0).unwrap();
+        let address = super::super::variable::GlyphLayerAddress {
+            glyph: "draft".into(),
+            layer: project.document_source(source).unwrap().default_layer(),
+        };
+        project
+            .replay_document_layer_history(&address, HistoryDirection::Undo)
+            .unwrap();
         assert!(
             project.sources()[0]
                 .font
@@ -595,7 +717,9 @@ mod tests {
                 .contours
                 .is_empty()
         );
-        assert!(project.edit_sources()[0].redo(index));
+        project
+            .replay_document_layer_history(&address, HistoryDirection::Redo)
+            .unwrap();
         assert_eq!(
             project.sources()[0]
                 .font

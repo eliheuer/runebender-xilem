@@ -9,7 +9,7 @@
 //! does not need this crate: it needs a UFO writer and the layer name.
 //! The editor reads the layer, shows it, and the designer installs it
 //! or discards it. Install copies each proposed glyph over the
-//! foreground glyph as one undo step per glyph, so a proposed master
+//! foreground glyph as one undo step per glyph, so a proposed source
 //! can be taken back one glyph at a time.
 //!
 //! A proposal glyph carries contours, components, anchors, and the
@@ -17,17 +17,21 @@
 //! lib, mark) stays as it was.
 //!
 //! Some tasks promise to keep point structure: the same contours, the
-//! same points, in the same order, so a master stays interpolable
-//! with its siblings. [`compatible`] checks that promise, and
-//! [`crate::document::project::Master::install_proposal`] refuses a glyph that breaks it when
-//! the caller asks for the check.
+//! same points, in the same order, so a source stays interpolable
+//! with its siblings. [`compatible_layers`] checks that promise for canonical
+//! layers, and [`install_project`] refuses a glyph that breaks it when the caller
+//! asks for the check. [`compatible`] retains the standalone UFO contract.
 
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 
 use norad::{Font, Glyph, Layer};
 use serde::{Deserialize, Serialize};
 
 use crate::document::font_ops::glyph_signature;
+use crate::document::project::{DocumentChange, DocumentEditOutcome, Project};
+use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
+use crate::document::{CanonicalLayerSnapshot, LayerEditDraft, LayerView};
 
 /// Every proposal layer starts with this.
 pub const LAYER_PREFIX: &str = "com.runebender.proposal.";
@@ -75,6 +79,11 @@ pub enum ProposalError {
         /// Why.
         reason: String,
     },
+    /// A canonical project operation failed without changing the foreground.
+    Project {
+        /// Why the operation could not be completed.
+        reason: String,
+    },
 }
 
 impl fmt::Display for ProposalError {
@@ -98,6 +107,7 @@ impl fmt::Display for ProposalError {
                 )
             }
             Self::BadLayerName { name, reason } => write!(f, "bad layer name {name}: {reason}"),
+            Self::Project { reason } => f.write_str(reason),
         }
     }
 }
@@ -138,6 +148,347 @@ pub struct Installed {
 /// Whether a proposed glyph keeps the foreground's point structure.
 pub fn compatible(foreground: &Glyph, proposed: &Glyph) -> bool {
     glyph_signature(foreground) == glyph_signature(proposed)
+}
+
+/// Whether two canonical layers have the same contour and point structure.
+///
+/// This is the document-native equivalent of [`compatible`] and does not materialize a UFO
+/// glyph. Components and anchors are deliberately outside the interpolation structure check.
+pub fn compatible_layers(foreground: LayerView<'_>, proposed: LayerView<'_>) -> bool {
+    let signature = |layer: LayerView<'_>| {
+        layer
+            .contours()
+            .map(|contour| {
+                contour
+                    .points()
+                    .map(|point| point.point_type())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
+    };
+    signature(foreground) == signature(proposed)
+}
+
+fn project_error(reason: impl Into<String>) -> ProposalError {
+    ProposalError::Project {
+        reason: reason.into(),
+    }
+}
+
+fn proposal_layer(source: SourceId, task: &str) -> LayerId {
+    LayerId {
+        source,
+        name: layer_name(task),
+    }
+}
+
+fn describe_layer(layer: LayerView<'_>) -> String {
+    let contours = layer.contours().count();
+    let points = layer
+        .contours()
+        .map(|contour| contour.points().count())
+        .sum::<usize>();
+    format!("{contours}c · {points}pt")
+}
+
+fn summarize_project(
+    project: &Project,
+    source: SourceId,
+    task: &str,
+) -> Result<ProposalSummary, ProposalError> {
+    let foreground = project
+        .document_source(source)
+        .ok_or_else(|| project_error("unknown source"))?
+        .default_layer();
+    let proposal = proposal_layer(source, task);
+    let mut summary = ProposalSummary {
+        task: task.to_owned(),
+        layer: proposal.name.clone(),
+        glyphs: Vec::new(),
+        compatible: Vec::new(),
+        incompatible: Vec::new(),
+        missing: Vec::new(),
+    };
+    for glyph in project.glyph_names() {
+        let Some(proposed) = project.document_layer(glyph, &proposal) else {
+            continue;
+        };
+        summary.glyphs.push(glyph.to_owned());
+        match project.document_layer(glyph, &foreground) {
+            None => summary.missing.push(glyph.to_owned()),
+            Some(current) if compatible_layers(current, proposed) => {
+                summary.compatible.push(glyph.to_owned());
+            }
+            Some(current) => summary.incompatible.push((
+                glyph.to_owned(),
+                format!(
+                    "foreground {} · proposed {}",
+                    describe_layer(current),
+                    describe_layer(proposed)
+                ),
+            )),
+        }
+    }
+    if summary.glyphs.is_empty() {
+        return Err(ProposalError::NoProposal {
+            task: task.to_owned(),
+        });
+    }
+    Ok(summary)
+}
+
+/// Every canonical proposal for one stable source, ordered by task name.
+pub fn list_project(project: &Project, source: SourceId) -> Vec<ProposalSummary> {
+    let mut tasks = BTreeSet::new();
+    for glyph in project.glyph_names() {
+        let Some(glyph) = project.document_glyph(glyph) else {
+            continue;
+        };
+        for layer in glyph.layer_ids().filter(|layer| layer.source == source) {
+            if let Some(task) = task_of_layer(&layer.name) {
+                tasks.insert(task.to_owned());
+            }
+        }
+    }
+    tasks
+        .into_iter()
+        .filter_map(|task| summarize_project(project, source, &task).ok())
+        .collect()
+}
+
+/// Find one canonical proposal by stable source and task.
+pub fn find_project(
+    project: &Project,
+    source: SourceId,
+    task: &str,
+) -> Result<ProposalSummary, ProposalError> {
+    summarize_project(project, source, task)
+}
+
+/// Read one proposed canonical layer for preview without changing the foreground.
+pub fn preview_project<'a>(
+    project: &'a Project,
+    source: SourceId,
+    task: &str,
+    glyph: &str,
+) -> Result<LayerView<'a>, ProposalError> {
+    project
+        .document_layer(glyph, &proposal_layer(source, task))
+        .ok_or_else(|| ProposalError::NoProposal {
+            task: task.to_owned(),
+        })
+}
+
+pub(super) fn install_replacement(
+    address: &GlyphLayerAddress,
+    foreground: LayerView<'_>,
+    proposed: LayerView<'_>,
+    before: &CanonicalLayerSnapshot,
+) -> CanonicalLayerSnapshot {
+    // The proposal format is deliberately UFO-compatible. Materialization here is the explicit
+    // codec boundary: canonical state before and after this function remains Babelfont-backed.
+    let mut glyph = foreground.project();
+    apply(&mut glyph, &proposed.project());
+    let (previous_layer, previous_preserved) = before.clone().into_parts();
+    let default = matches!(
+        previous_layer.master,
+        babelfont::LayerType::DefaultForMaster(_)
+    );
+    let (layer, preserved) = super::babelfont::reconcile_layer_from_ufo(
+        &glyph,
+        &address.layer,
+        default,
+        &previous_layer,
+        &previous_preserved,
+    );
+    CanonicalLayerSnapshot::new(address.clone(), layer, preserved)
+}
+
+/// Canonical changes produced while installing a proposal.
+#[derive(Clone, Debug)]
+pub struct ProjectProposalInstall {
+    /// Stable addresses whose foreground payload changed.
+    pub affected: Vec<GlyphLayerAddress>,
+    /// Exact invalidation scope for every changed foreground layer.
+    pub changes: Vec<DocumentChange>,
+    /// Existing proposal result contract.
+    pub installed: Installed,
+}
+
+/// Install selected proposal glyphs into one stable source after all revision checks.
+///
+/// Foreground replacements use Project-owned canonical history. Stale and structurally
+/// incompatible glyphs remain in the proposal layer. All candidates are staged before the first
+/// foreground mutation, so a validation error cannot partially install a batch.
+pub fn install_project(
+    project: &mut Project,
+    source: SourceId,
+    task: &str,
+    only: Option<&[String]>,
+    keep_structure: bool,
+) -> Result<ProjectProposalInstall, ProposalError> {
+    let summary = find_project(project, source, task)?;
+    let foreground_layer = project
+        .document_source(source)
+        .ok_or_else(|| project_error("unknown source"))?
+        .default_layer();
+    let proposal_layer = proposal_layer(source, task);
+    let wanted = |name: &str| only.is_none_or(|list| list.iter().any(|item| item == name));
+    let incompatible: BTreeMap<_, _> = summary.incompatible.iter().cloned().collect();
+    let mut staged = Vec::new();
+    let mut skipped = Vec::new();
+
+    for name in summary.glyphs.iter().filter(|name| wanted(name)) {
+        let address = GlyphLayerAddress {
+            glyph: name.clone(),
+            layer: foreground_layer.clone(),
+        };
+        let proposal_address = GlyphLayerAddress {
+            glyph: name.clone(),
+            layer: proposal_layer.clone(),
+        };
+        let Some(foreground) = project.document_layer(name, &foreground_layer) else {
+            skipped.push((name.clone(), "not in the font".to_owned()));
+            continue;
+        };
+        let proposed = project
+            .document_layer(name, &proposal_layer)
+            .ok_or_else(|| project_error("proposal layer disappeared during validation"))?;
+        let proposed_contract = proposed.project();
+        let Some(base) = crate::formats::lib_keys::read_proposal_base(&proposed_contract) else {
+            skipped.push((
+                name.clone(),
+                "unguarded proposal: missing foreground revision; propose again".into(),
+            ));
+            continue;
+        };
+        if crate::document::edit_batch::canonical_glyph_revision(foreground)
+            .ok()
+            .as_deref()
+            != Some(base)
+        {
+            skipped.push((
+                name.clone(),
+                "stale proposal: foreground changed; propose again".into(),
+            ));
+            continue;
+        }
+        if keep_structure && let Some(reason) = incompatible.get(name) {
+            skipped.push((name.clone(), reason.clone()));
+            continue;
+        }
+        let before = project
+            .capture_document_layer(&address)
+            .ok_or_else(|| project_error("foreground disappeared during validation"))?;
+        let replacement = install_replacement(&address, foreground, proposed, &before);
+        staged.push((address, proposal_address, before, replacement));
+    }
+
+    let mut installed = Vec::new();
+    let mut affected = Vec::new();
+    let mut changes = Vec::new();
+    for (address, proposal_address, before, replacement) in staged {
+        match project
+            .commit_document_layer_replacement(&address, &before, replacement)
+            .map_err(|error| project_error(error.to_string()))?
+        {
+            DocumentEditOutcome::Changed { change, .. } => {
+                affected.push(address.clone());
+                changes.push(change);
+            }
+            DocumentEditOutcome::Unchanged { .. } => {}
+        }
+        project
+            .remove_glyph_layer(&proposal_address.glyph, &proposal_address.layer)
+            .map_err(project_error)?;
+        installed.push(address.glyph);
+    }
+    let layer_removed = find_project(project, source, task).is_err();
+    Ok(ProjectProposalInstall {
+        affected,
+        changes,
+        installed: Installed {
+            task: task.to_owned(),
+            installed,
+            skipped,
+            layer_removed,
+        },
+    })
+}
+
+/// Remove a canonical proposal without mutating any foreground glyph.
+pub fn discard_project(
+    project: &mut Project,
+    source: SourceId,
+    task: &str,
+) -> Result<usize, ProposalError> {
+    let summary = find_project(project, source, task)?;
+    let layer = proposal_layer(source, task);
+    for glyph in &summary.glyphs {
+        project
+            .remove_glyph_layer(glyph, &layer)
+            .map_err(project_error)?;
+    }
+    Ok(summary.glyphs.len())
+}
+
+/// Adopt one external UFO proposal layer into canonical project state.
+///
+/// The external layer is decoded once at this named boundary. Missing foreground glyphs and an
+/// existing task fail before canonical mutation.
+pub fn adopt_external_project(
+    project: &mut Project,
+    source: SourceId,
+    external: &Font,
+    task: &str,
+) -> Result<ProposalSummary, ProposalError> {
+    if find_project(project, source, task).is_ok() {
+        return Err(project_error(
+            "proposal task already exists; use a new task name",
+        ));
+    }
+    let source_layer =
+        external
+            .layers
+            .get(&layer_name(task))
+            .ok_or_else(|| ProposalError::NoProposal {
+                task: task.to_owned(),
+            })?;
+    let foreground = project
+        .document_source(source)
+        .ok_or_else(|| project_error("unknown source"))?
+        .default_layer();
+    let target = proposal_layer(source, task);
+    let mut seen = HashSet::new();
+    let mut staged = Vec::new();
+    for glyph in source_layer.iter() {
+        let name = glyph.name().to_string();
+        if !seen.insert(name.clone()) || project.document_layer(&name, &foreground).is_none() {
+            return Err(ProposalError::NoSuchGlyph {
+                task: task.to_owned(),
+                glyph: name,
+            });
+        }
+        let (layer, preserved) = super::babelfont::layer_from_ufo(glyph, &target, false);
+        staged.push((name, LayerEditDraft::new(layer, preserved)));
+    }
+    if staged.is_empty() {
+        return Err(ProposalError::NoProposal {
+            task: task.to_owned(),
+        });
+    }
+    for (glyph, replacement) in staged {
+        project
+            .add_glyph_layer(&glyph, &foreground, &target.name)
+            .map_err(project_error)?;
+        project
+            .edit_document_layer(&glyph, &target, |draft| {
+                *draft = replacement;
+                Ok(())
+            })
+            .map_err(|error| project_error(error.to_string()))?;
+    }
+    find_project(project, source, task)
 }
 
 /// Clone a font with the named layer overlaid on the foreground for proof rendering.
