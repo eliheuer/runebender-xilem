@@ -959,7 +959,16 @@ impl Project {
             return Err("interpolation references an unknown axis".into());
         }
         let (layers, locations) = self.interpolation_layers(glyph_name, None)?;
-        let mut glyph = super::interpolation::interpolate_projected(&layers, &locations, location)?;
+        let default = locations
+            .iter()
+            .position(|source| source.values().all(|value| value.abs() < 1e-9))
+            .ok_or("glyph has no layer at the default location")?;
+        let base = layers
+            .get(default)
+            .copied()
+            .ok_or("missing default layer")?;
+        let mut interpolated =
+            super::interpolation::interpolate_layers(&layers, &locations, location)?;
         // HOI: nodes with an intermediate point follow their exact
         // quadratic, overriding the piecewise answer the baked brace
         // layers gave the model — the bake stays for compilers, the
@@ -979,32 +988,39 @@ impl Project {
                     axis.max,
                 );
                 let t01 = ((design - axis.min) / (axis.max - axis.min)).clamp(0.0, 1.0);
-                let (a_glyph, b_glyph) = (
-                    self.masters[lo].font.get_glyph(glyph_name),
-                    self.masters[hi].font.get_glyph(glyph_name),
-                );
-                if let (Some(a_glyph), Some(b_glyph)) = (a_glyph, b_glyph) {
+                let endpoint_layer = |index| {
+                    self.source_id(index)
+                        .and_then(|source| self.document_source(source))
+                        .and_then(|source| self.document_layer(glyph_name, &source.default_layer()))
+                };
+                if let (Some(a_layer), Some(b_layer)) = (endpoint_layer(lo), endpoint_layer(hi)) {
                     for (&(ci, pi), &q) in &curves {
                         let (Some(pa), Some(pb)) = (
-                            a_glyph.contours.get(ci).and_then(|c| c.points.get(pi)),
-                            b_glyph.contours.get(ci).and_then(|c| c.points.get(pi)),
+                            a_layer
+                                .contours()
+                                .nth(ci)
+                                .and_then(|contour| contour.points().nth(pi)),
+                            b_layer
+                                .contours()
+                                .nth(ci)
+                                .and_then(|contour| contour.points().nth(pi)),
                         ) else {
                             continue;
                         };
-                        let pos = hoi_quad_at((pa.x, pa.y), (pb.x, pb.y), q, t01);
-                        if let Some(point) = glyph
-                            .contours
-                            .get_mut(ci)
-                            .and_then(|c| c.points.get_mut(pi))
-                        {
-                            point.x = pos.0;
-                            point.y = pos.1;
+                        let pos = hoi_quad_at(
+                            (pa.position().x, pa.position().y),
+                            (pb.position().x, pb.position().y),
+                            q,
+                            t01,
+                        );
+                        if let Some(point) = interpolated.point_at_mut(ci, pi) {
+                            point.position = pos.into();
                         }
                     }
                 }
             }
         }
-        Ok(glyph)
+        super::interpolation::project_interpolated(&interpolated, base)
     }
 
     fn interpolation_layers(

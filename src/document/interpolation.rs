@@ -38,6 +38,22 @@ impl InterpolatedLayer {
             InterpolatedShape::Component(component) => Some(component),
         })
     }
+
+    pub(super) fn point_at_mut(
+        &mut self,
+        contour_index: usize,
+        point_index: usize,
+    ) -> Option<&mut InterpolatedPoint> {
+        self.shapes
+            .iter_mut()
+            .filter_map(|shape| match shape {
+                InterpolatedShape::Contour(contour) => Some(contour),
+                InterpolatedShape::Component(_) => None,
+            })
+            .nth(contour_index)?
+            .points
+            .get_mut(point_index)
+    }
 }
 
 /// One contour or component in canonical paint order.
@@ -257,14 +273,14 @@ pub(super) fn interpolate_projected(
         .copied()
         .ok_or("missing default layer")?;
     let output = interpolate_layers(layers, locations, target)?;
-    apply_to_ufo(base.project(), &output, base)
+    project_interpolated(&output, base)
 }
 
-fn apply_to_ufo(
-    mut glyph: norad::Glyph,
+pub(super) fn project_interpolated(
     output: &InterpolatedLayer,
     base: LayerView<'_>,
 ) -> Result<norad::Glyph, String> {
+    let mut glyph = base.project();
     if output.glyph_name != glyph.name().as_str()
         || output
             .codepoints
@@ -430,7 +446,7 @@ mod tests {
             crate::document::babelfont::layer_from_ufo(&other, &other_id, true);
         let base = LayerView::new(&base_layer, &base_preserved);
         let other = LayerView::new(&other_layer, &other_preserved);
-        let result = interpolate_layers(
+        let mut result = interpolate_layers(
             &[base, other],
             &[location(0.0), location(1.0)],
             &location(0.5),
@@ -478,6 +494,16 @@ mod tests {
         assert_eq!(components[0].id, base.components().next().unwrap().id());
         assert_eq!(components[0].reference, "base");
         assert_eq!(result.anchors[0].id, base.anchors().next().unwrap().id());
+
+        result.point_at_mut(0, 0).unwrap().position = (33.25, 44.75).into();
+        let projected = project_interpolated(&result, base).unwrap();
+        assert_eq!(
+            (
+                projected.contours[0].points[0].x,
+                projected.contours[0].points[0].y
+            ),
+            (33.25, 44.75)
+        );
     }
 
     #[test]
