@@ -11,10 +11,8 @@ use std::sync::Arc;
 use babelfont::convertors::fontir::{BabelfontIrSource, CompilationOptions};
 use fontdrasil::coords::{DesignCoord, DesignLocation};
 
-use super::model::font_info::CanonicalFontInfo;
 use super::project::Project;
 use super::var_model::Location;
-use super::variable::LayerId;
 use crate::text::shape::ShapingFont;
 
 type CompileResult = Result<Arc<CompiledFont>, String>;
@@ -250,9 +248,9 @@ impl Project {
             .collect::<Result<_, _>>()?;
         let default = self.default_source_index();
         let default_id = self.source_id(default).expect("default source identity");
-        let source = &self.sources()[default].font;
-        let info =
-            CanonicalFontInfo::from_ufo(&source.font_info).map_err(|error| error.to_string())?;
+        let info = self
+            .document_font_info(default_id)
+            .expect("default source retains canonical font info");
         font.upm =
             super::compile_metadata::units_per_em(info.metrics.units_per_em.unwrap_or(1000.0))?;
         font.names.family_name = info
@@ -273,9 +271,14 @@ impl Project {
             .collect::<Vec<_>>()
             .join("\n");
         font.features = babelfont::Features::from_fea(&features);
-        super::compile_metadata::apply(&mut font, &info)?;
+        super::compile_metadata::apply(&mut font, info)?;
         super::compile_metadata::rules(self, &mut font)?;
-        font.source = Some(self.sources()[default].source_path.join("features.fea"));
+        font.source = Some(
+            self.document_source(default_id)
+                .expect("default source identity")
+                .path()
+                .join("features.fea"),
+        );
         font.masters.clear();
         let default_metadata = self
             .document_font_metadata(default_id)
@@ -287,16 +290,17 @@ impl Project {
                 .iter()
                 .map(|(name, members)| (name.clone(), members.clone())),
         );
-        for (index, source) in self.sources().iter().enumerate() {
-            let source_id = self.source_id(index).expect("source identity");
+        for source in self.document_sources() {
+            let source_id = source.id();
             let mut master = babelfont::Master::new(
-                self.master_names[index].as_ref(),
+                source.name(),
                 source_id.0.to_string(),
-                self.design_location(self.master_locations.get(index).unwrap_or(&Location::new()))?,
+                self.design_location(source.location())?,
             );
-            let info = CanonicalFontInfo::from_ufo(&source.font.font_info)
-                .map_err(|error| error.to_string())?;
-            super::compile_metadata::metrics(&mut master, &info)?;
+            let info = self
+                .document_font_info(source_id)
+                .expect("source identity retains canonical font info");
+            super::compile_metadata::metrics(&mut master, info)?;
             for (key, value) in [
                 (babelfont::MetricType::Ascender, info.metrics.ascender),
                 (babelfont::MetricType::Descender, info.metrics.descender),
@@ -346,14 +350,10 @@ impl Project {
                     layer.location = Some(self.design_location(&source.location)?);
                 }
             }
-            let default_layer = LayerId {
-                source: default_id,
-                name: self.sources()[default]
-                    .font
-                    .default_layer()
-                    .name()
-                    .to_string(),
-            };
+            let default_layer = self
+                .document_source(default_id)
+                .expect("default source identity")
+                .default_layer();
             if let Some(layer) = self.document_layer(&glyph.name, &default_layer) {
                 glyph.codepoints = layer.codepoints().map(u32::from).collect();
                 let explicit_category =

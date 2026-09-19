@@ -139,7 +139,7 @@ fn compiler_snapshot_reads_canonical_source_glyph_metadata() {
             plist::Value::String("mark".into()),
         )])),
     );
-    let project = Project::from_source(Master::from_font(font, "Metadata.ufo".into()));
+    let mut project = Project::from_source(Master::from_font(font, "Metadata.ufo".into()));
 
     let metadata = project
         .document_source_glyph_metadata(SourceId(0), "A")
@@ -168,4 +168,45 @@ fn compiler_snapshot_reads_canonical_source_glyph_metadata() {
     let glyph = snapshot.glyphs.get("A").unwrap();
     assert!(!glyph.exported);
     assert_eq!(glyph.category, babelfont::GlyphCategory::Mark);
+
+    let before = project.compiled_preview().unwrap();
+    let revision = project.document_revision();
+    let mut font_info = project.document_font_info(SourceId(0)).unwrap().clone();
+    font_info.metrics.units_per_em = Some(1001.5);
+    font_info.names.family_name = Some("Canonical Metadata Edited".into());
+    let outcome = project
+        .edit_document_source_metadata(SourceId(0), |draft| {
+            assert!(draft.set_font_info(font_info));
+            Ok(())
+        })
+        .unwrap();
+    let DocumentEditOutcome::Changed {
+        revision: changed_revision,
+        change,
+    } = outcome
+    else {
+        panic!("canonical font-info edit reported no change")
+    };
+    assert_eq!(changed_revision, revision.wrapping_add(1));
+    assert!(change.requires_compilation());
+    let exact = project.document_font_info(SourceId(0)).unwrap();
+    assert_eq!(exact.metrics.units_per_em, Some(1001.5));
+    assert_eq!(
+        exact.names.family_name.as_deref(),
+        Some("Canonical Metadata Edited")
+    );
+
+    let edited_snapshot = project.babelfont_snapshot().unwrap();
+    assert_eq!(edited_snapshot.upm, 1002);
+    assert_eq!(
+        edited_snapshot
+            .names
+            .family_name
+            .get_default()
+            .map(String::as_str),
+        Some("Canonical Metadata Edited")
+    );
+    let after = project.compiled_preview().unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&before, &after));
+    assert_ne!(before.bytes, after.bytes);
 }
