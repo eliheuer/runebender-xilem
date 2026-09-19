@@ -758,7 +758,28 @@ impl Project {
                 location: normalize(&source.location)?,
             });
         }
-        let variable = VariableData::from_sources(&masters);
+        let mut variable = VariableData::from_sources(&masters);
+        let source_identities = variable
+            .source_ids
+            .iter()
+            .copied()
+            .zip(masters.iter())
+            .map(|(source, master)| {
+                (
+                    source,
+                    LayerId {
+                        source,
+                        name: master.font.default_layer().name().to_string(),
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        let canonical_designspace =
+            super::model::designspace::CanonicalDesignspace::from_norad_with_source_identities(
+                &doc,
+                source_identities,
+            )?;
+        variable.install_designspace(canonical_designspace);
         let model = if masters.len() > 1 || !brace.is_empty() {
             Some(VariationModel::new(&master_locations)?)
         } else {
@@ -1377,6 +1398,18 @@ impl Project {
         self.variable.source_glyph_metadata(source, name)
     }
 
+    /// Canonical axes, sources, instances, rules and sparse-source structure.
+    pub fn document_designspace(&self) -> Option<&super::model::designspace::CanonicalDesignspace> {
+        self.variable.designspace()
+    }
+
+    /// Immutable variable-font structure consumed by interpolation and compilation.
+    pub fn compiler_structure(
+        &self,
+    ) -> Option<super::model::designspace::CanonicalCompilerStructure> {
+        Some(self.document_designspace()?.compiler_structure())
+    }
+
     /// Current canonical document revision used by derived compiler data.
     pub fn document_revision(&self) -> u64 {
         self.variable.revision
@@ -1501,6 +1534,7 @@ impl Project {
             super::history::HistoryReplayOutcome::Applied => {
                 let after = self.capture_document_source_metadata();
                 let affected = before.changed_sources(&after);
+                let metrics_changed = before.metrics_changed(&after);
                 Ok(DocumentHistoryReplayOutcome::Changed {
                     revision: self.variable.revision,
                     change: DocumentChange {
@@ -1508,7 +1542,7 @@ impl Project {
                         dependent_layers: Vec::new(),
                         source_metadata: affected,
                         geometry: false,
-                        metrics: false,
+                        metrics: metrics_changed,
                         metadata: true,
                         compilation: true,
                     },
@@ -1532,6 +1566,7 @@ impl Project {
         expected: &CanonicalSourceMetadataSnapshot,
         replacement: CanonicalSourceMetadataSnapshot,
     ) -> Result<DocumentEditOutcome, DocumentSourceMetadataHistoryError> {
+        let metrics_changed = expected.metrics_changed(&replacement);
         let affected = self
             .variable
             .restore_source_metadata_if_current(expected, replacement)
@@ -1556,7 +1591,7 @@ impl Project {
                 dependent_layers: Vec::new(),
                 source_metadata: affected,
                 geometry: false,
-                metrics: false,
+                metrics: metrics_changed,
                 metadata: true,
                 compilation: true,
             },

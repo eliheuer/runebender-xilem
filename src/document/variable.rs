@@ -71,6 +71,18 @@ impl CanonicalSourceMetadataSnapshot {
             .filter(|source| self.metadata.get(source) != other.metadata.get(source))
             .collect()
     }
+
+    pub(super) fn metrics_changed(&self, other: &Self) -> bool {
+        self.metadata.iter().any(|(source, metadata)| {
+            other
+                .metadata
+                .get(source)
+                .is_none_or(|other| metadata.font_info.metrics != other.font_info.metrics)
+        }) || other
+            .metadata
+            .keys()
+            .any(|source| !self.metadata.contains_key(source))
+    }
 }
 
 pub(super) enum SourceMetadataRestoreError {
@@ -159,6 +171,7 @@ pub struct DocumentSnapshot {
     glyphs: BTreeMap<String, VariableGlyph>,
     source_metadata: BTreeMap<SourceId, SourceMetadata>,
     source_ids: Vec<SourceId>,
+    designspace: Option<super::model::designspace::CanonicalDesignspace>,
 }
 
 /// Opaque canonical source and layer structure for guarded document transactions.
@@ -174,6 +187,7 @@ pub struct CanonicalSourceStructureSnapshot {
     templates: BTreeMap<SourceId, norad::Font>,
     source_metadata: BTreeMap<SourceId, SourceMetadata>,
     source_ids: Vec<SourceId>,
+    designspace: Option<super::model::designspace::CanonicalDesignspace>,
 }
 
 impl CanonicalSourceStructureSnapshot {
@@ -192,6 +206,11 @@ impl DocumentSnapshot {
     /// Stable source identities in current display order.
     pub fn source_ids(&self) -> &[SourceId] {
         &self.source_ids
+    }
+
+    /// Canonical variable-font structure, absent for a standalone UFO.
+    pub fn designspace(&self) -> Option<&super::model::designspace::CanonicalDesignspace> {
+        self.designspace.as_ref()
     }
 
     /// Every glyph name in canonical document order.
@@ -273,6 +292,7 @@ pub(super) struct VariableData {
     pub(super) histories: BTreeMap<LayerId, super::history::EditHistory>,
     templates: BTreeMap<SourceId, norad::Font>,
     source_metadata: BTreeMap<SourceId, SourceMetadata>,
+    designspace: Option<super::model::designspace::CanonicalDesignspace>,
     pub(super) source_ids: Vec<SourceId>,
     pub(super) next_source: usize,
 }
@@ -287,6 +307,7 @@ impl Clone for VariableData {
             histories: self.histories.clone(),
             templates: self.templates.clone(),
             source_metadata: self.source_metadata.clone(),
+            designspace: self.designspace.clone(),
             source_ids: self.source_ids.clone(),
             next_source: self.next_source,
         }
@@ -300,6 +321,7 @@ impl VariableData {
             glyphs: self.glyphs.clone(),
             source_metadata: self.source_metadata.clone(),
             source_ids: self.source_ids.clone(),
+            designspace: self.designspace.clone(),
         }
     }
 
@@ -309,6 +331,17 @@ impl VariableData {
         }
     }
 
+    pub(super) fn designspace(&self) -> Option<&super::model::designspace::CanonicalDesignspace> {
+        self.designspace.as_ref()
+    }
+
+    pub(super) fn install_designspace(
+        &mut self,
+        designspace: super::model::designspace::CanonicalDesignspace,
+    ) {
+        self.designspace = Some(designspace);
+    }
+
     pub(super) fn source_structure_snapshot(&self) -> CanonicalSourceStructureSnapshot {
         CanonicalSourceStructureSnapshot {
             glyph_geometry: self.font.glyphs.clone(),
@@ -316,6 +349,7 @@ impl VariableData {
             templates: self.templates.clone(),
             source_metadata: self.source_metadata.clone(),
             source_ids: self.source_ids.clone(),
+            designspace: self.designspace.clone(),
         }
     }
 
@@ -348,6 +382,7 @@ impl VariableData {
         self.templates = replacement.templates;
         self.source_metadata = replacement.source_metadata;
         self.source_ids = replacement.source_ids;
+        self.designspace = replacement.designspace;
         self.next_source = self.next_source.max(required_next_source);
         self.revision = self.revision.wrapping_add(1);
         Ok(true)

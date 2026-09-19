@@ -6,10 +6,14 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use runebender::document::history::HistoryDirection;
 use runebender::document::model::font_info::{
     CanonicalFontInfo, CanonicalFontInfoError, OpenTypeWidthClass, clear_canonical_font_info_fields,
 };
-use runebender::document::project::{DocumentEditOutcome, Project};
+use runebender::document::project::{
+    DocumentEditOutcome, DocumentHistoryReplayOutcome, DocumentSourceMetadataHistoryError, Master,
+    Project,
+};
 use runebender::document::variable::SourceId;
 
 static SCRATCH_ID: AtomicUsize = AtomicUsize::new(0);
@@ -249,7 +253,7 @@ fn project_owns_font_info_and_preserves_unowned_fields_through_save() {
 fn project_rejects_invalid_font_info_without_changing_canonical_or_projected_state() {
     let mut source = norad::Font::new();
     source.font_info = populated_font_info();
-    let mut project = Project::from_source(runebender::document::project::Master::from_font(
+    let mut project = Project::from_source(Master::from_font(
         source,
         PathBuf::from("InvalidFontInfo.ufo"),
     ));
@@ -276,4 +280,68 @@ fn project_rejects_invalid_font_info_without_changing_canonical_or_projected_sta
         assert_eq!(project.document_snapshot(), document);
         assert_eq!(project.document_revision(), revision);
     }
+}
+
+#[test]
+fn metric_metadata_restore_and_history_report_precise_invalidation() {
+    let mut project = Project::from_source(Master::from_font(
+        norad::Font::new(),
+        PathBuf::from("MetricHistory.ufo"),
+    ));
+    let source = SourceId(0);
+    let before = project.begin_document_source_metadata_history();
+    let DocumentEditOutcome::Changed { change, .. } = project
+        .edit_document_source_metadata(source, |draft| {
+            let mut info = draft.font_info().clone();
+            info.metrics.ascender = Some(913.625);
+            assert!(draft.set_font_info(info));
+            Ok(())
+        })
+        .unwrap()
+    else {
+        panic!("metric edit did not commit")
+    };
+    assert!(change.metrics_changed());
+    assert!(project.record_document_source_metadata_history(before.clone()));
+    let after = project.capture_document_source_metadata();
+
+    let DocumentHistoryReplayOutcome::Changed { change, .. } = project
+        .replay_document_source_metadata_history(HistoryDirection::Undo)
+        .unwrap()
+    else {
+        panic!("metric undo did not replay")
+    };
+    assert!(change.metrics_changed());
+    assert_eq!(
+        project.document_font_info(source).unwrap().metrics.ascender,
+        None
+    );
+
+    let DocumentHistoryReplayOutcome::Changed { change, .. } = project
+        .replay_document_source_metadata_history(HistoryDirection::Redo)
+        .unwrap()
+    else {
+        panic!("metric redo did not replay")
+    };
+    assert!(change.metrics_changed());
+    assert_eq!(
+        project.document_font_info(source).unwrap().metrics.ascender,
+        Some(913.625)
+    );
+
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .restore_document_source_metadata_if_current(&after, after.clone())
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+
+    let document = project.document_snapshot();
+    assert_eq!(
+        project.restore_document_source_metadata_if_current(&before, after),
+        Err(DocumentSourceMetadataHistoryError::Stale)
+    );
+    assert_eq!(project.document_snapshot(), document);
+    assert_eq!(project.document_revision(), revision);
 }
