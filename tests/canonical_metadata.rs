@@ -4,6 +4,8 @@
 //! Regression coverage for canonical group, kerning and glyph metadata values.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use runebender::document::font_ops::{
     CanonicalFontMetadata, CanonicalMetadataError, KerningParticipant, KerningSide,
@@ -11,6 +13,30 @@ use runebender::document::font_ops::{
 use runebender::document::model::glyph_metadata::{
     CanonicalGlyphMetadata, GlyphMetadataError, OpenTypeGlyphCategory, parse_codepoints,
 };
+use runebender::document::project::{DocumentEditOutcome, Project};
+use runebender::document::variable::SourceId;
+
+static SCRATCH_ID: AtomicUsize = AtomicUsize::new(0);
+
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new() -> Self {
+        let id = SCRATCH_ID.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "runebender-canonical-metadata-{}-{id}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 fn raw_metadata() -> CanonicalFontMetadata {
     CanonicalFontMetadata::from_raw(
@@ -280,4 +306,115 @@ fn glyph_metadata_preserves_exact_values_and_rejects_bad_unicode() {
     assert!(!metadata.set_codepoints(['A', '\u{391}']));
     assert!(metadata.set_note(None));
     assert!(!metadata.set_note(None));
+}
+
+#[test]
+fn project_source_metadata_is_atomic_and_survives_save_reload() {
+    let scratch = Scratch::new();
+    let path = scratch.0.join("Metadata.ufo");
+    let mut font = norad::Font::new();
+    font.default_layer_mut()
+        .insert_glyph(norad::Glyph::new("A"));
+    font.default_layer_mut()
+        .insert_glyph(norad::Glyph::new("V"));
+    font.groups.insert(
+        norad::Name::new("com.example.arbitrary").unwrap(),
+        vec![
+            norad::Name::new("A").unwrap(),
+            norad::Name::new("A").unwrap(),
+        ],
+    );
+    font.kerning.insert(
+        norad::Name::new("A").unwrap(),
+        BTreeMap::from([(norad::Name::new("V").unwrap(), -81.375)]),
+    );
+    font.save(&path).unwrap();
+
+    let mut project = Project::load(&path).unwrap();
+    let source = SourceId(0);
+    let mut edited = project.document_font_metadata(source).unwrap().clone();
+    assert_eq!(edited.resolved_kerning("A", "V"), Some(-81.375));
+    assert_eq!(
+        edited.groups().get("com.example.arbitrary"),
+        Some(&vec!["A".to_string(), "A".to_string()])
+    );
+    assert!(
+        edited
+            .set_kerning_pair(
+                KerningParticipant::glyph("A").unwrap(),
+                KerningParticipant::glyph("V").unwrap(),
+                Some(-63.625),
+            )
+            .unwrap()
+    );
+    assert!(
+        edited
+            .set_group("com.example.extra", vec!["V".into()])
+            .unwrap()
+    );
+
+    let revision = project.document_revision();
+    let outcome = project
+        .edit_document_source_metadata(source, |draft| {
+            assert!(draft.set_font_metadata(edited.clone()));
+            Ok(())
+        })
+        .unwrap();
+    let DocumentEditOutcome::Changed {
+        revision: changed_revision,
+        change,
+    } = outcome
+    else {
+        panic!("canonical source edit reported no change");
+    };
+    assert_eq!(changed_revision, revision.wrapping_add(1));
+    assert_eq!(change.source_metadata(), &[source]);
+    assert!(change.metadata_changed());
+    assert!(change.requires_compilation());
+    assert!(!change.geometry_changed());
+    assert!(!change.metrics_changed());
+    assert_eq!(project.document_font_metadata(source), Some(&edited));
+
+    let unchanged_revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_source_metadata(source, |draft| {
+                assert!(!draft.set_font_metadata(edited.clone()));
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged {
+            revision: unchanged_revision,
+        }
+    );
+    let mut rejected = edited.clone();
+    rejected
+        .set_kerning_pair(
+            KerningParticipant::glyph("A").unwrap(),
+            KerningParticipant::glyph("V").unwrap(),
+            Some(-20.25),
+        )
+        .unwrap();
+    assert_eq!(
+        project.edit_document_source_metadata(source, |draft| {
+            assert!(draft.set_font_metadata(rejected));
+            Err(runebender::document::DocumentEditError::Rejected)
+        }),
+        Err(runebender::document::DocumentEditError::Rejected)
+    );
+    assert_eq!(project.document_revision(), unchanged_revision);
+    assert_eq!(project.document_font_metadata(source), Some(&edited));
+
+    project.save().unwrap();
+    let reloaded = Project::load(&path).unwrap();
+    assert_eq!(reloaded.document_font_metadata(source), Some(&edited));
+    let saved = reloaded.source_snapshot(source).unwrap();
+    assert_eq!(saved.kerning["A"]["V"], -63.625);
+    assert_eq!(
+        saved.groups["com.example.arbitrary"],
+        [
+            norad::Name::new("A").unwrap(),
+            norad::Name::new("A").unwrap()
+        ]
+    );
 }
