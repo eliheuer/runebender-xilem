@@ -5,7 +5,81 @@
 //! groups, glyph names and unicodes, and the structural signature
 //! interpolation compatibility is judged by.
 
+#[path = "canonical_metadata.rs"]
+pub mod canonical_metadata;
+
+pub use canonical_metadata::{
+    CanonicalFontMetadata, CanonicalMetadataError, KerningParticipant, KerningSide,
+};
+
 use norad::{Font, Glyph, PointType};
+
+/// Decode the UFO boundary maps into one exact canonical value.
+pub fn canonical_metadata_from_ufo(
+    font: &Font,
+) -> Result<CanonicalFontMetadata, CanonicalMetadataError> {
+    let groups = font
+        .groups
+        .iter()
+        .map(|(name, members)| {
+            (
+                name.to_string(),
+                members.iter().map(ToString::to_string).collect(),
+            )
+        })
+        .collect();
+    let kerning = font
+        .kerning
+        .iter()
+        .map(|(left, row)| {
+            (
+                left.to_string(),
+                row.iter()
+                    .map(|(right, value)| (right.to_string(), *value))
+                    .collect(),
+            )
+        })
+        .collect();
+    CanonicalFontMetadata::from_raw(groups, kerning)
+}
+
+/// Encode one canonical value into UFO boundary maps atomically.
+pub fn write_canonical_metadata_to_ufo(
+    font: &mut Font,
+    metadata: &CanonicalFontMetadata,
+) -> Result<bool, CanonicalMetadataError> {
+    let mut groups = norad::Groups::default();
+    for (name, members) in metadata.groups() {
+        let name = norad::Name::new(name)
+            .map_err(|_| CanonicalMetadataError::InvalidName(name.clone()))?;
+        let members = members
+            .iter()
+            .map(|member| {
+                norad::Name::new(member)
+                    .map_err(|_| CanonicalMetadataError::InvalidName(member.clone()))
+            })
+            .collect::<Result<_, _>>()?;
+        groups.insert(name, members);
+    }
+    let mut kerning = norad::Kerning::default();
+    for (left, row) in metadata.raw_kerning() {
+        let left_name = norad::Name::new(&left)
+            .map_err(|_| CanonicalMetadataError::InvalidName(left.clone()))?;
+        let mut output_row = std::collections::BTreeMap::new();
+        for (right, value) in row {
+            let right_name = norad::Name::new(&right)
+                .map_err(|_| CanonicalMetadataError::InvalidName(right.clone()))?;
+            output_row.insert(right_name, value);
+        }
+        kerning.insert(left_name, output_row);
+    }
+    if font.groups == groups && font.kerning == kerning {
+        return Ok(false);
+    }
+    font.groups = groups;
+    font.kerning = kerning;
+    Ok(true)
+}
 
 /// Kerning between two glyphs, resolving group fallbacks in UFO
 /// precedence order: glyph-glyph, glyph-group, group-glyph,
@@ -104,28 +178,17 @@ pub fn set_kern_group(font: &mut Font, glyph: &str, first_side: bool, group: &st
     changed
 }
 
-/// Set a glyph's codepoint from text: `"0041"`, `"U+0041"`, or
-/// `"0x41"`.
+/// Set a glyph's codepoints from hexadecimal text such as `"0041"`, `"U+0041"`, or
+/// `"0x41, U+0391"`.
 ///
-/// The parsed character replaces every codepoint the glyph had. An
-/// empty string clears them all. Returns false when the text does
-/// not parse.
+/// Parsed characters replace every codepoint the glyph had.
+/// An empty string clears them all.
+/// Returns false when any token does not parse.
 pub fn set_glyph_unicode(glyph: &mut Glyph, unicode: &str) -> bool {
-    let trimmed = unicode.trim();
-    if trimmed.is_empty() {
-        glyph.codepoints = norad::Codepoints::new([]);
-        return true;
-    }
-    let hex = trimmed
-        .strip_prefix("U+")
-        .or_else(|| trimmed.strip_prefix("u+"))
-        .or_else(|| trimmed.strip_prefix("0x"))
-        .or_else(|| trimmed.strip_prefix("0X"))
-        .unwrap_or(trimmed);
-    let Some(c) = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32) else {
+    let Ok(codepoints) = super::model::glyph_metadata::parse_codepoints(unicode) else {
         return false;
     };
-    glyph.codepoints = norad::Codepoints::new([c]);
+    glyph.codepoints = norad::Codepoints::new(codepoints);
     true
 }
 
@@ -193,4 +256,33 @@ pub fn glyph_signature(glyph: &Glyph) -> Vec<Vec<PointType>> {
         .iter()
         .map(|c| c.points.iter().map(|p| p.typ).collect())
         .collect()
+}
+
+#[cfg(test)]
+mod canonical_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_ufo_boundary_preserves_fractional_kerning_and_unrelated_groups() {
+        let mut source = Font::new();
+        source.groups.insert(
+            norad::Name::new("com.example.arbitrary").unwrap(),
+            vec![norad::Name::new("A").unwrap()],
+        );
+        source.groups.insert(
+            norad::Name::new("public.kern1.A").unwrap(),
+            vec![norad::Name::new("A").unwrap()],
+        );
+        source.kerning.insert(
+            norad::Name::new("A").unwrap(),
+            std::collections::BTreeMap::from([(norad::Name::new("V").unwrap(), -81.375)]),
+        );
+
+        let canonical = canonical_metadata_from_ufo(&source).unwrap();
+        let mut output = Font::new();
+        assert!(write_canonical_metadata_to_ufo(&mut output, &canonical).unwrap());
+        assert!(!write_canonical_metadata_to_ufo(&mut output, &canonical).unwrap());
+        assert_eq!(output.groups, source.groups);
+        assert_eq!(output.kerning, source.kerning);
+    }
 }
