@@ -1125,9 +1125,10 @@ impl LayerEditDraft {
 
     /// Delete selected points while preserving surviving canonical identities and metadata.
     ///
-    /// Deleting an on-curve point also removes its incoming controls. Deleting any control turns
-    /// that segment into a line by removing all of its controls. Contours without an on-curve point
-    /// are removed. Returns whether any topology changed.
+    /// Deleting an on-curve point also removes its incoming controls. Deleting a cubic control
+    /// removes both controls from that segment. Deleting a quadratic control materializes its
+    /// implied endpoints and replaces only its segment with a line. Contours without a surviving
+    /// segment are removed. Returns whether any topology changed.
     pub fn delete_points(&mut self, selected: &[PointId]) -> Result<bool, DocumentEditError> {
         if selected.is_empty() {
             return Ok(false);
@@ -1147,6 +1148,38 @@ impl LayerEditDraft {
             };
             let contour_id =
                 ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+            let point_ids: Vec<_> = path
+                .nodes
+                .iter()
+                .map(|node| read_id(&node.format_specific).expect("canonical point identity"))
+                .collect();
+            if !point_ids.iter().any(|id| selected.contains(id)) {
+                shape_index += 1;
+                continue;
+            }
+            if point_ids.iter().all(|id| selected.contains(id)) {
+                changed = true;
+                self.layer.shapes.remove(shape_index);
+                self.preserved
+                    .contours
+                    .retain(|candidate| candidate.id != contour_id);
+                continue;
+            }
+            {
+                let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
+                    unreachable!("selected contour is a path");
+                };
+                let preserved = self
+                    .preserved
+                    .contours
+                    .iter_mut()
+                    .find(|candidate| candidate.id == contour_id)
+                    .expect("canonical contour preservation");
+                changed |= materialize_deleted_quadratic_controls(path, preserved, &selected)?;
+            }
+            let Shape::Path(path) = &self.layer.shapes[shape_index] else {
+                unreachable!("selected contour is a path");
+            };
             let point_ids: Vec<_> = path
                 .nodes
                 .iter()
@@ -2057,6 +2090,100 @@ fn new_document_point(
             },
         },
     )
+}
+
+fn materialize_deleted_quadratic_controls(
+    path: &mut babelfont::Path,
+    preserved: &mut PreservedContour,
+    selected: &HashSet<u64>,
+) -> Result<bool, DocumentEditError> {
+    let length = path.nodes.len();
+    if length < 2 {
+        return Ok(false);
+    }
+    let next = |index| {
+        if index + 1 < length {
+            Some(index + 1)
+        } else if path.closed {
+            Some(0)
+        } else {
+            None
+        }
+    };
+    let all_off_curve = path.closed
+        && path
+            .nodes
+            .iter()
+            .all(|node| node.nodetype == NodeType::OffCurve);
+    let belongs_to_quadratic_chain = |control: usize| {
+        if path.nodes[control].nodetype != NodeType::OffCurve {
+            return false;
+        }
+        if all_off_curve {
+            return true;
+        }
+        let mut index = control;
+        for _ in 0..length {
+            let Some(candidate) = next(index) else {
+                return false;
+            };
+            if path.nodes[candidate].nodetype != NodeType::OffCurve {
+                return path.nodes[candidate].nodetype == NodeType::QCurve;
+            }
+            index = candidate;
+        }
+        false
+    };
+    let selected_controls: HashSet<_> = path
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| {
+            let id = read_id(&node.format_specific).expect("canonical point identity");
+            (selected.contains(&id) && belongs_to_quadratic_chain(index)).then_some(index)
+        })
+        .collect();
+    if selected_controls.is_empty() {
+        return Ok(false);
+    }
+    let boundary_before: Vec<_> = (0..length)
+        .map(|index| {
+            let previous = if index == 0 {
+                path.closed.then_some(length - 1)
+            } else {
+                Some(index - 1)
+            }?;
+            (path.nodes[previous].nodetype == NodeType::OffCurve
+                && path.nodes[index].nodetype == NodeType::OffCurve
+                && (selected_controls.contains(&previous) || selected_controls.contains(&index)))
+            .then(|| {
+                kurbo::Point::new(path.nodes[previous].x, path.nodes[previous].y)
+                    .midpoint(kurbo::Point::new(path.nodes[index].x, path.nodes[index].y))
+            })
+        })
+        .collect();
+    for position in boundary_before.iter().flatten() {
+        ensure_finite(&[position.x, position.y])?;
+    }
+
+    let old_nodes = path.nodes.clone();
+    let old_points = preserved.points.clone();
+    let mut nodes = Vec::with_capacity(length + boundary_before.iter().flatten().count());
+    let mut points = Vec::with_capacity(nodes.capacity());
+    for index in 0..length {
+        if let Some(position) = boundary_before[index] {
+            let created = new_document_point(position, NodeType::QCurve, false);
+            nodes.push(created.1);
+            points.push(created.2);
+        }
+        if !selected_controls.contains(&index) {
+            nodes.push(old_nodes[index].clone());
+            points.push(old_points[index].clone());
+        }
+    }
+    path.nodes = nodes;
+    preserved.points = points;
+    Ok(true)
 }
 
 impl<'a> AnchorView<'a> {

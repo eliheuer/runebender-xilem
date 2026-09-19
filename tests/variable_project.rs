@@ -2526,11 +2526,11 @@ fn canonical_point_deletion_preserves_surviving_identities_and_metadata() {
 
     assert!(runebender::outline::glyph_ops::delete_points(
         &mut expected,
-        &HashSet::from([(1, 0)])
+        &HashSet::from([(1, 0), (1, 1), (1, 2)])
     ));
     project
         .edit_document_layer("delete-points", &layer_id, |draft| {
-            assert!(draft.delete_points(&[ids[1][0]])?);
+            assert!(draft.delete_points(&ids[1])?);
             Ok(())
         })
         .unwrap();
@@ -2596,6 +2596,127 @@ fn canonical_point_deletion_preserves_surviving_identities_and_metadata() {
     );
     assert_eq!(project.document_snapshot(), snapshot);
     assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
+fn canonical_quadratic_control_deletion_preserves_neighbor_segments() {
+    let scratch = Scratch::new();
+    let point = |x, y, typ, label: &str| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            typ,
+            false,
+            Some(Name::new(label).unwrap()),
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        point.replace_lib(object_lib(label));
+        point
+    };
+    let mut glyph = Glyph::new("quadratic-delete");
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move, "open start"),
+            point(0.0, 80.0, PointType::OffCurve, "open a"),
+            point(80.0, 80.0, PointType::OffCurve, "open b"),
+            point(160.0, 80.0, PointType::OffCurve, "open c"),
+            point(160.0, 0.0, PointType::QCurve, "open end"),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(200.0, 0.0, PointType::OffCurve, "closed a"),
+            point(280.0, 80.0, PointType::OffCurve, "closed b"),
+            point(360.0, 0.0, PointType::OffCurve, "closed c"),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project = Project::from_source(Master::from_font(
+        font,
+        scratch.0.join("QuadraticDelete.ufo"),
+    ));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let ids: Vec<Vec<_>> = project
+        .document_layer("quadratic-delete", &layer_id)
+        .unwrap()
+        .contours()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+
+    project
+        .edit_document_layer("quadratic-delete", &layer_id, |draft| {
+            assert!(draft.delete_points(&[ids[0][2], ids[1][0]])?);
+            Ok(())
+        })
+        .unwrap();
+
+    let segments = runebender::outline::segment_ops::ordinary_layer_segments(
+        project
+            .document_layer("quadratic-delete", &layer_id)
+            .unwrap(),
+    );
+    let expected = [
+        kurbo::PathSeg::Quad(kurbo::QuadBez::new((0.0, 0.0), (0.0, 80.0), (40.0, 80.0))),
+        kurbo::PathSeg::Line(kurbo::Line::new((40.0, 80.0), (120.0, 80.0))),
+        kurbo::PathSeg::Quad(kurbo::QuadBez::new(
+            (120.0, 80.0),
+            (160.0, 80.0),
+            (160.0, 0.0),
+        )),
+        kurbo::PathSeg::Line(kurbo::Line::new((280.0, 0.0), (240.0, 40.0))),
+        kurbo::PathSeg::Quad(kurbo::QuadBez::new(
+            (240.0, 40.0),
+            (280.0, 80.0),
+            (320.0, 40.0),
+        )),
+        kurbo::PathSeg::Quad(kurbo::QuadBez::new(
+            (320.0, 40.0),
+            (360.0, 0.0),
+            (280.0, 0.0),
+        )),
+    ];
+    assert_eq!(
+        segments
+            .iter()
+            .map(|segment| segment.seg)
+            .collect::<Vec<_>>(),
+        expected,
+        "quadratic control deletion changed neighboring segments"
+    );
+
+    let layer = project
+        .document_layer("quadratic-delete", &layer_id)
+        .unwrap();
+    let points: Vec<Vec<_>> = layer
+        .contours()
+        .map(|contour| contour.points().collect())
+        .collect();
+    assert_eq!(points[0][1].id(), ids[0][1]);
+    assert_eq!(points[0][4].id(), ids[0][3]);
+    assert_eq!(points[0][1].name(), Some("open a"));
+    assert_eq!(points[0][4].name(), Some("open c"));
+    assert_eq!(points[1][2].id(), ids[1][1]);
+    assert_eq!(points[1][3].id(), ids[1][2]);
+    assert_eq!(points[1][2].name(), Some("closed b"));
+    assert_eq!(points[1][3].name(), Some("closed c"));
+    assert!(
+        points
+            .iter()
+            .flatten()
+            .filter(|point| !ids.iter().flatten().any(|id| *id == point.id()))
+            .all(|point| point.name().is_none())
+    );
+    let live_ids: Vec<_> = points.iter().flatten().map(|point| point.id()).collect();
+    assert_eq!(
+        live_ids.len(),
+        live_ids.iter().collect::<HashSet<_>>().len()
+    );
 }
 
 #[test]

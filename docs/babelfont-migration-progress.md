@@ -1238,4 +1238,40 @@ The focused deletion comparison and all 36 variable-project integration tests pa
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+### Quadratic point-deletion correction
+
+Evidence commit: `Delete only the selected quadratic segment` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Delete only the selected quadratic segment$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Independent review showed that the compatibility deletion algorithm did not understand implied quadratic segments.
+Deleting one control from an all-off-curve contour removed the entire contour, while deleting a middle control from a longer quadratic chain flattened every neighboring segment.
+
+Canonical deletion now identifies each selected control's actual quadratic segment.
+It materializes the segment's implied endpoints, removes only that control and leaves a line between those endpoints while preserving adjacent quadratic controls, identities and metadata.
+Shared implied boundaries are materialized once when multiple controls are selected, and selecting every original point removes the contour before any replacement points are created.
+Every computed midpoint is checked for finiteness before mutation.
+
+The repository geometry oracle covers a middle control in an open three-control chain and one control in a closed all-off-curve contour.
+It verifies the replacement line, both neighboring quadratics, unselected control identities and names, fresh-point metadata and global identity uniqueness.
+The existing deletion comparison now removes the all-off-curve contour through full-contour selection, proving materialized points do not survive that selection.
+Both exact independent-review reproducers pass against the corrected library.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_quadratic_control_deletion_preserves_neighbor_segments -- --exact --test-threads=1
+cargo test --locked --test variable_project canonical_point_deletion_preserves_surviving_identities_and_metadata -- --exact --test-threads=1
+/private/tmp/runebender-migration-review.porJgX/quadratic_deletion_review_fixed --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused repository regressions, both independent-review tests and all 37 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
 The next M04 substep moves contour reversal onto canonical topology.

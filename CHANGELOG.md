@@ -63,6 +63,7 @@ No release has been published yet.
 - Made line-to-curve conversion produce one cubic for zero-control quadratic segments.
 - Prevented extreme finite coordinates from committing nonfinite points during segment insertion.
 - Rejected stale implied-quadratic segment identities after contour topology changes.
+- Preserved neighboring quadratic segments and control metadata when deleting one control.
 - Reject unsupported Designspace fields, invalid mappings, missing sources and incompatible glyph structures before they can be silently dropped or misinterpreted.
 - Prevented external reloads, stale model results, or stale proposals from overwriting
   unsaved or subsequently edited document state.
