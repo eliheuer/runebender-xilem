@@ -629,6 +629,136 @@ impl LayerEditDraft {
         Ok(ids)
     }
 
+    /// Add a closed rectangle or ellipse contour spanning `rect`.
+    ///
+    /// Returns the stable contour identity and point identities in contour order.
+    pub fn add_shape_contour(
+        &mut self,
+        rect: kurbo::Rect,
+        ellipse: bool,
+    ) -> Result<(ContourId, Vec<PointId>), DocumentEditError> {
+        ensure_finite(&[rect.x0, rect.y0, rect.x1, rect.y1])?;
+        let point = |x, y, point_type, smooth| (kurbo::Point::new(x, y), point_type, smooth);
+        let points = if ellipse {
+            let center = rect.center();
+            let (radius_x, radius_y) = (rect.width() / 2.0, rect.height() / 2.0);
+            let (control_x, control_y) = (radius_x * 0.552_284_749_8, radius_y * 0.552_284_749_8);
+            let round = |value: f64| value.round();
+            vec![
+                point(
+                    round(center.x + radius_x),
+                    round(center.y),
+                    NodeType::Curve,
+                    true,
+                ),
+                point(
+                    round(center.x + radius_x),
+                    round(center.y + control_y),
+                    NodeType::OffCurve,
+                    false,
+                ),
+                point(
+                    round(center.x + control_x),
+                    round(center.y + radius_y),
+                    NodeType::OffCurve,
+                    false,
+                ),
+                point(
+                    round(center.x),
+                    round(center.y + radius_y),
+                    NodeType::Curve,
+                    true,
+                ),
+                point(
+                    round(center.x - control_x),
+                    round(center.y + radius_y),
+                    NodeType::OffCurve,
+                    false,
+                ),
+                point(
+                    round(center.x - radius_x),
+                    round(center.y + control_y),
+                    NodeType::OffCurve,
+                    false,
+                ),
+                point(
+                    round(center.x - radius_x),
+                    round(center.y),
+                    NodeType::Curve,
+                    true,
+                ),
+                point(
+                    round(center.x - radius_x),
+                    round(center.y - control_y),
+                    NodeType::OffCurve,
+                    false,
+                ),
+                point(
+                    round(center.x - control_x),
+                    round(center.y - radius_y),
+                    NodeType::OffCurve,
+                    false,
+                ),
+                point(
+                    round(center.x),
+                    round(center.y - radius_y),
+                    NodeType::Curve,
+                    true,
+                ),
+                point(
+                    round(center.x + control_x),
+                    round(center.y - radius_y),
+                    NodeType::OffCurve,
+                    false,
+                ),
+                point(
+                    round(center.x + radius_x),
+                    round(center.y - control_y),
+                    NodeType::OffCurve,
+                    false,
+                ),
+            ]
+        } else {
+            vec![
+                point(rect.x0.round(), rect.y0.round(), NodeType::Line, false),
+                point(rect.x1.round(), rect.y0.round(), NodeType::Line, false),
+                point(rect.x1.round(), rect.y1.round(), NodeType::Line, false),
+                point(rect.x0.round(), rect.y1.round(), NodeType::Line, false),
+            ]
+        };
+        ensure_finite(
+            &points
+                .iter()
+                .flat_map(|(position, _, _)| [position.x, position.y])
+                .collect::<Vec<_>>(),
+        )?;
+        let contour_id = ContourId::next();
+        let created: Vec<_> = points
+            .into_iter()
+            .map(|(position, point_type, smooth)| new_document_point(position, point_type, smooth))
+            .collect();
+        let point_ids = created.iter().map(|(id, _, _)| *id).collect();
+        let mut path = babelfont::Path {
+            nodes: created.iter().map(|(_, point, _)| point.clone()).collect(),
+            closed: true,
+            ..babelfont::Path::default()
+        };
+        write_id(&mut path.format_specific, contour_id.0);
+        self.layer.shapes.push(Shape::Path(path));
+        self.preserved.contours.push(PreservedContour {
+            id: contour_id,
+            metadata: ObjectMetadata {
+                identifier: None,
+                lib: None,
+            },
+            points: created
+                .into_iter()
+                .map(|(_, _, preserved)| preserved)
+                .collect(),
+        });
+        Ok((contour_id, point_ids))
+    }
+
     /// Set the exact horizontal advance and refresh Babelfont's derived width.
     ///
     /// Returns whether the value changed.

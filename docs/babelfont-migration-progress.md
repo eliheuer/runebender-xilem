@@ -1045,4 +1045,34 @@ The focused pen comparison and all 30 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+### Canonical shape-creation substep
+
+Evidence commit: `Create canonical rectangle and ellipse contours` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Create canonical rectangle and ellipse contours$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md` and this log.
+
+`LayerEditDraft::add_shape_contour` now creates closed rectangle and cubic ellipse contours directly in canonical geometry.
+It retains the existing rounded-coordinate and ellipse-control contract while assigning fresh stable identities to the contour and all new points.
+Nonfinite rectangles are rejected before any draft mutation.
+
+The integration comparison requires identical projected rectangle and ellipse contours from the canonical and existing operations.
+It verifies point ordering, stable identity ordering and rejected-edit atomicity.
+Shape creation is complete within M04's first checklist item.
+Point insertion, deletion, reversal, split/join and copy/paste remain, so the item stays open.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_shape_creation_matches_existing_geometry_with_stable_identities -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused shape-creation comparison and all 32 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
 The next M04 substep continues direct canonical topology edits with point insertion and deletion.

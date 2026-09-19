@@ -1087,6 +1087,74 @@ fn canonical_pen_builds_closed_contours_with_stable_new_identities() {
 }
 
 #[test]
+fn canonical_shape_creation_matches_existing_geometry_with_stable_identities() {
+    let scratch = Scratch::new();
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(Glyph::new("shapes"));
+    let mut project = Project::from_source(Master::from_font(font, scratch.0.join("Shapes.ufo")));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let rectangle = kurbo::Rect::new(10.25, 20.75, 110.75, 220.25);
+    let ellipse = kurbo::Rect::new(200.25, 30.75, 400.75, 230.25);
+
+    let mut identities = None;
+    project
+        .edit_document_layer("shapes", &layer_id, |draft| {
+            let rectangle_ids = draft.add_shape_contour(rectangle, false)?;
+            let ellipse_ids = draft.add_shape_contour(ellipse, true)?;
+            identities = Some((rectangle_ids, ellipse_ids));
+            Ok(())
+        })
+        .unwrap();
+
+    let ((rectangle_id, rectangle_points), (ellipse_id, ellipse_points)) = identities.unwrap();
+    assert_eq!(rectangle_points.len(), 4);
+    assert_eq!(ellipse_points.len(), 12);
+    let layer = project.document_layer("shapes", &layer_id).unwrap();
+    let contours: Vec<_> = layer.contours().collect();
+    assert_eq!(contours.len(), 2);
+    assert_eq!(contours[0].id(), rectangle_id);
+    assert_eq!(contours[1].id(), ellipse_id);
+    assert_eq!(
+        contours[0]
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        rectangle_points
+    );
+    assert_eq!(
+        contours[1]
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        ellipse_points
+    );
+
+    let mut expected = Glyph::new("shapes");
+    runebender::outline::glyph_ops::add_shape_contour(&mut expected, rectangle, false);
+    runebender::outline::glyph_ops::add_shape_contour(&mut expected, ellipse, true);
+    assert_eq!(
+        project.glyph_layer("shapes", &layer_id).unwrap().contours,
+        expected.contours,
+        "canonical rectangle and ellipse creation changed existing geometry"
+    );
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project.edit_document_layer("shapes", &layer_id, |draft| {
+            draft.add_shape_contour(kurbo::Rect::new(0.0, 0.0, f64::INFINITY, 1.0), false)?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::NonFinite)
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
 fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let layer_id = project
