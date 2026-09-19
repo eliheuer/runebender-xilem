@@ -7,8 +7,8 @@
 //! `source` supplies guarded UFO projections for existing tools.
 //! `axis` and `var_model` wrap the private Babelfont/fontdrasil backend;
 //! `interpolation` checks and combines each glyph's participating sources.
-//! `composites` places components; `font_memory`
-//! and `new_font` build fonts without a filesystem. `model` keeps the
+//! `composites` places components; `filesystem` stages UFO and Designspace I/O;
+//! `font_memory` and `new_font` build fonts without a filesystem. `model` keeps the
 //! kerning lookup, glyph metadata, and entity ids. `history` is the
 //! one undo pile, and `proposal` is how a model or a tool offers an
 //! edit the designer can install or discard. `nodes` is a workflow
@@ -48,6 +48,7 @@ pub mod var_model;
 pub mod variable;
 
 pub mod experiments;
+mod filesystem;
 
 /// Connected workflows over the editor's live font versions.
 pub mod nodes_live;

@@ -88,6 +88,8 @@ pub struct Master {
     pub modified_glyphs: HashSet<String>,
     /// glyph name → glif path relative to the UFO root (memory hosts).
     pub glif_paths: HashMap<String, String>,
+    /// Filesystem details outside canonical ownership that must survive saves.
+    pub(crate) preserved_files: super::filesystem::PreservedFiles,
     /// Kerning changed since load/save.
     pub kerning_dirty: bool,
     /// glyph name → index into `glyphs`. Text buffer sorts carry
@@ -225,6 +227,7 @@ impl Master {
         fresh.kerning_dirty = self.kerning_dirty;
         fresh.modified_glyphs = std::mem::take(&mut self.modified_glyphs);
         fresh.glif_paths = std::mem::take(&mut self.glif_paths);
+        fresh.preserved_files = std::mem::take(&mut self.preserved_files);
         fresh.history = std::mem::take(&mut self.history);
         *self = fresh;
     }
@@ -256,9 +259,8 @@ impl Master {
     }
 
     /// Loads a UFO from disk and builds the glyph cache.
-    pub fn load(path: &Path) -> Result<Self, norad::error::FontLoadError> {
-        let font = norad::Font::load(path)?;
-        Ok(Self::from_font(font, path.to_path_buf()))
+    pub fn load(path: &Path) -> Result<Self, String> {
+        super::filesystem::load_ufo(path).map(|source| source.into_master(path.to_path_buf()))
     }
 
     /// Build the model from an already-assembled font, for in-memory
@@ -320,6 +322,7 @@ impl Master {
             font,
             modified_glyphs: HashSet::new(),
             glif_paths: HashMap::new(),
+            preserved_files: super::filesystem::PreservedFiles::default(),
             kerning_dirty: false,
             name_map,
             source_path,
@@ -747,8 +750,16 @@ impl Master {
     }
 
     /// Writes the master back to `source_path` and clears all dirty flags.
-    pub fn save(&mut self) -> Result<(), norad::error::FontWriteError> {
-        self.font.save(&self.source_path)?;
+    pub fn save(&mut self) -> Result<(), String> {
+        super::filesystem::ExportPlan::new(
+            vec![super::filesystem::SourceExport {
+                destination: self.source_path.clone(),
+                font: self.font.clone(),
+                preserved: self.preserved_files.clone(),
+            }],
+            None,
+        )?
+        .execute()?;
         self.dirty = false;
         self.modified_glyphs.clear();
         self.kerning_dirty = false;

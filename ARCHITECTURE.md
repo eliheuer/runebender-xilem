@@ -142,6 +142,7 @@ Review proposals use those auxiliary layers under stable source identities; revi
 Experimental versions clone canonical layer drafts and canonical source metadata for the session, and they apply selected changes only after root-baseline conflict checks.
 The GLIF SHA and external UFO proposal format remain explicit transient codec boundaries rather than editable Norad mirrors.
 `document/sources.rs` owns structural transactions and their guarded undo history; removing a source never deletes its UFO directory.
+`document/filesystem.rs` loads complete UFO and Designspace source sets before construction and stages every save artifact before replacing live destinations.
 
 `document::source::Master` is a compatibility UFO projection with source-local history and paint caches.
 Project exposes immutable projections through `sources()` and scoped mutations through `edit_source`, `edit_sources`, and `active_font_mut`.

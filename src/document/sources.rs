@@ -256,6 +256,7 @@ impl Project {
                 if let Some(mut old) = old {
                     rebuilt.modified_glyphs = std::mem::take(&mut old.modified_glyphs);
                     rebuilt.glif_paths = std::mem::take(&mut old.glif_paths);
+                    rebuilt.preserved_files = std::mem::take(&mut old.preserved_files);
                     rebuilt.kerning_dirty = old.kerning_dirty;
                     rebuilt.revision = old.revision.wrapping_add(1);
                     rebuilt.history = std::mem::take(&mut old.history);

@@ -608,43 +608,50 @@ impl Project {
             project.compute_compat();
             return Ok(project);
         }
-        if path.extension().is_some_and(|e| e == "designspace") {
-            let doc = crate::formats::designspace::load(path)?;
-            let dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
-            return Self::from_designspace(doc, move |filename| {
-                let ufo_path = dir.join(filename);
-                Master::load(&ufo_path).map_err(|e| format!("{}: {e}", ufo_path.display()))
-            });
-        }
-        {
-            let model = Master::load(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            let name: Arc<str> = model
-                .font
-                .font_info
-                .style_name
-                .clone()
-                .unwrap_or_else(|| "Regular".into())
-                .into();
-            Ok(Self {
-                variable: VariableData::default(),
-                source_history: sources::SourceHistory::default(),
-                document_history: super::history::DocumentHistory::default(),
-                source_metadata_history: super::history::SourceMetadataHistory::default(),
-                masters: vec![model],
-                active: 0,
-                master_names: vec![name],
-                axes: Vec::new(),
-                master_locations: vec![Location::new()],
-                model: None,
-                location: Location::new(),
-                compat: HashMap::new(),
-                export_source: None,
-                instances: Vec::new(),
-                ds_doc: None,
-                ds_dirty: false,
-                brace: Vec::new(),
-                experiments: super::experiments::Experiments::default(),
-            })
+        match super::filesystem::ImportPlan::read(path)? {
+            super::filesystem::ImportPlan::Designspace {
+                path,
+                document,
+                mut sources,
+            } => {
+                let directory = path.parent().unwrap_or(Path::new(".")).to_path_buf();
+                Self::from_designspace(*document, move |filename| {
+                    sources
+                        .remove(filename)
+                        .map(|source| source.into_master(directory.join(filename)))
+                        .ok_or_else(|| format!("missing validated source {filename}"))
+                })
+            }
+            super::filesystem::ImportPlan::Ufo { path, source } => {
+                let model = (*source).into_master(path);
+                let name: Arc<str> = model
+                    .font
+                    .font_info
+                    .style_name
+                    .clone()
+                    .unwrap_or_else(|| "Regular".into())
+                    .into();
+                Ok(Self {
+                    variable: VariableData::default(),
+                    source_history: sources::SourceHistory::default(),
+                    document_history: super::history::DocumentHistory::default(),
+                    source_metadata_history: super::history::SourceMetadataHistory::default(),
+                    masters: vec![model],
+                    active: 0,
+                    master_names: vec![name],
+                    axes: Vec::new(),
+                    master_locations: vec![Location::new()],
+                    model: None,
+                    location: Location::new(),
+                    compat: HashMap::new(),
+                    export_source: None,
+                    instances: Vec::new(),
+                    ds_doc: None,
+                    ds_dirty: false,
+                    brace: Vec::new(),
+                    experiments: super::experiments::Experiments::default(),
+                })
+            }
         }
     }
 
@@ -2293,35 +2300,37 @@ impl Project {
 
     /// Save every source from the variable project, then its Designspace metadata.
     pub fn save(&mut self) -> Result<(), String> {
+        let mut sources = Vec::with_capacity(self.masters.len());
         for index in 0..self.masters.len() {
             let font = self
                 .source_snapshot(self.source_id(index).expect("source identity"))
                 .ok_or("missing source data")?;
-            let source = &mut self.masters[index];
-            if let Some(parent) = source
-                .source_path
-                .parent()
-                .filter(|p| !p.as_os_str().is_empty())
-            {
-                std::fs::create_dir_all(parent)
-                    .map_err(|error| format!("{}: {error}", parent.display()))?;
-            }
-            font.save(&source.source_path)
-                .map_err(|error| format!("{}: {error}", source.source_path.display()))?;
+            let source = &self.masters[index];
+            sources.push(super::filesystem::SourceExport {
+                destination: source.source_path.clone(),
+                font,
+                preserved: source.preserved_files.clone(),
+            });
+        }
+        let designspace = if self.ds_dirty {
+            Some((
+                self.export_source
+                    .clone()
+                    .ok_or("designspace has no save destination")?,
+                self.ds_doc
+                    .clone()
+                    .ok_or("designspace document is unavailable")?,
+            ))
+        } else {
+            None
+        };
+        super::filesystem::ExportPlan::new(sources, designspace)?.execute()?;
+        for source in &mut self.masters {
             source.dirty = false;
             source.modified_glyphs.clear();
             source.kerning_dirty = false;
         }
         if self.ds_dirty {
-            let path = self
-                .export_source
-                .as_deref()
-                .ok_or("designspace has no save destination")?;
-            self.ds_doc
-                .as_ref()
-                .ok_or("designspace document is unavailable")?
-                .save(path)
-                .map_err(|error| format!("{}: {error}", path.display()))?;
             self.ds_dirty = false;
         }
         Ok(())

@@ -1,0 +1,800 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! Validated filesystem import and staged export for UFO and Designspace documents.
+//!
+//! Norad is the transient source-format codec in this module.
+//! Project construction consumes a completely loaded import plan, while saving first writes and
+//! reloads every staged artifact before any live destination is replaced.
+
+use std::collections::{BTreeMap, HashSet};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use super::project::Master;
+
+/// Filesystem details outside canonical ownership that must survive an ordinary save.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct PreservedFiles {
+    files: BTreeMap<PathBuf, Vec<u8>>,
+    glif_paths: BTreeMap<(String, String), PathBuf>,
+}
+
+impl PreservedFiles {
+    fn write_into(&self, root: &Path) -> Result<(), String> {
+        for (relative, bytes) in &self.files {
+            let destination = root.join(relative);
+            if destination.exists() {
+                return Err(format!(
+                    "preserved UFO payload conflicts with generated file {}",
+                    relative.display()
+                ));
+            }
+            let parent = destination
+                .parent()
+                .ok_or_else(|| format!("invalid preserved UFO path {}", relative.display()))?;
+            fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
+            fs::write(&destination, bytes)
+                .map_err(|error| format!("{}: {error}", destination.display()))?;
+        }
+        Ok(())
+    }
+
+    fn restore_glif_paths(&self, root: &Path, font: &norad::Font) -> Result<(), String> {
+        for layer in font.layers.iter() {
+            let layer_path = root.join(layer.path());
+            let contents_path = layer_path.join("contents.plist");
+            let mut contents: BTreeMap<String, PathBuf> = plist::from_file(&contents_path)
+                .map_err(|error| format!("{}: {error}", contents_path.display()))?;
+            let mut moves = Vec::new();
+            for glyph in layer.iter() {
+                let key = (layer.name().to_string(), glyph.name().to_string());
+                let Some(desired) = self.glif_paths.get(&key) else {
+                    continue;
+                };
+                validate_relative_file(desired)?;
+                let current = contents
+                    .get(glyph.name().as_str())
+                    .ok_or_else(|| format!("missing staged path for glyph {:?}", glyph.name()))?;
+                if current != desired {
+                    moves.push((glyph.name().to_string(), current.clone(), desired.clone()));
+                }
+            }
+            let mut temporary = Vec::new();
+            for (name, current, desired) in moves {
+                let current_path = layer_path.join(&current);
+                let temp = fresh_sibling(&current_path, "glif")?;
+                fs::rename(&current_path, &temp)
+                    .map_err(|error| format!("{}: {error}", current_path.display()))?;
+                temporary.push((name, temp, desired));
+            }
+            for (name, temp, desired) in temporary {
+                let destination = layer_path.join(&desired);
+                if destination.exists() {
+                    return Err(format!(
+                        "preserved GLIF path conflicts with generated file {}",
+                        destination.display()
+                    ));
+                }
+                if let Some(parent) = destination.parent() {
+                    fs::create_dir_all(parent)
+                        .map_err(|error| format!("{}: {error}", parent.display()))?;
+                }
+                fs::rename(&temp, &destination)
+                    .map_err(|error| format!("{}: {error}", destination.display()))?;
+                contents.insert(name, desired);
+            }
+            plist::to_file_xml(&contents_path, &contents)
+                .map_err(|error| format!("{}: {error}", contents_path.display()))?;
+        }
+        Ok(())
+    }
+
+    fn validate_glif_paths(&self, font: &norad::Font) -> Result<(), String> {
+        for ((layer_name, glyph_name), expected) in &self.glif_paths {
+            let Some(layer) = font.layers.get(layer_name) else {
+                continue;
+            };
+            let Some(actual) = layer.get_path(glyph_name) else {
+                continue;
+            };
+            if actual != expected {
+                return Err(format!(
+                    "staged glyph {glyph_name:?} changed its path from {} to {}",
+                    expected.display(),
+                    actual.display()
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// One fully decoded UFO source in a filesystem import plan.
+#[derive(Debug)]
+pub(crate) struct ImportedUfo {
+    font: norad::Font,
+    preserved: PreservedFiles,
+}
+
+impl ImportedUfo {
+    pub(crate) fn into_master(self, path: PathBuf) -> Master {
+        let glif_paths = self
+            .font
+            .default_layer()
+            .iter()
+            .filter_map(|glyph| {
+                let name = glyph.name().to_string();
+                let relative = self.font.default_layer().get_path(&name)?;
+                Some((
+                    name,
+                    self.font
+                        .default_layer()
+                        .path()
+                        .join(relative)
+                        .to_string_lossy()
+                        .into_owned(),
+                ))
+            })
+            .collect();
+        let mut master = Master::from_font(self.font, path);
+        master.glif_paths = glif_paths;
+        master.preserved_files = self.preserved;
+        master
+    }
+}
+
+/// A UFO or Designspace whose complete source set was validated before Project construction.
+#[derive(Debug)]
+pub(crate) enum ImportPlan {
+    Ufo {
+        path: PathBuf,
+        source: Box<ImportedUfo>,
+    },
+    Designspace {
+        path: PathBuf,
+        document: Box<norad::designspace::DesignSpaceDocument>,
+        sources: BTreeMap<String, ImportedUfo>,
+    },
+}
+
+impl ImportPlan {
+    pub(crate) fn read(path: &Path) -> Result<Self, String> {
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "designspace")
+        {
+            let document = crate::formats::designspace::load(path)?;
+            let directory = path.parent().unwrap_or(Path::new("."));
+            let mut sources = BTreeMap::new();
+            for source in document
+                .sources
+                .iter()
+                .filter(|source| source.layer.is_none())
+            {
+                if sources.contains_key(&source.filename) {
+                    continue;
+                }
+                let source_path = directory.join(&source.filename);
+                let imported = load_ufo(&source_path)
+                    .map_err(|error| format!("{}: {error}", source_path.display()))?;
+                sources.insert(source.filename.clone(), imported);
+            }
+            Ok(Self::Designspace {
+                path: path.to_path_buf(),
+                document: Box::new(document),
+                sources,
+            })
+        } else {
+            Ok(Self::Ufo {
+                path: path.to_path_buf(),
+                source: Box::new(
+                    load_ufo(path).map_err(|error| format!("{}: {error}", path.display()))?,
+                ),
+            })
+        }
+    }
+}
+
+pub(crate) fn load_ufo(path: &Path) -> Result<ImportedUfo, String> {
+    let font = norad::Font::load(path).map_err(|error| error.to_string())?;
+    let preserved = capture_preserved_files(path, &font)?;
+    Ok(ImportedUfo { font, preserved })
+}
+
+/// One source ready to be serialized without consulting live Project state.
+#[derive(Debug)]
+pub(crate) struct SourceExport {
+    pub(crate) destination: PathBuf,
+    pub(crate) font: norad::Font,
+    pub(crate) preserved: PreservedFiles,
+}
+
+/// A complete immutable save plan for all UFOs and optional Designspace metadata.
+#[derive(Debug)]
+pub(crate) struct ExportPlan {
+    sources: Vec<SourceExport>,
+    designspace: Option<(PathBuf, norad::designspace::DesignSpaceDocument)>,
+}
+
+impl ExportPlan {
+    pub(crate) fn new(
+        sources: Vec<SourceExport>,
+        designspace: Option<(PathBuf, norad::designspace::DesignSpaceDocument)>,
+    ) -> Result<Self, String> {
+        if sources.is_empty() {
+            return Err("a filesystem export needs at least one UFO source".into());
+        }
+        let mut destinations = sources
+            .iter()
+            .map(|source| source.destination.as_path())
+            .collect::<Vec<_>>();
+        if let Some((path, _)) = &designspace {
+            destinations.push(path);
+        }
+        for (index, destination) in destinations.iter().enumerate() {
+            if destination.as_os_str().is_empty() {
+                return Err("a filesystem export destination cannot be empty".into());
+            }
+            if destinations[..index]
+                .iter()
+                .any(|previous| paths_overlap(previous, destination))
+            {
+                return Err(format!(
+                    "filesystem export destinations overlap at {}",
+                    destination.display()
+                ));
+            }
+        }
+        Ok(Self {
+            sources,
+            designspace,
+        })
+    }
+
+    pub(crate) fn execute(self) -> Result<(), String> {
+        let mut staged = Vec::new();
+        for source in self.sources {
+            let stage = fresh_sibling(&source.destination, "stage")?;
+            if let Err(error) = stage_ufo(&source, &stage) {
+                remove_any(&stage);
+                return Err(error);
+            }
+            staged.push(StagedArtifact {
+                destination: source.destination,
+                stage,
+            });
+        }
+        if let Some((destination, document)) = self.designspace {
+            let stage = fresh_sibling(&destination, "stage")?;
+            if let Some(parent) = stage.parent().filter(|path| !path.as_os_str().is_empty()) {
+                fs::create_dir_all(parent)
+                    .map_err(|error| format!("{}: {error}", parent.display()))?;
+            }
+            if let Err(error) = document.save(&stage) {
+                remove_any(&stage);
+                return Err(format!("{}: {error}", destination.display()));
+            }
+            let staged_document = match norad::designspace::DesignSpaceDocument::load(&stage) {
+                Ok(document) => document,
+                Err(error) => {
+                    remove_any(&stage);
+                    return Err(format!("staged {}: {error}", destination.display()));
+                }
+            };
+            if staged_document != document {
+                remove_any(&stage);
+                return Err(format!(
+                    "staged {} changed supported Designspace data",
+                    destination.display()
+                ));
+            }
+            staged.push(StagedArtifact { destination, stage });
+        }
+        publish(staged)
+    }
+}
+
+fn stage_ufo(source: &SourceExport, stage: &Path) -> Result<(), String> {
+    if let Some(parent) = stage.parent().filter(|path| !path.as_os_str().is_empty()) {
+        fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
+    }
+    source
+        .font
+        .save(stage)
+        .map_err(|error| format!("{}: {error}", source.destination.display()))?;
+    plist::to_file_xml(stage.join("metainfo.plist"), &source.font.meta)
+        .map_err(|error| format!("{}: {error}", source.destination.display()))?;
+
+    let mut expected = source.font.clone();
+    if expected.features.as_bytes().contains(&b'\r') {
+        expected.features = expected.features.replace("\r\n", "\n");
+    }
+    let actual = norad::Font::load(stage)
+        .map_err(|error| format!("staged {}: {error}", source.destination.display()))?;
+    if actual != expected {
+        return Err(format!(
+            "staged {} changed supported UFO data",
+            source.destination.display()
+        ));
+    }
+    source.preserved.restore_glif_paths(stage, &source.font)?;
+    source.preserved.write_into(stage)?;
+    let final_font = norad::Font::load(stage)
+        .map_err(|error| format!("staged {}: {error}", source.destination.display()))?;
+    source.preserved.validate_glif_paths(&final_font)?;
+    Ok(())
+}
+
+#[derive(Debug)]
+struct StagedArtifact {
+    destination: PathBuf,
+    stage: PathBuf,
+}
+
+impl Drop for StagedArtifact {
+    fn drop(&mut self) {
+        remove_any(&self.stage);
+    }
+}
+
+#[derive(Debug)]
+struct PublishedArtifact {
+    destination: PathBuf,
+    backup: Option<PathBuf>,
+}
+
+fn publish(staged: Vec<StagedArtifact>) -> Result<(), String> {
+    let mut published: Vec<PublishedArtifact> = Vec::new();
+    for artifact in &staged {
+        let backup = if artifact.destination.exists() {
+            let backup = match fresh_sibling(&artifact.destination, "backup") {
+                Ok(backup) => backup,
+                Err(error) => {
+                    rollback(&published);
+                    return Err(error);
+                }
+            };
+            if let Err(error) = fs::rename(&artifact.destination, &backup) {
+                rollback(&published);
+                return Err(format!(
+                    "could not stage existing {} for replacement: {error}",
+                    artifact.destination.display()
+                ));
+            }
+            Some(backup)
+        } else {
+            None
+        };
+        if let Err(error) = fs::rename(&artifact.stage, &artifact.destination) {
+            if let Some(backup) = &backup {
+                let _ = fs::rename(backup, &artifact.destination);
+            }
+            rollback(&published);
+            return Err(format!(
+                "could not publish {}: {error}",
+                artifact.destination.display()
+            ));
+        }
+        published.push(PublishedArtifact {
+            destination: artifact.destination.clone(),
+            backup,
+        });
+    }
+    for artifact in &published {
+        if let Some(backup) = &artifact.backup {
+            remove_any(backup);
+        }
+    }
+    Ok(())
+}
+
+fn rollback(published: &[PublishedArtifact]) {
+    for artifact in published.iter().rev() {
+        remove_any(&artifact.destination);
+        if let Some(backup) = &artifact.backup {
+            let _ = fs::rename(backup, &artifact.destination);
+        }
+    }
+}
+
+fn fresh_sibling(path: &Path, purpose: &str) -> Result<PathBuf, String> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let name = path
+        .file_name()
+        .ok_or_else(|| format!("invalid filesystem destination {}", path.display()))?
+        .to_string_lossy();
+    for _ in 0..1_024 {
+        let candidate = parent.join(format!(
+            ".{name}.runebender-{purpose}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err(format!(
+        "could not reserve a temporary path beside {}",
+        path.display()
+    ))
+}
+
+fn paths_overlap(left: &Path, right: &Path) -> bool {
+    left == right || left.starts_with(right) || right.starts_with(left)
+}
+
+fn remove_any(path: &Path) {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return;
+    };
+    if metadata.file_type().is_dir() {
+        let _ = fs::remove_dir_all(path);
+    } else {
+        let _ = fs::remove_file(path);
+    }
+}
+
+fn capture_preserved_files(root: &Path, font: &norad::Font) -> Result<PreservedFiles, String> {
+    let managed = managed_ufo_files(font);
+    let mut files = BTreeMap::new();
+    collect_preserved(root, root, &managed, &mut files)?;
+    let glif_paths = font
+        .layers
+        .iter()
+        .flat_map(|layer| {
+            layer.iter().filter_map(|glyph| {
+                layer.get_path(glyph.name().as_str()).map(|path| {
+                    (
+                        (layer.name().to_string(), glyph.name().to_string()),
+                        path.to_path_buf(),
+                    )
+                })
+            })
+        })
+        .collect();
+    Ok(PreservedFiles { files, glif_paths })
+}
+
+fn validate_relative_file(path: &Path) -> Result<(), String> {
+    if path.as_os_str().is_empty()
+        || path
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(format!("unsafe preserved GLIF path {}", path.display()));
+    }
+    Ok(())
+}
+
+fn collect_preserved(
+    root: &Path,
+    directory: &Path,
+    managed: &HashSet<PathBuf>,
+    preserved: &mut BTreeMap<PathBuf, Vec<u8>>,
+) -> Result<(), String> {
+    let entries =
+        fs::read_dir(directory).map_err(|error| format!("{}: {error}", directory.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("{}: {error}", directory.display()))?;
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|error| format!("{}: {error}", path.display()))?
+            .to_path_buf();
+        let metadata =
+            fs::symlink_metadata(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        if metadata.file_type().is_symlink() {
+            return Err(format!(
+                "unsupported UFO symlink payload: {}",
+                relative.display()
+            ));
+        }
+        if metadata.is_dir() {
+            collect_preserved(root, &path, managed, preserved)?;
+        } else if metadata.is_file()
+            && !managed.contains(&relative)
+            && !relative.starts_with("data")
+            && !relative.starts_with("images")
+        {
+            let bytes = fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+            preserved.insert(relative, bytes);
+        } else if !metadata.is_file() {
+            return Err(format!(
+                "unsupported UFO filesystem payload: {}",
+                relative.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn managed_ufo_files(font: &norad::Font) -> HashSet<PathBuf> {
+    let mut managed = [
+        "metainfo.plist",
+        "fontinfo.plist",
+        "lib.plist",
+        "groups.plist",
+        "kerning.plist",
+        "features.fea",
+        "layercontents.plist",
+    ]
+    .into_iter()
+    .map(PathBuf::from)
+    .collect::<HashSet<_>>();
+    for layer in font.layers.iter() {
+        managed.insert(layer.path().join("contents.plist"));
+        managed.insert(layer.path().join("layerinfo.plist"));
+        managed.extend(
+            layer
+                .iter()
+                .filter_map(|glyph| layer.get_path(glyph.name().as_str()))
+                .map(|path| layer.path().join(path)),
+        );
+    }
+    managed
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use super::*;
+    use crate::document::project::Project;
+    use crate::document::variable::SourceId;
+
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(label: &str) -> Self {
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "runebender-filesystem-{label}-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn project_save_preserves_filesystem_payload_and_ufo_paths() {
+        let scratch = Scratch::new("preservation");
+        let path = scratch.0.join("Preserved.ufo");
+        write_ufo(&path, "Regular", true);
+
+        let mut project = Project::load(&path).unwrap();
+        let source = project.document_source(SourceId(0)).unwrap();
+        let default_layer = source.default_layer();
+        assert!(project.edit_layer("A", &default_layer, |glyph| glyph.width = 612.5));
+        project.save().unwrap();
+
+        let reloaded = norad::Font::load(&path).unwrap();
+        assert_eq!(
+            reloaded.meta.creator.as_deref(),
+            Some("com.example.original")
+        );
+        assert_eq!(
+            reloaded
+                .layers
+                .iter()
+                .map(|layer| (layer.name().as_str(), layer.path()))
+                .collect::<Vec<_>>(),
+            [
+                ("public.default", Path::new("glyphs")),
+                ("Background", Path::new("glyphs.background-custom")),
+                ("Sketch", Path::new("glyphs.sketch-custom")),
+            ]
+        );
+        assert_eq!(
+            reloaded.default_layer().get_path("A"),
+            Some(Path::new("A.custom-name.glif"))
+        );
+        assert_eq!(reloaded.get_glyph("A").unwrap().width, 612.5);
+        assert_eq!(
+            reloaded
+                .lib
+                .get("com.example.unknown")
+                .and_then(plist::Value::as_string),
+            Some("preserved")
+        );
+        assert_eq!(
+            reloaded
+                .data
+                .get(Path::new("private/payload.bin"))
+                .unwrap()
+                .unwrap()
+                .as_ref(),
+            [0, 1, 2, 255]
+        );
+        assert_eq!(
+            reloaded
+                .images
+                .get(Path::new("reference.png"))
+                .unwrap()
+                .unwrap()
+                .as_ref(),
+            include_bytes!("../../tests/fixtures/variable/reference.png")
+        );
+        assert_eq!(
+            fs::read(path.join("vendor/opaque.bin")).unwrap(),
+            b"unknown root payload"
+        );
+    }
+
+    #[test]
+    fn project_save_validates_every_source_before_replacing_any_destination() {
+        let scratch = Scratch::new("atomic");
+        let regular = scratch.0.join("Regular.ufo");
+        let bold = scratch.0.join("Bold.ufo");
+        write_ufo(&regular, "Regular", false);
+        write_ufo(&bold, "Bold", false);
+        let designspace = scratch.0.join("Font.designspace");
+        fs::write(
+            &designspace,
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<designspace format="5.0">
+  <axes><axis tag="wght" name="Weight" minimum="0" default="0" maximum="1"/></axes>
+  <sources>
+    <source filename="Regular.ufo" name="regular"><location><dimension name="Weight" xvalue="0"/></location></source>
+    <source filename="Bold.ufo" name="bold"><location><dimension name="Weight" xvalue="1"/></location></source>
+  </sources>
+</designspace>
+"#,
+        )
+        .unwrap();
+        let regular_before = fs::read(regular.join("glyphs/A.custom-name.glif")).unwrap();
+        let bold_before = fs::read(bold.join("glyphs/A.custom-name.glif")).unwrap();
+
+        let mut project = Project::load(&designspace).unwrap();
+        assert_eq!(
+            project.document_source_path(SourceId(0)),
+            Some(regular.as_path())
+        );
+        assert_eq!(
+            project.document_source_path(SourceId(1)),
+            Some(bold.as_path())
+        );
+        let regular_layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        assert!(project.edit_layer("A", &regular_layer, |glyph| glyph.width = 777.0));
+        {
+            let mut sources = project.edit_sources();
+            sources[1]
+                .font
+                .lib
+                .insert("public.objectLibs".into(), "invalid staged payload".into());
+            sources[1].dirty = true;
+        }
+
+        let error = project.save().unwrap_err();
+        assert!(error.contains("public.objectLibs"), "{error}");
+        assert_eq!(
+            fs::read(regular.join("glyphs/A.custom-name.glif")).unwrap(),
+            regular_before,
+            "the first source must not publish before every source validates"
+        );
+        assert_eq!(
+            fs::read(bold.join("glyphs/A.custom-name.glif")).unwrap(),
+            bold_before
+        );
+        assert!(project.sources()[0].dirty);
+        assert!(project.sources()[1].dirty);
+        assert!(
+            fs::read_dir(&scratch.0)
+                .unwrap()
+                .flatten()
+                .all(|entry| !entry
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("runebender-stage")),
+            "failed staging must clean its temporary artifacts"
+        );
+    }
+
+    fn write_ufo(path: &Path, style: &str, extra_layers: bool) {
+        fs::create_dir_all(path).unwrap();
+        fs::write(
+            path.join("metainfo.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>creator</key><string>com.example.original</string>
+  <key>formatVersion</key><integer>3</integer>
+</dict></plist>
+"#,
+        )
+        .unwrap();
+        fs::write(
+            path.join("fontinfo.plist"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>familyName</key><string>Filesystem Fixture</string>
+  <key>styleName</key><string>{style}</string>
+</dict></plist>
+"#
+            ),
+        )
+        .unwrap();
+        let layer_contents = if extra_layers {
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><array>
+  <array><string>public.default</string><string>glyphs</string></array>
+  <array><string>Background</string><string>glyphs.background-custom</string></array>
+  <array><string>Sketch</string><string>glyphs.sketch-custom</string></array>
+</array></plist>
+"#
+        } else {
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><array>
+  <array><string>public.default</string><string>glyphs</string></array>
+</array></plist>
+"#
+        };
+        fs::write(path.join("layercontents.plist"), layer_contents).unwrap();
+        write_layer(path.join("glyphs"), "A.custom-name.glif", 500.0);
+        if extra_layers {
+            write_layer(
+                path.join("glyphs.background-custom"),
+                "A.background.glif",
+                510.0,
+            );
+            write_layer(path.join("glyphs.sketch-custom"), "A.sketch.glif", 520.0);
+            fs::write(
+                path.join("lib.plist"),
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>com.example.unknown</key><string>preserved</string>
+</dict></plist>
+"#,
+            )
+            .unwrap();
+            fs::create_dir_all(path.join("data/private")).unwrap();
+            fs::write(path.join("data/private/payload.bin"), [0, 1, 2, 255]).unwrap();
+            fs::create_dir(path.join("images")).unwrap();
+            fs::write(
+                path.join("images/reference.png"),
+                include_bytes!("../../tests/fixtures/variable/reference.png"),
+            )
+            .unwrap();
+            fs::create_dir(path.join("vendor")).unwrap();
+            fs::write(path.join("vendor/opaque.bin"), b"unknown root payload").unwrap();
+        }
+    }
+
+    fn write_layer(path: PathBuf, glif_name: &str, width: f64) {
+        fs::create_dir(&path).unwrap();
+        fs::write(
+            path.join("contents.plist"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>A</key><string>{glif_name}</string></dict></plist>
+"#
+            ),
+        )
+        .unwrap();
+        fs::write(
+            path.join(glif_name),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<glyph name="A" format="2">
+  <advance width="{width}"/>
+  <unicode hex="0041"/>
+</glyph>
+"#
+            ),
+        )
+        .unwrap();
+    }
+}
