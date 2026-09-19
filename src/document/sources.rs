@@ -14,70 +14,26 @@ use crate::document::CanonicalSourceStructureSnapshot;
 use crate::document::history::{
     EditHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome, TransactionHistory,
 };
+use crate::document::model::designspace::{CanonicalLocation, SourceDescriptor, SourceOrderEntry};
 
 #[derive(Debug, Clone)]
 struct SourceFrame {
     canonical: CanonicalSourceStructureSnapshot,
-    sources: Vec<SourceDescriptor>,
-    brace: Vec<BraceDescriptor>,
-    doc: Option<norad::designspace::DesignSpaceDocument>,
     active: Option<SourceId>,
 }
 
 impl PartialEq for SourceFrame {
     fn eq(&self, other: &Self) -> bool {
         self.canonical == other.canonical
-            && self.sources == other.sources
-            && self.brace == other.brace
-            && self.doc == other.doc
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct SourceDescriptor {
-    id: SourceId,
-    name: Arc<str>,
-    location: Location,
-    path: PathBuf,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct BraceDescriptor {
-    source: SourceId,
-    layer: String,
-    location: Location,
 }
 
 impl SourceFrame {
     fn capture(project: &Project) -> Self {
         let canonical = project.variable.source_structure_snapshot();
-        let sources = canonical
-            .source_ids()
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(index, id)| SourceDescriptor {
-                id,
-                name: project.master_names[index].clone(),
-                location: project.master_locations[index].clone(),
-                path: project.masters[index].source_path.clone(),
-            })
-            .collect();
-        let brace = project
-            .brace
-            .iter()
-            .map(|source| BraceDescriptor {
-                source: canonical.source_ids()[source.master],
-                layer: source.layer.clone(),
-                location: source.location.clone(),
-            })
-            .collect();
         Self {
             active: canonical.source_ids().get(project.active).copied(),
             canonical,
-            sources,
-            brace,
-            doc: project.ds_doc.clone(),
         }
     }
 
@@ -104,40 +60,64 @@ impl SourceFrame {
             project.variable.revision = project.variable.revision.wrapping_add(1);
         }
         reconcile_compatibility_layer_histories(&mut project.variable, retired_layer_histories);
-        let previous_masters = std::mem::take(&mut project.masters);
-        project.master_names = self
-            .sources
+        let designspace = project
+            .document_designspace()
+            .cloned()
+            .ok_or("source history requires a canonical Designspace")?;
+        let source_ids = designspace.full_source_order().collect::<Vec<_>>();
+        let sources = source_ids
             .iter()
-            .map(|source| source.name.clone())
-            .collect();
-        project.master_locations = self
-            .sources
-            .iter()
-            .map(|source| source.location.clone())
-            .collect();
-        project.ds_doc = self.doc.clone();
-        project.brace = self
-            .brace
-            .iter()
-            .map(|source| {
-                let master = self
-                    .sources
+            .map(|id| {
+                designspace
+                    .sources()
                     .iter()
-                    .position(|descriptor| descriptor.id == source.source)
-                    .expect("a brace source retains its owning source");
-                BraceSource {
-                    master,
-                    layer: source.layer.clone(),
-                    location: source.location.clone(),
-                }
+                    .find(|source| source.id() == *id)
+                    .ok_or_else(|| format!("missing structural descriptor for source {}", id.0))
             })
+            .collect::<Result<Vec<_>, String>>()?;
+        let previous_masters = std::mem::take(&mut project.masters);
+        project.master_names = sources
+            .iter()
+            .map(|source| source.display_name().into())
             .collect();
+        project.master_locations = sources
+            .iter()
+            .map(|source| source.location.to_normalized(designspace.axes()))
+            .collect::<Result<_, _>>()?;
+        project.ds_doc = Some(designspace.to_norad()?);
+        project.brace = designspace
+            .source_order()
+            .iter()
+            .filter_map(|entry| match entry {
+                SourceOrderEntry::Full(_) => None,
+                SourceOrderEntry::Sparse(layer) => Some((
+                    layer,
+                    designspace
+                        .sparse_sources()
+                        .iter()
+                        .find(|source| source.layer == *layer),
+                )),
+            })
+            .map(|(layer, source)| {
+                let source = source
+                    .ok_or_else(|| format!("missing sparse descriptor for layer {}", layer.name))?;
+                let master = source_ids
+                    .iter()
+                    .position(|id| *id == layer.source)
+                    .ok_or_else(|| format!("missing source for sparse layer {}", layer.name))?;
+                Ok(BraceSource {
+                    master,
+                    layer: layer.name.clone(),
+                    location: source.location.to_normalized(designspace.axes())?,
+                })
+            })
+            .collect::<Result<_, String>>()?;
         project.active = self
             .active
-            .and_then(|active| self.sources.iter().position(|source| source.id == active))
+            .and_then(|active| source_ids.iter().position(|source| *source == active))
             .unwrap_or(0);
         project.rebuild_source_projections(
-            &self.sources,
+            &sources,
             previous_ids,
             previous_masters,
             retired_histories,
@@ -221,7 +201,7 @@ impl Project {
 
     fn rebuild_source_projections(
         &mut self,
-        descriptors: &[SourceDescriptor],
+        descriptors: &[&SourceDescriptor],
         previous_ids: Vec<SourceId>,
         previous_masters: Vec<Master>,
         retired_histories: &mut BTreeMap<SourceId, EditHistory>,
@@ -230,6 +210,18 @@ impl Project {
             .into_iter()
             .zip(previous_masters)
             .collect::<BTreeMap<_, _>>();
+        let source_directory = self
+            .export_source
+            .as_deref()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+            .or_else(|| {
+                previous
+                    .values()
+                    .next()
+                    .and_then(|master| master.source_path.parent())
+                    .map(Path::to_path_buf)
+            });
         let rebuilt = self
             .variable
             .source_ids
@@ -238,14 +230,24 @@ impl Project {
             .map(|id| {
                 let descriptor = descriptors
                     .iter()
-                    .find(|descriptor| descriptor.id == id)
+                    .find(|descriptor| descriptor.id() == id)
                     .ok_or_else(|| format!("missing structural descriptor for source {}", id.0))?;
                 let font = self
                     .variable
                     .source_font(id)
                     .ok_or_else(|| format!("missing canonical source {}", id.0))?;
-                let mut rebuilt = Master::from_font(font, descriptor.path.clone());
-                if let Some(mut old) = previous.remove(&id) {
+                let old = previous.remove(&id);
+                let path = old.as_ref().map_or_else(
+                    || {
+                        source_directory.as_ref().map_or_else(
+                            || PathBuf::from(&descriptor.filename),
+                            |directory| directory.join(&descriptor.filename),
+                        )
+                    },
+                    |master| master.source_path.clone(),
+                );
+                let mut rebuilt = Master::from_font(font, path);
+                if let Some(mut old) = old {
                     rebuilt.modified_glyphs = std::mem::take(&mut old.modified_glyphs);
                     rebuilt.glif_paths = std::mem::take(&mut old.glif_paths);
                     rebuilt.kerning_dirty = old.kerning_dirty;
@@ -318,41 +320,6 @@ impl Project {
         }
     }
 
-    fn source_dimensions(
-        &self,
-        location: &Location,
-    ) -> Result<Vec<norad::designspace::Dimension>, String> {
-        if location
-            .keys()
-            .any(|key| !self.axes.iter().any(|axis| axis.name == *key))
-        {
-            return Err("source location names an unknown axis".into());
-        }
-        self.axes.iter().map(|axis| {
-            let value = location.get(&axis.name).copied().unwrap_or(0.0);
-            if !value.is_finite() || !(-1.0..=1.0).contains(&value) { return Err("source location must be inside the designspace".into()); }
-            let design = super::super::var_model::denormalize_value(value, axis.min, axis.default, axis.max);
-            #[expect(clippy::cast_possible_truncation, reason = "the decimal round-trip is checked before committing the Designspace coordinate")]
-            let stored = design as f32;
-            if stored.to_string().parse::<f64>().ok() != Some(design) {
-                return Err(format!("{}: source coordinate {design} cannot round-trip through Designspace", axis.name));
-            }
-            Ok(norad::designspace::Dimension { name: axis.name.clone(), xvalue: Some(stored), ..Default::default() })
-        }).collect()
-    }
-
-    fn normalized_source_location(&self, location: &Location) -> Location {
-        self.axes
-            .iter()
-            .map(|axis| {
-                (
-                    axis.name.clone(),
-                    location.get(&axis.name).copied().unwrap_or(0.0),
-                )
-            })
-            .collect()
-    }
-
     /// Add a complete source interpolated at normalized design coordinates.
     /// `filename` is a new UFO path relative to the Designspace file.
     pub fn add_interpolated_source(
@@ -361,9 +328,8 @@ impl Project {
         filename: &str,
         location: &Location,
     ) -> Result<SourceId, String> {
-        let doc = self
-            .ds_doc
-            .as_ref()
+        let designspace = self
+            .begin_source_designspace_edit()
             .ok_or("adding a source requires a Designspace")?;
         if name.trim().is_empty() {
             return Err("source name must not be empty".into());
@@ -376,8 +342,8 @@ impl Project {
         {
             return Err("choose a relative .ufo filename inside the project directory".into());
         }
-        if doc
-            .sources
+        if designspace
+            .sources()
             .iter()
             .any(|source| source.filename.eq_ignore_ascii_case(filename))
         {
@@ -393,8 +359,8 @@ impl Project {
         if destination.exists() {
             return Err("the new source destination already exists".into());
         }
-        let dimensions = self.source_dimensions(location)?;
-        let location = self.normalized_source_location(location);
+        let exact_location = CanonicalLocation::from_normalized(location, designspace.axes())?;
+        let location = exact_location.to_normalized(designspace.axes())?;
         let mut locations = self.master_locations.clone();
         locations.push(location.clone());
         VariationModel::new(&locations)?;
@@ -449,49 +415,31 @@ impl Project {
         let before = SourceFrame::capture(self);
         // A full source at an intermediate location takes over participation.
         // Keep the original sparse layer and its metadata as an auxiliary layer.
-        let full_sources: Vec<_> = doc
-            .sources
-            .iter()
-            .filter(|source| source.layer.is_none())
-            .collect();
-        let promoted: Vec<_> = self
-            .brace
-            .iter()
-            .filter(|source| source.location == location)
-            .map(|source| {
-                (
-                    full_sources[source.master].filename.clone(),
-                    source.layer.clone(),
-                )
-            })
-            .collect();
-        self.brace.retain(|source| source.location != location);
-        self.ds_doc
-            .as_mut()
-            .expect("validated designspace")
-            .sources
-            .retain(|source| {
-                !promoted.iter().any(|(filename, layer)| {
-                    source.filename == *filename && source.layer.as_ref() == Some(layer)
-                })
-            });
         let id = SourceId(self.variable.next_source);
-        self.variable.next_source += 1;
+        let default_layer = LayerId {
+            source: id,
+            name: font.default_layer().name().to_string(),
+        };
+        let mut descriptor =
+            SourceDescriptor::new(id, filename.to_owned(), exact_location, default_layer)?;
+        descriptor.name = Some(format!("source-{}", id.0));
+        descriptor.style_name = Some(name.to_owned());
+        let mut replacement = designspace.clone();
+        let display_index = replacement.sources().len();
+        replacement.edit_checked(|draft| {
+            draft.remove_sparse_at_normalized_location(&location)?;
+            draft.insert_source(descriptor, display_index)
+        })?;
         self.variable.source_ids.push(id);
+        if let Err(error) = self.install_source_designspace_edit(&designspace, replacement) {
+            self.variable.source_ids.pop();
+            return Err(error);
+        }
+        self.variable.next_source += 1;
+        self.brace.retain(|source| source.location != location);
         self.masters.push(Master::from_font(font, destination));
         self.master_names.push(name.into());
         self.master_locations.push(location);
-        self.ds_doc
-            .as_mut()
-            .expect("validated designspace")
-            .sources
-            .push(norad::designspace::Source {
-                filename: filename.into(),
-                name: Some(format!("source-{}", id.0)),
-                stylename: Some(name.into()),
-                location: dimensions,
-                ..Default::default()
-            });
         self.active = self.masters.len() - 1;
         self.record_source_change(before);
         Ok(id)
@@ -510,23 +458,20 @@ impl Project {
             return Err("the default source must remain in the project".into());
         }
         self.ensure_source_reindex_available()?;
-        let filename = self
-            .ds_doc
-            .as_ref()
-            .ok_or("not a Designspace")?
-            .sources
-            .iter()
-            .filter(|source| source.layer.is_none())
-            .nth(index)
-            .ok_or("missing source descriptor")?
-            .filename
-            .clone();
+        let designspace = self
+            .begin_source_designspace_edit()
+            .ok_or("not a Designspace")?;
+        let mut replacement = designspace.clone();
+        replacement.edit_checked(|draft| {
+            draft.remove_source(id).ok_or("missing source descriptor")?;
+            Ok(())
+        })?;
         let before = SourceFrame::capture(self);
-        self.ds_doc
-            .as_mut()
-            .expect("validated designspace")
-            .sources
-            .retain(|source| source.filename != filename);
+        let removed_id = self.variable.source_ids.remove(index);
+        if let Err(error) = self.install_source_designspace_edit(&designspace, replacement) {
+            self.variable.source_ids.insert(index, removed_id);
+            return Err(error);
+        }
         let mut removed = self.masters.remove(index);
         self.source_history
             .retired_histories
@@ -538,7 +483,6 @@ impl Project {
         );
         self.master_names.remove(index);
         self.master_locations.remove(index);
-        self.variable.source_ids.remove(index);
         self.brace.retain_mut(|source| {
             if source.master == index {
                 return false;
@@ -578,17 +522,25 @@ impl Project {
             return Ok(false);
         }
         self.ensure_source_reindex_available()?;
-        let doc = self.ds_doc.as_ref().ok_or("not a Designspace")?;
-        let mut sources: Vec<_> = doc
-            .sources
-            .iter()
-            .filter(|s| s.layer.is_none())
-            .cloned()
-            .collect();
+        let designspace = self
+            .begin_source_designspace_edit()
+            .ok_or("not a Designspace")?;
+        let mut replacement = designspace.clone();
+        replacement.edit_checked(|draft| {
+            draft.move_source(id, to)?;
+            Ok(())
+        })?;
         let before = SourceFrame::capture(self);
         let mut order: Vec<_> = (0..self.masters.len()).collect();
         let previous = order.remove(from);
         order.insert(to, previous);
+        let moved_id = self.variable.source_ids.remove(from);
+        self.variable.source_ids.insert(to, moved_id);
+        if let Err(error) = self.install_source_designspace_edit(&designspace, replacement) {
+            let moved_id = self.variable.source_ids.remove(to);
+            self.variable.source_ids.insert(from, moved_id);
+            return Err(error);
+        }
         self.active = order
             .iter()
             .position(|index| *index == self.active)
@@ -605,13 +557,6 @@ impl Project {
         self.master_names.insert(to, name);
         let location = self.master_locations.remove(from);
         self.master_locations.insert(to, location);
-        let id = self.variable.source_ids.remove(from);
-        self.variable.source_ids.insert(to, id);
-        let source = sources.remove(from);
-        sources.insert(to, source);
-        let doc = self.ds_doc.as_mut().expect("validated designspace");
-        sources.extend(doc.sources.iter().filter(|s| s.layer.is_some()).cloned());
-        doc.sources = sources;
         self.record_source_change(before);
         Ok(true)
     }
@@ -627,29 +572,28 @@ impl Project {
         if name.trim().is_empty() {
             return Err("source name must not be empty".into());
         }
-        let dimensions = self.source_dimensions(location)?;
-        let location = self.normalized_source_location(location);
+        let designspace = self
+            .begin_source_designspace_edit()
+            .ok_or("not a Designspace")?;
+        let exact_location = CanonicalLocation::from_normalized(location, designspace.axes())?;
+        let location = exact_location.to_normalized(designspace.axes())?;
         let mut locations = self.master_locations.clone();
         locations[index] = location.clone();
         VariationModel::new(&locations)?;
-        if self.brace.iter().any(|source| source.location == location) {
-            return Err("This location has an intermediate layer source; add an interpolated source there to promote it first".into());
-        }
-        if self.ds_doc.is_none() {
-            return Err("not a Designspace".into());
+        for source in designspace.sparse_sources() {
+            if source.location.to_normalized(designspace.axes())? == location {
+                return Err("This location has an intermediate layer source; add an interpolated source there to promote it first".into());
+            }
         }
         let before = SourceFrame::capture(self);
-        let source = self
-            .ds_doc
-            .as_mut()
-            .expect("validated designspace")
-            .sources
-            .iter_mut()
-            .filter(|s| s.layer.is_none())
-            .nth(index)
-            .expect("source descriptor");
-        source.stylename = Some(name.into());
-        source.location = dimensions;
+        let mut replacement = designspace.clone();
+        replacement.edit_checked(|draft| {
+            let source = draft.source_mut(id).ok_or("missing source descriptor")?;
+            source.style_name = Some(name.to_owned());
+            source.location = exact_location;
+            Ok(())
+        })?;
+        self.install_source_designspace_edit(&designspace, replacement)?;
         self.master_names[index] = name.into();
         self.master_locations[index] = location;
         self.masters[index].font.font_info.style_name = Some(name.into());

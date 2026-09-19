@@ -464,7 +464,9 @@ impl Project {
         if project.export_source.is_none() {
             project.export_source = Some(path.to_path_buf());
         }
-        project.variable = VariableData::from_sources(&project.masters);
+        if project.variable.source_ids.is_empty() {
+            project.variable = VariableData::from_sources(&project.masters);
+        }
         project.compute_compat();
         Ok(project)
     }
@@ -1411,10 +1413,6 @@ impl Project {
     }
 
     /// Clone the canonical variable structure before one checked structural transaction.
-    #[expect(
-        dead_code,
-        reason = "the source-history lane consumes this checked source-transaction draft"
-    )]
     pub(super) fn begin_source_designspace_edit(
         &self,
     ) -> Option<super::model::designspace::CanonicalDesignspace> {
@@ -1425,10 +1423,6 @@ impl Project {
     ///
     /// The caller must update source projections in the same transaction and then use the
     /// ordinary source-history completion path, which advances the document revision once.
-    #[expect(
-        dead_code,
-        reason = "the source-history lane consumes this guarded source-transaction commit"
-    )]
     pub(super) fn install_source_designspace_edit(
         &mut self,
         expected: &super::model::designspace::CanonicalDesignspace,

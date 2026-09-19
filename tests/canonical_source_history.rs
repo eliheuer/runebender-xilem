@@ -8,8 +8,9 @@ use std::path::PathBuf;
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 use runebender::document::font_memory::designspace_from_str;
 use runebender::document::history::HistoryDirection;
+use runebender::document::model::designspace::SourceOrderEntry;
 use runebender::document::project::{Master, Project};
-use runebender::document::variable::{GlyphLayerAddress, SourceId};
+use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 
 const DESIGNSPACE: &str = include_str!("fixtures/variable/TwoAxes.designspace");
 
@@ -32,6 +33,22 @@ fn glyph(name: &str, x: f64) -> Glyph {
 
 fn fixture() -> Project {
     let doc = designspace_from_str(DESIGNSPACE).unwrap();
+    project_from_designspace(doc)
+}
+
+fn interleaved_fixture() -> Project {
+    let mut doc = designspace_from_str(DESIGNSPACE).unwrap();
+    let sparse = doc
+        .sources
+        .iter()
+        .position(|source| source.layer.is_some())
+        .map(|index| doc.sources.remove(index))
+        .unwrap();
+    doc.sources.insert(1, sparse);
+    project_from_designspace(doc)
+}
+
+fn project_from_designspace(doc: norad::designspace::DesignSpaceDocument) -> Project {
     Project::from_designspace(doc, |filename| {
         let x = match filename {
             "Regular.ufo" => 0.0,
@@ -175,4 +192,66 @@ fn removed_source_roundtrip_preserves_auxiliary_compatibility_history() {
     );
     assert!(project.undo_layer("A", &auxiliary, true));
     assert_eq!(project.glyph_layer("A", &auxiliary).unwrap().width, 750.625);
+}
+
+#[test]
+fn source_move_and_history_preserve_full_sparse_serialized_interleaving() {
+    let mut project = interleaved_fixture();
+    let sparse = LayerId {
+        source: SourceId(0),
+        name: "intermediate".into(),
+    };
+    let original = vec![
+        SourceOrderEntry::Full(SourceId(0)),
+        SourceOrderEntry::Sparse(sparse.clone()),
+        SourceOrderEntry::Full(SourceId(1)),
+        SourceOrderEntry::Full(SourceId(2)),
+        SourceOrderEntry::Full(SourceId(3)),
+    ];
+    let moved = vec![
+        SourceOrderEntry::Full(SourceId(1)),
+        SourceOrderEntry::Sparse(sparse),
+        SourceOrderEntry::Full(SourceId(0)),
+        SourceOrderEntry::Full(SourceId(2)),
+        SourceOrderEntry::Full(SourceId(3)),
+    ];
+    assert_eq!(
+        project.document_designspace().unwrap().source_order(),
+        original
+    );
+
+    assert!(project.move_source(SourceId(1), 0).unwrap());
+    assert_eq!(
+        project.document_designspace().unwrap().source_order(),
+        moved
+    );
+    let serialized = project
+        .ds_doc
+        .as_ref()
+        .unwrap()
+        .sources
+        .iter()
+        .map(|source| (source.filename.as_str(), source.layer.as_deref()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        serialized,
+        vec![
+            ("Heavy.ufo", None),
+            ("Regular.ufo", Some("intermediate")),
+            ("Regular.ufo", None),
+            ("Wide.ufo", None),
+            ("HeavyWide.ufo", None),
+        ]
+    );
+
+    assert!(project.undo_sources(false).unwrap());
+    assert_eq!(
+        project.document_designspace().unwrap().source_order(),
+        original
+    );
+    assert!(project.undo_sources(true).unwrap());
+    assert_eq!(
+        project.document_designspace().unwrap().source_order(),
+        moved
+    );
 }
