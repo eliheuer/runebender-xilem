@@ -7435,7 +7435,7 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
     glyph.components.push(Component::new(
         Name::new("B").unwrap(),
         norad::AffineTransform::default(),
-        None,
+        Some(norad::Identifier::new("surviving-component").unwrap()),
     ));
     glyph.anchors.push(Anchor::new(
         50.0,
@@ -7516,6 +7516,38 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
     assert_eq!(project.document_snapshot(), snapshot);
     assert_eq!(project.document_revision(), revision);
 
+    let malformed = Contour::new(
+        vec![
+            ContourPoint::new(0.0, 0.0, PointType::Move, false, None, None),
+            ContourPoint::new(10.0, 10.0, PointType::Move, false, None, None),
+        ],
+        None,
+    );
+    let mut duplicate_identifier = imported.clone();
+    duplicate_identifier.replace_identifier(norad::Identifier::new("surviving-component").unwrap());
+    for invalid in [malformed, duplicate_identifier] {
+        let before = project.document_snapshot();
+        let before_revision = project.document_revision();
+        assert_eq!(
+            project.edit_document_layer("A", &layer, |draft| {
+                draft.append_imported_contours(std::slice::from_ref(&invalid))?;
+                Ok(())
+            }),
+            Err(runebender::document::DocumentEditError::InvalidLayerMetadata)
+        );
+        assert_eq!(project.document_snapshot(), before);
+        assert_eq!(project.document_revision(), before_revision);
+        assert_eq!(
+            project.edit_document_layer("A", &layer, |draft| {
+                draft.replace_imported_contours(std::slice::from_ref(&invalid))?;
+                Ok(())
+            }),
+            Err(runebender::document::DocumentEditError::InvalidLayerMetadata)
+        );
+        assert_eq!(project.document_snapshot(), before);
+        assert_eq!(project.document_revision(), before_revision);
+    }
+
     let mut pasted = None;
     let DocumentEditOutcome::Changed { change, .. } = project
         .edit_document_layer("A", &layer, |draft| {
@@ -7547,10 +7579,15 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
 
     let mut replacement = imported.clone();
     replacement.points[0].x = 225.0;
+    let mut second_replacement = exact_contours[0].clone();
+    second_replacement.points[0].x = -25.0;
     assert!(matches!(
         project
             .edit_document_layer("A", &layer, |draft| {
-                assert!(draft.replace_imported_contours(&[replacement.clone()])?);
+                assert!(draft.replace_imported_contours(&[
+                    replacement.clone(),
+                    second_replacement.clone(),
+                ])?);
                 Ok(())
             })
             .unwrap(),
@@ -7562,8 +7599,16 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
     assert_eq!(replaced.anchors().count(), 1);
     assert_ne!(replaced.contours().next().unwrap().id(), pasted.contours[0]);
     assert_eq!(
+        replaced
+            .shapes()
+            .map(|shape| matches!(shape, runebender::document::LayerShapeView::Contour(_)))
+            .collect::<Vec<_>>(),
+        [true, false, true],
+        "equal-count replacement changed contour/component paint order"
+    );
+    assert_eq!(
         project.glyph_layer("A", &layer).unwrap().contours,
-        [replacement]
+        [replacement, second_replacement]
     );
 
     project.save().unwrap();

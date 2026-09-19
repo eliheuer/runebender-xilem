@@ -1298,6 +1298,7 @@ impl LayerEditDraft {
         &mut self,
         contours: &[norad::Contour],
     ) -> Result<PastedContours, DocumentEditError> {
+        self.validate_imported_contours(contours, true)?;
         let (shapes, preserved, result) = decode_imported_contours(contours)?;
         self.layer.shapes.extend(shapes);
         self.preserved.contours.extend(preserved);
@@ -1315,20 +1316,47 @@ impl LayerEditDraft {
         if project_contours(&self.layer, &self.preserved) == contours {
             return Ok(false);
         }
+        self.validate_imported_contours(contours, false)?;
         let (shapes, preserved, _) = decode_imported_contours(contours)?;
-        let insert_at = self
-            .layer
-            .shapes
-            .iter()
-            .take_while(|shape| !matches!(shape, Shape::Path(_)))
-            .filter(|shape| matches!(shape, Shape::Component(_)))
-            .count();
-        self.layer
-            .shapes
-            .retain(|shape| matches!(shape, Shape::Component(_)));
-        self.layer.shapes.splice(insert_at..insert_at, shapes);
+        replace_path_shapes_preserving_slots(&mut self.layer.shapes, shapes);
         self.preserved.contours = preserved;
         Ok(true)
+    }
+
+    fn validate_imported_contours(
+        &self,
+        contours: &[norad::Contour],
+        append: bool,
+    ) -> Result<(), DocumentEditError> {
+        ensure_finite(
+            &contours
+                .iter()
+                .flat_map(|contour| &contour.points)
+                .flat_map(|point| [point.x, point.y])
+                .collect::<Vec<_>>(),
+        )?;
+        for contour in contours {
+            if contour.lib().is_some() && contour.identifier().is_none()
+                || contour
+                    .points
+                    .iter()
+                    .any(|point| point.lib().is_some() && point.identifier().is_none())
+            {
+                return Err(DocumentEditError::InvalidLayerMetadata);
+            }
+        }
+        let mut candidate = project_layer(&self.layer, &self.preserved);
+        if append {
+            candidate.contours.extend_from_slice(contours);
+        } else {
+            candidate.contours = contours.to_vec();
+        }
+        let encoded = candidate
+            .encode_xml()
+            .map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+        norad::Glyph::parse_raw(&encoded)
+            .map(|_| ())
+            .map_err(|_| DocumentEditError::InvalidLayerMetadata)
     }
 
     /// Duplicate every contour containing a selected point by `offset`.
@@ -4509,6 +4537,26 @@ fn decode_imported_contours(
         });
     }
     Ok((shapes, preserved, result))
+}
+
+fn replace_path_shapes_preserving_slots(shapes: &mut Vec<Shape>, replacements: Vec<Shape>) {
+    let mut replacements = replacements.into_iter();
+    let mut output = Vec::with_capacity(shapes.len());
+    let mut last_path_end = None;
+    for shape in shapes.drain(..) {
+        if matches!(shape, Shape::Path(_)) {
+            if let Some(replacement) = replacements.next() {
+                output.push(replacement);
+                last_path_end = Some(output.len());
+            }
+        } else {
+            output.push(shape);
+        }
+    }
+    let remaining = replacements.collect::<Vec<_>>();
+    let insert_at = last_path_end.unwrap_or(output.len());
+    output.splice(insert_at..insert_at, remaining);
+    *shapes = output;
 }
 
 fn reverse_contour(path: &mut babelfont::Path, preserved: &mut PreservedContour) -> bool {
