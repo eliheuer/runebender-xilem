@@ -299,6 +299,52 @@ pub(in crate::document) fn proposal_payload_eq(left: LayerView<'_>, right: Layer
             .eq(right
                 .anchors()
                 .map(|anchor| (anchor.name(), anchor.position())))
+        && left
+            .preserved
+            .contours
+            .iter()
+            .map(|contour| {
+                (
+                    contour.hyper,
+                    &contour.metadata,
+                    contour
+                        .points
+                        .iter()
+                        .map(|point| (&point.name, &point.metadata))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .eq(right.preserved.contours.iter().map(|contour| {
+                (
+                    contour.hyper,
+                    &contour.metadata,
+                    contour
+                        .points
+                        .iter()
+                        .map(|point| (&point.name, &point.metadata))
+                        .collect::<Vec<_>>(),
+                )
+            }))
+        && left
+            .preserved
+            .components
+            .iter()
+            .map(|component| (&component.alignment, &component.metadata))
+            .eq(right
+                .preserved
+                .components
+                .iter()
+                .map(|component| (&component.alignment, &component.metadata)))
+        && left
+            .preserved
+            .anchors
+            .iter()
+            .map(|anchor| (anchor.color, &anchor.metadata))
+            .eq(right
+                .preserved
+                .anchors
+                .iter()
+                .map(|anchor| (anchor.color, &anchor.metadata)))
 }
 
 /// Copy a proposal's editable payload onto a canonical foreground draft.
@@ -396,30 +442,61 @@ fn retain_contour_identities(
     new_paths: &mut [babelfont::Path],
     new: &mut [PreservedContour],
 ) {
-    for (index, (path, preserved)) in new_paths.iter_mut().zip(new).enumerate() {
-        let Some((old_path, old_preserved)) = old_paths.get(index).zip(old.get(index)) else {
+    let mut used_contours = vec![false; old.len()];
+    for (new_index, (path, preserved)) in new_paths.iter_mut().zip(new).enumerate() {
+        let by_identifier = preserved
+            .metadata
+            .identifier
+            .as_ref()
+            .and_then(|identifier| {
+                unique_unused(old, &used_contours, |candidate| {
+                    candidate.metadata.identifier.as_ref() == Some(identifier)
+                })
+            });
+        let by_position = old_paths
+            .get(new_index)
+            .zip(old.get(new_index))
+            .filter(|(old_path, _)| {
+                !used_contours[new_index]
+                    && old_path.closed == path.closed
+                    && old_path.nodes.len() == path.nodes.len()
+                    && old_path
+                        .nodes
+                        .iter()
+                        .zip(&path.nodes)
+                        .all(|(left, right)| left.nodetype == right.nodetype)
+            })
+            .map(|_| new_index);
+        let Some(old_index) = by_identifier.or(by_position) else {
             continue;
         };
-        if old_path.closed != path.closed || old_path.nodes.len() != path.nodes.len() {
-            continue;
-        }
-        let same_structure = old_path
-            .nodes
-            .iter()
-            .zip(&path.nodes)
-            .all(|(left, right)| left.nodetype == right.nodetype);
-        if !same_structure {
-            continue;
-        }
+        used_contours[old_index] = true;
+        let old_path = old_paths[old_index];
+        let old_preserved = &old[old_index];
         preserved.id = old_preserved.id;
         write_id(&mut path.format_specific, preserved.id.0);
-        for ((node, point), old_point) in path
-            .nodes
-            .iter_mut()
-            .zip(&mut preserved.points)
-            .zip(&old_preserved.points)
+        let mut used_points = vec![false; old_preserved.points.len()];
+        for (point_index, (node, point)) in
+            path.nodes.iter_mut().zip(&mut preserved.points).enumerate()
         {
-            point.id = old_point.id;
+            let by_identifier = point.metadata.identifier.as_ref().and_then(|identifier| {
+                unique_unused(&old_preserved.points, &used_points, |candidate| {
+                    candidate.metadata.identifier.as_ref() == Some(identifier)
+                })
+            });
+            let by_position = old_path
+                .nodes
+                .get(point_index)
+                .zip(old_preserved.points.get(point_index))
+                .filter(|(old_node, _)| {
+                    !used_points[point_index] && old_node.nodetype == node.nodetype
+                })
+                .map(|_| point_index);
+            let Some(old_point) = by_identifier.or(by_position) else {
+                continue;
+            };
+            used_points[old_point] = true;
+            point.id = old_preserved.points[old_point].id;
             write_id(&mut node.format_specific, point.id.0);
         }
     }
@@ -433,11 +510,19 @@ fn retain_component_identities(
 ) {
     let mut used = vec![false; old_shapes.len()];
     for (shape, preserved) in new_shapes.iter_mut().zip(new) {
-        let candidate = old_shapes
-            .iter()
-            .enumerate()
-            .find(|(index, old)| !used[*index] && old.reference == shape.reference)
-            .map(|(index, _)| index);
+        let by_identifier = preserved
+            .metadata
+            .identifier
+            .as_ref()
+            .and_then(|identifier| {
+                unique_unused(old, &used, |candidate| {
+                    candidate.metadata.identifier.as_ref() == Some(identifier)
+                })
+            });
+        let by_reference = unique_unused(old_shapes, &used, |candidate| {
+            candidate.reference == shape.reference
+        });
+        let candidate = by_identifier.or(by_reference);
         let Some(index) = candidate else {
             continue;
         };
@@ -455,11 +540,19 @@ fn retain_anchor_identities(
 ) {
     let mut used = vec![false; old_anchors.len()];
     for (anchor, preserved) in new_anchors.iter_mut().zip(new) {
-        let candidate = old_anchors
-            .iter()
-            .enumerate()
-            .find(|(index, old)| !used[*index] && old.name == anchor.name)
-            .map(|(index, _)| index);
+        let by_identifier = preserved
+            .metadata
+            .identifier
+            .as_ref()
+            .and_then(|identifier| {
+                unique_unused(old, &used, |candidate| {
+                    candidate.metadata.identifier.as_ref() == Some(identifier)
+                })
+            });
+        let by_name = unique_unused(old_anchors, &used, |candidate| {
+            candidate.name == anchor.name
+        });
+        let candidate = by_identifier.or(by_name);
         let Some(index) = candidate else {
             continue;
         };
@@ -467,6 +560,16 @@ fn retain_anchor_identities(
         preserved.id = old[index].id;
         write_id(&mut anchor.format_specific, preserved.id.0);
     }
+}
+
+fn unique_unused<T>(items: &[T], used: &[bool], predicate: impl Fn(&T) -> bool) -> Option<usize> {
+    let mut matches = items
+        .iter()
+        .enumerate()
+        .filter(|(index, item)| !used[*index] && predicate(item))
+        .map(|(index, _)| index);
+    let first = matches.next()?;
+    matches.next().is_none().then_some(first)
 }
 
 /// Change only the glyph name carried by one layer's preservation payload.
@@ -530,7 +633,9 @@ fn copied_metadata(metadata: &ObjectMetadata, hyper: bool) -> ObjectMetadata {
 
 #[cfg(test)]
 mod tests {
-    use norad::{AffineTransform, Component, Contour, ContourPoint, Glyph, PointType};
+    use norad::{
+        AffineTransform, Anchor, Component, Contour, ContourPoint, Glyph, Name, PointType,
+    };
 
     use super::*;
     use crate::document::babelfont::{LayerView, layer_from_ufo, project_layer};
@@ -573,7 +678,7 @@ mod tests {
             Some(norad::Identifier::from_uuidv4()),
         ));
         glyph.components.push(Component::new(
-            norad::Name::new("base").unwrap(),
+            Name::new("base").unwrap(),
             AffineTransform::default(),
             Some(norad::Identifier::from_uuidv4()),
         ));
@@ -618,7 +723,7 @@ mod tests {
         let id = layer_id();
         let mut glyph = Glyph::new("user");
         glyph.components.push(Component::new(
-            norad::Name::new("A").unwrap(),
+            Name::new("A").unwrap(),
             AffineTransform::default(),
             None,
         ));
@@ -637,6 +742,94 @@ mod tests {
                 .get(crate::document::model::glyph_metadata::LEFT_METRICS_KEY)
                 .and_then(plist::Value::as_string),
             Some(" = |A.alt + 1.50 ")
+        );
+    }
+
+    #[test]
+    fn proposal_install_follows_identifiers_across_reorder() {
+        let identifier = |value: &str| norad::Identifier::new(value).unwrap();
+        let mut glyph = Glyph::new("A");
+        for (value, x) in [("contour.first", 10.0), ("contour.second", 20.0)] {
+            glyph.contours.push(Contour::new(
+                vec![ContourPoint::new(
+                    x,
+                    0.0,
+                    PointType::Move,
+                    false,
+                    None,
+                    Some(identifier(&format!("{value}.point"))),
+                )],
+                Some(identifier(value)),
+            ));
+        }
+        for value in ["component.first", "component.second"] {
+            glyph.components.push(Component::new(
+                Name::new("base").unwrap(),
+                AffineTransform::default(),
+                Some(identifier(value)),
+            ));
+        }
+        for (value, name) in [("anchor.first", "top"), ("anchor.second", "bottom")] {
+            glyph.anchors.push(Anchor::new(
+                0.0,
+                0.0,
+                Some(Name::new(name).unwrap()),
+                None,
+                Some(identifier(value)),
+            ));
+        }
+        let foreground_id = layer_id();
+        let proposal_id = LayerId {
+            source: foreground_id.source,
+            name: "com.runebender.proposal.reorder".into(),
+        };
+        let (foreground_layer, foreground_preserved) = layer_from_ufo(&glyph, &foreground_id, true);
+        let foreground = LayerView::new(&foreground_layer, &foreground_preserved);
+        let contour_ids = foreground
+            .contours()
+            .map(|contour| contour.id())
+            .collect::<Vec<_>>();
+        let component_ids = foreground
+            .components()
+            .map(|component| component.id())
+            .collect::<Vec<_>>();
+        let anchor_ids = foreground
+            .anchors()
+            .map(|anchor| anchor.id())
+            .collect::<Vec<_>>();
+
+        let mut reordered = glyph;
+        reordered.contours.reverse();
+        reordered.components.reverse();
+        reordered.anchors.reverse();
+        let (proposal_layer, proposal_preserved) = layer_from_ufo(&reordered, &proposal_id, false);
+        let installed = install_proposal_payload(
+            LayerEditDraft::new(foreground_layer, foreground_preserved),
+            LayerView::new(&proposal_layer, &proposal_preserved),
+        );
+        assert_eq!(
+            installed
+                .view()
+                .contours()
+                .map(|contour| contour.id())
+                .collect::<Vec<_>>(),
+            [contour_ids[1], contour_ids[0]]
+        );
+        assert_eq!(
+            installed
+                .view()
+                .components()
+                .map(|component| component.id())
+                .collect::<Vec<_>>(),
+            [component_ids[1], component_ids[0]]
+        );
+        assert_eq!(
+            installed
+                .view()
+                .anchors()
+                .map(|anchor| anchor.id())
+                .collect::<Vec<_>>(),
+            [anchor_ids[1], anchor_ids[0]]
         );
     }
 }
