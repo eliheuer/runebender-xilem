@@ -425,8 +425,8 @@ pub(crate) fn groups_section(app: &Workspace) -> impl WidgetView<Workspace> + us
     .gap(Space::Sm)
 }
 
-/// One vertical metric off a font's info.
-type Pick = fn(&norad::FontInfo) -> Option<f64>;
+/// One vertical metric off canonical source information.
+type Pick = fn(&runebender::document::model::font_info::CanonicalFontMetrics) -> Option<f64>;
 
 /// Compare: each other master against the active one.
 pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
@@ -459,8 +459,21 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
     }
     let active = app.font.active();
     let reference = app.font.font();
-    let pair_count = |f: &norad::Font| f.kerning.values().map(|s| s.len()).sum::<usize>();
-    let metric = |f: &norad::Font, pick: Pick| pick(&f.font_info).unwrap_or(0.0);
+    let reference_info = app
+        .font
+        .font_info_at(active)
+        .expect("the active source has canonical font information");
+    let pair_count = |index| {
+        app.font
+            .font_metadata_at(index)
+            .map_or(0, |metadata| metadata.kerning_pairs().count())
+    };
+    let metric = |index, pick: Pick| {
+        app.font
+            .font_info_at(index)
+            .and_then(|info| pick(&info.metrics))
+            .unwrap_or(0.0)
+    };
     let rows: Vec<_> = (0..masters)
         .filter(|&i| i != active)
         .filter_map(|i| {
@@ -487,7 +500,7 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                 ("cap", |fi| fi.cap_height),
             ];
             for (tag, pick) in checks {
-                if (metric(master, pick) - metric(reference, pick)).abs() > 0.5 {
+                if (metric(i, pick) - pick(&reference_info.metrics).unwrap_or(0.0)).abs() > 0.5 {
                     diffs.push(tag);
                 }
             }
@@ -504,8 +517,8 @@ pub(crate) fn compare_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                             master.default_layer().len(),
                             missing,
                             advance_diffs,
-                            pair_count(master),
-                            pair_count(reference),
+                            pair_count(i),
+                            pair_count(active),
                             if diffs.is_empty() {
                                 String::new()
                             } else {

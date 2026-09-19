@@ -13,6 +13,7 @@ use std::sync::Arc;
 use kurbo::{BezPath, Rect};
 use runebender::analysis::category::GlyphCategory;
 use runebender::document::canonical_metadata::{CanonicalFontMetadata, KerningSide};
+use runebender::document::model::font_info::CanonicalFontInfo;
 use runebender::document::project::{Master, Project};
 use runebender::document::proposal;
 use runebender::document::variable::{SourceEdit, SourceFontEdit};
@@ -86,13 +87,28 @@ impl FontModel {
 
     /// Canonical group and exact kerning values for the active source.
     pub(crate) fn font_metadata(&self) -> &CanonicalFontMetadata {
-        let source = self
-            .project
-            .source_id(self.active())
-            .expect("the active source has a stable identity");
-        self.project
-            .document_font_metadata(source)
+        self.font_metadata_at(self.active())
             .expect("the active source has canonical font metadata")
+    }
+
+    /// Canonical group and exact kerning values for one source index.
+    pub(crate) fn font_metadata_at(&self, index: usize) -> Option<&CanonicalFontMetadata> {
+        self.project
+            .source_id(index)
+            .and_then(|source| self.project.document_font_metadata(source))
+    }
+
+    /// Canonical names, metrics and OpenType information for the active source.
+    pub(crate) fn font_info(&self) -> &CanonicalFontInfo {
+        self.font_info_at(self.active())
+            .expect("the active source has canonical font information")
+    }
+
+    /// Canonical names, metrics and OpenType information for one source index.
+    pub(crate) fn font_info_at(&self, index: usize) -> Option<&CanonicalFontInfo> {
+        self.project
+            .source_id(index)
+            .and_then(|source| self.project.document_font_info(source))
     }
 
     pub(crate) fn feature_font(&self) -> &norad::Font {
@@ -190,15 +206,15 @@ impl FontModel {
     }
 
     pub(crate) fn units_per_em(&self) -> f64 {
-        self.master().units_per_em
+        self.font_info().metrics.resolved().units_per_em
     }
 
     pub(crate) fn ascender(&self) -> f64 {
-        self.master().ascender
+        self.font_info().metrics.resolved().ascender
     }
 
     pub(crate) fn descender(&self) -> f64 {
-        self.master().descender
+        self.font_info().metrics.resolved().descender
     }
 
     pub(crate) fn master_names(&self) -> Vec<String> {
@@ -643,41 +659,41 @@ impl FontModel {
     /// master and a rule about which values are per-master, which the
     /// editor does not have yet.
     pub(crate) fn info_rows(&self) -> Vec<(&'static str, String)> {
-        let info = &self.font().font_info;
+        let info = self.font_info();
         let text = |value: &Option<String>| value.clone().unwrap_or_default();
         let number = |value: Option<f64>| value.map(|v| format!("{v:.0}")).unwrap_or_default();
         vec![
-            ("Family name", text(&info.family_name)),
-            ("Style name", text(&info.style_name)),
-            ("UPM", number(info.units_per_em.map(|v| v.as_f64()))),
-            ("Italic angle", number(info.italic_angle)),
-            ("Ascender", number(info.ascender)),
-            ("Descender", number(info.descender)),
-            ("x-height", number(info.x_height)),
-            ("Cap height", number(info.cap_height)),
+            ("Family name", text(&info.names.family_name)),
+            ("Style name", text(&info.names.style_name)),
+            ("UPM", number(info.metrics.units_per_em)),
+            ("Italic angle", number(info.metrics.italic_angle)),
+            ("Ascender", number(info.metrics.ascender)),
+            ("Descender", number(info.metrics.descender)),
+            ("x-height", number(info.metrics.x_height)),
+            ("Cap height", number(info.metrics.cap_height)),
             (
                 "typoAsc",
-                number(info.open_type_os2_typo_ascender.map(f64::from)),
+                number(info.open_type_metrics.typo_ascender.map(f64::from)),
             ),
             (
                 "typoDesc",
-                number(info.open_type_os2_typo_descender.map(f64::from)),
+                number(info.open_type_metrics.typo_descender.map(f64::from)),
             ),
             (
                 "hheaAsc",
-                number(info.open_type_hhea_ascender.map(f64::from)),
+                number(info.open_type_metrics.hhea_ascender.map(f64::from)),
             ),
             (
                 "hheaDesc",
-                number(info.open_type_hhea_descender.map(f64::from)),
+                number(info.open_type_metrics.hhea_descender.map(f64::from)),
             ),
             (
                 "winAsc",
-                number(info.open_type_os2_win_ascent.map(f64::from)),
+                number(info.open_type_metrics.win_ascent.map(f64::from)),
             ),
             (
                 "winDesc",
-                number(info.open_type_os2_win_descent.map(f64::from)),
+                number(info.open_type_metrics.win_descent.map(f64::from)),
             ),
         ]
     }
@@ -849,6 +865,66 @@ mod tests {
         );
 
         std::fs::remove_dir_all(dir).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn source_metadata_queries_read_canonical_unsaved_values() {
+        let (_, mut model) = two_master_model();
+        let source = model
+            .project
+            .source_id(model.active())
+            .expect("active source identity");
+        let mut metadata = model
+            .project
+            .document_font_metadata(source)
+            .expect("canonical source metadata")
+            .clone();
+        metadata
+            .set_kerning_group("A", KerningSide::First, Some("A"))
+            .expect("valid group edit");
+        metadata
+            .set_kerning_pair(
+                KerningParticipant::group(KerningSide::First, "A").expect("valid group"),
+                KerningParticipant::glyph("V").expect("valid glyph"),
+                Some(-80.25),
+            )
+            .expect("valid exact kerning pair");
+        let mut font_info = model
+            .project
+            .document_font_info(source)
+            .expect("canonical font information")
+            .clone();
+        font_info.names.family_name = Some("Unsaved Family".into());
+        font_info.metrics.units_per_em = Some(2048.0);
+        model
+            .project
+            .edit_document_source_metadata(source, |draft| {
+                draft.set_font_metadata(metadata);
+                draft.set_font_info(font_info);
+                Ok(())
+            })
+            .expect("canonical metadata edit commits");
+
+        assert_eq!(model.kern_group("A", true), "public.kern1.A");
+        assert!(
+            model
+                .font_metadata()
+                .kerning_pairs()
+                .any(
+                    |(first, second, value)| first.as_raw_name() == "public.kern1.A"
+                        && second.as_raw_name() == "V"
+                        && value == -80.25
+                )
+        );
+        assert_eq!(model.units_per_em(), 2048.0);
+        assert_eq!(
+            model.info_rows().into_iter().take(3).collect::<Vec<_>>(),
+            [
+                ("Family name", "Unsaved Family".into()),
+                ("Style name", String::new()),
+                ("UPM", "2048".into()),
+            ]
+        );
     }
 
     #[test]
