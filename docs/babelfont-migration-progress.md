@@ -2531,6 +2531,7 @@ Resolve its exact ID with `git log --format=%H --grep='^Run headless source comm
 The `info`, SVG `proof` and proposal list/install/discard commands now open one canonical Project source rather than loading a `Master` or mutating a standalone UFO font.
 Information and proof output read canonical source metadata, glyph layers, geometry and source-format layer order.
 Proposal installation uses the revision-checked Project transaction, and installation and discard save through Project persistence.
+Agent master selection and `project_info` enumerate canonical source views and paths rather than the compatibility Master collection.
 Multi-source inputs fail explicitly instead of selecting a source implicitly.
 
 The proposal binary regression now writes the foreground revision record required by the canonical external-proposal contract.

@@ -1323,23 +1323,25 @@ fn nodes_run(
 /// master of a designspace.
 fn font_master(font: &Path, master: Option<usize>) -> Result<PathBuf, String> {
     let project = Project::load(font)?;
+    let sources = project.document_sources().collect::<Vec<_>>();
     let index = match master {
         Some(index) => index,
-        None if project.sources().len() == 1 => 0,
+        None if sources.len() == 1 => 0,
         None => return Err("master is required for a family; call project_info first".into()),
     };
-    project
-        .sources()
+    sources
         .get(index)
-        .map(|m| m.source_path.clone())
+        .map(|source| source.path().to_path_buf())
         .ok_or_else(|| format!("no master at index {index}"))
 }
 
 fn project_info(font: &Path) -> serde_json::Value {
     match Project::load(font) {
-        Ok(p) => json!({"ok": true, "project": font, "masters": p.sources().iter().enumerate()
-            .map(|(index, m)| json!({"index": index, "name": p.master_names[index].as_ref(), "source": m.source_path}))
-            .collect::<Vec<_>>()}),
+        Ok(project) => {
+            json!({"ok": true, "project": font, "masters": project.document_sources().enumerate()
+            .map(|(index, source)| json!({"index": index, "name": source.name(), "source": source.path()}))
+            .collect::<Vec<_>>()})
+        }
         Err(e) => json!({"ok": false, "error": e}),
     }
 }

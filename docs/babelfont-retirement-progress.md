@@ -115,7 +115,7 @@ The remaining non-application consumers are:
 - `document/filesystem.rs:16,124-143` converts a validated `ImportedUfo` into `Master` during load.
 - `document/project/constructors.rs:57` still creates a compatibility `Master` after canonical in-memory construction.
 
-The CLI `info`, `proof` and proposal list/install/discard callers now consume Project source views and canonical proposal operations; proposal mutations save through `Project::save`.
+The CLI `info`, `proof`, proposal list/install/discard, agent source selection and `project_info` callers now consume Project source views and canonical proposal operations; proposal mutations save through `Project::save`.
 The remaining SVG compatibility entry point, Designbot and live proof should consume Project source views and the typed renderer.
 Python Babelfont and filesystem imports need a canonical multi-source constructor that accepts decoded source records and canonical Designspace data without a `Master` callback.
 
