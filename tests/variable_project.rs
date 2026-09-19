@@ -6480,6 +6480,71 @@ fn full_source_can_replace_intermediate_participation_without_losing_the_layer()
 }
 
 #[test]
+fn canonical_layer_history_survives_source_removal_and_restore() {
+    let (_scratch, mut project) = fixture();
+    let source = SourceId(1);
+    let layer = project
+        .document_source(source)
+        .expect("the removable source exists")
+        .default_layer();
+    let address = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer,
+    };
+    let original_width = project
+        .document_layer("A", &address.layer)
+        .expect("the source contains A")
+        .width();
+
+    let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+    assert!(
+        transaction
+            .draft_mut()
+            .set_width(original_width + 19.25)
+            .unwrap()
+    );
+    assert!(matches!(
+        project
+            .commit_document_layer_transaction(transaction)
+            .unwrap(),
+        DocumentEditOutcome::Changed { .. }
+    ));
+    assert_eq!(
+        project.document_layer_history_depth(&address, HistoryDirection::Undo),
+        1
+    );
+
+    project.remove_source(source).unwrap();
+    assert!(project.document_layer("A", &address.layer).is_none());
+    assert!(project.undo_sources(false).unwrap());
+    assert_eq!(
+        project
+            .document_layer("A", &address.layer)
+            .expect("source undo restores the layer")
+            .width(),
+        original_width + 19.25
+    );
+    assert_eq!(
+        project.document_layer_history_depth(&address, HistoryDirection::Undo),
+        1
+    );
+
+    assert!(matches!(
+        project
+            .replay_document_layer_history(&address, HistoryDirection::Undo)
+            .unwrap(),
+        DocumentHistoryReplayOutcome::Changed { .. }
+    ));
+    assert_eq!(
+        project
+            .document_layer("A", &address.layer)
+            .expect("history replay keeps the restored layer")
+            .width(),
+        original_width
+    );
+}
+
+#[test]
 fn failed_interpolated_source_is_atomic() {
     let (_scratch, mut project) = fixture();
     let incompatible = project
