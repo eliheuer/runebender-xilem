@@ -75,6 +75,111 @@ impl OpenTypeGlyphCategory {
     }
 }
 
+/// A parsed glyph spacing formula independent of its UFO lib encoding.
+#[derive(Clone, Debug, PartialEq)]
+pub enum MetricsFormula {
+    /// A fixed sidebearing or width in font units, such as `=50`.
+    Constant(f64),
+    /// A metric copied from another glyph, with optional mirroring and arithmetic.
+    Reference {
+        /// Name of the glyph whose metric is copied.
+        glyph: String,
+        /// Read the opposite sidebearing of the referenced glyph.
+        mirror: bool,
+        /// Trailing arithmetic: `+`, `-` or `*` and a finite value.
+        op: Option<(char, f64)>,
+    },
+}
+
+impl MetricsFormula {
+    /// The referenced glyph name, if this is not a constant formula.
+    pub fn referenced_glyph(&self) -> Option<&str> {
+        match self {
+            Self::Constant(_) => None,
+            Self::Reference { glyph, .. } => Some(glyph),
+        }
+    }
+
+    /// Rename this formula's glyph reference.
+    ///
+    /// Invalid input is rejected before mutation.
+    pub fn rename_reference(
+        &mut self,
+        old: &str,
+        new: &str,
+    ) -> Result<bool, super::super::canonical_metadata::CanonicalMetadataError> {
+        let Self::Reference { glyph, .. } = self else {
+            return Ok(false);
+        };
+        if glyph != old || old == new {
+            return Ok(false);
+        }
+        super::super::canonical_metadata::validate_name(new)?;
+        *glyph = new.to_owned();
+        Ok(true)
+    }
+
+    /// Resolve this formula from a referenced metric.
+    ///
+    /// Constants ignore `reference`.
+    /// A non-finite input or result is rejected.
+    pub fn evaluate(&self, reference: f64) -> Option<f64> {
+        let result = match self {
+            Self::Constant(value) => *value,
+            Self::Reference { op, .. } => match op {
+                None => reference,
+                Some(('+', value)) => reference + value,
+                Some(('-', value)) => reference - value,
+                Some(('*', value)) => reference * value,
+                Some(_) => return None,
+            },
+        };
+        result.is_finite().then_some(result)
+    }
+}
+
+/// Parse a Glyphs-style metrics key such as `=n+10`.
+///
+/// The leading `=` is optional.
+/// `=|o` references the opposite sidebearing.
+/// Arithmetic is recognized only when the suffix is a finite number, so a hyphenated glyph name
+/// such as `beh-ar` remains a reference rather than a malformed subtraction.
+pub fn parse_metrics_key(text: &str) -> Option<MetricsFormula> {
+    let body = text.trim().trim_start_matches('=').trim();
+    if body.is_empty() {
+        return None;
+    }
+    if let Ok(value) = body.parse::<f64>() {
+        return value.is_finite().then_some(MetricsFormula::Constant(value));
+    }
+    let (mirror, body) = match body.strip_prefix('|') {
+        Some(rest) => (true, rest.trim()),
+        None => (false, body),
+    };
+    let mut arithmetic = None;
+    for (index, operator) in body.char_indices().rev() {
+        if index == 0 || !matches!(operator, '+' | '-' | '*') {
+            continue;
+        }
+        let Ok(value) = body[index + operator.len_utf8()..].trim().parse::<f64>() else {
+            continue;
+        };
+        if value.is_finite() {
+            arithmetic = Some((index, operator, value));
+            break;
+        }
+    }
+    let (glyph, op) = arithmetic.map_or((body.trim(), None), |(index, operator, value)| {
+        (body[..index].trim(), Some((operator, value)))
+    });
+    super::super::canonical_metadata::validate_name(glyph).ok()?;
+    Some(MetricsFormula::Reference {
+        glyph: glyph.to_owned(),
+        mirror,
+        op,
+    })
+}
+
 /// Canonical metadata stored with one glyph layer.
 ///
 /// Codepoints and notes are GLIF fields, so auxiliary layers and different sources can preserve
@@ -549,6 +654,34 @@ mod tests {
         assert_eq!(
             parse_codepoints("0041 D800"),
             Err(GlyphMetadataError::InvalidCodepoint("D800".into()))
+        );
+    }
+
+    #[test]
+    fn metrics_formulas_preserve_hyphenated_names_and_rename_atomically() {
+        let mut formula = parse_metrics_key("=beh-ar*1.25").unwrap();
+        assert_eq!(formula.referenced_glyph(), Some("beh-ar"));
+        assert_eq!(formula.evaluate(80.0), Some(100.0));
+        assert!(formula.rename_reference("beh-ar", "beh-ar.alt").unwrap());
+        assert_eq!(formula.referenced_glyph(), Some("beh-ar.alt"));
+
+        let before = formula.clone();
+        assert!(formula.rename_reference("beh-ar.alt", "bad\0name").is_err());
+        assert_eq!(formula, before);
+        assert!(!formula.rename_reference("other", "bad\0name").unwrap());
+        assert_eq!(formula, before);
+        assert_eq!(
+            MetricsFormula::Constant(50.0).evaluate(f64::NAN),
+            Some(50.0)
+        );
+        assert_eq!(
+            MetricsFormula::Reference {
+                glyph: "n".into(),
+                mirror: false,
+                op: Some(('*', f64::MAX)),
+            }
+            .evaluate(f64::MAX),
+            None
         );
     }
 

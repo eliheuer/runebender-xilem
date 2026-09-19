@@ -3,6 +3,8 @@
 
 //! Glyphs-style metrics keys: sidebearings derived from another glyph.
 
+pub use crate::document::model::glyph_metadata::{MetricsFormula, parse_metrics_key};
+
 /// Lib key for the left sidebearing formula.
 ///
 /// Metrics keys are the Glyphs spacing formulas, stored in the lib
@@ -16,51 +18,6 @@ pub const LEFT_METRICS_KEY: &str = "com.schriftgestaltung.Glyphs.glyph.leftMetri
 
 /// Lib key for the right sidebearing formula. See [`LEFT_METRICS_KEY`] for the syntax.
 pub const RIGHT_METRICS_KEY: &str = "com.schriftgestaltung.Glyphs.glyph.rightMetricsKey";
-
-/// A parsed metrics-key formula.
-#[derive(Clone, Debug, PartialEq)]
-pub enum MetricsFormula {
-    /// A fixed sidebearing value in font units, such as `=50`.
-    Constant(f64),
-    /// A sidebearing copied from another glyph, with optional mirroring and arithmetic.
-    Reference {
-        /// Name of the glyph whose sidebearing is copied.
-        glyph: String,
-        /// Read the opposite sidebearing of the referenced glyph.
-        mirror: bool,
-        /// Trailing arithmetic: ('+' | '-' | '*', value).
-        op: Option<(char, f64)>,
-    },
-}
-
-/// Parses a metrics key such as `=n+10`. The leading `=` is optional. Returns `None` for empty text or a malformed number.
-pub fn parse_metrics_key(text: &str) -> Option<MetricsFormula> {
-    let body = text.trim().trim_start_matches('=').trim();
-    if body.is_empty() {
-        return None;
-    }
-    if let Ok(v) = body.parse::<f64>() {
-        return Some(MetricsFormula::Constant(v));
-    }
-    let (mirror, body) = match body.strip_prefix('|') {
-        Some(rest) => (true, rest.trim()),
-        None => (false, body),
-    };
-    let split = body.find(['+', '-', '*']).filter(|&i| i > 0);
-    let (name, op) = match split {
-        Some(i) => {
-            let sign = body.as_bytes()[i] as char;
-            let value = body[i + 1..].trim().parse::<f64>().ok()?;
-            (body[..i].trim(), Some((sign, value)))
-        }
-        None => (body, None),
-    };
-    (!name.is_empty()).then(|| MetricsFormula::Reference {
-        glyph: name.to_string(),
-        mirror,
-        op,
-    })
-}
 
 /// Reads the left (`left == true`) or right metrics key from the glyph lib, if present.
 pub fn read_metrics_key(glyph: &norad::Glyph, left: bool) -> Option<String> {
@@ -134,10 +91,14 @@ mod tests {
             })
         );
         assert_eq!(parse_metrics_key("  "), None);
-        // A hyphenated glyph name is a name, not subtraction, only
-        // when the split lands at position 0 — "beh-ar" splits at 3,
-        // so this is a documented limitation: quote it as reference
-        // only when no arithmetic parse works.
+        assert_eq!(
+            parse_metrics_key("=beh-ar"),
+            Some(Reference {
+                glyph: "beh-ar".into(),
+                mirror: false,
+                op: None,
+            })
+        );
         assert_eq!(
             parse_metrics_key("=x-4"),
             Some(Reference {
@@ -146,5 +107,7 @@ mod tests {
                 op: Some(('-', 4.0))
             })
         );
+        assert_eq!(parse_metrics_key("=NaN"), None);
+        assert_eq!(parse_metrics_key("=inf"), None);
     }
 }
