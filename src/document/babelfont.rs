@@ -17,6 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use babelfont::{Anchor, Component, Layer, Node, NodeType, Shape};
 use kurbo::ParamCurve;
 
+use super::model::glyph_metadata::ComponentAlignment;
 use super::variable::LayerId;
 
 pub(super) fn layer_key(id: &LayerId) -> String {
@@ -73,6 +74,7 @@ struct PreservedPoint {
 struct PreservedComponent {
     id: ComponentId,
     transform: norad::AffineTransform,
+    alignment: ComponentAlignment,
     metadata: ObjectMetadata,
 }
 
@@ -608,6 +610,11 @@ impl<'a> ComponentView<'a> {
     pub fn transform(self) -> kurbo::Affine {
         affine(self.preserved.transform)
     }
+
+    /// Whether this component is explicitly cut loose from automatic anchor alignment.
+    pub fn alignment_disabled(self) -> bool {
+        self.preserved.alignment.is_disabled()
+    }
 }
 
 /// Read-only access to one canonical anchor.
@@ -670,11 +677,11 @@ impl LayerEditDraft {
                 .preserved
                 .components
                 .iter()
-                .map(|item| (item.id, &item.metadata))
+                .map(|item| (item.id, &item.alignment, &item.metadata))
                 .ne(preserved
                     .components
                     .iter()
-                    .map(|item| (item.id, &item.metadata)))
+                    .map(|item| (item.id, &item.alignment, &item.metadata)))
             || self.preserved.anchors != preserved.anchors;
         LayerDelta {
             geometry,
@@ -3322,12 +3329,37 @@ impl LayerEditDraft {
                 x_offset: coefficients[4],
                 y_offset: coefficients[5],
             },
+            alignment: ComponentAlignment::default(),
             metadata: ObjectMetadata {
                 identifier: None,
                 lib: None,
             },
         });
         Ok(id)
+    }
+
+    /// Read whether one stable component is cut loose from automatic anchor alignment.
+    pub fn component_alignment_disabled(&self, id: ComponentId) -> Result<bool, DocumentEditError> {
+        self.preserved
+            .components
+            .iter()
+            .find(|component| component.id == id)
+            .map(|component| component.alignment.is_disabled())
+            .ok_or(DocumentEditError::MissingComponent(id))
+    }
+
+    /// Change automatic anchor alignment for one stable component.
+    pub fn set_component_alignment_disabled(
+        &mut self,
+        id: ComponentId,
+        disabled: bool,
+    ) -> Result<bool, DocumentEditError> {
+        self.preserved
+            .components
+            .iter_mut()
+            .find(|component| component.id == id)
+            .map(|component| component.alignment.set_disabled(disabled))
+            .ok_or(DocumentEditError::MissingComponent(id))
     }
 
     /// Remove one component by stable identity.
@@ -3820,10 +3852,16 @@ pub(super) fn layer_from_ufo(
         };
         write_id(&mut output.format_specific, component_id.0);
         layer.shapes.push(Shape::Component(output));
+        let mut lib = component.lib().cloned().unwrap_or_default();
+        let alignment = ComponentAlignment::take_from_lib(&mut lib);
         components.push(PreservedComponent {
             id: component_id,
             transform: component.transform,
-            metadata: ObjectMetadata::new(component.identifier(), component.lib()),
+            alignment,
+            metadata: ObjectMetadata {
+                identifier: component.identifier().cloned(),
+                lib: (!lib.is_empty()).then_some(lib),
+            },
         });
     }
     let mut anchors = Vec::with_capacity(glyph.anchors.len());
@@ -4188,6 +4226,15 @@ pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> nor
             );
             if let Some(lib) = original.and_then(|item| item.metadata.lib.clone()) {
                 output.replace_lib(lib);
+            }
+            if let Some(original) = original {
+                let mut lib = output.lib().cloned().unwrap_or_default();
+                original.alignment.write_to_lib(&mut lib);
+                if lib.is_empty() {
+                    output.take_lib();
+                } else {
+                    output.replace_lib(lib);
+                }
             }
             output
         })
