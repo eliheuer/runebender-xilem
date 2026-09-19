@@ -42,6 +42,10 @@ Baseline: `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
 - `12764cc` (`Read interpolation structure canonically`) removes live interpolation reads of legacy axes, master locations, brace sources, instance/rule projections and the cached variation model.
   Full and sparse glyph participation, mapped coordinates, kerning interpolation, source snapping, instance display data, rules, trajectory sampling and HOI endpoints now use the Project-owned canonical Designspace by stable identity.
 - `4b79ef0` (`Test canonical rule and instance projections`) proves mapped rule evaluation and instance display reconstruction still work after the legacy axes, locations, instances and preservation document are cleared.
+- `9241b76` (`Render canonical hyperbezier contours`) routes canonical `ContourView` hyperbeziers through the existing spline solver without constructing a UFO contour.
+  Its Project-backed regression compares the complete rendered path with the UFO boundary.
+- `e1df6e3` (`Preserve canonical component render fidelity`) accumulates nested six-coefficient component transforms and applies them once at each leaf, preserving the legacy operation order and exact `BezPath` values rather than introducing recursive floating-point rounding differences.
+  It also rejects non-finite component geometry and proves full-path plus bounds parity for nested affines and selected auxiliary-layer resolution with same-source default fallback.
 
 ## Executed checks
 
@@ -59,6 +63,8 @@ Baseline: `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
 - `cargo test --locked --test compiler_include_path -- --test-threads=1`: 2 passed.
 - `cargo test --locked --lib text::features::tests:: -- --test-threads=1`: 5 passed.
 - `cargo test --locked --lib text::buffer::tests::canonical_project_builds_the_same_text_inputs_as_its_source_boundary -- --exact --test-threads=1`: 1 passed.
+- `cargo test --locked --lib outline::glyph_paths::canonical_render_tests:: -- --test-threads=1`: 4 passed.
+- `cargo test --locked --test variable_project canonical_component_resolution_matches_legacy_and_reports_broken_graphs -- --exact --test-threads=1`: 1 passed.
 - `cargo clippy --locked --lib --tests -- -D warnings`: passed.
 - `cargo fmt --all --check`: passed.
 - `git diff --check`: passed.
@@ -89,9 +95,12 @@ The Project-owned compiler query and typed cache key are implemented.
 M08 and M09 are still not complete because every source-authoring command, undo and redo path must mutate or restore that same canonical owner before compatibility projections can be considered non-authoritative.
 The explicit source-creation, re-interpolate and format compatibility APIs still project canonical interpolation results back to Norad for callers that have not yet accepted a canonical result or transaction.
 HOI intermediate control data also still crosses its typed UFO-lib codec through one projected glyph because the canonical layer metadata API does not yet expose that persisted extension.
+Canonical ordinary, quadratic and hyperbezier contours plus recursive component transforms now render without a UFO projection.
+Typed metaball and smart-component rendering still awaits the canonical layer metadata accessors before the compatibility renderer can be retired.
 Those remaining caller cutovers require implementation and focused round-trip, invalidation and preservation proof; the presence of the canonical model and compiler query is not sufficient completion evidence.
 
 ## Next concrete step
 
 Route source-authoring transactions and their undo/redo snapshots through the Project-owned canonical Designspace and prove that compiler invalidation follows those edits.
 Retire the interpolation output projection when its remaining application and source-authoring callers consume canonical results directly.
+Route typed metaball and smart-component metadata through the canonical resolved render path and prove direct, nested and auxiliary-layer fallback parity.
