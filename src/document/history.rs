@@ -18,6 +18,8 @@ use norad::Glyph;
 use crate::outline::glyph_ops::{self, GlyphSnapshot};
 use crate::ui::editing::undo::UndoState;
 
+use super::CanonicalLayerSnapshot;
+use super::project::{DocumentEditOutcome, DocumentHistoryError, Project};
 use super::variable::GlyphLayerAddress;
 
 const MAX_CANONICAL_HISTORY: usize = 128;
@@ -261,6 +263,122 @@ impl<S: PartialEq> CanonicalHistory<S> {
     /// Forget all canonical history, such as after replacing the open document.
     pub fn clear(&mut self) {
         self.stacks.clear();
+    }
+}
+
+/// Document-owned history over complete canonical layer snapshots.
+///
+/// Callers capture the before-state, commit one or more direct document edits and
+/// then record the completed state. Undo and redo use Project's guarded canonical
+/// restore boundary, so history never stores or materializes a UFO glyph.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DocumentHistory {
+    layers: CanonicalHistory<CanonicalLayerSnapshot>,
+}
+
+impl DocumentHistory {
+    /// Capture one canonical layer before a document edit.
+    pub fn capture(
+        project: &Project,
+        address: &GlyphLayerAddress,
+    ) -> Result<CanonicalLayerSnapshot, DocumentHistoryError> {
+        project
+            .capture_document_layer(address)
+            .ok_or_else(|| DocumentHistoryError::MissingLayer(address.clone()))
+    }
+
+    /// Record the live state after an edit, paired with its captured before-state.
+    ///
+    /// A failed or no-op document edit produces equal snapshots, records nothing and
+    /// does not invalidate redo.
+    pub fn record_completed(
+        &mut self,
+        project: &Project,
+        address: &GlyphLayerAddress,
+        before: CanonicalLayerSnapshot,
+    ) -> Result<bool, DocumentHistoryError> {
+        if before.address() != address {
+            return Err(DocumentHistoryError::AddressMismatch(address.clone()));
+        }
+        let after = Self::capture(project, address)?;
+        Ok(self.layers.record(address.clone(), before, after))
+    }
+
+    /// Extend the latest history step with the live result of the next drag edit.
+    ///
+    /// `previous` is the state captured immediately before that edit. Returning the
+    /// layer to the gesture origin removes the resulting no-op step.
+    pub fn coalesce_completed(
+        &mut self,
+        project: &Project,
+        address: &GlyphLayerAddress,
+        previous: &CanonicalLayerSnapshot,
+    ) -> Result<bool, DocumentHistoryError> {
+        if previous.address() != address {
+            return Err(DocumentHistoryError::AddressMismatch(address.clone()));
+        }
+        let after = Self::capture(project, address)?;
+        Ok(self.layers.coalesce(address, previous, after))
+    }
+
+    /// Drop the newest undo step after an operation reports no usable change.
+    pub fn discard_last(&mut self, address: &GlyphLayerAddress) -> bool {
+        self.layers.discard_last(address)
+    }
+
+    /// Undo or redo one canonical layer step through guarded Project restoration.
+    pub fn replay(
+        &mut self,
+        project: &mut Project,
+        address: &GlyphLayerAddress,
+        direction: HistoryDirection,
+    ) -> Result<HistoryReplayOutcome, HistoryReplayError<DocumentHistoryError>> {
+        let current = Self::capture(project, address).map_err(HistoryReplayError::Apply)?;
+        self.layers
+            .replay(address, &current, direction, |expected, replacement| {
+                let outcome = project.restore_document_layer_if_current(
+                    address,
+                    expected,
+                    replacement.clone(),
+                )?;
+                match outcome {
+                    DocumentEditOutcome::Changed { .. } => Ok(()),
+                    DocumentEditOutcome::Unchanged { .. } => {
+                        debug_assert!(false, "a recorded history step must change its layer");
+                        Err(DocumentHistoryError::StaleLayer(address.clone()))
+                    }
+                }
+            })
+    }
+
+    /// Whether one canonical layer can replay in `direction`.
+    pub fn can_replay(&self, address: &GlyphLayerAddress, direction: HistoryDirection) -> bool {
+        self.layers.can_replay(address, direction)
+    }
+
+    /// Number of canonical layer steps available in `direction`.
+    pub fn depth(&self, address: &GlyphLayerAddress, direction: HistoryDirection) -> usize {
+        self.layers.depth(address, direction)
+    }
+
+    /// Move every canonical layer stack when a glyph is renamed.
+    pub fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
+        self.layers.rename_glyph(old, new)
+    }
+
+    /// Forget every canonical layer stack after a glyph is permanently removed.
+    pub fn clear_glyph(&mut self, name: &str) {
+        self.layers.clear_glyph(name);
+    }
+
+    /// Forget one canonical layer stack after that layer is permanently removed.
+    pub fn clear_layer(&mut self, address: &GlyphLayerAddress) {
+        self.layers.clear_layer(address);
+    }
+
+    /// Forget all canonical history after replacing the open document.
+    pub fn clear(&mut self) {
+        self.layers.clear();
     }
 }
 

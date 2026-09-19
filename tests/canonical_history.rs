@@ -4,10 +4,13 @@
 //! Canonical per-layer history behavior independent of source-format projections.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
+use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 use runebender::document::history::{
-    CanonicalHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome,
+    CanonicalHistory, DocumentHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome,
 };
+use runebender::document::project::{Master, Project};
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -47,6 +50,39 @@ fn apply(
     }
     live.clone_from(replacement);
     Ok(())
+}
+
+fn project_fixture() -> (Project, GlyphLayerAddress) {
+    let mut glyph = Glyph::new("A");
+    glyph.width = 500.125;
+    glyph.height = 1_000.25;
+    glyph.note = Some("before note".into());
+    glyph.lib.insert(
+        "vendor.private".into(),
+        plist::Value::String("before extension".into()),
+    );
+    glyph.contours.push(Contour::new(
+        vec![
+            ContourPoint::new(10.0, 20.0, PointType::Move, false, None, None),
+            ContourPoint::new(30.0, 40.0, PointType::Line, false, None, None),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    let layer_name = font.default_layer().name().to_string();
+    font.default_layer_mut().insert_glyph(glyph);
+    let project = Project::from_source(Master::from_font(
+        font,
+        PathBuf::from("canonical-history-fixture.ufo"),
+    ));
+    let address = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer: LayerId {
+            source: SourceId(0),
+            name: layer_name,
+        },
+    };
+    (project, address)
 }
 
 #[test]
@@ -296,4 +332,97 @@ fn source_restore_with_the_same_identity_keeps_an_older_layer_undo_valid() {
     );
     assert_eq!(document.get(&edited), Some(&after));
     assert_eq!(document.get(&unrelated), Some(&unrelated_value));
+}
+
+#[test]
+fn project_history_restores_exact_geometry_metadata_and_extensions() {
+    let (mut project, address) = project_fixture();
+    let before_projection = project
+        .glyph_layer(&address.glyph, &address.layer)
+        .expect("fixture layer exists");
+    let before = DocumentHistory::capture(&project, &address).unwrap();
+    let mut history = DocumentHistory::default();
+
+    // Metadata draft operations land in M07. Use the transitional mutation boundary
+    // here only to prove that canonical history captures and restores those values.
+    assert!(project.edit_layer(&address.glyph, &address.layer, |glyph| {
+        glyph.width = 600.875;
+        glyph.height = 1_025.5;
+        glyph.note = Some("after note".into());
+        glyph.lib.insert(
+            "vendor.private".into(),
+            plist::Value::String("after extension".into()),
+        );
+        glyph.contours[0].points[1].x = 123.75;
+        glyph.contours[0].points[1].y = -45.5;
+    }));
+    assert!(
+        history
+            .record_completed(&project, &address, before.clone())
+            .unwrap()
+    );
+    let after = DocumentHistory::capture(&project, &address).unwrap();
+    let after_projection = project
+        .glyph_layer(&address.glyph, &address.layer)
+        .expect("edited layer exists");
+    assert_ne!(after, before);
+
+    let revision = project.document_revision();
+    assert_eq!(
+        history.replay(&mut project, &address, HistoryDirection::Undo),
+        Ok(HistoryReplayOutcome::Applied)
+    );
+    assert_eq!(project.document_revision(), revision.wrapping_add(1));
+    assert_eq!(DocumentHistory::capture(&project, &address), Ok(before));
+    assert_eq!(
+        project.glyph_layer(&address.glyph, &address.layer),
+        Some(before_projection)
+    );
+
+    let revision = project.document_revision();
+    assert_eq!(
+        history.replay(&mut project, &address, HistoryDirection::Redo),
+        Ok(HistoryReplayOutcome::Applied)
+    );
+    assert_eq!(project.document_revision(), revision.wrapping_add(1));
+    assert_eq!(DocumentHistory::capture(&project, &address), Ok(after));
+    assert_eq!(
+        project.glyph_layer(&address.glyph, &address.layer),
+        Some(after_projection)
+    );
+}
+
+#[test]
+fn project_history_rejects_stale_replay_without_moving_the_stack() {
+    let (mut project, address) = project_fixture();
+    let before = DocumentHistory::capture(&project, &address).unwrap();
+    let mut history = DocumentHistory::default();
+    project
+        .edit_document_layer(&address.glyph, &address.layer, |draft| {
+            draft.set_width(600.25)?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        history
+            .record_completed(&project, &address, before)
+            .unwrap()
+    );
+    project
+        .edit_document_layer(&address.glyph, &address.layer, |draft| {
+            draft.set_height(1_100.75)?;
+            Ok(())
+        })
+        .unwrap();
+    let later = project.document_snapshot();
+    let revision = project.document_revision();
+
+    assert_eq!(
+        history.replay(&mut project, &address, HistoryDirection::Undo),
+        Err(HistoryReplayError::Stale)
+    );
+    assert_eq!(project.document_snapshot(), later);
+    assert_eq!(project.document_revision(), revision);
+    assert_eq!(history.depth(&address, HistoryDirection::Undo), 1);
+    assert_eq!(history.depth(&address, HistoryDirection::Redo), 0);
 }
