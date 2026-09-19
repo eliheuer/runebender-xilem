@@ -93,6 +93,33 @@ impl QuadraticPath {
         }
 
         let closed = !matches!(contour.points[0].point_type, workspace::PointType::Move);
+        if closed
+            && contour
+                .points
+                .iter()
+                .all(|point| matches!(point.point_type, workspace::PointType::OffCurve))
+        {
+            let controls: Vec<_> = contour
+                .points
+                .iter()
+                .map(|point| kurbo::Point::new(point.x, point.y))
+                .collect();
+            let mut points = Vec::with_capacity(controls.len() * 2);
+            for (index, control) in controls.iter().copied().enumerate() {
+                let previous = controls[(index + controls.len() - 1) % controls.len()];
+                points.push(PathPoint {
+                    id: EntityId::next(),
+                    point: previous.midpoint(control),
+                    typ: PointType::OnCurve { smooth: false },
+                });
+                points.push(PathPoint {
+                    id: EntityId::next(),
+                    point: control,
+                    typ: PointType::OffCurve { auto: false },
+                });
+            }
+            return Self::new(PathPoints::from_vec(points), true);
+        }
 
         let mut path_points: Vec<PathPoint> = contour
             .points

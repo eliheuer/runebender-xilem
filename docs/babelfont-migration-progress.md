@@ -1612,3 +1612,40 @@ Warning-denied Clippy, public API documentation, formatting and diff checks pass
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
 The next M04 substep moves embolden, outline effects and component decomposition onto canonical geometry.
+
+### Canonical curve-kind correction and embolden
+
+Evidence commit: `Preserve canonical curve kinds and embolden` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Preserve canonical curve kinds and embolden$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/outline/embolden.rs`, `src/outline/path/cubic.rs`, `src/outline/path/mod.rs`, `src/outline/path/quadratic.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Independent review of the canonical knife path found that whole-contour curve classification changed mixed cubic/quadratic geometry and collapsed closed all-off-curve quadratic contours.
+Canonical and legacy path adapters now choose the mixed-capable path representation whenever a contour contains a cubic endpoint.
+Its segment iterator distinguishes one-control quadratics from two-control cubics, including the closing segment, and output conversion restores the matching endpoint type.
+Closed all-off-curve contours now materialize their implied midpoint joins for the knife engine.
+The regression verifies exact visible segments and analytical preview intersections, then slices both contour forms and requires quadratic output plus save-reopen persistence.
+
+The learned embolden model now accepts canonical layer pairs directly.
+`LayerEditDraft::embolden` applies its anisotropic normal offset in place, and `apply_bolden_deltas` consumes model output in the existing outline-reader order.
+Both operations reject nonfinite results before mutation and retain point order, roles, stable identities, names, identifiers and object libraries.
+The integration regression compares both geometry paths with the existing algorithms and verifies stable identities, metadata and save-reopen persistence.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_knife_preserves_all_off_curve_and_mixed_degree_geometry -- --exact --test-threads=1
+cargo test --locked --test variable_project canonical_embolden_preserves_structure_identities_and_metadata -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib outline::knife -- --test-threads=1
+cargo test --locked --lib outline::embolden -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The two focused regressions, all 12 knife unit tests, all seven embolden unit tests and all 51 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep moves remaining topology-replacing outline effects and component decomposition onto canonical geometry.

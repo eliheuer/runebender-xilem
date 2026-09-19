@@ -39,7 +39,7 @@ use kurbo::BezPath;
 /// hyperbezier paths.
 #[derive(Debug, Clone)]
 pub enum Path {
-    /// A contour with explicit cubic control points (UFO `curve` segments).
+    /// A contour containing cubic segments, with mixed quadratic and line segments retained.
     Cubic(CubicPath),
     /// A contour with quadratic control points (UFO `qcurve` segments).
     Quadratic(QuadraticPath),
@@ -52,9 +52,34 @@ impl Path {
     pub fn from_document_contour(contour: ContourView<'_>) -> Self {
         let closed = contour.is_closed();
         let hyper = contour.is_hyper();
-        let quadratic = contour
-            .points()
-            .any(|point| point.point_type() == LayerPointType::QCurve);
+        let point_types: Vec<_> = contour.points().map(|point| point.point_type()).collect();
+        let all_off_curve = !hyper
+            && closed
+            && !point_types.is_empty()
+            && point_types
+                .iter()
+                .all(|point_type| *point_type == LayerPointType::OffCurve);
+        let has_cubic = point_types.contains(&LayerPointType::Curve);
+        let quadratic =
+            !has_cubic && (all_off_curve || point_types.contains(&LayerPointType::QCurve));
+        if all_off_curve {
+            let controls: Vec<_> = contour.points().map(|point| point.position()).collect();
+            let mut points = Vec::with_capacity(controls.len() * 2);
+            for (index, control) in controls.iter().copied().enumerate() {
+                let previous = controls[(index + controls.len() - 1) % controls.len()];
+                points.push(PathPoint {
+                    id: EntityId::next(),
+                    point: previous.midpoint(control),
+                    typ: PointType::OnCurve { smooth: false },
+                });
+                points.push(PathPoint {
+                    id: EntityId::next(),
+                    point: control,
+                    typ: PointType::OffCurve { auto: false },
+                });
+            }
+            return Self::Quadratic(QuadraticPath::new(PathPoints::from_vec(points), true));
+        }
         let mut points: Vec<_> = contour
             .points()
             .filter(|point| !hyper || point.point_type() != LayerPointType::OffCurve)
@@ -126,12 +151,21 @@ impl Path {
             return Self::Hyper(HyperPath::from_contour(contour));
         }
 
+        let has_curve = contour
+            .points
+            .iter()
+            .any(|pt| matches!(pt.point_type, workspace::PointType::Curve));
         let has_qcurve = contour
             .points
             .iter()
             .any(|pt| matches!(pt.point_type, workspace::PointType::QCurve));
+        let all_off_curve = !contour.points.is_empty()
+            && contour
+                .points
+                .iter()
+                .all(|pt| matches!(pt.point_type, workspace::PointType::OffCurve));
 
-        if has_qcurve {
+        if !has_curve && (has_qcurve || all_off_curve) {
             Self::Quadratic(QuadraticPath::from_contour(contour))
         } else {
             Self::Cubic(CubicPath::from_contour(contour))

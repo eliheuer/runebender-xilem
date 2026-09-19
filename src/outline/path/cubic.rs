@@ -18,7 +18,7 @@ use crate::document::model::entity_id::EntityId;
 use crate::outline::path::hyper_model as workspace;
 use kurbo::BezPath;
 
-/// A single contour represented as a cubic bezier path.
+/// A contour containing cubic segments, with mixed quadratic and line segments retained.
 ///
 /// This corresponds to a UFO contour. Points are stored in order, with
 /// the convention that for closed paths, the first point (index 0) is
@@ -144,7 +144,12 @@ impl CubicPath {
                         } else {
                             let prev = if i > 0 { i - 1 } else { len - 1 };
                             if contour_points[prev].is_off_curve() {
-                                WsPointType::Curve
+                                let previous = if prev > 0 { prev - 1 } else { len - 1 };
+                                if contour_points[previous].is_off_curve() {
+                                    WsPointType::Curve
+                                } else {
+                                    WsPointType::QCurve
+                                }
                             } else {
                                 WsPointType::Line
                             }
@@ -357,27 +362,31 @@ impl SegmentIterator {
         })
     }
 
-    fn next_cubic_segment_at(
+    fn next_curve_segment_at(
         &mut self,
         point_idx: usize,
         cp1: kurbo::Point,
     ) -> Option<super::segment::SegmentInfo> {
-        // Cubic curve: need 2 off-curve + 1 on-curve.
-        if point_idx + 2 >= self.points.len() {
+        let mut end_idx = point_idx + 1;
+        while end_idx < self.points.len() && self.points[end_idx].is_off_curve() {
+            end_idx += 1;
+        }
+        if end_idx >= self.points.len() {
             return None;
         }
-
-        let cp2 = self.points[point_idx + 1].point;
-        let end = self.points[point_idx + 2].point;
-
         let start_idx = self.prev_on_curve_idx;
-        let end_idx = point_idx + 2;
-        let segment =
-            super::segment::Segment::Cubic(kurbo::CubicBez::new(self.prev_on_curve, cp1, cp2, end));
+        let end = self.points[end_idx].point;
+        let control_count = end_idx - point_idx;
+        let segment = if control_count == 1 {
+            super::segment::Segment::Quadratic(kurbo::QuadBez::new(self.prev_on_curve, cp1, end))
+        } else {
+            let cp2 = self.points[point_idx + 1].point;
+            super::segment::Segment::Cubic(kurbo::CubicBez::new(self.prev_on_curve, cp1, cp2, end))
+        };
 
         self.prev_on_curve = end;
-        self.prev_on_curve_idx = point_idx + 2;
-        self.index = point_idx + 3;
+        self.prev_on_curve_idx = end_idx;
+        self.index = end_idx + 1;
 
         Some(super::segment::SegmentInfo {
             segment,
@@ -399,7 +408,7 @@ impl Iterator for SegmentIterator {
 
             if is_on_curve {
                 return self.next_line_segment_at(point_idx, point);
-            } else if let Some(seg) = self.next_cubic_segment_at(point_idx, point) {
+            } else if let Some(seg) = self.next_curve_segment_at(point_idx, point) {
                 return Some(seg);
             } else {
                 // Trailing off-curves are part of the closing segment.
@@ -423,6 +432,20 @@ impl Iterator for SegmentIterator {
                     self.prev_on_curve,
                     cp1,
                     cp2,
+                    first.point,
+                ));
+                return Some(super::segment::SegmentInfo {
+                    segment,
+                    start_index: self.prev_on_curve_idx,
+                    end_index: self.first_on_curve_idx,
+                    path_index: 0,
+                });
+            }
+
+            if let [control] = off_curves.as_slice() {
+                let segment = super::segment::Segment::Quadratic(kurbo::QuadBez::new(
+                    self.prev_on_curve,
+                    self.points[*control].point,
                     first.point,
                 ));
                 return Some(super::segment::SegmentInfo {

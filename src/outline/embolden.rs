@@ -23,6 +23,8 @@
 
 use norad::{Contour, Glyph};
 
+use crate::document::LayerView;
+
 /// How far to push, per axis, in font units.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Offset {
@@ -48,16 +50,25 @@ pub struct Offset {
 /// curve, so an off-curve control moves with the shape around it
 /// instead of being treated as if it sat on the outline.
 pub fn outward_normals(c: &Contour) -> Vec<(f64, f64)> {
-    let pts = &c.points;
-    let n = pts.len();
+    outward_normals_for_points(
+        &c.points
+            .iter()
+            .map(|point| kurbo::Point::new(point.x, point.y))
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Compute outward normals for an ordered point sequence.
+pub fn outward_normals_for_points(points: &[kurbo::Point]) -> Vec<(f64, f64)> {
+    let n = points.len();
     if n < 3 {
         return vec![(0.0, 0.0); n];
     }
     (0..n)
         .map(|i| {
-            let prev = &pts[(i + n - 1) % n];
-            let next = &pts[(i + 1) % n];
-            let (tx, ty) = (next.x - prev.x, next.y - prev.y);
+            let previous = points[(i + n - 1) % n];
+            let next = points[(i + 1) % n];
+            let (tx, ty) = (next.x - previous.x, next.y - previous.y);
             let len = (tx * tx + ty * ty).sqrt();
             if len < 1e-9 {
                 return (0.0, 0.0);
@@ -65,6 +76,45 @@ pub fn outward_normals(c: &Contour) -> Vec<(f64, f64)> {
             (ty / len, -tx / len)
         })
         .collect()
+}
+
+/// Learn an anisotropic embolden offset from canonical document-layer pairs.
+///
+/// Incompatible contour or point structures are skipped, matching [`learn_offset`].
+pub fn learn_layer_offset(pairs: &[(LayerView<'_>, LayerView<'_>)]) -> Option<Offset> {
+    let (mut sx, mut nx2, mut sy, mut ny2) = (0.0, 0.0, 0.0, 0.0);
+    for (light, heavy) in pairs {
+        let light_contours: Vec<_> = light.contours().collect();
+        let heavy_contours: Vec<_> = heavy.contours().collect();
+        if light_contours.len() != heavy_contours.len() {
+            continue;
+        }
+        for (light, heavy) in light_contours.into_iter().zip(heavy_contours) {
+            let light_points: Vec<_> = light.points().map(|point| point.position()).collect();
+            let heavy_points: Vec<_> = heavy.points().map(|point| point.position()).collect();
+            if light_points.len() != heavy_points.len() {
+                continue;
+            }
+            for ((light, heavy), (nx, ny)) in light_points
+                .iter()
+                .zip(&heavy_points)
+                .zip(outward_normals_for_points(&light_points))
+            {
+                sx += nx * (heavy.x - light.x);
+                nx2 += nx * nx;
+                sy += ny * (heavy.y - light.y);
+                ny2 += ny * ny;
+            }
+        }
+    }
+    if nx2 < 1e-9 || ny2 < 1e-9 {
+        return None;
+    }
+    let (x, y) = (sx / nx2, sy / ny2);
+    if x.abs() < 1e-6 && y.abs() < 1e-6 {
+        return None;
+    }
+    Some(Offset { x, y })
 }
 
 /// The offset that best explains how a set of reference pairs moved.

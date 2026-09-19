@@ -4049,6 +4049,116 @@ fn canonical_knife_replaces_only_cut_contours_and_preserves_quadratics() {
 }
 
 #[test]
+fn canonical_knife_preserves_all_off_curve_and_mixed_degree_geometry() {
+    let scratch = Scratch::new();
+    let point = |x, y, point_type| ContourPoint::new(x, y, point_type, false, None, None);
+    let mut all_off_curve = Glyph::new("all-off-curve-knife");
+    all_off_curve.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::OffCurve),
+            point(128.0, 256.0, PointType::OffCurve),
+            point(256.0, 0.0, PointType::OffCurve),
+        ],
+        None,
+    ));
+    let mut mixed = Glyph::new("mixed-knife");
+    mixed.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move),
+            point(0.0, 128.0, PointType::OffCurve),
+            point(128.0, 128.0, PointType::OffCurve),
+            point(128.0, 0.0, PointType::Curve),
+            point(192.0, -128.0, PointType::OffCurve),
+            point(256.0, 0.0, PointType::QCurve),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(all_off_curve);
+    font.default_layer_mut().insert_glyph(mixed);
+    let source_path = scratch.0.join("KnifePathKinds.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    for name in ["all-off-curve-knife", "mixed-knife"] {
+        let contour = project
+            .document_layer(name, &layer_id)
+            .unwrap()
+            .contours()
+            .next()
+            .unwrap();
+        assert_eq!(
+            runebender::outline::path::Path::from_document_contour(contour)
+                .to_bezpath()
+                .segments()
+                .collect::<Vec<_>>(),
+            runebender::outline::glyph_paths::ordinary_contour_to_bezpath(contour)
+                .segments()
+                .collect::<Vec<_>>()
+        );
+    }
+    let hits = runebender::outline::knife::knife_hit_points_in_layer(
+        project.document_layer("mixed-knife", &layer_id).unwrap(),
+        kurbo::Point::new(-10.0, 80.0),
+        kurbo::Point::new(300.0, 80.0),
+    );
+    assert_eq!(hits.len(), 2);
+    let root = (1.0_f64 / 6.0).sqrt();
+    for (hit, parameter) in hits.iter().zip([(1.0 - root) / 2.0, (1.0 + root) / 2.0]) {
+        let expected_x = 128.0 * (3.0 * parameter * parameter - 2.0 * parameter.powi(3));
+        assert!((hit.x - expected_x).abs() < 1e-6);
+        assert!((hit.y - 80.0).abs() < 1e-6);
+    }
+    project
+        .edit_document_layer("all-off-curve-knife", &layer_id, |draft| {
+            assert!(draft.knife_cut(
+                kurbo::Point::new(-10.0, 100.0),
+                kurbo::Point::new(266.0, 100.0)
+            )?);
+            Ok(())
+        })
+        .unwrap();
+    project
+        .edit_document_layer("mixed-knife", &layer_id, |draft| {
+            assert!(draft.knife_cut(
+                kurbo::Point::new(-10.0, 80.0),
+                kurbo::Point::new(300.0, 80.0)
+            )?);
+            Ok(())
+        })
+        .unwrap();
+    for name in ["all-off-curve-knife", "mixed-knife"] {
+        let projected = project.glyph_layer(name, &layer_id).unwrap();
+        assert_eq!(projected.contours.len(), 2);
+        assert!(
+            projected.contours.iter().any(|contour| {
+                contour
+                    .points
+                    .iter()
+                    .any(|point| point.typ == PointType::QCurve)
+            }),
+            "{name} lost quadratic output: {:?}",
+            projected.contours
+        );
+    }
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    for name in ["all-off-curve-knife", "mixed-knife"] {
+        assert_eq!(
+            reloaded.glyph_layer(name, &reloaded_layer).unwrap(),
+            project.glyph_layer(name, &layer_id).unwrap()
+        );
+    }
+}
+
+#[test]
 fn canonical_cleanup_preserves_surviving_identities_and_metadata() {
     let scratch = Scratch::new();
     let point = |x, y, label: &str| {
@@ -4313,6 +4423,165 @@ fn canonical_fit_and_extremes_match_existing_geometry_with_stable_objects() {
             .glyph_layer("fit-extremes", &reloaded_layer)
             .unwrap(),
         projected
+    );
+}
+
+#[test]
+fn canonical_embolden_preserves_structure_identities_and_metadata() {
+    let scratch = Scratch::new();
+    let square = |name: &str| {
+        let mut glyph = Glyph::new(name);
+        let mut contour = Contour::new(
+            [
+                (0.0, 0.0, "a"),
+                (100.0, 0.0, "b"),
+                (100.0, 100.0, "c"),
+                (0.0, 100.0, "d"),
+            ]
+            .into_iter()
+            .map(|(x, y, suffix)| {
+                let label = format!("{name}-{suffix}");
+                let mut point = ContourPoint::new(
+                    x,
+                    y,
+                    PointType::Line,
+                    false,
+                    Some(Name::new(&label).unwrap()),
+                    Some(norad::Identifier::new(&label).unwrap()),
+                );
+                point.replace_lib(object_lib(&label));
+                point
+            })
+            .collect(),
+            Some(norad::Identifier::new(&format!("{name}-contour")).unwrap()),
+        );
+        contour.replace_lib(object_lib(&format!("{name}-contour")));
+        glyph.contours.push(contour);
+        glyph
+    };
+    let light = square("light");
+    let heavy = runebender::outline::embolden::embolden(
+        &square("heavy"),
+        runebender::outline::embolden::Offset { x: 12.0, y: 6.0 },
+    );
+    let target = square("target");
+    let delta_target = square("delta-target");
+    let mut font = Font::new();
+    for glyph in [light.clone(), heavy, target.clone(), delta_target.clone()] {
+        font.default_layer_mut().insert_glyph(glyph);
+    }
+    let source_path = scratch.0.join("Embolden.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let offset = runebender::outline::embolden::learn_layer_offset(&[(
+        project.document_layer("light", &layer_id).unwrap(),
+        project.document_layer("heavy", &layer_id).unwrap(),
+    )])
+    .unwrap();
+    assert!((offset.x - 12.0).abs() < 1e-6);
+    assert!((offset.y - 6.0).abs() < 1e-6);
+    let original_ids: Vec<_> = project
+        .document_layer("target", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.id())
+        .collect();
+    project
+        .edit_document_layer("target", &layer_id, |draft| {
+            assert!(draft.embolden(offset)?);
+            assert!(!draft.embolden(runebender::outline::embolden::Offset { x: 0.0, y: 0.0 })?);
+            Ok(())
+        })
+        .unwrap();
+    let layer = project.document_layer("target", &layer_id).unwrap();
+    assert_eq!(
+        layer
+            .contours()
+            .next()
+            .unwrap()
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        original_ids
+    );
+    let expected = runebender::outline::embolden::embolden(&target, offset);
+    let projected = project.glyph_layer("target", &layer_id).unwrap();
+    assert_eq!(
+        runebender::outline::glyph_paths::contours_to_bezpath(&projected),
+        runebender::outline::glyph_paths::contours_to_bezpath(&expected)
+    );
+    assert_eq!(projected.contours[0].lib(), target.contours[0].lib());
+    for (point, source) in projected.contours[0]
+        .points
+        .iter()
+        .zip(&target.contours[0].points)
+    {
+        assert_eq!(point.name, source.name);
+        assert_eq!(point.identifier(), source.identifier());
+        assert_eq!(point.lib(), source.lib());
+    }
+
+    let deltas = [(1, 2), (3, 4), (5, 6), (7, 8), (999, 999)];
+    let mut expected_delta = delta_target.clone();
+    expected_delta.contours =
+        runebender::outline::effects::bolden_contours(&delta_target, &deltas, (10, 20));
+    let delta_ids: Vec<_> = project
+        .document_layer("delta-target", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.id())
+        .collect();
+    project
+        .edit_document_layer("delta-target", &layer_id, |draft| {
+            assert!(draft.apply_bolden_deltas(&deltas, (10, 20))?);
+            Ok(())
+        })
+        .unwrap();
+    let layer = project.document_layer("delta-target", &layer_id).unwrap();
+    assert_eq!(
+        layer
+            .contours()
+            .next()
+            .unwrap()
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        delta_ids
+    );
+    let projected_delta = project.glyph_layer("delta-target", &layer_id).unwrap();
+    assert_eq!(
+        runebender::outline::glyph_paths::contours_to_bezpath(&projected_delta),
+        runebender::outline::glyph_paths::contours_to_bezpath(&expected_delta)
+    );
+    assert_eq!(
+        projected_delta.contours[0].lib(),
+        delta_target.contours[0].lib()
+    );
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    assert_eq!(
+        reloaded.glyph_layer("target", &reloaded_layer).unwrap(),
+        projected
+    );
+    assert_eq!(
+        reloaded
+            .glyph_layer("delta-target", &reloaded_layer)
+            .unwrap(),
+        projected_delta
     );
 }
 

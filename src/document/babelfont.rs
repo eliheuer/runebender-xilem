@@ -1253,6 +1253,114 @@ impl LayerEditDraft {
         Ok(changed)
     }
 
+    /// Push every canonical contour point along its anisotropic outward normal.
+    ///
+    /// Point order, roles, stable identities and source metadata remain unchanged. Returns whether
+    /// any point moved.
+    pub fn embolden(
+        &mut self,
+        offset: crate::outline::embolden::Offset,
+    ) -> Result<bool, DocumentEditError> {
+        ensure_finite(&[offset.x, offset.y])?;
+        if offset.x == 0.0 && offset.y == 0.0 {
+            return Ok(false);
+        }
+        let mut replacements = HashMap::new();
+        for path in self.layer.paths() {
+            let positions: Vec<_> = path
+                .nodes
+                .iter()
+                .map(|node| kurbo::Point::new(node.x, node.y))
+                .collect();
+            for (node, (normal_x, normal_y)) in
+                path.nodes
+                    .iter()
+                    .zip(crate::outline::embolden::outward_normals_for_points(
+                        &positions,
+                    ))
+            {
+                let position =
+                    kurbo::Point::new(node.x + normal_x * offset.x, node.y + normal_y * offset.y);
+                ensure_finite(&[position.x, position.y])?;
+                if position != kurbo::Point::new(node.x, node.y) {
+                    replacements.insert(
+                        read_id(&node.format_specific).expect("canonical point identity"),
+                        position,
+                    );
+                }
+            }
+        }
+        self.apply_point_replacements(&replacements)
+    }
+
+    /// Apply model-predicted integer point deltas in outline-reader order.
+    ///
+    /// The extra closing delta after each contour is consumed to match the model's reader. Point
+    /// order, roles, stable identities and source metadata remain unchanged. Returns whether any
+    /// point moved.
+    pub fn apply_bolden_deltas(
+        &mut self,
+        deltas: &[(i32, i32)],
+        center: (i32, i32),
+    ) -> Result<bool, DocumentEditError> {
+        let mut next = deltas.iter();
+        let mut replacements = HashMap::new();
+        for path in self.layer.paths() {
+            let count = path.nodes.len();
+            let start = path
+                .nodes
+                .iter()
+                .position(|node| node.nodetype != NodeType::OffCurve)
+                .unwrap_or(0);
+            for step in 0..count {
+                let Some((delta_x, delta_y)) = next.next().copied() else {
+                    break;
+                };
+                let index = (start + step) % count;
+                let node = &path.nodes[index];
+                let position = kurbo::Point::new(
+                    node.x + f64::from(delta_x) + f64::from(center.0),
+                    node.y + f64::from(delta_y) + f64::from(center.1),
+                );
+                ensure_finite(&[position.x, position.y])?;
+                if position != kurbo::Point::new(node.x, node.y) {
+                    replacements.insert(
+                        read_id(&node.format_specific).expect("canonical point identity"),
+                        position,
+                    );
+                }
+            }
+            next.next();
+        }
+        self.apply_point_replacements(&replacements)
+    }
+
+    fn apply_point_replacements(
+        &mut self,
+        replacements: &HashMap<u64, kurbo::Point>,
+    ) -> Result<bool, DocumentEditError> {
+        if replacements.is_empty() {
+            return Ok(false);
+        }
+        for node in self
+            .layer
+            .shapes
+            .iter_mut()
+            .filter_map(|shape| match shape {
+                Shape::Path(path) => Some(path),
+                Shape::Component(_) => None,
+            })
+            .flat_map(|path| &mut path.nodes)
+        {
+            let id = read_id(&node.format_specific).expect("canonical point identity");
+            if let Some(position) = replacements.get(&id) {
+                node.x = position.x;
+                node.y = position.y;
+            }
+        }
+        Ok(true)
+    }
+
     /// Apply a boolean operation to canonical contours and replace their topology.
     ///
     /// Union combines every contour. Other operations use the first contour as the left operand
