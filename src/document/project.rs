@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use kurbo::BezPath;
+use kurbo::{BezPath, Rect, Shape as _};
 
 pub use super::source::{GlyphEntry, GlyphPoint, Master, extract_anchors, extract_points};
 use super::variable::{
@@ -91,6 +91,49 @@ impl<'a> SourceView<'a> {
             source: self.id,
             name: self.default_layer_name.to_owned(),
         }
+    }
+}
+
+/// Paint-ready canonical data for one default-layer glyph.
+#[derive(Clone, Debug)]
+pub struct CanonicalGlyphEntry {
+    name: Arc<str>,
+    codepoint: Option<char>,
+    advance: f64,
+    outline: Arc<BezPath>,
+    ink: Rect,
+    mark: Option<Arc<str>>,
+}
+
+impl CanonicalGlyphEntry {
+    /// Glyph name in the canonical document.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// First Unicode scalar, used for grid sorting and labels.
+    pub fn codepoint(&self) -> Option<char> {
+        self.codepoint
+    }
+
+    /// Exact horizontal advance.
+    pub fn advance(&self) -> f64 {
+        self.advance
+    }
+
+    /// Complete rendered outline, including resolved components.
+    pub fn outline(&self) -> &Arc<BezPath> {
+        &self.outline
+    }
+
+    /// Bounds of the rendered outline, or `Rect::ZERO` when empty.
+    pub fn ink(&self) -> Rect {
+        self.ink
+    }
+
+    /// Semantic mark label stored on the glyph layer.
+    pub fn mark(&self) -> Option<&str> {
+        self.mark.as_deref()
     }
 }
 
@@ -1504,6 +1547,59 @@ impl Project {
                     .unwrap_or_default()
             },
         )
+    }
+
+    /// Build the active-grid data for one source from canonical default layers.
+    pub fn document_source_glyph_entries(
+        &self,
+        source: SourceId,
+    ) -> Result<Vec<CanonicalGlyphEntry>, String> {
+        let layer = self
+            .document_source(source)
+            .ok_or_else(|| "source does not exist".to_owned())?
+            .default_layer();
+        let mut entries = self
+            .glyph_names()
+            .filter_map(|name| {
+                let view = self.document_layer(name, &layer)?;
+                Some((name, view))
+            })
+            .map(|(name, view)| {
+                let address = GlyphLayerAddress {
+                    glyph: name.to_owned(),
+                    layer: layer.clone(),
+                };
+                let outline = Arc::new(
+                    self.document_layer_path(&address)
+                        .map_err(|error| error.to_string())?,
+                );
+                let ink = if outline.is_empty() {
+                    Rect::ZERO
+                } else {
+                    outline.bounding_box()
+                };
+                Ok(CanonicalGlyphEntry {
+                    name: Arc::from(name),
+                    codepoint: view.codepoints().next(),
+                    advance: view.width(),
+                    outline,
+                    ink,
+                    mark: view
+                        .mark_label()
+                        .map_err(|error| error.to_string())?
+                        .map(Arc::from),
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        entries.sort_by(|left, right| match (left.codepoint, right.codepoint) {
+            (Some(left_codepoint), Some(right_codepoint)) => left_codepoint
+                .cmp(&right_codepoint)
+                .then_with(|| left.name.cmp(&right.name)),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => left.name.cmp(&right.name),
+        });
+        Ok(entries)
     }
 
     /// Read one source's stable identity and metadata without its UFO projection.

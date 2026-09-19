@@ -519,6 +519,27 @@ fn document_views_read_exact_canonical_layers_and_stable_source_identity() {
 }
 
 #[test]
+fn canonical_glyph_entries_match_the_transitional_paint_cache() {
+    let (_scratch, project) = fixture();
+    let entries = project.document_source_glyph_entries(SourceId(0)).unwrap();
+    let projected = &project.sources()[0].glyphs;
+    assert_eq!(entries.len(), projected.len());
+    for (entry, projected) in entries.iter().zip(projected) {
+        assert_eq!(entry.name(), projected.name.as_ref());
+        assert_eq!(entry.codepoint(), projected.codepoint);
+        assert_eq!(entry.advance(), projected.advance);
+        assert_eq!(entry.outline().as_ref(), projected.path.as_ref());
+        assert_eq!(entry.ink(), projected.ink);
+        assert_eq!(entry.mark(), projected.mark.as_deref());
+    }
+    assert!(
+        project
+            .document_source_glyph_entries(SourceId(usize::MAX))
+            .is_err()
+    );
+}
+
+#[test]
 fn all_source_codepoint_edits_publish_once_and_round_trip_exactly() {
     let (scratch, mut project) = fixture();
     let original = project

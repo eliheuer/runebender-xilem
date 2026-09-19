@@ -2652,3 +2652,14 @@ Resolve its exact ID with `git log --format=%H --grep='^Read compatibility diagn
 The unused `feature_source` Master projection and the Master-shaped glyph-signature helper are deleted.
 
 The twelve Project unit tests and warning-denied library Clippy passed, together with formatting and whitespace checks.
+
+### Canonical application glyph entries
+
+Evidence commit: `Derive glyph paint entries canonically` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Derive glyph paint entries canonically$' -1`.
+
+`Project::document_source_glyph_entries` derives the active-grid cache payload from one source's canonical default layers.
+It preserves the established Unicode-then-name ordering and supplies exact advances, semantic marks, complete component-resolved paths and ink bounds without reading a Master cache.
+
+The focused variable-project regression compares every field with the transitional cache and covers an unknown stable source.
+That regression and warning-denied test Clippy passed, together with formatting and whitespace checks.
