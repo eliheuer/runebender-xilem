@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 const SKIP_EXPORT_GLYPHS: &str = "public.skipExportGlyphs";
 const OPEN_TYPE_CATEGORIES: &str = "public.openTypeCategories";
+const COMPONENT_ALIGNMENT: &str = "com.glyphsapp.component.alignment";
 
 #[cfg(test)]
 pub(crate) fn skipped_exports(font: &norad::Font) -> impl Iterator<Item = &str> {
@@ -114,6 +115,60 @@ impl MarkColor {
         [self.red, self.green, self.blue, self.alpha]
             .into_iter()
             .all(|value| value.is_finite() && (0.0..=1.0).contains(&value))
+    }
+}
+
+/// Exact component auto-alignment metadata with typed Runebender semantics.
+///
+/// The private source value retains a recognized legacy spelling or an unknown future value until
+/// an explicit edit replaces it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ComponentAlignment {
+    source: Option<plist::Value>,
+}
+
+impl ComponentAlignment {
+    /// Move the alignment key out of a component's otherwise opaque lib dictionary.
+    pub fn take_from_lib(lib: &mut plist::Dictionary) -> Self {
+        Self {
+            source: lib.remove(COMPONENT_ALIGNMENT),
+        }
+    }
+
+    /// Whether this component is explicitly cut loose from anchor alignment.
+    ///
+    /// Glyphs-compatible negative integers and boolean false disable alignment.
+    /// Unknown values retain their exact representation and keep the default aligned behavior.
+    pub fn is_disabled(&self) -> bool {
+        self.source.as_ref().is_some_and(|value| {
+            value.as_signed_integer().is_some_and(|value| value < 0)
+                || value.as_boolean() == Some(false)
+        })
+    }
+
+    /// Change whether the component follows anchor alignment.
+    ///
+    /// A semantic no-op retains the exact source representation.
+    /// Disabling a previously aligned component uses the established negative-integer encoding,
+    /// while enabling removes the key.
+    pub fn set_disabled(&mut self, disabled: bool) -> bool {
+        if self.is_disabled() == disabled {
+            return false;
+        }
+        self.source = disabled.then(|| plist::Value::Integer((-1).into()));
+        true
+    }
+
+    /// Write the owned source value into an otherwise opaque component lib dictionary.
+    pub fn write_to_lib(&self, lib: &mut plist::Dictionary) -> bool {
+        match &self.source {
+            Some(value) if lib.get(COMPONENT_ALIGNMENT) == Some(value) => false,
+            Some(value) => {
+                lib.insert(COMPONENT_ALIGNMENT.into(), value.clone());
+                true
+            }
+            None => lib.remove(COMPONENT_ALIGNMENT).is_some(),
+        }
     }
 }
 
@@ -843,6 +898,55 @@ mod tests {
         let invalid = source.clone();
         assert!(source.validate().is_err());
         assert_eq!(source, invalid);
+    }
+
+    #[test]
+    fn component_alignment_preserves_exact_source_values_until_an_explicit_change() {
+        for (value, disabled) in [
+            (plist::Value::Boolean(false), true),
+            (plist::Value::Integer((-7).into()), true),
+            (plist::Value::Boolean(true), false),
+            (plist::Value::String("future".into()), false),
+        ] {
+            let mut source = plist::Dictionary::from_iter([
+                (String::from(COMPONENT_ALIGNMENT), value.clone()),
+                (
+                    String::from("future.key"),
+                    plist::Value::String("exact".into()),
+                ),
+            ]);
+            let original = source.clone();
+            let mut alignment = ComponentAlignment::take_from_lib(&mut source);
+            assert_eq!(alignment.is_disabled(), disabled);
+            assert!(!source.contains_key(COMPONENT_ALIGNMENT));
+            assert_eq!(
+                source.get("future.key"),
+                Some(&plist::Value::String("exact".into()))
+            );
+
+            assert!(!alignment.set_disabled(disabled));
+            assert!(alignment.write_to_lib(&mut source));
+            assert_eq!(source, original);
+            assert!(!alignment.write_to_lib(&mut source));
+
+            assert!(alignment.set_disabled(!disabled));
+            assert_eq!(alignment.is_disabled(), !disabled);
+            assert!(alignment.write_to_lib(&mut source));
+            if disabled {
+                assert!(!source.contains_key(COMPONENT_ALIGNMENT));
+            } else {
+                assert_eq!(
+                    source
+                        .get(COMPONENT_ALIGNMENT)
+                        .and_then(plist::Value::as_signed_integer),
+                    Some(-1)
+                );
+            }
+            assert_eq!(
+                source.get("future.key"),
+                Some(&plist::Value::String("exact".into()))
+            );
+        }
     }
 
     #[test]
