@@ -175,6 +175,19 @@ fn project_error(reason: impl Into<String>) -> ProposalError {
     }
 }
 
+fn validate_task(task: &str) -> Result<(), ProposalError> {
+    if task.is_empty()
+        || !task
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "-_".contains(character))
+    {
+        return Err(project_error(
+            "task must contain only ASCII letters, digits, hyphens, or underscores",
+        ));
+    }
+    Ok(())
+}
+
 fn proposal_layer(source: SourceId, task: &str) -> LayerId {
     LayerId {
         source,
@@ -442,6 +455,7 @@ pub fn adopt_external_project(
     external: &Font,
     task: &str,
 ) -> Result<ProposalSummary, ProposalError> {
+    validate_task(task)?;
     if find_project(project, source, task).is_ok() {
         return Err(project_error(
             "proposal task already exists; use a new task name",

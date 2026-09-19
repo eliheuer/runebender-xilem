@@ -741,6 +741,15 @@ mod tests {
         proposed.width = original + 90.0;
         proposal::write(&mut external, "external", [proposed]).unwrap();
 
+        let before_invalid = project.document_revision();
+        assert!(
+            proposal::adopt_external_project(&mut project, source, &external, "bad task")
+                .unwrap_err()
+                .to_string()
+                .contains("task must contain")
+        );
+        assert_eq!(project.document_revision(), before_invalid);
+
         proposal::adopt_external_project(&mut project, source, &external, "external").unwrap();
         let before = project.document_revision();
         let installed = proposal::install_project(&mut project, source, "external", None, true)
