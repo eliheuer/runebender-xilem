@@ -22,7 +22,7 @@ use runebender::document::{AnchorId, PointId};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
-use crate::application::editor::session::Session;
+use crate::application::editor::session::{Session, SessionSyncOutcome};
 use crate::application::view::theme::Palette;
 use crate::application::widgets::context_menu::{ContextMenu, MenuAction, MenuRow, MenuTarget};
 use crate::application::widgets::text_label::{self, Anchor};
@@ -346,6 +346,21 @@ pub(crate) enum EditorEvent {
     Undo,
     /// Cmd+Shift+Z or Cmd+Y.
     Redo,
+}
+
+fn dispatch_editor_event(
+    app: &mut Workspace,
+    session: &mut Session,
+    event: EditorEvent,
+    on_event: impl FnOnce(&mut Workspace, EditorEvent),
+) {
+    match app.sync_session_from(session) {
+        SessionSyncOutcome::Changed => on_event(app, event),
+        SessionSyncOutcome::Unchanged if !matches!(event, EditorEvent::Edited) => {
+            on_event(app, event);
+        }
+        SessionSyncOutcome::Unchanged | SessionSyncOutcome::Rejected => {}
+    }
 }
 
 enum Drag {
@@ -2766,9 +2781,7 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
                 // The island is the live source of truth while editing. Pull its
                 // session back into the app before the callback runs, so save and
                 // the grid preview see the edits (the widget edits its own clone).
-                if app.sync_session_from(&mut element.widget.session) {
-                    (self.on_event)(app, *event);
-                }
+                dispatch_editor_event(app, &mut element.widget.session, *event, &self.on_event);
                 MessageResult::Action(())
             }
             None => MessageResult::Stale,
@@ -3453,6 +3466,91 @@ mod tests {
             assert!(!session.gesture_in_progress());
             assert!(!session.metaball_preview.elements().is_empty());
         });
+    }
+
+    #[test]
+    fn unchanged_editor_release_skips_the_real_edited_callback_and_retains_redo() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-editor-noop-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let session = session();
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(projected_glyph(&session));
+        font.save(&path).expect("the fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.open_glyph(0);
+        let point = workspace.session.point_id_at(0, 0).unwrap();
+
+        let mut changed = (*workspace.session).clone();
+        changed.selection.insert(point);
+        changed.begin_point_drag();
+        assert!(changed.drag_points_to((20.0, 0.0)));
+        changed.end_point_drag();
+        dispatch_editor_event(
+            &mut workspace,
+            &mut changed,
+            EditorEvent::Edited,
+            |app, _| app.finish_open_glyph_refresh(),
+        );
+        workspace.undo_open_glyph(false);
+        let address = workspace.font.active_layer_address("A").unwrap();
+        assert!(workspace.font.project.can_replay_document_layer_history(
+            &address,
+            runebender::document::history::HistoryDirection::Redo,
+        ));
+
+        workspace.modified = false;
+        let revision = workspace.font.project.document_revision();
+        let undo = workspace.metadata_undo.len();
+        let redo = workspace.metadata_redo.len();
+        let callbacks = std::cell::Cell::new(0);
+
+        let mut unchanged = (*workspace.session).clone();
+        unchanged.selection.insert(point);
+        unchanged.begin_point_drag();
+        unchanged.end_point_drag();
+        dispatch_editor_event(
+            &mut workspace,
+            &mut unchanged,
+            EditorEvent::Edited,
+            |app, _| {
+                callbacks.set(callbacks.get() + 1);
+                app.finish_open_glyph_refresh();
+            },
+        );
+
+        let mut out_and_back = (*workspace.session).clone();
+        out_and_back.selection.insert(point);
+        out_and_back.begin_point_drag();
+        assert!(out_and_back.drag_points_to((20.0, 0.0)));
+        assert!(out_and_back.drag_points_to((0.0, 0.0)));
+        out_and_back.end_point_drag();
+        dispatch_editor_event(
+            &mut workspace,
+            &mut out_and_back,
+            EditorEvent::Edited,
+            |app, _| {
+                callbacks.set(callbacks.get() + 1);
+                app.finish_open_glyph_refresh();
+            },
+        );
+
+        assert_eq!(callbacks.get(), 0);
+        assert!(!workspace.modified);
+        assert_eq!(workspace.font.project.document_revision(), revision);
+        assert_eq!(workspace.metadata_undo.len(), undo);
+        assert_eq!(workspace.metadata_redo.len(), redo);
+        assert!(workspace.font.project.can_replay_document_layer_history(
+            &address,
+            runebender::document::history::HistoryDirection::Redo,
+        ));
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 
     #[test]

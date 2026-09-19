@@ -1761,6 +1761,14 @@ mod tests {
         let mut workspace = Workspace::open(&path).expect("the component fixture opens");
         let target = workspace.font.index_of("target").unwrap();
         workspace.open_glyph(target);
+        workspace.component_base_buf = "missing".into();
+        workspace.command_add_component();
+        assert!(projected_glyph(&workspace.session).components.is_empty());
+        assert!(workspace.metadata_undo.is_empty());
+        workspace.component_base_buf = "target".into();
+        workspace.command_add_component();
+        assert!(projected_glyph(&workspace.session).components.is_empty());
+        assert!(workspace.metadata_undo.is_empty());
         workspace.component_base_buf = "base".into();
         workspace.command_add_component();
         assert_eq!(projected_glyph(&workspace.session).components.len(), 1);
@@ -1838,21 +1846,26 @@ mod tests {
             None,
             None,
         ));
-        target.components.push(norad::Component::new(
+        let mut component = norad::Component::new(
             norad::Name::new("mark").unwrap(),
-            norad::AffineTransform {
-                x_offset: 280.0,
-                y_offset: 470.0,
-                ..Default::default()
-            },
+            norad::AffineTransform::default(),
             None,
-        ));
+        );
+        runebender::document::composites::set_component_alignment_disabled(&mut component, true);
+        target.components.push(component);
         font.default_layer_mut().insert_glyph(target);
         font.save(&path).expect("the attachment fixture saves");
 
         let mut workspace = Workspace::open(&path).expect("the attachment fixture opens");
         let target = workspace.font.index_of("target").unwrap();
         workspace.open_glyph(target);
+        assert!(Arc::make_mut(&mut workspace.session).select_component(0));
+        assert_eq!(workspace.session.selected_component_aligned(), Some(false));
+        workspace.command_toggle_component_alignment();
+        assert_eq!(workspace.session.selected_component_aligned(), Some(true));
+        let glyph = projected_glyph(&workspace.session);
+        assert_eq!(glyph.components[0].transform.x_offset, 280.0);
+        assert_eq!(glyph.components[0].transform.y_offset, 470.0);
         workspace.apply_op(|session| {
             let anchor = session.anchor_id_at(0).expect("canonical anchor identity");
             session.move_anchor(anchor, 400.0, 600.0);
@@ -1868,6 +1881,12 @@ mod tests {
         let component = &glyph.components[0];
         assert_eq!(component.transform.x_offset, 280.0);
         assert_eq!(component.transform.y_offset, 470.0);
+        workspace.undo_active_edit(false);
+        let glyph = projected_glyph(&workspace.session);
+        let component = &glyph.components[0];
+        assert_eq!(component.transform.x_offset, 0.0);
+        assert_eq!(component.transform.y_offset, 0.0);
+        assert!(runebender::document::composites::component_alignment_disabled(component));
         std::fs::remove_dir_all(path).expect("the attachment fixture is removed");
     }
 

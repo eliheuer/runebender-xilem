@@ -79,6 +79,13 @@ pub(crate) struct PointView {
     pub start: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SessionSyncOutcome {
+    Changed,
+    Unchanged,
+    Rejected,
+}
+
 #[derive(Clone)]
 pub(crate) struct Session {
     pub glyph_name: String,
@@ -493,6 +500,22 @@ impl Session {
         self.pending_canonical = Some(transaction);
         self.pending_canonical_label = Some(label);
         true
+    }
+
+    pub(crate) fn stage_canonical_string_edit(
+        &mut self,
+        label: &'static str,
+        edit: impl FnOnce(&mut runebender::document::LayerEditDraft) -> Result<bool, String>,
+    ) -> Result<bool, String> {
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return Ok(false);
+        };
+        if !edit(transaction.draft_mut())? {
+            return Ok(false);
+        }
+        self.pending_canonical = Some(transaction);
+        self.pending_canonical_label = Some(label);
+        Ok(true)
     }
 
     /// Run one legacy outline algorithm against a detached UFO codec value, then immediately
@@ -2107,12 +2130,12 @@ impl Workspace {
     /// the model + grid cache so the overview preview matches.
     /// Replace the app's session with the island's live one (called on every
     /// editor event so save/preview see interactive edits).
-    pub(crate) fn sync_session_from(&mut self, session: &mut Session) -> bool {
+    pub(crate) fn sync_session_from(&mut self, session: &mut Session) -> SessionSyncOutcome {
         if session.sync_rejected {
-            return false;
+            return SessionSyncOutcome::Rejected;
         }
         let name = session.glyph_name.clone();
-        let mut accepted = true;
+        let mut outcome = SessionSyncOutcome::Unchanged;
         let mut retain_session = true;
         if let Some(mut transaction) = session.pending_canonical.take() {
             let label = session
@@ -2136,14 +2159,15 @@ impl Workspace {
                 .index_of(&name)
                 .map(|index| self.font.master().undo_depth(index))
                 .unwrap_or_default();
-            let outcome = alignment.map_err(|error| error.to_string()).and_then(|_| {
+            let commit = alignment.map_err(|error| error.to_string()).and_then(|_| {
                 self.font
                     .project
                     .commit_document_layer_transaction(transaction)
                     .map_err(|error| error.to_string())
             });
-            match outcome {
+            match commit {
                 Ok(runebender::document::project::DocumentEditOutcome::Changed { .. }) => {
+                    outcome = SessionSyncOutcome::Changed;
                     self.metadata_undo.push(MetadataEdit::DocumentLayer {
                         glyph: name.clone(),
                         address: address.clone(),
@@ -2154,7 +2178,7 @@ impl Workspace {
                     if !session.reload_from_project(&self.font.project, &address) {
                         self.note = "The committed glyph layer could not be reloaded".into();
                         session.sync_rejected = true;
-                        accepted = false;
+                        outcome = SessionSyncOutcome::Rejected;
                         retain_session = false;
                     }
                 }
@@ -2162,13 +2186,13 @@ impl Workspace {
                     if !session.reload_from_project(&self.font.project, &address) {
                         self.note = "The unchanged glyph layer could not be reloaded".into();
                         session.sync_rejected = true;
-                        accepted = false;
+                        outcome = SessionSyncOutcome::Rejected;
                         retain_session = false;
                     }
                 }
                 Err(error) => {
                     self.note = format!("The active glyph layer changed before commit: {error}");
-                    accepted = false;
+                    outcome = SessionSyncOutcome::Rejected;
                     if !session.reload_from_project(&self.font.project, &address) {
                         self.note
                             .push_str("; the canonical layer could not be reloaded");
@@ -2178,13 +2202,13 @@ impl Workspace {
                 }
             }
         }
-        if !accepted {
+        if outcome == SessionSyncOutcome::Rejected {
             if retain_session {
                 self.session = Arc::new(session.clone());
                 self.refresh_metric_bufs();
                 self.selected_points = self.session.selection.len();
             }
-            return false;
+            return outcome;
         }
         self.session = Arc::new(session.clone());
         // Keep the panel's advance field in step after canvas edits
@@ -2192,7 +2216,7 @@ impl Workspace {
         // the field, so it does not clobber input.
         self.refresh_metric_bufs();
         self.selected_points = self.session.selection.len();
-        true
+        outcome
     }
 
     /// Rebase the open transitional session after a canonical layer commit or replay.
@@ -2512,13 +2536,16 @@ impl Workspace {
     pub(crate) fn refresh_open_glyph(&mut self) {
         if matches!(self.mode, Mode::Editor(_)) {
             let mut session = (*self.session).clone();
-            if !self.sync_session_from(&mut session) {
-                return;
+            if self.sync_session_from(&mut session) == SessionSyncOutcome::Changed {
+                self.finish_open_glyph_refresh();
             }
-            self.cells = Arc::new(cells_of(&self.font, &self.palette));
-            self.modified = true;
-            self.note.clear();
         }
+    }
+
+    pub(crate) fn finish_open_glyph_refresh(&mut self) {
+        self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        self.modified = true;
+        self.note.clear();
     }
 
     pub(crate) fn back_to_overview(&mut self) {
@@ -2659,6 +2686,20 @@ mod tests {
         assert_eq!(clockwise_glyph.contours[1], original[1]);
         assert_eq!(counterclockwise_glyph.contours[1], original[1]);
         assert!(clockwise.pending_canonical.is_some());
+    }
+
+    #[test]
+    fn cleanup_command_stages_only_the_canonical_edit() {
+        let mut glyph = projected_glyph(&two_squares());
+        glyph.contours[0].points[0].x = 0.4;
+        let mut font = norad::Font::new();
+        font.default_layer_mut().insert_glyph(glyph);
+        let mut session = Session::new(&font, "test").expect("glyph is there");
+
+        assert!(session.round_coordinates());
+        assert_eq!(projected_glyph(&session).contours[0].points[0].x, 0.0);
+        assert!(session.pending_canonical.is_some());
+        assert_eq!(session.pending_canonical_label, Some("round coordinates"));
     }
 
     #[test]

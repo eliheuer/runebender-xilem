@@ -306,8 +306,9 @@ git diff --check
 - Direct canonical draft operations now own filters, cleanup, transforms, shapes, anchors, images, boolean operations, knife cuts, curve conversion, re-interpolation and mask baking.
 - Place Image installs bytes through a stable-source Project operation and attaches the image through the layer draft; it no longer mutates `FontModel::font_mut().images`.
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
-- The remaining temporary bridge callers are exact and finite: pen contour materialization and close; hyperbezier start, append and close; mark-label writes; compatibility contour replacement and its test-only paste helper; selected metaball collapse; background send and swap; and the mark-cloud read projection.
+- The remaining temporary bridge callers are exact and finite: pen contour materialization and close; hyperbezier start, append and close; mark-label writes; compatibility contour replacement and its test-only paste helper; background send and swap; and the mark-cloud read projection.
 - `FontModel` still exposes mutable source/font access for overview marks, Unicode, metrics formulas, local-model workflow boundaries, source retargeting and background layers; those callers remain M06/M13 work rather than completion claims.
+- Pen, Shape and Knife still need explicit Pointer Cancel coverage in the final gesture audit.
 
 ## Canonical Session storage and history cutover
 
@@ -349,6 +350,40 @@ git diff --check
 The focused Session suite passes nine tests.
 The complete binary suite passes 163 tests with four documented model or external-font tests ignored.
 The rejected-transaction regression proves no fallback write, no dirty/history change and a retained reload diagnostic after the canonical glyph disappears before commit.
+
+## Canonical no-op release and metaball-collapse slice
+
+Implementation commit: `Preserve canonical no-op gestures and collapse metaballs`.
+Resolve its exact ID with `git log --format=%H --grep='^Preserve canonical no-op gestures and collapse metaballs$' -1`.
+Affected paths: `src/application/editor/session.rs`, `src/application/editor/commands.rs`, `src/application/editor/tools/metaballs.rs`, `src/application/platform/host.rs`, `src/application/view/canvas/editor.rs`, `src/application/view/panels/editor.rs` and this log.
+
+`Workspace::sync_session_from` now reports changed, unchanged or rejected instead of reducing those states to one Boolean.
+The real editor event dispatcher suppresses the `Edited` callback for an unchanged release, while non-edit events still reach the application callback.
+An untouched release and an out-and-back point drag therefore leave document revision, dirty state, undo history and an existing redo step unchanged.
+The panel refresh callback now finishes an already accepted transaction rather than synchronizing the same Session a second time.
+
+Selected-glyph and whole-font metaball collapse now call `LayerEditDraft::collapse_metaballs` directly.
+The overview command records Project-owned layer history for every changed glyph and no longer projects each glyph through the compatibility bridge.
+
+The six tests removed with the legacy Session state were audited against current behavior:
+
+- The master-pile history test is retired because editor outline history is Project-owned; point-drag, save-event and rejected-transaction regressions cover commit, persistence and stale rejection.
+- Component selection, cache rebuilding and decomposition are covered by the host component lifecycle test and the nested-component decompose/undo regression.
+- Component insertion validation is now asserted before the successful add in the host lifecycle test.
+- Locking a loose component now has a host regression that proves immediate anchor snapping, later anchor realignment and ordered undo back to its unlocked transform.
+- Canonical cleanup has an explicit `round_coordinates` draft regression.
+- Duplicate Repeat has an application-level regression covering the retained last transform, fresh stable point selection, Project history and undo/redo.
+
+Executed evidence:
+
+```sh
+cargo fmt --all --check
+CARGO_BUILD_JOBS=1 cargo test --locked application:: -- --test-threads=1
+git diff --check
+```
+
+All 166 runnable application tests passed with four documented model or external-font tests ignored.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
 ## Next action
 

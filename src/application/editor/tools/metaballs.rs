@@ -7,7 +7,7 @@ use crate::application::editor::session::Session;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::workspace::{Mode, OverviewEditBatch, Workspace};
 use runebender::formats::metaballs::{Metaball, MetaballGroup};
-use runebender::outline::metaballs::{OutlineOptions, collapse};
+use runebender::outline::metaballs::OutlineOptions;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -244,19 +244,20 @@ impl Session {
             if selected && ids.is_empty() {
                 return Ok(false);
             }
-            let changed = self.compatibility_edit_result("collapse metaballs", |glyph| {
-                collapse(
-                    glyph,
-                    selected.then_some(ids.as_slice()),
-                    OutlineOptions::default(),
-                )
-                .map(|count| count > 0)
+            let changed = self.stage_canonical_string_edit("collapse metaballs", |draft| {
+                draft
+                    .collapse_metaballs(
+                        selected.then_some(ids.as_slice()),
+                        OutlineOptions::default(),
+                    )
+                    .map(|count| count > 0)
             })?;
-            if changed {
-                self.metaballs = MetaballSelection::default();
-                self.refresh_metaball_preview();
+            if !changed {
+                return Ok(false);
             }
-            Ok(changed)
+            self.metaballs = MetaballSelection::default();
+            self.refresh_metaball_preview();
+            Ok(true)
         })();
         self.metaball_result(result)
     }
@@ -305,15 +306,17 @@ impl Workspace {
             else {
                 continue;
             };
-            let mut glyph = transaction.compatibility_glyph();
-            let collapsed = match collapse(&mut glyph, None, OutlineOptions::default()) {
+            let collapsed = match transaction
+                .draft_mut()
+                .collapse_metaballs(None, OutlineOptions::default())
+            {
                 Ok(collapsed) => collapsed,
                 Err(error) => {
                     self.note = error;
                     return;
                 }
             };
-            if collapsed == 0 || transaction.reconcile_compatibility_glyph(&glyph) != Ok(true) {
+            if collapsed == 0 {
                 continue;
             }
             if matches!(

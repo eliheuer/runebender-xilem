@@ -4,7 +4,7 @@
 //! What the menus and shortcuts call. One method is the whole of one user-facing command.
 
 use crate::application::editor::session;
-use crate::application::editor::session::Session;
+use crate::application::editor::session::{Session, SessionSyncOutcome};
 use crate::application::platform::dialogs;
 use crate::application::view::canvas;
 use crate::application::view::canvas::grid::cells_of;
@@ -1419,9 +1419,8 @@ impl Workspace {
             return;
         }
         let mut sess = (*self.session).clone();
-        if f(&mut sess) {
-            self.sync_session_from(&mut sess);
-            self.refresh_open_glyph();
+        if f(&mut sess) && self.sync_session_from(&mut sess) == SessionSyncOutcome::Changed {
+            self.finish_open_glyph_refresh();
         }
     }
 }
@@ -1563,6 +1562,53 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_repeat_reapplies_the_last_transform_in_canonical_history() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-canonical-duplicate-repeat-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        let mut glyph = rectangle("A", 0.0, 100.0);
+        glyph.contours.extend(rectangle("B", 200.0, 300.0).contours);
+        font.default_layer_mut().insert_glyph(glyph);
+        font.save(&path).expect("the fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let index = workspace.font.index_of("A").expect("A exists");
+        workspace.open_glyph(index);
+        assert_eq!(Arc::make_mut(&mut workspace.session).select_contour(0), 4);
+        workspace.apply_op(|session| session.rotate_90());
+        assert_eq!(workspace.metadata_undo.len(), 1);
+
+        workspace.apply_op(|session| session.duplicate_repeat());
+        let glyph = projected_glyph(&workspace.session);
+        assert_eq!(glyph.contours.len(), 3);
+        assert_ne!(glyph.contours[2], glyph.contours[0]);
+        let duplicate_ids = (0..4)
+            .map(|point| {
+                workspace
+                    .session
+                    .point_id_at(2, point)
+                    .expect("the duplicate point has canonical identity")
+            })
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(workspace.session.selection, duplicate_ids);
+        assert_eq!(workspace.metadata_undo.len(), 2);
+        assert_eq!(workspace.font.master().undo_depth(index), 0);
+
+        workspace.undo_active_edit(false);
+        assert_eq!(projected_glyph(&workspace.session).contours.len(), 2);
+        workspace.undo_active_edit(true);
+        assert_eq!(projected_glyph(&workspace.session).contours.len(), 3);
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
     fn point_drag_cancel_noop_and_commit_use_one_canonical_history_step() {
         let path = std::env::temp_dir().join(format!(
             "runebender-canonical-point-drag-{}-{}.ufo",
@@ -1654,12 +1700,12 @@ mod tests {
         let legacy_steps = workspace.font.master().undo_depth(index);
         assert!(!workspace.modified);
 
-        let accepted = workspace.sync_session_from(&mut stale);
-        if accepted {
-            workspace.refresh_open_glyph();
-        }
-        assert!(!accepted);
-        assert!(!workspace.sync_session_from(&mut stale));
+        let outcome = workspace.sync_session_from(&mut stale);
+        assert_eq!(outcome, SessionSyncOutcome::Rejected);
+        assert_eq!(
+            workspace.sync_session_from(&mut stale),
+            SessionSyncOutcome::Rejected
+        );
         assert_eq!(workspace.metadata_undo.len(), undo_steps);
         assert_eq!(workspace.font.master().undo_depth(index), legacy_steps);
         assert!(!workspace.modified);
