@@ -1410,6 +1410,45 @@ impl Project {
         Some(self.document_designspace()?.compiler_structure())
     }
 
+    /// Clone the canonical variable structure before one checked structural transaction.
+    #[expect(
+        dead_code,
+        reason = "the source-history lane consumes this checked source-transaction draft"
+    )]
+    pub(super) fn begin_source_designspace_edit(
+        &self,
+    ) -> Option<super::model::designspace::CanonicalDesignspace> {
+        self.document_designspace().cloned()
+    }
+
+    /// Install one validated canonical variable-structure edit during a source transaction.
+    ///
+    /// The caller must update source projections in the same transaction and then use the
+    /// ordinary source-history completion path, which advances the document revision once.
+    #[expect(
+        dead_code,
+        reason = "the source-history lane consumes this guarded source-transaction commit"
+    )]
+    pub(super) fn install_source_designspace_edit(
+        &mut self,
+        expected: &super::model::designspace::CanonicalDesignspace,
+        replacement: super::model::designspace::CanonicalDesignspace,
+    ) -> Result<bool, String> {
+        let document = replacement.to_norad()?;
+        if replacement.full_source_order().collect::<Vec<_>>() != self.variable.source_ids {
+            return Err("canonical Designspace source order does not match the document".into());
+        }
+        let changed = self
+            .variable
+            .replace_designspace_if_current(expected, replacement)
+            .map_err(|_| "canonical Designspace changed after edit capture")?;
+        if changed {
+            self.ds_doc = Some(document);
+            self.ds_dirty = true;
+        }
+        Ok(changed)
+    }
+
     /// Current canonical document revision used by derived compiler data.
     pub fn document_revision(&self) -> u64 {
         self.variable.revision

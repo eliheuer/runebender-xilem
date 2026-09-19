@@ -267,8 +267,12 @@ impl Project {
     }
 
     fn record_source_change(&mut self, before: SourceFrame) {
+        let revision = self.variable.revision;
         self.finish_source_change();
         let after = SourceFrame::capture(self);
+        if before.canonical != after.canonical && self.variable.revision == revision {
+            self.variable.revision = self.variable.revision.wrapping_add(1);
+        }
         self.source_history.transactions.record(before, after);
     }
 

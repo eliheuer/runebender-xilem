@@ -342,6 +342,21 @@ impl VariableData {
         self.designspace = Some(designspace);
     }
 
+    pub(super) fn replace_designspace_if_current(
+        &mut self,
+        expected: &super::model::designspace::CanonicalDesignspace,
+        replacement: super::model::designspace::CanonicalDesignspace,
+    ) -> Result<bool, SourceStructureRestoreError> {
+        if self.designspace.as_ref() != Some(expected) {
+            return Err(SourceStructureRestoreError::Stale);
+        }
+        if expected == &replacement {
+            return Ok(false);
+        }
+        self.designspace = Some(replacement);
+        Ok(true)
+    }
+
     pub(super) fn source_structure_snapshot(&self) -> CanonicalSourceStructureSnapshot {
         CanonicalSourceStructureSnapshot {
             glyph_geometry: self.font.glyphs.clone(),
