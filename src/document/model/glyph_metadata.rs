@@ -19,6 +19,8 @@ pub const LEFT_METRICS_KEY: &str = "com.schriftgestaltung.Glyphs.glyph.leftMetri
 pub const RIGHT_METRICS_KEY: &str = "com.schriftgestaltung.Glyphs.glyph.rightMetricsKey";
 /// UFO glyph-lib key for editable Runebender metaball groups.
 pub const METABALLS_KEY: &str = "com.runebender.metaballs";
+/// UFO glyph-lib key for an explicit canonical composition recipe.
+pub const COMPOSITION_RECIPE_KEY: &str = "com.runebender.compose";
 
 #[cfg(test)]
 pub(crate) fn skipped_exports(font: &norad::Font) -> impl Iterator<Item = &str> {

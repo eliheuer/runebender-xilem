@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use runebender::document::DocumentEditError;
 use runebender::document::history::HistoryDirection;
 use runebender::document::model::glyph_metadata::{
-    LEFT_METRICS_KEY, MARK_COLOR_KEY, METABALLS_KEY, Metaball, MetaballGroup, Metaballs,
-    RIGHT_METRICS_KEY,
+    COMPOSITION_RECIPE_KEY, LEFT_METRICS_KEY, MARK_COLOR_KEY, METABALLS_KEY, Metaball,
+    MetaballGroup, Metaballs, RIGHT_METRICS_KEY,
 };
 use runebender::document::project::{DocumentEditOutcome, Master, Project};
 use runebender::document::variable::{GlyphLayerAddress, SourceId};
@@ -49,6 +49,10 @@ fn fixture() -> (Project, GlyphLayerAddress) {
         METABALLS_KEY.into(),
         plist::to_value(&source_metaballs()).unwrap(),
     );
+    glyph.lib.insert(
+        COMPOSITION_RECIPE_KEY.into(),
+        plist::Value::String(" A + acutecomb ".into()),
+    );
     glyph
         .lib
         .insert("future.key".into(), plist::Value::String("exact".into()));
@@ -84,6 +88,10 @@ fn layer_metadata_reads_writes_and_replays_atomically() {
         Err(DocumentEditError::InvalidLayerMetadata)
     );
     assert_eq!(view.metaballs().unwrap(), source_metaballs());
+    assert_eq!(
+        view.composition_recipe_source().unwrap(),
+        Some(" A + acutecomb ")
+    );
 
     let exact = project.source_snapshot(SourceId(0)).unwrap();
     let exact_lib = exact.get_glyph("A").unwrap().lib.clone();
@@ -94,6 +102,10 @@ fn layer_metadata_reads_writes_and_replays_atomically() {
     assert_eq!(
         exact_lib.get("future.key"),
         Some(&plist::Value::String("exact".into()))
+    );
+    assert_eq!(
+        exact_lib.get(COMPOSITION_RECIPE_KEY),
+        Some(&plist::Value::String(" A + acutecomb ".into()))
     );
 
     let mut no_op = project.begin_document_layer_transaction(&address).unwrap();

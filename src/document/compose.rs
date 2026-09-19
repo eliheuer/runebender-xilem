@@ -34,7 +34,7 @@ use crate::document::proposal::{self, ProposalSummary};
 pub const TASK: &str = "compose";
 
 /// The glyph lib key that spells a recipe out: `"base + mark + mark"`.
-pub const LIB_KEY: &str = "com.runebender.compose";
+pub use crate::document::model::glyph_metadata::COMPOSITION_RECIPE_KEY as LIB_KEY;
 
 /// Where a recipe came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]

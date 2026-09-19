@@ -18,8 +18,8 @@ use babelfont::{Anchor, Component, Layer, Node, NodeType, Shape};
 use kurbo::ParamCurve;
 
 use super::model::glyph_metadata::{
-    ComponentAlignment, LEFT_METRICS_KEY, MARK_COLOR_KEY, METABALLS_KEY, MarkColor, Metaballs,
-    MetricsFormula, RIGHT_METRICS_KEY, parse_metrics_key,
+    COMPOSITION_RECIPE_KEY, ComponentAlignment, LEFT_METRICS_KEY, MARK_COLOR_KEY, METABALLS_KEY,
+    MarkColor, Metaballs, MetricsFormula, RIGHT_METRICS_KEY, parse_metrics_key,
 };
 use super::variable::LayerId;
 
@@ -118,6 +118,7 @@ pub(super) struct LayerPreservation {
     left_metrics_key: Option<plist::Value>,
     right_metrics_key: Option<plist::Value>,
     metaballs: Option<plist::Value>,
+    composition_recipe: Option<plist::Value>,
     contours: Vec<PreservedContour>,
     components: Vec<PreservedComponent>,
     anchors: Vec<PreservedAnchor>,
@@ -358,6 +359,15 @@ impl<'a> LayerView<'a> {
     /// Validated editable metaball data; a missing key is an empty version-one value.
     pub fn metaballs(self) -> Result<Metaballs, DocumentEditError> {
         parse_metaballs(self.preserved.metaballs.as_ref())
+    }
+
+    /// Exact source spelling of one valid explicit composition recipe.
+    pub fn composition_recipe_source(self) -> Result<Option<&'a str>, DocumentEditError> {
+        match self.preserved.composition_recipe.as_ref() {
+            None => Ok(None),
+            Some(plist::Value::String(source)) => Ok(Some(source)),
+            Some(_) => Err(DocumentEditError::InvalidLayerMetadata),
+        }
     }
 
     /// Unicode scalar values attached to this glyph layer.
@@ -714,6 +724,7 @@ impl LayerEditDraft {
             || self.preserved.left_metrics_key != preserved.left_metrics_key
             || self.preserved.right_metrics_key != preserved.right_metrics_key
             || self.preserved.metaballs != preserved.metaballs
+            || self.preserved.composition_recipe != preserved.composition_recipe
             || self.preserved.contours != preserved.contours
             || self
                 .preserved
@@ -4020,6 +4031,7 @@ pub(super) fn layer_from_ufo(
     let left_metrics_key = lib.remove(LEFT_METRICS_KEY);
     let right_metrics_key = lib.remove(RIGHT_METRICS_KEY);
     let metaballs = lib.remove(METABALLS_KEY);
+    let composition_recipe = lib.remove(COMPOSITION_RECIPE_KEY);
     (
         layer,
         LayerPreservation {
@@ -4035,6 +4047,7 @@ pub(super) fn layer_from_ufo(
             left_metrics_key,
             right_metrics_key,
             metaballs,
+            composition_recipe,
             contours,
             components,
             anchors,
@@ -4289,6 +4302,7 @@ pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> nor
         (LEFT_METRICS_KEY, &preserved.left_metrics_key),
         (RIGHT_METRICS_KEY, &preserved.right_metrics_key),
         (METABALLS_KEY, &preserved.metaballs),
+        (COMPOSITION_RECIPE_KEY, &preserved.composition_recipe),
     ] {
         if let Some(value) = value {
             glyph.lib.insert(key.into(), value.clone());
