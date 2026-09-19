@@ -3,21 +3,9 @@
 
 //! Glyphs-style metrics keys: sidebearings derived from another glyph.
 
-pub use crate::document::model::glyph_metadata::{MetricsFormula, parse_metrics_key};
-
-/// Lib key for the left sidebearing formula.
-///
-/// Metrics keys are the Glyphs spacing formulas, stored in the lib
-/// keys glyphsLib round-trips:
-/// `com.schriftgestaltung.Glyphs.glyph.leftMetricsKey` and
-/// `rightMetricsKey`.
-///
-/// `=n` copies n's same sidebearing, and `=|o` copies o's opposite
-/// one. `=n+10` and `=n*1.1` add arithmetic. `=50` is a constant.
-pub const LEFT_METRICS_KEY: &str = "com.schriftgestaltung.Glyphs.glyph.leftMetricsKey";
-
-/// Lib key for the right sidebearing formula. See [`LEFT_METRICS_KEY`] for the syntax.
-pub const RIGHT_METRICS_KEY: &str = "com.schriftgestaltung.Glyphs.glyph.rightMetricsKey";
+pub use crate::document::model::glyph_metadata::{
+    LEFT_METRICS_KEY, MetricsFormula, RIGHT_METRICS_KEY, parse_metrics_key,
+};
 
 /// Reads the left (`left == true`) or right metrics key from the glyph lib, if present.
 pub fn read_metrics_key(glyph: &norad::Glyph, left: bool) -> Option<String> {

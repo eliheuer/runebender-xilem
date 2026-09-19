@@ -3,10 +3,9 @@
 
 //! UFO serialization for editable metaball groups.
 
-pub use crate::document::model::glyph_metadata::{Metaball, MetaballGroup, Metaballs};
-
-/// Versioned glyph metadata for live metaballs; ordinary UFO anchors are unrelated.
-pub const METABALLS_KEY: &str = "com.runebender.metaballs";
+pub use crate::document::model::glyph_metadata::{
+    METABALLS_KEY, Metaball, MetaballGroup, Metaballs,
+};
 
 /// Reads and validates live metaballs. A missing key returns an empty source.
 /// Malformed or newer metadata returns an error, so a caller can preserve it untouched.

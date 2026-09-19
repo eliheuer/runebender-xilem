@@ -7,7 +7,7 @@
 //! The palette itself lives in the shared theme (`ui::theme`), which owns label reading,
 //! hue-snapping and writing.
 
-pub use crate::document::model::glyph_metadata::MarkColor;
+pub use crate::document::model::glyph_metadata::{MARK_COLOR_KEY, MarkColor};
 
 /// Normalizes a `public.markColor` string by trimming whitespace around each value. Keeps the original number text. Returns `None` for invalid input; an empty string stays empty.
 pub fn canonical_ufo_mark_color(value: &str) -> Option<String> {

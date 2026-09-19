@@ -11,6 +11,14 @@ use serde::{Deserialize, Serialize};
 const SKIP_EXPORT_GLYPHS: &str = "public.skipExportGlyphs";
 const OPEN_TYPE_CATEGORIES: &str = "public.openTypeCategories";
 pub(crate) const COMPONENT_ALIGNMENT_KEY: &str = "com.glyphsapp.component.alignment";
+/// UFO glyph-lib key for the exact public mark color.
+pub const MARK_COLOR_KEY: &str = "public.markColor";
+/// UFO glyph-lib key for the left sidebearing formula.
+pub const LEFT_METRICS_KEY: &str = "com.schriftgestaltung.Glyphs.glyph.leftMetricsKey";
+/// UFO glyph-lib key for the right sidebearing formula.
+pub const RIGHT_METRICS_KEY: &str = "com.schriftgestaltung.Glyphs.glyph.rightMetricsKey";
+/// UFO glyph-lib key for editable Runebender metaball groups.
+pub const METABALLS_KEY: &str = "com.runebender.metaballs";
 
 #[cfg(test)]
 pub(crate) fn skipped_exports(font: &norad::Font) -> impl Iterator<Item = &str> {

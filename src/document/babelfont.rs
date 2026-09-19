@@ -17,7 +17,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use babelfont::{Anchor, Component, Layer, Node, NodeType, Shape};
 use kurbo::ParamCurve;
 
-use super::model::glyph_metadata::ComponentAlignment;
+use super::model::glyph_metadata::{
+    ComponentAlignment, LEFT_METRICS_KEY, MARK_COLOR_KEY, METABALLS_KEY, MarkColor, Metaballs,
+    MetricsFormula, RIGHT_METRICS_KEY, parse_metrics_key,
+};
 use super::variable::LayerId;
 
 pub(super) fn layer_key(id: &LayerId) -> String {
@@ -111,6 +114,10 @@ pub(super) struct LayerPreservation {
     guidelines: Vec<norad::Guideline>,
     image: Option<norad::Image>,
     lib: plist::Dictionary,
+    mark_color: Option<plist::Value>,
+    left_metrics_key: Option<plist::Value>,
+    right_metrics_key: Option<plist::Value>,
+    metaballs: Option<plist::Value>,
     contours: Vec<PreservedContour>,
     components: Vec<PreservedComponent>,
     anchors: Vec<PreservedAnchor>,
@@ -320,6 +327,37 @@ impl<'a> LayerView<'a> {
     /// Optional source image attached to this glyph layer.
     pub fn image(self) -> Option<&'a norad::Image> {
         self.preserved.image.as_ref()
+    }
+
+    /// Typed public mark color, preserving an invalid source value as an explicit error.
+    pub fn mark_color(self) -> Result<Option<MarkColor>, DocumentEditError> {
+        parse_mark_color(self.preserved.mark_color.as_ref())
+    }
+
+    /// Exact source spelling of one valid left or right metrics formula.
+    pub fn metrics_key(self, left: bool) -> Result<Option<&'a str>, DocumentEditError> {
+        let value = if left {
+            self.preserved.left_metrics_key.as_ref()
+        } else {
+            self.preserved.right_metrics_key.as_ref()
+        };
+        match value {
+            None => Ok(None),
+            Some(plist::Value::String(source)) if parse_metrics_key(source).is_some() => {
+                Ok(Some(source))
+            }
+            Some(_) => Err(DocumentEditError::InvalidLayerMetadata),
+        }
+    }
+
+    /// Parsed left or right metrics formula.
+    pub fn metrics_formula(self, left: bool) -> Result<Option<MetricsFormula>, DocumentEditError> {
+        Ok(self.metrics_key(left)?.and_then(parse_metrics_key))
+    }
+
+    /// Validated editable metaball data; a missing key is an empty version-one value.
+    pub fn metaballs(self) -> Result<Metaballs, DocumentEditError> {
+        parse_metaballs(self.preserved.metaballs.as_ref())
     }
 
     /// Unicode scalar values attached to this glyph layer.
@@ -672,6 +710,10 @@ impl LayerEditDraft {
             || self.preserved.guidelines != preserved.guidelines
             || self.preserved.image != preserved.image
             || self.preserved.lib != preserved.lib
+            || self.preserved.mark_color != preserved.mark_color
+            || self.preserved.left_metrics_key != preserved.left_metrics_key
+            || self.preserved.right_metrics_key != preserved.right_metrics_key
+            || self.preserved.metaballs != preserved.metaballs
             || self.preserved.contours != preserved.contours
             || self
                 .preserved
@@ -3462,6 +3504,64 @@ impl LayerEditDraft {
         true
     }
 
+    /// Replace or remove the typed public mark color.
+    pub fn set_mark_color(&mut self, color: Option<MarkColor>) -> Result<bool, DocumentEditError> {
+        if color.is_some_and(|color| !color.is_valid()) {
+            return Err(DocumentEditError::InvalidLayerMetadata);
+        }
+        if parse_mark_color(self.preserved.mark_color.as_ref()).ok() == Some(color) {
+            return Ok(false);
+        }
+        self.preserved.mark_color = color.map(|color| {
+            plist::Value::String(format!(
+                "{},{},{},{}",
+                color.red, color.green, color.blue, color.alpha
+            ))
+        });
+        Ok(true)
+    }
+
+    /// Replace or remove one exact left or right metrics-key source string.
+    pub fn set_metrics_key(
+        &mut self,
+        left: bool,
+        source: Option<String>,
+    ) -> Result<bool, DocumentEditError> {
+        if source
+            .as_deref()
+            .is_some_and(|source| parse_metrics_key(source).is_none())
+        {
+            return Err(DocumentEditError::InvalidLayerMetadata);
+        }
+        let target = if left {
+            &mut self.preserved.left_metrics_key
+        } else {
+            &mut self.preserved.right_metrics_key
+        };
+        let replacement = source.map(plist::Value::String);
+        if *target == replacement {
+            return Ok(false);
+        }
+        *target = replacement;
+        Ok(true)
+    }
+
+    /// Replace validated editable metaball data, removing the key for an empty value.
+    pub fn set_metaballs(&mut self, metaballs: Metaballs) -> Result<bool, DocumentEditError> {
+        metaballs
+            .validate()
+            .map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+        if parse_metaballs(self.preserved.metaballs.as_ref()).ok() == Some(metaballs.clone()) {
+            return Ok(false);
+        }
+        self.preserved.metaballs = if metaballs.groups.is_empty() {
+            None
+        } else {
+            Some(plist::to_value(&metaballs).map_err(|_| DocumentEditError::InvalidLayerMetadata)?)
+        };
+        Ok(true)
+    }
+
     fn node_mut(&mut self, id: PointId) -> Option<&mut Node> {
         self.layer
             .shapes
@@ -3511,6 +3611,8 @@ pub enum DocumentEditError {
     MissingSource,
     /// Canonical font information failed validation.
     InvalidFontInfo,
+    /// Layer metadata is malformed, nonfinite or uses an unsupported schema.
+    InvalidLayerMetadata,
     /// The requested point identity does not exist in the layer.
     MissingPoint(PointId),
     /// The requested contour identity does not exist in the layer.
@@ -3541,6 +3643,7 @@ impl std::fmt::Display for DocumentEditError {
             Self::MissingLayer => formatter.write_str("glyph layer does not exist"),
             Self::MissingSource => formatter.write_str("source does not exist"),
             Self::InvalidFontInfo => formatter.write_str("font information is invalid"),
+            Self::InvalidLayerMetadata => formatter.write_str("glyph-layer metadata is invalid"),
             Self::MissingPoint(id) => write!(formatter, "point {id:?} does not exist"),
             Self::MissingContour(id) => write!(formatter, "contour {id:?} does not exist"),
             Self::NotOpenContour(id) => write!(formatter, "contour {id:?} is not open"),
@@ -3771,6 +3874,29 @@ fn read_id(format: &babelfont::FormatSpecific) -> Option<u64> {
     format.get(OBJECT_ID_KEY)?.as_u64()
 }
 
+fn parse_mark_color(value: Option<&plist::Value>) -> Result<Option<MarkColor>, DocumentEditError> {
+    match value {
+        None => Ok(None),
+        Some(plist::Value::String(source)) if source.trim().is_empty() => Ok(None),
+        Some(plist::Value::String(source)) => MarkColor::parse(source)
+            .map(Some)
+            .ok_or(DocumentEditError::InvalidLayerMetadata),
+        Some(_) => Err(DocumentEditError::InvalidLayerMetadata),
+    }
+}
+
+fn parse_metaballs(value: Option<&plist::Value>) -> Result<Metaballs, DocumentEditError> {
+    let Some(value) = value else {
+        return Ok(Metaballs::default());
+    };
+    let metaballs: Metaballs =
+        plist::from_value(value).map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+    metaballs
+        .validate()
+        .map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+    Ok(metaballs)
+}
+
 fn fresh_hyper_identifier() -> norad::Identifier {
     let unique = norad::Identifier::from_uuidv4();
     let identifier = format!("hyperbezier-{}", unique.as_ref());
@@ -3889,6 +4015,11 @@ pub(super) fn layer_from_ufo(
             output
         })
         .collect();
+    let mut lib = glyph.lib.clone();
+    let mark_color = lib.remove(MARK_COLOR_KEY);
+    let left_metrics_key = lib.remove(LEFT_METRICS_KEY);
+    let right_metrics_key = lib.remove(RIGHT_METRICS_KEY);
+    let metaballs = lib.remove(METABALLS_KEY);
     (
         layer,
         LayerPreservation {
@@ -3899,7 +4030,11 @@ pub(super) fn layer_from_ufo(
             note: glyph.note.clone(),
             guidelines: glyph.guidelines.clone(),
             image: glyph.image.clone(),
-            lib: glyph.lib.clone(),
+            lib,
+            mark_color,
+            left_metrics_key,
+            right_metrics_key,
+            metaballs,
             contours,
             components,
             anchors,
@@ -4149,6 +4284,16 @@ pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> nor
     glyph.guidelines.clone_from(&preserved.guidelines);
     glyph.image.clone_from(&preserved.image);
     glyph.lib.clone_from(&preserved.lib);
+    for (key, value) in [
+        (MARK_COLOR_KEY, &preserved.mark_color),
+        (LEFT_METRICS_KEY, &preserved.left_metrics_key),
+        (RIGHT_METRICS_KEY, &preserved.right_metrics_key),
+        (METABALLS_KEY, &preserved.metaballs),
+    ] {
+        if let Some(value) = value {
+            glyph.lib.insert(key.into(), value.clone());
+        }
+    }
     if layer.width != preserved.width as f32 {
         glyph.width = f64::from(layer.width);
     }
