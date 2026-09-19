@@ -381,11 +381,6 @@ impl Project {
             .unwrap_or(0)
     }
 
-    /// Source carrying the font-wide feature text, independent of editor selection.
-    pub fn feature_source(&self) -> &Master {
-        &self.masters[self.default_source_index()]
-    }
-
     /// Apply shared feature text to the default source without rewriting other sources.
     pub fn set_feature_text(&mut self, text: String) -> bool {
         let id = self
@@ -818,12 +813,18 @@ impl Project {
         Ok(project)
     }
 
-    /// Structural signature used for interpolation compatibility:
-    /// per contour, the ordered list of point types.
-    pub fn glyph_signature(font: &Master, name: &str) -> Option<Vec<Vec<norad::PointType>>> {
-        font.font
-            .get_glyph(name)
-            .map(crate::document::font_ops::glyph_signature)
+    fn document_glyph_signature(
+        &self,
+        source: SourceId,
+        name: &str,
+    ) -> Option<Vec<Vec<super::LayerPointType>>> {
+        let layer = self.document_source(source)?.default_layer();
+        Some(
+            self.document_layer(name, &layer)?
+                .contours()
+                .map(|contour| contour.points().map(|point| point.point_type()).collect())
+                .collect(),
+        )
     }
 
     /// Why a glyph does not interpolate: the first master pair whose
@@ -833,17 +834,20 @@ impl Project {
         let error = self
             .try_interpolated_layer_at(name, &Location::new())
             .err()?;
-        let first_sig = Self::glyph_signature(&self.masters[0], name);
+        let first_source = self.source_id(0)?;
+        let first_sig = self.document_glyph_signature(first_source, name);
         let first_name = &self.master_names[0];
-        let describe = |sig: &Option<Vec<Vec<norad::PointType>>>| match sig {
+        let describe = |sig: &Option<Vec<Vec<super::LayerPointType>>>| match sig {
             None => "missing".to_string(),
             Some(contours) => {
                 let points: usize = contours.iter().map(|c| c.len()).sum();
                 format!("{}c · {}pt", contours.len(), points)
             }
         };
-        for (master, master_name) in self.masters.iter().zip(&self.master_names).skip(1) {
-            let sig = Self::glyph_signature(master, name);
+        for (index, master_name) in self.master_names.iter().enumerate().skip(1) {
+            let sig = self
+                .source_id(index)
+                .and_then(|source| self.document_glyph_signature(source, name));
             if sig == first_sig {
                 continue;
             }

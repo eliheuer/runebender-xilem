@@ -42,6 +42,7 @@ No release has been published yet.
 
 - Headless font information, SVG proofs and proposal list/install/discard now read and edit the canonical Project document and save through the shared persistence boundary.
 - Removed the editable Master wrapper from transient SVG, Designbot and live-experiment proof rendering.
+- Read interpolation compatibility diagnostics from canonical source layers instead of Master projections.
 - Python Babelfont package imports now construct canonical single- and multi-source documents before deriving temporary UFO compatibility projections.
 - Built interpolated sources as atomic canonical document transactions, preserving exact metadata and undo while assigning fresh object identities to the new source.
 - Moved Designspace structure, font information, component alignment, mark color, metrics keys and formulas, metaball payloads, and HOI intermediate points into typed canonical document storage with guarded edits and UFO boundary projection.

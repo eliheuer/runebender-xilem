@@ -2642,3 +2642,13 @@ git diff --check
 
 All five live-document tests and both focused proof regressions passed.
 Warning-denied library/test Clippy, formatting and whitespace checks passed.
+
+### Canonical compatibility diagnostics
+
+Evidence commit: `Read compatibility diagnostics canonically` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Read compatibility diagnostics canonically$' -1`.
+
+`Project::compat_detail` now compares ordered contour and point kinds through canonical default-layer views under stable source identities.
+The unused `feature_source` Master projection and the Master-shaped glyph-signature helper are deleted.
+
+The twelve Project unit tests and warning-denied library Clippy passed, together with formatting and whitespace checks.
