@@ -12,12 +12,6 @@ use super::{
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
-impl From<usize> for SourceId {
-    fn from(value: usize) -> Self {
-        Self(value)
-    }
-}
-
 /// Node types executed against an open editor, rather than the disk runner.
 pub fn types() -> Vec<NodeType> {
     let port = |name: &str, input: bool| Port {
@@ -85,8 +79,7 @@ pub struct Version {
 }
 
 /// Create a connected starter graph with two independent version directions.
-pub fn starter(source: impl Into<SourceId>) -> NodeGraph {
-    let source_id = source.into();
+pub fn starter(source_id: SourceId) -> NodeGraph {
     let mut graph = NodeGraph::default();
     let source = graph.add("live.font", [32.0, 32.0]);
     graph

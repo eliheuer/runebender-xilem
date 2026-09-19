@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     fn live_controls_and_previews_share_nonoverlapping_hit_geometry() {
-        let g = crate::document::nodes_live::starter(0);
+        let g = crate::document::nodes_live::starter(crate::document::variable::SourceId(0));
         let boxes = layout(&g, &Registry::core());
         for node in &boxes {
             for (index, _) in actions(&node.type_name).iter().enumerate() {
