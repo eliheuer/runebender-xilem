@@ -1346,8 +1346,7 @@ impl LayerEditDraft {
                 .iter_mut()
                 .find(|candidate| candidate.id == contour_id)
                 .expect("canonical contour preservation");
-            reverse_contour(path, preserved);
-            changed |= path.nodes.len() > 1;
+            changed |= reverse_contour(path, preserved);
         }
         Ok(changed)
     }
@@ -2187,12 +2186,13 @@ fn new_document_point(
     )
 }
 
-fn reverse_contour(path: &mut babelfont::Path, preserved: &mut PreservedContour) {
+fn reverse_contour(path: &mut babelfont::Path, preserved: &mut PreservedContour) -> bool {
     debug_assert_eq!(
         path.nodes.len(),
         preserved.points.len(),
         "canonical nodes and preserved point records stay aligned"
     );
+    let original_nodes = path.nodes.clone();
     let first_id = path
         .closed
         .then(|| read_id(&path.nodes[0].format_specific).expect("canonical point identity"));
@@ -2225,6 +2225,7 @@ fn reverse_contour(path: &mut babelfont::Path, preserved: &mut PreservedContour)
             old_types[(position + old_types.len() - 1) % old_types.len()]
         };
     }
+    path.nodes != original_nodes
 }
 
 fn materialize_deleted_quadratic_controls(

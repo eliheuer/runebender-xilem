@@ -1349,4 +1349,32 @@ The focused reorder regression and all 40 variable-project integration tests pas
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+### Symmetric contour-reversal correction
+
+Evidence commit: `Report symmetric reversals as no-ops` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Report symmetric reversals as no-ops$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Independent review verified exact reversed geometry, metadata ownership and two-reversal snapshot restoration across 29 open, rotated closed and all-off-curve variants.
+It also found that reversing a closed contour with two off-curve controls preserves the exact canonical state but returned `true` from the draft method.
+
+Canonical reversal now compares the resulting nodes with their original state and reports a change only when canonical geometry, roles or ordering changed.
+The focused repository regression and the review's exact reproducer require `false`, an unchanged edit outcome and a stable revision for the symmetric case.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_contour_reversal_reports_symmetric_noop -- --exact --test-threads=1
+/private/tmp/runebender-migration-review.porJgX/reversal_review_fixed --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused no-op regression, both independent-review tests and all 41 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
 The next M04 substep moves split and join operations onto canonical topology.

@@ -120,7 +120,7 @@ Direct segment subdivision supports stored-endpoint lines, quadratics and cubics
 Quadratic subdivision represents stored and implied endpoints explicitly; it validates that implied pairs still belong to a quadratic chain and materializes a midpoint before moving either defining control.
 Direct point deletion rebuilds only affected canonical contours from surviving objects, retaining their identities and source metadata while removing dependent incoming controls; deleting a quadratic control materializes its implied endpoints and replaces only that segment with a line.
 Point deletion stages the complete operation so an error in a later contour cannot commit changes to an earlier contour.
-Direct contour reversal reorders canonical points and transfers incoming segment roles without replacing objects; closed contours retain their first stored point so reversal is an exact involution.
+Direct contour reversal reorders canonical points and transfers incoming segment roles without replacing objects; closed contours retain their first stored point so reversal is an exact involution, and symmetric storage reports no change.
 Changing a closed contour's start rotates canonical nodes and preservation records together, retaining point and contour identities.
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
 Source-wide feature text has canonical ownership in `VariableData` and changes through `edit_document_source_metadata`; UFO templates no longer retain a second feature-text value.

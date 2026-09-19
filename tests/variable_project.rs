@@ -2974,6 +2974,51 @@ fn canonical_contour_reversal_preserves_identities_metadata_and_storage() {
 }
 
 #[test]
+fn canonical_contour_reversal_reports_symmetric_noop() {
+    let mut glyph = Glyph::new("symmetric-reversal");
+    glyph.contours.push(Contour::new(
+        vec![
+            ContourPoint::new(0.0, 0.0, PointType::OffCurve, false, None, None),
+            ContourPoint::new(100.0, 100.0, PointType::OffCurve, false, None, None),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project = Project::from_source(Master::from_font(
+        font,
+        PathBuf::from("SymmetricReversal.ufo"),
+    ));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let point_ids: Vec<_> = project
+        .document_layer("symmetric-reversal", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.id())
+        .collect();
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+
+    assert_eq!(
+        project
+            .edit_document_layer("symmetric-reversal", &layer_id, |draft| {
+                assert!(!draft.reverse_contours(&[point_ids[0]])?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
 fn canonical_contour_start_reorders_without_replacing_points() {
     let scratch = Scratch::new();
     let point = |x, y, typ, label: &str| {
