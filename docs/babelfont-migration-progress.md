@@ -2076,3 +2076,47 @@ This promotion is an intermediate testing checkpoint, not migration completion.
 Later isolated commits `fb629a0`, `352e513` and `7fd409b` respectively move browser construction, stale compiler-metadata clearing, and Session point-selection/clipboard state further toward the canonical architecture; they are not part of the promoted checkpoint.
 M06 Session/canvas/gesture/history work, remaining M12 native callers, M13 compatibility removal and M14 final proof remain required before the migration can be marked complete.
 The pinned test copy and executable are reserved for user testing and must not be modified by migration work.
+
+### Canonical editor objects and transaction compatibility bridge
+
+Evidence commits: `98874fe` and `ed4ad11`.
+Affected paths: `src/application/editor/session.rs`, `src/document/babelfont.rs`, `src/document/project.rs`, `tests/variable_project.rs` and application tests changed by the editor lane.
+
+The editor now retains stable canonical component and anchor identities, and its pointer gestures mutate owned canonical layer transactions.
+The remaining legacy outline algorithms can receive a detached, short-lived UFO glyph from `CanonicalLayerTransaction` and reconcile their result back into the same canonical draft.
+That bridge is transitional codec access rather than persistent editor state.
+It retains matched contour, point, component and anchor identities, reports identical results as unchanged, and validates numeric geometry plus typed smart-component metadata before changing the draft.
+This unblocks removal of Session's persistent UFO glyph and mixed Master history without rewriting every remaining outline algorithm in the same change.
+
+Executed integration evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_layer_transaction_reconciles_detached_ufo_algorithms -- --exact --test-threads=1
+cargo clippy --lib --tests --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused reconciliation contract passed no-op, changed geometry and metrics, stable point identity, rejected nonfinite component geometry and atomic draft preservation.
+Warning-denied library/test Clippy, formatting and whitespace checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+M06 remains active until the persistent Session glyph, `HistoryOp`, Master history and remaining canvas/panel compatibility readers are gone.
+
+### Staged UFO and Designspace persistence
+
+Evidence commit: `f33e193`.
+Affected paths: `src/document/filesystem.rs`, `src/document/project.rs`, `src/document/source.rs`, architecture and filesystem-adapter documentation, plus focused tests.
+
+Project load now decodes every complete source before document construction, and save stages every dirty UFO and Designspace artifact before replacing any live destination.
+The filesystem preservation record retains source destinations, UFO metainfo, layer order and directories, exact `contents.plist` GLIF paths, images, data and otherwise unrecognized regular files.
+Export rejects symlinks and overlapping destinations, validates the complete staged set, and uses rollback backups if publication fails.
+The exact custom GLIF filename regression closes a concrete preservation gap found during the adapter audit.
+
+Executed integration evidence:
+
+```sh
+cargo test --locked document::filesystem::tests:: -- --test-threads=1
+```
+
+Both focused tests passed: one preserves custom GLIF paths and opaque payloads across a canonical edit/save, and one proves an invalid later source prevents replacement of every destination.
+M12 remains active for CLI and imported-format construction, native New Font and Save As, feature-include relocation, watched-source acceptance and the final serialization allowlist.
