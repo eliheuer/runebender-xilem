@@ -3586,12 +3586,17 @@ impl LayerEditDraft {
         id: ComponentId,
         disabled: bool,
     ) -> Result<bool, DocumentEditError> {
-        self.preserved
+        let component = self
+            .preserved
             .components
             .iter_mut()
             .find(|component| component.id == id)
-            .map(|component| component.alignment.set_disabled(disabled))
-            .ok_or(DocumentEditError::MissingComponent(id))
+            .ok_or(DocumentEditError::MissingComponent(id))?;
+        let changed = component.alignment.set_disabled(disabled);
+        if changed && component.metadata.identifier.is_none() {
+            component.metadata.identifier = Some(norad::Identifier::from_uuidv4());
+        }
+        Ok(changed)
     }
 
     /// Set or remove one smart-axis value bound to a stable component identity.
@@ -4999,6 +5004,63 @@ mod tests {
             output.lib[SMART_COMPONENT_POLE_KEY],
             glyph.lib[SMART_COMPONENT_POLE_KEY]
         );
+    }
+
+    #[test]
+    fn component_alignment_edit_assigns_one_stable_boundary_identifier() {
+        let mut glyph = norad::Glyph::new("component-user");
+        glyph.components.push(norad::Component::new(
+            norad::Name::new("base").unwrap(),
+            norad::AffineTransform::default(),
+            None,
+        ));
+        let layer_id = LayerId {
+            source: super::super::variable::SourceId(0),
+            name: "public.default".into(),
+        };
+        let (layer, preserved) = layer_from_ufo(&glyph, &layer_id, true);
+        let component = LayerView::new(&layer, &preserved)
+            .components()
+            .next()
+            .unwrap()
+            .id();
+        let mut draft = LayerEditDraft::new(layer, preserved);
+        assert!(
+            draft
+                .set_component_alignment_disabled(component, true)
+                .unwrap()
+        );
+        let (layer, preserved) = draft.into_parts();
+        let first = project_layer(&layer, &preserved);
+        let second = project_layer(&layer, &preserved);
+        let identifier = first.components[0]
+            .identifier()
+            .expect("alignment metadata receives a stable identifier")
+            .clone();
+        assert_eq!(second.components[0].identifier(), Some(&identifier));
+
+        let (reconciled_layer, reconciled_preserved) =
+            reconcile_layer_from_ufo(&first, &layer_id, true, &layer, &preserved);
+        assert_eq!(
+            LayerView::new(&reconciled_layer, &reconciled_preserved)
+                .components()
+                .next()
+                .unwrap()
+                .id(),
+            component
+        );
+        assert_eq!(reconciled_layer, layer);
+        assert_eq!(reconciled_preserved, preserved);
+
+        let mut enabled = LayerEditDraft::new(reconciled_layer, reconciled_preserved);
+        assert!(
+            enabled
+                .set_component_alignment_disabled(component, false)
+                .unwrap()
+        );
+        let (enabled_layer, enabled_preserved) = enabled.into_parts();
+        let enabled = project_layer(&enabled_layer, &enabled_preserved);
+        assert_eq!(enabled.components[0].identifier(), Some(&identifier));
     }
 
     #[test]
