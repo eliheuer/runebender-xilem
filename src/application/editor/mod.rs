@@ -11,4 +11,5 @@ pub(crate) mod commands;
 pub(crate) mod inspector;
 pub(crate) mod session;
 pub(crate) mod sidebar;
+pub(crate) mod sources;
 pub(crate) mod tools;

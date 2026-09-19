@@ -10,6 +10,14 @@ No release has been published yet.
 
 ### Added
 
+- Added live Rust compilation for shaped variable-font previews and TTF export, including unsaved edits, variable kerning and mark positioning.
+  Desktop preview compiles in the background and discards stale revisions.
+  Shared feature edits follow the default source and drafts are checked against all masters and axes.
+  Browser export downloads the compiled font.
+- Added source creation by interpolation, renaming, location changes, reordering, removal, and structural undo/redo in the Masters panel.
+  Source removal retains its UFO directory; auxiliary glyph layers can be copied and removed.
+- Added `runebender compile SOURCE --out FONT.ttf` for headless compilation without rewriting source files.
+
 - Added a native Xilem font editor and a browser build that reuse the same Masonry widget
   tree. Browser edits use a bundled font and remain in memory.
 - Added outline, component, anchor, metric, kerning/group, metadata, multi-master, and proof

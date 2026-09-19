@@ -100,3 +100,17 @@ cargo run --locked -- path/to/Font.designspace
 Inspect both images at the same logical and device-pixel size. Headless CPU
 rendering is visual evidence only; it does not establish native GPU, input,
 accessibility, or platform behavior.
+
+## Sources and variable proofing
+
+The Masters section owns source selection and authoring for an open Designspace.
+The source name field and axis sliders define the next Add source or Apply operation.
+Add source interpolates a complete UFO at that location; Up and Down change display order, and Remove retains source files on disk.
+Undo sources and Redo restore structural transactions and report when later edits must be undone first.
+The Layers section exposes auxiliary-layer copy and removal in both standalone UFO and Designspace documents.
+
+The proof strip accepts text at master and intermediate locations.
+Its shaping, advances and outlines use the same compiled variable font as export.
+The Axes section reports compilation progress or errors instead of presenting an unsuccessful compile as a completed variable preview.
+
+The Features section edits the default source's font-wide feature text and checks drafts with the complete variable compiler.

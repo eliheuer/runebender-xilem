@@ -73,7 +73,8 @@ impl Workspace {
         let modified = font.project.ds_dirty || font.project.sources().iter().any(|m| m.dirty);
         let source_roots = source_roots(&font);
         let source_fingerprint = source_fingerprint(&source_roots);
-        let features_buf = font.font().features.clone();
+        let features_buf = font.feature_font().features.clone();
+        let source_name_buf = font.master_names()[font.active()].to_string();
         let theme_id: &'static str = match std::env::var("RUNEBENDER_THEME").ok().as_deref() {
             Some("dark") => "dark",
             Some("light") => "light",
@@ -218,6 +219,8 @@ impl Workspace {
             text_language: std::env::var("RUNEBENDER_TEXT_LANGUAGE")
                 .ok()
                 .filter(|value| !value.is_empty()),
+            source_name_buf,
+            layer_name_buf: "sketch".into(),
             left_collapsed: false,
             // Headless frames can start with sections folded:
             // `RUNEBENDER_COLLAPSED=Kerning,Groups`.
@@ -662,6 +665,48 @@ mod tests {
         )
         .expect("the designspace fixture saves");
         (dir, designspace)
+    }
+
+    #[test]
+    fn source_commands_preserve_glyph_history_across_removal_and_reorder() {
+        let (dir, designspace) = two_master_designspace("source-commands");
+        let mut app = Workspace::open(&designspace).unwrap();
+        app.filter = "A".into();
+        app.new_glyph();
+        app.set_master(1);
+        app.mode = Mode::Overview;
+        app.selected = app.font.index_of("A");
+        let old_width = app.font.font().get_glyph("A").unwrap().width;
+        app.overview_set_advance("750".into());
+        let source = app.font.project.source_id(1).unwrap();
+        app.change_sources("up");
+        assert_eq!(app.font.project.source_index(source), Some(0));
+        app.change_sources("remove");
+        assert!(app.font.project.source_index(source).is_none());
+        app.undo_active_edit(false);
+        assert_eq!(
+            app.overview_undo.len(),
+            1,
+            "missing-source undo must retain its transaction"
+        );
+        app.change_sources("undo");
+        assert_eq!(app.font.project.source_index(source), Some(0));
+        app.mode = Mode::Overview;
+        app.undo_active_edit(false);
+        assert_eq!(app.font.font().get_glyph("A").unwrap().width, old_width);
+        app.set_axis(0, 550.0);
+        app.source_name_buf = "Medium".into();
+        app.change_sources("add");
+        assert_eq!(app.font.master_count(), 3);
+        assert_eq!(
+            app.font.master_names()[app.font.active()].as_str(),
+            "Medium"
+        );
+        assert!(app.save());
+        assert!(dir.join("Medium.ufo").exists());
+        let reopened = Workspace::open(&designspace).unwrap();
+        assert_eq!(reopened.font.master_count(), 3);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

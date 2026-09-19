@@ -7,8 +7,9 @@
 //! Each variable glyph owns its source and auxiliary layers. UFO projections are
 //! disposable views for existing outline tools; guards reconcile all their edits,
 //! including history replay and metadata changes, before another Project operation.
-//! Exact UFO payloads remain here until the Babelfont adapter can represent them
-//! without narrowing numbers or dropping metadata.
+//! Babelfont owns live glyph geometry. Exact UFO projections also retain fields
+//! and precision outside Babelfont's schema; saving materializes its geometry
+//! through the preserving adapter rather than its lossy UFO converter.
 
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
@@ -17,7 +18,7 @@ use super::project::Master;
 
 /// Stable source identity within an open project.
 ///
-/// Source order is fixed for the lifetime of the project; reload creates a new project.
+/// Reordering or removing other sources does not change this identity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SourceId(pub usize);
 
@@ -61,18 +62,55 @@ impl VariableGlyph {
 /// Canonical glyph ownership plus glyph-free UFO persistence metadata.
 #[derive(Debug, Default)]
 pub(super) struct VariableData {
+    pub(super) font: babelfont::Font,
+    pub(super) revision: u64,
+    pub(super) compiled: std::sync::Mutex<super::compile::CompileCache>,
     pub(super) glyphs: BTreeMap<String, VariableGlyph>,
     pub(super) histories: BTreeMap<LayerId, super::history::EditHistory>,
-    templates: Vec<norad::Font>,
+    templates: BTreeMap<SourceId, norad::Font>,
+    pub(super) source_ids: Vec<SourceId>,
+    pub(super) next_source: usize,
+}
+
+impl Clone for VariableData {
+    fn clone(&self) -> Self {
+        Self {
+            font: self.font.clone(),
+            revision: self.revision,
+            compiled: std::sync::Mutex::default(),
+            glyphs: self.glyphs.clone(),
+            histories: self.histories.clone(),
+            templates: self.templates.clone(),
+            source_ids: self.source_ids.clone(),
+            next_source: self.next_source,
+        }
+    }
 }
 
 impl VariableData {
     pub(super) fn from_sources(sources: &[Master]) -> Self {
         let mut data = Self::default();
         for (index, source) in sources.iter().enumerate() {
+            data.source_ids.push(SourceId(index));
             data.update_source(SourceId(index), &source.font);
         }
+        data.next_source = sources.len();
         data
+    }
+
+    pub(super) fn synchronize(&mut self, sources: &[Master]) {
+        self.templates.retain(|id, _| self.source_ids.contains(id));
+        self.histories
+            .retain(|id, _| self.source_ids.contains(&id.source));
+        for glyph in self.glyphs.values_mut() {
+            glyph
+                .layers
+                .retain(|id, _| self.source_ids.contains(&id.source));
+        }
+        for (index, source) in sources.iter().enumerate() {
+            self.update_source(self.source_ids[index], &source.font);
+        }
+        self.revision = self.revision.wrapping_add(1);
     }
 
     fn update_source(&mut self, source: SourceId, font: &norad::Font) -> bool {
@@ -99,13 +137,43 @@ impl VariableData {
                 let glyph = self.glyphs.entry(payload.name().to_string()).or_default();
                 if glyph.layers.get(&id) != Some(payload) {
                     glyph.layers.insert(id.clone(), payload.clone());
+                    let name = payload.name().as_str();
+                    if self.font.glyphs.get(name).is_none() {
+                        self.font.glyphs.0.push(babelfont::Glyph::new(name));
+                    }
+                    let target = self.font.glyphs.get_mut(name).expect("inserted glyph");
+                    let layer = super::babelfont::layer_from_ufo(
+                        payload,
+                        &id,
+                        layer.name() == font.default_layer().name(),
+                    );
+                    if let Some(existing) =
+                        target.get_layer_mut(layer.id.as_deref().expect("layer identity"))
+                    {
+                        *existing = layer;
+                    } else {
+                        target.layers.push(layer);
+                    }
+                    target.codepoints = payload.codepoints.iter().map(u32::from).collect();
                     changed = true;
                 }
             }
         }
+        self.font.glyphs.0.retain_mut(|glyph| {
+            let Some(projected) = self.glyphs.get(glyph.name.as_str()) else {
+                return false;
+            };
+            glyph.layers.retain(|layer| {
+                projected
+                    .layers
+                    .keys()
+                    .any(|id| layer.id.as_deref() == Some(super::babelfont::layer_key(id).as_str()))
+            });
+            !glyph.layers.is_empty()
+        });
         // A template contains no glyphs. Preserve layer ordering, paths, color,
         // libs, images, data, feature text, groups, and all font-info fields.
-        let previous = self.templates.get(source.0);
+        let previous = self.templates.get(&source);
         let mut template = previous.cloned().unwrap_or_default();
         let same_layers = template.layers.len() == font.layers.len()
             && template
@@ -132,24 +200,28 @@ impl VariableData {
         template.data.clone_from(&font.data);
         template.images.clone_from(&font.images);
         changed |= previous != Some(&template);
-        if let Some(slot) = self.templates.get_mut(source.0) {
-            *slot = template;
-        } else {
-            assert_eq!(source.0, self.templates.len(), "sources append in order");
-            self.templates.push(template);
+        self.templates.insert(source, template);
+        if changed {
+            self.revision = self.revision.wrapping_add(1);
         }
         changed
     }
 
     pub(super) fn source_font(&self, source: SourceId) -> Option<norad::Font> {
-        let mut font = self.templates.get(source.0)?.clone();
-        for glyph in self.glyphs.values() {
+        let mut font = self.templates.get(&source)?.clone();
+        for (name, glyph) in &self.glyphs {
             for (id, payload) in &glyph.layers {
                 if id.source == source {
                     font.layers
                         .get_mut(&id.name)
                         .expect("every stored layer has persistence metadata")
-                        .insert_glyph(payload.clone());
+                        .insert_glyph(super::babelfont::project_layer(
+                            self.font
+                                .glyphs
+                                .get(name)?
+                                .get_layer(&super::babelfont::layer_key(id))?,
+                            payload,
+                        ));
                 }
             }
         }
@@ -235,7 +307,8 @@ impl DerefMut for SourcesEdit<'_> {
 impl Drop for SourcesEdit<'_> {
     fn drop(&mut self) {
         for (index, source) in self.sources.iter_mut().enumerate() {
-            source.dirty |= self.data.update_source(SourceId(index), &source.font);
+            let id = self.data.source_ids[index];
+            source.dirty |= self.data.update_source(id, &source.font);
         }
     }
 }

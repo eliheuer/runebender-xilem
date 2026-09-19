@@ -64,6 +64,18 @@ pub(crate) struct FontModel {
 }
 
 impl FontModel {
+    pub(crate) fn feature_font(&self) -> &norad::Font {
+        &self.project.feature_source().font
+    }
+    pub(crate) fn preview_font(
+        &self,
+    ) -> Result<Option<Arc<runebender::document::compile::CompiledFont>>, String> {
+        if cfg!(test) || std::env::var_os("RUNEBENDER_SCREENSHOT").is_some() {
+            self.project.compiled_preview().map(Some)
+        } else {
+            self.project.request_preview()
+        }
+    }
     pub(crate) fn open(path: &FsPath) -> Result<Self, String> {
         let project = Project::load(path)?;
         Ok(Self::from_project(project))

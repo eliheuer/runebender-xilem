@@ -158,6 +158,10 @@ fn kern_between(
     current: Option<&str>,
     rtl: bool,
 ) -> f64 {
+    // A complete font already applied variable GPOS kerning during shaping.
+    if buffer.compiled_font.is_some() {
+        return 0.0;
+    }
     let Some((previous, current)) = previous.zip(current) else {
         return 0.0;
     };
@@ -225,6 +229,11 @@ fn default_units_per_em() -> f64 {
 }
 
 impl TextGlyphInventory {
+    /// Replace a preview advance, including unencoded glyphs positioned without shaping.
+    pub fn set_advance(&mut self, name: String, advance: f64) {
+        self.widths.insert(name, advance);
+    }
+
     fn has_glyph(&self, name: &str) -> bool {
         self.widths.contains_key(name) || self.outlines.contains_key(name)
     }
@@ -471,6 +480,8 @@ pub struct TextBuffer {
     /// `Clone` starts empty: two buffers with the same text are equal
     /// whether or not either has compiled its font yet.
     shaping_font: ShapingFontCache,
+    compiled_font: Option<std::sync::Arc<Vec<u8>>>,
+    normalized: Vec<f64>,
     /// The positioning shaping gave each sort, applied by `layout`.
     shaped_offsets: ShapedOffsets,
     /// Bidi runs per stretch of text. Derived from the sorts, so it is
@@ -495,6 +506,8 @@ impl Default for TextBuffer {
             script_override: None,
             language_override: None,
             shaping_font: ShapingFontCache::default(),
+            compiled_font: None,
+            normalized: Vec::new(),
             shaped_offsets: ShapedOffsets::default(),
             bidi_runs: BidiRunCache::default(),
         }
@@ -502,6 +515,20 @@ impl Default for TextBuffer {
 }
 
 impl TextBuffer {
+    /// Supply the full compiled document for variable advances and GPOS.
+    /// The bytes remain shared; changing coordinates does not recompile the font.
+    pub fn set_compiled_font(
+        &mut self,
+        font: Option<std::sync::Arc<Vec<u8>>>,
+        normalized: Vec<f64>,
+    ) {
+        if self.compiled_font != font || self.normalized != normalized {
+            self.compiled_font = font;
+            self.normalized = normalized;
+            self.shaping_font.clear();
+        }
+    }
+
     /// Where shaping moved a sort from its pen position, in font units:
     /// a mark's offset onto its base. Zero for anything shaping did not
     /// move. `layout` already applies it.
@@ -679,8 +706,10 @@ impl TextBuffer {
     /// Replace the whole glyph inventory, outlines included, and drop the cached shaping font so it is rebuilt on next use.
     pub fn set_glyph_inventory(&mut self, glyph_inventory: TextGlyphInventory) {
         self.glyph_inventory = glyph_inventory;
-        // Advances, codepoints and features all feed the shaping font.
-        self.shaping_font.clear();
+        // The complete shaper is invalidated by set_compiled_font instead.
+        if self.compiled_font.is_none() {
+            self.shaping_font.clear();
+        }
     }
 
     /// Iterate over the sorts in logical order.

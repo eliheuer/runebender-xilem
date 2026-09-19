@@ -98,6 +98,9 @@ impl Workspace {
             return;
         }
         self.metadata_undo.push(MetadataEdit::FontData {
+            source_ids: (0..self.font.master_count())
+                .map(|index| self.font.project.source_id(index).expect("source identity"))
+                .collect(),
             glyph,
             before,
             after,
@@ -123,7 +126,7 @@ impl Workspace {
             master.font.kerning = value.kerning.clone();
             master.font.features = value.features.clone();
         }
-        self.features_buf = self.font.font().features.clone();
+        self.features_buf = self.font.feature_font().features.clone();
         self.features_edited = false;
         self.refresh_metric_bufs();
         self.modified = true;
@@ -350,6 +353,9 @@ impl Workspace {
             .map_or(0, |index| self.font.master().undo_depth(index));
         if self.apply_unicode_snapshot(name, &after) {
             self.metadata_undo.push(MetadataEdit::Unicode {
+                source_ids: (0..self.font.master_count())
+                    .map(|index| self.font.project.source_id(index).expect("source identity"))
+                    .collect(),
                 glyph: name.into(),
                 before,
                 after,
@@ -504,12 +510,16 @@ impl Workspace {
             }
             MetadataEdit::Unicode {
                 glyph,
+                source_ids,
                 before,
                 after,
                 ..
             } => {
                 let values = if redo { after } else { before };
-                if !self.apply_unicode_snapshot(glyph, values) {
+                let Some(values) = self.reorder_source_snapshot(source_ids, values) else {
+                    return false;
+                };
+                if !self.apply_unicode_snapshot(glyph, &values) {
                     return false;
                 }
                 format!(
@@ -518,13 +528,17 @@ impl Workspace {
                 )
             }
             MetadataEdit::FontData {
+                source_ids,
                 before,
                 after,
                 label,
                 ..
             } => {
                 let values = if redo { after } else { before };
-                if !self.apply_font_data_snapshot(values) {
+                let Some(values) = self.reorder_source_snapshot(source_ids, values) else {
+                    return false;
+                };
+                if !self.apply_font_data_snapshot(&values) {
                     return false;
                 }
                 format!("{} {label}", if redo { "Redid" } else { "Undid" })
@@ -578,6 +592,23 @@ impl Workspace {
                 .is_some_and(|index| self.font.master().undo_depth(index) == undo_depth)
     }
 
+    fn reorder_source_snapshot<T: Clone>(
+        &self,
+        ids: &[runebender::document::variable::SourceId],
+        values: &[T],
+    ) -> Option<Vec<T>> {
+        if ids.len() != self.font.master_count() {
+            return None;
+        }
+        (0..self.font.master_count())
+            .map(|index| {
+                let id = self.font.project.source_id(index)?;
+                let original = ids.iter().position(|candidate| *candidate == id)?;
+                values.get(original).cloned()
+            })
+            .collect()
+    }
+
     /// The overview panel writes to the highlighted cell, not to a
     /// session: in that mode no glyph is open. Each of these is the
     /// overview twin of an editor field.
@@ -617,7 +648,11 @@ impl Workspace {
             self.font.master_mut().record_undo(i);
             if self.font.set_glyph_advance(i, width) {
                 self.overview_undo.push(OverviewEditBatch {
-                    master: self.font.active(),
+                    source: self
+                        .font
+                        .project
+                        .source_id(self.font.active())
+                        .expect("active source identity"),
                     glyphs: vec![glyph],
                 });
                 self.overview_redo.clear();
@@ -653,7 +688,11 @@ impl Workspace {
                 self.font.refresh_entry(index);
             }
             self.overview_undo.push(OverviewEditBatch {
-                master: self.font.active(),
+                source: self
+                    .font
+                    .project
+                    .source_id(self.font.active())
+                    .expect("active source identity"),
                 glyphs: indices
                     .iter()
                     .filter_map(|index| self.font.glyphs.get(*index))
@@ -854,17 +893,17 @@ impl Workspace {
         self.group_name_buf.clear();
     }
 
-    /// Update the active master's feature draft without applying it.
+    /// Update the font-wide feature draft without applying it.
     pub(crate) fn edit_features(&mut self, value: String) {
         self.features_buf = value;
-        self.features_edited = self.features_buf != self.font.font().features;
+        self.features_edited = self.features_buf != self.font.feature_font().features;
         self.modified |= self.features_edited;
         self.features_status = None;
     }
 
-    /// Discard the feature draft and restore the active master's applied text.
+    /// Discard the feature draft and restore the font's applied text.
     pub(crate) fn revert_features(&mut self) {
-        self.features_buf = self.font.font().features.clone();
+        self.features_buf = self.font.feature_font().features.clone();
         self.features_edited = false;
         self.modified = self
             .font
@@ -877,7 +916,7 @@ impl Workspace {
 
     /// Put generated mark and mkmk lookups in the feature draft for review.
     pub(crate) fn generate_features(&mut self) {
-        let mut draft = self.font.font().clone();
+        let mut draft = self.font.feature_font().clone();
         draft.features = self.features_buf.clone();
         let fea = runebender::text::features::with_generated(&draft);
         if fea == self.features_buf {
@@ -889,32 +928,7 @@ impl Workspace {
     }
 
     fn feature_compile_verdict(&self, features: &str) -> Result<(), String> {
-        use runebender::text::shape::{ShapingFont, ShapingGlyph, ShapingSource};
-
-        let master = self.font.master();
-        let glyphs = std::iter::once(ShapingGlyph {
-            name: ".notdef".into(),
-            advance: 0.0,
-            unicodes: Vec::new(),
-        })
-        .chain(
-            master
-                .glyphs
-                .iter()
-                .filter(|glyph| glyph.name.as_ref() != ".notdef")
-                .map(|glyph| ShapingGlyph {
-                    name: glyph.name.to_string(),
-                    advance: glyph.advance,
-                    unicodes: glyph.codepoint.map(|c| c as u32).into_iter().collect(),
-                }),
-        )
-        .collect();
-        ShapingFont::build(&ShapingSource {
-            units_per_em: master.units_per_em,
-            glyphs,
-            features: features.into(),
-        })
-        .map(|_| ())
+        self.font.project.check_features(features)
     }
 
     fn feature_verdict_status(prefix: &str, verdict: Result<(), String>) -> String {
@@ -936,7 +950,7 @@ impl Workspace {
         self.features_status = Some(Self::feature_verdict_status("Checked", verdict));
     }
 
-    /// Apply the feature draft to the active master and refresh shaping data.
+    /// Apply the shared feature draft to its default source and refresh shaping data.
     pub(crate) fn apply_features(&mut self) {
         let verdict = self.feature_compile_verdict(&self.features_buf);
         if !self.features_edited {
@@ -944,7 +958,9 @@ impl Workspace {
             return;
         }
         let history = self.font_data_history_context();
-        self.font.font_mut().features = self.features_buf.clone();
+        self.font
+            .project
+            .set_feature_text(self.features_buf.clone());
         self.features_edited = false;
         self.modified = true;
         self.finish_font_data_history(history, "feature text");
@@ -988,7 +1004,10 @@ mod size_tests {
         assert_eq!(app.font.glyphs[a].mark.as_deref(), Some("blue"));
         assert_eq!(app.font.glyphs[b].mark.as_deref(), Some("blue"));
         assert!(app.cells[a].mark.is_some() && app.cells[b].mark.is_some());
-        assert_eq!(app.overview_undo[0].master, app.font.active());
+        assert_eq!(
+            Some(app.overview_undo[0].source),
+            app.font.project.source_id(app.font.active())
+        );
         assert_eq!(app.overview_undo[0].glyphs, vec!["mark_a", "mark_b"]);
 
         app.undo_active_edit(false);

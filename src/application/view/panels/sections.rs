@@ -26,7 +26,7 @@ use xilem::view::{FlexSpacer, sized_box};
 /// section folded in the overview, so the inspector stays a concise map of
 /// the document until someone needs to compare outlines.
 pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> {
-    if app.font.master_names().len() < 2 {
+    if app.font.master_names().len() < 2 && !app.can_manage_glyph_layers() {
         return None;
     }
     let pal = &app.palette;
@@ -80,18 +80,61 @@ pub(crate) fn layers_section(app: &Workspace) -> Option<impl WidgetView<Workspac
                     }
                 },
             ),
-            (!app.collapsed.contains("Layers")).then(|| xcolumn(Region::List, rows)),
+            (!app.collapsed.contains("Layers")).then(|| {
+                xcolumn(
+                    Region::List,
+                    (
+                        xcolumn(Region::List, rows),
+                        app.can_manage_glyph_layers()
+                            .then(|| glyph_layer_controls(app)),
+                    ),
+                )
+            }),
         ),
     ))
+}
+
+fn glyph_layer_controls(app: &Workspace) -> Box<xilem::AnyWidgetView<Workspace>> {
+    let pal = &app.palette;
+    xcolumn(
+        Region::List,
+        (
+            label("Glyph layer name")
+                .text_size(TextSize::Body.px())
+                .color(pal.text_muted),
+            text_input(app.layer_name_buf.clone(), |app: &mut Workspace, value| {
+                app.layer_name_buf = value;
+            })
+            .text_color(pal.text)
+            .background_color(pal.field()),
+            xrow(
+                Region::Inline,
+                (
+                    recipes::action(pal, "Copy to layer".into(), |app| {
+                        app.change_sources("layer-add");
+                    }),
+                    recipes::action(pal, "Remove layer".into(), |app| {
+                        app.change_sources("layer-remove");
+                    }),
+                ),
+            ),
+            xrow(
+                Region::Inline,
+                (
+                    recipes::action(pal, "Undo layers".into(), |app| app.change_sources("undo")),
+                    recipes::action(pal, "Redo".into(), |app| app.change_sources("redo")),
+                ),
+            ),
+        ),
+    )
+    .boxed()
 }
 
 /// Masters: one compact row per designspace source. This is deliberately
 /// separate from reference-layer controls: GPUI presents master switching as
 /// a plain list, while underlays belong to the editor's Layers section.
 pub(crate) fn masters_section(app: &Workspace) -> Option<impl WidgetView<Workspace> + use<>> {
-    if app.font.master_names().len() < 2 {
-        return None;
-    }
+    app.font.project.ds_doc.as_ref()?;
     let pal = &app.palette;
     let rows: Vec<_> = app
         .font
@@ -136,7 +179,59 @@ pub(crate) fn masters_section(app: &Workspace) -> Option<impl WidgetView<Workspa
                     }
                 },
             ),
-            (!app.collapsed.contains("Masters")).then(|| xcolumn(Region::List, rows)),
+            (!app.collapsed.contains("Masters")).then(|| {
+                xcolumn(
+                    Region::List,
+                    (
+                        xcolumn(Region::List, rows),
+                        label("Source name")
+                            .text_size(TextSize::Body.px())
+                            .color(pal.text_muted),
+                        text_input(app.source_name_buf.clone(), |app: &mut Workspace, value| {
+                            app.source_name_buf = value;
+                        })
+                        .text_color(pal.text)
+                        .background_color(pal.field()),
+                        label("Uses the axis sliders below")
+                            .text_size(TextSize::Body.px())
+                            .color(pal.text_muted),
+                        xrow(
+                            Region::Inline,
+                            (
+                                recipes::action(pal, "Add source".into(), |app| {
+                                    app.change_sources("add");
+                                }),
+                                recipes::action(pal, "Apply".into(), |app| {
+                                    app.change_sources("update");
+                                }),
+                            ),
+                        ),
+                        xrow(
+                            Region::Inline,
+                            (
+                                recipes::action(pal, "Up".into(), |app| app.change_sources("up")),
+                                recipes::action(pal, "Down".into(), |app| {
+                                    app.change_sources("down");
+                                }),
+                                recipes::action(pal, "Remove".into(), |app| {
+                                    app.change_sources("remove");
+                                }),
+                            ),
+                        ),
+                        xrow(
+                            Region::Inline,
+                            (
+                                recipes::action(pal, "Undo sources".into(), |app| {
+                                    app.change_sources("undo");
+                                }),
+                                recipes::action(pal, "Redo".into(), |app| {
+                                    app.change_sources("redo");
+                                }),
+                            ),
+                        ),
+                    ),
+                )
+            }),
         ),
     ))
 }
@@ -274,18 +369,12 @@ pub(crate) fn shaping_section(app: &Workspace) -> impl WidgetView<Workspace> + u
                 xcolumn(
                     Region::Form,
                     (
-                        if app.interp_preview().is_some() {
-                            xilem::core::one_of::Either::A(
-                                label("Instance glyph preview").color(pal.text_muted),
-                            )
-                        } else {
-                            xilem::core::one_of::Either::B(recipes::field(
-                                pal,
-                                "Preview text",
-                                app.preview_text.clone(),
-                                |app: &mut Workspace, value| app.preview_text = value,
-                            ))
-                        },
+                        recipes::field(
+                            pal,
+                            "Preview text",
+                            app.preview_text.clone(),
+                            |app: &mut Workspace, value| app.preview_text = value,
+                        ),
                         direction_chips(app),
                         xcolumn(
                             Region::List,

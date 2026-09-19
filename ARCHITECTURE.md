@@ -102,7 +102,9 @@ For a first reading, follow this path:
 `document::project::Project` owns a variable font, even when opened from a single UFO.
 `document::variable` stores one glyph with all of its source, intermediate and auxiliary layers, addressed by `SourceId` and `LayerId`.
 `Project::glyph_sources` identifies the subset participating in that glyph's interpolation; an auxiliary layer does not become a source merely by existing.
-Source ordering is fixed during a document session, and reload constructs a new Project.
+Babelfont owns geometry; the preserving adapter retains exact UFO values and metadata that Babelfont cannot represent.
+Stable source identities survive insertion, removal and display-order changes.
+`document/sources.rs` owns structural transactions and their guarded undo history; removing a source never deletes its UFO directory.
 
 `document::source::Master` is a compatibility UFO projection with source-local history and paint caches.
 Project exposes immutable projections through `sources()` and scoped mutations through `edit_source`, `edit_sources`, and `active_font_mut`.
@@ -111,7 +113,7 @@ Use `edit_layer` and `undo_layer` for a specific glyph layer without switching t
 Default-layer edits share the existing editor history, while auxiliary layers have independent histories.
 Do not introduce another mutable source-font accessor.
 
-Project save materializes UFOs from canonical layers and glyph-free metadata templates, preserving font info, libs, layer order, features, kerning, groups, images and data.
+Project save materializes UFOs from canonical Babelfont geometry and preserving Norad templates, preserving font info, libs, layer order, features, kerning, groups, images and data.
 The templates and projections currently duplicate some data to preserve compatibility with existing Norad algorithms.
 They are not separate editable documents.
 Native reload, live edits, proposals, experiments and browser edits cross the same scoped mutation boundary.
@@ -121,6 +123,13 @@ Native reload, live edits, proposals, experiments and browser edits cross the sa
 `document::interpolation` checks structure and interpolates advances, contours, anchors and component transforms using each glyph's own sources.
 Component outlines resolve recursively at the same location, with explicit failures for missing or cyclic components.
 The application reads these results instead of maintaining a second interpolation implementation.
+
+`document::compile` builds a complete Babelfont snapshot and compiles it with fontc in Rust.
+The same immutable OpenType bytes feed HarfRust shaping, Skrifa variable outlines and TTF export.
+`document::compile_metadata` supplies UFO metadata and Designspace rules to that compiler.
+The native preview worker coalesces pending edits and publishes only the current revision; slider changes reuse the compiled font.
+The browser currently compiles synchronously and downloads exported bytes through a thin platform binding.
+Application source controls live in `application/editor/sources.rs`; views dispatch commands and never perform font mutations themselves.
 
 The [dependency and format decision](docs/variable-project-decision.md) records the upstream precision blocker, exact references, preservation policy and supported boundaries.
 

@@ -108,11 +108,13 @@ clap = { version = "4", features = ["derive"], optional = true }
 base64 = { version = "0.22.1", optional = true }
 # Font data and geometry.
 norad = "0.18"
-# Keep the variable-model backend private to document/variable and formats.
-# Do not enable its lossy UFO conversion or compiler in the editor.
-babelfont = { git = "https://github.com/simoncozens/babelfont-rs", rev = "29bdedbbfa7d3150b651dbd7c94fce6b79677ca4", default-features = false, features = ["types", "glyphs"] }
+# Shared variable document and in-memory fontc compilation. UFO persistence uses
+# our preserving Norad adapter rather than Babelfont's narrowing UFO converter.
+babelfont = { git = "https://github.com/simoncozens/babelfont-rs", rev = "29bdedbbfa7d3150b651dbd7c94fce6b79677ca4", default-features = false, features = ["types", "glyphs", "fontir"] }
 # Coordinate types for the private Babelfont adapter; already required by Babelfont.
 fontdrasil = "=1.0.0"
+# Compile our UFO-derived Babelfont source without Glyphs-specific FEA rewrites.
+fontc = { version = "=1.0.0", default-features = false }
 kurbo = "0.13"
 linesweeper = "0.4"
 # Reads compiled TTF/OTF outlines.

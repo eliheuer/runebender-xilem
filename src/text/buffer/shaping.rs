@@ -10,6 +10,16 @@ impl TextBuffer {
     /// when there is no features.fea or it does not compile. Built once
     /// and cached until the inventory changes.
     pub(super) fn shaping_font(&self) -> Option<Rc<ShapingFont>> {
+        if let Some(bytes) = &self.compiled_font {
+            if let Some(cached) = self.shaping_font.get() {
+                return cached;
+            }
+            let built = ShapingFont::from_bytes((**bytes).clone())
+                .map(|font| Rc::new(font.at_normalized(self.normalized.clone())))
+                .ok();
+            self.shaping_font.set(built.clone());
+            return built;
+        }
         if self.glyph_inventory.features.trim().is_empty() {
             return None;
         }

@@ -315,7 +315,14 @@ pub(crate) fn status(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             })
             .unwrap_or_default(),
     };
-    let text = if app.note.is_empty() {
+    let text = if (app.has_text_session || !app.preview_text.is_empty())
+        && let Some(status) = match app.font.preview_font() {
+            Ok(Some(_)) => None,
+            Ok(None) => Some("Preview compiling…".to_string()),
+            Err(error) => Some(format!("Preview unavailable: {error}")),
+        } {
+        format!("{text}   {status}")
+    } else if app.note.is_empty() {
         text
     } else {
         format!("{}   {}", text, app.note)

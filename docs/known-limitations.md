@@ -74,9 +74,11 @@ that Runebender's maintainers have audited every third-party crate.
 
 The Project owns glyph-local layers, but existing Norad tools still use guarded full-source projections and paint caches.
 This duplicates some data and reconciles changes at the end of each scoped edit.
-Font-wide metadata remains in UFO preservation templates, and new source insertion or reordering is not exposed during an open session.
+Font-wide metadata remains in UFO preservation templates.
+Source authoring works inside existing continuous axes; importing another existing UFO, creating axes and extending their bounds still need UI workflows.
+Removal and reordering are guarded while live experiment branches retain source-index references.
 
-The pinned Babelfont model cannot preserve exact UFO advances or fractional kerning, so it is not the canonical glyph store.
+Babelfont owns geometry, with exact advances, affine coefficients, fractional kerning and UFO-only metadata retained by the preserving adapter.
 Its axis conversion and fontdrasil variation backend are used through private adapters with editable-value rounding disabled.
 Rust Babelfont JSON is explicitly unsupported; Python directory packages have a separate checked import path that saves to new UFO/Designspace files.
 
@@ -84,6 +86,12 @@ Unsupported Designspace extensions, discrete axes, cross-axis mappings, anisotro
 Interpolation needs a default glyph layer, compatible contours/components/anchors and finite coordinates.
 Auxiliary layers are preserved and individually editable; they do not automatically participate in interpolation.
 Glyph metadata and guides are retained from the default source rather than interpolated.
+Live preview/export compiles the whole font; Counterpunch's subset-compilation optimization is not implemented.
+Desktop compilation runs in a background worker, while the browser currently compiles synchronously.
+The compiler emits TrueType variations; VARC export and exhaustive parity for every UFO/OpenType metadata field are not claimed.
+An explicit GDEF component category is rejected because the pinned Babelfont IR adapter cannot express it.
+Features referencing excluded glyphs fail compilation instead of being silently rewritten.
+The browser can download compiled TTFs, but importing and saving arbitrary UFO/Designspace sources remain desktop workflows.
 See [the format contract and upstream evidence](variable-project-decision.md) for the exact supported subset.
 
 ## Reproducible evidence

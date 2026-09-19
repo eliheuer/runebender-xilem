@@ -315,7 +315,11 @@ impl Workspace {
             self.font.replace_glyph(index, glyph);
         }
         self.overview_undo.push(OverviewEditBatch {
-            master: self.font.active(),
+            source: self
+                .font
+                .project
+                .source_id(self.font.active())
+                .expect("active source identity"),
             glyphs: names,
         });
         self.overview_redo.clear();

@@ -324,7 +324,10 @@ pub(crate) fn app_logic(app: &mut Workspace) -> impl WidgetView<Workspace> + use
         ai_pump(
             chat_pump(
                 export_pump(
-                    nodes_pump(content, app.nodes.job.clone()),
+                    nodes_pump(
+                        preview_pump(content, app.font.project.preview_job().is_some()).boxed(),
+                        app.nodes.job.clone(),
+                    ),
                     app.export_job.clone(),
                 ),
                 app.chat.job.clone(),
@@ -517,7 +520,34 @@ fn nodes_pump<V: WidgetView<Workspace>>(
     )
 }
 
-/// Wake the application once a background font export has finished.
+/// Poll the preview queue until its latest revision has finished compiling.
+#[cfg(not(target_arch = "wasm32"))]
+fn preview_pump<V: WidgetView<Workspace>>(
+    view: V,
+    pending: bool,
+) -> impl WidgetView<Workspace> + use<V> {
+    use xilem::core::{MessageProxy, fork};
+    use xilem::view::task;
+    fork(
+        view,
+        pending.then(|| {
+            task(
+                |proxy: MessageProxy<()>, _: &mut Workspace| async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        if proxy.message(()).is_err() {
+                            return;
+                        }
+                    }
+                },
+                |app: &mut Workspace, ()| {
+                    let _ = app.font.project.request_preview();
+                },
+            )
+        }),
+    )
+}
+
 fn export_pump<V: WidgetView<Workspace>>(
     view: V,
     job: Option<export::ExportJob>,

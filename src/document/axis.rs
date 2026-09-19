@@ -23,7 +23,7 @@ pub struct Axis {
 }
 
 impl Axis {
-    fn backend(&self) -> Result<babelfont::Axis, String> {
+    pub(super) fn backend(&self) -> Result<babelfont::Axis, String> {
         let tag: &[u8; 4] = self
             .tag
             .as_bytes()

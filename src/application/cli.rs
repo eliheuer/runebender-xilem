@@ -74,6 +74,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Compile a UFO or Designspace with the same Rust pipeline as live preview.
+    Compile {
+        /// Editable source to read without modifying it.
+        source: PathBuf,
+        /// New TTF file to write.
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Convert all live metaballs in a UFO to cubic outlines in a new UFO.
     CollapseMetaballs {
         /// Input UFO; never modified.
@@ -391,6 +399,32 @@ pub(crate) fn run() -> Startup {
         return Startup::Editor(cli.font);
     };
     let code = match &command {
+        Command::Compile { source, out } => {
+            let result = (|| -> Result<usize, String> {
+                use std::io::Write as _;
+                let project = runebender::document::project::Project::load(source)?;
+                let compiled = project.compile()?;
+                let mut file = std::fs::OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .open(out)
+                    .map_err(|error| error.to_string())?;
+                file.write_all(&compiled.bytes)
+                    .map_err(|error| error.to_string())?;
+                Ok(compiled.bytes.len())
+            })();
+            match result {
+                Ok(bytes) => {
+                    if json {
+                        println!("{}", json!({"ok":true,"output":out,"bytes":bytes}));
+                    } else {
+                        println!("Compiled {} ({bytes} bytes)", out.display());
+                    }
+                    0
+                }
+                Err(error) => fail(json, exit::USAGE, &error),
+            }
+        }
         Command::Info { source, glyphs } => info(source, *glyphs, json),
         Command::Proof {
             source,

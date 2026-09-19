@@ -23,6 +23,9 @@ use crate::document::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
 use crate::formats::lib_keys::{hoi_quad_at, read_hoi_intermediates};
 
+#[path = "sources.rs"]
+mod sources;
+
 /// One designspace axis, in design coordinates.
 #[derive(Debug, Clone)]
 pub struct AxisInfo {
@@ -44,9 +47,10 @@ pub struct AxisInfo {
 /// An open variable font with canonical glyph-local layers and source metadata.
 /// UFO projections support existing tools through scoped edits.
 pub struct Project {
-    /// Compatibility projections, in fixed source order; never directly mutable outside Project.
+    /// Compatibility projections, in display order; never directly mutable outside Project.
     masters: Vec<Master>,
-    variable: VariableData,
+    pub(super) variable: VariableData,
+    source_history: sources::SourceHistory,
     /// Index into `masters` of the master being edited.
     pub active: usize,
     /// Style names for the master switcher, one per master.
@@ -61,10 +65,9 @@ pub struct Project {
     pub location: Location,
     /// Per-glyph master point-compatibility (designspaces only).
     pub compat: HashMap<String, bool>,
-    /// What fontc compiles on File > Export: the designspace the
-    /// project was opened from, or the single UFO. `None` until the
-    /// project has a home on disk, as after File > New but before
-    /// Save As.
+    /// Original source path used to choose export and new-source destinations.
+    /// Compilation reads the live document rather than this file.
+    /// `None` until a new project has a home on disk.
     pub export_source: Option<PathBuf>,
     /// Named designspace instances: style name and normalized
     /// location, for the Instances rows under the axis sliders.
@@ -73,7 +76,7 @@ pub struct Project {
     /// later axis edits, can be written back. `None` for single-UFO
     /// projects.
     pub ds_doc: Option<norad::designspace::DesignSpaceDocument>,
-    /// Instance edits not yet written to the designspace file.
+    /// Source or instance edits not yet written to the Designspace file.
     pub ds_dirty: bool,
     /// Sparse "brace" sources: per-glyph intermediate masters living
     /// in a named layer of a master UFO at their own location. In
@@ -83,7 +86,7 @@ pub struct Project {
     pub experiments: super::experiments::Experiments,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// One sparse intermediate source (a Glyphs brace layer).
 pub struct BraceSource {
     /// Index into `masters`: the UFO holding the layer.
@@ -140,6 +143,37 @@ pub fn read_glyphspackage(root: &Path) -> Result<HashMap<String, String>, String
 }
 
 impl Project {
+    pub(super) fn default_source_index(&self) -> usize {
+        self.master_locations
+            .iter()
+            .position(|location| location.values().all(|value| *value == 0.0))
+            .unwrap_or(0)
+    }
+
+    /// Source carrying the font-wide feature text, independent of editor selection.
+    pub fn feature_source(&self) -> &Master {
+        &self.masters[self.default_source_index()]
+    }
+
+    /// Apply shared feature text to the default source without rewriting other sources.
+    pub fn set_feature_text(&mut self, text: String) -> bool {
+        if self.feature_source().font.features == text {
+            return false;
+        }
+        let id = self
+            .source_id(self.default_source_index())
+            .expect("default source identity");
+        let mut source = self.edit_source(id).expect("default source exists");
+        source.font.features = text;
+        source.dirty = true;
+        true
+    }
+
+    /// The canonical Babelfont geometry shared by all sources and compiler snapshots.
+    pub(super) fn variable_font(&self) -> &babelfont::Font {
+        &self.variable.font
+    }
+
     /// The master sitting exactly at `location`, if any. Landing on a
     /// master is a master switch, not an interpolation: the web treats
     /// it that way so the outline stays editable.
@@ -189,6 +223,7 @@ impl Project {
             .unwrap_or_else(|| "Regular".into());
         let mut project = Self {
             variable: VariableData::default(),
+            source_history: sources::SourceHistory::default(),
             masters: vec![model],
             active: 0,
             master_names: vec![name.into()],
@@ -296,6 +331,7 @@ impl Project {
             model.dirty = true;
             let mut project = Self {
                 variable: VariableData::default(),
+                source_history: sources::SourceHistory::default(),
                 masters: vec![model],
                 active: 0,
                 master_names: vec![name],
@@ -334,6 +370,7 @@ impl Project {
                 .into();
             Ok(Self {
                 variable: VariableData::default(),
+                source_history: sources::SourceHistory::default(),
                 masters: vec![model],
                 active: 0,
                 master_names: vec![name],
@@ -513,6 +550,7 @@ impl Project {
         let mut project = Self {
             masters,
             variable,
+            source_history: sources::SourceHistory::default(),
             active: default_index,
             master_names,
             axes,
@@ -632,7 +670,7 @@ impl Project {
     /// Glyphs.
     pub fn reinterpolated_from_others(&self, glyph_name: &str) -> Result<norad::Glyph, String> {
         let (layers, locations) =
-            self.interpolation_layers(glyph_name, Some(SourceId(self.active)))?;
+            self.interpolation_layers(glyph_name, self.source_id(self.active))?;
         if layers.len() == 1 {
             return Ok(layers[0].clone());
         }
@@ -849,7 +887,7 @@ impl Project {
         let mut sources = Vec::new();
         for (index, source) in self.masters.iter().enumerate() {
             let id = LayerId {
-                source: SourceId(index),
+                source: self.source_id(index).expect("source index"),
                 name: source.font.default_layer().name().to_string(),
             };
             if glyph.layer(&id).is_some() {
@@ -865,7 +903,7 @@ impl Project {
         }
         for source in &self.brace {
             let id = LayerId {
-                source: SourceId(source.master),
+                source: self.source_id(source.master).expect("brace source index"),
                 name: source.layer.clone(),
             };
             if glyph.layer(&id).is_some() {
@@ -969,27 +1007,27 @@ impl Project {
                 )
             })
             .collect();
+        let mut result = glyph_name.to_owned();
         for rule in &doc.rules.rules {
-            let applies = rule.condition_sets.is_empty()
-                || rule.condition_sets.iter().any(|set| {
-                    set.conditions.iter().all(|c| {
-                        let Some(&value) = design.get(c.name.as_str()) else {
-                            return false;
-                        };
-                        c.minimum.is_none_or(|min| value >= min as f64 - 1e-6)
-                            && c.maximum.is_none_or(|max| value <= max as f64 + 1e-6)
-                    })
-                });
-            if !applies {
-                continue;
-            }
-            for sub in &rule.substitutions {
-                if sub.name.as_str() == glyph_name {
-                    return Some(sub.with.to_string());
-                }
+            let applies = rule.condition_sets.iter().any(|set| {
+                set.conditions.iter().all(|c| {
+                    let Some(&value) = design.get(c.name.as_str()) else {
+                        return false;
+                    };
+                    c.minimum.is_none_or(|min| value >= f64::from(min))
+                        && c.maximum.is_none_or(|max| value <= f64::from(max))
+                })
+            });
+            if applies
+                && let Some(sub) = rule
+                    .substitutions
+                    .iter()
+                    .find(|sub| sub.name.as_str() == result)
+            {
+                result = sub.with.to_string();
             }
         }
-        None
+        (result != glyph_name).then_some(result)
     }
 
     /// The master being edited.
@@ -999,7 +1037,7 @@ impl Project {
 
     /// The master being edited, mutably.
     pub fn active_font_mut(&mut self) -> SourceEdit<'_> {
-        self.edit_source(SourceId(self.active))
+        self.edit_source(self.source_id(self.active).expect("active source identity"))
             .expect("active source exists")
     }
 
@@ -1008,10 +1046,24 @@ impl Project {
         &self.masters
     }
 
+    /// Stable identity of the source at a display index.
+    pub fn source_id(&self, index: usize) -> Option<SourceId> {
+        self.variable.source_ids.get(index).copied()
+    }
+
+    /// Current display index of a stable source identity.
+    pub fn source_index(&self, id: SourceId) -> Option<usize> {
+        self.variable
+            .source_ids
+            .iter()
+            .position(|candidate| *candidate == id)
+    }
+
     /// Edit one source projection and reconcile its changes into glyph-local layers.
     pub fn edit_source(&mut self, id: SourceId) -> Option<SourceEdit<'_>> {
+        let index = self.source_index(id)?;
         Some(SourceEdit {
-            source: self.masters.get_mut(id.0)?,
+            source: self.masters.get_mut(index)?,
             data: &mut self.variable,
             id,
         })
@@ -1072,14 +1124,12 @@ impl Project {
         if after == before || after.name() != before.name() {
             return false;
         }
-        let default_layer = self.masters[layer.source.0]
-            .font
-            .default_layer()
-            .name()
-            .as_str()
-            == layer.name;
+        let index = self
+            .source_index(layer.source)
+            .expect("layer source identity");
+        let default_layer = self.masters[index].font.default_layer().name().as_str() == layer.name;
         if default_layer {
-            self.masters[layer.source.0].history.record(name, &before);
+            self.masters[index].history.record(name, &before);
         } else {
             self.variable
                 .histories
@@ -1119,14 +1169,12 @@ impl Project {
         else {
             return false;
         };
-        let default_layer = self.masters[layer.source.0]
-            .font
-            .default_layer()
-            .name()
-            .as_str()
-            == layer.name;
+        let index = self
+            .source_index(layer.source)
+            .expect("layer source identity");
+        let default_layer = self.masters[index].font.default_layer().name().as_str() == layer.name;
         let history = if default_layer {
-            &mut self.masters[layer.source.0].history
+            &mut self.masters[index].history
         } else {
             self.variable.histories.entry(layer.clone()).or_default()
         };
@@ -1145,7 +1193,7 @@ impl Project {
     pub fn save(&mut self) -> Result<(), String> {
         for index in 0..self.masters.len() {
             let font = self
-                .source_snapshot(SourceId(index))
+                .source_snapshot(self.source_id(index).expect("source identity"))
                 .ok_or("missing source data")?;
             let source = &mut self.masters[index];
             if let Some(parent) = source

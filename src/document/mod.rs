@@ -16,6 +16,9 @@
 
 pub mod agent;
 pub mod axis;
+mod babelfont;
+pub mod compile;
+mod compile_metadata;
 pub mod compose;
 pub mod composites;
 pub mod edit_batch;

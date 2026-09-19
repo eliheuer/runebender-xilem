@@ -21,6 +21,24 @@ if (output) fs.mkdirSync(output, { recursive: true });
       const state = () => frame.evaluate(() => window.runebender.state());
       const metrics = () => frame.evaluate(() => window.runebender.metrics());
       const shot = async name => { if (output) await page.screenshot({ path: path.join(output, `${name}-${dpr}x.png`) }); };
+      const exportFont = async () => {
+        const download = page.waitForEvent('download');
+        await page.mouse.click(111, 15);
+        await page.mouse.click(146, 166);
+        const file = await download;
+        assert.ok(file.suggestedFilename().endsWith('.ttf'));
+        const bytes = fs.readFileSync(await file.path());
+        assert.equal(bytes.readUInt32BE(0), 0x00010000, 'export is a TrueType font');
+        const tables = new Map();
+        for (let i = 0; i < bytes.readUInt16BE(4); i++) {
+          const record = 12 + i * 16, tag = bytes.toString('ascii', record, record + 4);
+          const offset = bytes.readUInt32BE(record + 8), length = bytes.readUInt32BE(record + 12);
+          assert.ok(offset + length <= bytes.length, `${tag} table lies inside the font`);
+          tables.set(tag, bytes.subarray(offset, offset + length));
+        }
+        for (const tag of ['cmap', 'glyf', 'hmtx', 'GPOS']) assert.ok(tables.has(tag), `${tag} exported`);
+        return tables;
+      };
       const setTheme = async theme => {
         await page.mouse.click(393, 15);
         await page.mouse.click(515, 284);
@@ -71,12 +89,17 @@ if (output) fs.mkdirSync(output, { recursive: true });
       await page.mouse.dblclick(410, 150, { delay: 100 });
       await settle(); assert.equal((await state()).glyph, 'exclam');
       await shot('editor-gray');
+      const beforeExport = dpr === 1 ? await exportFont() : null;
       const original = (await state()).points, point = (await markers()).first;
       assert.ok(point, 'outline point markers are painted');
       await page.mouse.move(...point); await page.mouse.down();
       await page.mouse.move(point[0] + 24, point[1] - 16, { steps: 12 }); await page.mouse.up();
       await settle(); const edited = (await state()).points;
       assert.notDeepEqual(edited, original, 'drag changes actual font coordinates');
+      if (beforeExport) {
+        const afterExport = await exportFont();
+        assert.notDeepEqual(afterExport.get('glyf'), beforeExport.get('glyf'), 'export compiles unsaved outline edits');
+      }
       await page.keyboard.press('Meta+z'); assert.deepEqual((await state()).points, original, 'Cmd-Z restores outline');
       await page.keyboard.press('Control+Shift+z'); assert.deepEqual((await state()).points, edited, 'redo restores edit');
       await settle();

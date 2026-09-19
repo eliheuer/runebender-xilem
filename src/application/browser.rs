@@ -24,6 +24,13 @@ use masonry::ui_events::{
 };
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen(
+    inline_js = "export function download_font(name, data) { const url = URL.createObjectURL(new Blob([data], {type:'font/ttf'})); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }"
+)]
+extern "C" {
+    pub(crate) fn download_font(name: &str, data: &[u8]);
+}
 use xilem::WidgetView;
 use xilem::core::ViewPathTracker;
 use xilem::core::{DynMessage, MessageCtx, ProxyError, RawProxy, SendMessage, ViewId};
@@ -493,6 +500,6 @@ pub(crate) fn desktop_action(action: crate::application::widgets::shortcuts::App
     use crate::application::widgets::shortcuts::AppAction as A;
     matches!(
         action,
-        A::Save | A::SaveAs | A::OpenFont | A::NewFont | A::RevertToSaved | A::ExportFont | A::Quit
+        A::Save | A::SaveAs | A::OpenFont | A::NewFont | A::RevertToSaved | A::Quit
     )
 }

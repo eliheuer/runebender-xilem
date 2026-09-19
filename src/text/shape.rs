@@ -3,17 +3,11 @@
 
 //! Real OpenType shaping for the editor's text buffer.
 //!
-//! harfrust shapes a *compiled* font, and what we have is a UFO being
-//! edited. So we build a font on the fly that has everything shaping
-//! needs and nothing it doesn't: a cmap, advances, and the layout tables
-//! compiled from the source's own features.fea by fea-rs. No outlines:
-//! the editor draws those itself from the live paths, and shaping never
-//! looks at them.
-//!
-//! That means the font's own rules do the work: init/medi/fina come from
-//! its `init`/`medi`/`fina` features rather than our joining table, and
-//! required ligatures like lam-alef come from `rlig`, which no amount of
-//! per-character logic would have produced.
+//! The editor supplies a complete live font from `document::compile`, including
+//! variable outlines, advances and layout tables. The shaper receives the same
+//! normalized coordinates used by the outline renderer.
+//! `ShapingSource` also supports a lightweight single-master font for standalone
+//! feature checks and fallback while a new document revision is compiling.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -82,6 +76,7 @@ pub struct ShapedGlyph {
 pub struct ShapingFont {
     bytes: Vec<u8>,
     names: Vec<String>,
+    normalized: Vec<f64>,
 }
 
 /// features.fea handed to fea-rs from memory: there is no filesystem in
@@ -112,6 +107,39 @@ impl SourceResolver for InMemoryFea {
 const FEA_ROOT: &str = "features.fea";
 
 impl ShapingFont {
+    /// Use a complete compiled font and its actual post-table glyph order.
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, String> {
+        use skrifa::{MetadataProvider as _, raw::TableProvider as _};
+        let font = skrifa::FontRef::new(&bytes).map_err(|error| error.to_string())?;
+        let count = font.maxp().map_err(|error| error.to_string())?.num_glyphs();
+        let glyph_names = font.glyph_names();
+        let names = (0..count)
+            .map(|id| {
+                glyph_names
+                    .get(skrifa::GlyphId::new(u32::from(id)))
+                    .map(|name| name.to_string())
+                    .ok_or_else(|| format!("compiled font has no name for glyph {id}"))
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(Self {
+            bytes,
+            names,
+            normalized: Vec::new(),
+        })
+    }
+
+    /// Set normalized design coordinates in the font's axis order.
+    /// Shaping uses the same location as the variable outline preview.
+    pub fn at_normalized(mut self, normalized: Vec<f64>) -> Self {
+        self.normalized = normalized;
+        self
+    }
+
+    /// Names in compiled glyph-id order, including substitutions and `.notdef`.
+    pub fn glyph_order(&self) -> &[String] {
+        &self.names
+    }
+
     /// Compile a font for shaping.
     ///
     /// Fails when the feature file does not compile. That happens
@@ -210,6 +238,7 @@ impl ShapingFont {
         Ok(Self {
             bytes: builder.build(),
             names,
+            normalized: Vec::new(),
         })
     }
 
@@ -246,7 +275,17 @@ impl ShapingFont {
     ) -> Result<Vec<ShapedGlyph>, String> {
         let font = FontRef::new(&self.bytes).map_err(|e| format!("shaping font: {e}"))?;
         let data = ShaperData::new(&font);
-        let shaper = data.shaper(&font).build();
+        let instance = harfrust::ShaperInstance::from_coords(
+            &font,
+            self.normalized.iter().map(|v| {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "OpenType variation coordinates have 14 fractional bits"
+                )]
+                harfrust::NormalizedCoord::from_f32(*v as f32)
+            }),
+        );
+        let shaper = data.shaper(&font).instance(Some(&instance)).build();
 
         let mut buffer = UnicodeBuffer::new();
         // One cluster per character: a mark keeps its own cluster

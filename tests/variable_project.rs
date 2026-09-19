@@ -155,6 +155,96 @@ fn mapped_axes_sources_and_instances_use_the_same_coordinates() {
 }
 
 #[test]
+fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
+    let (scratch, mut project) = fixture();
+    let original = project.source_snapshot(SourceId(1)).unwrap();
+    let target = location(0.25, 0.0);
+    let expected = project.try_interpolated_at("A", &target).unwrap();
+    let added = project
+        .add_interpolated_source("Medium", "Medium.ufo", &target)
+        .unwrap();
+    assert_eq!(
+        project.source_snapshot(added).unwrap().get_glyph("A"),
+        Some(&expected)
+    );
+    assert!(project.move_source(SourceId(1), 0).unwrap());
+    assert_eq!(project.source_index(SourceId(1)), Some(0));
+    assert_eq!(project.source_snapshot(SourceId(1)).unwrap(), original);
+    assert_eq!(project.source_index(added), Some(4));
+    project.save().unwrap();
+    let reloaded = Project::load(&scratch.0.join("Font.designspace")).unwrap();
+    assert_eq!(reloaded.master_names[0].as_ref(), "Heavy");
+    assert_eq!(reloaded.sources()[4].font.get_glyph("A"), Some(&expected));
+    project.remove_source(added).unwrap();
+    assert!(
+        scratch.0.join("Medium.ufo").exists(),
+        "removing a source must retain its files"
+    );
+    assert!(project.source_snapshot(added).is_none());
+    assert!(project.undo_sources(false).unwrap());
+    assert_eq!(
+        project.source_snapshot(added).unwrap().get_glyph("A"),
+        Some(&expected)
+    );
+    assert!(project.undo_sources(true).unwrap());
+    assert!(project.source_snapshot(added).is_none());
+    assert!(
+        project.remove_source(SourceId(0)).is_err(),
+        "the default source must remain"
+    );
+}
+
+#[test]
+fn full_source_can_replace_intermediate_participation_without_losing_the_layer() {
+    let (scratch, mut project) = fixture();
+    let original = project.source_snapshot(SourceId(0)).unwrap();
+    let target = location(0.5, 0.0);
+    let expected = project.try_interpolated_at("A", &target).unwrap();
+    let added = project
+        .add_interpolated_source("Medium", "Medium.ufo", &target)
+        .unwrap();
+    assert!(project.brace.is_empty());
+    assert_eq!(project.try_interpolated_at("A", &target).unwrap(), expected);
+    assert_eq!(project.source_snapshot(SourceId(0)).unwrap(), original);
+    assert_eq!(
+        project.source_snapshot(added).unwrap().get_glyph("A"),
+        Some(&expected)
+    );
+    project.save().unwrap();
+    let reloaded = Project::load(&scratch.0.join("Font.designspace")).unwrap();
+    assert!(reloaded.brace.is_empty());
+    assert_eq!(
+        reloaded.try_interpolated_at("A", &target).unwrap(),
+        expected
+    );
+    assert!(project.undo_sources(false).unwrap());
+    assert_eq!(project.brace.len(), 1);
+}
+
+#[test]
+fn source_undo_refuses_to_overwrite_later_edits_and_layer_operations_preserve_other_glyphs() {
+    let (_scratch, mut project) = fixture();
+    let original = project.source_snapshot(SourceId(0)).unwrap();
+    let from = LayerId {
+        source: SourceId(0),
+        name: original.default_layer().name().to_string(),
+    };
+    let layer = project.add_glyph_layer("A", &from, "backup").unwrap();
+    assert!(project.variable_glyph("A").unwrap().layer(&layer).is_some());
+    project.edit_layer("A", &from, |glyph| glyph.width += 10.0);
+    assert!(project.undo_sources(false).is_err());
+    assert!(project.undo_layer("A", &from, false));
+    assert!(project.undo_sources(false).unwrap());
+    assert_eq!(project.source_snapshot(SourceId(0)).unwrap(), original);
+    assert!(project.undo_sources(true).unwrap());
+    project.remove_glyph_layer("A", &layer).unwrap();
+    assert!(project.variable_glyph("A").unwrap().layer(&layer).is_none());
+    assert!(project.variable_glyph("A").unwrap().layer(&from).is_some());
+    assert!(project.undo_sources(false).unwrap());
+    assert!(project.variable_glyph("A").unwrap().layer(&layer).is_some());
+}
+
+#[test]
 fn interpolation_is_glyph_local_and_independent_of_selected_source() {
     let (_scratch, mut project) = fixture();
     let a = project

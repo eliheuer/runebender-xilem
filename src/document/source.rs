@@ -50,7 +50,7 @@ pub struct GlyphPoint {
     pub index: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// One glyph, ready to paint: outline in font units (Y-up), advance
 /// width, and identifying info.
 pub struct GlyphEntry {
@@ -79,7 +79,7 @@ pub struct GlyphEntry {
     pub ink: kurbo::Rect,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// One UFO master with its change tracking and a paint-ready glyph cache.
 pub struct Master {
     /// The loaded UFO.

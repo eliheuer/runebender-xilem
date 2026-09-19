@@ -514,7 +514,7 @@ fn import_master(
                 .encode_xml()
                 .map_err(|e| format!("{}: {e}", source.name))?;
             if !source.exported && is_default {
-                skipped.push(plist::Value::String(source.name.clone()));
+                skipped.push(source.name.clone());
             }
             font.layers
                 .get_or_create_layer(&layer_name)
@@ -555,12 +555,7 @@ fn import_master(
             .or_default()
             .insert(side(right, "public.kern2.")?, *value);
     }
-    if !skipped.is_empty() {
-        font.lib.insert(
-            "public.skipExportGlyphs".into(),
-            plist::Value::Array(skipped),
-        );
-    }
+    crate::document::model::glyph_metadata::set_skipped_exports(&mut font, skipped);
     let features = path.join("features.fea");
     if features.exists() {
         font.features = std::fs::read_to_string(features).map_err(|e| e.to_string())?;
@@ -665,12 +660,7 @@ mod tests {
         );
         assert_eq!(font.kerning.get("A").unwrap().get("V"), Some(&-80.0));
         assert_eq!(
-            font.lib
-                .get("public.skipExportGlyphs")
-                .unwrap()
-                .as_array()
-                .unwrap()[0]
-                .as_string(),
+            crate::document::model::glyph_metadata::skipped_exports(&font).next(),
             Some("A.alt")
         );
     }

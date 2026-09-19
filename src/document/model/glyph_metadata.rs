@@ -5,6 +5,28 @@
 
 use serde::{Deserialize, Serialize};
 
+const SKIP_EXPORT_GLYPHS: &str = "public.skipExportGlyphs";
+
+pub(crate) fn skipped_exports(font: &norad::Font) -> impl Iterator<Item = &str> {
+    font.lib
+        .get(SKIP_EXPORT_GLYPHS)
+        .and_then(plist::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(plist::Value::as_string)
+}
+
+pub(crate) fn set_skipped_exports(font: &mut norad::Font, names: Vec<String>) {
+    if names.is_empty() {
+        font.lib.remove(SKIP_EXPORT_GLYPHS);
+    } else {
+        font.lib.insert(
+            SKIP_EXPORT_GLYPHS.into(),
+            plist::Value::Array(names.into_iter().map(plist::Value::String).collect()),
+        );
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Summary data for one glyph, enough to draw a glyph-grid cell without loading outlines.

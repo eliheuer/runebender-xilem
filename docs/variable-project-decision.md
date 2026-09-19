@@ -36,8 +36,8 @@ This supports keeping storage, glyph-local layers, and source participation dist
 Upstream Babelfont 0.2.1 is MIT OR Apache-2.0, Rust 1.85+, with a 2026-09-10 HEAD and ongoing converter work.
 It models font axes, mapped design locations, masters, glyph-local axes, default/associated/free layers, intermediate locations, components, anchors, features, and kerning.
 Feature-gated converters cover UFO/Designspace, Glyphs, FontLab, FontForge, Fontra, RoboCJK, TTF and VFB; support is converter-specific, not a round-trip guarantee.
-Native core builds without the compiler; WASM has UUID JS support, but the default feature set also enables Rayon and fontc.
-The selected core disables defaults and enables `types` and `glyphs`: omitting `glyphs` produces unresolved imports in three upstream filters, and `types` annotations are imported unconditionally.
+The dependency can build without its compiler; WASM has UUID JS support, but the default feature set also enables Rayon and fontc.
+The selected core disables defaults and enables `types`, `glyphs` and `fontir`: omitting `glyphs` produces unresolved imports in three upstream filters, and `types` annotations are imported unconditionally.
 
 ## Preservation blocker and choice
 
@@ -46,40 +46,51 @@ The selected core disables defaults and enables `types` and `glyphs`: omitting `
 These are blockers to using that converter as authoritative editable storage.
 `cargo test --test babelfont_contract --locked` reproduces precision and fractional-kerning limitations against the actual pinned dependency.
 
-Use a Runebender-owned Project with glyph-local layer ownership and explicit source/location identity.
-Keep exact UFO glyph payloads and format metadata in preservation adapters; do not round-trip user files through Babelfont to obtain a variable model.
-Keep Babelfont behind a private, checked adapter so native JSON and computational use can be extended or the dependency replaced without UI type changes.
-Existing tools use guarded source projections while they migrate to glyph/layer operations; mutable access must commit back to the Project before save, interpolation, or another source edit.
-Undo, redo and external reload must cross the same boundary.
-Never treat a missing source, an invalid coordinate map, or incompatible interpolation structures as successful conversion.
+Use Counterpunch as the primary capability benchmark: Babelfont geometry, live compilation, shaped variable previews and interpolated source creation.
+Runebender keeps those operations in Rust and treats UFO/Designspace as editable source formats.
+The difference in persistence must not be used to justify a weaker computational pipeline.
 
 ## Implemented boundary
 
-The selected dependency is upstream Babelfont at the exact revision above, with `default-features = false` and `types,glyphs` enabled.
-The private coordinate adapter uses its `Axis` conversions.
-The variation adapter uses the same `fontdrasil` 1.0.0 backend as that revision, with `RoundingBehaviour::None` for editable f64 values.
-This replaces the local hand-written variation-model implementation without converting glyph geometry to Babelfont's narrower layer model.
-Neither dependency's types appear in the application-facing API.
+The selected dependency is upstream Babelfont at the exact revision above, with `default-features = false` and `types,glyphs,fontir` enabled.
+The direct fontc dependency is pinned to 1.0.0 with default features disabled, matching Babelfont's fontir/fontbe family.
+Enabling it required the compatible ICU 2.1 normalizer, properties and segmenter versions in both lockfiles; Parley accepts that range.
+The added compiler graph passes the RustSec advisory check; this is dependency selection and advisory review, not a claim of a full third-party source audit.
+`document::variable` owns Babelfont glyph geometry and a preserving Norad projection for metadata, exact advances and exact affine coefficients.
+`document::babelfont` reconciles geometry through that boundary without narrowing the saved UFO values.
+Source-wide metadata remains in preservation templates.
+This is not yet a complete migration of every editing algorithm and metadata field to Babelfont APIs.
 
-Project now owns a glyph-keyed store of layers and glyph-free source metadata templates.
-`SourceId`, `LayerId`, `VariableGlyph` and `GlyphSource` describe identity and participation independently of editor selection.
-`glyph_sources` includes only layers that participate in that glyph's model, so intermediate and missing non-default layers are genuinely glyph-local.
-`edit_layer` and `undo_layer` address a layer directly; default-layer history remains shared with the existing editor commands.
-Source order is fixed until reload.
+Existing Norad editing algorithms use scoped source guards.
+Guards reconcile edits into Babelfont before another Project operation can run.
+Save materializes the canonical geometry into the preserving UFO payload.
+The compatibility projections cost memory and a comparison pass per scoped edit.
+`SourceId`, `LayerId`, `VariableGlyph` and `GlyphSource` separate stable identity, source order and interpolation participation.
 
-Existing Norad editing algorithms run on source projections through scoped guards.
-Guards reconcile changed glyphs, added/deleted layers and source metadata into the owned store before another Project call is possible.
-The projections deliberately retain full payloads while those tools migrate, which costs memory and a comparison pass on each scoped edit.
-Save and interpolation read canonical glyph layers, not whichever projection is selected in the editor.
-Live edits, experiments, proposal installation, source switching, browser edits, undo and reload have been routed through this boundary.
-The old source cache and single-source operations now live in `document/source.rs`.
+The compiler snapshot includes all live masters and intermediate layers, axes, instances, features, anchors, groups and kerning.
+Babelfont's IR source feeds fontc directly, generating a complete TTF with variable outlines, advances and positioning.
+The UFO-derived snapshot bypasses Glyphs-specific feature rewriting: the pinned upstream FEA AST panics on fractional conditions, while fontc accepts the original feature text.
+Overlapping Designspace rule regions are partitioned at OpenType coordinate precision so all applicable lookups run in document order.
+HarfRust shapes those bytes at the same normalized location used by Skrifa to draw their outlines.
+Desktop preview uses one background compiler with a single replaceable pending snapshot; stale results never publish.
+Preview location changes reuse the compiled revision.
+Export and the `compile --out` command use the same pipeline, including unsaved edits, without Python or external build scripts.
+Feature drafts are checked with the same complete compiler and stored in the default source independently of editor selection.
+Other sources retain their existing feature files.
+OpenType quantization occurs at compilation; it does not alter source-file precision.
 
-Interpolation checks contour segmentation and point types, component base order, unique matching anchors, finite values and distinct locations.
-It varies horizontal/vertical advances, contour coordinates, anchor positions and component affine coefficients.
-Components resolve recursively at the target location, with missing/cyclic references reported as errors.
-Pair kerning resolves each source's explicit/group fallback before interpolation and keeps fractional values.
-Non-varying metadata comes from the default source, and auxiliary layer metadata remains untouched by interpolation.
-The application no longer has a separate point-only interpolation path.
+Source commands add an interpolated UFO, rename or relocate an existing source, reorder sources, and remove non-default sources with undo/redo.
+Creating a full source at an intermediate location preserves the former sparse layer as auxiliary data.
+Removing a source changes the Designspace and retains its on-disk UFO.
+Glyph auxiliary layers can be copied or removed independently.
+Structural undo refuses to overwrite later content edits; those edits must be undone first.
+Source removal and reordering are guarded while live experiment branches retain source-index references.
+
+Interpolation checks contour segmentation and point types, component base order, matching anchors, finite values and distinct locations.
+It varies horizontal/vertical advances, contours, anchors and component affine coefficients.
+Components resolve recursively at the target location, reporting missing or cyclic references.
+Pair kerning resolves each source's explicit/group fallback and retains fractional values in the editable model.
+Non-varying metadata comes from the default source, and auxiliary layer metadata remains untouched.
 
 ## Format contract
 
@@ -101,7 +112,7 @@ Designspace XML is checked before typed decoding so unsupported elements/attribu
 Coordinates that cannot round-trip through Norad's Designspace numeric representation are rejected.
 Discrete axes, cross-axis mappings, anisotropic coordinates, unknown/duplicate source axes, missing mapped-default sources, missing files/layers, and layer-only UFOs without a full source fail explicitly.
 Re-interpolation from multiple remaining sources also requires a default source; one remaining source can still be copied directly.
-Designspace rules are preserved and retain the existing preview substitution path.
+Designspace rules are preserved and supplied to the compiled variable shaper.
 This is an explicit supported subset, not a claim of universal Designspace or Babelfont compatibility.
 
 ## Regression evidence

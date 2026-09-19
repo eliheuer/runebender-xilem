@@ -1572,12 +1572,13 @@ impl Workspace {
             .into();
             return;
         };
-        let Some(mut master) = self
-            .font
-            .project
-            .edit_source(runebender::document::variable::SourceId(batch.master))
-        else {
-            self.note = "Undo target is no longer available".into();
+        let Some(mut master) = self.font.project.edit_source(batch.source) else {
+            self.note = "Restore the removed source before undoing its glyph edits".into();
+            if redo {
+                self.overview_redo.push(batch);
+            } else {
+                self.overview_undo.push(batch);
+            }
             return;
         };
         for glyph in &batch.glyphs {
@@ -1590,7 +1591,7 @@ impl Workspace {
             }
         }
         drop(master);
-        if batch.master == self.font.active() {
+        if Some(batch.source) == self.font.project.source_id(self.font.active()) {
             self.font.rebuild_cache();
         }
         if redo {
@@ -1611,10 +1612,16 @@ impl Workspace {
             return;
         }
         self.park();
+        self.font.set_active(index);
+        self.refresh_source_views();
+    }
+
+    pub(crate) fn refresh_source_views(&mut self) {
         let active_name =
             matches!(self.mode, Mode::Editor(_)).then(|| self.session.glyph_name.clone());
-        self.font.set_active(index);
-        self.features_buf = self.font.font().features.clone();
+        let index = self.font.active();
+        self.source_name_buf = self.font.master_names()[index].to_string();
+        self.features_buf = self.font.feature_font().features.clone();
         self.features_status = None;
         if self.show_all_masters {
             self.reference_layers = (0..self.font.master_count())
@@ -1704,22 +1711,32 @@ impl Workspace {
 
     /// Status shown under the axis sliders when the location is between masters.
     pub(crate) fn interpolation_status(&self) -> Option<String> {
-        if self.on_active_master() {
-            return None;
+        if !self.on_active_master()
+            && let Some(detail) = self.font.project.compat_detail(&self.session.glyph_name)
+        {
+            return Some(format!("Cannot interpolate: {detail}"));
         }
-        Some(
-            self.font
-                .project
-                .compat_detail(&self.session.glyph_name)
-                .map(|detail| format!("Cannot interpolate: {detail}"))
-                .unwrap_or_else(|| "interpolated".into()),
-        )
+        if !self.font.project.axes.is_empty() {
+            match self.font.preview_font() {
+                Err(error) => return Some(format!("Variable preview unavailable: {error}")),
+                Ok(None) => return Some("Compiling variable preview…".into()),
+                Ok(Some(_)) => (),
+            }
+        }
+        (!self.on_active_master()).then(|| "interpolated".into())
     }
 
     pub(crate) fn set_axis(&mut self, index: usize, value: f64) {
         if let Some(v) = self.axis_values.get_mut(index) {
             *v = value;
         }
+        self.font.project.location = self
+            .font
+            .axes
+            .iter()
+            .zip(&self.axis_values)
+            .map(|(axis, value)| (axis.name.clone(), axis.user_to_normalized(*value)))
+            .collect();
     }
 
     pub(crate) fn refresh_open_glyph(&mut self) {

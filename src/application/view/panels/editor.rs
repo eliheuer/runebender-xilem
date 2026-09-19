@@ -68,6 +68,7 @@ pub(crate) fn editor_pane(app: &Workspace) -> impl WidgetView<Workspace> + use<>
                     Some((start.parse().ok()?, end.parse().ok()?))
                 });
             text_tool::TextInputs::for_glyph(&app.font, &app.session.glyph_name)
+                .with_location(&app.font, &app.axis_values)
                 .with_context(app.text_context_id())
                 .with_text(&app.initial_text)
                 .with_direction(app.text_dir)

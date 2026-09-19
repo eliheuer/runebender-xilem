@@ -34,6 +34,8 @@ pub(crate) struct TextInputs {
     inventory: TextGlyphInventory,
     kerning: TextKerningModel,
     outlines: Arc<Vec<(String, Arc<BezPath>)>>,
+    compiled: Option<Arc<Vec<u8>>>,
+    normalized: Vec<f64>,
     line_height: f64,
     ascender: f64,
     descender: f64,
@@ -67,6 +69,8 @@ impl TextInputs {
                     .map(|glyph| (glyph.name.clone(), glyph.outline.clone()))
                     .collect(),
             ),
+            compiled: None,
+            normalized: Vec::new(),
             line_height: (font.units_per_em().max(font.ascender()) - font.descender()).max(1.0),
             ascender: font.ascender(),
             descender: font.descender(),
@@ -89,6 +93,54 @@ impl TextInputs {
             .find(|glyph| glyph.name == glyph_name)
             .map(|glyph| (glyph.name.clone(), glyph.codepoint, glyph.advance));
         inputs
+    }
+
+    /// Preview the live variable font at the sliders' user coordinates.
+    /// Advances, kerning, substitutions and outlines come from the same binary.
+    pub(crate) fn with_location(mut self, font: &FontModel, values: &[f64]) -> Self {
+        if font.glyphs.is_empty() {
+            return self;
+        }
+        self.normalized = font
+            .axes
+            .iter()
+            .enumerate()
+            .map(|(index, axis)| {
+                axis.user_to_normalized(values.get(index).copied().unwrap_or(axis.default))
+            })
+            .collect();
+        if let Ok(Some(compiled)) = font.preview_font() {
+            self.normalized = compiled
+                .axis_tags
+                .iter()
+                .map(|tag| {
+                    font.axes
+                        .iter()
+                        .position(|axis| axis.tag == *tag)
+                        .map(|index| self.normalized[index])
+                        .unwrap_or(0.0)
+                })
+                .collect();
+            match compiled.outlines(&self.normalized) {
+                Ok(outlines) => self.outlines = Arc::new(outlines),
+                Err(error) => {
+                    runebender::text::shape::log_shaping_failure(&error);
+                    return self;
+                }
+            }
+            self.compiled = Some(compiled.bytes.clone());
+            if let Ok(advances) = compiled.advances(&self.normalized) {
+                for (name, advance) in advances {
+                    if let Some((active, _, width)) = &mut self.active_glyph
+                        && *active == name
+                    {
+                        *width = advance;
+                    }
+                    self.inventory.set_advance(name, advance);
+                }
+            }
+        }
+        self
     }
 
     /// Associate these inputs with one document tab's parked text buffer.
@@ -168,6 +220,8 @@ impl TextState {
             inventory: TextGlyphInventory::from_font(&font),
             kerning: TextKerningModel::from_font(&font),
             outlines: Arc::new(Vec::new()),
+            compiled: None,
+            normalized: Vec::new(),
             line_height: 1000.0,
             ascender: 800.0,
             descender: -200.0,
@@ -185,6 +239,7 @@ impl TextState {
     pub(crate) fn new(inputs: &TextInputs) -> Self {
         let mut buffer = TextBuffer::new();
         buffer.set_glyph_inventory(inputs.inventory.clone());
+        buffer.set_compiled_font(inputs.compiled.clone(), inputs.normalized.clone());
         buffer.set_kerning_model(inputs.kerning.clone());
         buffer.set_feature_overrides(inputs.feature_overrides.clone());
         buffer.set_shaping_locale(inputs.script.clone(), inputs.language.clone());
@@ -234,6 +289,8 @@ impl TextState {
     /// that does not follow is showing yesterday's spacing.
     pub(crate) fn refresh(&mut self, inputs: &TextInputs) {
         self.buffer.set_glyph_inventory(inputs.inventory.clone());
+        self.buffer
+            .set_compiled_font(inputs.compiled.clone(), inputs.normalized.clone());
         self.buffer.set_kerning_model(inputs.kerning.clone());
         self.buffer
             .set_feature_overrides(inputs.feature_overrides.clone());
@@ -441,6 +498,8 @@ mod tests {
             inventory: TextGlyphInventory::default(),
             kerning: TextKerningModel::default(),
             outlines: Arc::new(Vec::new()),
+            compiled: None,
+            normalized: Vec::new(),
             line_height: 1000.0,
             ascender: 800.0,
             descender: -200.0,
@@ -479,6 +538,8 @@ mod tests {
             inventory: TextGlyphInventory::from_font(&font),
             kerning: TextKerningModel::default(),
             outlines: Arc::new(Vec::new()),
+            compiled: None,
+            normalized: Vec::new(),
             line_height: 1000.0,
             ascender: 800.0,
             descender: -200.0,
@@ -518,6 +579,8 @@ mod tests {
             inventory: TextGlyphInventory::default(),
             kerning: TextKerningModel::default(),
             outlines: Arc::new(Vec::new()),
+            compiled: None,
+            normalized: Vec::new(),
             line_height: 1000.0,
             ascender: 800.0,
             descender: -200.0,

@@ -53,11 +53,11 @@ pub(crate) enum Tool {
 }
 
 /// The font-engine history entries which make up one overview action. Glyph names
-/// remain stable across per-master sort orders, and `master` keeps an Undo
+/// remain stable across per-master sort orders, and `source` keeps an Undo
 /// after a master switch attached to the source the user actually changed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct OverviewEditBatch {
-    pub(crate) master: usize,
+    pub(crate) source: runebender::document::variable::SourceId,
     pub(crate) glyphs: Vec<String>,
 }
 
@@ -79,12 +79,14 @@ pub(crate) enum MetadataEdit {
         undo_depth: usize,
     },
     Unicode {
+        source_ids: Vec<runebender::document::variable::SourceId>,
         glyph: String,
         before: Vec<Vec<char>>,
         after: Vec<Vec<char>>,
         undo_depth: usize,
     },
     FontData {
+        source_ids: Vec<runebender::document::variable::SourceId>,
         glyph: String,
         before: Vec<FontDataSnapshot>,
         after: Vec<FontDataSnapshot>,
@@ -132,6 +134,8 @@ pub(crate) struct Workspace {
     /// Optional shaping script and language selected in the preview controls.
     pub(crate) text_script: Option<String>,
     pub(crate) text_language: Option<String>,
+    pub(crate) source_name_buf: String,
+    pub(crate) layer_name_buf: String,
     /// Whether the left column is folded away.
     pub(crate) left_collapsed: bool,
     /// Sidebar groups that are folded shut, by title.
