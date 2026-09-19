@@ -31,6 +31,8 @@ pub use quadratic::QuadraticPath;
 pub use segment::{Segment, SegmentInfo};
 
 use self::hyper_model as workspace;
+use crate::document::model::entity_id::EntityId;
+use crate::document::{ContourView, LayerPointType};
 use kurbo::BezPath;
 
 /// A path in a glyph outline. Supports cubic, quadratic, and
@@ -46,6 +48,53 @@ pub enum Path {
 }
 
 impl Path {
+    /// Build an editable outline path directly from a canonical document contour.
+    pub fn from_document_contour(contour: ContourView<'_>) -> Self {
+        let closed = contour.is_closed();
+        let hyper = contour.is_hyper();
+        let quadratic = contour
+            .points()
+            .any(|point| point.point_type() == LayerPointType::QCurve);
+        let mut points: Vec<_> = contour
+            .points()
+            .filter(|point| !hyper || point.point_type() != LayerPointType::OffCurve)
+            .map(|point| PathPoint {
+                id: EntityId::next(),
+                point: point.position(),
+                typ: if point.point_type() == LayerPointType::OffCurve {
+                    PointType::OffCurve { auto: false }
+                } else {
+                    PointType::OnCurve {
+                        smooth: if hyper {
+                            point.point_type() != LayerPointType::Line
+                        } else {
+                            point.is_smooth()
+                        },
+                    }
+                },
+            })
+            .collect();
+        if closed && !points.is_empty() {
+            points.rotate_left(1);
+        }
+        let points = PathPoints::from_vec(points);
+        if hyper {
+            Self::Hyper(HyperPath::from_points(points, closed))
+        } else if quadratic {
+            Self::Quadratic(QuadraticPath::new(points, closed))
+        } else {
+            Self::Cubic(CubicPath::new(points, closed))
+        }
+    }
+
+    pub(crate) fn entity_id(&self) -> EntityId {
+        match self {
+            Self::Cubic(path) => path.id,
+            Self::Quadratic(path) => path.id,
+            Self::Hyper(path) => path.id,
+        }
+    }
+
     /// Renders this path as a new `kurbo::BezPath`.
     pub fn to_bezpath(&self) -> BezPath {
         match self {

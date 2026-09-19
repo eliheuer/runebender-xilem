@@ -73,6 +73,7 @@ No release has been published yet.
 - Added canonical contour copy, paste and offset duplication with fresh stable identities.
 - Moved boolean and overlap-removal topology replacement onto canonical paths.
 - Applied successful empty boolean results instead of retaining the original contours.
+- Moved knife preview and slicing onto canonical contours while retaining untouched contour metadata.
 - Reject unsupported Designspace fields, invalid mappings, missing sources and incompatible glyph structures before they can be silently dropped or misinterpreted.
 - Prevented external reloads, stale model results, or stale proposals from overwriting
   unsaved or subsequently edited document state.

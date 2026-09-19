@@ -3788,6 +3788,267 @@ fn canonical_boolean_successfully_clears_empty_results() {
 }
 
 #[test]
+fn canonical_boolean_replacement_retains_single_cubic_loops() {
+    use kurbo::Shape as _;
+
+    let scratch = Scratch::new();
+    let loop_contour = || {
+        Contour::new(
+            vec![
+                ContourPoint::new(0.0, 0.0, PointType::Curve, false, None, None),
+                ContourPoint::new(200.0, 400.0, PointType::OffCurve, false, None, None),
+                ContourPoint::new(-200.0, 400.0, PointType::OffCurve, false, None, None),
+            ],
+            None,
+        )
+    };
+    let rectangle = Contour::new(
+        vec![
+            ContourPoint::new(400.0, 0.0, PointType::Line, false, None, None),
+            ContourPoint::new(500.0, 0.0, PointType::Line, false, None, None),
+            ContourPoint::new(500.0, 100.0, PointType::Line, false, None, None),
+            ContourPoint::new(400.0, 100.0, PointType::Line, false, None, None),
+        ],
+        None,
+    );
+    for (name, boolean) in [("loop-overlap", false), ("loop-boolean", true)] {
+        let mut glyph = Glyph::new(name);
+        glyph.contours.push(loop_contour());
+        if boolean {
+            glyph.contours.push(rectangle.clone());
+        }
+        let mut font = Font::new();
+        font.default_layer_mut().insert_glyph(glyph);
+        let source_path = scratch.0.join(format!("{name}.ufo"));
+        font.save(&source_path).unwrap();
+        let mut project = Project::load(&source_path).unwrap();
+        let layer_id = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        let before = runebender::outline::glyph_paths::ordinary_layer_contours_to_bezpath(
+            project.document_layer(name, &layer_id).unwrap(),
+        );
+        assert!(before.area().abs() > 100.0);
+        project
+            .edit_document_layer(name, &layer_id, |draft| {
+                if boolean {
+                    assert!(draft.boolean_contours(linesweeper::BinaryOp::Union)?);
+                } else {
+                    assert!(draft.remove_overlap()?);
+                }
+                Ok(())
+            })
+            .unwrap();
+        let layer = project.document_layer(name, &layer_id).unwrap();
+        assert_eq!(layer.contours().count(), if boolean { 2 } else { 1 });
+        let after = runebender::outline::glyph_paths::ordinary_layer_contours_to_bezpath(layer);
+        assert!((after.area().abs() - before.area().abs()).abs() < 1e-6);
+        project.save().unwrap();
+        let reloaded = Project::load(&source_path).unwrap();
+        let reloaded_layer = reloaded
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        assert_eq!(
+            reloaded.glyph_layer(name, &reloaded_layer).unwrap(),
+            project.glyph_layer(name, &layer_id).unwrap()
+        );
+    }
+}
+
+#[test]
+fn canonical_knife_replaces_only_cut_contours_and_preserves_quadratics() {
+    let scratch = Scratch::new();
+    let rectangle = |x0: f64, label: &str| {
+        let mut contour = Contour::new(
+            vec![
+                ContourPoint::new(
+                    x0,
+                    0.0,
+                    PointType::Line,
+                    false,
+                    Some(Name::new(&format!("{label}-a")).unwrap()),
+                    Some(norad::Identifier::new(&format!("{label}-a")).unwrap()),
+                ),
+                ContourPoint::new(x0 + 100.0, 0.0, PointType::Line, false, None, None),
+                ContourPoint::new(x0 + 100.0, 100.0, PointType::Line, false, None, None),
+                ContourPoint::new(x0, 100.0, PointType::Line, false, None, None),
+            ],
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        contour.replace_lib(object_lib(label));
+        contour
+    };
+    let cut = rectangle(0.0, "cut-source");
+    let untouched = rectangle(300.0, "untouched-hyper");
+    let mut glyph = Glyph::new("knife-contours");
+    glyph.contours = vec![cut, untouched.clone()];
+    let mut component = Component::new(
+        Name::new("base").unwrap(),
+        norad::AffineTransform {
+            x_offset: 12.25,
+            y_offset: 34.75,
+            ..Default::default()
+        },
+        Some(norad::Identifier::new("knife-component").unwrap()),
+    );
+    component.replace_lib(object_lib("knife-component"));
+    glyph.components.push(component.clone());
+    let mut anchor = Anchor::new(
+        50.5,
+        150.25,
+        Some(Name::new("top").unwrap()),
+        None,
+        Some(norad::Identifier::new("knife-anchor").unwrap()),
+    );
+    anchor.replace_lib(object_lib("knife-anchor"));
+    glyph.anchors.push(anchor.clone());
+    let mut base = Glyph::new("base");
+    base.contours.push(rectangle(0.0, "base-contour"));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(base);
+    font.default_layer_mut().insert_glyph(glyph);
+    let source_path = scratch.0.join("KnifeContours.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project.document_layer("knife-contours", &layer_id).unwrap();
+    let original: Vec<_> = layer.contours().collect();
+    let cut_id = original[0].id();
+    let cut_points: Vec<_> = original[0].points().map(|point| point.id()).collect();
+    let untouched_id = original[1].id();
+    let untouched_points: Vec<_> = original[1].points().map(|point| point.id()).collect();
+    let component_id = layer.components().next().unwrap().id();
+    let anchor_id = layer.anchors().next().unwrap().id();
+    assert_eq!(
+        runebender::outline::knife::knife_hit_points_in_layer(
+            layer,
+            kurbo::Point::new(-10.0, 50.0),
+            kurbo::Point::new(110.0, 50.0)
+        ),
+        [kurbo::Point::new(0.0, 50.0), kurbo::Point::new(100.0, 50.0)]
+    );
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("knife-contours", &layer_id, |draft| {
+                assert!(!draft.knife_cut(
+                    kurbo::Point::new(150.0, -50.0),
+                    kurbo::Point::new(150.0, 150.0)
+                )?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+
+    project
+        .edit_document_layer("knife-contours", &layer_id, |draft| {
+            assert!(draft.knife_cut(
+                kurbo::Point::new(-10.0, 50.0),
+                kurbo::Point::new(110.0, 50.0)
+            )?);
+            Ok(())
+        })
+        .unwrap();
+    let layer = project.document_layer("knife-contours", &layer_id).unwrap();
+    let contours: Vec<_> = layer.contours().collect();
+    assert_eq!(contours.len(), 3);
+    assert!(contours[..2].iter().all(|contour| contour.id() != cut_id));
+    assert!(contours[..2].iter().all(|contour| {
+        contour
+            .points()
+            .all(|point| !cut_points.contains(&point.id()))
+    }));
+    assert_eq!(contours[2].id(), untouched_id);
+    assert_eq!(
+        contours[2]
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        untouched_points
+    );
+    assert!(contours[2].is_hyper());
+    assert_eq!(layer.components().next().unwrap().id(), component_id);
+    assert_eq!(layer.anchors().next().unwrap().id(), anchor_id);
+    let projected = project.glyph_layer("knife-contours", &layer_id).unwrap();
+    assert_eq!(projected.contours[2], untouched);
+    assert_eq!(projected.components, [component.clone()]);
+    assert_eq!(projected.anchors, [anchor.clone()]);
+    assert!(projected.contours[..2].iter().all(|contour| {
+        contour.identifier().is_none()
+            && contour.lib().is_none()
+            && contour.points.iter().all(|point| {
+                point.name.is_none() && point.identifier().is_none() && point.lib().is_none()
+            })
+    }));
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    assert_eq!(
+        reloaded
+            .glyph_layer("knife-contours", &reloaded_layer)
+            .unwrap(),
+        projected
+    );
+
+    let mut quadratic = Glyph::new("quadratic-knife");
+    quadratic.contours.push(Contour::new(
+        vec![
+            ContourPoint::new(0.0, 0.0, PointType::QCurve, false, None, None),
+            ContourPoint::new(50.0, -50.0, PointType::OffCurve, false, None, None),
+            ContourPoint::new(100.0, 0.0, PointType::QCurve, false, None, None),
+            ContourPoint::new(150.0, 50.0, PointType::OffCurve, false, None, None),
+            ContourPoint::new(100.0, 100.0, PointType::QCurve, false, None, None),
+            ContourPoint::new(50.0, 150.0, PointType::OffCurve, false, None, None),
+            ContourPoint::new(0.0, 100.0, PointType::QCurve, false, None, None),
+            ContourPoint::new(-50.0, 50.0, PointType::OffCurve, false, None, None),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(quadratic);
+    let quadratic_path = scratch.0.join("QuadraticKnife.ufo");
+    font.save(&quadratic_path).unwrap();
+    let mut project = Project::load(&quadratic_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    project
+        .edit_document_layer("quadratic-knife", &layer_id, |draft| {
+            assert!(draft.knife_cut(
+                kurbo::Point::new(50.0, -100.0),
+                kurbo::Point::new(50.0, 200.0)
+            )?);
+            Ok(())
+        })
+        .unwrap();
+    let projected = project.glyph_layer("quadratic-knife", &layer_id).unwrap();
+    assert_eq!(projected.contours.len(), 2);
+    assert!(projected.contours.iter().all(|contour| {
+        contour
+            .points
+            .iter()
+            .all(|point| point.typ != PointType::Curve)
+            && contour
+                .points
+                .iter()
+                .any(|point| point.typ == PointType::QCurve)
+    }));
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);

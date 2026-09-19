@@ -1305,13 +1305,33 @@ mod norad_tests {
 /// Where the knife line crosses a glyph's contours, for the drag
 /// preview. Points come back in design space, ordered along the line.
 pub fn knife_hit_points(glyph: &norad::Glyph, p0: Point, p1: Point) -> Vec<Point> {
+    let paths: Vec<_> = glyph
+        .contours
+        .iter()
+        .map(|contour| {
+            Path::from_contour(&crate::outline::path::hyper_model::Contour::from_norad(
+                contour,
+            ))
+        })
+        .collect();
+    knife_hit_points_for_paths(&paths, p0, p1)
+}
+
+/// Find where a knife line crosses canonical document contours.
+pub fn knife_hit_points_in_layer(
+    layer: crate::document::LayerView<'_>,
+    p0: Point,
+    p1: Point,
+) -> Vec<Point> {
+    let paths: Vec<_> = layer.contours().map(Path::from_document_contour).collect();
+    knife_hit_points_for_paths(&paths, p0, p1)
+}
+
+fn knife_hit_points_for_paths(paths: &[Path], p0: Point, p1: Point) -> Vec<Point> {
     let line = Line::new(p0, p1);
     let mut ts: Vec<f64> = Vec::new();
-    for contour in &glyph.contours {
-        let path = Path::from_contour(&crate::outline::path::hyper_model::Contour::from_norad(
-            contour,
-        ));
-        let cubic = match &path {
+    for path in paths {
+        let cubic = match path {
             Path::Cubic(c) => c.clone(),
             Path::Hyper(h) => h.to_cubic(),
             Path::Quadratic(q) => {

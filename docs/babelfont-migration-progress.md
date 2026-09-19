@@ -1535,3 +1535,43 @@ Warning-denied Clippy, public API documentation, formatting and diff checks pass
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
 The next M04 substep moves the knife operation onto canonical geometry and replacement policy.
+
+### Canonical knife and single-cubic-loop correction
+
+Evidence commit: `Cut canonical contours with the knife` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Cut canonical contours with the knife$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/outline/knife.rs`, `src/outline/path/mod.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Canonical contour views now convert directly to the existing cubic, quadratic and hyperbezier path engine without materializing a UFO glyph.
+Knife preview reads those paths directly, and `LayerEditDraft::knife_cut` installs sliced topology atomically.
+Missed contours retain their stable contour and point identities plus exact source metadata.
+Sliced contours receive fresh document identities and empty names, identifiers and object libraries because the new objects cannot be matched reliably to the source topology.
+Quadratic slices remain quadratic, while a sliced hyperbezier becomes explicit cubic geometry under the existing knife contract.
+Components and anchors retain their identities and exact metadata.
+
+The regression covers preview intersections, a no-op miss, a cubic split, untouched hyperbezier preservation, quadratic output, component and anchor preservation and save-reopen persistence.
+Knife change detection now compares retained engine identities as well as output count, so simultaneous splits and joins cannot be mistaken for a no-op when their contour counts cancel.
+
+Independent review also exposed a valid closed one-cubic loop that the shared boolean replacement helper discarded because it required two on-curve nodes.
+Closed output now requires one on-curve node, while open output still requires two.
+The repository regression covers overlap removal on the isolated loop and boolean union with a second contour, including area preservation and save-reopen persistence.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_knife_replaces_only_cut_contours_and_preserves_quadratics -- --exact --test-threads=1
+cargo test --locked --test variable_project canonical_boolean_replacement_retains_single_cubic_loops -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib knife -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The two focused integration regressions, all 12 knife unit tests and all 47 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The first knife unit run omitted `RUNEBENDER_TEST_FONTS`, so its only failure was the expected missing-fixture guard; the exact rerun with the configured fixture directory passed all 12 tests.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep moves cleanup and fit/simplify operations onto canonical geometry and replacement policy.
