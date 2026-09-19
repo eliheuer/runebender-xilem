@@ -1900,3 +1900,43 @@ The new M06 application lane owns `src/application/`, editor sessions and comman
 This integration lane retains `project.rs`, `variable.rs`, `babelfont.rs`, `source.rs`, M04 special outline tools and extensions, shared module wiring, integration tests and central documentation.
 It will provide narrow shared hooks, place canonical histories in Project-owned state and integrate reviewed lane commits without duplicating history in frontends.
 API foundations do not complete M05 or M06; structural replay, Project-owned history routing and migrated application callers still require executed acceptance evidence.
+
+### Canonical Designspace source authoring and structural history
+
+Evidence commits: `Add canonical Designspace structure model`, `Own canonical Designspace in Project`, `Guard canonical Designspace source transactions` and `Route source history through canonical Designspace`.
+Resolve their exact IDs with `git log --format='%H %s' --grep='canonical Designspace structure model\|Own canonical Designspace in Project\|Guard canonical Designspace source transactions\|Route source history through canonical Designspace'`.
+Affected paths: `src/document/model/designspace.rs`, `src/document/model/mod.rs`, `src/document/project.rs`, `src/document/variable.rs`, `src/document/sources.rs`, `tests/canonical_designspace.rs`, `tests/canonical_source_history.rs` and this log.
+
+`CanonicalDesignspace` now owns axes, exact mapped locations, stable full and sparse source identities, exact serialized source order, instances, rule processing, ordered rules and supported root metadata.
+Its checked codec rejects unsupported or lossy Designspace structures before mutation, and Project load assigns stable source and default-layer identities instead of deriving them from mutable display indices.
+`Project` retains that canonical value in `VariableData`, exposes immutable compiler structure, and supplies a guarded clone-and-install boundary for source transactions.
+The structural snapshot contains canonical Designspace state but deliberately excludes active selection, history stacks, revision, dirty flags and allocator state.
+
+Full-source add, remove, move and descriptor update now edit `CanonicalDesignspace` first and materialize Norad only at the compatibility serialization boundary.
+Sparse source entries retain their exact positions when full sources move, and promoting a sparse location removes only its interpolation descriptor while retaining the auxiliary UFO layer.
+`SourceFrame` now contains only the opaque canonical structural snapshot plus active `SourceId`; restore rebuilds names, normalized locations, sparse projections and source paths from stable canonical descriptors.
+Project load no longer discards canonical Designspace ownership after `from_designspace` returns.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test canonical_designspace -- --test-threads=1
+cargo test --locked --test canonical_source_history -- --test-threads=1
+cargo test --locked --test canonical_history -- --test-threads=1
+cargo test --locked --lib history -- --test-threads=1
+cargo test --locked --test variable_project source_authoring_keeps_identity_and_round_trips_the_designspace -- --test-threads=1
+cargo test --locked --test variable_project full_source_can_replace_intermediate_participation_without_losing_the_layer -- --test-threads=1
+cargo test --locked --test variable_project source_undo_refuses_to_overwrite_later_edits_and_layer_operations_preserve_other_glyphs -- --test-threads=1
+cargo test --locked --bin runebender application::platform::host::tests::source_commands_preserve_glyph_history_across_removal_and_reorder -- --test-threads=1
+cargo clippy --locked --lib --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The canonical Designspace suite passed 5 tests, structural source history passed 4, canonical history passed 13 and filtered library history passed 10.
+All three Project source-authoring regressions and the application host regression passed.
+Warning-denied library/test Clippy, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+M05 remains active until the M06 application cutover retires `Master.history`, `VariableData.histories` and their compatibility undo callers.
+Those compatibility stores are parked by stable `SourceId` and `LayerId` across structural removal and restore so the transition does not lose existing undo or redo piles.
