@@ -504,7 +504,7 @@ impl LayerEditDraft {
 
         let selected: HashSet<_> = selected.iter().copied().collect();
         let originals: HashMap<_, _> = originals.iter().copied().collect();
-        let mut replacements = Vec::new();
+        let mut replacements = HashMap::new();
         for path in self.layer.paths() {
             let ids: Vec<_> = path
                 .nodes
@@ -544,18 +544,27 @@ impl LayerEditDraft {
                 independent,
             ) {
                 ensure_finite(&[position.x, position.y])?;
-                replacements.push((ids[index], position));
+                replacements.insert(ids[index].0, position);
             }
         }
         if replacements.is_empty() {
             return Ok(false);
         }
-        for (id, position) in replacements {
-            let node = self
-                .node_mut(id)
-                .expect("validated canonical point identity");
-            node.x = position.x;
-            node.y = position.y;
+        for node in self
+            .layer
+            .shapes
+            .iter_mut()
+            .filter_map(|shape| match shape {
+                Shape::Path(path) => Some(path),
+                Shape::Component(_) => None,
+            })
+            .flat_map(|path| &mut path.nodes)
+        {
+            let id = read_id(&node.format_specific).expect("canonical point identity");
+            if let Some(position) = replacements.get(&id) {
+                node.x = position.x;
+                node.y = position.y;
+            }
         }
         Ok(true)
     }
@@ -599,7 +608,7 @@ impl LayerEditDraft {
             * transform
             * kurbo::Affine::translate((-center.0, -center.1));
         ensure_finite(&transform.as_coeffs())?;
-        let mut replacements = Vec::new();
+        let mut replacements = HashMap::new();
         for node in self.layer.paths().flat_map(|path| &path.nodes) {
             if !targeted(node) {
                 continue;
@@ -607,10 +616,10 @@ impl LayerEditDraft {
             let position = transform * kurbo::Point::new(node.x, node.y);
             ensure_finite(&[position.x, position.y])?;
             if node.x != position.x || node.y != position.y {
-                replacements.push((
+                replacements.insert(
                     read_id(&node.format_specific).expect("canonical point identity"),
                     position,
-                ));
+                );
             }
         }
         if replacements.is_empty() {
@@ -627,8 +636,7 @@ impl LayerEditDraft {
             .flat_map(|path| &mut path.nodes)
         {
             let id = read_id(&node.format_specific).expect("canonical point identity");
-            if let Some((_, position)) = replacements.iter().find(|(candidate, _)| *candidate == id)
-            {
+            if let Some(position) = replacements.get(&id) {
                 node.x = position.x;
                 node.y = position.y;
             }

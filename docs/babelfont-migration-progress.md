@@ -761,3 +761,31 @@ git diff --check
 All seven point-operation unit tests, the focused canonical comparison and all 26 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Linear point-edit application correction
+
+Evidence commit: `Apply canonical point replacements linearly` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Apply canonical point replacements linearly$' -1`.
+Affected paths: `src/document/babelfont.rs` and this log.
+
+Review measured quadratic scaling in the validated replacement phase of `LayerEditDraft::transform_points` because every canonical node searched the full replacement list.
+The transform and handle-aware drag operations now retain their prevalidation pass, index validated replacements by stable raw point identity and apply them in one ordered node traversal.
+
+A standalone debug-library microbenchmark measured the transform call alone for five samples at each size.
+Median time was 0.777 ms for 512 points, 1.244 ms for 1,024, 1.929 ms for 2,048, 2.966 ms for 4,096 and 6.051 ms for 8,192.
+These measurements establish linear size scaling for the corrected application pass and are supporting evidence for the later M14 performance gate; they are not release-mode or UI-latency claims.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_ -- --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+All 13 canonical-filtered and all 26 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
