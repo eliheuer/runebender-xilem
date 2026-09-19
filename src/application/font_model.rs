@@ -825,6 +825,7 @@ fn save_target_is_writable(target: &FsPath) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use runebender::document::canonical_metadata::KerningParticipant;
 
     fn two_master_model() -> (PathBuf, FontModel) {
         let dir = std::env::temp_dir().join(format!(
