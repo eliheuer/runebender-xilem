@@ -588,6 +588,9 @@ fn append_rendered_components<'a>(
     stack: &mut Vec<String>,
     transform: Affine,
 ) -> Result<(), ComponentResolveError> {
+    if stack.len() > 64 {
+        return Err(ComponentResolveError::TooDeep);
+    }
     for component in layer.components() {
         let name = component.reference();
         if let Some(start) = stack.iter().position(|entry| entry == name) {
@@ -864,7 +867,11 @@ mod canonical_render_tests {
         .unwrap()
     }
 
-    fn canonical_full_path(project: &Project, glyph: &str, selected: &LayerId) -> BezPath {
+    fn canonical_full_result(
+        project: &Project,
+        glyph: &str,
+        selected: &LayerId,
+    ) -> Result<BezPath, ComponentResolveError> {
         let default = project
             .document_source(selected.source)
             .expect("source")
@@ -890,7 +897,10 @@ mod canonical_render_tests {
                 ids.iter().filter_map(|id| glyph.layer(id)).collect()
             },
         )
-        .unwrap()
+    }
+
+    fn canonical_full_path(project: &Project, glyph: &str, selected: &LayerId) -> BezPath {
+        canonical_full_result(project, glyph, selected).unwrap()
     }
 
     fn assert_path_and_bounds(actual: &BezPath, expected: &BezPath) {
@@ -1207,6 +1217,52 @@ mod canonical_render_tests {
             .default_layer();
 
         assert_path_and_bounds(&canonical_full_path(&project, "boxdemo", &layer), &expected);
+    }
+
+    #[test]
+    fn canonical_smart_component_chain_obeys_the_ordinary_depth_limit() {
+        let mut font = Font::default();
+        for index in 0..=65 {
+            let name = format!("smart-{index}");
+            let mut glyph = rectangle(&name, 100.0, 100.0);
+            if index != 0 {
+                glyph.lib.insert(
+                    SMART_COMPONENT_AXES_KEY.into(),
+                    plist::Value::Array(vec![smart_axis("Width")]),
+                );
+                let mut pole = rectangle(&name, 200.0, 100.0);
+                pole.lib
+                    .insert(SMART_COMPONENT_POLE_KEY.into(), smart_pole(&["Width"]));
+                font.layers
+                    .get_or_create_layer("smart.top")
+                    .unwrap()
+                    .insert_glyph(pole);
+            }
+            if index < 65 {
+                glyph.components.push(component(
+                    &format!("smart-{}", index + 1),
+                    AffineTransform::default(),
+                ));
+                glyph.lib.insert(
+                    SMART_COMPONENT_VALUES_KEY.into(),
+                    smart_values(&[("Width", 50.0)]),
+                );
+            }
+            font.default_layer_mut().insert_glyph(glyph);
+        }
+        let project = Project::from_source(Master::from_font(font, "SmartDepth.ufo".into()));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        let ordinary =
+            ordinary_layer_to_bezpath(project.document_layer("smart-0", &layer).unwrap(), |name| {
+                project.document_layer(name, &layer)
+            });
+        let rendered = canonical_full_result(&project, "smart-0", &layer);
+
+        assert_eq!(ordinary, Err(ComponentResolveError::TooDeep));
+        assert_eq!(rendered, Err(ComponentResolveError::TooDeep));
     }
 }
 
