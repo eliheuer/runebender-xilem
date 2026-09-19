@@ -7,7 +7,7 @@
 //! Format adapters translate their boundary maps once, while the live document retains exact
 //! `f64` values and typed kerning participants.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt;
 
 /// Prefix used by UFO groups on the first side of a kerning pair.
@@ -127,13 +127,6 @@ pub enum CanonicalMetadataError {
         /// The second participant's raw name.
         right: String,
     },
-    /// A group member appeared more than once.
-    DuplicateGroupMember {
-        /// The group containing the duplicate.
-        group: String,
-        /// The repeated glyph name.
-        glyph: String,
-    },
     /// A rename would overwrite an existing group, participant or glyph reference.
     RenameCollision(String),
 }
@@ -157,9 +150,6 @@ impl fmt::Display for CanonicalMetadataError {
             Self::NonFiniteKerning { left, right } => {
                 write!(f, "kerning pair {left:?} {right:?} has a non-finite value")
             }
-            Self::DuplicateGroupMember { group, glyph } => {
-                write!(f, "group {group:?} contains duplicate member {glyph:?}")
-            }
             Self::RenameCollision(name) => {
                 write!(f, "renaming to {name:?} would overwrite metadata")
             }
@@ -181,7 +171,11 @@ pub struct CanonicalFontMetadata {
 }
 
 impl CanonicalFontMetadata {
-    /// Import raw UFO-shaped maps after validating names, membership uniqueness and finite values.
+    /// Import raw UFO-shaped maps after validating names, pair sides and finite values.
+    ///
+    /// Group member order and duplicates are preserved exactly.
+    /// UFO permits duplicates in arbitrary groups and requires authoring tools to ignore later
+    /// duplicate members in kerning groups.
     pub fn from_raw(
         groups: BTreeMap<String, Vec<String>>,
         kerning: BTreeMap<String, BTreeMap<String, f64>>,
@@ -365,7 +359,7 @@ impl CanonicalFontMetadata {
         if let Some(side) = side_from_group_name(&name) {
             canonical_group_name(side, &name)?;
         }
-        validate_group_members(&name, &members)?;
+        validate_group_members(&members)?;
         if self.groups.get(&name) == Some(&members) {
             return Ok(false);
         }
@@ -516,21 +510,14 @@ fn validate_groups(groups: &BTreeMap<String, Vec<String>>) -> Result<(), Canonic
         if let Some(side) = side_from_group_name(name) {
             canonical_group_name(side, name)?;
         }
-        validate_group_members(name, members)?;
+        validate_group_members(members)?;
     }
     Ok(())
 }
 
-fn validate_group_members(group: &str, members: &[String]) -> Result<(), CanonicalMetadataError> {
-    let mut unique = BTreeSet::new();
+fn validate_group_members(members: &[String]) -> Result<(), CanonicalMetadataError> {
     for glyph in members {
-        KerningParticipant::glyph(glyph.clone())?;
-        if !unique.insert(glyph) {
-            return Err(CanonicalMetadataError::DuplicateGroupMember {
-                group: group.to_owned(),
-                glyph: glyph.clone(),
-            });
-        }
+        validate_name(glyph)?;
     }
     Ok(())
 }

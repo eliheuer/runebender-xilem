@@ -9,6 +9,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 const SKIP_EXPORT_GLYPHS: &str = "public.skipExportGlyphs";
+const OPEN_TYPE_CATEGORIES: &str = "public.openTypeCategories";
 
 pub(crate) fn skipped_exports(font: &norad::Font) -> impl Iterator<Item = &str> {
     font.lib
@@ -33,6 +34,8 @@ pub(crate) fn set_skipped_exports(font: &mut norad::Font, names: Vec<String>) {
 /// A typed value from the UFO `public.openTypeCategories` dictionary.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OpenTypeGlyphCategory {
+    /// No category is assigned explicitly.
+    Unassigned,
     /// A base glyph.
     Base,
     /// A combining or spacing mark.
@@ -50,6 +53,7 @@ impl OpenTypeGlyphCategory {
     pub fn from_source(value: impl Into<String>) -> Self {
         let value = value.into();
         match value.as_str() {
+            "unassigned" => Self::Unassigned,
             "base" => Self::Base,
             "mark" => Self::Mark,
             "ligature" => Self::Ligature,
@@ -61,6 +65,7 @@ impl OpenTypeGlyphCategory {
     /// The exact source string written at the UFO boundary.
     pub fn as_source(&self) -> &str {
         match self {
+            Self::Unassigned => "unassigned",
             Self::Base => "base",
             Self::Mark => "mark",
             Self::Ligature => "ligature",
@@ -182,12 +187,25 @@ impl CanonicalGlyphMetadata {
 pub enum GlyphMetadataError {
     /// A token was not a valid Unicode scalar written in hexadecimal.
     InvalidCodepoint(String),
+    /// The font-level skip-export value was not a unique list of glyph-name strings.
+    InvalidSkipExportList,
+    /// The font-level OpenType category value was not a string dictionary.
+    InvalidCategoryMap,
+    /// A requested glyph was absent from the UFO boundary object.
+    MissingGlyph(String),
 }
 
 impl fmt::Display for GlyphMetadataError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidCodepoint(value) => write!(f, "invalid Unicode scalar {value:?}"),
+            Self::InvalidSkipExportList => {
+                write!(f, "public.skipExportGlyphs is not a unique string list")
+            }
+            Self::InvalidCategoryMap => {
+                write!(f, "public.openTypeCategories is not a string dictionary")
+            }
+            Self::MissingGlyph(name) => write!(f, "missing glyph {name:?}"),
         }
     }
 }
@@ -226,6 +244,130 @@ pub fn parse_codepoints(input: &str) -> Result<Vec<char>, GlyphMetadataError> {
         return Err(GlyphMetadataError::InvalidCodepoint(input.to_owned()));
     }
     Ok(codepoints)
+}
+
+/// Decode one glyph's canonical metadata from a UFO boundary object.
+///
+/// Font-level skip-export and category entries are interpreted without retaining the UFO font as
+/// editable state.
+/// Malformed standardized payloads are rejected instead of silently becoming opaque duplicates.
+pub fn canonical_glyph_metadata_from_ufo(
+    font: &norad::Font,
+    glyph_name: &str,
+) -> Result<CanonicalGlyphMetadata, GlyphMetadataError> {
+    let glyph = font
+        .get_glyph(glyph_name)
+        .ok_or_else(|| GlyphMetadataError::MissingGlyph(glyph_name.to_owned()))?;
+    let skipped = strict_skipped_exports(font)?;
+    let categories = strict_categories(font)?;
+    Ok(CanonicalGlyphMetadata::new(
+        glyph.codepoints.iter(),
+        glyph.note.clone(),
+        !skipped.iter().any(|name| name == glyph_name),
+        categories
+            .and_then(|categories| categories.get(glyph_name))
+            .and_then(plist::Value::as_string)
+            .map(|value| OpenTypeGlyphCategory::from_source(value.to_owned())),
+    ))
+}
+
+/// Encode one glyph's canonical metadata into a UFO boundary object atomically.
+///
+/// Unrelated skip-export and category entries remain unchanged and in their original order.
+/// An unchanged value performs no mutation.
+pub fn write_canonical_glyph_metadata_to_ufo(
+    font: &mut norad::Font,
+    glyph_name: &str,
+    metadata: &CanonicalGlyphMetadata,
+) -> Result<bool, GlyphMetadataError> {
+    let glyph = font
+        .get_glyph(glyph_name)
+        .ok_or_else(|| GlyphMetadataError::MissingGlyph(glyph_name.to_owned()))?;
+    let glyph_changed = glyph
+        .codepoints
+        .iter()
+        .ne(metadata.codepoints.iter().copied())
+        || glyph.note.as_deref() != metadata.note();
+
+    let mut lib = font.lib.clone();
+    let mut skipped = strict_skipped_exports(font)?;
+    let is_skipped = skipped.iter().any(|name| name == glyph_name);
+    if metadata.exported() {
+        skipped.retain(|name| name != glyph_name);
+    } else if !is_skipped {
+        skipped.push(glyph_name.to_owned());
+    }
+    if skipped.is_empty() {
+        lib.remove(SKIP_EXPORT_GLYPHS);
+    } else {
+        lib.insert(
+            SKIP_EXPORT_GLYPHS.into(),
+            plist::Value::Array(skipped.into_iter().map(plist::Value::String).collect()),
+        );
+    }
+
+    let mut categories = strict_categories(font)?.cloned().unwrap_or_default();
+    if let Some(category) = metadata.category() {
+        categories.insert(
+            glyph_name.into(),
+            plist::Value::String(category.as_source().to_owned()),
+        );
+    } else {
+        categories.remove(glyph_name);
+    }
+    if categories.is_empty() {
+        lib.remove(OPEN_TYPE_CATEGORIES);
+    } else {
+        lib.insert(
+            OPEN_TYPE_CATEGORIES.into(),
+            plist::Value::Dictionary(categories),
+        );
+    }
+
+    if !glyph_changed && font.lib == lib {
+        return Ok(false);
+    }
+    font.lib = lib;
+    let glyph = font
+        .default_layer_mut()
+        .get_glyph_mut(glyph_name)
+        .expect("validated glyph remains present");
+    glyph.codepoints = norad::Codepoints::new(metadata.codepoints.iter().copied());
+    glyph.note = metadata.note.clone();
+    Ok(true)
+}
+
+fn strict_skipped_exports(font: &norad::Font) -> Result<Vec<String>, GlyphMetadataError> {
+    let Some(value) = font.lib.get(SKIP_EXPORT_GLYPHS) else {
+        return Ok(Vec::new());
+    };
+    let Some(values) = value.as_array() else {
+        return Err(GlyphMetadataError::InvalidSkipExportList);
+    };
+    let mut output = Vec::with_capacity(values.len());
+    for value in values {
+        let Some(name) = value.as_string() else {
+            return Err(GlyphMetadataError::InvalidSkipExportList);
+        };
+        if output.iter().any(|candidate| candidate == name) {
+            return Err(GlyphMetadataError::InvalidSkipExportList);
+        }
+        output.push(name.to_owned());
+    }
+    Ok(output)
+}
+
+fn strict_categories(font: &norad::Font) -> Result<Option<&plist::Dictionary>, GlyphMetadataError> {
+    let Some(value) = font.lib.get(OPEN_TYPE_CATEGORIES) else {
+        return Ok(None);
+    };
+    let Some(categories) = value.as_dictionary() else {
+        return Err(GlyphMetadataError::InvalidCategoryMap);
+    };
+    if categories.values().any(|value| value.as_string().is_none()) {
+        return Err(GlyphMetadataError::InvalidCategoryMap);
+    }
+    Ok(Some(categories))
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -317,5 +459,86 @@ mod tests {
             parse_codepoints("0041 D800"),
             Err(GlyphMetadataError::InvalidCodepoint("D800".into()))
         );
+    }
+
+    #[test]
+    fn canonical_ufo_boundary_preserves_unrelated_font_metadata() {
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.codepoints = norad::Codepoints::new(['A']);
+        glyph.note = Some(String::new());
+        font.default_layer_mut().insert_glyph(glyph);
+        font.lib.insert(
+            SKIP_EXPORT_GLYPHS.into(),
+            plist::Value::Array(vec![
+                plist::Value::String("future".into()),
+                plist::Value::String("A".into()),
+            ]),
+        );
+        let categories = plist::Dictionary::from_iter([
+            (
+                "future".to_string(),
+                plist::Value::String("future-category".into()),
+            ),
+            ("A".to_string(), plist::Value::String("component".into())),
+        ]);
+        font.lib.insert(
+            OPEN_TYPE_CATEGORIES.into(),
+            plist::Value::Dictionary(categories),
+        );
+
+        let mut metadata = canonical_glyph_metadata_from_ufo(&font, "A").unwrap();
+        assert!(!metadata.exported());
+        assert_eq!(metadata.note(), Some(""));
+        assert_eq!(metadata.category(), Some(&OpenTypeGlyphCategory::Component));
+        let before = font.clone();
+        assert!(!write_canonical_glyph_metadata_to_ufo(&mut font, "A", &metadata).unwrap());
+        assert_eq!(font, before);
+        assert!(metadata.set_codepoints(['A', '\u{391}']));
+        assert!(metadata.set_note(Some("edited".into())));
+        assert!(metadata.set_exported(true));
+        assert!(metadata.set_category(Some(OpenTypeGlyphCategory::Mark)));
+
+        assert!(write_canonical_glyph_metadata_to_ufo(&mut font, "A", &metadata).unwrap());
+        assert!(!write_canonical_glyph_metadata_to_ufo(&mut font, "A", &metadata).unwrap());
+        assert_eq!(
+            strict_skipped_exports(&font).unwrap(),
+            vec!["future".to_string()]
+        );
+        let categories = strict_categories(&font).unwrap().unwrap();
+        assert_eq!(
+            categories.get("future").and_then(plist::Value::as_string),
+            Some("future-category")
+        );
+        assert_eq!(
+            categories.get("A").and_then(plist::Value::as_string),
+            Some("mark")
+        );
+        let glyph = font.get_glyph("A").unwrap();
+        assert_eq!(
+            glyph.codepoints.iter().collect::<Vec<_>>(),
+            ['A', '\u{391}']
+        );
+        assert_eq!(glyph.note.as_deref(), Some("edited"));
+    }
+
+    #[test]
+    fn malformed_standard_metadata_is_rejected_before_mutation() {
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("A"));
+        font.lib
+            .insert(SKIP_EXPORT_GLYPHS.into(), plist::Value::String("A".into()));
+        let before = font.clone();
+
+        assert_eq!(
+            write_canonical_glyph_metadata_to_ufo(
+                &mut font,
+                "A",
+                &CanonicalGlyphMetadata::default()
+            ),
+            Err(GlyphMetadataError::InvalidSkipExportList)
+        );
+        assert_eq!(font, before);
     }
 }

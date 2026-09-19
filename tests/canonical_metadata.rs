@@ -15,7 +15,10 @@ use runebender::document::model::glyph_metadata::{
 fn raw_metadata() -> CanonicalFontMetadata {
     CanonicalFontMetadata::from_raw(
         BTreeMap::from([
-            ("com.example.arbitrary".into(), vec!["A".into(), "V".into()]),
+            (
+                "com.example.arbitrary".into(),
+                vec!["A".into(), "A".into(), "V".into()],
+            ),
             ("public.kern1.A".into(), vec!["A".into()]),
             ("public.kern2.V".into(), vec!["V".into()]),
         ]),
@@ -40,7 +43,7 @@ fn fractional_kerning_and_all_groups_round_trip_exactly() {
     assert_eq!(metadata.resolved_kerning("A", "V"), Some(-81.375));
     assert_eq!(
         metadata.groups().get("com.example.arbitrary"),
-        Some(&vec!["A".to_string(), "V".to_string()])
+        Some(&vec!["A".to_string(), "A".to_string(), "V".to_string()])
     );
     assert_eq!(
         metadata
@@ -105,7 +108,7 @@ fn group_membership_is_side_scoped_and_accepts_full_names() {
     );
     assert_eq!(
         metadata.groups().get("com.example.arbitrary"),
-        Some(&vec!["A".to_string(), "V".to_string()])
+        Some(&vec!["A".to_string(), "A".to_string(), "V".to_string()])
     );
     assert_eq!(
         metadata.set_kerning_group("A", KerningSide::First, Some("public.kern2.wrong")),
@@ -185,7 +188,7 @@ fn removing_a_group_removes_only_its_pairs() {
     assert_eq!(metadata.resolved_kerning("A", "V"), Some(-81.375));
     assert_eq!(
         metadata.groups().get("com.example.arbitrary"),
-        Some(&vec!["A".to_string(), "V".to_string()])
+        Some(&vec!["A".to_string(), "A".to_string(), "V".to_string()])
     );
     assert!(
         metadata
