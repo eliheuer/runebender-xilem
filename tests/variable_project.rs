@@ -7626,3 +7626,280 @@ fn imported_contour_append_and_replace_are_atomic_and_persistable() {
     assert_eq!(reloaded_glyph.components.len(), 1);
     assert_eq!(reloaded_glyph.anchors.len(), 1);
 }
+
+#[test]
+fn background_copy_swap_clear_are_atomic_undoable_and_persistable() {
+    let scratch = Scratch::new();
+    let source_path = scratch.0.join("BackgroundTransactions.ufo");
+    let contour = |offset: f64| {
+        Contour::new(
+            vec![
+                ContourPoint::new(offset, 0.0, PointType::Line, false, None, None),
+                ContourPoint::new(offset + 100.0, 0.0, PointType::Line, false, None, None),
+                ContourPoint::new(offset + 50.0, 100.0, PointType::Line, false, None, None),
+            ],
+            None,
+        )
+    };
+    let mut foreground = Glyph::new("A");
+    foreground.width = 500.25;
+    foreground.contours.push(contour(0.0));
+    foreground.components.push(Component::new(
+        Name::new("B").unwrap(),
+        norad::AffineTransform::default(),
+        None,
+    ));
+    foreground.anchors.push(Anchor::new(
+        50.0,
+        700.0,
+        Some(Name::new("top").unwrap()),
+        None,
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(Glyph::new("B"));
+    font.default_layer_mut().insert_glyph(foreground);
+    let background_container = font.layers.new_layer("public.background").unwrap();
+    background_container.lib.insert(
+        "container.owner".into(),
+        plist::Value::String("exact".into()),
+    );
+    background_container.insert_glyph(Glyph::new("B"));
+    font.save(&source_path).unwrap();
+
+    let mut project = Project::load(&source_path).unwrap();
+    let source = SourceId(0);
+    let foreground_layer = project.document_source(source).unwrap().default_layer();
+    let foreground_address = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer: foreground_layer.clone(),
+    };
+    let original_foreground = project.glyph_layer("A", &foreground_layer).unwrap();
+    assert!(project.document_background_layer("A", source).is_none());
+
+    assert!(
+        project
+            .copy_document_layer_to_background(&foreground_address)
+            .unwrap()
+    );
+    let (background_layer, background) = project.document_background_layer("A", source).unwrap();
+    assert_eq!(background_layer.name, "public.background");
+    assert_eq!(background.width(), 500.25);
+    assert_eq!(background.contours().count(), 1);
+    assert_eq!(background.components().count(), 0);
+    assert_eq!(background.anchors().count(), 0);
+    assert!(project.undo_sources(false).unwrap());
+    assert!(project.document_background_layer("A", source).is_none());
+    assert!(project.undo_sources(true).unwrap());
+    assert_eq!(
+        project
+            .document_background_layer("A", source)
+            .unwrap()
+            .1
+            .width(),
+        500.25
+    );
+    let copied_snapshot = project.document_snapshot();
+    let copied_revision = project.document_revision();
+    assert!(
+        !project
+            .copy_document_layer_to_background(&foreground_address)
+            .unwrap()
+    );
+    assert_eq!(project.document_snapshot(), copied_snapshot);
+    assert_eq!(project.document_revision(), copied_revision);
+
+    let replacement = contour(250.0);
+    project
+        .edit_document_layer("A", &foreground_layer, |draft| {
+            assert!(draft.replace_imported_contours(std::slice::from_ref(&replacement))?);
+            assert!(draft.set_width(620.75)?);
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        project
+            .swap_document_layer_with_background(&foreground_address)
+            .unwrap()
+    );
+    let swapped_foreground = project.glyph_layer("A", &foreground_layer).unwrap();
+    let swapped_background = project.glyph_layer("A", &background_layer).unwrap();
+    assert_eq!(swapped_foreground.contours, original_foreground.contours);
+    assert_eq!(swapped_foreground.width, 620.75);
+    assert_eq!(
+        swapped_foreground.components,
+        original_foreground.components
+    );
+    assert_eq!(swapped_foreground.anchors, original_foreground.anchors);
+    assert_eq!(
+        swapped_background.contours.as_slice(),
+        std::slice::from_ref(&replacement)
+    );
+    assert_eq!(swapped_background.width, 620.75);
+
+    assert!(project.undo_sources(false).unwrap());
+    assert_eq!(
+        project
+            .glyph_layer("A", &foreground_layer)
+            .unwrap()
+            .contours
+            .as_slice(),
+        std::slice::from_ref(&replacement)
+    );
+    assert_eq!(
+        project
+            .glyph_layer("A", &background_layer)
+            .unwrap()
+            .contours,
+        original_foreground.contours
+    );
+    assert!(project.undo_sources(true).unwrap());
+    assert_eq!(
+        project
+            .glyph_layer("A", &foreground_layer)
+            .unwrap()
+            .contours,
+        original_foreground.contours
+    );
+
+    assert!(project.clear_document_background("A", source).unwrap());
+    assert!(project.document_background_layer("A", source).is_none());
+    let cleared_revision = project.document_revision();
+    assert!(!project.clear_document_background("A", source).unwrap());
+    assert_eq!(project.document_revision(), cleared_revision);
+    assert!(project.undo_sources(false).unwrap());
+    assert!(project.document_background_layer("A", source).is_some());
+
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_foreground = reloaded.document_source(source).unwrap().default_layer();
+    let (reloaded_background, _) = reloaded.document_background_layer("A", source).unwrap();
+    assert_eq!(
+        reloaded.glyph_layer("A", &reloaded_foreground).unwrap(),
+        project.glyph_layer("A", &foreground_layer).unwrap()
+    );
+    assert_eq!(
+        reloaded.glyph_layer("A", &reloaded_background).unwrap(),
+        project.glyph_layer("A", &background_layer).unwrap()
+    );
+    assert_eq!(
+        reloaded
+            .source_snapshot(source)
+            .unwrap()
+            .layers
+            .get("public.background")
+            .unwrap()
+            .lib["container.owner"],
+        plist::Value::String("exact".into())
+    );
+}
+
+#[test]
+fn variable_background_transaction_replays_through_source_history() {
+    let (_scratch, mut project) = fixture();
+    let source = project.document_sources().next().unwrap().id();
+    let foreground = project.document_source(source).unwrap().default_layer();
+    let address = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer: foreground,
+    };
+
+    assert!(project.copy_document_layer_to_background(&address).unwrap());
+    assert!(project.document_background_layer("A", source).is_some());
+    assert!(project.undo_sources(false).unwrap());
+    assert!(project.document_background_layer("A", source).is_none());
+    assert!(project.undo_sources(true).unwrap());
+    assert!(project.document_background_layer("A", source).is_some());
+}
+
+#[test]
+fn background_copy_transfers_object_metadata_and_swap_retains_shape_order() {
+    let scratch = Scratch::new();
+    let source_path = scratch.0.join("BackgroundContourMetadata.ufo");
+    let contour = |offset: f64, label: &str, identifier: &str| {
+        let mut contour = Contour::new(
+            vec![
+                ContourPoint::new(offset, 0.0, PointType::Move, false, None, None),
+                ContourPoint::new(offset + 20.0, 30.0, PointType::Line, false, None, None),
+            ],
+            Some(norad::Identifier::new(identifier).unwrap()),
+        );
+        contour.replace_lib(plist::Dictionary::from_iter([(
+            String::from("test.label"),
+            plist::Value::String(label.into()),
+        )]));
+        contour
+    };
+    let mut foreground = Glyph::new("A");
+    foreground
+        .contours
+        .push(contour(0.0, "foreground", "foreground-contour"));
+    let mut background = Glyph::new("A");
+    background
+        .contours
+        .push(contour(0.0, "background", "background-contour"));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(foreground);
+    font.default_layer_mut().insert_glyph(Glyph::new("B"));
+    font.layers
+        .new_layer("public.background")
+        .unwrap()
+        .insert_glyph(background);
+    font.save(&source_path).unwrap();
+
+    let mut project = Project::load(&source_path).unwrap();
+    let source = SourceId(0);
+    let foreground_layer = project.document_source(source).unwrap().default_layer();
+    let address = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer: foreground_layer.clone(),
+    };
+    assert!(project.copy_document_layer_to_background(&address).unwrap());
+    let (background_layer, _) = project.document_background_layer("A", source).unwrap();
+    assert_eq!(
+        project
+            .glyph_layer("A", &background_layer)
+            .unwrap()
+            .contours[0]
+            .lib()
+            .unwrap()["test.label"],
+        plist::Value::String("foreground".into())
+    );
+    assert!(!project.copy_document_layer_to_background(&address).unwrap());
+
+    let second = contour(50.0, "second", "second-contour");
+    project
+        .edit_document_layer("A", &foreground_layer, |draft| {
+            draft.add_component("B".into(), kurbo::Affine::default())?;
+            draft.append_imported_contours(std::slice::from_ref(&second))?;
+            Ok(())
+        })
+        .unwrap();
+    let shape_order = |project: &Project| {
+        project
+            .document_layer("A", &foreground_layer)
+            .unwrap()
+            .shapes()
+            .map(|shape| matches!(shape, runebender::document::LayerShapeView::Contour(_)))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(shape_order(&project), [true, false, true]);
+    assert!(project.copy_document_layer_to_background(&address).unwrap());
+    let mut changed_background = project
+        .glyph_layer("A", &background_layer)
+        .unwrap()
+        .contours;
+    changed_background[0].points[0].x += 100.0;
+    project
+        .edit_document_layer("A", &background_layer, |draft| {
+            draft.replace_imported_contours(&changed_background)?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        project
+            .swap_document_layer_with_background(&address)
+            .unwrap()
+    );
+    assert_eq!(shape_order(&project), [true, false, true]);
+}

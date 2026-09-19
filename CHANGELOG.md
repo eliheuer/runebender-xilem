@@ -47,6 +47,7 @@ No release has been published yet.
 - Moved quadratic, cubic, hyperbezier, corner-rounding, handle-harmonizing, handle-balancing, and handle-optimization operations onto canonical contours.
 - Moved hyperbezier pen creation, point appending, and closure onto typed canonical contours with stable object identities.
 - Added atomic canonical contour import for SVG append and image-trace replacement without whole-glyph reconciliation.
+- Moved background send, swap and clear into canonical auxiliary-layer transactions with guarded source-history undo and redo.
 - Moved explicit mask baking onto canonical contours and cleared the persisted mask key only after successful subtraction.
 - Moved selected and whole-layer metaball collapse onto staged canonical layer edits that retain live groups until conversion succeeds.
 - Made image placement install validated source resources through Project without mutable UFO-font access.
@@ -96,6 +97,7 @@ No release has been published yet.
 - Preserved point and contour identities when changing a closed contour's start point.
 - Preserved contour metadata and surviving point identities when opening or closing paths.
 - Prevented contour opening from saving orphaned cubic or quadratic controls that cannot be reopened.
+- Rejected malformed imported contours and duplicate object identifiers before mutation, while preserving component interleaving during contour replacement.
 - Added canonical contour copy, paste and offset duplication with fresh stable identities.
 - Moved boolean and overlap-removal topology replacement onto canonical paths.
 - Applied successful empty boolean results instead of retaining the original contours.

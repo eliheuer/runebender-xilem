@@ -2451,6 +2451,16 @@ impl LayerEditDraft {
         &mut self,
         source: LayerView<'_>,
     ) -> Result<bool, DocumentEditError> {
+        let contours_changed = self.replace_layer_contours_only(source)?;
+        let width_changed = self.set_width(source.width())?;
+        Ok(contours_changed || width_changed)
+    }
+
+    /// Replace only the contours from another canonical layer, retaining this layer's width.
+    pub(super) fn replace_layer_contours_only(
+        &mut self,
+        source: LayerView<'_>,
+    ) -> Result<bool, DocumentEditError> {
         if source.glyph_name() != self.preserved.name {
             return Err(DocumentEditError::InvalidLayerMetadata);
         }
@@ -2459,39 +2469,30 @@ impl LayerEditDraft {
             && current.contours().zip(source.contours()).all(|(a, b)| {
                 a.is_closed() == b.is_closed()
                     && a.is_hyper() == b.is_hyper()
+                    && same_copied_object_metadata(&a.preserved.metadata, &b.preserved.metadata)
                     && a.points().count() == b.points().count()
                     && a.points().zip(b.points()).all(|(a, b)| {
                         a.position() == b.position()
                             && a.point_type() == b.point_type()
                             && a.is_smooth() == b.is_smooth()
                             && a.name() == b.name()
+                            && same_copied_object_metadata(
+                                &a.preserved.metadata,
+                                &b.preserved.metadata,
+                            )
                     })
             });
-        if same_contours && self.preserved.width == source.width() {
+        if same_contours {
             return Ok(false);
         }
         let copied = source.copy_contours(&[])?;
-        let insert_at = self
-            .layer
-            .shapes
-            .iter()
-            .take_while(|shape| !matches!(shape, Shape::Path(_)))
-            .filter(|shape| matches!(shape, Shape::Component(_)))
-            .count();
-        self.layer
-            .shapes
-            .retain(|shape| matches!(shape, Shape::Component(_)));
-        self.preserved.contours.clear();
+        let old_shape_count = self.layer.shapes.len();
+        let old_contour_count = self.preserved.contours.len();
         self.paste_contours(&copied)?;
-        let contour_start = self
-            .layer
-            .shapes
-            .iter()
-            .position(|shape| matches!(shape, Shape::Path(_)))
-            .unwrap_or(self.layer.shapes.len());
-        let contours = self.layer.shapes.split_off(contour_start);
-        self.layer.shapes.splice(insert_at..insert_at, contours);
-        self.set_width(source.width())?;
+        let replacements = self.layer.shapes.split_off(old_shape_count);
+        replace_path_shapes_preserving_slots(&mut self.layer.shapes, replacements);
+        let replacements = self.preserved.contours.split_off(old_contour_count);
+        self.preserved.contours = replacements;
         Ok(true)
     }
 
@@ -4559,6 +4560,10 @@ fn replace_path_shapes_preserving_slots(shapes: &mut Vec<Shape>, replacements: V
     *shapes = output;
 }
 
+fn same_copied_object_metadata(a: &ObjectMetadata, b: &ObjectMetadata) -> bool {
+    a.identifier.is_some() == b.identifier.is_some() && a.lib == b.lib
+}
+
 fn reverse_contour(path: &mut babelfont::Path, preserved: &mut PreservedContour) -> bool {
     debug_assert_eq!(
         path.nodes.len(),
@@ -4969,6 +4974,34 @@ pub(super) fn copy_layer(
                 .expect("copied smart-component values bind to copied components"),
         );
     }
+    (layer, preserved)
+}
+
+pub(super) fn copy_contours_only(
+    layer: &Layer,
+    preserved: &LayerPreservation,
+    id: &LayerId,
+) -> (Layer, LayerPreservation) {
+    let (mut layer, mut preserved) = copy_layer(layer, preserved, id);
+    layer.shapes.retain(|shape| matches!(shape, Shape::Path(_)));
+    layer.anchors.clear();
+    preserved.height = 0.0;
+    preserved.codepoints = norad::Codepoints::default();
+    preserved.note = None;
+    preserved.guidelines.clear();
+    preserved.image = None;
+    preserved.lib.clear();
+    preserved.mark_color = None;
+    preserved.left_metrics_key = None;
+    preserved.right_metrics_key = None;
+    preserved.metaballs = None;
+    preserved.composition_recipe = None;
+    preserved.smart_component_axes = None;
+    preserved.smart_component_values = None;
+    preserved.smart_component_pole = None;
+    preserved.hoi_intermediates = None;
+    preserved.components.clear();
+    preserved.anchors.clear();
     (layer, preserved)
 }
 

@@ -11,6 +11,7 @@ use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::document::CanonicalSourceStructureSnapshot;
+use crate::document::LayerView;
 use crate::document::canonical_metadata::{CanonicalFontMetadata, KerningParticipant};
 use crate::document::history::{
     EditHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome, TransactionHistory,
@@ -56,6 +57,12 @@ impl SourceFrame {
         if !expected.matches(project) {
             return Err("source structure changed after history capture".into());
         }
+        if project.document_designspace().is_none()
+            && (expected.canonical.source_ids() != self.canonical.source_ids()
+                || project.masters.len() != self.canonical.source_ids().len())
+        {
+            return Err("standalone source history changed source identities".into());
+        }
         let previous_ids = project.variable.source_ids.clone();
         let canonical_changed = project
             .variable
@@ -65,10 +72,34 @@ impl SourceFrame {
             project.variable.revision = project.variable.revision.wrapping_add(1);
         }
         reconcile_compatibility_layer_histories(&mut project.variable, retired_layer_histories);
-        let designspace = project
-            .document_designspace()
-            .cloned()
-            .ok_or("source history requires a canonical Designspace")?;
+        let Some(designspace) = project.document_designspace().cloned() else {
+            debug_assert_eq!(
+                previous_ids, project.variable.source_ids,
+                "a standalone source-history frame retains its source identities"
+            );
+            for (master, source) in project
+                .masters
+                .iter_mut()
+                .zip(project.variable.source_ids.iter().copied())
+            {
+                master.font = project
+                    .variable
+                    .source_font(source)
+                    .ok_or_else(|| format!("missing canonical source {}", source.0))?;
+            }
+            project.active = self
+                .active
+                .and_then(|active| {
+                    project
+                        .variable
+                        .source_ids
+                        .iter()
+                        .position(|source| *source == active)
+                })
+                .unwrap_or(0);
+            project.finish_source_restore();
+            return Ok(());
+        };
         let source_ids = designspace.full_source_order().collect::<Vec<_>>();
         let sources = source_ids
             .iter()
@@ -762,6 +793,106 @@ impl Project {
         let before = SourceFrame::capture(self);
         self.install_source_designspace_edit(&designspace, replacement)?;
         self.refresh_instances_from_doc();
+        self.record_canonical_source_change(before);
+        Ok(true)
+    }
+
+    /// Read this source's conventional background glyph layer without a UFO projection.
+    pub fn document_background_layer(
+        &self,
+        glyph: &str,
+        source: SourceId,
+    ) -> Option<(LayerId, LayerView<'_>)> {
+        let layer = self.variable.background_layer_id(source)?;
+        let view = self.document_layer(glyph, &layer)?;
+        Some((layer, view))
+    }
+
+    /// Copy one foreground layer's contours and exact width into the canonical background.
+    ///
+    /// The conventional background layer and glyph are created when absent.
+    /// An identical copy is a no-op that retains existing stable identities and redo history.
+    pub fn copy_document_layer_to_background(
+        &mut self,
+        address: &GlyphLayerAddress,
+    ) -> Result<bool, String> {
+        let before = SourceFrame::capture(self);
+        let base = self.variable.source_structure_snapshot();
+        let mut replacement = base.clone();
+        let (_, changed) = replacement.copy_layer_to_background(&address.glyph, &address.layer)?;
+        if !changed {
+            return Ok(false);
+        }
+        self.commit_background_structure(before, base, replacement, address)
+    }
+
+    /// Atomically exchange foreground and background contours.
+    ///
+    /// The foreground retains its width and non-outline metadata. The background receives the
+    /// foreground width, matching the existing editor command while retaining its other metadata.
+    pub fn swap_document_layer_with_background(
+        &mut self,
+        address: &GlyphLayerAddress,
+    ) -> Result<bool, String> {
+        let before = SourceFrame::capture(self);
+        let base = self.variable.source_structure_snapshot();
+        let mut replacement = base.clone();
+        let (_, changed) =
+            replacement.swap_layer_with_background(&address.glyph, &address.layer)?;
+        if !changed {
+            return Ok(false);
+        }
+        self.commit_background_structure(before, base, replacement, address)
+    }
+
+    /// Remove this glyph from its canonical background layer, retaining the layer container.
+    pub fn clear_document_background(
+        &mut self,
+        glyph: &str,
+        source: SourceId,
+    ) -> Result<bool, String> {
+        let before = SourceFrame::capture(self);
+        let base = self.variable.source_structure_snapshot();
+        let mut replacement = base.clone();
+        let (_, changed) = replacement.clear_background_layer(glyph, source)?;
+        if !changed {
+            return Ok(false);
+        }
+        let address = GlyphLayerAddress {
+            glyph: glyph.into(),
+            layer: self
+                .variable
+                .background_layer_id(source)
+                .ok_or("unknown source")?,
+        };
+        self.commit_background_structure(before, base, replacement, &address)
+    }
+
+    fn commit_background_structure(
+        &mut self,
+        before: SourceFrame,
+        base: CanonicalSourceStructureSnapshot,
+        replacement: CanonicalSourceStructureSnapshot,
+        address: &GlyphLayerAddress,
+    ) -> Result<bool, String> {
+        let changed = self
+            .variable
+            .restore_source_structure_if_current(&base, replacement)
+            .map_err(|_| "canonical source structure changed after background staging")?;
+        if !changed {
+            return Ok(false);
+        }
+        let index = self
+            .source_index(address.layer.source)
+            .ok_or("background source disappeared")?;
+        self.masters[index].font = self
+            .variable
+            .source_font(address.layer.source)
+            .ok_or("committed background source is not projectable")?;
+        self.masters[index].dirty = true;
+        self.masters[index]
+            .modified_glyphs
+            .insert(address.glyph.clone());
         self.record_canonical_source_change(before);
         Ok(true)
     }

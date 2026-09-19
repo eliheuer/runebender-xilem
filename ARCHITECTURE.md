@@ -118,6 +118,7 @@ They also shift contour points and anchors together for left-sidebearing edits w
 Direct line-to-cubic conversion inserts newly identified canonical controls and sets every accepted geometric-line endpoint to cubic while retaining endpoint identity and metadata, including on wraparound closing segments.
 Direct topology operations create pen, rectangle and ellipse contours with stable identities before any UFO projection is refreshed.
 Trace and SVG format boundaries append or replace only their explicit contour payloads through validated layer drafts, assigning fresh document identities without reconciling a whole glyph.
+Imported contours are validated as a complete serializable glyph candidate before commit, including topology and identifier uniqueness, and replacement retains the existing contour/component paint slots when their counts permit it.
 The hyperbezier pen creates, appends and closes typed canonical hyper contours directly, retaining stable on-curve identities and a fresh UFO compatibility marker.
 Direct segment subdivision supports stored-endpoint lines, quadratics and cubics, preserving existing control identities and metadata while assigning fresh identities to inserted topology and rejecting nonfinite computed geometry before mutation.
 Quadratic subdivision represents stored and implied endpoints explicitly; it validates that implied pairs still belong to a quadratic chain and materializes a midpoint before moving either defining control.
@@ -145,6 +146,8 @@ Source image-resource insertion uses a stable-`SourceId` Project operation that 
 `CanonicalLayerSnapshot` captures one opaque addressed layer with the same geometry and extensions; guarded restore compares the complete live state before replacing it, advances the revision once and refreshes the compatibility projection without recording legacy history.
 `CanonicalSourceMetadataSnapshot` captures feature text, groups and exact kerning for the complete stable source set; guarded whole-snapshot restore ignores display reorder, rejects stale or changed source sets and refreshes all affected projections in one revision.
 Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact extensions first, then refresh only the affected compatibility projection.
+Background send, swap and clear stage a complete canonical source snapshot and record guarded source-history transactions for both standalone UFO and Designspace documents.
+Send copies contours and exact width into the conventional background while omitting unrelated glyph metadata; swap exchanges contours, retains the foreground width and writes that width to the background, matching the editor command's established behavior.
 Review proposals use those auxiliary layers under stable source identities; revision-checked batches stage canonical drafts before publication, and guarded installation records Project-owned foreground history.
 Experimental versions clone canonical layer drafts and canonical source metadata for the session, and they apply selected changes only after root-baseline conflict checks.
 The GLIF SHA and external UFO proposal format remain explicit transient codec boundaries rather than editable Norad mirrors.

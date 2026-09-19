@@ -11,6 +11,7 @@
 //! and precision outside Babelfont's schema; saving materializes its geometry
 //! through the preserving adapter rather than its lossy UFO converter.
 
+mod background;
 mod constructors;
 mod glyph_transactions;
 mod proposal_transactions;

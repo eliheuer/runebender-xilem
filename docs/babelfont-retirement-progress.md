@@ -57,7 +57,7 @@ Their drop implementations reconcile a mutated UFO back into canonical ownership
 | `application/editor/commands.rs:673` `save_as_to` | Rewrites source paths and dirtiness through `SourcesEdit`. | The M12 Project-owned retarget transaction must also relocate relative feature includes before publication. |
 | `application/editor/commands.rs:815` `command_place_image` | Inserts source image bytes through `FontModel::font_mut`. | A guarded canonical source-resource transaction is required for image bytes; `LayerEditDraft::set_image` already covers the glyph reference. |
 | `application/editor/session.rs:2228` overview history | Uses `edit_source` only to reach legacy history. | Remove with the history caller described above. |
-| `application/font_model.rs:494,517` background layer writes | Creates, writes and clears a UFO background layer. | Use canonical auxiliary-layer structure plus addressed layer transactions. |
+| `application/font_model.rs:494,517` background layer writes | Creates, writes and clears a UFO background layer. | Use `Project::copy_document_layer_to_background`, `swap_document_layer_with_background` and `clear_document_background`; these canonical source-history transactions now cover standalone UFO and Designspace documents. |
 | `application/font_model.rs:708` overview advance | Calls `Master::set_advance`. | Existing `LayerEditDraft::set_width` is sufficient. |
 | `application/font_model.rs:739` Unicode propagation | Mutates every source UFO glyph. | Existing canonical source-glyph metadata transaction is sufficient. |
 | `application/font_model.rs:764` `replace_glyph` | Replaces a whole active-source UFO glyph. | Delete after Session, metaball and other whole-glyph callers move to direct layer drafts. |
@@ -89,7 +89,7 @@ Implementation update: `Replace UFO templates with source format data` removes t
 The record owns glyph-free layer order, names, exact paths, layer libs and colors, UFO metainfo, residual font info and lib values, plus data and image stores.
 Canonical features, groups, kerning, font information, glyph metadata and geometry remain outside it.
 Transient `norad::Font` values are reconstructed only when an existing compatibility or persistence boundary explicitly requests a source snapshot.
-The 70 variable-project tests and eight staged-filesystem tests preserve the prior exact save behavior; deleting the remaining source-snapshot consumers is still M13 work.
+The 74 variable-project tests and eight staged-filesystem tests preserve the prior exact save behavior; deleting the remaining source-snapshot consumers is still M13 work.
 
 `Master` remains a second live source model at `src/document/source.rs:84` and `Project.masters` at `src/document/project.rs:290`.
 Its `font`, paint cache, path, dirty flags, preserved files and legacy history mix application caches, persistence state and editing ownership.
