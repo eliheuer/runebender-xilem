@@ -6,10 +6,16 @@
 //! New document callers read canonical layers directly.
 //! Norad entry points remain for compatibility callers and format adapters.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use kurbo::{Affine, BezPath, Point};
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 
-use crate::document::{ContourView, LayerPointType, LayerShapeView, LayerView};
+use crate::document::model::smart_components::{
+    SMART_COMPONENT_AXES_KEY, SMART_COMPONENT_POLE_KEY, SMART_COMPONENT_VALUES_KEY,
+    SmartComponentAxes, SmartComponentPole, SmartComponentValues,
+};
+use crate::document::{ComponentView, ContourView, LayerPointType, LayerShapeView, LayerView};
 
 /// Why canonical component resolution could not produce an outline.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -125,13 +131,36 @@ pub fn ordinary_layer_to_bezpath<'a>(
     Ok(path)
 }
 
+/// Render one canonical layer with components, hyperbeziers, metaballs and smart components.
+///
+/// `resolve` selects the base layer for each component in the caller's source/layer context.
+/// `layers` supplies every same-source layer of a component base so smart poles can participate.
+/// Missing references and cycles remain explicit errors.
+pub fn canonical_layer_to_bezpath<'a>(
+    layer: LayerView<'a>,
+    mut resolve: impl FnMut(&str) -> Option<LayerView<'a>>,
+    mut layers: impl FnMut(&str) -> Vec<LayerView<'a>>,
+) -> Result<BezPath, ComponentResolveError> {
+    let mut path = BezPath::new();
+    let mut stack = vec![layer.glyph_name().to_owned()];
+    append_rendered_layer(
+        &mut path,
+        layer,
+        &mut resolve,
+        &mut layers,
+        &mut stack,
+        Affine::IDENTITY,
+    )?;
+    Ok(path)
+}
+
 /// Resolve one top-level canonical component into its exact rendered path.
 ///
 /// `root_name` keeps cycles through the containing glyph visible even though the returned path is
 /// scoped to one component.
 pub fn ordinary_component_to_bezpath<'a>(
     root_name: &str,
-    component: crate::document::ComponentView<'a>,
+    component: ComponentView<'a>,
     mut resolve: impl FnMut(&str) -> Option<LayerView<'a>>,
 ) -> Result<BezPath, ComponentResolveError> {
     let name = component.reference();
@@ -170,43 +199,13 @@ pub fn components_to_bezpath(glyph: &Glyph, font: &Font) -> BezPath {
 
 /// A sparse-layer pole: the axis tags it sits at the top of, and its
 /// point coordinates in that layer.
-type Pole = (std::collections::BTreeSet<String>, Vec<(f64, f64)>);
+type Pole = (BTreeSet<String>, Vec<(f64, f64)>);
 
 /// The affine of a norad component transform.
 pub fn component_affine(t: &norad::AffineTransform) -> Affine {
     Affine::new([
         t.x_scale, t.xy_scale, t.yx_scale, t.y_scale, t.x_offset, t.y_offset,
     ])
-}
-
-/// Where smart-component metadata lives.
-///
-/// Axes sit on the part glyph under the glyphsLib key, and
-/// per-component values sit on the using glyph. Pole layers are
-/// marked with `com.runebender.partSelection`, where an axis value
-/// of 1 means the bottom pole and 2 the top. An unmarked default
-/// glyph acts as the bottom pole.
-const SMART_AXES_KEY: &str = "com.schriftgestaltung.Glyphs.smartComponentAxes";
-const SMART_VALUES_KEY: &str = "com.schriftgestaltung.Glyphs.componentsSmartComponentValues";
-const PART_SELECTION_KEY: &str = "com.runebender.partSelection";
-
-/// The value the using glyph sets for `component_index`'s first
-/// smart axis, if any.
-///
-/// Values are stored as `{axis: value}` dicts in a list aligned
-/// with the component order.
-fn smart_value_for(glyph: &Glyph, component_index: usize, axis: &str) -> Option<f64> {
-    glyph
-        .lib
-        .get(SMART_VALUES_KEY)?
-        .as_array()?
-        .get(component_index)?
-        .as_dictionary()?
-        .get(axis)
-        .and_then(|v| {
-            v.as_real()
-                .or_else(|| v.as_signed_integer().map(|n| n as f64))
-        })
 }
 
 /// Interpolated contours for a smart part at the given axis values.
@@ -227,36 +226,9 @@ fn smart_value_for(glyph: &Glyph, component_index: usize, axis: &str) -> Option<
 fn smart_contours(
     base: &Glyph,
     font: &Font,
-    values: &std::collections::BTreeMap<String, f64>,
+    axes: &SmartComponentAxes,
+    values: &BTreeMap<String, f64>,
 ) -> Option<Vec<Contour>> {
-    use std::collections::BTreeMap;
-    use std::collections::BTreeSet;
-    let axes = base.lib.get(SMART_AXES_KEY)?.as_array()?;
-    let number = |v: &plist::Value| {
-        v.as_real()
-            .or_else(|| v.as_signed_integer().map(|n| n as f64))
-    };
-    // Normalized position per axis, in declaration order.
-    let mut t: BTreeMap<String, f64> = BTreeMap::new();
-    for axis in axes {
-        let axis = axis.as_dictionary()?;
-        let name = axis.get("name")?.as_string()?;
-        let bottom = axis.get("bottomValue").and_then(number).unwrap_or(0.0);
-        let top = axis.get("topValue").and_then(number).unwrap_or(100.0);
-        if (top - bottom).abs() < 1e-9 {
-            continue;
-        }
-        let value = values.get(name).copied().unwrap_or(bottom);
-        t.insert(
-            name.to_string(),
-            ((value - bottom) / (top - bottom)).clamp(0.0, 1.0),
-        );
-    }
-    if t.is_empty() {
-        return None;
-    }
-    // Pole layers: every layer copy of this glyph whose part
-    // selection marks at least one known axis with 2.
     let flat = |glyph: &Glyph| -> Option<Vec<(f64, f64)>> {
         if glyph.contours.len() != base.contours.len() {
             return None;
@@ -278,13 +250,20 @@ fn smart_contours(
         let Some(candidate) = layer.get_glyph(base.name()) else {
             continue;
         };
-        let Some(plist::Value::Dictionary(sel)) = candidate.lib.get(PART_SELECTION_KEY) else {
+        let Some(pole) = candidate
+            .lib
+            .get(SMART_COMPONENT_POLE_KEY)
+            .and_then(|value| SmartComponentPole::from_plist(value).ok())
+        else {
             continue;
         };
-        let tops: BTreeSet<String> = sel
+        let tops: BTreeSet<String> = axes
+            .axes()
             .iter()
-            .filter(|(name, v)| t.contains_key(name.as_str()) && v.as_signed_integer() == Some(2))
-            .map(|(name, _)| name.clone())
+            .filter(|axis| {
+                (axis.top_value() - axis.bottom_value()).abs() >= 1e-9 && pole.is_top(axis.name())
+            })
+            .map(|axis| axis.name().to_owned())
             .collect();
         if tops.is_empty() {
             continue;
@@ -292,40 +271,7 @@ fn smart_contours(
         let coords = flat(candidate)?;
         poles.push((tops, coords));
     }
-    if poles.is_empty() {
-        return None;
-    }
-    // Inclusion-exclusion deltas, singles before corners.
-    poles.sort_by_key(|(tops, _)| tops.len());
-    let n = default_coords.len();
-    let mut deltas: Vec<Pole> = Vec::new();
-    for (tops, coords) in &poles {
-        let mut delta: Vec<(f64, f64)> = coords
-            .iter()
-            .zip(default_coords.iter())
-            .map(|(c, d)| (c.0 - d.0, c.1 - d.1))
-            .collect();
-        for (prev_tops, prev_delta) in &deltas {
-            if prev_tops.is_subset(tops) && prev_tops != tops {
-                for i in 0..n {
-                    delta[i].0 -= prev_delta[i].0;
-                    delta[i].1 -= prev_delta[i].1;
-                }
-            }
-        }
-        deltas.push((tops.clone(), delta));
-    }
-    let mut coords = default_coords;
-    for (tops, delta) in &deltas {
-        let weight: f64 = tops.iter().map(|a| t[a]).product();
-        if weight == 0.0 {
-            continue;
-        }
-        for i in 0..n {
-            coords[i].0 += weight * delta[i].0;
-            coords[i].1 += weight * delta[i].1;
-        }
-    }
+    let coords = interpolate_smart_coordinates(axes, values, default_coords, poles)?;
     // Reassemble along the default glyph's structure.
     let mut out = Vec::with_capacity(base.contours.len());
     let mut cursor = 0_usize;
@@ -343,6 +289,147 @@ fn smart_contours(
     }
     Some(out)
 }
+
+fn interpolate_smart_coordinates(
+    axes: &SmartComponentAxes,
+    values: &BTreeMap<String, f64>,
+    default_coords: Vec<(f64, f64)>,
+    mut poles: Vec<Pole>,
+) -> Option<Vec<(f64, f64)>> {
+    let mut normalized = BTreeMap::new();
+    for axis in axes.axes() {
+        let bottom = axis.bottom_value();
+        let top = axis.top_value();
+        if (top - bottom).abs() < 1e-9 {
+            continue;
+        }
+        let value = values.get(axis.name()).copied().unwrap_or(bottom);
+        normalized.insert(
+            axis.name().to_owned(),
+            ((value - bottom) / (top - bottom)).clamp(0.0, 1.0),
+        );
+    }
+    if normalized.is_empty() || poles.is_empty() {
+        return None;
+    }
+    poles.sort_by_key(|(tops, _)| tops.len());
+    let mut deltas: Vec<Pole> = Vec::new();
+    for (tops, coords) in &poles {
+        let mut delta: Vec<(f64, f64)> = coords
+            .iter()
+            .zip(&default_coords)
+            .map(|(candidate, default)| (candidate.0 - default.0, candidate.1 - default.1))
+            .collect();
+        for (previous_tops, previous_delta) in &deltas {
+            if previous_tops.is_subset(tops) && previous_tops != tops {
+                for (value, previous) in delta.iter_mut().zip(previous_delta) {
+                    value.0 -= previous.0;
+                    value.1 -= previous.1;
+                }
+            }
+        }
+        deltas.push((tops.clone(), delta));
+    }
+    let mut coords = default_coords;
+    for (tops, delta) in &deltas {
+        let weight: f64 = tops.iter().map(|axis| normalized[axis]).product();
+        if weight == 0.0 {
+            continue;
+        }
+        for (value, delta) in coords.iter_mut().zip(delta) {
+            value.0 += weight * delta.0;
+            value.1 += weight * delta.1;
+        }
+    }
+    Some(coords)
+}
+
+#[derive(Clone)]
+struct SmartContour {
+    points: Vec<OutlinePoint>,
+    closed: bool,
+}
+
+fn canonical_smart_contours(
+    parent: LayerView<'_>,
+    component: ComponentView<'_>,
+    base: LayerView<'_>,
+    candidates: &[LayerView<'_>],
+) -> Option<Vec<SmartContour>> {
+    let axes = base.smart_component_axes()?;
+    let values: BTreeMap<_, _> = axes
+        .axes()
+        .iter()
+        .filter_map(|axis| {
+            parent
+                .smart_component_value(component.id(), axis.name())
+                .map(|value| (axis.name().to_owned(), value))
+        })
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    let base_contours: Vec<_> = base.contours().collect();
+    let flat = |layer: LayerView<'_>| -> Option<Vec<(f64, f64)>> {
+        let contours: Vec<_> = layer.contours().collect();
+        if contours.len() != base_contours.len() {
+            return None;
+        }
+        let mut coords = Vec::new();
+        for (base, candidate) in base_contours.iter().zip(contours) {
+            if base.points().count() != candidate.points().count() {
+                return None;
+            }
+            coords.extend(
+                candidate
+                    .points()
+                    .map(|point| (point.position().x, point.position().y)),
+            );
+        }
+        Some(coords)
+    };
+    let default_coords = flat(base)?;
+    let mut poles = Vec::new();
+    for candidate in candidates {
+        let Some(pole) = candidate.smart_component_pole() else {
+            continue;
+        };
+        let tops: BTreeSet<_> = axes
+            .axes()
+            .iter()
+            .filter(|axis| {
+                (axis.top_value() - axis.bottom_value()).abs() >= 1e-9 && pole.is_top(axis.name())
+            })
+            .map(|axis| axis.name().to_owned())
+            .collect();
+        if tops.is_empty() {
+            continue;
+        }
+        poles.push((tops, flat(*candidate)?));
+    }
+    let coords = interpolate_smart_coordinates(axes, &values, default_coords, poles)?;
+    let mut cursor = 0;
+    let mut contours = Vec::with_capacity(base_contours.len());
+    for contour in base_contours {
+        let points = contour
+            .points()
+            .map(|point| {
+                let (x, y) = coords[cursor];
+                cursor += 1;
+                OutlinePoint {
+                    position: Point::new(x, y),
+                    kind: point.point_type(),
+                }
+            })
+            .collect();
+        contours.push(SmartContour {
+            points,
+            closed: contour.is_closed(),
+        });
+    }
+    Some(contours)
+}
+
 fn append_components(
     path: &mut BezPath,
     glyph: &Glyph,
@@ -354,6 +441,11 @@ fn append_components(
     if depth > 8 {
         return;
     }
+    let component_order: Vec<_> = (0..glyph.components.len()).collect();
+    let smart_values = glyph
+        .lib
+        .get(SMART_COMPONENT_VALUES_KEY)
+        .and_then(|value| SmartComponentValues::from_plist(value, &component_order).ok());
     for (index, component) in glyph.components.iter().enumerate() {
         let Some(base) = font.get_glyph(&component.base) else {
             continue;
@@ -364,21 +456,26 @@ fn append_components(
                 t.x_scale, t.xy_scale, t.yx_scale, t.y_scale, t.x_offset, t.y_offset,
             ]);
         // A smart part with values interpolates between its poles.
-        let smart = base
+        let axes = base
             .lib
-            .get(SMART_AXES_KEY)
-            .and_then(|v| v.as_array())
-            .map(|axes| {
-                axes.iter()
-                    .filter_map(|axis| {
-                        let name = axis.as_dictionary()?.get("name")?.as_string()?.to_string();
-                        let value = smart_value_for(glyph, index, &name)?;
-                        Some((name, value))
-                    })
-                    .collect::<std::collections::BTreeMap<_, _>>()
-            })
-            .filter(|values| !values.is_empty())
-            .and_then(|values| smart_contours(base, font, &values));
+            .get(SMART_COMPONENT_AXES_KEY)
+            .and_then(|value| SmartComponentAxes::from_plist(value).ok());
+        let values = axes.as_ref().map(|axes| {
+            axes.axes()
+                .iter()
+                .filter_map(|axis| {
+                    smart_values
+                        .as_ref()?
+                        .value(index, axis.name())
+                        .map(|value| (axis.name().to_owned(), value))
+                })
+                .collect::<BTreeMap<_, _>>()
+        });
+        let smart = axes
+            .as_ref()
+            .zip(values)
+            .filter(|(_, values)| !values.is_empty())
+            .and_then(|(axes, values)| smart_contours(base, font, axes, &values));
         match smart {
             Some(contours) => {
                 for contour in &contours {
@@ -461,6 +558,102 @@ pub(crate) fn append_canonical_points(
         .map(|(position, kind)| OutlinePoint { position, kind })
         .collect::<Vec<_>>();
     append_points(path, &points, closed);
+}
+
+fn append_rendered_layer<'a>(
+    path: &mut BezPath,
+    layer: LayerView<'a>,
+    resolve: &mut impl FnMut(&str) -> Option<LayerView<'a>>,
+    layers: &mut impl FnMut(&str) -> Vec<LayerView<'a>>,
+    stack: &mut Vec<String>,
+    transform: Affine,
+) -> Result<(), ComponentResolveError> {
+    if stack.len() > 64 {
+        return Err(ComponentResolveError::TooDeep);
+    }
+    for contour in layer.contours() {
+        let mut contour_path = BezPath::new();
+        append_document_contour(&mut contour_path, contour);
+        append_transformed_path(path, transform, contour_path)?;
+    }
+    append_document_metaballs(path, layer, transform)?;
+    append_rendered_components(path, layer, resolve, layers, stack, transform)
+}
+
+fn append_rendered_components<'a>(
+    path: &mut BezPath,
+    layer: LayerView<'a>,
+    resolve: &mut impl FnMut(&str) -> Option<LayerView<'a>>,
+    layers: &mut impl FnMut(&str) -> Vec<LayerView<'a>>,
+    stack: &mut Vec<String>,
+    transform: Affine,
+) -> Result<(), ComponentResolveError> {
+    for component in layer.components() {
+        let name = component.reference();
+        if let Some(start) = stack.iter().position(|entry| entry == name) {
+            let mut cycle = stack[start..].to_vec();
+            cycle.push(name.to_owned());
+            return Err(ComponentResolveError::Cycle(cycle));
+        }
+        let base = resolve(name).ok_or_else(|| ComponentResolveError::Missing(name.to_owned()))?;
+        let combined = transform * component.transform();
+        if !combined.as_coeffs().iter().all(|value| value.is_finite()) {
+            return Err(ComponentResolveError::NonFinite);
+        }
+        let candidates = layers(name);
+        let smart = canonical_smart_contours(layer, component, base, &candidates);
+        stack.push(name.to_owned());
+        let result = if let Some(contours) = smart {
+            for contour in contours {
+                let mut contour_path = BezPath::new();
+                append_points(&mut contour_path, &contour.points, contour.closed);
+                append_transformed_path(path, combined, contour_path)?;
+            }
+            append_document_metaballs(path, base, combined)?;
+            append_rendered_components(path, base, resolve, layers, stack, combined)
+        } else {
+            append_rendered_layer(path, base, resolve, layers, stack, combined)
+        };
+        stack.pop();
+        result?;
+    }
+    Ok(())
+}
+
+fn append_document_metaballs(
+    path: &mut BezPath,
+    layer: LayerView<'_>,
+    transform: Affine,
+) -> Result<(), ComponentResolveError> {
+    let Some(preview) = (|| {
+        let source = layer.metaballs().ok()?;
+        let mut preview = BezPath::new();
+        for group in &source.groups {
+            for contour in
+                super::metaballs::preview(group, super::metaballs::OutlineOptions::default())
+                    .ok()?
+            {
+                preview.extend(contour);
+            }
+        }
+        Some(preview)
+    })() else {
+        return Ok(());
+    };
+    append_transformed_path(path, transform, preview)
+}
+
+fn append_transformed_path(
+    path: &mut BezPath,
+    transform: Affine,
+    source: BezPath,
+) -> Result<(), ComponentResolveError> {
+    let transformed = transform * source;
+    if !transformed.elements().iter().all(path_element_is_finite) {
+        return Err(ComponentResolveError::NonFinite);
+    }
+    path.extend(transformed.elements().iter().copied());
+    Ok(())
 }
 
 fn append_document_shapes<'a>(
@@ -638,9 +831,11 @@ fn append_points(path: &mut BezPath, points: &[OutlinePoint], closed: bool) {
 #[cfg(test)]
 mod canonical_render_tests {
     use super::*;
+    use crate::document::model::glyph_metadata::{Metaball, MetaballGroup, Metaballs};
     use crate::document::project::Project;
     use crate::document::source::Master;
-    use crate::document::variable::{LayerId, SourceId};
+    use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
+    use crate::formats::metaballs::write_metaballs;
     use kurbo::Shape;
     use norad::{AffineTransform, Component, Name};
 
@@ -667,6 +862,64 @@ mod canonical_render_tests {
             project.document_layer(name, layer)
         })
         .unwrap()
+    }
+
+    fn canonical_full_path(project: &Project, glyph: &str, selected: &LayerId) -> BezPath {
+        let default = project
+            .document_source(selected.source)
+            .expect("source")
+            .default_layer();
+        canonical_layer_to_bezpath(
+            project
+                .document_layer(glyph, selected)
+                .expect("selected layer"),
+            |name| {
+                project
+                    .document_layer(name, selected)
+                    .or_else(|| project.document_layer(name, &default))
+            },
+            |name| {
+                let Some(glyph) = project.document_glyph(name) else {
+                    return Vec::new();
+                };
+                let ids: Vec<_> = glyph
+                    .layer_ids()
+                    .filter(|id| id.source == selected.source)
+                    .cloned()
+                    .collect();
+                ids.iter().filter_map(|id| glyph.layer(id)).collect()
+            },
+        )
+        .unwrap()
+    }
+
+    fn assert_path_and_bounds(actual: &BezPath, expected: &BezPath) {
+        assert_eq!(actual, expected);
+        assert_eq!(actual.bounding_box(), expected.bounding_box());
+    }
+
+    fn smart_axis(name: &str) -> plist::Value {
+        let mut axis = plist::Dictionary::new();
+        axis.insert("name".into(), plist::Value::String(name.into()));
+        axis.insert("bottomValue".into(), plist::Value::Real(0.0));
+        axis.insert("topValue".into(), plist::Value::Real(100.0));
+        plist::Value::Dictionary(axis)
+    }
+
+    fn smart_pole(names: &[&str]) -> plist::Value {
+        let mut pole = plist::Dictionary::new();
+        for name in names {
+            pole.insert((*name).into(), plist::Value::Integer(2_u64.into()));
+        }
+        plist::Value::Dictionary(pole)
+    }
+
+    fn smart_values(values: &[(&str, f64)]) -> plist::Value {
+        let mut entry = plist::Dictionary::new();
+        for (name, value) in values {
+            entry.insert((*name).into(), plist::Value::Real(*value));
+        }
+        plist::Value::Array(vec![plist::Value::Dictionary(entry)])
     }
 
     #[test]
@@ -734,8 +987,7 @@ mod canonical_render_tests {
             .default_layer();
         let actual = canonical_path(&project, "top", &layer);
 
-        assert_eq!(actual, expected);
-        assert_eq!(actual.bounding_box(), expected.bounding_box());
+        assert_path_and_bounds(&actual, &expected);
     }
 
     #[test]
@@ -762,24 +1014,18 @@ mod canonical_render_tests {
         proposal.insert_glyph(top.clone());
         let expected = glyph_to_bezpath(&top, &font);
         let project = Project::from_source(Master::from_font(font, "Overlay.ufo".into()));
-        let default = project
-            .document_source(SourceId(0))
-            .unwrap()
-            .default_layer();
         let selected = LayerId {
             source: SourceId(0),
             name: "com.runebender.proposal.test".into(),
         };
-        let actual =
-            ordinary_layer_to_bezpath(project.document_layer("top", &selected).unwrap(), |name| {
-                project
-                    .document_layer(name, &selected)
-                    .or_else(|| project.document_layer(name, &default))
+        let actual = project
+            .document_layer_path(&GlyphLayerAddress {
+                glyph: "top".into(),
+                layer: selected,
             })
             .unwrap();
 
-        assert_eq!(actual, expected);
-        assert_eq!(actual.bounding_box(), expected.bounding_box());
+        assert_path_and_bounds(&actual, &expected);
     }
 
     #[test]
@@ -808,6 +1054,159 @@ mod canonical_render_tests {
             }),
             Err(ComponentResolveError::NonFinite)
         );
+    }
+
+    #[test]
+    fn canonical_direct_and_nested_metaballs_match_the_ufo_boundary() {
+        let mut blob = Glyph::new("blob");
+        write_metaballs(
+            &mut blob,
+            &Metaballs {
+                version: 1,
+                groups: vec![MetaballGroup {
+                    id: 1,
+                    threshold: 0.5,
+                    balls: vec![Metaball {
+                        id: 1,
+                        x: 40.0,
+                        y: 55.0,
+                        radius: 45.0,
+                        stiffness: 2.0,
+                    }],
+                }],
+            },
+        )
+        .unwrap();
+        let mut middle = Glyph::new("middle");
+        middle.components.push(component(
+            "blob",
+            AffineTransform {
+                x_scale: 0.9,
+                xy_scale: 0.2,
+                yx_scale: -0.15,
+                y_scale: 1.1,
+                x_offset: 17.0,
+                y_offset: -9.0,
+            },
+        ));
+        let mut top = Glyph::new("top");
+        top.components.push(component(
+            "middle",
+            AffineTransform {
+                x_scale: 1.2,
+                xy_scale: -0.1,
+                yx_scale: 0.3,
+                y_scale: 0.8,
+                x_offset: 200.0,
+                y_offset: 75.0,
+            },
+        ));
+        let mut font = Font::default();
+        for glyph in [blob, middle, top] {
+            font.default_layer_mut().insert_glyph(glyph);
+        }
+        let direct_expected = glyph_to_bezpath(font.get_glyph("blob").unwrap(), &font);
+        let nested_expected = glyph_to_bezpath(font.get_glyph("top").unwrap(), &font);
+        let project = Project::from_source(Master::from_font(font, "Metaballs.ufo".into()));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+
+        assert_path_and_bounds(
+            &canonical_full_path(&project, "blob", &layer),
+            &direct_expected,
+        );
+        assert_path_and_bounds(
+            &canonical_full_path(&project, "top", &layer),
+            &nested_expected,
+        );
+    }
+
+    #[test]
+    fn canonical_one_axis_smart_component_matches_the_ufo_boundary() {
+        let mut part = rectangle("_part.bar", 200.0, 100.0);
+        part.lib.insert(
+            SMART_COMPONENT_AXES_KEY.into(),
+            plist::Value::Array(vec![smart_axis("Width")]),
+        );
+        let mut wide = rectangle("_part.bar", 500.0, 100.0);
+        wide.lib
+            .insert(SMART_COMPONENT_POLE_KEY.into(), smart_pole(&["Width"]));
+        let mut user = Glyph::new("smartdemo");
+        user.components.push(component(
+            "_part.bar",
+            AffineTransform {
+                x_scale: 1.1,
+                xy_scale: 0.2,
+                yx_scale: -0.1,
+                y_scale: 0.9,
+                x_offset: 31.0,
+                y_offset: 17.0,
+            },
+        ));
+        user.lib.insert(
+            SMART_COMPONENT_VALUES_KEY.into(),
+            smart_values(&[("Width", 50.0)]),
+        );
+        let mut font = Font::default();
+        font.default_layer_mut().insert_glyph(part);
+        font.default_layer_mut().insert_glyph(user);
+        font.layers
+            .get_or_create_layer("part.top")
+            .unwrap()
+            .insert_glyph(wide);
+        let expected = glyph_to_bezpath(font.get_glyph("smartdemo").unwrap(), &font);
+        let project = Project::from_source(Master::from_font(font, "SmartOne.ufo".into()));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+
+        assert_path_and_bounds(
+            &canonical_full_path(&project, "smartdemo", &layer),
+            &expected,
+        );
+    }
+
+    #[test]
+    fn canonical_two_axis_smart_component_matches_the_ufo_boundary() {
+        let mut part = rectangle("_part.box", 100.0, 100.0);
+        part.lib.insert(
+            SMART_COMPONENT_AXES_KEY.into(),
+            plist::Value::Array(vec![smart_axis("Width"), smart_axis("Height")]),
+        );
+        let mut font = Font::default();
+        font.default_layer_mut().insert_glyph(part);
+        for (layer, width, height, tops) in [
+            ("box.w", 400.0, 100.0, vec!["Width"]),
+            ("box.h", 100.0, 300.0, vec!["Height"]),
+            ("box.wh", 500.0, 350.0, vec!["Width", "Height"]),
+        ] {
+            let mut pole = rectangle("_part.box", width, height);
+            pole.lib
+                .insert(SMART_COMPONENT_POLE_KEY.into(), smart_pole(&tops));
+            font.layers
+                .get_or_create_layer(layer)
+                .unwrap()
+                .insert_glyph(pole);
+        }
+        let mut user = Glyph::new("boxdemo");
+        user.components
+            .push(component("_part.box", AffineTransform::default()));
+        user.lib.insert(
+            SMART_COMPONENT_VALUES_KEY.into(),
+            smart_values(&[("Width", 50.0), ("Height", 50.0)]),
+        );
+        font.default_layer_mut().insert_glyph(user);
+        let expected = glyph_to_bezpath(font.get_glyph("boxdemo").unwrap(), &font);
+        let project = Project::from_source(Master::from_font(font, "SmartTwo.ufo".into()));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+
+        assert_path_and_bounds(&canonical_full_path(&project, "boxdemo", &layer), &expected);
     }
 }
 
