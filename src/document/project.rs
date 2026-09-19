@@ -1544,13 +1544,27 @@ impl Project {
         let default_layer = self
             .document_source(address.layer.source)
             .map(SourceView::default_layer);
-        crate::outline::glyph_paths::ordinary_layer_to_bezpath(layer, |name| {
-            self.document_layer(name, &address.layer).or_else(|| {
-                default_layer
-                    .as_ref()
-                    .and_then(|layer| self.document_layer(name, layer))
-            })
-        })
+        crate::outline::glyph_paths::canonical_layer_to_bezpath(
+            layer,
+            |name| {
+                self.document_layer(name, &address.layer).or_else(|| {
+                    default_layer
+                        .as_ref()
+                        .and_then(|layer| self.document_layer(name, layer))
+                })
+            },
+            |name| {
+                self.document_glyph(name)
+                    .map(|glyph| {
+                        glyph
+                            .layer_ids()
+                            .filter(|layer| layer.source == address.layer.source)
+                            .filter_map(|layer| glyph.layer(layer))
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            },
+        )
     }
 
     /// Read one source's stable identity and metadata without its UFO projection.
