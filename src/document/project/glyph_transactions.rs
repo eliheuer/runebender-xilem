@@ -65,14 +65,11 @@ impl Project {
                 history: HistoryUpdate::None,
             });
         }
-        let codepoint = match unicode {
-            Some(value) => Some(char::from_u32(value).ok_or_else(|| {
-                GlyphTransactionError::Invalid(format!("invalid Unicode scalar U+{value:04X}"))
-            })?),
-            None => (name.chars().count() == 1)
+        let codepoint = unicode.and_then(char::from_u32).or_else(|| {
+            (name.chars().count() == 1)
                 .then(|| name.chars().next())
-                .flatten(),
-        };
+                .flatten()
+        });
         let mut replacement = base.clone();
         let affected_layers = replacement
             .add_empty_glyph(name, width, codepoint)
@@ -143,14 +140,11 @@ impl Project {
             if name.is_empty() || replacement.has_layer(name, &active_layer) {
                 continue;
             }
-            let codepoint = match unicode {
-                Some(value) => Some(char::from_u32(*value).ok_or_else(|| {
-                    GlyphTransactionError::Invalid(format!("invalid Unicode scalar U+{value:04X}"))
-                })?),
-                None => (name.chars().count() == 1)
+            let codepoint = unicode.and_then(char::from_u32).or_else(|| {
+                (name.chars().count() == 1)
                     .then(|| name.chars().next())
-                    .flatten(),
-            };
+                    .flatten()
+            });
             let added_layers = replacement
                 .add_empty_glyph(name, width, codepoint)
                 .map_err(GlyphTransactionError::Invalid)?;
@@ -506,6 +500,19 @@ mod tests {
             assert_eq!(source.font.get_glyph("B").unwrap().width, 550.625);
             assert_eq!(source.font.get_glyph("C").unwrap().width, 550.625);
         }
+
+        project
+            .add_document_glyph("D", 550.625, Some(0x11_0000))
+            .unwrap();
+        let source = project.document_sources().next().unwrap();
+        assert_eq!(
+            project
+                .document_layer("D", &source.default_layer())
+                .unwrap()
+                .codepoints()
+                .collect::<Vec<_>>(),
+            vec!['D']
+        );
     }
 
     #[test]
