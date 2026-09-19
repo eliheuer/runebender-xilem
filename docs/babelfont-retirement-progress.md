@@ -22,6 +22,9 @@ Every such use must be replaced by a direct `LayerEditDraft` operation before M1
 Current integration update: all four methods are deleted after the application background callers moved to canonical Project transactions.
 Application fixtures obtain read-only detached glyphs through `formats::ufo`; that explicit codec has no reconciliation operation.
 
+The separate `edit_batch::SetOutline` path no longer projects a draft to a UFO glyph or calls `reconcile_layer_from_ufo`.
+It decodes the public drawing payload once, replaces canonical contours directly and removes stable components only when the operation requests it.
+
 ## Legacy glyph history callers
 
 The canonical replacement already exists in `Project::begin_document_layer_transaction`, `commit_document_layer_transaction`, `document_layer_history_depth`, `can_replay_document_layer_history` and `replay_document_layer_history`.

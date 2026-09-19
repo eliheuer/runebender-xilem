@@ -48,6 +48,7 @@ No release has been published yet.
 - Moved quadratic, cubic, hyperbezier, corner-rounding, handle-harmonizing, handle-balancing, and handle-optimization operations onto canonical contours.
 - Moved hyperbezier pen creation, point appending, and closure onto typed canonical contours with stable object identities.
 - Added atomic canonical contour import for SVG append and image-trace replacement without whole-glyph reconciliation.
+- Agent `SetOutline` operations now decode their public drawing payload directly into canonical contours and clear components only when explicitly requested.
 - Removed the transitional detached-UFO whole-glyph edit bridge after moving every production caller to direct canonical layer operations.
 - Moved background send, swap and clear into canonical auxiliary-layer transactions with guarded source-history undo and redo.
 - Moved ordinary pen creation, segment appending, and closure onto typed canonical contours with stable object identities.

@@ -2498,6 +2498,31 @@ The unchanged `block v0.1.6` future-incompatibility notice remains a dependency 
 This closes the named M13 detached-bridge acceptance item.
 The Master shell, mutable source guards, legacy history and remaining source-snapshot consumers still block M13 completion.
 
+### Direct canonical edit-batch outline replacement
+
+Evidence commit: `Replace edit-batch outlines canonically` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Replace edit-batch outlines canonically$' -1`.
+
+`EditBatch::SetOutline` retains its public drawing schema and validation rules but no longer projects the complete draft to a UFO glyph or reconciles that glyph back into Babelfont storage.
+The operation decodes its contour payload once, replaces canonical contours through the existing checked import boundary and removes stable component identities only when `clear_components` is true.
+Anchors, exact advance, Unicode and unrelated layer metadata stay in the draft throughout the edit.
+
+The focused regression covers retained components, explicit component clearing, retained anchors, advance and Unicode, and invalid-input atomicity.
+An invalid contour is rejected before either contours or components change.
+
+Executed evidence:
+
+```sh
+cargo test --locked --lib document::edit_batch::tests:: -- --test-threads=1
+cargo clippy --locked --lib --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+All edit-batch unit tests and warning-denied library/test Clippy passed.
+Formatting and whitespace checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
 ### Canonical headless single-source commands
 
 Evidence commit: `Run headless source commands through Project` (the commit containing this substep).

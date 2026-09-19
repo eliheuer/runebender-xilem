@@ -149,6 +149,7 @@ Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact ext
 Background send, swap and clear stage a complete canonical source snapshot and record guarded source-history transactions for both standalone UFO and Designspace documents.
 Send copies contours and exact width into the conventional background while omitting unrelated glyph metadata; swap exchanges contours, retains the foreground width and writes that width to the background, matching the editor command's established behavior.
 Review proposals use those auxiliary layers under stable source identities; revision-checked batches stage canonical drafts before publication, and guarded installation records Project-owned foreground history.
+The external edit-batch drawing schema remains a UFO-shaped wire contract, while `SetOutline` decodes that payload directly into canonical contours without projecting or reconciling a whole glyph.
 Experimental versions clone canonical layer drafts and canonical source metadata for the session, and they apply selected changes only after root-baseline conflict checks.
 The GLIF SHA and external UFO proposal format remain explicit transient codec boundaries rather than editable Norad mirrors.
 `formats::ufo` provides read-only detached UFO values for format adapters and fixtures; there is no corresponding whole-glyph reconciliation path into Project.

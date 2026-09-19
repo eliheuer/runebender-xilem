@@ -154,48 +154,44 @@ fn point_at(
         .ok_or_else(|| format!("no point {contour}:{point}"))
 }
 
-fn replace_outline_through_contract(
+fn replace_outline_canonically(
     draft: &mut LayerEditDraft,
-    layer_id: &LayerId,
     contours: &[crate::outline::drawing::DrawingContour],
     clear_components: bool,
 ) -> Result<(), String> {
-    let mut glyph = draft.view().project();
-    glyph.contours = crate::outline::drawing::contours(contours)?;
+    let contours = crate::outline::drawing::contours(contours)?;
+    draft
+        .replace_imported_contours(&contours)
+        .map_err(|error| error.to_string())?;
     if clear_components {
-        glyph.components.clear();
+        let components = draft
+            .view()
+            .components()
+            .map(|component| component.id())
+            .collect::<Vec<_>>();
+        for component in components {
+            draft
+                .remove_component(component)
+                .map_err(|error| error.to_string())?;
+        }
     }
-    let (previous_layer, previous_preserved) = draft.clone().into_parts();
-    let default = matches!(
-        previous_layer.master,
-        babelfont::LayerType::DefaultForMaster(_)
-    );
-    let (layer, preserved) = crate::document::babelfont::reconcile_layer_from_ufo(
-        &glyph,
-        layer_id,
-        default,
-        &previous_layer,
-        &previous_preserved,
-    );
-    *draft = LayerEditDraft::new(layer, preserved);
     Ok(())
 }
 
 /// Apply one revision-scoped batch operation to a canonical layer draft.
 ///
 /// Ordinary point, component, anchor and metric changes use stable canonical identities.
-/// Complete outline replacement crosses the transient UFO codec boundary because
-/// [`Operation::SetOutline`] is part of the public UFO proposal contract.
+/// Complete outline replacement decodes the public UFO drawing payload once, then replaces
+/// canonical contours directly.
 pub fn apply_canonical_operation(
     draft: &mut LayerEditDraft,
-    layer_id: &LayerId,
     operation: &Operation,
 ) -> Result<(), String> {
     match operation {
         Operation::SetOutline {
             contours,
             clear_components,
-        } => replace_outline_through_contract(draft, layer_id, contours, *clear_components),
+        } => replace_outline_canonically(draft, contours, *clear_components),
         Operation::SetSmooth {
             contour,
             point,
@@ -325,7 +321,7 @@ pub(super) fn proposal_draft(
     );
     let mut draft = LayerEditDraft::new(layer, preserved);
     for operation in &edit.operations {
-        apply_canonical_operation(&mut draft, proposal_layer, operation)
+        apply_canonical_operation(&mut draft, operation)
             .map_err(|error| format!("{}: {error}", edit.glyph))?;
     }
     if crate::document::babelfont::glyph_transactions::proposal_payload_eq(
@@ -662,6 +658,88 @@ mod tests {
             }],
         };
         (font, batch)
+    }
+
+    #[test]
+    fn canonical_outline_replacement_preserves_unrelated_state_and_clears_components_explicitly() {
+        use crate::outline::drawing::{DrawingContour, DrawingPoint, DrawingPointType};
+
+        let project = Project::new_font("canonical.ufo".into());
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        let address = GlyphLayerAddress {
+            glyph: "A".into(),
+            layer: layer.clone(),
+        };
+        let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+        let width = transaction.draft().view().width();
+        transaction
+            .draft_mut()
+            .add_component("B".into(), kurbo::Affine::translate((12.0, 34.0)))
+            .unwrap();
+        transaction
+            .draft_mut()
+            .add_anchor("top".into(), kurbo::Point::new(100.0, 700.0))
+            .unwrap();
+        let contour = DrawingContour {
+            points: [(0.0, 0.0), (400.0, 0.0), (400.0, 700.0), (0.0, 700.0)]
+                .into_iter()
+                .map(|(x, y)| DrawingPoint {
+                    x,
+                    y,
+                    kind: DrawingPointType::Line,
+                    smooth: false,
+                })
+                .collect(),
+        };
+        apply_canonical_operation(
+            transaction.draft_mut(),
+            &Operation::SetOutline {
+                contours: vec![contour.clone()],
+                clear_components: false,
+            },
+        )
+        .unwrap();
+        let view = transaction.draft().view();
+        assert_eq!(view.contours().count(), 1);
+        assert_eq!(view.components().count(), 1);
+        assert_eq!(view.anchors().count(), 1);
+        assert_eq!(view.width(), width);
+        assert_eq!(view.codepoints().collect::<Vec<_>>(), ['A']);
+
+        let invalid = DrawingContour {
+            points: vec![DrawingPoint {
+                x: 0.0,
+                y: 0.0,
+                kind: DrawingPointType::Line,
+                smooth: false,
+            }],
+        };
+        assert!(
+            apply_canonical_operation(
+                transaction.draft_mut(),
+                &Operation::SetOutline {
+                    contours: vec![invalid],
+                    clear_components: true,
+                },
+            )
+            .is_err()
+        );
+        assert_eq!(transaction.draft().view().components().count(), 1);
+
+        apply_canonical_operation(
+            transaction.draft_mut(),
+            &Operation::SetOutline {
+                contours: vec![contour],
+                clear_components: true,
+            },
+        )
+        .unwrap();
+        let view = transaction.draft().view();
+        assert_eq!(view.components().count(), 0);
+        assert_eq!(view.anchors().count(), 1);
+        assert_eq!(view.width(), width);
+        assert_eq!(view.codepoints().collect::<Vec<_>>(), ['A']);
     }
 
     #[test]
