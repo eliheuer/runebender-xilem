@@ -7,12 +7,29 @@ The remaining migration milestones still own ordinary topology tools, history re
 
 ## Continuation checkout
 
+The active integration continuation is `/Users/eli/.codex/worktrees/f236/runebender-xilem` on branch `codex/babelfont-integration`.
+It started from clean commit `3f209776d35dbc7e88e35facb3a48e9f7edd68e0` and does not modify or replace the earlier continuation below.
+The earlier worktree and its branch remain preserved for review.
+
 - Worktree: `/Users/eli/.codex/worktrees/790d/runebender-xilem`.
 - Branch: `codex/babelfont-migration`.
 - Baseline: `624879a1c447d3e9f012c34f4b5cb091bb0df6cb`.
 - Setup verified that clean starting commit `5c37be7717e780aac3fcb369b033148f57026ef9` was an ancestor, created the isolated branch, and fast-forwarded it to the exact baseline.
 - The first implementation run started clean; main and the originating task's branch were not changed.
 - The checklist contains 15 milestones and 76 acceptance steps.
+
+### Active integration checkpoint
+
+The current integration series owns canonical Designspace structure, guarded Designspace source transactions, direct font-information and source-comparison reads, direct curve conversion and handle cleanup, typed component alignment and typed glyph-layer metadata.
+It also preserves auxiliary history across source restore and invalidates metric-dependent application state when metadata history replays.
+Component alignment, mark color, metrics keys and formulas, metaball payloads and related source metadata now have typed canonical ownership while UFO keys are rehydrated only at projection boundaries.
+
+The accepted curve-conversion and cleanup implementation is integrated through `2b15baa`.
+Independent review found and then verified the correction that prevents harmonize and balance from reinterpreting implied quadratic chains as cubic segments.
+The dedicated canonical handle-cleanup suite passes 11 tests, and the complete variable-project suite passes 60 tests with the configured Virtua Grotesk fixtures.
+
+M04 remains active because the central checklist still includes special editable-source preservation and complete selection and metadata acceptance.
+M05 remains active in its owned history lane; the Project-level Designspace transaction hooks are foundations rather than a completion claim.
 
 ## M00 — Establish the continuation and measurable baseline
 

@@ -40,6 +40,8 @@ No release has been published yet.
 
 ### Changed
 
+- Moved Designspace structure, font information, component alignment, mark color, metrics keys and formulas, and metaball payloads into typed canonical document storage with guarded edits and UFO boundary projection.
+- Moved quadratic, cubic, hyperbezier, corner-rounding, handle-harmonizing, handle-balancing, and handle-optimization operations onto canonical contours.
 - Moved source groups and exact fractional kerning into stable source-identified canonical metadata with atomic edits and UFO boundary rehydration.
 - Made Project own variable glyphs and their layers, with guarded UFO projections for existing editing tools and shared history.
 - Unified mapped-axis conversion and glyph-local interpolation behind Runebender-owned APIs using pinned Babelfont and fontdrasil adapters.
@@ -61,6 +63,8 @@ No release has been published yet.
 
 ### Fixed
 
+- Invalidated metric-dependent previews and compilation when metadata history is replayed.
+- Prevented handle harmonizing and balancing from treating implied quadratic chains as cubic segments.
 - Kept off-grid curve handles anchored to their captured drag-start positions during repeated snapped pointer updates.
 - Matched ordinary quadratic hit testing to drawn implied joins and all-off-curve contours.
 - Made line-to-curve conversion produce one cubic for zero-control quadratic segments.

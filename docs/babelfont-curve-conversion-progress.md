@@ -1,6 +1,6 @@
 # Canonical curve-conversion lane
 
-Status: **implementation complete and focused validation green; integration pending**.
+Status: **integrated and focused validation green**.
 
 This worker lane started from integration checkpoint `b3c02dbbf0d95d91a8179ee922f94a975fa1226f` on branch `codex/babelfont-curve-conversion`.
 It owns only canonical quadratic-to-cubic, cubic-to-quadratic and selected/all hyperbezier-to-cubic conversion.
@@ -49,7 +49,7 @@ The integration lead reported that its current turn was exhausted and explicitly
 An independent follow-up review subsequently passed three cyclic-start tests across 16 starting positions for quadratic chains, exact cubics and closed hyperbezier geometry using the built library artifact.
 That review also verified closure and unique document identities; it filtered a sub-`1e-9` implicit closing-line artifact in its comparison oracle rather than requesting a product change.
 The review artifact is `/private/tmp/runebender-migration-review.porJgX/curve_conversion_cyclic_review.rs`.
-Core has supplied acceptance and a handoff for integration, but this worker has not claimed or performed the integration itself.
+Core supplied acceptance and the integration branch incorporated this implementation as `37b7a00`.
 
 ## Canonical handle-cleanup continuation
 
@@ -103,6 +103,9 @@ The independently tested cleanup checkpoints are:
 - optimize handles: `0d47f199be34536b9111c1d3b2e98b15f6d7ba17`.
 
 Each checkpoint was sent to the replacement integration lead without a push or merge from this worker lane.
+
+The integration branch incorporated the four cleanup checkpoints as `92458ee`, `3c821c5`, `a93672c` and `1a55f36`.
+It then incorporated the independently reviewed quadratic-chain correction as `2b15baa`.
 
 ## Validation
 
