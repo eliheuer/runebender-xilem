@@ -981,6 +981,38 @@ The focused regression tests, independent-review reproducer, segment-operation u
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+### Line-conversion endpoint-kind correction
+
+Evidence commit: `Make every canonical line conversion cubic` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Make every canonical line conversion cubic$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Independent review reopened M03's second checklist item because a zero-control quadratic endpoint is drawn as a line but retained its quadratic role after conversion.
+The inserted controls consequently produced two quadratic segments instead of the one cubic promised by line-to-curve conversion.
+
+Every segment accepted as a direct geometric line now changes its endpoint role to cubic after the two controls are inserted.
+The direct geometry and type oracle covers open and wraparound closing segments with quadratic endpoint roles and verifies that endpoint identities, names and contour ordering remain stable.
+The exact independent-review reproducer passes against the corrected library.
+These checks re-establish M03's second checklist item and acceptance.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_line_conversion_sets_quadratic_endpoints_to_cubic -- --exact --test-threads=1
+cargo test --locked --test variable_project canonical_line_segments_convert_with_stable_endpoint_identity -- --exact --test-threads=1
+rustc --edition=2024 /private/tmp/runebender-migration-review.porJgX/line_conversion_kind.rs -L dependency=target/debug/deps --extern runebender=target/debug/deps/librunebender-b47720e92f7db4a3.rlib --extern norad=target/debug/deps/libnorad-52f3943fd0fc68ef.rlib --extern kurbo=target/debug/deps/libkurbo-78ec2af22253a897.rlib --test -o /private/tmp/runebender-migration-review.porJgX/line_conversion_kind_fixed
+/private/tmp/runebender-migration-review.porJgX/line_conversion_kind_fixed --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused direct-oracle tests, independent-review reproducer and all 31 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
 ## M04 — Migrate topology edits and special outline tools
 
 ### Canonical pen topology substep

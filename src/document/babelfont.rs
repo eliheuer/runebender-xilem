@@ -1065,9 +1065,7 @@ impl LayerEditDraft {
         path.nodes
             .insert(insert_index + 1, node(point_ids[1], second_position));
         let shifted_end = if wraps { end_index } else { end_index + 2 };
-        if path.nodes[shifted_end].nodetype == NodeType::Line {
-            path.nodes[shifted_end].nodetype = NodeType::Curve;
-        }
+        path.nodes[shifted_end].nodetype = NodeType::Curve;
         let preserved = self
             .preserved
             .contours

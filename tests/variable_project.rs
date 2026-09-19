@@ -1808,6 +1808,85 @@ fn canonical_line_segments_convert_with_stable_endpoint_identity() {
 }
 
 #[test]
+fn canonical_line_conversion_sets_quadratic_endpoints_to_cubic() {
+    let scratch = Scratch::new();
+    let point = |x, y, typ, name: Option<&str>| {
+        ContourPoint::new(
+            x,
+            y,
+            typ,
+            false,
+            name.map(|name| Name::new(name).unwrap()),
+            None,
+        )
+    };
+    let mut glyph = Glyph::new("line-kinds");
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move, None),
+            point(90.0, 0.0, PointType::QCurve, Some("open endpoint")),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(200.0, 0.0, PointType::QCurve, Some("closing endpoint")),
+            point(290.0, 0.0, PointType::Line, None),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project =
+        Project::from_source(Master::from_font(font, scratch.0.join("LineKinds.ufo")));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let ids: Vec<Vec<_>> = project
+        .document_layer("line-kinds", &layer_id)
+        .unwrap()
+        .contours()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+
+    project
+        .edit_document_layer("line-kinds", &layer_id, |draft| {
+            draft.convert_line_to_curve(ids[0][0], ids[0][1])?;
+            draft.convert_line_to_curve(ids[1][1], ids[1][0])?;
+            Ok(())
+        })
+        .unwrap();
+
+    let layer = project.document_layer("line-kinds", &layer_id).unwrap();
+    let contours: Vec<_> = layer.contours().collect();
+    let open_points: Vec<_> = contours[0].points().collect();
+    assert_eq!(open_points[0].id(), ids[0][0]);
+    assert_eq!(open_points[3].id(), ids[0][1]);
+    assert_eq!(open_points[3].point_type(), LayerPointType::Curve);
+    assert_eq!(open_points[3].name(), Some("open endpoint"));
+    let open_segments: Vec<_> =
+        runebender::outline::glyph_paths::ordinary_contour_to_bezpath(contours[0])
+            .segments()
+            .collect();
+    assert_eq!(open_segments.len(), 1);
+    assert!(matches!(open_segments[0], kurbo::PathSeg::Cubic(_)));
+
+    let closing_points: Vec<_> = contours[1].points().collect();
+    assert_eq!(closing_points[0].id(), ids[1][0]);
+    assert_eq!(closing_points[1].id(), ids[1][1]);
+    assert_eq!(closing_points[0].point_type(), LayerPointType::Curve);
+    assert_eq!(closing_points[0].name(), Some("closing endpoint"));
+    let closing_segments: Vec<_> =
+        runebender::outline::glyph_paths::ordinary_contour_to_bezpath(contours[1])
+            .segments()
+            .collect();
+    assert_eq!(closing_segments.len(), 2);
+    assert!(matches!(closing_segments[0], kurbo::PathSeg::Line(_)));
+    assert!(matches!(closing_segments[1], kurbo::PathSeg::Cubic(_)));
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);
