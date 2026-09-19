@@ -712,6 +712,16 @@ fn canonical_component_resolution_matches_legacy_and_reports_broken_graphs() {
     )
     .unwrap();
     assert_eq!(resolved, expected, "canonical component outline changed");
+    assert_eq!(
+        project
+            .document_layer_path(&GlyphLayerAddress {
+                glyph: "C".into(),
+                layer: layer_id.clone(),
+            })
+            .unwrap(),
+        expected,
+        "Project component-inclusive path query changed geometry"
+    );
     let layer = project.document_layer("C", &layer_id).unwrap();
     let component_ids: Vec<_> = layer.components().map(|component| component.id()).collect();
     let resolved_components =
@@ -5867,6 +5877,56 @@ fn owned_layer_transactions_commit_guardedly_and_replay_project_history() {
         project.document_layer_history_depth(&address, HistoryDirection::Redo),
         2
     );
+}
+
+#[test]
+fn guarded_snapshot_replacement_records_one_project_history_step() {
+    let (_scratch, mut project, _fonts) = adversarial_fixture();
+    let layer = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let address = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer,
+    };
+    let before = project.capture_document_layer(&address).unwrap();
+    let original_width = project.document_layer("A", &address.layer).unwrap().width();
+    let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+    transaction
+        .draft_mut()
+        .set_width(original_width + 17.25)
+        .unwrap();
+    project
+        .commit_document_layer_transaction(transaction)
+        .unwrap();
+    let replacement = project.capture_document_layer(&address).unwrap();
+    project
+        .replay_document_layer_history(&address, HistoryDirection::Undo)
+        .unwrap();
+    assert_eq!(
+        project.capture_document_layer(&address),
+        Some(before.clone())
+    );
+    assert_eq!(
+        project.document_layer_history_depth(&address, HistoryDirection::Undo),
+        0
+    );
+
+    assert!(matches!(
+        project
+            .commit_document_layer_replacement(&address, &before, replacement)
+            .unwrap(),
+        DocumentEditOutcome::Changed { .. }
+    ));
+    assert_eq!(
+        project.document_layer_history_depth(&address, HistoryDirection::Undo),
+        1
+    );
+    project
+        .replay_document_layer_history(&address, HistoryDirection::Undo)
+        .unwrap();
+    assert_eq!(project.capture_document_layer(&address), Some(before));
 }
 
 #[test]

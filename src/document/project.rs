@@ -1348,6 +1348,24 @@ impl Project {
         self.variable.layer_view(name, layer)
     }
 
+    /// Resolve one canonical glyph layer, including nested components, into rendered geometry.
+    ///
+    /// The layer address and every component base are resolved in the same stable source/layer
+    /// context. Missing glyphs, missing component bases and component cycles are explicit errors.
+    pub fn document_layer_path(
+        &self,
+        address: &GlyphLayerAddress,
+    ) -> Result<BezPath, crate::outline::glyph_paths::ComponentResolveError> {
+        let layer = self
+            .document_layer(&address.glyph, &address.layer)
+            .ok_or_else(|| {
+                crate::outline::glyph_paths::ComponentResolveError::Missing(address.glyph.clone())
+            })?;
+        crate::outline::glyph_paths::ordinary_layer_to_bezpath(layer, |name| {
+            self.document_layer(name, &address.layer)
+        })
+    }
+
     /// Read one source's stable identity and metadata without its UFO projection.
     pub fn document_source(&self, id: SourceId) -> Option<SourceView<'_>> {
         let index = self.source_index(id)?;
@@ -1486,6 +1504,29 @@ impl Project {
             debug_assert!(
                 recorded,
                 "a changed transaction must record one history step"
+            );
+        }
+        Ok(outcome)
+    }
+
+    /// Guardedly replace one canonical layer and record one Project-owned history step.
+    ///
+    /// This is the installation boundary for proposals and isolated document versions that
+    /// already own an opaque canonical snapshot. Address mismatch, stale state and unchanged
+    /// replacements preserve both the document and its history.
+    pub fn commit_document_layer_replacement(
+        &mut self,
+        address: &GlyphLayerAddress,
+        expected: &super::CanonicalLayerSnapshot,
+        replacement: super::CanonicalLayerSnapshot,
+    ) -> Result<DocumentEditOutcome, DocumentHistoryError> {
+        let before = expected.clone();
+        let outcome = self.restore_document_layer_if_current(address, expected, replacement)?;
+        if matches!(outcome, DocumentEditOutcome::Changed { .. }) {
+            let recorded = self.record_document_layer_history(address, before)?;
+            debug_assert!(
+                recorded,
+                "a changed replacement must record one history step"
             );
         }
         Ok(outcome)
