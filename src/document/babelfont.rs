@@ -19,8 +19,8 @@ use babelfont::{Anchor, Component, Layer, Node, NodeType, Shape};
 use kurbo::ParamCurve;
 
 use super::model::glyph_metadata::{
-    COMPOSITION_RECIPE_KEY, ComponentAlignment, LEFT_METRICS_KEY, MARK_COLOR_KEY, METABALLS_KEY,
-    MarkColor, Metaballs, MetricsFormula, RIGHT_METRICS_KEY, parse_metrics_key,
+    COMPOSITION_RECIPE_KEY, ComponentAlignment, LEFT_METRICS_KEY, MARK_COLOR_KEY, MARK_LABEL_KEY,
+    METABALLS_KEY, MarkColor, Metaballs, MetricsFormula, RIGHT_METRICS_KEY, parse_metrics_key,
 };
 use super::model::hoi::HoiIntermediates;
 use super::model::smart_components::{
@@ -342,6 +342,15 @@ impl<'a> LayerView<'a> {
     /// Typed public mark color, preserving an invalid source value as an explicit error.
     pub fn mark_color(self) -> Result<Option<MarkColor>, DocumentEditError> {
         parse_mark_color(self.preserved.mark_color.as_ref())
+    }
+
+    /// The exact semantic mark label, if the source stores a valid string.
+    pub fn mark_label(self) -> Result<Option<&'a str>, DocumentEditError> {
+        match self.preserved.lib.get(MARK_LABEL_KEY) {
+            None => Ok(None),
+            Some(plist::Value::String(label)) if !label.is_empty() => Ok(Some(label)),
+            Some(_) => Err(DocumentEditError::InvalidLayerMetadata),
+        }
     }
 
     /// Exact source spelling of one valid left or right metrics formula.
@@ -4033,6 +4042,44 @@ impl LayerEditDraft {
             ))
         });
         Ok(true)
+    }
+
+    /// Set or clear one semantic glyph mark atomically.
+    ///
+    /// A mark requires both its stable label and its typed public color.
+    /// Clearing removes both UFO keys, while an equivalent edit retains the exact source spelling
+    /// of the existing valid color.
+    pub fn set_mark(
+        &mut self,
+        label: Option<&str>,
+        color: Option<MarkColor>,
+    ) -> Result<bool, DocumentEditError> {
+        if label.is_some_and(str::is_empty)
+            || color.is_some_and(|color| !color.is_valid())
+            || label.is_some() != color.is_some()
+        {
+            return Err(DocumentEditError::InvalidLayerMetadata);
+        }
+        let Some((label, color)) = label.zip(color) else {
+            let color_changed = self.preserved.mark_color.take().is_some();
+            let label_changed = self.preserved.lib.remove(MARK_LABEL_KEY).is_some();
+            return Ok(color_changed || label_changed);
+        };
+        let color_changed = parse_mark_color(self.preserved.mark_color.as_ref()) != Ok(Some(color));
+        let label_value = plist::Value::String(label.to_owned());
+        let label_changed = self.preserved.lib.get(MARK_LABEL_KEY) != Some(&label_value);
+        if color_changed {
+            self.preserved.mark_color = Some(plist::Value::String(format!(
+                "{},{},{},{}",
+                color.red, color.green, color.blue, color.alpha
+            )));
+        }
+        if label_changed {
+            self.preserved
+                .lib
+                .insert(MARK_LABEL_KEY.into(), label_value);
+        }
+        Ok(color_changed || label_changed)
     }
 
     /// Replace or remove one exact left or right metrics-key source string.

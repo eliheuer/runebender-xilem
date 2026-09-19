@@ -4,15 +4,37 @@
 //! Canonical glyph-layer metadata preserves exact UFO payloads until a typed edit.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use runebender::document::DocumentEditError;
 use runebender::document::history::HistoryDirection;
 use runebender::document::model::glyph_metadata::{
-    COMPOSITION_RECIPE_KEY, LEFT_METRICS_KEY, MARK_COLOR_KEY, METABALLS_KEY, Metaball,
-    MetaballGroup, Metaballs, RIGHT_METRICS_KEY,
+    COMPOSITION_RECIPE_KEY, LEFT_METRICS_KEY, MARK_COLOR_KEY, MARK_LABEL_KEY, METABALLS_KEY,
+    MarkColor, Metaball, MetaballGroup, Metaballs, RIGHT_METRICS_KEY,
 };
 use runebender::document::project::{DocumentEditOutcome, Master, Project};
 use runebender::document::variable::{GlyphLayerAddress, SourceId};
+
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new() -> Self {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "runebender-layer-metadata-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&path).unwrap();
+        Self(path)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 fn source_metaballs() -> Metaballs {
     Metaballs {
@@ -135,14 +157,12 @@ fn layer_metadata_reads_writes_and_replays_atomically() {
     let draft = transaction.draft_mut();
     assert!(
         draft
-            .set_mark_color(Some(
-                runebender::document::model::glyph_metadata::MarkColor {
-                    red: 0.4,
-                    green: 0.5,
-                    blue: 0.6,
-                    alpha: 1.0,
-                },
-            ))
+            .set_mark_color(Some(MarkColor {
+                red: 0.4,
+                green: 0.5,
+                blue: 0.6,
+                alpha: 1.0,
+            }))
             .unwrap()
     );
     assert!(
@@ -169,14 +189,12 @@ fn layer_metadata_reads_writes_and_replays_atomically() {
     let revision = project.document_revision();
     let mut rejected = project.begin_document_layer_transaction(&address).unwrap();
     assert_eq!(
-        rejected.draft_mut().set_mark_color(Some(
-            runebender::document::model::glyph_metadata::MarkColor {
-                red: f64::NAN,
-                green: 0.0,
-                blue: 0.0,
-                alpha: 1.0,
-            },
-        )),
+        rejected.draft_mut().set_mark_color(Some(MarkColor {
+            red: f64::NAN,
+            green: 0.0,
+            blue: 0.0,
+            alpha: 1.0,
+        })),
         Err(DocumentEditError::InvalidLayerMetadata)
     );
     assert_eq!(project.document_snapshot(), document);
@@ -187,4 +205,151 @@ fn layer_metadata_reads_writes_and_replays_atomically() {
         .unwrap();
     let restored = project.source_snapshot(SourceId(0)).unwrap();
     assert_eq!(restored.get_glyph("A").unwrap().lib, exact_lib);
+}
+
+#[test]
+fn semantic_mark_updates_both_keys_atomically_and_survives_save() {
+    let scratch = Scratch::new();
+    let path = scratch.0.join("SemanticMark.ufo");
+    let mut font = norad::Font::new();
+    let mut glyph = norad::Glyph::new("A");
+    glyph.lib.insert(
+        MARK_COLOR_KEY.into(),
+        plist::Value::String(" 0.40, 0.50, 0.60, 1.0 ".into()),
+    );
+    glyph
+        .lib
+        .insert(MARK_LABEL_KEY.into(), plist::Value::String("blue".into()));
+    glyph
+        .lib
+        .insert("future.key".into(), plist::Value::String("exact".into()));
+    font.default_layer_mut().insert_glyph(glyph);
+    font.save(&path).unwrap();
+
+    let mut project = Project::load(&path).unwrap();
+    let address = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer: project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer(),
+    };
+    let blue = MarkColor {
+        red: 0.4,
+        green: 0.5,
+        blue: 0.6,
+        alpha: 1.0,
+    };
+    let exact_lib = project
+        .source_snapshot(SourceId(0))
+        .unwrap()
+        .get_glyph("A")
+        .unwrap()
+        .lib
+        .clone();
+    let view = project
+        .document_layer(&address.glyph, &address.layer)
+        .unwrap();
+    assert_eq!(view.mark_label().unwrap(), Some("blue"));
+    assert_eq!(view.mark_color().unwrap(), Some(blue));
+
+    let revision = project.document_revision();
+    let mut no_op = project.begin_document_layer_transaction(&address).unwrap();
+    assert!(
+        !no_op
+            .draft_mut()
+            .set_mark(Some("blue"), Some(blue))
+            .unwrap()
+    );
+    assert_eq!(
+        project.commit_document_layer_transaction(no_op).unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(
+        project
+            .source_snapshot(SourceId(0))
+            .unwrap()
+            .get_glyph("A")
+            .unwrap()
+            .lib,
+        exact_lib
+    );
+
+    let document = project.document_snapshot();
+    let mut rejected = project.begin_document_layer_transaction(&address).unwrap();
+    assert_eq!(
+        rejected.draft_mut().set_mark(
+            Some("red"),
+            Some(MarkColor {
+                red: f64::NAN,
+                green: 0.0,
+                blue: 0.0,
+                alpha: 1.0,
+            }),
+        ),
+        Err(DocumentEditError::InvalidLayerMetadata)
+    );
+    assert_eq!(project.document_snapshot(), document);
+    assert_eq!(project.document_revision(), revision);
+
+    let green = MarkColor {
+        red: 0.1,
+        green: 0.8,
+        blue: 0.2,
+        alpha: 1.0,
+    };
+    let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+    assert!(
+        transaction
+            .draft_mut()
+            .set_mark(Some("green"), Some(green))
+            .unwrap()
+    );
+    let DocumentEditOutcome::Changed { change, .. } = project
+        .commit_document_layer_transaction(transaction)
+        .unwrap()
+    else {
+        panic!("semantic mark edit did not commit")
+    };
+    assert!(change.metadata_changed());
+    assert!(!change.geometry_changed());
+    let projected = project.source_snapshot(SourceId(0)).unwrap();
+    let projected = projected.get_glyph("A").unwrap();
+    assert_eq!(
+        projected.lib.get(MARK_COLOR_KEY),
+        Some(&plist::Value::String("0.1,0.8,0.2,1".into()))
+    );
+    assert_eq!(
+        projected.lib.get(MARK_LABEL_KEY),
+        Some(&plist::Value::String("green".into()))
+    );
+    assert_eq!(
+        projected.lib.get("future.key"),
+        Some(&plist::Value::String("exact".into()))
+    );
+
+    project.save().unwrap();
+    let mut reloaded = Project::load(&path).unwrap();
+    let reloaded_address = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer: reloaded
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer(),
+    };
+    let reloaded_view = reloaded
+        .document_layer(&reloaded_address.glyph, &reloaded_address.layer)
+        .unwrap();
+    assert_eq!(reloaded_view.mark_label().unwrap(), Some("green"));
+    assert_eq!(reloaded_view.mark_color().unwrap(), Some(green));
+
+    let mut clear = reloaded
+        .begin_document_layer_transaction(&reloaded_address)
+        .unwrap();
+    assert!(clear.draft_mut().set_mark(None, None).unwrap());
+    reloaded.commit_document_layer_transaction(clear).unwrap();
+    let cleared = reloaded.source_snapshot(SourceId(0)).unwrap();
+    let cleared = cleared.get_glyph("A").unwrap();
+    assert!(!cleared.lib.contains_key(MARK_COLOR_KEY));
+    assert!(!cleared.lib.contains_key(MARK_LABEL_KEY));
 }

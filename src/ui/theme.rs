@@ -12,6 +12,7 @@
 
 use std::collections::HashMap;
 
+use crate::document::model::glyph_metadata::{MARK_COLOR_KEY, MARK_LABEL_KEY};
 use crate::ui::color::ColorRgba;
 
 use serde::Deserialize;
@@ -393,7 +394,7 @@ pub fn set_glyph_mark(glyph: &mut norad::Glyph, label: Option<&str>) {
         Some(rgba) => {
             glyph
                 .lib
-                .insert("public.markColor".into(), plist::Value::String(rgba));
+                .insert(MARK_COLOR_KEY.into(), plist::Value::String(rgba));
             if let Some(label) = label {
                 glyph
                     .lib
@@ -401,17 +402,11 @@ pub fn set_glyph_mark(glyph: &mut norad::Glyph, label: Option<&str>) {
             }
         }
         None => {
-            glyph.lib.remove("public.markColor");
+            glyph.lib.remove(MARK_COLOR_KEY);
             glyph.lib.remove(MARK_LABEL_KEY);
         }
     }
 }
-
-/// The mark-label lib key written beside `public.markColor`.
-///
-/// The colour is what other editors need; the label is what the mark
-/// means. The rationale is in runebender-web's markColors.ts.
-pub const MARK_LABEL_KEY: &str = "com.runebender.markLabel";
 
 /// OKLCH hue angle of an sRGB colour, or `None` for near-grey.
 fn hue_of(r: f64, g: f64, b: f64) -> Option<f64> {
@@ -438,7 +433,7 @@ pub fn mark_label_for_glyph(glyph: &norad::Glyph, theme: &Theme) -> Option<Strin
     {
         return Some(label.clone());
     }
-    let plist::Value::String(rgba) = glyph.lib.get("public.markColor")? else {
+    let plist::Value::String(rgba) = glyph.lib.get(MARK_COLOR_KEY)? else {
         return None;
     };
     label_for_rgba(rgba, theme)

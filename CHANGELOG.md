@@ -43,6 +43,7 @@ No release has been published yet.
 - Python Babelfont package imports now construct canonical single- and multi-source documents before deriving temporary UFO compatibility projections.
 - Built interpolated sources as atomic canonical document transactions, preserving exact metadata and undo while assigning fresh object identities to the new source.
 - Moved Designspace structure, font information, component alignment, mark color, metrics keys and formulas, metaball payloads, and HOI intermediate points into typed canonical document storage with guarded edits and UFO boundary projection.
+- Made semantic glyph-mark edits update or clear the Runebender label and public UFO color atomically while preserving exact source color spelling on a no-op.
 - Moved quadratic, cubic, hyperbezier, corner-rounding, handle-harmonizing, handle-balancing, and handle-optimization operations onto canonical contours.
 - Moved hyperbezier pen creation, point appending, and closure onto typed canonical contours with stable object identities.
 - Moved explicit mask baking onto canonical contours and cleared the persisted mask key only after successful subtraction.

@@ -2355,3 +2355,28 @@ The focused source-format invariant test, all 70 variable-project tests and all 
 Warning-denied library/test Clippy, formatting and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 M13 still must replace the `Master` projection with a source shell, eliminate mutable source guards and delete remaining source-snapshot consumers before the Norad boundary can be restricted to codecs.
+
+### Atomic semantic glyph marks
+
+Evidence commit: `Edit semantic glyph marks atomically` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Edit semantic glyph marks atomically$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/document/model/glyph_metadata.rs`, `src/ui/theme.rs`, `tests/canonical_layer_metadata.rs`, architecture and migration documentation.
+
+`LayerEditDraft::set_mark` now sets or clears `public.markColor` and `com.runebender.markLabel` as one validated canonical metadata edit.
+It rejects a missing half, an empty label or a nonfinite/out-of-range typed color before mutation.
+An equivalent mark retains the exact valid source spelling of the public color and commits as unchanged, while clear removes both keys.
+The label key now has one canonical constant beside the public-color key, and the remaining UFO theme adapter consumes those constants rather than owning a duplicate spelling.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test canonical_layer_metadata
+cargo clippy --locked --lib --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+Both canonical layer-metadata tests passed, including atomic rejection, semantic no-op preservation, paired update and clear behavior, unrelated-lib preservation and save/reopen persistence.
+Warning-denied library/test Clippy, formatting and whitespace checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+The M06 foreground and overview callers still need to pass the theme's frozen label/color pair to this draft operation before their whole-glyph compatibility paths can be deleted.
