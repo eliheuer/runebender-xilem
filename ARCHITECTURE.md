@@ -107,7 +107,7 @@ Stable source identities survive insertion, removal and display-order changes.
 New read-only callers use `document_glyph`, `document_layer`, `document_source` and `document_sources` to inspect canonical geometry, exact metrics and stable identities without constructing UFO values.
 `outline::glyph_paths::ordinary_layer_contours_to_bezpath` converts canonical contour views directly for geometry consumers that do not need components or hyperbezier solving.
 `outline::glyph_paths::ordinary_layer_to_bezpath` preserves canonical contour/component order, applies exact component transforms and reports missing references or cycles through a caller-supplied layer resolver.
-`outline::segment_ops` enumerates and hit-tests ordinary canonical segments with stable endpoint and control identities.
+`outline::segment_ops` enumerates and hit-tests ordinary canonical segments with stable source identities, including the control pairs that define implied quadratic endpoints.
 `analysis::measure` accepts canonical ordinary layers directly for live measurements and side-bearing geometry while compatibility callers finish migrating.
 `analysis::curve::ordinary_cubics_from_layer` supplies canonical ordinary contours to continuity and curvature analysis without a UFO glyph.
 New mutations use `edit_document_layer` and its owned `LayerEditDraft`; a failed or unchanged draft is discarded, while a committed draft advances the canonical revision once.

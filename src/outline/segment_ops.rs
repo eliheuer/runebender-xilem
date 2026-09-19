@@ -41,13 +41,47 @@ impl SegmentHit {
     }
 }
 
-/// One ordinary canonical segment addressed by stable endpoint identities.
+/// A canonical segment endpoint backed by a stored point or an implied quadratic join.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentSegmentEndpoint {
+    /// An explicit on-curve point.
+    Point(DocumentPointId),
+    /// The midpoint between two consecutive quadratic controls.
+    Implied {
+        /// The first source control.
+        first_control: DocumentPointId,
+        /// The second source control.
+        second_control: DocumentPointId,
+    },
+}
+
+impl DocumentSegmentEndpoint {
+    fn append_source_ids(self, output: &mut Vec<DocumentPointId>) {
+        let mut push = |id| {
+            if !output.contains(&id) {
+                output.push(id);
+            }
+        };
+        match self {
+            Self::Point(id) => push(id),
+            Self::Implied {
+                first_control,
+                second_control,
+            } => {
+                push(first_control);
+                push(second_control);
+            }
+        }
+    }
+}
+
+/// One ordinary canonical segment addressed by stable source identities.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DocumentSegmentHit {
-    /// Stable identity of the on-curve point where the segment starts.
-    pub start: DocumentPointId,
-    /// Stable identity of the on-curve point where the segment ends.
-    pub end: DocumentPointId,
+    /// Stored or implied identity of the segment start.
+    pub start: DocumentSegmentEndpoint,
+    /// Stored or implied identity of the segment end.
+    pub end: DocumentSegmentEndpoint,
     /// Stable identities of the off-curve controls in contour order.
     pub controls: Vec<DocumentPointId>,
     /// Segment geometry used for hit testing and subdivision.
@@ -57,65 +91,191 @@ pub struct DocumentSegmentHit {
 impl DocumentSegmentHit {
     /// Every stable point identity belonging to this segment.
     pub fn point_ids(&self) -> Vec<DocumentPointId> {
-        let mut ids = vec![self.start];
-        ids.extend(self.controls.iter().copied());
-        ids.push(self.end);
+        let mut ids = Vec::new();
+        self.start.append_source_ids(&mut ids);
+        for id in &self.controls {
+            if !ids.contains(id) {
+                ids.push(*id);
+            }
+        }
+        self.end.append_source_ids(&mut ids);
         ids
     }
+}
+
+#[derive(Clone, Copy)]
+struct DocumentSegmentPoint {
+    id: DocumentPointId,
+    position: Point,
+    kind: LayerPointType,
+}
+
+fn explicit_endpoint(point: DocumentSegmentPoint) -> DocumentSegmentEndpoint {
+    DocumentSegmentEndpoint::Point(point.id)
+}
+
+fn implied_endpoint(
+    first: DocumentSegmentPoint,
+    second: DocumentSegmentPoint,
+) -> DocumentSegmentEndpoint {
+    DocumentSegmentEndpoint::Implied {
+        first_control: first.id,
+        second_control: second.id,
+    }
+}
+
+fn push_document_segment(
+    output: &mut Vec<DocumentSegmentHit>,
+    start: DocumentSegmentEndpoint,
+    end: DocumentSegmentEndpoint,
+    controls: &[DocumentSegmentPoint],
+    seg: PathSeg,
+) {
+    output.push(DocumentSegmentHit {
+        start,
+        end,
+        controls: controls.iter().map(|point| point.id).collect(),
+        seg,
+    });
 }
 
 /// Enumerate ordinary segments directly from a canonical document layer.
 pub fn ordinary_layer_segments(layer: LayerView<'_>) -> Vec<DocumentSegmentHit> {
     let mut output = Vec::new();
     for contour in layer.contours() {
-        let points: Vec<_> = contour.points().collect();
-        if points.len() < 2 {
-            continue;
-        }
-        let on_indices: Vec<_> = points
-            .iter()
-            .enumerate()
-            .filter_map(|(index, point)| {
-                (point.point_type() != LayerPointType::OffCurve).then_some(index)
+        let points: Vec<_> = contour
+            .points()
+            .map(|point| DocumentSegmentPoint {
+                id: point.id(),
+                position: point.position(),
+                kind: point.point_type(),
             })
             .collect();
-        if on_indices.is_empty() {
+        if points.is_empty() {
             continue;
         }
-        let pair_count = if contour.is_closed() {
-            on_indices.len()
-        } else {
-            on_indices.len().saturating_sub(1)
-        };
-        for pair in 0..pair_count {
-            let start = on_indices[pair];
-            let end = on_indices[(pair + 1) % on_indices.len()];
-            let mut controls = Vec::new();
-            let mut index = (start + 1) % points.len();
-            while index != end {
-                if points[index].point_type() == LayerPointType::OffCurve {
-                    controls.push(index);
+        let Some(start_index) = points
+            .iter()
+            .position(|point| point.kind != LayerPointType::OffCurve)
+        else {
+            if contour.is_closed() {
+                let mut start_point = points[points.len() - 1]
+                    .position
+                    .midpoint(points[0].position);
+                let mut start = implied_endpoint(points[points.len() - 1], points[0]);
+                for (index, control) in points.iter().copied().enumerate() {
+                    let next = points[(index + 1) % points.len()];
+                    let end_point = control.position.midpoint(next.position);
+                    let end = implied_endpoint(control, next);
+                    push_document_segment(
+                        &mut output,
+                        start,
+                        end,
+                        &[control],
+                        PathSeg::Quad(QuadBez::new(start_point, control.position, end_point)),
+                    );
+                    start = end;
+                    start_point = end_point;
                 }
-                index = (index + 1) % points.len();
             }
-            let point = |index: usize| points[index].position();
-            let seg = match controls.as_slice() {
-                [] => PathSeg::Line(Line::new(point(start), point(end))),
-                [control] => PathSeg::Quad(QuadBez::new(point(start), point(*control), point(end))),
-                [first, second] => PathSeg::Cubic(CubicBez::new(
-                    point(start),
-                    point(*first),
-                    point(*second),
-                    point(end),
-                )),
-                _ => continue,
-            };
-            output.push(DocumentSegmentHit {
-                start: points[start].id(),
-                end: points[end].id(),
-                controls: controls.iter().map(|index| points[*index].id()).collect(),
-                seg,
-            });
+            continue;
+        };
+        let rotated: Vec<_> = points[start_index..]
+            .iter()
+            .chain(points[..start_index].iter())
+            .copied()
+            .collect();
+        let mut start = explicit_endpoint(rotated[0]);
+        let mut start_point = rotated[0].position;
+        let mut controls = Vec::new();
+        let length = rotated.len();
+        let indices: Vec<_> = if contour.is_closed() {
+            (1..=length).map(|index| index % length).collect()
+        } else {
+            (1..length).collect()
+        };
+        for index in indices {
+            let point = rotated[index];
+            if point.kind == LayerPointType::OffCurve {
+                controls.push(point);
+                continue;
+            }
+            let end = explicit_endpoint(point);
+            match point.kind {
+                LayerPointType::Line | LayerPointType::Move => push_document_segment(
+                    &mut output,
+                    start,
+                    end,
+                    &[],
+                    PathSeg::Line(Line::new(start_point, point.position)),
+                ),
+                LayerPointType::Curve => {
+                    let seg = match controls.as_slice() {
+                        [first, second] => PathSeg::Cubic(CubicBez::new(
+                            start_point,
+                            first.position,
+                            second.position,
+                            point.position,
+                        )),
+                        [control] => PathSeg::Quad(QuadBez::new(
+                            start_point,
+                            control.position,
+                            point.position,
+                        )),
+                        _ => PathSeg::Line(Line::new(start_point, point.position)),
+                    };
+                    let used_controls = if controls.len() <= 2 {
+                        controls.as_slice()
+                    } else {
+                        &[]
+                    };
+                    push_document_segment(&mut output, start, end, used_controls, seg);
+                }
+                LayerPointType::QCurve if controls.len() > 1 => {
+                    for pair in controls.windows(2) {
+                        let implied_point = pair[0].position.midpoint(pair[1].position);
+                        let implied = implied_endpoint(pair[0], pair[1]);
+                        push_document_segment(
+                            &mut output,
+                            start,
+                            implied,
+                            &pair[..1],
+                            PathSeg::Quad(QuadBez::new(
+                                start_point,
+                                pair[0].position,
+                                implied_point,
+                            )),
+                        );
+                        start = implied;
+                        start_point = implied_point;
+                    }
+                    let control = *controls.last().expect("quadratic controls are nonempty");
+                    push_document_segment(
+                        &mut output,
+                        start,
+                        end,
+                        &[control],
+                        PathSeg::Quad(QuadBez::new(start_point, control.position, point.position)),
+                    );
+                }
+                LayerPointType::QCurve => {
+                    let seg = controls.first().map_or_else(
+                        || PathSeg::Line(Line::new(start_point, point.position)),
+                        |control| {
+                            PathSeg::Quad(QuadBez::new(
+                                start_point,
+                                control.position,
+                                point.position,
+                            ))
+                        },
+                    );
+                    push_document_segment(&mut output, start, end, &controls, seg);
+                }
+                LayerPointType::OffCurve => unreachable!("controls were handled above"),
+            }
+            controls.clear();
+            start = end;
+            start_point = point.position;
         }
     }
     output

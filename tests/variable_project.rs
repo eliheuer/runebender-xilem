@@ -504,7 +504,8 @@ fn canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics()
         vec![
             point(300.0, 0.0, PointType::Line),
             point(350.0, 100.0, PointType::OffCurve),
-            point(450.0, 100.0, PointType::OffCurve),
+            point(425.0, 125.0, PointType::OffCurve),
+            point(475.0, 100.0, PointType::OffCurve),
             point(500.0, 0.0, PointType::QCurve),
         ],
         None,
@@ -544,7 +545,7 @@ fn canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics()
             .iter()
             .filter(|element| matches!(element, kurbo::PathEl::QuadTo(_, _)))
             .count(),
-        5,
+        6,
         "explicit and implied quadratic segments were not preserved"
     );
     assert!(
@@ -555,15 +556,22 @@ fn canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics()
         "empty canonical glyph produced a path"
     );
 
-    let legacy_segments = runebender::outline::segment_ops::segments(&glyph);
     let document_layer = project.document_layer("paths", &layer_id).unwrap();
     let canonical_segments =
         runebender::outline::segment_ops::ordinary_layer_segments(document_layer);
-    assert_eq!(canonical_segments.len(), legacy_segments.len());
-    for (canonical, legacy) in canonical_segments.iter().zip(&legacy_segments) {
-        assert_eq!(canonical.seg, legacy.seg);
-        assert_eq!(canonical.controls.len(), legacy.controls.len());
-    }
+    let drawn_segments: Vec<_> = canonical.segments().collect();
+    assert_eq!(
+        canonical_segments
+            .iter()
+            .map(|segment| segment.seg)
+            .collect::<Vec<_>>(),
+        drawn_segments,
+        "canonical hit-test segments diverged from the drawn path"
+    );
+    assert!(canonical_segments.iter().any(|segment| matches!(
+        segment.end,
+        runebender::outline::segment_ops::DocumentSegmentEndpoint::Implied { .. }
+    )));
     let first_contour_ids: Vec<_> = document_layer
         .contours()
         .next()
@@ -593,6 +601,92 @@ fn canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics()
         )
         .is_empty(),
         "empty canonical glyph produced hit-test segments"
+    );
+}
+
+#[test]
+fn canonical_hit_testing_matches_implied_quadratic_geometry_and_identities() {
+    use runebender::outline::segment_ops::DocumentSegmentEndpoint;
+
+    let scratch = Scratch::new();
+    let point = |x, y, typ| ContourPoint::new(x, y, typ, false, None, None);
+    let mut glyph = Glyph::new("quadratic-hits");
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move),
+            point(0.0, 100.0, PointType::OffCurve),
+            point(100.0, 100.0, PointType::OffCurve),
+            point(100.0, 0.0, PointType::QCurve),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(200.0, 0.0, PointType::OffCurve),
+            point(300.0, 100.0, PointType::OffCurve),
+            point(400.0, 0.0, PointType::OffCurve),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let project =
+        Project::from_source(Master::from_font(font, scratch.0.join("QuadraticHits.ufo")));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project.document_layer("quadratic-hits", &layer_id).unwrap();
+    let contour_ids: Vec<Vec<_>> = layer
+        .contours()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+
+    let drawn = runebender::outline::glyph_paths::ordinary_layer_contours_to_bezpath(layer);
+    let hits = runebender::outline::segment_ops::ordinary_layer_segments(layer);
+    assert_eq!(
+        hits.iter().map(|hit| hit.seg).collect::<Vec<_>>(),
+        drawn.segments().collect::<Vec<_>>(),
+        "hit-test geometry must exactly match the drawn quadratic path"
+    );
+    assert_eq!(hits.len(), 5, "quadratic segments were omitted");
+
+    let chain_join = DocumentSegmentEndpoint::Implied {
+        first_control: contour_ids[0][1],
+        second_control: contour_ids[0][2],
+    };
+    assert_eq!(hits[0].end, chain_join);
+    assert_eq!(hits[1].start, chain_join);
+    assert_eq!(hits[0].controls, [contour_ids[0][1]]);
+    assert_eq!(hits[1].controls, [contour_ids[0][2]]);
+    let (join_hit, _) = runebender::outline::segment_ops::nearest_ordinary_layer_segment_with_t(
+        layer,
+        kurbo::Point::new(50.0, 100.0),
+        1.0,
+    )
+    .expect("the implied quadratic join must be hit-testable");
+    assert!(join_hit.start == chain_join || join_hit.end == chain_join);
+
+    let all_off_curve = &hits[2..];
+    assert_eq!(all_off_curve.len(), 3);
+    assert!(all_off_curve.iter().all(|hit| {
+        matches!(hit.start, DocumentSegmentEndpoint::Implied { .. })
+            && matches!(hit.end, DocumentSegmentEndpoint::Implied { .. })
+    }));
+    assert_eq!(all_off_curve[0].controls, [contour_ids[1][0]]);
+    assert_eq!(
+        all_off_curve[0].start,
+        DocumentSegmentEndpoint::Implied {
+            first_control: contour_ids[1][2],
+            second_control: contour_ids[1][0],
+        }
+    );
+    assert_eq!(
+        all_off_curve[0].end,
+        DocumentSegmentEndpoint::Implied {
+            first_control: contour_ids[1][0],
+            second_control: contour_ids[1][1],
+        }
     );
 }
 

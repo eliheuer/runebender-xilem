@@ -1,6 +1,6 @@
 # Babelfont migration progress
 
-Status: **IN PROGRESS — M00–M02 complete; M03 active**.
+Status: **IN PROGRESS — M00–M03 complete; M04 active**.
 The definition of complete and milestone dependencies remain in [the checklist](babelfont-migration-checklist.md).
 Canonical queries, layer and source-metadata edits, snapshots and auxiliary-layer structure now operate on Babelfont plus typed extensions.
 The remaining migration milestones still own ordinary topology tools, history replacement, application callers, broader metadata, interpolation, compilation, experiments and removal of compatibility state.
@@ -918,7 +918,7 @@ Affected paths: `src/outline/segment_ops.rs`, `tests/variable_project.rs`, `ARCH
 `ordinary_layer_segments` now enumerates ordinary canonical line, quadratic and cubic segments with stable endpoint and control identities.
 `nearest_ordinary_layer_segment_with_t` supplies the same nearest-segment geometry and parameter used by existing hit-testing callers without constructing a UFO glyph.
 
-The expanded canonical path fixture compares every segment and a concrete nearest hit with the compatibility path.
+The expanded canonical path fixture compares every segment with the path drawn from the same canonical layer and checks a concrete nearest hit.
 It also verifies that empty glyphs produce neither path nor hit-test segments.
 
 M03 is complete.
@@ -941,6 +941,43 @@ git diff --check
 ```
 
 The focused canonical hit-test comparison, geometry unit suites and all 28 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Implied-quadratic hit-testing correction
+
+Evidence commit: `Match canonical hit tests to implied quadratics` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Match canonical hit tests to implied quadratics$' -1`.
+Affected paths: `src/outline/segment_ops.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Independent review reopened the first and third M03 checklist items because the original hit-test comparison inherited the same quadratic omissions from the Norad compatibility enumerator.
+Consecutive quadratic controls were collapsed into one cubic, and closed all-off-curve contours produced no hit-test segments even though the canonical path drew their implied quadratics.
+
+`ordinary_layer_segments` now expands quadratic chains and all-off-curve closed contours with the same geometry as the canonical path converter.
+An explicit endpoint retains one stable point identity, while an implied endpoint retains the two source-control identities that define its midpoint.
+Segment point identity lists deduplicate controls shared by an implied endpoint.
+
+The integration coverage directly compares hit-test geometry with canonical drawn segments for two-control and longer quadratic chains and all-off-curve contours.
+It verifies a nearest hit at an implied join and the source identities on both sides of that join.
+The exact two-test independent-review reproducer also passes against the corrected library.
+These checks re-establish the first and third M03 checklist items and M03 acceptance.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_hit_testing_matches_implied_quadratic_geometry_and_identities -- --exact --test-threads=1
+cargo test --locked --test variable_project canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics -- --exact --test-threads=1
+rustc --edition=2024 /private/tmp/runebender-migration-review.porJgX/quadratic_hit_testing.rs -L dependency=target/debug/deps --extern runebender=target/debug/deps/librunebender-b47720e92f7db4a3.rlib --extern norad=target/debug/deps/libnorad-52f3943fd0fc68ef.rlib --extern kurbo=target/debug/deps/libkurbo-78ec2af22253a897.rlib --test -o /private/tmp/runebender-migration-review.porJgX/quadratic_hit_testing_fixed
+/private/tmp/runebender-migration-review.porJgX/quadratic_hit_testing_fixed --test-threads=1
+cargo test --locked --lib outline::segment_ops -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused regression tests, independent-review reproducer, segment-operation unit suite and all 29 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
