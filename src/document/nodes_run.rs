@@ -28,9 +28,9 @@ use serde_json::{Value, json};
 
 use crate::document::LayerView;
 use crate::document::nodes::{Kind, NodeGraph, NodeType, Port, Registry};
-use crate::document::project::{Master, Project};
+use crate::document::project::Project;
 use crate::document::proposal;
-use crate::document::variable::{LayerId, SourceId};
+use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 
 /// A value on a wire, after a node ran.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -997,16 +997,21 @@ fn run_node(
         "core.compose" => {
             let source = inputs.source("source").ok_or("source is required")?;
             let only = inputs.glyphs("glyphs");
-            let mut font =
-                norad::Font::load(source).map_err(|e| format!("{}: {e}", source.display()))?;
-            let report = crate::document::compose::compose(
-                &mut font,
+            let (mut project, source_id) = load_single_source(source)?;
+            let plan = crate::document::compose::plan_project(
+                &project,
+                source_id,
                 (!only.is_empty()).then_some(only.as_slice()),
-                true,
-            );
+            )
+            .map_err(|error| error.to_string())?;
+            let report = if plan.replacements.is_empty() {
+                plan.report
+            } else {
+                proposal::write_composition_project(&mut project, source_id, plan)
+                    .map_err(|error| error.to_string())?
+            };
             if report.proposal.is_some() {
-                font.save(source)
-                    .map_err(|e| format!("{}: {e}", source.display()))?;
+                project.save()?;
             }
             let rows: Vec<Value> = report
                 .derived
@@ -1095,24 +1100,41 @@ fn run_node(
                 (None, Some(s)) => (s, None),
                 (None, None) => return Err("source or layer is required".into()),
             };
-            let master = Master::load(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            let names: Vec<String> = match layer {
-                Some(l) => {
-                    let layer = master
-                        .font
-                        .layers
-                        .get(l)
-                        .ok_or_else(|| format!("no layer named {l}"))?;
-                    layer.iter().map(|g| g.name().to_string()).collect()
+            let (project, source) = load_single_source(path)?;
+            let default_layer = project
+                .document_source(source)
+                .ok_or("source is not in the document")?
+                .default_layer();
+            let selected_layer = layer.map_or_else(
+                || default_layer.clone(),
+                |name| LayerId {
+                    source,
+                    name: name.to_owned(),
+                },
+            );
+            let candidates = project
+                .glyph_names()
+                .filter(|name| project.document_layer(name, &selected_layer).is_some())
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            let mut names = Vec::new();
+            for name in candidates {
+                if layer.is_none() {
+                    let address = GlyphLayerAddress {
+                        glyph: name.clone(),
+                        layer: default_layer.clone(),
+                    };
+                    if project
+                        .document_layer_path(&address)
+                        .map_err(|error| error.to_string())?
+                        .is_empty()
+                    {
+                        continue;
+                    }
                 }
-                None => master
-                    .glyphs
-                    .iter()
-                    .filter(|g| !g.path.is_empty())
-                    .map(|g| g.name.to_string())
-                    .collect(),
-            };
-            let sheet = crate::formats::svg::proof_sheet(&master, layer, &names, 8)?;
+                names.push(name);
+            }
+            let sheet = proof_project(&project, source, &selected_layer, &names, 8)?;
             let out_path = match inputs.text("out") {
                 Some(o) => PathBuf::from(o),
                 None => path
@@ -1347,6 +1369,100 @@ fn find_on_path(tool: &str) -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
+/// Render an eight-column proof from exact canonical layers and resolved component paths.
+fn proof_project(
+    project: &Project,
+    source: SourceId,
+    selected: &LayerId,
+    names: &[String],
+    columns: usize,
+) -> Result<crate::formats::svg::ProofSheet, String> {
+    if names.is_empty() {
+        return Err("no glyph to draw".into());
+    }
+    let info = project
+        .document_font_info(source)
+        .ok_or("missing source font info")?;
+    let resolved = info.metrics.resolved();
+    let upm = resolved.units_per_em;
+    let cell_w = upm * 1.2;
+    let cell_h = upm * 1.4;
+    let columns = columns.clamp(1, names.len());
+    let rows = names.len().div_ceil(columns);
+    let mut svg = String::new();
+    svg.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" \
+         viewBox=\"0 0 {} {}\">\n<rect width=\"100%\" height=\"100%\" fill=\"white\"/>\n",
+        (cell_w * columns as f64 / 4.0).round(),
+        (cell_h * rows as f64 / 4.0).round(),
+        cell_w * columns as f64,
+        cell_h * rows as f64
+    ));
+    let mut metrics = Vec::new();
+    for (index, name) in names.iter().enumerate() {
+        let layer = project
+            .document_layer(name, selected)
+            .ok_or_else(|| format!("no glyph named {name}"))?;
+        let path = project
+            .document_layer_path(&GlyphLayerAddress {
+                glyph: name.clone(),
+                layer: selected.clone(),
+            })
+            .map_err(|error| error.to_string())?;
+        let column = (index % columns) as f64;
+        let row = (index / columns) as f64;
+        let x0 = column * cell_w + upm * 0.1;
+        let baseline = row * cell_h + upm * 1.05;
+        let label = name
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+        svg.push_str(&format!(
+            "<text x=\"{x0}\" y=\"{}\" font-family=\"sans-serif\" \
+             font-size=\"40\">{label}</text>\n",
+            row * cell_h + 60.0
+        ));
+        let line = |y: f64, color: &str| {
+            format!(
+                "<line x1=\"{x0:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
+                 stroke=\"{color}\" stroke-width=\"2\"/>\n",
+                baseline - y,
+                x0 + layer.width(),
+                baseline - y
+            )
+        };
+        svg.push_str(&line(0.0, "#999"));
+        svg.push_str(&line(resolved.ascender, "#ccc"));
+        svg.push_str(&line(resolved.descender, "#ccc"));
+        if let Some(x_height) = info.metrics.x_height {
+            svg.push_str(&line(x_height, "#bbb"));
+        }
+        if let Some(cap_height) = info.metrics.cap_height {
+            svg.push_str(&line(cap_height, "#bbb"));
+        }
+        svg.push_str(&format!(
+            "<path transform=\"translate({x0:.1} {baseline:.1}) scale(1 -1)\" \
+             d=\"{}\" fill=\"black\"/>\n",
+            path.to_svg()
+        ));
+        use kurbo::Shape as _;
+        let bounds = path.bounding_box();
+        let drawn = !path.is_empty();
+        metrics.push(json!({
+            "glyph": name,
+            "advance": layer.width(),
+            "lsb": if drawn { Some(bounds.x0.round()) } else { None },
+            "rsb": if drawn { Some((layer.width() - bounds.x1).round()) } else { None },
+            "bounds": if drawn { Some([bounds.x0, bounds.y0, bounds.x1, bounds.y1]) } else { None },
+            "points": layer.contours().map(|contour| contour.points().count()).sum::<usize>(),
+            "contours": layer.contours().count(),
+            "components": layer.components().count(),
+        }));
+    }
+    svg.push_str("</svg>\n");
+    Ok(crate::formats::svg::ProofSheet { svg, metrics })
+}
+
 /// Scores a layer against a master drawn by hand.
 ///
 /// For every glyph in the layer that the other master also has, with
@@ -1469,7 +1585,31 @@ fn mean_distance(a: LayerView<'_>, b: LayerView<'_>, offset: (f64, f64)) -> f64 
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::*;
+    use crate::document::project::Master;
+
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new() -> Self {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "runebender-nodes-run-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     fn source_selection_project() -> Project {
         let document = crate::document::font_memory::designspace_from_str(
@@ -1617,5 +1757,139 @@ mod tests {
         assert_eq!(rows[0]["unchanged"], 100.0);
         assert_eq!(rows[0]["shift"], 0.0);
         assert_eq!(rows[0]["better"], false);
+    }
+
+    #[test]
+    fn proof_reads_selected_layers_and_component_fallback_canonically() {
+        let mut font = norad::Font::new();
+        font.font_info.ascender = Some(800.0);
+        font.font_info.descender = Some(-200.0);
+        let mut base = comparison_glyph("base", 0.0);
+        base.width = 500.0;
+        font.default_layer_mut().insert_glyph(base);
+        let mut foreground = norad::Glyph::new("A");
+        foreground.width = 600.0;
+        foreground.components.push(norad::Component::new(
+            norad::Name::new("base").unwrap(),
+            norad::AffineTransform::default(),
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(foreground);
+        let mut proposed = norad::Glyph::new("A");
+        proposed.width = 640.0;
+        proposed.components.push(norad::Component::new(
+            norad::Name::new("base").unwrap(),
+            norad::AffineTransform {
+                x_scale: 1.25,
+                y_scale: 0.75,
+                x_offset: 40.0,
+                y_offset: 20.0,
+                ..Default::default()
+            },
+            None,
+        ));
+        font.layers
+            .new_layer("preview")
+            .unwrap()
+            .insert_glyph(proposed);
+        let legacy = Master::from_font(font.clone(), PathBuf::from("Proof.ufo"));
+        let expected =
+            crate::formats::svg::proof_sheet(&legacy, Some("preview"), &["A".into()], 8).unwrap();
+        let project =
+            Project::from_source(Master::from_font(font, PathBuf::from("CanonicalProof.ufo")));
+        let selected = LayerId {
+            source: SourceId(0),
+            name: "preview".into(),
+        };
+        let actual = proof_project(&project, SourceId(0), &selected, &["A".into()], 8).unwrap();
+        assert_eq!(actual.svg, expected.svg, "canonical proof SVG changed");
+        assert_eq!(
+            actual.metrics, expected.metrics,
+            "canonical proof metrics changed"
+        );
+    }
+
+    #[test]
+    fn compose_node_writes_only_a_canonical_proposal() {
+        let scratch = Scratch::new();
+        let path = scratch.0.join("Compose.ufo");
+        let anchor = |name: &str, x, y| {
+            norad::Anchor::new(x, y, Some(norad::Name::new(name).unwrap()), None, None)
+        };
+        let mut font = norad::Font::new();
+        let mut base = norad::Glyph::new("A");
+        base.width = 700.0;
+        base.codepoints.insert('A');
+        base.anchors.push(anchor("top", 350.0, 700.0));
+        font.default_layer_mut().insert_glyph(base);
+        let mut acute = norad::Glyph::new("acute");
+        acute.codepoints.insert('\u{00B4}');
+        acute.anchors.push(anchor("_top", 150.0, 560.0));
+        font.default_layer_mut().insert_glyph(acute);
+        let mut target = norad::Glyph::new("Aacute");
+        target.codepoints.insert('\u{00C1}');
+        font.default_layer_mut().insert_glyph(target);
+        font.save(&path).unwrap();
+
+        let node = NodeType {
+            name: "core.compose".into(),
+            title: "Compose".into(),
+            help: String::new(),
+            implemented: true,
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+        };
+        let inputs = Inputs {
+            values: BTreeMap::from([
+                ("source".into(), RunValue::Source { path: path.clone() }),
+                (
+                    "glyphs".into(),
+                    RunValue::Glyphs {
+                        names: vec!["Aacute".into()],
+                    },
+                ),
+            ]),
+        };
+        let mut events = |_| {};
+        let mut context = RunContext {
+            font: &path,
+            master: None,
+            glyphs: Vec::new(),
+            tools: BTreeMap::new(),
+            models_dir: None,
+            device: None,
+            force: true,
+            cache: None,
+            on_event: &mut events,
+        };
+        let (outputs, report) = run_node(7, &node, &inputs, &mut context).unwrap();
+        assert_eq!(report["proposed"], 1);
+        assert_eq!(
+            outputs["layer"],
+            RunValue::Layer {
+                source: path.clone(),
+                name: proposal::layer_name(crate::document::compose::TASK),
+            }
+        );
+        let project = Project::load(&path).unwrap();
+        let source = project.source_id(0).unwrap();
+        assert_eq!(
+            proposal::find_project(&project, source, crate::document::compose::TASK)
+                .unwrap()
+                .glyphs,
+            ["Aacute"]
+        );
+        assert_eq!(
+            project
+                .document_layer(
+                    "Aacute",
+                    &project.document_source(source).unwrap().default_layer()
+                )
+                .unwrap()
+                .components()
+                .count(),
+            0,
+            "compose node must not install into the foreground"
+        );
     }
 }
