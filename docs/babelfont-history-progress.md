@@ -1,6 +1,6 @@
 # Babelfont canonical history lane
 
-Status: **ACTIVE — reusable per-layer history implemented; document integration waiting on the shared capture/restore API**.
+Status: **ACTIVE — reusable and Project-integrated per-layer history implemented; document-owned storage and caller migration remain**.
 
 This lane owns `src/document/history.rs`, focused canonical-history tests and this progress record.
 The lead task retains canonical model storage, Project/source/application wiring and the central migration documents.
@@ -38,16 +38,46 @@ The canonical suite passed 7 tests and the unchanged legacy history suite passed
 Warning-denied Clippy passed for the canonical-history integration target.
 The existing `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+## Project integration slice
+
+Local prerequisite commit: `a978f9f` (`Adopt guarded canonical layer snapshots`).
+This is the exact four-source-file patch from the lead's committed `d840ec5` prerequisite, imported without its unrelated M04 parent or central documentation changes.
+
+Implementation commit: `169ccc3` (`Integrate canonical document history`).
+
+`DocumentHistory` specializes the reusable stack for `CanonicalLayerSnapshot` and the Project capture/guarded-restore boundary.
+Callers capture a before-state, commit a direct document edit and record the completed live state.
+Failed and no-op edits record nothing and retain redo.
+Undo and redo repeat the expected-state comparison inside the Project restore transaction, advance the revision once on a change and leave both document and stack untouched on stale replay.
+
+Two additional Project-level regressions create a real canonical document and verify exact geometry, fractional width/height, note and opaque lib values through edit, undo and redo.
+They also verify one revision advance per replay and rejection of a later same-layer edit without moving the history stack.
+The transitional `edit_layer` call in one test exists only to create a metadata-different after-state until M07's direct metadata draft lands; history capture and replay remain canonical and contain no Norad value.
+
+Executed checks after integration:
+
+```sh
+cargo fmt --all --check
+git diff --check
+CARGO_BUILD_JOBS=2 cargo test --locked --test canonical_history -- --test-threads=1
+CARGO_BUILD_JOBS=2 cargo test --locked --lib document::history:: -- --test-threads=1
+CARGO_BUILD_JOBS=2 cargo clippy --locked --tests -- -D warnings
+CARGO_BUILD_JOBS=2 cargo doc --locked --no-deps
+```
+
+The expanded canonical suite passed 9 tests and the legacy history suite passed 6 tests.
+Warning-denied Clippy passed across test targets and public API documentation built successfully.
+
 ## Integration dependency
 
-The lead acknowledged and is implementing the requested minimal API.
-History needs an opaque canonical layer snapshot containing Babelfont layer values plus exact preservation extensions, and a Project operation that atomically replaces a layer only when its current snapshot matches the expected state.
-The restore operation must distinguish stale, missing and changed outcomes; stale or rejected restore must not change document contents, revision, compatibility projection or history; changed restore must advance the revision once and refresh derived state.
-The lead will send the committed prerequisite when it lands.
+The lead supplied and integrated the requested layer capture/restore API in `d840ec5`.
+The lead still owns placement of `DocumentHistory` in canonical Project storage and migration of shared Project/source/application call sites.
+M07 supplied canonical metadata value commits `b814d6c` and `709c6f2`; metadata history still needs the lead's source-metadata storage hooks before it can snapshot source identities with those values and reject source-set conflicts atomically.
 
 ## Next concrete step
 
-After the committed capture/restore API arrives, integrate `CanonicalHistory<CanonicalLayerSnapshot>` into the document-owned per-layer histories and add real Project regressions for exact edit/undo/redo, stale rejection and removal/restore followed by older undo.
-Coordinate source-structural and application call sites with the lead rather than editing its owned files here.
+Hand `169ccc3` to the lead for integration after its existing `d840ec5`; do not cherry-pick local prerequisite `a978f9f` into a branch that already contains the lead commit.
+Coordinate document-owned history storage, source-structural history and application call sites with the lead rather than editing its owned files here.
+When the metadata storage hooks land, add canonical metadata history over stable source IDs and the M07 owned values without serializing through UFO or duplicating groups and kerning.
 The legacy Norad `EditHistory` remains intentionally compiling for staged callers and is not counted as migrated or complete.
 M05 remains open until integrated acceptance passes and the temporary history is removed from migrated callers.
