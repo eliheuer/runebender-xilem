@@ -130,6 +130,15 @@ pub struct LayerView<'a> {
     preserved: &'a LayerPreservation,
 }
 
+/// One contour or component in a canonical layer's paint order.
+#[derive(Clone, Copy, Debug)]
+pub enum LayerShapeView<'a> {
+    /// An ordinary or special outline contour.
+    Contour(ContourView<'a>),
+    /// A reference to another glyph layer.
+    Component(ComponentView<'a>),
+}
+
 impl<'a> LayerView<'a> {
     pub(super) fn new(layer: &'a Layer, preserved: &'a LayerPreservation) -> Self {
         Self { layer, preserved }
@@ -204,6 +213,38 @@ impl<'a> LayerView<'a> {
                 .find(|candidate| candidate.id == id)
                 .expect("anchor preservation identity");
             AnchorView { anchor, preserved }
+        })
+    }
+
+    /// Canonical contours and components in their stored paint order.
+    pub fn shapes(self) -> impl DoubleEndedIterator<Item = LayerShapeView<'a>> + 'a {
+        self.layer.shapes.iter().map(move |shape| match shape {
+            Shape::Path(path) => {
+                let id =
+                    ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+                let preserved = self
+                    .preserved
+                    .contours
+                    .iter()
+                    .find(|candidate| candidate.id == id)
+                    .expect("contour preservation identity");
+                LayerShapeView::Contour(ContourView { path, preserved })
+            }
+            Shape::Component(component) => {
+                let id = ComponentId(
+                    read_id(&component.format_specific).expect("canonical component identity"),
+                );
+                let preserved = self
+                    .preserved
+                    .components
+                    .iter()
+                    .find(|candidate| candidate.id == id)
+                    .expect("component preservation identity");
+                LayerShapeView::Component(ComponentView {
+                    component,
+                    preserved,
+                })
+            }
         })
     }
 }

@@ -19,7 +19,7 @@ pub mod axis;
 mod babelfont;
 pub use babelfont::{
     AnchorId, AnchorView, ComponentId, ComponentView, ContourId, ContourView, DocumentEditError,
-    LayerEditDraft, LayerPointType, LayerView, PointId, PointView,
+    LayerEditDraft, LayerPointType, LayerShapeView, LayerView, PointId, PointView,
 };
 pub mod compile;
 mod compile_metadata;

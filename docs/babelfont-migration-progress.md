@@ -552,3 +552,33 @@ git diff --check
 The focused closure regression and all 21 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Canonical component-resolution substep
+
+Evidence commit: `Resolve components from canonical layers` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Resolve components from canonical layers$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/document/mod.rs`, `src/outline/glyph_paths.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md` and this log.
+
+`LayerView::shapes` now exposes contours and components in canonical Babelfont storage order with typed views and stable object identities.
+`ordinary_layer_to_bezpath` walks that ordered shape stream, resolves component bases through a caller-supplied canonical layer lookup and applies the exact six-coefficient component transform.
+The operation returns `ComponentResolveError` for a missing base, a named reference cycle or an excessive graph depth instead of silently dropping broken geometry.
+Hyperbezier contours and smart-component pole interpolation remain on their existing paths until M04 migrates those special editable formats.
+
+The comparison test proves the direct canonical outline matches the existing recursive Norad result for a transformed component.
+It also verifies canonical shape order and exact missing-reference and cycle errors.
+Bounds, flattened point and anchor inputs, hit testing and geometry-analysis callers remain for subsequent M03 substeps.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_component_resolution_matches_legacy_and_reports_broken_graphs -- --exact --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused component-resolution regression and all 22 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.

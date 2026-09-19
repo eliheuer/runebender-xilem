@@ -9,7 +9,30 @@
 use kurbo::{Affine, BezPath, Point};
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 
-use crate::document::{ContourView, LayerPointType, LayerView};
+use crate::document::{ContourView, LayerPointType, LayerShapeView, LayerView};
+
+/// Why canonical component resolution could not produce an outline.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ComponentResolveError {
+    /// A referenced glyph has no layer in the caller's resolution context.
+    Missing(String),
+    /// A component graph refers back to a glyph already being resolved.
+    Cycle(Vec<String>),
+    /// A component graph exceeded the defensive recursion limit.
+    TooDeep,
+}
+
+impl std::fmt::Display for ComponentResolveError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Missing(name) => write!(formatter, "missing component base {name}"),
+            Self::Cycle(names) => write!(formatter, "component cycle: {}", names.join(" -> ")),
+            Self::TooDeep => formatter.write_str("component graph exceeds 64 layers"),
+        }
+    }
+}
+
+impl std::error::Error for ComponentResolveError {}
 
 /// Round a design-space value to whole units.
 ///
@@ -71,6 +94,21 @@ pub fn ordinary_layer_contours_to_bezpath(layer: LayerView<'_>) -> BezPath {
         append_document_contour(&mut path, contour);
     }
     path
+}
+
+/// Convert an ordinary canonical layer with recursively resolved components.
+///
+/// `resolve` selects the layer used for each component base in the caller's source context.
+/// Missing references and cycles are errors rather than silently omitted outlines.
+/// Hyperbezier and smart-component behavior remain on their dedicated paths until migration.
+pub fn ordinary_layer_to_bezpath<'a>(
+    layer: LayerView<'a>,
+    mut resolve: impl FnMut(&str) -> Option<LayerView<'a>>,
+) -> Result<BezPath, ComponentResolveError> {
+    let mut path = BezPath::new();
+    let mut stack = vec![layer.glyph_name().to_owned()];
+    append_document_shapes(&mut path, layer, &mut resolve, &mut stack)?;
+    Ok(path)
 }
 
 /// One contour as a `BezPath`.
@@ -340,6 +378,44 @@ fn append_document_contour(path: &mut BezPath, contour: ContourView<'_>) {
         })
         .collect();
     append_points(path, &points, contour.is_closed());
+}
+
+fn append_document_shapes<'a>(
+    path: &mut BezPath,
+    layer: LayerView<'a>,
+    resolve: &mut impl FnMut(&str) -> Option<LayerView<'a>>,
+    stack: &mut Vec<String>,
+) -> Result<(), ComponentResolveError> {
+    if stack.len() > 64 {
+        return Err(ComponentResolveError::TooDeep);
+    }
+    for shape in layer.shapes() {
+        match shape {
+            LayerShapeView::Contour(contour) => append_document_contour(path, contour),
+            LayerShapeView::Component(component) => {
+                let name = component.reference();
+                if let Some(start) = stack.iter().position(|entry| entry == name) {
+                    let mut cycle = stack[start..].to_vec();
+                    cycle.push(name.to_owned());
+                    return Err(ComponentResolveError::Cycle(cycle));
+                }
+                let base =
+                    resolve(name).ok_or_else(|| ComponentResolveError::Missing(name.to_owned()))?;
+                stack.push(name.to_owned());
+                let mut component_path = BezPath::new();
+                let result = append_document_shapes(&mut component_path, base, resolve, stack);
+                stack.pop();
+                result?;
+                path.extend(
+                    (component.transform() * component_path)
+                        .elements()
+                        .iter()
+                        .copied(),
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 fn append_contour(path: &mut BezPath, contour: &Contour) {

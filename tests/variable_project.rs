@@ -435,6 +435,18 @@ fn document_views_read_exact_canonical_layers_and_stable_source_identity() {
     );
     let components: Vec<_> = layer.components().collect();
     assert_eq!(components.len(), 2, "canonical components are missing");
+    let shape_kinds: Vec<_> = layer
+        .shapes()
+        .map(|shape| match shape {
+            runebender::document::LayerShapeView::Contour(_) => "contour",
+            runebender::document::LayerShapeView::Component(_) => "component",
+        })
+        .collect();
+    assert_eq!(
+        shape_kinds,
+        ["contour", "contour", "component", "component"],
+        "canonical shape order changed"
+    );
     assert_eq!(
         components[0].reference(),
         "base",
@@ -534,6 +546,67 @@ fn canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics()
         )
         .is_empty(),
         "empty canonical glyph produced a path"
+    );
+}
+
+#[test]
+fn canonical_component_resolution_matches_legacy_and_reports_broken_graphs() {
+    let (_scratch, project) = fixture();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let source = project.source_snapshot(SourceId(0)).unwrap();
+    let expected =
+        runebender::outline::glyph_paths::glyph_to_bezpath(source.get_glyph("C").unwrap(), &source);
+    let resolved = runebender::outline::glyph_paths::ordinary_layer_to_bezpath(
+        project.document_layer("C", &layer_id).unwrap(),
+        |name| project.document_layer(name, &layer_id),
+    )
+    .unwrap();
+    assert_eq!(resolved, expected, "canonical component outline changed");
+
+    let scratch = Scratch::new();
+    let component = |name: &str| {
+        Component::new(
+            Name::new(name).unwrap(),
+            norad::AffineTransform::default(),
+            None,
+        )
+    };
+    let mut missing = Glyph::new("missing-user");
+    missing.components.push(component("absent"));
+    let mut cycle_a = Glyph::new("cycle-a");
+    cycle_a.components.push(component("cycle-b"));
+    let mut cycle_b = Glyph::new("cycle-b");
+    cycle_b.components.push(component("cycle-a"));
+    let mut font = Font::new();
+    for glyph in [missing, cycle_a, cycle_b] {
+        font.default_layer_mut().insert_glyph(glyph);
+    }
+    let broken = Project::from_source(Master::from_font(font, scratch.0.join("Broken.ufo")));
+    let broken_layer = broken.document_source(SourceId(0)).unwrap().default_layer();
+    assert_eq!(
+        runebender::outline::glyph_paths::ordinary_layer_to_bezpath(
+            broken
+                .document_layer("missing-user", &broken_layer)
+                .unwrap(),
+            |name| broken.document_layer(name, &broken_layer),
+        ),
+        Err(runebender::outline::glyph_paths::ComponentResolveError::Missing("absent".into()))
+    );
+    assert_eq!(
+        runebender::outline::glyph_paths::ordinary_layer_to_bezpath(
+            broken.document_layer("cycle-a", &broken_layer).unwrap(),
+            |name| broken.document_layer(name, &broken_layer),
+        ),
+        Err(
+            runebender::outline::glyph_paths::ComponentResolveError::Cycle(vec![
+                "cycle-a".into(),
+                "cycle-b".into(),
+                "cycle-a".into(),
+            ])
+        )
     );
 }
 
