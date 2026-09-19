@@ -975,6 +975,88 @@ fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
 }
 
 #[test]
+fn canonical_selection_transform_matches_legacy_geometry_atomically() {
+    let (_scratch, mut project, _fonts) = adversarial_fixture();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project.document_layer("A", &layer_id).unwrap();
+    let point_ids: Vec<Vec<_>> = layer
+        .contours()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+    let selected_ids = [point_ids[0][0], point_ids[1][1]];
+    let transform = kurbo::Affine::rotate(std::f64::consts::FRAC_PI_2)
+        * kurbo::Affine::scale_non_uniform(-1.0, 0.5);
+    let mut expected = project.glyph_layer("A", &layer_id).unwrap();
+    let selected_indices = [(0, 0), (1, 1)].into_iter().collect();
+    assert!(runebender::outline::glyph_ops::transform_selection(
+        &mut expected,
+        &selected_indices,
+        transform,
+    ));
+
+    let changed = project
+        .edit_document_layer("A", &layer_id, |draft| {
+            assert!(draft.transform_points(&selected_ids, transform)?);
+            Ok(())
+        })
+        .unwrap();
+    assert!(matches!(changed, DocumentEditOutcome::Changed { .. }));
+    assert_eq!(
+        project.glyph_layer("A", &layer_id).unwrap(),
+        expected,
+        "canonical selection transform changed geometry"
+    );
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    let missing = project
+        .document_layer("B", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .next()
+        .unwrap()
+        .id();
+    assert_eq!(
+        project.edit_document_layer("A", &layer_id, |draft| {
+            draft.transform_points(&[missing], kurbo::Affine::IDENTITY)?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::MissingPoint(
+            missing
+        ))
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+    assert_eq!(
+        project.edit_document_layer("A", &layer_id, |draft| {
+            draft.transform_points(
+                &selected_ids,
+                kurbo::Affine::new([1.0, 0.0, 0.0, 1.0, f64::NAN, 0.0]),
+            )?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::NonFinite)
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+    assert_eq!(
+        project
+            .edit_document_layer("A", &layer_id, |draft| {
+                assert!(!draft.transform_points(&[], kurbo::Affine::IDENTITY)?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);

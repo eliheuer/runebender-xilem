@@ -473,6 +473,67 @@ impl LayerEditDraft {
         Ok(true)
     }
 
+    /// Transform selected points about the center of their bounding box.
+    ///
+    /// An empty selection transforms every point.
+    /// Returns whether any point moved.
+    pub fn transform_points(
+        &mut self,
+        selected: &[PointId],
+        transform: kurbo::Affine,
+    ) -> Result<bool, DocumentEditError> {
+        ensure_finite(&transform.as_coeffs())?;
+        for id in selected {
+            if self.node(*id).is_none() {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+        }
+        let targeted = |node: &Node| {
+            selected.is_empty()
+                || read_id(&node.format_specific)
+                    .is_some_and(|id| selected.iter().any(|selected| selected.0 == id))
+        };
+        let mut min = kurbo::Point::new(f64::INFINITY, f64::INFINITY);
+        let mut max = kurbo::Point::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for node in self.layer.paths().flat_map(|path| &path.nodes) {
+            if targeted(node) {
+                min.x = min.x.min(node.x);
+                min.y = min.y.min(node.y);
+                max.x = max.x.max(node.x);
+                max.y = max.y.max(node.y);
+            }
+        }
+        if !min.x.is_finite() {
+            return Ok(false);
+        }
+        let center = ((min.x + max.x) / 2.0, (min.y + max.y) / 2.0);
+        let transform = kurbo::Affine::translate(center)
+            * transform
+            * kurbo::Affine::translate((-center.0, -center.1));
+        let mut changed = false;
+        for node in self
+            .layer
+            .shapes
+            .iter_mut()
+            .filter_map(|shape| match shape {
+                Shape::Path(path) => Some(path),
+                Shape::Component(_) => None,
+            })
+            .flat_map(|path| &mut path.nodes)
+        {
+            if !targeted(node) {
+                continue;
+            }
+            let position = transform * kurbo::Point::new(node.x, node.y);
+            if node.x != position.x || node.y != position.y {
+                node.x = position.x;
+                node.y = position.y;
+                changed = true;
+            }
+        }
+        Ok(changed)
+    }
+
     /// Set one point's segment role by stable identity.
     ///
     /// Returns whether the value changed.
@@ -602,6 +663,13 @@ impl LayerEditDraft {
                 Shape::Component(_) => None,
             })
             .flat_map(|path| &mut path.nodes)
+            .find(|node| read_id(&node.format_specific) == Some(id.0))
+    }
+
+    fn node(&self, id: PointId) -> Option<&Node> {
+        self.layer
+            .paths()
+            .flat_map(|path| &path.nodes)
             .find(|node| read_id(&node.format_specific) == Some(id.0))
     }
 

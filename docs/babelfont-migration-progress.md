@@ -671,3 +671,32 @@ git diff --check
 Both focused measurement tests, all 13 path unit tests and all 24 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Canonical selection-transform substep
+
+Evidence commit: `Transform canonical point selections directly` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Transform canonical point selections directly$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md` and this log.
+
+`LayerEditDraft::transform_points` now applies an affine transform to stable point identities around the selected points' bounding-box center.
+An empty selection targets every point, matching the existing editor command.
+The draft validates every selected identity and every affine coefficient before mutation, reports whether coordinates changed and preserves document transaction rollback and no-op revision behavior.
+
+The adversarial comparison selects points across two contours and requires the canonical projected glyph to equal the existing index-based selection transform after a reflected nonuniform rotation.
+It also verifies missing-point and nonfinite-transform rejection leave the canonical snapshot and revision unchanged, and that an identity transform produces `Unchanged`.
+Handle-aware snapped dragging, smoothing, sidebearing shifts and segment conversion remain for later M03 substeps.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_selection_transform_matches_legacy_geometry_atomically -- --exact --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused selection-transform comparison and all 25 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
