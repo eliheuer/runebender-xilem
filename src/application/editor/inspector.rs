@@ -8,11 +8,21 @@ use crate::application::font_model::FontModel;
 use crate::application::view::canvas;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::view::panels::sections::metric_bufs;
-use crate::application::workspace::{
-    FontDataSnapshot, MetadataEdit, Mode, OverviewEditBatch, Workspace,
-};
+use crate::application::workspace::{MetadataEdit, Mode, OverviewEditBatch, Workspace};
+use runebender::document::CanonicalSourceMetadataSnapshot;
+use runebender::document::canonical_metadata::{KerningParticipant, KerningSide};
+use runebender::document::history::HistoryDirection;
+use runebender::document::project::DocumentHistoryReplayOutcome;
 use runebender::outline::glyph_paths::round_units;
 use std::sync::Arc;
+
+fn kerning_participant(raw: &str, side: KerningSide) -> Option<KerningParticipant> {
+    if raw.starts_with(side.prefix()) {
+        KerningParticipant::group(side, raw).ok()
+    } else {
+        KerningParticipant::glyph(raw).ok()
+    }
+}
 
 fn mark_cloud(font: &FontModel, base: &norad::Glyph) -> Vec<Arc<kurbo::BezPath>> {
     let base_anchors: Vec<_> = base
@@ -55,20 +65,9 @@ fn mark_cloud(font: &FontModel, base: &norad::Glyph) -> Vec<Arc<kurbo::BezPath>>
 }
 
 impl Workspace {
-    fn font_data_snapshot(&self) -> Vec<FontDataSnapshot> {
-        self.font
-            .project
-            .sources()
-            .iter()
-            .map(|master| FontDataSnapshot {
-                groups: master.font.groups.clone(),
-                kerning: master.font.kerning.clone(),
-                features: master.font.features.clone(),
-            })
-            .collect()
-    }
-
-    fn font_data_history_context(&self) -> Option<(String, usize, Vec<FontDataSnapshot>)> {
+    fn font_data_history_context(
+        &self,
+    ) -> Option<(String, usize, CanonicalSourceMetadataSnapshot)> {
         let glyph = match self.mode {
             Mode::Editor(_) => self.session.glyph_name.clone(),
             Mode::Overview => self
@@ -82,55 +81,34 @@ impl Workspace {
             .font
             .index_of(&glyph)
             .map_or(0, |index| self.font.master().undo_depth(index));
-        Some((glyph, undo_depth, self.font_data_snapshot()))
+        Some((
+            glyph,
+            undo_depth,
+            self.font.project.begin_document_source_metadata_history(),
+        ))
     }
 
     fn finish_font_data_history(
         &mut self,
-        context: Option<(String, usize, Vec<FontDataSnapshot>)>,
+        context: Option<(String, usize, CanonicalSourceMetadataSnapshot)>,
         label: &str,
     ) {
         let Some((glyph, undo_depth, before)) = context else {
             return;
         };
-        let after = self.font_data_snapshot();
-        if before == after {
+        if !self
+            .font
+            .project
+            .record_document_source_metadata_history(before)
+        {
             return;
         }
-        self.metadata_undo.push(MetadataEdit::FontData {
-            source_ids: (0..self.font.master_count())
-                .map(|index| self.font.project.source_id(index).expect("source identity"))
-                .collect(),
+        self.metadata_undo.push(MetadataEdit::SourceMetadata {
             glyph,
-            before,
-            after,
             label: label.into(),
             undo_depth,
         });
         self.metadata_redo.clear();
-    }
-
-    fn apply_font_data_snapshot(&mut self, values: &[FontDataSnapshot]) -> bool {
-        if values.len() != self.font.project.sources().len() {
-            return false;
-        }
-        for (master, value) in self.font.project.edit_sources().iter_mut().zip(values) {
-            if master.font.groups != value.groups || master.font.kerning != value.kerning {
-                master.kerning_dirty = true;
-                master.dirty = true;
-            }
-            if master.font.features != value.features {
-                master.dirty = true;
-            }
-            master.font.groups = value.groups.clone();
-            master.font.kerning = value.kerning.clone();
-            master.font.features = value.features.clone();
-        }
-        self.features_buf = self.font.feature_font().features.clone();
-        self.features_edited = false;
-        self.refresh_metric_bufs();
-        self.modified = true;
-        true
     }
 
     /// What sits under the drawing: the background layer if it is turned
@@ -472,7 +450,7 @@ impl Workspace {
             MetadataEdit::Unicode {
                 glyph, undo_depth, ..
             }
-            | MetadataEdit::FontData {
+            | MetadataEdit::SourceMetadata {
                 glyph, undo_depth, ..
             } => (glyph, *undo_depth),
         };
@@ -527,20 +505,23 @@ impl Workspace {
                     if redo { "Redid" } else { "Undid" }
                 )
             }
-            MetadataEdit::FontData {
-                source_ids,
-                before,
-                after,
-                label,
-                ..
-            } => {
-                let values = if redo { after } else { before };
-                let Some(values) = self.reorder_source_snapshot(source_ids, values) else {
+            MetadataEdit::SourceMetadata { label, .. } => {
+                let direction = if redo {
+                    HistoryDirection::Redo
+                } else {
+                    HistoryDirection::Undo
+                };
+                let Ok(DocumentHistoryReplayOutcome::Changed { .. }) = self
+                    .font
+                    .project
+                    .replay_document_source_metadata_history(direction)
+                else {
                     return false;
                 };
-                if !self.apply_font_data_snapshot(&values) {
-                    return false;
-                }
+                self.features_buf = self.font.feature_text().to_owned();
+                self.features_edited = false;
+                self.refresh_metric_bufs();
+                self.modified = true;
                 format!("{} {label}", if redo { "Redid" } else { "Undid" })
             }
         };
@@ -573,7 +554,7 @@ impl Workspace {
             MetadataEdit::Unicode {
                 glyph, undo_depth, ..
             }
-            | MetadataEdit::FontData {
+            | MetadataEdit::SourceMetadata {
                 glyph, undo_depth, ..
             } => (glyph, *undo_depth),
         };
@@ -585,7 +566,17 @@ impl Workspace {
                 .map(|glyph| glyph.name.as_str()),
             Mode::Nodes => None,
         };
-        current_name == Some(expected.as_str())
+        let source_metadata_available = !matches!(edit, MetadataEdit::SourceMetadata { .. })
+            || self
+                .font
+                .project
+                .can_replay_document_source_metadata_history(if redo {
+                    HistoryDirection::Redo
+                } else {
+                    HistoryDirection::Undo
+                });
+        source_metadata_available
+            && current_name == Some(expected.as_str())
             && self
                 .font
                 .index_of(expected)
@@ -747,23 +738,34 @@ impl Workspace {
     /// Drop one kerning pair from the active master.
     pub(crate) fn delete_kern_pair(&mut self, first: &str, second: &str) {
         let history = self.font_data_history_context();
-        let mut master = self.font.master_mut();
-        let Some(seconds) = master.font.kerning.get_mut(first) else {
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
             return;
         };
-        let before = seconds.len();
-        seconds.retain(|name, _| name.as_str() != second);
-        if seconds.len() == before {
+        let (Some(first), Some(second)) = (
+            kerning_participant(first, KerningSide::First),
+            kerning_participant(second, KerningSide::Second),
+        ) else {
+            return;
+        };
+        let Some(mut metadata) = self.font.project.document_font_metadata(source).cloned() else {
+            return;
+        };
+        if metadata.set_kerning_pair(first.clone(), second.clone(), None) != Ok(true) {
             return;
         }
-        if seconds.is_empty() {
-            master.font.kerning.retain(|name, _| name.as_str() != first);
+        if !matches!(
+            self.font
+                .project
+                .edit_document_source_metadata(source, |draft| {
+                    draft.set_font_metadata(metadata);
+                    Ok(())
+                }),
+            Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+        ) {
+            return;
         }
-        master.dirty = true;
-        master.kerning_dirty = true;
         self.modified = true;
-        self.note = format!("Removed {first} · {second}");
-        drop(master);
+        self.note = format!("Removed {} · {}", first.as_raw_name(), second.as_raw_name());
         self.finish_font_data_history(history, "kerning pair deletion");
     }
 
@@ -781,27 +783,44 @@ impl Workspace {
             self.note = "kerning value must be finite".into();
             return;
         }
-        let (Ok(f), Ok(s)) = (norad::Name::new(&first), norad::Name::new(&second)) else {
+        let (Some(first_participant), Some(second_participant)) = (
+            kerning_participant(&first, KerningSide::First),
+            kerning_participant(&second, KerningSide::Second),
+        ) else {
             self.note = "a kerning pair needs two names".into();
             return;
         };
-        let mut master = self.font.master_mut();
-        if master
-            .font
-            .kerning
-            .get(&f)
-            .and_then(|seconds| seconds.get(&s))
-            == Some(&value)
-        {
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
+            return;
+        };
+        let Some(mut metadata) = self.font.project.document_font_metadata(source).cloned() else {
+            return;
+        };
+        match metadata.set_kerning_pair(first_participant, second_participant, Some(value)) {
+            Ok(false) => {
+                self.note = format!("{first} · {second} already equals {value}");
+                return;
+            }
+            Ok(true) => {}
+            Err(error) => {
+                self.note = error.to_string();
+                return;
+            }
+        }
+        if !matches!(
+            self.font
+                .project
+                .edit_document_source_metadata(source, |draft| {
+                    draft.set_font_metadata(metadata);
+                    Ok(())
+                }),
+            Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+        ) {
             self.note = format!("{first} · {second} already equals {value}");
             return;
         }
-        master.font.kerning.entry(f).or_default().insert(s, value);
-        master.dirty = true;
-        master.kerning_dirty = true;
         self.modified = true;
         self.note = format!("{first} \u{00b7} {second} = {value}");
-        drop(master);
         self.finish_font_data_history(history, "kerning pair");
     }
 
@@ -813,29 +832,41 @@ impl Workspace {
             self.note = "Select glyphs in the grid first".into();
             return;
         }
-        let prefix = if first_side {
-            "public.kern1."
+        let side = if first_side {
+            KerningSide::First
         } else {
-            "public.kern2."
-        };
-        let Ok(group_name) = norad::Name::new(&format!("{prefix}{group}")) else {
-            return;
+            KerningSide::Second
         };
         let mut added = 0_usize;
-        for master in self.font.project.edit_sources().iter_mut() {
-            let members = master.font.groups.entry(group_name.clone()).or_default();
-            let before = members.len();
+        let sources: Vec<_> = self
+            .font
+            .project
+            .document_sources()
+            .map(|source| source.id())
+            .collect();
+        for source in sources {
+            let Some(mut metadata) = self.font.project.document_font_metadata(source).cloned()
+            else {
+                continue;
+            };
+            let mut source_added = 0_usize;
             for name in &names {
-                if let Ok(member) = norad::Name::new(name)
-                    && !members.contains(&member)
-                {
-                    members.push(member);
-                    added += 1;
+                if metadata.set_kerning_group(name, side, Some(group)) == Ok(true) {
+                    source_added += 1;
                 }
             }
-            if members.len() != before {
-                master.dirty = true;
-                master.kerning_dirty = true;
+            if source_added > 0
+                && matches!(
+                    self.font
+                        .project
+                        .edit_document_source_metadata(source, |draft| {
+                            draft.set_font_metadata(metadata);
+                            Ok(())
+                        }),
+                    Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+                )
+            {
+                added += source_added;
             }
         }
         if added == 0 {
@@ -852,22 +883,45 @@ impl Workspace {
     pub(crate) fn remove_from_group(&mut self, full_group: &str, member: &str) {
         let history = self.font_data_history_context();
         let mut removed = 0_usize;
-        for master in self.font.project.edit_sources().iter_mut() {
-            let mut emptied = false;
-            let mut changed = false;
-            if let Some(members) = master.font.groups.get_mut(full_group) {
-                let before = members.len();
-                members.retain(|m| m.as_str() != member);
-                changed = members.len() != before;
-                emptied = members.is_empty();
+        let sources: Vec<_> = self
+            .font
+            .project
+            .document_sources()
+            .map(|source| source.id())
+            .collect();
+        for source in sources {
+            let Some(mut metadata) = self.font.project.document_font_metadata(source).cloned()
+            else {
+                continue;
+            };
+            let Some(current) = metadata.groups().get(full_group) else {
+                continue;
+            };
+            let members: Vec<_> = current
+                .iter()
+                .filter(|candidate| candidate.as_str() != member)
+                .cloned()
+                .collect();
+            if members.len() == current.len() {
+                continue;
             }
-            if emptied {
-                master.font.groups.retain(|k, _| k.as_str() != full_group);
-            }
-            if changed {
+            let changed = if members.is_empty() {
+                metadata.remove_group(full_group)
+            } else {
+                metadata.set_group(full_group, members)
+            };
+            if changed == Ok(true)
+                && matches!(
+                    self.font
+                        .project
+                        .edit_document_source_metadata(source, |draft| {
+                            draft.set_font_metadata(metadata);
+                            Ok(())
+                        }),
+                    Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+                )
+            {
                 removed += 1;
-                master.dirty = true;
-                master.kerning_dirty = true;
             }
         }
         if removed == 0 {
@@ -896,14 +950,14 @@ impl Workspace {
     /// Update the font-wide feature draft without applying it.
     pub(crate) fn edit_features(&mut self, value: String) {
         self.features_buf = value;
-        self.features_edited = self.features_buf != self.font.feature_font().features;
+        self.features_edited = self.features_buf != self.font.feature_text();
         self.modified |= self.features_edited;
         self.features_status = None;
     }
 
     /// Discard the feature draft and restore the font's applied text.
     pub(crate) fn revert_features(&mut self) {
-        self.features_buf = self.font.feature_font().features.clone();
+        self.features_buf = self.font.feature_text().to_owned();
         self.features_edited = false;
         self.modified = self
             .font
@@ -1137,10 +1191,22 @@ mod size_tests {
         app.open_glyph(a);
         app.set_kern_group(true, "A".into());
         assert_eq!(app.font.kern_group("A", true), "public.kern1.A");
+        assert_eq!(
+            app.font
+                .project
+                .document_source_metadata_history_depth(HistoryDirection::Undo),
+            1
+        );
         assert!(app.font.master().dirty);
         assert!(app.font.master().kerning_dirty);
         app.undo_active_edit(false);
         assert_eq!(app.font.kern_group("A", true), "");
+        assert_eq!(
+            app.font
+                .project
+                .document_source_metadata_history_depth(HistoryDirection::Redo),
+            1
+        );
         app.undo_active_edit(true);
         assert_eq!(app.font.kern_group("A", true), "public.kern1.A");
 

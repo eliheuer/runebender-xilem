@@ -539,18 +539,34 @@ impl FontModel {
     /// agree about them or the kerning will not interpolate, so this
     /// writes all of them rather than only the active one.
     pub(crate) fn set_kern_group(&mut self, glyph: &str, first_side: bool, group: &str) -> bool {
+        let side = if first_side {
+            KerningSide::First
+        } else {
+            KerningSide::Second
+        };
         let mut changed = false;
-        for master in self.project.edit_sources().iter_mut() {
-            if runebender::document::font_ops::set_kern_group(
-                &mut master.font,
-                glyph,
-                first_side,
-                group,
-            ) {
-                master.dirty = true;
-                master.kerning_dirty = true;
-                changed = true;
+        let sources: Vec<_> = self
+            .project
+            .document_sources()
+            .map(|source| source.id())
+            .collect();
+        for source in sources {
+            let Some(mut metadata) = self.project.document_font_metadata(source).cloned() else {
+                continue;
+            };
+            let Ok(edited) = metadata.set_kerning_group(glyph, side, Some(group)) else {
+                continue;
+            };
+            if !edited {
+                continue;
             }
+            changed |= matches!(
+                self.project.edit_document_source_metadata(source, |draft| {
+                    draft.set_font_metadata(metadata);
+                    Ok(())
+                }),
+                Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+            );
         }
         changed
     }

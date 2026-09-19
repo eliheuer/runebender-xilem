@@ -61,14 +61,6 @@ pub(crate) struct OverviewEditBatch {
     pub(crate) glyphs: Vec<String>,
 }
 
-/// The font-wide values restored together by a metadata history step.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct FontDataSnapshot {
-    pub(crate) groups: norad::Groups,
-    pub(crate) kerning: norad::Kerning,
-    pub(crate) features: String,
-}
-
 /// A cross-master metadata edit and the active glyph-history depth immediately
 /// before it. The depth keeps metadata Undo ordered with outline edits.
 #[derive(Clone, Debug, PartialEq)]
@@ -85,11 +77,8 @@ pub(crate) enum MetadataEdit {
         after: Vec<Vec<char>>,
         undo_depth: usize,
     },
-    FontData {
-        source_ids: Vec<runebender::document::variable::SourceId>,
+    SourceMetadata {
         glyph: String,
-        before: Vec<FontDataSnapshot>,
-        after: Vec<FontDataSnapshot>,
         label: String,
         undo_depth: usize,
     },
