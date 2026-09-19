@@ -24,6 +24,7 @@ Application fixtures obtain read-only detached glyphs through `formats::ufo`; th
 
 The separate `edit_batch::SetOutline` path no longer projects a draft to a UFO glyph or calls `reconcile_layer_from_ufo`.
 It decodes the public drawing payload once, replaces canonical contours directly and removes stable components only when the operation requests it.
+The unused `Project::reinterpolated_from_others` whole-glyph return path is also deleted; reinterpolation commits through `reinterpolate_document_layer`.
 
 ## Legacy glyph history callers
 

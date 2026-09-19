@@ -2523,6 +2523,28 @@ All edit-batch unit tests and warning-denied library/test Clippy passed.
 Formatting and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+### Canonical-only source reinterpolation
+
+Evidence commit: `Remove whole-glyph reinterpolation output` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Remove whole-glyph reinterpolation output$' -1`.
+
+The test-only `Project::reinterpolated_from_others` compatibility API is deleted.
+Production already used `reinterpolate_document_layer`, which replaces canonical contours and exact width in one guarded layer transaction.
+The regression now compares source and installed canonical layer views directly, including exact contour point positions, history depth and undo.
+
+Executed evidence:
+
+```sh
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib document::project::tests::reinterpolate_rebuilds_a_master_from_the_others -- --exact --test-threads=1
+cargo clippy --locked --lib --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused canonical reinterpolation regression and warning-denied library/test Clippy passed.
+Formatting and whitespace checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
 ### Canonical headless single-source commands
 
 Evidence commit: `Run headless source commands through Project` (the commit containing this substep).

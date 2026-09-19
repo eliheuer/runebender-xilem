@@ -951,38 +951,6 @@ impl Project {
             .map_err(|error| error.to_string())
     }
 
-    /// Materialize a compatibility glyph rebuilt from every source except the active master.
-    ///
-    /// New callers should use [`Self::reinterpolate_document_layer`], which commits the same
-    /// contours and exact width as one canonical transaction without constructing a UFO glyph.
-    pub fn reinterpolated_from_others(&self, glyph_name: &str) -> Result<norad::Glyph, String> {
-        let active = self.source_id(self.active).ok_or("missing active source")?;
-        let designspace = self
-            .document_designspace()
-            .ok_or("re-interpolate requires a variable document")?;
-        let target = designspace
-            .sources()
-            .iter()
-            .find(|source| source.id() == active)
-            .ok_or("active source is not in the canonical Designspace")?
-            .location
-            .to_normalized(designspace.axes())?;
-        let (layers, locations) = self.interpolation_layers(glyph_name, Some(active))?;
-        if layers.len() == 1 {
-            return Ok(layers[0].project());
-        }
-        let default = locations
-            .iter()
-            .position(|location| location.values().all(|value| value.abs() < 1e-9))
-            .ok_or("glyph has no layer at the default location")?;
-        let base = layers
-            .get(default)
-            .copied()
-            .ok_or("missing default layer")?;
-        let interpolated = super::interpolation::interpolate_layers(&layers, &locations, &target)?;
-        super::interpolation::project_interpolated(&interpolated, base)
-    }
-
     /// The current instance's path and advance, resolving every component at that location.
     pub fn interpolated_glyph(&self, glyph_name: &str) -> Option<(BezPath, f64)> {
         if self.location.values().all(|value| value.abs() < 1e-9) {
@@ -2460,24 +2428,26 @@ mod tests {
         let mut project = Project::load(&fonts::designspace()).expect("loads");
         // Two masters: rebuilding the active one from "the others"
         // must reproduce the other master exactly.
-        assert_eq!(project.sources().len(), 2);
+        assert_eq!(project.document_sources().count(), 2);
         project.active = 0;
-        let expected = project.sources()[1]
-            .font
-            .get_glyph("H")
-            .expect("bold has H")
-            .clone();
-        let rebuilt = project
-            .reinterpolated_from_others("H")
-            .expect("reinterpolates");
-        assert_eq!(rebuilt.width, expected.width);
-        assert_eq!(rebuilt.contours.len(), expected.contours.len());
-        for (a, b) in rebuilt.contours.iter().zip(expected.contours.iter()) {
-            for (pa, pb) in a.points.iter().zip(b.points.iter()) {
-                assert!((pa.x - pb.x).abs() < 1e-6);
-                assert!((pa.y - pb.y).abs() < 1e-6);
-            }
-        }
+        let expected_source = project.source_id(1).expect("second source identity");
+        let expected_layer = project
+            .document_source(expected_source)
+            .expect("second source")
+            .default_layer();
+        let expected = project
+            .document_layer("H", &expected_layer)
+            .expect("bold has H");
+        let expected_width = expected.width();
+        let expected_contours = expected
+            .contours()
+            .map(|contour| {
+                contour
+                    .points()
+                    .map(|point| point.position())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
         let source = project.source_id(0).expect("first source identity");
         let address = GlyphLayerAddress {
             glyph: "H".into(),
@@ -2491,10 +2461,25 @@ mod tests {
             .expect("canonical re-interpolation commits");
         assert!(matches!(outcome, DocumentEditOutcome::Changed { .. }));
         let installed = project
-            .glyph_layer("H", &address.layer)
-            .expect("installed layer projects at the format boundary");
-        assert_eq!(installed.width, expected.width);
-        assert_eq!(installed.contours.len(), expected.contours.len());
+            .document_layer("H", &address.layer)
+            .expect("installed canonical layer");
+        assert_eq!(installed.width(), expected_width);
+        let installed_contours = installed
+            .contours()
+            .map(|contour| {
+                contour
+                    .points()
+                    .map(|point| point.position())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(installed_contours.len(), expected_contours.len());
+        for (installed, expected) in installed_contours.iter().zip(&expected_contours) {
+            for (installed, expected) in installed.iter().zip(expected) {
+                assert!((installed.x - expected.x).abs() < 1e-6);
+                assert!((installed.y - expected.y).abs() < 1e-6);
+            }
+        }
         assert_eq!(
             project.document_layer_history_depth(
                 &address,
