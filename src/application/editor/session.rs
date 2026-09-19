@@ -574,6 +574,7 @@ impl Session {
 
     /// Run one legacy outline algorithm against a detached UFO codec value, then immediately
     /// reconcile its result into an owned canonical transaction.
+    #[cfg(test)]
     pub(crate) fn compatibility_edit(
         &mut self,
         label: &'static str,
@@ -583,6 +584,7 @@ impl Session {
             .unwrap_or(false)
     }
 
+    #[cfg(test)]
     pub(crate) fn compatibility_edit_result(
         &mut self,
         label: &'static str,
@@ -1903,15 +1905,10 @@ impl Session {
             .collect()
     }
 
-    /// Replace every contour, keeping the advance. Used by the swap with
-    /// the background layer, which is an edit like any other.
-    pub(crate) fn set_contours(&mut self, contours: Vec<norad::Contour>) -> bool {
-        let changed = self.compatibility_edit("replace contours", move |glyph| {
-            if glyph.contours == contours {
-                return false;
-            }
-            glyph.contours = contours;
-            true
+    /// Replace every contour decoded at an explicit import boundary.
+    pub(crate) fn replace_imported_contours(&mut self, contours: &[norad::Contour]) -> bool {
+        let changed = self.stage_canonical_edit("replace imported contours", |draft| {
+            draft.replace_imported_contours(contours)
         });
         if changed {
             self.selection.clear();
@@ -1919,30 +1916,20 @@ impl Session {
         changed
     }
 
-    /// Append contours to the glyph, and select the points they brought.
-    pub(crate) fn paste_contours(&mut self, contours: &[norad::Contour]) -> bool {
+    /// Append contours decoded at an explicit import boundary, selecting their fresh points.
+    pub(crate) fn append_imported_contours(&mut self, contours: &[norad::Contour]) -> bool {
         if contours.is_empty() {
             return false;
         }
-        let contours = contours.to_vec();
         let Some(mut transaction) = self.canonical_base.clone() else {
             return false;
         };
-        let mut glyph = transaction.compatibility_glyph();
-        let first_new = glyph.contours.len();
-        glyph.contours.extend(contours.iter().cloned());
-        if transaction.reconcile_compatibility_glyph(&glyph) != Ok(true) {
+        let Ok(pasted) = transaction.draft_mut().append_imported_contours(contours) else {
             return false;
-        }
-        let ids: Vec<Vec<_>> = transaction
-            .draft()
-            .view()
-            .contours()
-            .map(|contour| contour.points().map(|point| point.id()).collect())
-            .collect();
-        self.selection = ids.into_iter().skip(first_new).flatten().collect();
+        };
+        self.selection = pasted.points.into_iter().collect();
         self.pending_canonical = Some(transaction);
-        self.pending_canonical_label = Some("paste compatibility contours");
+        self.pending_canonical_label = Some("append imported contours");
         true
     }
 
@@ -2729,10 +2716,14 @@ mod tests {
     }
 
     #[test]
-    fn paste_appends_and_selects_what_it_pasted() {
+    fn imported_contours_append_and_select_fresh_points() {
         let mut session = two_squares();
         let copied = session.contours_for_copy();
-        assert!(session.paste_contours(&copied));
+        assert!(session.append_imported_contours(&copied));
+        assert_eq!(
+            session.pending_canonical_label,
+            Some("append imported contours")
+        );
         assert_eq!(projected_glyph(&session).contours.len(), 4);
         // Every point of the two new contours, and nothing else.
         assert_eq!(session.selection.len(), 8);
@@ -2742,12 +2733,28 @@ mod tests {
                 .iter()
                 .all(|(contour, _)| *contour >= 2)
         );
+
+        let mut replacement = two_squares();
+        replacement
+            .selection
+            .insert(replacement.point_id_at(0, 0).expect("first point"));
+        let mut imported = copied[..1].to_vec();
+        imported[0].points[0].x = -40.0;
+        assert!(replacement.replace_imported_contours(&imported));
+        assert_eq!(
+            replacement.pending_canonical_label,
+            Some("replace imported contours")
+        );
+        assert!(replacement.selection.is_empty());
+        let projected = projected_glyph(&replacement);
+        assert_eq!(projected.contours, imported);
+        assert_eq!(projected.width, 0.0);
     }
 
     #[test]
-    fn pasting_nothing_changes_nothing() {
+    fn importing_no_contours_changes_nothing() {
         let mut session = two_squares();
-        assert!(!session.paste_contours(&[]));
+        assert!(!session.append_imported_contours(&[]));
         assert_eq!(projected_glyph(&session).contours.len(), 2);
     }
 

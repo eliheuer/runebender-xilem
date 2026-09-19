@@ -306,7 +306,7 @@ git diff --check
 - Direct canonical draft operations now own filters, cleanup, transforms, shapes, anchors, images, boolean operations, knife cuts, curve conversion, re-interpolation and mask baking.
 - Place Image installs bytes through a stable-source Project operation and attaches the image through the layer draft; it no longer mutates `FontModel::font_mut().images`.
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
-- The remaining temporary bridge callers are exact and finite: compatibility contour replacement and its test-only paste helper; and background send and swap.
+- The only remaining production bridge callers are background send and swap; compatibility projection helpers remain test-only while M13 removes the bridge itself.
 - `FontModel` still exposes mutable source/font access for Unicode, metrics formulas, local-model workflow boundaries, source retargeting and background layers; those callers remain M06/M13 work rather than completion claims.
 - Pen, Rectangle, Ellipse and Knife Pointer Cancel paths now have real widget-event coverage.
 
@@ -497,6 +497,36 @@ Executed evidence:
 ```sh
 CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::inspector::size_tests::overview_mark_batch_updates_cells_and_undoes_once -- --exact --nocapture
 CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::platform::host::tests::glyph_metadata_validates_undoes_and_survives_save_reopen -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+CARGO_BUILD_JOBS=1 ./web/build.sh
+CARGO_BUILD_JOBS=1 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='-C target-feature=+simd128' cargo clippy --manifest-path web/Cargo.toml --locked --target wasm32-unknown-unknown --no-deps -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+Both focused application regressions and the complete binary suite passed.
+Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
+
+## Direct canonical imported-contour slice
+
+Implementation commit: `Import contours without glyph reconciliation`.
+Resolve its exact ID with `git log --format=%H --grep='^Import contours without glyph reconciliation$' -1`.
+Affected paths: `src/application/editor/session.rs`, `src/application/editor/commands.rs` and this log.
+
+Reviewed core commits `dba6cbc` and `1c74321` add prevalidated imported-contour append and replacement operations.
+They reject nonfinite or malformed topology and colliding UFO identifiers before mutation, preserve interleaved contour/component paint order and keep non-contour layer data exact.
+Appending returns fresh canonical point identities for selection, while exact replacement no-ops retain existing identities.
+
+Trace Image now replaces contours through the canonical draft operation.
+SVG Import appends through the canonical draft operation and selects only its freshly assigned point identities.
+Neither command materializes or reconciles a whole glyph, and both continue through the Session's guarded Project transaction and undo path.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::session::tests::imported_contours_append_and_select_fresh_points -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::session::tests::importing_no_contours_changes_nothing -- --exact --nocapture
 CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
 CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
 CARGO_BUILD_JOBS=1 ./web/build.sh

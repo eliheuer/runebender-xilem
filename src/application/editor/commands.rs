@@ -674,7 +674,7 @@ impl Workspace {
         match traced {
             Ok(glyph) => {
                 let count = glyph.contours.len();
-                self.apply_op(move |session| session.set_contours(glyph.contours));
+                self.apply_op(move |session| session.replace_imported_contours(&glyph.contours));
                 self.note = format!("Traced {count} contour(s)");
             }
             Err(error) => self.note = format!("Trace: {error}"),
@@ -706,7 +706,7 @@ impl Workspace {
         match contours {
             Ok(contours) => {
                 let count = contours.len();
-                self.apply_op(move |session| session.paste_contours(&contours));
+                self.apply_op(move |session| session.append_imported_contours(&contours));
                 self.note = format!("Imported {count} SVG contour(s)");
             }
             Err(error) => self.note = format!("SVG import: {error}"),
@@ -1314,7 +1314,7 @@ impl Workspace {
         };
         let foreground = foreground.contours;
         let width = self.session.advance();
-        self.apply_op(move |session| session.set_contours(background));
+        self.apply_op(move |session| session.replace_imported_contours(&background));
         self.font.send_to_background(&name, foreground, width);
         self.modified = true;
         self.note = "swapped with background".into();
