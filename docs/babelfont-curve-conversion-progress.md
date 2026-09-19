@@ -91,6 +91,15 @@ Open and hyperbezier contours also remain untouched, while stable identities and
 Three optimize regressions bring the dedicated suite to ten passing tests.
 They cover empty-selection scope, exact shared-primitive output, stable identities and metadata, canonical undo, selected mixed contours, preservation of open, hyperbezier and quadratic geometry, valid zero tolerance, and caught invalid-parameter/error atomicity.
 
+The independently tested cleanup checkpoints are:
+
+- round selected corners: `539b19ef45510140e151e3231bee20c8d789dbf8`;
+- harmonize handles: `de858fc211a5623ecd3c603d844722ce46000703`;
+- balance handles: `e9eb77b2220a17f8f53c4ad9117401bd8309ba0a`;
+- optimize handles: `0d47f199be34536b9111c1d3b2e98b15f6d7ba17`.
+
+Each checkpoint was sent to the replacement integration lead without a push or merge from this worker lane.
+
 ## Validation
 
 The implementation compiled with:
@@ -103,6 +112,12 @@ The dedicated suite passed four tests covering exact quadratic elevation, bounde
 
 ```sh
 CARGO_TARGET_DIR=/private/tmp/runebender-curve-conversion-target CARGO_BUILD_JOBS=1 cargo test --locked --test canonical_curve_conversion -- --test-threads=1
+```
+
+The dedicated handle-cleanup suite passed ten tests covering all four operations, stable identities and metadata, mixed/open/closed/hyperbezier contours, history, no-op/error atomicity and save/reopen where topology changes:
+
+```sh
+CARGO_TARGET_DIR=/private/tmp/runebender-curve-conversion-target CARGO_BUILD_JOBS=1 cargo test --locked --test canonical_handle_cleanup -- --test-threads=1
 ```
 
 The complete canonical variable-project regression suite passed 59 tests:
