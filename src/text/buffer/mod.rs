@@ -266,6 +266,38 @@ impl TextGlyphInventory {
                 .unwrap_or_else(default_units_per_em),
         }
     }
+
+    /// Build the native text inventory from one canonical document source.
+    pub fn from_project(
+        project: &crate::document::project::Project,
+        source: crate::document::variable::SourceId,
+    ) -> Option<Self> {
+        let layer_id = project.document_source(source)?.default_layer();
+        let mut unicode = HashMap::new();
+        let mut widths = HashMap::new();
+        for name in project.glyph_names() {
+            let Some(layer) = project.document_layer(name, &layer_id) else {
+                continue;
+            };
+            if let Some(codepoint) = layer.codepoints().next() {
+                unicode
+                    .entry(u32::from(codepoint))
+                    .or_insert_with(|| name.to_owned());
+            }
+            widths.insert(name.to_owned(), layer.width());
+        }
+        Some(Self {
+            unicode,
+            widths,
+            outlines: HashMap::new(),
+            features: crate::text::features::with_generated_project(project, source)?,
+            units_per_em: project
+                .document_font_info(source)?
+                .metrics
+                .resolved()
+                .units_per_em,
+        })
+    }
 }
 
 impl TextKerningModel {
@@ -316,6 +348,43 @@ impl TextKerningModel {
             right_groups,
             kerning,
         }
+    }
+
+    /// Build the native text kerning model from canonical source metadata.
+    pub fn from_project(
+        project: &crate::document::project::Project,
+        source: crate::document::variable::SourceId,
+    ) -> Option<Self> {
+        let metadata = project.document_font_metadata(source)?;
+        let mut groups = HashMap::new();
+        let mut left_groups = HashMap::new();
+        let mut right_groups = HashMap::new();
+        for (name, source_members) in metadata.groups() {
+            let members = source_members.clone();
+            if name.starts_with("public.kern1.") {
+                for member in &members {
+                    right_groups.insert(member.clone(), name.clone());
+                }
+            } else if name.starts_with("public.kern2.") {
+                for member in &members {
+                    left_groups.insert(member.clone(), name.clone());
+                }
+            }
+            groups.insert(name.clone(), members);
+        }
+        let mut kerning: HashMap<String, HashMap<String, f64>> = HashMap::new();
+        for (left, right, value) in metadata.kerning_pairs() {
+            kerning
+                .entry(left.as_raw_name().to_owned())
+                .or_default()
+                .insert(right.as_raw_name().to_owned(), value);
+        }
+        Some(Self {
+            groups,
+            left_groups,
+            right_groups,
+            kerning,
+        })
     }
 }
 

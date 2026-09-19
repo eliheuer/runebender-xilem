@@ -59,10 +59,18 @@ pub(crate) struct TextInputs {
 impl TextInputs {
     /// Read a master: glyph advances, kerning, outlines, metrics.
     pub(crate) fn new(font: &FontModel) -> Self {
+        let source = font
+            .project
+            .document_sources()
+            .nth(font.project.active)
+            .expect("the active source exists")
+            .id();
         Self {
             context_id: (0, 0),
-            inventory: TextGlyphInventory::from_font(font.font()),
-            kerning: TextKerningModel::from_font(font.font()),
+            inventory: TextGlyphInventory::from_project(&font.project, source)
+                .expect("the active source has canonical text inputs"),
+            kerning: TextKerningModel::from_project(&font.project, source)
+                .expect("the active source has canonical kerning inputs"),
             outlines: Arc::new(
                 font.glyphs
                     .iter()

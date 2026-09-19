@@ -103,6 +103,51 @@ fn from_font_builds_working_models() {
 }
 
 #[test]
+fn canonical_project_builds_the_same_text_inputs_as_its_source_boundary() {
+    let mut font = norad::Font::new();
+    font.font_info.units_per_em = Some(1000_u32.into());
+    font.features = "feature liga { sub A V by A; } liga;".into();
+    for (name, codepoint, width) in [("A", 'A', 600.0), ("V", 'V', 620.0)] {
+        let mut glyph = norad::Glyph::new(name);
+        glyph.codepoints.insert(codepoint);
+        glyph.width = width;
+        font.default_layer_mut().insert_glyph(glyph);
+    }
+    font.kerning
+        .entry(norad::Name::new("A").unwrap())
+        .or_default()
+        .insert(norad::Name::new("V").unwrap(), -80.5);
+    let designspace = crate::document::font_memory::designspace_from_str(
+        r#"<designspace format="5.0">
+          <axes><axis tag="wght" name="Weight" minimum="400" default="400" maximum="900"/></axes>
+          <sources><source filename="Regular.ufo" name="regular"><location><dimension name="Weight" xvalue="400"/></location></source></sources>
+        </designspace>"#,
+    )
+    .unwrap();
+    let project = crate::document::project::Project::from_designspace(designspace, |path| {
+        Ok(crate::document::project::Master::from_font(
+            font.clone(),
+            path.into(),
+        ))
+    })
+    .expect("fixture project loads");
+    let source = project
+        .document_sources()
+        .next()
+        .expect("standalone UFO has one source")
+        .id();
+
+    assert_eq!(
+        TextGlyphInventory::from_project(&project, source).expect("canonical inventory"),
+        TextGlyphInventory::from_font(&font),
+    );
+    assert_eq!(
+        TextKerningModel::from_project(&project, source).expect("canonical kerning"),
+        TextKerningModel::from_font(&font),
+    );
+}
+
+#[test]
 fn insert_glyph_moves_cursor_and_sets_active_sort() {
     let mut buffer = TextBuffer::new();
     buffer.insert_glyph("A", Some('A'), 600.0);
