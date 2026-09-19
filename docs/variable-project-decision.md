@@ -63,6 +63,7 @@ The added compiler graph passes the RustSec advisory check; this is dependency s
 `document::babelfont` reconciles geometry through that boundary without narrowing the saved UFO values.
 Source-wide metadata remains in preservation templates.
 This is not yet a complete migration of every editing algorithm and metadata field to Babelfont APIs.
+The [migration checklist](babelfont-migration-checklist.md) defines the remaining work, its order and the evidence required to call that migration complete.
 
 Existing Norad editing algorithms use scoped source guards.
 Guards reconcile edits into Babelfont before another Project operation can run.

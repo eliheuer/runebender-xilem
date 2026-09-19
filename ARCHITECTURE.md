@@ -132,6 +132,7 @@ The browser currently compiles synchronously and downloads exported bytes throug
 Application source controls live in `application/editor/sources.rs`; views dispatch commands and never perform font mutations themselves.
 
 The [dependency and format decision](docs/variable-project-decision.md) records the upstream precision blocker, exact references, preservation policy and supported boundaries.
+The [migration checklist](docs/babelfont-migration-checklist.md) tracks removal of the remaining Norad editing model while retaining source-format preservation.
 
 ## Adding a tool
 
