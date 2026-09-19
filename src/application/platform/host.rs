@@ -96,9 +96,9 @@ impl Workspace {
         // switching to editor mode.
         let session = match first {
             Some(index) => Arc::new(
-                Session::new(font.font(), &font.glyphs[index].name).ok_or("glyph missing")?,
+                Session::new_from_model(&font, &font.glyphs[index].name).ok_or("glyph missing")?,
             ),
-            None => Arc::new(Session::inactive(font.font())),
+            None => Arc::new(Session::inactive_from_model(&font)),
         };
         // For headless screenshots: optionally select all points.
         // (set later, after session is final)
@@ -113,7 +113,7 @@ impl Workspace {
         };
         let session = match open {
             Some(i) => Arc::new(
-                Session::new(font.font(), &font.glyphs[i].name)
+                Session::new_from_model(&font, &font.glyphs[i].name)
                     .unwrap_or_else(|| (*session).clone()),
             ),
             None => session,
@@ -505,7 +505,7 @@ impl Workspace {
                 for (text_context_id, name, viewport, fitted, tool, text_context, was_active) in
                     tabs
                 {
-                    let Some(mut session) = Session::new(fresh.font.font(), &name) else {
+                    let Some(mut session) = Session::new_from_model(&fresh.font, &name) else {
                         continue;
                     };
                     session.viewport = viewport;

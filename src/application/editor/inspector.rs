@@ -410,7 +410,7 @@ impl Workspace {
         // old one has to learn the new one or it points at nothing.
         for tab in &mut self.tabs {
             if tab.session.glyph_name == old
-                && let Some(session) = Session::new(self.font.font(), new)
+                && let Some(session) = Session::new_from_model(&self.font, new)
             {
                 tab.session = Arc::new(session);
             }
@@ -420,7 +420,7 @@ impl Workspace {
             self.selected = Some(i);
             if matches!(self.mode, Mode::Editor(_)) {
                 self.mode = Mode::Editor(i);
-                if let Some(sess) = Session::new(self.font.font(), new) {
+                if let Some(sess) = Session::new_from_model(&self.font, new) {
                     self.session = Arc::new(sess);
                 }
             }

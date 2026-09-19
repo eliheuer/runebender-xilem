@@ -61,7 +61,9 @@ Affected paths: `src/application/font_model.rs`, `src/application/view/panels/ed
 
 `FontModel` now exposes canonical source-indexed font information and resolves the active UPM, ascender and descender from it.
 The overview metadata rows and cross-master metrics, kerning counts, default-layer glyph coverage and advance comparisons no longer read those values from compatibility UFO sources.
+All production session creation and rebuild paths now resolve layout metrics from canonical active-source font information; the Norad-only constructor remains test-only and transitional until the complete layer-draft cutover.
 The focused regression commits an unsaved canonical family name and 2048 UPM with exact kerning metadata, then observes all values through the application query surface.
+It also verifies a newly created session receives the canonical 2048 UPM and resolved ascender.
 A two-source regression also verifies canonical default-layer glyph and advance comparison.
 
 Integrated core commits `62dfaa8`, `3f48dc1` and `d9fbe05` provide typed font-info ownership, Project queries and validation-before-mutation.
@@ -77,6 +79,7 @@ git diff --check
 ```
 
 All six focused `FontModel` tests passed.
+All fifteen focused session tests passed.
 Warning-denied binary Clippy, formatting and diff checks passed.
 
 ## Project-owned source-metadata history slice

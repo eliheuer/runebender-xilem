@@ -950,6 +950,10 @@ mod tests {
                 )
         );
         assert_eq!(model.units_per_em(), 2048.0);
+        let session = crate::application::editor::session::Session::new_from_model(&model, "A")
+            .expect("the canonical source glyph opens");
+        assert_eq!(session.metrics.upm, 2048.0);
+        assert_eq!(session.metrics.ascender, 2048.0 * 0.8);
         assert_eq!(
             model.info_rows().into_iter().take(3).collect::<Vec<_>>(),
             [

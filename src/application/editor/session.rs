@@ -10,6 +10,7 @@
 //! The editor island owns the session; the app receives copies of the glyph.
 
 use crate::application::editor::tools::metaballs;
+use crate::application::font_model::FontModel;
 use crate::application::platform::host;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::view::panels::sections::metric_bufs;
@@ -53,6 +54,17 @@ impl Metrics {
             descender: info.descender.unwrap_or(-upm * 0.2),
             x_height: info.x_height.unwrap_or(upm * 0.5),
             cap_height: info.cap_height.unwrap_or(upm * 0.7),
+        }
+    }
+
+    fn of_canonical(info: &runebender::document::model::font_info::CanonicalFontInfo) -> Self {
+        let metrics = info.metrics.resolved();
+        Self {
+            upm: metrics.units_per_em,
+            ascender: metrics.ascender,
+            descender: metrics.descender,
+            x_height: metrics.x_height,
+            cap_height: metrics.cap_height,
         }
     }
 }
@@ -120,6 +132,20 @@ struct PenPt {
 }
 
 impl Session {
+    /// Build an inactive session with metrics from the canonical active source.
+    pub(crate) fn inactive_from_model(font: &FontModel) -> Self {
+        let mut session = Self::inactive(font.font());
+        session.metrics = Metrics::of_canonical(font.font_info());
+        session
+    }
+
+    /// Build an editor session with metrics from the canonical active source.
+    pub(crate) fn new_from_model(font: &FontModel, name: &str) -> Option<Self> {
+        let mut session = Self::new(font.font(), name)?;
+        session.metrics = Metrics::of_canonical(font.font_info());
+        Some(session)
+    }
+
     /// Makes the inactive session held while the overview has no glyph to open.
     ///
     /// The editor only reads this session in [`Mode::Editor`]. Keeping an
@@ -1295,7 +1321,7 @@ impl Workspace {
         self.selected = None;
         if self.tabs.is_empty() {
             self.active_tab = 0;
-            self.session = Arc::new(Session::inactive(self.font.font()));
+            self.session = Arc::new(Session::inactive_from_model(&self.font));
         } else {
             self.active_tab = self.active_tab.min(self.tabs.len() - 1);
             let tab = &self.tabs[self.active_tab];
@@ -1349,7 +1375,7 @@ impl Workspace {
 
     /// A second tab on the glyph that is open, with its own session.
     pub(crate) fn new_tab(&mut self) {
-        let Some(session) = Session::new(self.font.font(), &self.session.glyph_name) else {
+        let Some(session) = Session::new_from_model(&self.font, &self.session.glyph_name) else {
             return;
         };
         let persistent_tool = self.persistent_tool();
@@ -1421,7 +1447,7 @@ impl Workspace {
     /// stable identity and parked text/preview state.
     fn replace_active_tab_glyph(&mut self, index: usize) -> bool {
         if let Some(entry) = self.font.glyphs.get(index)
-            && let Some(session) = Session::new(self.font.font(), &entry.name)
+            && let Some(session) = Session::new_from_model(&self.font, &entry.name)
         {
             self.advance_buf = format!("{}", round_units(session.advance()));
             let (l, r) = metric_bufs(&session);
@@ -1622,10 +1648,10 @@ impl Workspace {
         // A parked session contains one master's glyph data. Rebuild every tab
         // by glyph name so activating another tab cannot write the old master
         // into the new one. Viewports and text contexts remain tab-local.
-        let font = self.font.font();
+        let font = &self.font;
         self.tabs.retain_mut(|tab| {
             let name = tab.session.glyph_name.clone();
-            let Some(mut session) = Session::new(font, &name) else {
+            let Some(mut session) = Session::new_from_model(font, &name) else {
                 return false;
             };
             session.viewport = tab.session.viewport.clone();

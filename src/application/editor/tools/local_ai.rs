@@ -480,7 +480,7 @@ impl Workspace {
         self.modified = true;
         if matches!(self.mode, Mode::Editor(_))
             && names.iter().any(|n| *n == self.session.glyph_name)
-            && let Some(fresh) = Session::new(self.font.font(), &self.session.glyph_name)
+            && let Some(fresh) = Session::new_from_model(&self.font, &self.session.glyph_name)
         {
             // The open glyph was replaced under the session; start it
             // again on the new outline. The install's own undo is on
