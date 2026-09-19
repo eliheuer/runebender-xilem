@@ -44,6 +44,7 @@ pub struct GlyphLayerAddress {
 struct SourceMetadata {
     feature_text: String,
     font_metadata: super::canonical_metadata::CanonicalFontMetadata,
+    font_info: super::model::font_info::CanonicalFontInfo,
 }
 
 /// Opaque canonical metadata for the complete current source set.
@@ -94,6 +95,11 @@ impl SourceMetadataEditDraft {
         &self.metadata.font_metadata
     }
 
+    /// Current canonical names, metrics and OpenType font information.
+    pub fn font_info(&self) -> &super::model::font_info::CanonicalFontInfo {
+        &self.metadata.font_info
+    }
+
     /// Set the source's OpenType feature text.
     ///
     /// Returns whether the value changed.
@@ -116,6 +122,15 @@ impl SourceMetadataEditDraft {
             return false;
         }
         self.metadata.font_metadata = metadata;
+        true
+    }
+
+    /// Replace canonical names, metrics and OpenType font information.
+    pub fn set_font_info(&mut self, font_info: super::model::font_info::CanonicalFontInfo) -> bool {
+        if self.metadata.font_info == font_info {
+            return false;
+        }
+        self.metadata.font_info = font_info;
         true
     }
 }
@@ -435,6 +450,13 @@ impl VariableData {
         Some(&self.source_metadata.get(&source)?.font_metadata)
     }
 
+    pub(super) fn font_info(
+        &self,
+        source: SourceId,
+    ) -> Option<&super::model::font_info::CanonicalFontInfo> {
+        Some(&self.source_metadata.get(&source)?.font_info)
+    }
+
     pub(super) fn source_glyph_metadata(
         &self,
         source: SourceId,
@@ -623,6 +645,8 @@ impl VariableData {
             feature_text: font.features.clone(),
             font_metadata: super::font_ops::canonical_metadata_from_ufo(font)
                 .expect("Norad source metadata must satisfy the canonical metadata contract"),
+            font_info: super::model::font_info::CanonicalFontInfo::from_ufo(&font.font_info)
+                .expect("Norad font info must satisfy the canonical metadata contract"),
         };
         changed |= self.source_metadata.get(&source) != Some(&metadata);
         self.source_metadata.insert(source, metadata);
@@ -749,6 +773,7 @@ impl VariableData {
         }
         template.meta.clone_from(&font.meta);
         template.font_info.clone_from(&font.font_info);
+        super::model::font_info::clear_canonical_font_info_fields(&mut template.font_info);
         template.lib.clone_from(&font.lib);
         template.groups.clear();
         template.kerning.clear();
@@ -772,6 +797,11 @@ impl VariableData {
             &self.source_metadata.get(&source)?.font_metadata,
         )
         .expect("canonical source metadata must remain writable as UFO");
+        self.source_metadata
+            .get(&source)?
+            .font_info
+            .write_to_ufo(&mut font.font_info)
+            .expect("canonical font info must remain writable as UFO");
         for (name, glyph) in &self.glyphs {
             for (id, preserved) in &glyph.layers {
                 if id.source == source {

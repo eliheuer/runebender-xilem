@@ -1360,6 +1360,14 @@ impl Project {
         self.variable.font_metadata(source)
     }
 
+    /// Read one source's canonical names, metrics and OpenType font information.
+    pub fn document_font_info(
+        &self,
+        source: SourceId,
+    ) -> Option<&super::model::font_info::CanonicalFontInfo> {
+        self.variable.font_info(source)
+    }
+
     /// Read one glyph's canonical export and OpenType category metadata in a source.
     pub fn document_source_glyph_metadata(
         &self,
@@ -1820,6 +1828,11 @@ impl Project {
             .font_metadata(source)
             .expect("committed metadata")
             .clone();
+        let font_info = self
+            .variable
+            .font_info(source)
+            .expect("committed metadata")
+            .clone();
         let source = &mut self.masters[index];
         let kerning_changed = match super::font_ops::canonical_metadata_from_ufo(&source.font) {
             Ok(current) => current != font_metadata,
@@ -1828,6 +1841,9 @@ impl Project {
         source.font.features = feature_text;
         super::font_ops::write_canonical_metadata_to_ufo(&mut source.font, &font_metadata)
             .expect("canonical source metadata must remain writable as UFO");
+        font_info
+            .write_to_ufo(&mut source.font.font_info)
+            .expect("canonical font info must remain writable as UFO");
         source.dirty = true;
         source.kerning_dirty |= kerning_changed;
     }
