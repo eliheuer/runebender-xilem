@@ -308,7 +308,7 @@ git diff --check
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
 - No production application caller materializes or reconciles a whole glyph; compatibility projection helpers remain test-only while M13 removes the bridge itself.
 - Production application code no longer calls `FontModel::master_mut` or `font_mut`; the two accessors are confined to stale-state and persistence fixtures.
-- Direct source-projection mutation remains in Unicode propagation, metrics-formula application and Save As retargeting; those callers remain M06/M13 work rather than completion claims.
+- Direct source-projection mutation remains in Unicode propagation and Save As retargeting; those callers remain M06/M13 work rather than completion claims.
 - Pen, Rectangle, Ellipse and Knife Pointer Cancel paths now have real widget-event coverage.
 
 ## Canonical Session storage and history cutover
@@ -605,6 +605,33 @@ The focused regressions cover stable-source overview undo after source reorder/r
 The complete binary suite passed 173 tests with four documented model or external-font tests ignored.
 Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
 
+## Direct canonical metrics-formula slice
+
+Implementation commit: `Apply metrics formulas through canonical layers`.
+Resolve its exact ID with `git log --format=%H --grep='^Apply metrics formulas through canonical layers$' -1`.
+Affected paths: `src/application/editor/commands.rs` and this log.
+
+Update Metrics now discovers typed formulas and resolves reference glyph geometry through canonical Project layer views.
+Left-sidebearing changes translate the target's canonical contour points and component transforms without moving anchors, matching the established command semantics.
+Right-sidebearing changes set exact canonical widths.
+Every real adjustment commits as a guarded layer transaction and records Project-owned history; the command no longer borrows or reconciles mutable source projections.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::commands::tests::update_metrics_applies_reference_keys -- --exact
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+CARGO_BUILD_JOBS=1 ./web/build.sh
+CARGO_BUILD_JOBS=1 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='-C target-feature=+simd128' cargo clippy --manifest-path web/Cargo.toml --locked --target wasm32-unknown-unknown --no-deps -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused regression covers canonical left and right formula application, two-step Project undo/redo, zero legacy Master history and save/reopen persistence.
+The complete binary suite passed 173 tests with four documented model or external-font tests ignored.
+Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
+
 ## Next action
 
-Replace the remaining Unicode, metrics-formula and Save As `edit_sources` callers with canonical Project operations, then remove the test-only compatibility bridge itself during M13.
+Replace the remaining Unicode and Save As `edit_sources` callers with canonical Project operations, then remove the test-only compatibility bridge itself during M13.
