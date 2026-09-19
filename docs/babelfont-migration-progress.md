@@ -1085,4 +1085,35 @@ Its rollback case confirmed that a later topology error discards earlier edits i
 
 Both independent preservation tests passed against `dec7966` without repository changes.
 
-The next M04 substep continues direct canonical topology edits with point insertion and deletion.
+### Canonical segment-insertion substep
+
+Evidence commit: `Insert points directly into canonical segments` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Insert points directly into canonical segments$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md` and this log.
+
+`LayerEditDraft::insert_point_on_segment` now subdivides direct stored-endpoint lines, single-control quadratics and cubics without constructing or reconciling a UFO glyph.
+It supports open and wraparound closing segments and retains the identities and source metadata of existing controls as their positions move through De Casteljau subdivision.
+Inserted controls and on-curve points receive fresh stable identities, and invalid endpoint pairs reject the draft atomically.
+Quadratic segments whose start or end is an implied midpoint remain for the implied-topology substep.
+
+The integration comparison requires the same snapped coordinates, point roles, smooth state and complete drawn paths as the existing line, quadratic and cubic insertion operation.
+It separately verifies preserved control and endpoint identities and names, fresh-identity uniqueness, closing-segment ordering and cross-contour rejection atomicity.
+Stored-endpoint point insertion is complete within M04's first checklist item.
+Implied-endpoint insertion, deletion, reversal, split/join and copy/paste remain, so the item stays open.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_segment_insertion_preserves_existing_control_identities -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused insertion comparison and all 33 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep completes point insertion at implied quadratic endpoints before point deletion.

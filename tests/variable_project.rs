@@ -1955,6 +1955,174 @@ fn canonical_line_conversion_sets_quadratic_endpoints_to_cubic() {
 }
 
 #[test]
+fn canonical_segment_insertion_preserves_existing_control_identities() {
+    let scratch = Scratch::new();
+    let point = |x, y, typ, label: Option<&str>| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            typ,
+            false,
+            label.map(|label| Name::new(label).unwrap()),
+            label.map(|label| norad::Identifier::new(label).unwrap()),
+        );
+        if let Some(label) = label {
+            point.replace_lib(object_lib(label));
+        }
+        point
+    };
+    let mut glyph = Glyph::new("insert-segments");
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move, None),
+            point(120.0, 0.0, PointType::Line, None),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 100.0, PointType::Move, None),
+            point(60.0, 220.0, PointType::OffCurve, Some("quadratic control")),
+            point(120.0, 100.0, PointType::QCurve, None),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(200.0, 0.0, PointType::Move, None),
+            point(240.0, 120.0, PointType::OffCurve, Some("cubic first")),
+            point(320.0, 120.0, PointType::OffCurve, Some("cubic second")),
+            point(360.0, 0.0, PointType::Curve, None),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(500.0, 0.0, PointType::Curve, Some("closing endpoint")),
+            point(620.0, 0.0, PointType::Line, None),
+            point(620.0, 120.0, PointType::OffCurve, Some("closing first")),
+            point(500.0, 120.0, PointType::OffCurve, Some("closing second")),
+        ],
+        None,
+    ));
+    let original = glyph.clone();
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project = Project::from_source(Master::from_font(
+        font,
+        scratch.0.join("InsertSegments.ufo"),
+    ));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let ids: Vec<Vec<_>> = project
+        .document_layer("insert-segments", &layer_id)
+        .unwrap()
+        .contours()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+
+    let mut inserted = Vec::new();
+    project
+        .edit_document_layer("insert-segments", &layer_id, |draft| {
+            inserted.push(draft.insert_point_on_segment(ids[0][0], ids[0][1], 0.5)?);
+            inserted.push(draft.insert_point_on_segment(ids[1][0], ids[1][2], 0.5)?);
+            inserted.push(draft.insert_point_on_segment(ids[2][0], ids[2][3], 0.5)?);
+            inserted.push(draft.insert_point_on_segment(ids[3][1], ids[3][0], 0.5)?);
+            Ok(())
+        })
+        .unwrap();
+
+    let mut expected = original.clone();
+    for (contour, start, end) in [(0, 0, 1), (1, 0, 2), (2, 0, 3), (3, 1, 0)] {
+        let hit = runebender::outline::segment_ops::segments(&expected)
+            .into_iter()
+            .find(|hit| hit.contour == contour && hit.start == start && hit.end == end)
+            .unwrap();
+        runebender::outline::segment_ops::insert_point_on_segment(&mut expected, &hit, 0.5)
+            .unwrap();
+    }
+    let projected = project.glyph_layer("insert-segments", &layer_id).unwrap();
+    assert_eq!(projected.contours.len(), expected.contours.len());
+    for (canonical, legacy) in projected.contours.iter().zip(&expected.contours) {
+        assert_eq!(canonical.points.len(), legacy.points.len());
+        for (canonical, legacy) in canonical.points.iter().zip(&legacy.points) {
+            assert_eq!((canonical.x, canonical.y), (legacy.x, legacy.y));
+            assert_eq!(canonical.typ, legacy.typ);
+            assert_eq!(canonical.smooth, legacy.smooth);
+        }
+    }
+    assert_eq!(
+        runebender::outline::glyph_paths::contours_to_bezpath(&projected),
+        runebender::outline::glyph_paths::contours_to_bezpath(&expected),
+        "canonical segment subdivision changed the existing snapped geometry"
+    );
+    for (contour, before, after) in [
+        (1, 1, 1),
+        (2, 1, 1),
+        (2, 2, 5),
+        (3, 0, 0),
+        (3, 2, 2),
+        (3, 3, 6),
+    ] {
+        let source = &original.contours[contour].points[before];
+        let split = &projected.contours[contour].points[after];
+        assert_eq!(split.name, source.name);
+        assert_eq!(split.identifier(), source.identifier());
+        assert_eq!(split.lib(), source.lib());
+    }
+
+    let layer = project
+        .document_layer("insert-segments", &layer_id)
+        .unwrap();
+    let points: Vec<Vec<_>> = layer
+        .contours()
+        .map(|contour| contour.points().collect())
+        .collect();
+    assert_eq!(points[1][1].id(), ids[1][1]);
+    assert_eq!(points[1][1].name(), Some("quadratic control"));
+    assert_eq!(points[2][1].id(), ids[2][1]);
+    assert_eq!(points[2][5].id(), ids[2][2]);
+    assert_eq!(points[2][1].name(), Some("cubic first"));
+    assert_eq!(points[2][5].name(), Some("cubic second"));
+    assert_eq!(points[3][0].id(), ids[3][0]);
+    assert_eq!(points[3][2].id(), ids[3][2]);
+    assert_eq!(points[3][6].id(), ids[3][3]);
+    assert_eq!(points[3][0].name(), Some("closing endpoint"));
+    assert_eq!(points[3][2].name(), Some("closing first"));
+    assert_eq!(points[3][6].name(), Some("closing second"));
+    for inserted in inserted {
+        let point = points
+            .iter()
+            .flatten()
+            .find(|point| point.id() == inserted)
+            .unwrap();
+        assert!(point.name().is_none());
+    }
+    let live_ids: Vec<_> = points.iter().flatten().map(|point| point.id()).collect();
+    assert_eq!(
+        live_ids.len(),
+        live_ids.iter().collect::<HashSet<_>>().len(),
+        "segment insertion duplicated a stable point identity"
+    );
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project.edit_document_layer("insert-segments", &layer_id, |draft| {
+            draft.insert_point_on_segment(ids[0][0], ids[1][0], 0.5)?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::NotDirectSegment(
+            ids[0][0], ids[1][0]
+        ))
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);
