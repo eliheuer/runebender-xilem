@@ -124,6 +124,32 @@ fn group_membership_is_side_scoped_and_accepts_full_names() {
 }
 
 #[test]
+fn whole_kerning_group_edits_reject_ambiguous_membership_atomically() {
+    let mut metadata = raw_metadata();
+    let before = metadata.clone();
+
+    assert_eq!(
+        metadata.set_group("public.kern1.Other", vec!["A".into(), "A".into()]),
+        Err(CanonicalMetadataError::AmbiguousKerningMembership {
+            glyph: "A".into(),
+            side: KerningSide::First,
+            first_group: "public.kern1.A".into(),
+            second_group: "public.kern1.Other".into(),
+        })
+    );
+    assert_eq!(metadata, before);
+    assert!(
+        metadata
+            .set_group("com.example.duplicates", vec!["A".into(), "A".into()])
+            .unwrap()
+    );
+    assert_eq!(
+        metadata.groups().get("com.example.duplicates"),
+        Some(&vec!["A".to_string(), "A".to_string()])
+    );
+}
+
+#[test]
 fn nonfinite_pair_is_rejected_without_mutation() {
     let mut metadata = raw_metadata();
     let before = metadata.clone();

@@ -137,6 +137,17 @@ pub enum CanonicalMetadataError {
         /// The requested group name.
         new: String,
     },
+    /// A whole-group edit would put one glyph in two kerning groups on the same side.
+    AmbiguousKerningMembership {
+        /// The glyph with ambiguous membership.
+        glyph: String,
+        /// The affected kerning side.
+        side: KerningSide,
+        /// One group containing the glyph.
+        first_group: String,
+        /// The other group containing the glyph.
+        second_group: String,
+    },
     /// A kerning value was NaN or infinite.
     NonFiniteKerning {
         /// The first participant's raw name.
@@ -170,6 +181,16 @@ impl fmt::Display for CanonicalMetadataError {
                     "cannot rename group {old:?} to incompatible name {new:?}"
                 )
             }
+            Self::AmbiguousKerningMembership {
+                glyph,
+                side,
+                first_group,
+                second_group,
+            } => write!(
+                f,
+                "glyph {glyph:?} belongs to both {first_group:?} and {second_group:?} on the \
+                 {side:?} side"
+            ),
             Self::NonFiniteKerning { left, right } => {
                 write!(f, "kerning pair {left:?} {right:?} has a non-finite value")
             }
@@ -385,6 +406,27 @@ impl CanonicalFontMetadata {
         validate_group_members(&members)?;
         if self.groups.get(&name) == Some(&members) {
             return Ok(false);
+        }
+        if let Some(side) = side_from_group_name(&name) {
+            let mut checked = Vec::new();
+            for glyph in &members {
+                if checked.contains(glyph) {
+                    continue;
+                }
+                checked.push(glyph.clone());
+                if let Some((other, _)) = self.groups.iter().find(|(other, other_members)| {
+                    *other != &name
+                        && other.starts_with(side.prefix())
+                        && other_members.iter().any(|member| member == glyph)
+                }) {
+                    return Err(CanonicalMetadataError::AmbiguousKerningMembership {
+                        glyph: glyph.clone(),
+                        side,
+                        first_group: other.clone(),
+                        second_group: name,
+                    });
+                }
+            }
         }
         self.groups.insert(name, members);
         Ok(true)
