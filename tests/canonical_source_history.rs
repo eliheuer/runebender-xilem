@@ -9,6 +9,7 @@ use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 use runebender::document::font_memory::designspace_from_str;
 use runebender::document::history::HistoryDirection;
 use runebender::document::project::{DocumentHistoryReplayOutcome, Master, Project};
+use runebender::document::var_model::Location;
 use runebender::document::variable::SourceId;
 
 const DESIGNSPACE: &str = include_str!("fixtures/variable/TwoAxes.designspace");
@@ -79,4 +80,32 @@ fn restored_source_keeps_an_older_canonical_layer_undo_valid() {
         Ok(DocumentHistoryReplayOutcome::Changed { .. })
     ));
     assert_eq!(project.capture_document_layer(&address), Some(before));
+}
+
+#[test]
+fn descriptor_only_structural_replay_advances_the_revision_once() {
+    let mut project = fixture();
+    let source = SourceId(1);
+    let original = project.document_source(source).unwrap();
+    let original_name = original.name().to_owned();
+    let original_location = original.location().clone();
+    let target: Location = [("Weight".into(), 0.75), ("Width".into(), 0.0)].into();
+
+    project
+        .update_source(source, &original_name, &target)
+        .unwrap();
+    let edited_revision = project.document_revision();
+    assert_eq!(project.document_source(source).unwrap().location(), &target);
+
+    assert!(project.undo_sources(false).unwrap());
+    let undo_revision = project.document_revision();
+    assert_eq!(undo_revision, edited_revision.wrapping_add(1));
+    assert_eq!(
+        project.document_source(source).unwrap().location(),
+        &original_location
+    );
+
+    assert!(project.undo_sources(true).unwrap());
+    assert_eq!(project.document_revision(), undo_revision.wrapping_add(1));
+    assert_eq!(project.document_source(source).unwrap().location(), &target);
 }

@@ -90,10 +90,13 @@ impl SourceFrame {
             return Err("source structure changed after history capture".into());
         }
         let previous_ids = project.variable.source_ids.clone();
-        project
+        let canonical_changed = project
             .variable
             .restore_source_structure_if_current(&expected.canonical, self.canonical.clone())
             .map_err(|_| "canonical source structure changed after history capture")?;
+        if !canonical_changed {
+            project.variable.revision = project.variable.revision.wrapping_add(1);
+        }
         let previous_masters = std::mem::take(&mut project.masters);
         project.master_names = self
             .sources
