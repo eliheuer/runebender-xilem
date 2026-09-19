@@ -554,6 +554,46 @@ fn canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics()
         .is_empty(),
         "empty canonical glyph produced a path"
     );
+
+    let legacy_segments = runebender::outline::segment_ops::segments(&glyph);
+    let document_layer = project.document_layer("paths", &layer_id).unwrap();
+    let canonical_segments =
+        runebender::outline::segment_ops::ordinary_layer_segments(document_layer);
+    assert_eq!(canonical_segments.len(), legacy_segments.len());
+    for (canonical, legacy) in canonical_segments.iter().zip(&legacy_segments) {
+        assert_eq!(canonical.seg, legacy.seg);
+        assert_eq!(canonical.controls.len(), legacy.controls.len());
+    }
+    let first_contour_ids: Vec<_> = document_layer
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.id())
+        .collect();
+    let (canonical_hit, canonical_t) =
+        runebender::outline::segment_ops::nearest_ordinary_layer_segment_with_t(
+            document_layer,
+            kurbo::Point::new(50.0, -2.0),
+            5.0,
+        )
+        .unwrap();
+    let (legacy_hit, legacy_t) = runebender::outline::segment_ops::nearest_segment_with_t(
+        &glyph,
+        kurbo::Point::new(50.0, -2.0),
+        5.0,
+    )
+    .unwrap();
+    assert_eq!(canonical_hit.seg, legacy_hit.seg);
+    assert_eq!(canonical_hit.point_ids(), first_contour_ids[..2]);
+    assert!((canonical_t - legacy_t).abs() < f64::EPSILON);
+    assert!(
+        runebender::outline::segment_ops::ordinary_layer_segments(
+            project.document_layer("empty", &layer_id).unwrap(),
+        )
+        .is_empty(),
+        "empty canonical glyph produced hit-test segments"
+    );
 }
 
 #[test]

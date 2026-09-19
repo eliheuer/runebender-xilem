@@ -908,3 +908,40 @@ git diff --check
 The focused segment comparison and all 28 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Canonical segment hit-testing and M03 acceptance
+
+Evidence commit: `Hit-test canonical ordinary segments` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Hit-test canonical ordinary segments$' -1`.
+Affected paths: `src/outline/segment_ops.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, the migration checklist and this log.
+
+`ordinary_layer_segments` now enumerates ordinary canonical line, quadratic and cubic segments with stable endpoint and control identities.
+`nearest_ordinary_layer_segment_with_t` supplies the same nearest-segment geometry and parameter used by existing hit-testing callers without constructing a UFO glyph.
+
+The expanded canonical path fixture compares every segment and a concrete nearest hit with the compatibility path.
+It also verifies that empty glyphs produce neither path nor hit-test segments.
+
+M03 is complete.
+Canonical readers and targeted comparisons now cover ordered path conversion and bounds, point and anchor extraction, ordinary hit-testing input, recursive component resolution, point edits, analysis inputs, open and cyclic contours, implied quadratics, empty glyphs and mixed path/component order.
+Missing components and recursive cycles remain explicit errors.
+Hyperbezier and topology-changing tools remain assigned to M04.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics -- --exact --test-threads=1
+cargo test --locked --lib outline::segment_ops -- --test-threads=1
+cargo test --locked --lib outline::glyph_paths -- --test-threads=1
+cargo test --locked --lib analysis::curve -- --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused canonical hit-test comparison, geometry unit suites and all 28 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next dependency-ready milestone is M04, beginning with canonical topology edits before the larger special-outline tools.

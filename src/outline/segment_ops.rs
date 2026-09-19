@@ -12,6 +12,7 @@
 use kurbo::{CubicBez, Line, ParamCurve, ParamCurveNearest, PathSeg, Point, QuadBez};
 use norad::{ContourPoint, Glyph, PointType};
 
+use crate::document::{LayerPointType, LayerView, PointId as DocumentPointId};
 use crate::outline::glyph_ops::PointId;
 
 /// One segment of a contour, addressed by its on-curve endpoints.
@@ -38,6 +39,109 @@ impl SegmentHit {
         ids.push((self.contour, self.end));
         ids
     }
+}
+
+/// One ordinary canonical segment addressed by stable endpoint identities.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DocumentSegmentHit {
+    /// Stable identity of the on-curve point where the segment starts.
+    pub start: DocumentPointId,
+    /// Stable identity of the on-curve point where the segment ends.
+    pub end: DocumentPointId,
+    /// Stable identities of the off-curve controls in contour order.
+    pub controls: Vec<DocumentPointId>,
+    /// Segment geometry used for hit testing and subdivision.
+    pub seg: PathSeg,
+}
+
+impl DocumentSegmentHit {
+    /// Every stable point identity belonging to this segment.
+    pub fn point_ids(&self) -> Vec<DocumentPointId> {
+        let mut ids = vec![self.start];
+        ids.extend(self.controls.iter().copied());
+        ids.push(self.end);
+        ids
+    }
+}
+
+/// Enumerate ordinary segments directly from a canonical document layer.
+pub fn ordinary_layer_segments(layer: LayerView<'_>) -> Vec<DocumentSegmentHit> {
+    let mut output = Vec::new();
+    for contour in layer.contours() {
+        let points: Vec<_> = contour.points().collect();
+        if points.len() < 2 {
+            continue;
+        }
+        let on_indices: Vec<_> = points
+            .iter()
+            .enumerate()
+            .filter_map(|(index, point)| {
+                (point.point_type() != LayerPointType::OffCurve).then_some(index)
+            })
+            .collect();
+        if on_indices.is_empty() {
+            continue;
+        }
+        let pair_count = if contour.is_closed() {
+            on_indices.len()
+        } else {
+            on_indices.len().saturating_sub(1)
+        };
+        for pair in 0..pair_count {
+            let start = on_indices[pair];
+            let end = on_indices[(pair + 1) % on_indices.len()];
+            let mut controls = Vec::new();
+            let mut index = (start + 1) % points.len();
+            while index != end {
+                if points[index].point_type() == LayerPointType::OffCurve {
+                    controls.push(index);
+                }
+                index = (index + 1) % points.len();
+            }
+            let point = |index: usize| points[index].position();
+            let seg = match controls.as_slice() {
+                [] => PathSeg::Line(Line::new(point(start), point(end))),
+                [control] => PathSeg::Quad(QuadBez::new(point(start), point(*control), point(end))),
+                [first, second] => PathSeg::Cubic(CubicBez::new(
+                    point(start),
+                    point(*first),
+                    point(*second),
+                    point(end),
+                )),
+                _ => continue,
+            };
+            output.push(DocumentSegmentHit {
+                start: points[start].id(),
+                end: points[end].id(),
+                controls: controls.iter().map(|index| points[*index].id()).collect(),
+                seg,
+            });
+        }
+    }
+    output
+}
+
+/// Find the nearest ordinary canonical segment within `radius`.
+pub fn nearest_ordinary_layer_segment_with_t(
+    layer: LayerView<'_>,
+    design_point: Point,
+    radius: f64,
+) -> Option<(DocumentSegmentHit, f64)> {
+    let max_distance_squared = radius * radius;
+    let mut best: Option<(DocumentSegmentHit, f64, f64)> = None;
+    for hit in ordinary_layer_segments(layer) {
+        let nearest = hit.seg.nearest(design_point, 1e-6);
+        if nearest.distance_sq > max_distance_squared {
+            continue;
+        }
+        if best
+            .as_ref()
+            .is_none_or(|(_, _, distance)| nearest.distance_sq < *distance)
+        {
+            best = Some((hit, nearest.t, nearest.distance_sq));
+        }
+    }
+    best.map(|(hit, parameter, _)| (hit, parameter))
 }
 
 fn pt(p: &ContourPoint) -> Point {
