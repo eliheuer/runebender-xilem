@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::document::LayerPointType;
 use runebender::document::font_memory::designspace_from_str;
-use runebender::document::project::{LayerEditOutcome, Master, Project};
+use runebender::document::project::{DocumentEditOutcome, Master, Project};
 use runebender::document::var_model::Location;
 use runebender::document::variable::{LayerId, SourceId};
 
@@ -454,7 +454,7 @@ fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
         .unwrap();
     assert_eq!(
         unchanged,
-        LayerEditOutcome::Unchanged { revision },
+        DocumentEditOutcome::Unchanged { revision },
         "no-op draft must not commit"
     );
     assert_eq!(
@@ -472,7 +472,7 @@ fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
         .unwrap_err();
     assert_eq!(
         error,
-        runebender::document::LayerEditError::NonFinite,
+        runebender::document::DocumentEditError::NonFinite,
         "invalid draft returned the wrong error"
     );
     assert_eq!(
@@ -515,7 +515,7 @@ fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
             Ok(())
         })
         .unwrap();
-    let LayerEditOutcome::Changed {
+    let DocumentEditOutcome::Changed {
         revision: changed_revision,
         change,
     } = changed

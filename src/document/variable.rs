@@ -40,6 +40,35 @@ pub struct GlyphLayerAddress {
     pub layer: LayerId,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct SourceMetadata {
+    feature_text: String,
+}
+
+/// Owned edit draft for source-wide metadata with canonical ownership.
+#[derive(Clone, Debug)]
+pub struct SourceMetadataEditDraft {
+    metadata: SourceMetadata,
+}
+
+impl SourceMetadataEditDraft {
+    /// Current OpenType feature text for this source.
+    pub fn feature_text(&self) -> &str {
+        &self.metadata.feature_text
+    }
+
+    /// Set the source's OpenType feature text.
+    ///
+    /// Returns whether the value changed.
+    pub fn set_feature_text(&mut self, text: String) -> bool {
+        if self.metadata.feature_text == text {
+            return false;
+        }
+        self.metadata.feature_text = text;
+        true
+    }
+}
+
 /// A layer's participation in one glyph's variation model.
 /// Auxiliary layers remain editable without becoming interpolation sources.
 #[derive(Clone, Debug)]
@@ -102,6 +131,7 @@ pub(super) struct VariableData {
     pub(super) glyphs: BTreeMap<String, VariableGlyph>,
     pub(super) histories: BTreeMap<LayerId, super::history::EditHistory>,
     templates: BTreeMap<SourceId, norad::Font>,
+    source_metadata: BTreeMap<SourceId, SourceMetadata>,
     pub(super) source_ids: Vec<SourceId>,
     pub(super) next_source: usize,
 }
@@ -115,6 +145,7 @@ impl Clone for VariableData {
             glyphs: self.glyphs.clone(),
             histories: self.histories.clone(),
             templates: self.templates.clone(),
+            source_metadata: self.source_metadata.clone(),
             source_ids: self.source_ids.clone(),
             next_source: self.next_source,
         }
@@ -157,6 +188,35 @@ impl VariableData {
             .get_layer(&super::babelfont::layer_key(id))?
             .clone();
         Some(super::LayerEditDraft::new(layer, preserved))
+    }
+
+    pub(super) fn feature_text(&self, source: SourceId) -> Option<&str> {
+        Some(&self.source_metadata.get(&source)?.feature_text)
+    }
+
+    pub(super) fn source_metadata_edit_draft(
+        &self,
+        source: SourceId,
+    ) -> Option<SourceMetadataEditDraft> {
+        Some(SourceMetadataEditDraft {
+            metadata: self.source_metadata.get(&source)?.clone(),
+        })
+    }
+
+    pub(super) fn commit_source_metadata_edit(
+        &mut self,
+        source: SourceId,
+        draft: SourceMetadataEditDraft,
+    ) -> bool {
+        let Some(metadata) = self.source_metadata.get_mut(&source) else {
+            return false;
+        };
+        if *metadata == draft.metadata {
+            return false;
+        }
+        *metadata = draft.metadata;
+        self.revision = self.revision.wrapping_add(1);
+        true
     }
 
     pub(super) fn commit_layer_edit(
@@ -220,6 +280,8 @@ impl VariableData {
 
     pub(super) fn synchronize(&mut self, sources: &[Master]) {
         self.templates.retain(|id, _| self.source_ids.contains(id));
+        self.source_metadata
+            .retain(|id, _| self.source_ids.contains(id));
         self.histories
             .retain(|id, _| self.source_ids.contains(&id.source));
         for glyph in self.glyphs.values_mut() {
@@ -235,6 +297,11 @@ impl VariableData {
 
     fn update_source(&mut self, source: SourceId, font: &norad::Font) -> bool {
         let mut changed = false;
+        let metadata = SourceMetadata {
+            feature_text: font.features.clone(),
+        };
+        changed |= self.source_metadata.get(&source) != Some(&metadata);
+        self.source_metadata.insert(source, metadata);
         // Remove deleted layers/glyphs without disturbing any other source.
         for (name, glyph) in &mut self.glyphs {
             let before = glyph.layers.len();
@@ -320,8 +387,9 @@ impl VariableData {
             });
             !glyph.layers.is_empty()
         });
-        // A template contains no glyphs. Preserve layer ordering, paths, color,
-        // libs, images, data, feature text, groups, and all font-info fields.
+        // A template contains no glyphs or canonically owned feature text.
+        // Preserve layer ordering, paths, color, libs, images, data, groups,
+        // and all font-info fields.
         let previous = self.templates.get(&source);
         let mut template = previous.cloned().unwrap_or_default();
         let same_layers = template.layers.len() == font.layers.len()
@@ -345,7 +413,7 @@ impl VariableData {
         template.lib.clone_from(&font.lib);
         template.groups.clone_from(&font.groups);
         template.kerning.clone_from(&font.kerning);
-        template.features.clone_from(&font.features);
+        template.features.clear();
         template.data.clone_from(&font.data);
         template.images.clone_from(&font.images);
         changed |= previous != Some(&template);
@@ -358,6 +426,8 @@ impl VariableData {
 
     pub(super) fn source_font(&self, source: SourceId) -> Option<norad::Font> {
         let mut font = self.templates.get(&source)?.clone();
+        font.features
+            .clone_from(&self.source_metadata.get(&source)?.feature_text);
         for (name, glyph) in &self.glyphs {
             for (id, preserved) in &glyph.layers {
                 if id.source == source {

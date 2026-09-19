@@ -252,6 +252,7 @@ impl Project {
             .map(|axis| axis.user.backend())
             .collect::<Result<_, _>>()?;
         let default = self.default_source_index();
+        let default_id = self.source_id(default).expect("default source identity");
         let source = &self.sources()[default].font;
         let info = &source.font_info;
         font.upm = info
@@ -266,7 +267,10 @@ impl Project {
         font.names.preferred_subfamily_name =
             info.style_name.as_deref().unwrap_or("Regular").into();
         let features = feature_text
-            .unwrap_or(&source.features)
+            .unwrap_or(
+                self.document_feature_text(default_id)
+                    .expect("default source metadata"),
+            )
             .lines()
             .filter(|line| line.trim() != crate::text::features::INCLUDE_LINE)
             .collect::<Vec<_>>()

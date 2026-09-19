@@ -17,8 +17,8 @@ use kurbo::BezPath;
 
 pub use super::source::{GlyphEntry, GlyphPoint, Master, extract_anchors, extract_points};
 use super::variable::{
-    GlyphLayerAddress, GlyphSource, GlyphView, LayerId, SourceEdit, SourceId, SourcesEdit,
-    VariableData, VariableGlyph,
+    GlyphLayerAddress, GlyphSource, GlyphView, LayerId, SourceEdit, SourceId,
+    SourceMetadataEditDraft, SourcesEdit, VariableData, VariableGlyph,
 };
 use crate::document::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
@@ -84,9 +84,9 @@ impl<'a> SourceView<'a> {
     }
 }
 
-/// Result of applying one canonical layer edit draft.
+/// Result of applying one canonical document edit draft.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LayerEditOutcome {
+pub enum DocumentEditOutcome {
     /// The draft matched the current layer exactly and did not commit.
     Unchanged {
         /// Current document revision, unchanged by this operation.
@@ -139,7 +139,7 @@ impl DocumentChange {
         self.metrics
     }
 
-    /// Whether layer or object metadata changed.
+    /// Whether layer, object or source metadata changed.
     pub fn metadata_changed(&self) -> bool {
         self.metadata
     }
@@ -264,16 +264,16 @@ impl Project {
 
     /// Apply shared feature text to the default source without rewriting other sources.
     pub fn set_feature_text(&mut self, text: String) -> bool {
-        if self.feature_source().font.features == text {
-            return false;
-        }
         let id = self
             .source_id(self.default_source_index())
             .expect("default source identity");
-        let mut source = self.edit_source(id).expect("default source exists");
-        source.font.features = text;
-        source.dirty = true;
-        true
+        matches!(
+            self.edit_document_source_metadata(id, |draft| {
+                draft.set_feature_text(text);
+                Ok(())
+            }),
+            Ok(DocumentEditOutcome::Changed { .. })
+        )
     }
 
     /// The canonical Babelfont geometry shared by all sources and compiler snapshots.
@@ -1235,6 +1235,11 @@ impl Project {
             .filter_map(|id| self.document_source(id))
     }
 
+    /// Read one source's canonical OpenType feature text.
+    pub fn document_feature_text(&self, source: SourceId) -> Option<&str> {
+        self.variable.feature_text(source)
+    }
+
     /// Current canonical document revision used by derived compiler data.
     pub fn document_revision(&self) -> u64 {
         self.variable.revision
@@ -1248,15 +1253,15 @@ impl Project {
         &mut self,
         name: &str,
         layer: &LayerId,
-        edit: impl FnOnce(&mut super::LayerEditDraft) -> Result<(), super::LayerEditError>,
-    ) -> Result<LayerEditOutcome, super::LayerEditError> {
+        edit: impl FnOnce(&mut super::LayerEditDraft) -> Result<(), super::DocumentEditError>,
+    ) -> Result<DocumentEditOutcome, super::DocumentEditError> {
         let mut draft = self
             .variable
             .layer_edit_draft(name, layer)
-            .ok_or(super::LayerEditError::MissingLayer)?;
+            .ok_or(super::DocumentEditError::MissingLayer)?;
         edit(&mut draft)?;
         let Some(delta) = self.variable.commit_layer_edit(name, layer, draft) else {
-            return Ok(LayerEditOutcome::Unchanged {
+            return Ok(DocumentEditOutcome::Unchanged {
                 revision: self.variable.revision,
             });
         };
@@ -1273,9 +1278,51 @@ impl Project {
             compilation: true,
         };
         self.synchronize_compatibility_layer(name, layer);
-        Ok(LayerEditOutcome::Changed {
+        Ok(DocumentEditOutcome::Changed {
             revision: self.variable.revision,
             change,
+        })
+    }
+
+    /// Apply an owned source-metadata draft atomically.
+    ///
+    /// Returning an error from `edit` discards the draft.
+    /// An unchanged draft does not advance the document revision or update compatibility data.
+    pub fn edit_document_source_metadata(
+        &mut self,
+        source: SourceId,
+        edit: impl FnOnce(&mut SourceMetadataEditDraft) -> Result<(), super::DocumentEditError>,
+    ) -> Result<DocumentEditOutcome, super::DocumentEditError> {
+        let mut draft = self
+            .variable
+            .source_metadata_edit_draft(source)
+            .ok_or(super::DocumentEditError::MissingSource)?;
+        edit(&mut draft)?;
+        if !self.variable.commit_source_metadata_edit(source, draft) {
+            return Ok(DocumentEditOutcome::Unchanged {
+                revision: self.variable.revision,
+            });
+        }
+        let index = self
+            .source_index(source)
+            .expect("canonical source metadata retains its source");
+        self.masters[index].font.features = self
+            .variable
+            .feature_text(source)
+            .expect("committed metadata")
+            .to_owned();
+        self.masters[index].dirty = true;
+        Ok(DocumentEditOutcome::Changed {
+            revision: self.variable.revision,
+            change: DocumentChange {
+                affected_layers: Vec::new(),
+                dependent_layers: Vec::new(),
+                source_metadata: vec![source],
+                geometry: false,
+                metrics: false,
+                metadata: true,
+                compilation: true,
+            },
         })
     }
 

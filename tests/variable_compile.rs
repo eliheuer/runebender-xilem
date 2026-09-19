@@ -4,8 +4,9 @@
 //! Live variable compilation must agree with shaping and exported font tables.
 
 use norad::{Contour, ContourPoint, Font, Glyph, Name, PointType};
+use runebender::document::DocumentEditError;
 use runebender::document::font_memory::designspace_from_str;
-use runebender::document::project::{LayerEditOutcome, Master, Project};
+use runebender::document::project::{DocumentEditOutcome, Master, Project};
 use runebender::document::variable::{LayerId, SourceId};
 use runebender::text::shape::ShapingFont;
 use skrifa::raw::TableProvider as _;
@@ -174,7 +175,7 @@ fn canonical_layer_transaction_invalidates_compiled_preview() {
             Ok(())
         })
         .unwrap();
-    let LayerEditOutcome::Changed {
+    let DocumentEditOutcome::Changed {
         revision: changed_revision,
         change,
     } = outcome
@@ -298,6 +299,120 @@ fn designspace_rules_are_present_in_the_compiled_variable_shaper() {
         let shaped = shaping.shape("A", false).unwrap();
         assert_eq!(shaping.glyph_name(shaped[0].glyph_id), Some(name));
     }
+}
+
+#[test]
+fn canonical_source_metadata_transaction_is_atomic_and_invalidates_compile() {
+    let mut project = project();
+    let source = SourceId(0);
+    let original = project.document_feature_text(source).unwrap().to_owned();
+    let revision = project.document_revision();
+    let initial = project.compiled_preview().unwrap();
+
+    let unchanged = project
+        .edit_document_source_metadata(source, |draft| {
+            assert!(
+                !draft.set_feature_text(original.clone()),
+                "equal feature text changed"
+            );
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        unchanged,
+        DocumentEditOutcome::Unchanged { revision },
+        "no-op metadata draft committed"
+    );
+
+    let rejected = project
+        .edit_document_source_metadata(source, |draft| {
+            assert!(
+                draft.set_feature_text("feature liga { sub A by V; } liga;".into()),
+                "rejected draft did not change"
+            );
+            Err(DocumentEditError::Rejected)
+        })
+        .unwrap_err();
+    assert_eq!(
+        rejected,
+        DocumentEditError::Rejected,
+        "metadata draft returned the wrong error"
+    );
+    assert_eq!(
+        project.document_feature_text(source),
+        Some(original.as_str()),
+        "rejected metadata draft leaked its value"
+    );
+    assert_eq!(
+        project.document_revision(),
+        revision,
+        "rejected metadata draft advanced the revision"
+    );
+
+    let feature_text =
+        "conditionset Heavy { wght 650.25 900; } Heavy; variation rvrn Heavy { sub A by V; } rvrn;";
+    let changed = project
+        .edit_document_source_metadata(source, |draft| {
+            assert!(
+                draft.set_feature_text(feature_text.into()),
+                "feature text did not change"
+            );
+            Ok(())
+        })
+        .unwrap();
+    let DocumentEditOutcome::Changed {
+        revision: changed_revision,
+        change,
+    } = changed
+    else {
+        panic!("metadata edit reported no change");
+    };
+    assert_eq!(
+        changed_revision,
+        revision + 1,
+        "metadata edit reported the wrong revision"
+    );
+    assert!(
+        change.affected_layers().is_empty() && change.dependent_layers().is_empty(),
+        "source metadata edit reported layer changes"
+    );
+    assert_eq!(
+        change.source_metadata(),
+        &[source],
+        "source metadata invalidation is wrong"
+    );
+    assert!(
+        change.metadata_changed(),
+        "metadata change was not reported"
+    );
+    assert!(
+        !change.geometry_changed() && !change.metrics_changed(),
+        "metadata edit reported geometry or metrics"
+    );
+    assert!(
+        change.requires_compilation(),
+        "feature edit did not invalidate compilation"
+    );
+    assert_eq!(
+        project.document_feature_text(source),
+        Some(feature_text),
+        "canonical feature text was not committed"
+    );
+    assert_eq!(
+        project.feature_source().font.features,
+        feature_text,
+        "compatibility projection was not refreshed"
+    );
+    assert_eq!(
+        project.source_snapshot(source).unwrap().features,
+        feature_text,
+        "format projection missed canonical feature text"
+    );
+    let edited = project.compiled_preview().unwrap();
+    assert!(
+        !std::sync::Arc::ptr_eq(&initial, &edited),
+        "metadata edit reused a stale compiled preview"
+    );
 }
 
 #[test]

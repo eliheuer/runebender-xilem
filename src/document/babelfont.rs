@@ -390,7 +390,7 @@ impl LayerEditDraft {
         clippy::cast_possible_truncation,
         reason = "the exact f64 value remains authoritative in the document extension"
     )]
-    pub fn set_width(&mut self, width: f64) -> Result<bool, LayerEditError> {
+    pub fn set_width(&mut self, width: f64) -> Result<bool, DocumentEditError> {
         ensure_finite(&[width])?;
         if self.preserved.width == width {
             return Ok(false);
@@ -403,7 +403,7 @@ impl LayerEditDraft {
     /// Set the exact vertical advance.
     ///
     /// Returns whether the value changed.
-    pub fn set_height(&mut self, height: f64) -> Result<bool, LayerEditError> {
+    pub fn set_height(&mut self, height: f64) -> Result<bool, DocumentEditError> {
         ensure_finite(&[height])?;
         if self.preserved.height == height {
             return Ok(false);
@@ -419,9 +419,11 @@ impl LayerEditDraft {
         &mut self,
         id: PointId,
         position: kurbo::Point,
-    ) -> Result<bool, LayerEditError> {
+    ) -> Result<bool, DocumentEditError> {
         ensure_finite(&[position.x, position.y])?;
-        let node = self.node_mut(id).ok_or(LayerEditError::MissingPoint(id))?;
+        let node = self
+            .node_mut(id)
+            .ok_or(DocumentEditError::MissingPoint(id))?;
         if node.x == position.x && node.y == position.y {
             return Ok(false);
         }
@@ -437,8 +439,10 @@ impl LayerEditDraft {
         &mut self,
         id: PointId,
         point_type: LayerPointType,
-    ) -> Result<bool, LayerEditError> {
-        let node = self.node_mut(id).ok_or(LayerEditError::MissingPoint(id))?;
+    ) -> Result<bool, DocumentEditError> {
+        let node = self
+            .node_mut(id)
+            .ok_or(DocumentEditError::MissingPoint(id))?;
         let node_type = match point_type {
             LayerPointType::Move => NodeType::Move,
             LayerPointType::Line => NodeType::Line,
@@ -456,8 +460,14 @@ impl LayerEditDraft {
     /// Set one point's smooth state by stable identity.
     ///
     /// Returns whether the value changed.
-    pub fn set_point_smooth(&mut self, id: PointId, smooth: bool) -> Result<bool, LayerEditError> {
-        let node = self.node_mut(id).ok_or(LayerEditError::MissingPoint(id))?;
+    pub fn set_point_smooth(
+        &mut self,
+        id: PointId,
+        smooth: bool,
+    ) -> Result<bool, DocumentEditError> {
+        let node = self
+            .node_mut(id)
+            .ok_or(DocumentEditError::MissingPoint(id))?;
         if node.smooth == smooth {
             return Ok(false);
         }
@@ -472,7 +482,7 @@ impl LayerEditDraft {
         &mut self,
         id: ComponentId,
         transform: kurbo::Affine,
-    ) -> Result<bool, LayerEditError> {
+    ) -> Result<bool, DocumentEditError> {
         let coefficients = transform.as_coeffs();
         ensure_finite(&coefficients)?;
         let preserved = self
@@ -480,7 +490,7 @@ impl LayerEditDraft {
             .components
             .iter_mut()
             .find(|candidate| candidate.id == id)
-            .ok_or(LayerEditError::MissingComponent(id))?;
+            .ok_or(DocumentEditError::MissingComponent(id))?;
         let exact = norad::AffineTransform {
             x_scale: coefficients[0],
             xy_scale: coefficients[1],
@@ -517,14 +527,14 @@ impl LayerEditDraft {
         &mut self,
         id: AnchorId,
         position: kurbo::Point,
-    ) -> Result<bool, LayerEditError> {
+    ) -> Result<bool, DocumentEditError> {
         ensure_finite(&[position.x, position.y])?;
         let anchor = self
             .layer
             .anchors
             .iter_mut()
             .find(|candidate| read_id(&candidate.format_specific) == Some(id.0))
-            .ok_or(LayerEditError::MissingAnchor(id))?;
+            .ok_or(DocumentEditError::MissingAnchor(id))?;
         if anchor.x == position.x && anchor.y == position.y {
             return Ok(false);
         }
@@ -546,11 +556,13 @@ impl LayerEditDraft {
     }
 }
 
-/// Why a canonical layer edit could not be applied.
+/// Why a canonical document edit could not be applied.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LayerEditError {
+pub enum DocumentEditError {
     /// The requested glyph layer does not exist.
     MissingLayer,
+    /// The requested source identity does not exist.
+    MissingSource,
     /// The requested point identity does not exist in the layer.
     MissingPoint(PointId),
     /// The requested component identity does not exist in the layer.
@@ -559,30 +571,34 @@ pub enum LayerEditError {
     MissingAnchor(AnchorId),
     /// A numeric edit contained NaN or infinity.
     NonFinite,
+    /// The edit closure rejected its owned draft.
+    Rejected,
 }
 
-impl std::fmt::Display for LayerEditError {
+impl std::fmt::Display for DocumentEditError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MissingLayer => formatter.write_str("glyph layer does not exist"),
+            Self::MissingSource => formatter.write_str("source does not exist"),
             Self::MissingPoint(id) => write!(formatter, "point {id:?} does not exist"),
             Self::MissingComponent(id) => write!(formatter, "component {id:?} does not exist"),
             Self::MissingAnchor(id) => write!(formatter, "anchor {id:?} does not exist"),
             Self::NonFinite => {
                 formatter.write_str("document coordinates and metrics must be finite")
             }
+            Self::Rejected => formatter.write_str("document edit was rejected"),
         }
     }
 }
 
-impl std::error::Error for LayerEditError {}
+impl std::error::Error for DocumentEditError {}
 
-fn ensure_finite(values: &[f64]) -> Result<(), LayerEditError> {
+fn ensure_finite(values: &[f64]) -> Result<(), DocumentEditError> {
     values
         .iter()
         .all(|value| value.is_finite())
         .then_some(())
-        .ok_or(LayerEditError::NonFinite)
+        .ok_or(DocumentEditError::NonFinite)
 }
 
 impl<'a> AnchorView<'a> {

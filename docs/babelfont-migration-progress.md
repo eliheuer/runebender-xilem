@@ -352,3 +352,40 @@ The unchanged `block v0.1.6` future-incompatibility notice remains a dependency 
 
 M02's broader change-information item remains open until source-metadata and structural transactions emit the same contract.
 The next substep is a canonical source-metadata transaction with atomic rollback, precise source and compilation invalidation and no mutation through a Norad font.
+
+### Canonical source metadata substep
+
+Evidence commit: `Make feature text canonical source metadata` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Make feature text canonical source metadata$' -1`.
+Affected paths: `src/document/variable.rs`, `src/document/project.rs`, `src/document/babelfont.rs`, `src/document/mod.rs`, `src/document/compile.rs`, `tests/variable_compile.rs`, `ARCHITECTURE.md`, the checklist and this log.
+
+VariableData now owns each source's OpenType feature text as typed source metadata.
+Glyph-free UFO templates clear their feature text, and source-format projection restores it from the canonical record, removing one duplicated known field from the template.
+Compiler snapshots read the canonical feature text directly.
+
+`Project::edit_document_source_metadata` applies an owned metadata draft with the same failure rollback, no-op detection and one-step revision behavior as layer transactions.
+Its `DocumentChange` reports the affected source, metadata and compilation invalidation without claiming a layer, geometry or metric change.
+The existing `set_feature_text` command now delegates to this transaction, while the temporary Master feature value is refreshed only for unmigrated readers.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_compile canonical_source_metadata_transaction_is_atomic_and_invalidates_compile -- --exact --test-threads=1
+cargo test --locked --test variable_compile shared_feature_edits_and_variable_drafts_do_not_depend_on_selected_master -- --exact --test-threads=1
+cargo test --locked --test variable_project exact_values_and_object_metadata_survive_import_edit_undo_and_save -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib document::source::tests:: -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The source-metadata test passed for no-op detection, explicit rejection rollback, source-only change information, compatibility and format projections, and compiled-preview invalidation.
+The existing selected-source independence test and adversarial save/reload test passed with canonical feature ownership.
+All 13 source-model unit tests passed after supplying the documented `RUNEBENDER_TEST_FONTS` path; an initial invocation without it failed only because this worktree has no adjacent fixture checkout.
+Warning-denied Clippy passed for library and integration-test targets, and public API documentation built successfully.
+Formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+M02's explicit change-information and compatibility-isolation checklist items are complete.
+The remaining M02 work is atomic structural mutation and a canonical whole-document snapshot suitable for history and experimental versions without cloning Master fonts or UFO templates.
