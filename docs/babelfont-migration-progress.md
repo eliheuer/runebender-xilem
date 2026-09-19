@@ -1726,3 +1726,37 @@ Warning-denied Clippy, public API documentation, formatting and diff checks pass
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
 The next M04 substep moves corner application and rounded-corner replacement onto canonical geometry, then addresses explicit hyperbezier conversion and special outline extensions.
+
+### Guarded canonical layer snapshots for the history lane
+
+Evidence commit: `Add guarded canonical layer snapshots` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Add guarded canonical layer snapshots$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/document/variable.rs`, `src/document/project.rs`, `src/document/mod.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md`, the migration checklist and this log.
+
+The parallel M05 history lane requested an opaque per-layer value that contains complete Babelfont geometry and exact preservation extensions without a UFO glyph.
+`CanonicalLayerSnapshot` is bound to a stable `GlyphLayerAddress`, supports cloning and exact comparison and keeps its payload private.
+`Project::capture_document_layer` reads that value directly from canonical ownership.
+`Project::restore_document_layer_if_current` rejects missing, stale and address-mismatched restores before mutation.
+A changed restore commits once through the canonical layer boundary, advances the document revision once, reports normal geometry/metrics/metadata invalidation and refreshes the compatibility projection without adding a legacy history record.
+An identical replacement is an explicit unchanged outcome.
+
+The focused regression captures before and after states, restores geometry and exact metrics, verifies projection refresh, redoes the change, and proves stale, missing, mismatched and no-op attempts preserve document contents and revisions.
+This API is the narrow shared prerequisite for task `01a0ba27-44fc-7243-a672-aacc3e5b05de`.
+The current parallel ownership map is recorded in the checklist; metadata and pipeline lanes will return typed modules and request only the central hooks they need.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_layer_snapshot_restore_is_atomic_and_stale_safe -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused restore regression and all 55 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The history lane can now build its per-address before/after stack while this lane resumes the remaining M04 special tools.

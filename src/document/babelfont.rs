@@ -178,6 +178,40 @@ pub struct CopiedContour {
     preserved: PreservedContour,
 }
 
+/// Opaque owned state of one canonical glyph layer.
+///
+/// The snapshot contains Babelfont geometry plus every exact-value and source-metadata extension.
+/// It does not contain or materialize a UFO glyph.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CanonicalLayerSnapshot {
+    address: super::variable::GlyphLayerAddress,
+    layer: Layer,
+    preserved: LayerPreservation,
+}
+
+impl CanonicalLayerSnapshot {
+    pub(super) fn new(
+        address: super::variable::GlyphLayerAddress,
+        layer: Layer,
+        preserved: LayerPreservation,
+    ) -> Self {
+        Self {
+            address,
+            layer,
+            preserved,
+        }
+    }
+
+    /// Stable address this layer was captured from.
+    pub fn address(&self) -> &super::variable::GlyphLayerAddress {
+        &self.address
+    }
+
+    pub(super) fn into_parts(self) -> (Layer, LayerPreservation) {
+        (self.layer, self.preserved)
+    }
+}
+
 impl CopiedContour {
     /// Return a transformed copy rounded to integer font units.
     ///

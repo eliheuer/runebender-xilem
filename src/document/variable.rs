@@ -238,6 +238,29 @@ impl VariableData {
         Some(super::LayerEditDraft::new(layer, preserved))
     }
 
+    pub(super) fn layer_snapshot(
+        &self,
+        address: &GlyphLayerAddress,
+    ) -> Option<super::CanonicalLayerSnapshot> {
+        let preserved = self
+            .glyphs
+            .get(&address.glyph)?
+            .layers
+            .get(&address.layer)?
+            .clone();
+        let layer = self
+            .font
+            .glyphs
+            .get(&address.glyph)?
+            .get_layer(&super::babelfont::layer_key(&address.layer))?
+            .clone();
+        Some(super::CanonicalLayerSnapshot::new(
+            address.clone(),
+            layer,
+            preserved,
+        ))
+    }
+
     pub(super) fn feature_text(&self, source: SourceId) -> Option<&str> {
         Some(&self.source_metadata.get(&source)?.feature_text)
     }

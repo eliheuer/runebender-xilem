@@ -10,9 +10,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::document::LayerPointType;
 use runebender::document::font_memory::designspace_from_str;
-use runebender::document::project::{DocumentEditOutcome, Master, Project};
+use runebender::document::project::{DocumentEditOutcome, DocumentHistoryError, Master, Project};
 use runebender::document::var_model::Location;
-use runebender::document::variable::{LayerId, SourceId};
+use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 
 const DESIGNSPACE: &str = include_str!("fixtures/variable/TwoAxes.designspace");
 
@@ -1258,7 +1258,7 @@ fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
     );
     assert_eq!(
         change.affected_layers(),
-        &[runebender::document::variable::GlyphLayerAddress {
+        &[GlyphLayerAddress {
             glyph: "A".into(),
             layer: layer_id.clone(),
         }],
@@ -5368,6 +5368,116 @@ fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
         Some(old_features.as_str()),
         "live document did not retain its later metadata edit"
     );
+}
+
+#[test]
+fn canonical_layer_snapshot_restore_is_atomic_and_stale_safe() {
+    let (_scratch, mut project, _fonts) = adversarial_fixture();
+    let layer = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let address = GlyphLayerAddress {
+        glyph: "A".into(),
+        layer: layer.clone(),
+    };
+    let before = project.capture_document_layer(&address).unwrap();
+    assert_eq!(before.address(), &address);
+    let before_projection = project.glyph_layer("A", &layer).unwrap();
+    let point = project
+        .document_layer("A", &layer)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .next()
+        .unwrap();
+    let point_id = point.id();
+    let point_position = point.position();
+    project
+        .edit_document_layer("A", &layer, |draft| {
+            draft.set_width(before_projection.width + 25.0)?;
+            draft.set_point_position(point_id, point_position + kurbo::Vec2::new(7.0, -9.0))?;
+            Ok(())
+        })
+        .unwrap();
+    let after = project.capture_document_layer(&address).unwrap();
+    let after_projection = project.glyph_layer("A", &layer).unwrap();
+    assert_ne!(after, before);
+
+    let revision = project.document_revision();
+    let outcome = project
+        .restore_document_layer_if_current(&address, &after, before.clone())
+        .unwrap();
+    let DocumentEditOutcome::Changed {
+        revision: restored_revision,
+        change,
+    } = outcome
+    else {
+        panic!("restoring changed canonical state must commit")
+    };
+    assert_eq!(restored_revision, revision.wrapping_add(1));
+    assert_eq!(change.affected_layers(), std::slice::from_ref(&address));
+    assert!(change.geometry_changed());
+    assert!(change.metrics_changed());
+    assert!(change.requires_compilation());
+    assert_eq!(project.glyph_layer("A", &layer).unwrap(), before_projection);
+    assert_eq!(
+        project.capture_document_layer(&address),
+        Some(before.clone())
+    );
+
+    let unchanged_revision = project.document_revision();
+    assert_eq!(
+        project
+            .restore_document_layer_if_current(&address, &before, before.clone())
+            .unwrap(),
+        DocumentEditOutcome::Unchanged {
+            revision: unchanged_revision
+        }
+    );
+    assert_eq!(project.document_revision(), unchanged_revision);
+
+    let unchanged_document = project.document_snapshot();
+    let unchanged_projection = project.source_snapshot(SourceId(0)).unwrap();
+    assert_eq!(
+        project.restore_document_layer_if_current(&address, &after, before.clone()),
+        Err(DocumentHistoryError::StaleLayer(address.clone()))
+    );
+    assert_eq!(project.document_snapshot(), unchanged_document);
+    assert_eq!(project.document_revision(), unchanged_revision);
+    assert_eq!(
+        project.source_snapshot(SourceId(0)).unwrap(),
+        unchanged_projection
+    );
+
+    let missing = GlyphLayerAddress {
+        glyph: "missing".into(),
+        layer: layer.clone(),
+    };
+    assert_eq!(
+        project.restore_document_layer_if_current(&missing, &before, before.clone()),
+        Err(DocumentHistoryError::MissingLayer(missing))
+    );
+    let other = GlyphLayerAddress {
+        glyph: "B".into(),
+        layer: layer.clone(),
+    };
+    let other_snapshot = project.capture_document_layer(&other).unwrap();
+    assert_eq!(
+        project.restore_document_layer_if_current(&address, &before, other_snapshot),
+        Err(DocumentHistoryError::AddressMismatch(address.clone()))
+    );
+    assert_eq!(project.document_snapshot(), unchanged_document);
+    assert_eq!(project.document_revision(), unchanged_revision);
+
+    let outcome = project
+        .restore_document_layer_if_current(&address, &before, after.clone())
+        .unwrap();
+    assert!(matches!(outcome, DocumentEditOutcome::Changed { .. }));
+    assert_eq!(project.glyph_layer("A", &layer).unwrap(), after_projection);
+    assert_eq!(project.capture_document_layer(&address), Some(after));
 }
 
 #[test]

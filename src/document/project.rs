@@ -101,6 +101,41 @@ pub enum DocumentEditOutcome {
     },
 }
 
+/// Why a guarded canonical layer-history replay could not commit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DocumentHistoryError {
+    /// The stable glyph-layer address no longer exists.
+    MissingLayer(GlyphLayerAddress),
+    /// The live layer no longer equals the history entry's expected state.
+    StaleLayer(GlyphLayerAddress),
+    /// A snapshot captured for another glyph-layer address was supplied.
+    AddressMismatch(GlyphLayerAddress),
+}
+
+impl std::fmt::Display for DocumentHistoryError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingLayer(address) => write!(
+                formatter,
+                "glyph layer {} at {} no longer exists",
+                address.glyph, address.layer.name
+            ),
+            Self::StaleLayer(address) => write!(
+                formatter,
+                "glyph layer {} at {} changed after the history entry",
+                address.glyph, address.layer.name
+            ),
+            Self::AddressMismatch(address) => write!(
+                formatter,
+                "a snapshot belongs to another glyph layer than {} at {}",
+                address.glyph, address.layer.name
+            ),
+        }
+    }
+}
+
+impl std::error::Error for DocumentHistoryError {}
+
 /// Invalidation scope produced by one committed document transaction.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DocumentChange {
@@ -1248,6 +1283,64 @@ impl Project {
     /// Clone the canonical editing state without UFO templates or Master projections.
     pub fn document_snapshot(&self) -> DocumentSnapshot {
         self.variable.snapshot()
+    }
+
+    /// Capture one complete canonical layer for undo, redo or guarded replacement.
+    ///
+    /// The opaque snapshot contains Babelfont geometry and exact preservation extensions without
+    /// constructing a UFO glyph.
+    pub fn capture_document_layer(
+        &self,
+        address: &GlyphLayerAddress,
+    ) -> Option<super::CanonicalLayerSnapshot> {
+        self.variable.layer_snapshot(address)
+    }
+
+    /// Restore a canonical layer only when its live state still equals `expected`.
+    ///
+    /// Missing, stale and address-mismatched snapshots leave document contents, revisions,
+    /// compatibility projections and history unchanged. A changed restore advances the canonical
+    /// revision once and refreshes the transitional projection and invalidation scope.
+    pub fn restore_document_layer_if_current(
+        &mut self,
+        address: &GlyphLayerAddress,
+        expected: &super::CanonicalLayerSnapshot,
+        replacement: super::CanonicalLayerSnapshot,
+    ) -> Result<DocumentEditOutcome, DocumentHistoryError> {
+        let current = self
+            .variable
+            .layer_snapshot(address)
+            .ok_or_else(|| DocumentHistoryError::MissingLayer(address.clone()))?;
+        if expected.address() != address || replacement.address() != address {
+            return Err(DocumentHistoryError::AddressMismatch(address.clone()));
+        }
+        if &current != expected {
+            return Err(DocumentHistoryError::StaleLayer(address.clone()));
+        }
+        let (layer, preserved) = replacement.into_parts();
+        let draft = super::LayerEditDraft::new(layer, preserved);
+        let Some(delta) = self
+            .variable
+            .commit_layer_edit(&address.glyph, &address.layer, draft)
+        else {
+            return Ok(DocumentEditOutcome::Unchanged {
+                revision: self.variable.revision,
+            });
+        };
+        let change = DocumentChange {
+            affected_layers: vec![address.clone()],
+            dependent_layers: self.variable.dependent_component_layers(&address.glyph),
+            source_metadata: Vec::new(),
+            geometry: delta.geometry,
+            metrics: delta.metrics,
+            metadata: delta.metadata,
+            compilation: true,
+        };
+        self.synchronize_compatibility_layer(&address.glyph, &address.layer);
+        Ok(DocumentEditOutcome::Changed {
+            revision: self.variable.revision,
+            change,
+        })
     }
 
     /// Apply an owned canonical layer draft atomically.

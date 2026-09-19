@@ -81,6 +81,7 @@ No release has been published yet.
 - Moved nested component decomposition onto canonical layers with safe copied metadata.
 - Preserved editable hyperbezier contours through copy, duplicate and repeated component decomposition.
 - Moved stroke expansion, offset, extrusion and roughening onto canonical contour transactions.
+- Added stale-safe canonical layer snapshots for undo and redo migration.
 - Reject unsupported Designspace fields, invalid mappings, missing sources and incompatible glyph structures before they can be silently dropped or misinterpreted.
 - Prevented external reloads, stale model results, or stale proposals from overwriting
   unsaved or subsequently edited document state.

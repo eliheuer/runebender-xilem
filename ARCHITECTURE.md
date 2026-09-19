@@ -135,6 +135,7 @@ Stroke expansion, offset, extrusion and roughening consume canonical paths direc
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
 Source-wide feature text has canonical ownership in `VariableData` and changes through `edit_document_source_metadata`; UFO templates no longer retain a second feature-text value.
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.
+`CanonicalLayerSnapshot` captures one opaque addressed layer with the same geometry and extensions; guarded restore compares the complete live state before replacing it, advances the revision once and refreshes the compatibility projection without recording legacy history.
 Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact extensions first, then refresh only the affected compatibility projection.
 `document/sources.rs` owns structural transactions and their guarded undo history; removing a source never deletes its UFO directory.
 
