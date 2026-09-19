@@ -1,7 +1,7 @@
 # Babelfont canonical metadata lane
 
-Status: **IN PROGRESS — font-level storage is integrated; glyph-level storage, history and application integration remain**.
-M07 must not be marked complete until the M05 history and M06 application integrations pass the checklist acceptance criteria.
+Status: **COMPLETE — canonical metadata, whole-glyph transactions, special-outline rendering and every M07 production caller are integrated**.
+The full migration remains active in the integration lane for M13 compatibility-state removal and M14 final proof.
 
 ## Checkout
 
@@ -20,6 +20,31 @@ Group-operation commits: `4aad3aa` (`Make canonical group renames atomic`) and `
 Project integration regression: `d40ca12` (`Test canonical source metadata transactions`).
 Glyph ownership split: `94ccd8a` (`Separate layer and source glyph metadata`).
 Metrics formula move: `480ffe2` (`Move metrics formulas into canonical metadata`).
+Source-metadata history import: `a42758c` (`Add canonical source metadata history`).
+Multi-source history acceptance: `1bd8c80` (`Test multi-source metadata history`).
+Special glyph data move: `f9e9eb3` (`Move special glyph data into canonical metadata`).
+Legacy kerning compatibility: `21db42b` (`Preserve legacy wrong-side kerning references`).
+Canonical font-info boundary: `3855fa7` (`Add canonical font info values`).
+Canonical source-glyph owner: lead checkpoint `5d28144` (`Own source glyph metadata canonically`).
+Canonical font-info owner: lead checkpoint `b3c02db` (`Own source font info canonically`).
+Atomic font-info validation: lead checkpoint `1d004f0` (`Validate canonical font info transactions`).
+Canonical compiler reads: lead checkpoint `3f20977` (`Compile canonical font info directly`).
+Component-alignment value: `0b8e996` (`Type component alignment metadata`).
+Component-alignment boundary cleanup: `f6b0edc` (`Route component alignment through canonical metadata`).
+Font-info Project acceptance: `17a161c` (`Test canonical font info storage`) and `6430ad3` (`Test atomic font info transactions`).
+Canonical layer metadata and component ownership: integration checkpoint `082e4f8` (`Own typed glyph-layer metadata canonically`) through merge commit `ecc4678`.
+Canonical composition, effective-anchor, realignment and generated-feature queries: `f1b35ff` (`Plan composition and features from canonical layers`).
+Deterministic duplicate-codepoint precedence: `21f2e0e` (`Preserve composition codepoint precedence`).
+Typed Project composition planning: `5458407` (`Expose Project composition planning`).
+Typed smart-component boundary codec: `86fdef7` (`Type smart component metadata`).
+Atomic whole-glyph lifecycle transactions: `3a9fd68` (`Add atomic canonical glyph transactions`).
+Guarded canonical composition proposal installation: integration checkpoint `7718d1c` (`Write composition proposals atomically`).
+Proposal identity hardening: integration checkpoint `087e0e7` (`Retain proposal identities across reorder`).
+Application glyph lifecycle and component-alignment cutover: integration checkpoint `2e16e09` (`Move application edits into canonical transactions`).
+GUI and CLI composition cutover: integration checkpoint `36535d3` (`Write application composition proposals canonically`).
+Headless composition, proof and analysis cutover: integration checkpoint `278d173` (`Run headless proof and analysis canonically`).
+Canonical component selection rendering: integration checkpoint `1b5234e` (`Render canonical component selection paths`).
+UFO-only direct feature-write boundary: application checkpoint `c6cd234` (`Keep direct feature writes UFO-only`).
 
 `CanonicalFontMetadata` now retains every UFO group and exact source-local `f64` kerning value without a Norad or Babelfont live model.
 Kerning participants distinguish glyphs from side-specific groups, and pair construction rejects a group on the wrong side.
@@ -58,14 +83,44 @@ cargo test --locked --test canonical_metadata -- --test-threads=1
 cargo test --locked --lib canonical_ufo_boundary_preserves_fractional_kerning_and_unrelated_groups -- --test-threads=1
 cargo test --locked --lib document::model::glyph_metadata::tests -- --test-threads=1
 cargo test --locked --lib outline::glyph_ops::tests -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib document::composites::tests -- --test-threads=1
+cargo test --locked --lib document::compose::tests -- --test-threads=1
+cargo test --locked --lib text::features::tests -- --test-threads=1
+# Standalone module harness pending the core-owned parent module declaration:
+(cd /private/tmp/runebender-smart-components-check && cargo test --offline)
+(cd /private/tmp/runebender-smart-components-check && cargo clippy --offline --all-targets -- -D warnings)
+cargo test --locked --lib glyph_transactions::tests -- --test-threads=1
+cargo test --locked --lib document::model::smart_components::tests -- --test-threads=1
+cargo test --locked --lib outline::glyph_paths::canonical_render_tests -- --test-threads=1
+cargo clippy --locked --lib --tests -- -D warnings
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --workspace --locked -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib -- --test-threads=1
 cargo clippy --locked --tests -- -D warnings
 cargo doc --locked --no-deps
 cargo fmt --all --check
 git diff --check
 ```
 
-The canonical integration suite now passes ten tests.
-The focused font-metadata UFO boundary test passed one test, glyph metadata passed seven tests, the metrics-key parser passed one test, and the existing glyph-operation regression group passed eighteen tests.
+The canonical metadata integration suite now passes thirteen tests, including the two multi-source history acceptance regressions and legacy wrong-side kerning preservation.
+The canonical history suite passes thirteen tests, the canonical pipeline suite passes two tests and the variable compiler suite passes nine tests.
+The focused font-metadata UFO boundary test passed one test, glyph metadata passed nine tests, the metrics-key parser passed one test, mark-color serialization passed three tests, metaball behavior passed six tests, and the existing glyph-operation regression group passed eighteen tests.
+The component-alignment helper group passed six tests with the real font fixture path configured, and the canonical component transaction test passed independently.
+The canonical layer-metadata transaction test passed independently.
+The canonical font-info suite passed six exact boundary, default-resolution, Project ownership, metric-invalidation, history and failure-atomicity tests.
+The composition suite passed eight tests, including direct canonical-plan equivalence, invalid typed-recipe rejection and repeated duplicate-codepoint precedence.
+An independent external regression repeated the duplicate-codepoint plan 64 times against the legacy base and advance choice and passed.
+The generated-feature suite passed five tests, including direct Project equivalence and the Project-level caller API adopted by the pipeline lane.
+The composite suite passed nine tests, including canonical exact-transform retention and rejection atomicity.
+The typed smart-component model passed seven codec tests after Project storage integration.
+The canonical renderer passed eight path and bounds tests covering typed smart interpolation, nested special outlines, exact transforms, fallback, non-finite rejection and recursion limits.
+The canonical glyph-transaction group passed eleven tests covering identity, exact layer cloning, partial-source insertion, multi-source add-missing, duplicate, rename/remove references, Project history, no-op, stale rejection and source save/reopen; warning-denied library and test Clippy also passed.
+The earlier real-font workspace run passed 383 library tests, 165 binary tests with four intentionally ignored model or large-fixture tests and every integration suite.
+After the combined smart-renderer and whole-glyph merge, the focused variable-project suite passed 62 tests.
+The first integrated workspace run exposed a removed-source compatibility-history regression; core checkpoint `b2c5511` retained that temporary history outside canonical snapshots, M05 accepted it independently, and the complete rerun passed.
+The final combined library run passed all 445 tests, including canonical composition callers, proposal identity retention, sparse-source and instance transactions, brace interpolation, headless proof, glyph analysis and the Unix live socket.
+The sandboxed form of that run passed 444 tests and failed only because the live-socket test could not create its endpoint; the authorized non-sandboxed rerun passed all 445.
+The final integrated workspace run passed those 445 library tests, all 166 enabled binary tests, all integration suites and documentation tests; four model or large-fixture binary tests remained intentionally ignored.
+That run also caught and verified the repair for direct `features --write` against an imported Babelfont package, which must remain UFO-only and leave the package unchanged.
 Warning-denied test Clippy, public API documentation, formatting and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 An initial unit-test invocation combined incompatible repeated `--lib` flags and did not run.
@@ -81,9 +136,10 @@ The M09 task `01a0ba2a-5670-7451-b05a-bd71293b2229` received the exact current r
 It owns `compile.rs` and `compile_metadata.rs` and will consume canonical values without creating another store.
 Its compiler snapshot must quantize a copy, reject unsupported categories explicitly and never write quantized kerning back into the document.
 
-## Next concrete step
+## Handoff
 
-The lead has integrated `b814d6c`, `709c6f2` and `4aad3aa`; hand it `3541f35`, the dedicated Project regression `d40ca12`, the glyph ownership split `94ccd8a` and the metrics formula move `480ffe2`.
-The central glyph hook should store the layer value in `LayerPreservation` and the source value by `SourceId` in `VariableGlyph`, removing recognized glyph entries from the preserving templates while retaining unmatched names and opaque lib data.
-The history lane has the `a1f3d35` API and is preparing guarded source-metadata history without UFO serialization.
-After that M05 API lands, add canonical metadata snapshot replay tests covering no-op suppression, redo invalidation, source reorder and failed replay atomicity.
+The integration branch adopted `86fdef7` as the single typed owner of the three smart-component source keys and the canonical renderer over those Project queries.
+The guarded proposal transaction now owns M07's immutable composition payloads and retains stable object metadata across reorder.
+The five `FontModel` glyph-lifecycle commands, component-alignment command, GUI and CLI composition commands and `core.compose` node all use canonical Project transactions.
+No production caller remains in the M07 ledger.
+Removal of now-unused compatibility state belongs to M13 and must not be confused with an unfinished M07 caller cutover.
