@@ -108,6 +108,7 @@ New read-only callers use `document_glyph`, `document_layer`, `document_source` 
 `outline::glyph_paths::ordinary_layer_contours_to_bezpath` converts canonical contour views directly for geometry consumers that do not need components or hyperbezier solving.
 `outline::glyph_paths::ordinary_layer_to_bezpath` preserves canonical contour/component order, applies exact component transforms and reports missing references or cycles through a caller-supplied layer resolver.
 `analysis::measure` accepts canonical ordinary layers directly for live measurements and side-bearing geometry while compatibility callers finish migrating.
+`analysis::curve::ordinary_cubics_from_layer` supplies canonical ordinary contours to continuity and curvature analysis without a UFO glyph.
 New mutations use `edit_document_layer` and its owned `LayerEditDraft`; a failed or unchanged draft is discarded, while a committed draft advances the canonical revision once.
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
 Source-wide feature text has canonical ownership in `VariableData` and changes through `edit_document_source_metadata`; UFO templates no longer retain a second feature-text value.

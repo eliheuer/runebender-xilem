@@ -16,6 +16,7 @@
 //! unit-tests on native `cargo test`. Formulas verified against Simon Cozens'
 //! `SuperTool` and Linus Romer's Curvatura.
 
+use crate::document::LayerView;
 use crate::outline::glyph_paths::round_units;
 use kurbo::{Point, Vec2};
 
@@ -24,7 +25,7 @@ use kurbo::{Point, Vec2};
 ///
 /// A straight line is stored as a cubic with handles on the chord,
 /// `straight` set, and curvature 0.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Cubic {
     /// Start on-curve point.
     pub p0: Point,
@@ -56,78 +57,105 @@ pub fn cubics_from_norad(glyph: &norad::Glyph) -> Vec<Vec<Cubic>> {
         } else {
             crate::outline::glyph_paths::contour_to_bezpath(contour)
         };
-        let mut segs: Vec<Cubic> = Vec::new();
-        let mut current = Point::ZERO;
-        let mut start = Point::ZERO;
-        for el in path.elements() {
-            match *el {
-                kurbo::PathEl::MoveTo(p) => {
-                    current = p;
-                    start = p;
-                }
-                kurbo::PathEl::LineTo(p) => {
-                    segs.push(Cubic {
-                        p0: current,
-                        p1: current.lerp(p, 1.0 / 3.0),
-                        p2: current.lerp(p, 2.0 / 3.0),
-                        p3: p,
-                        straight: true,
-                        start_smooth: false,
-                    });
-                    current = p;
-                }
-                kurbo::PathEl::QuadTo(c, p) => {
-                    let c1 = current + (c - current) * (2.0 / 3.0);
-                    let c2 = p + (c - p) * (2.0 / 3.0);
-                    segs.push(Cubic {
-                        p0: current,
-                        p1: c1,
-                        p2: c2,
-                        p3: p,
-                        straight: false,
-                        start_smooth: false,
-                    });
-                    current = p;
-                }
-                kurbo::PathEl::CurveTo(c1, c2, p) => {
-                    segs.push(Cubic {
-                        p0: current,
-                        p1: c1,
-                        p2: c2,
-                        p3: p,
-                        straight: false,
-                        start_smooth: false,
-                    });
-                    current = p;
-                }
-                kurbo::PathEl::ClosePath => {
-                    if current.distance(start) > 1e-9 {
-                        segs.push(Cubic {
-                            p0: current,
-                            p1: current.lerp(start, 1.0 / 3.0),
-                            p2: current.lerp(start, 2.0 / 3.0),
-                            p3: start,
-                            straight: true,
-                            start_smooth: false,
-                        });
-                    }
-                    current = start;
-                }
-            }
-        }
-        // Smooth flags from the source points, matched by position.
-        for seg in segs.iter_mut() {
-            let p0 = seg.p0;
-            seg.start_smooth = contour
-                .points
-                .iter()
-                .any(|p| p.smooth && (p.x - p0.x).abs() < 0.01 && (p.y - p0.y).abs() < 0.01);
-        }
+        let smooth = contour
+            .points
+            .iter()
+            .filter(|point| point.smooth)
+            .map(|point| Point::new(point.x, point.y));
+        let segs = cubics_from_path(&path, smooth);
         if !segs.is_empty() {
             out.push(segs);
         }
     }
     out
+}
+
+/// Build per-contour cubic segments directly from one canonical ordinary layer.
+pub fn ordinary_cubics_from_layer(layer: LayerView<'_>) -> Vec<Vec<Cubic>> {
+    layer
+        .contours()
+        .filter_map(|contour| {
+            let path = crate::outline::glyph_paths::ordinary_contour_to_bezpath(contour);
+            let smooth = contour
+                .points()
+                .filter(|point| point.is_smooth())
+                .map(|point| point.position());
+            let segments = cubics_from_path(&path, smooth);
+            (!segments.is_empty()).then_some(segments)
+        })
+        .collect()
+}
+
+fn cubics_from_path(
+    path: &kurbo::BezPath,
+    smooth_points: impl Iterator<Item = Point>,
+) -> Vec<Cubic> {
+    let mut segments = Vec::new();
+    let mut current = Point::ZERO;
+    let mut start = Point::ZERO;
+    for element in path.elements() {
+        match *element {
+            kurbo::PathEl::MoveTo(point) => {
+                current = point;
+                start = point;
+            }
+            kurbo::PathEl::LineTo(point) => {
+                segments.push(Cubic {
+                    p0: current,
+                    p1: current.lerp(point, 1.0 / 3.0),
+                    p2: current.lerp(point, 2.0 / 3.0),
+                    p3: point,
+                    straight: true,
+                    start_smooth: false,
+                });
+                current = point;
+            }
+            kurbo::PathEl::QuadTo(control, point) => {
+                let first = current + (control - current) * (2.0 / 3.0);
+                let second = point + (control - point) * (2.0 / 3.0);
+                segments.push(Cubic {
+                    p0: current,
+                    p1: first,
+                    p2: second,
+                    p3: point,
+                    straight: false,
+                    start_smooth: false,
+                });
+                current = point;
+            }
+            kurbo::PathEl::CurveTo(first, second, point) => {
+                segments.push(Cubic {
+                    p0: current,
+                    p1: first,
+                    p2: second,
+                    p3: point,
+                    straight: false,
+                    start_smooth: false,
+                });
+                current = point;
+            }
+            kurbo::PathEl::ClosePath => {
+                if current.distance(start) > 1e-9 {
+                    segments.push(Cubic {
+                        p0: current,
+                        p1: current.lerp(start, 1.0 / 3.0),
+                        p2: current.lerp(start, 2.0 / 3.0),
+                        p3: start,
+                        straight: true,
+                        start_smooth: false,
+                    });
+                }
+                current = start;
+            }
+        }
+    }
+    let smooth_points: Vec<_> = smooth_points.collect();
+    for segment in &mut segments {
+        segment.start_smooth = smooth_points
+            .iter()
+            .any(|point| point.distance(segment.p0) < 0.01);
+    }
+    segments
 }
 
 /// 2D cross product `u × v = u.x·v.y − u.y·v.x`.

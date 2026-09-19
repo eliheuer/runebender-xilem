@@ -611,3 +611,32 @@ git diff --check
 The focused measurement comparison and all 23 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Canonical curve-analysis input substep
+
+Evidence commit: `Analyze canonical contour curves directly` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Analyze canonical contour curves directly$' -1`.
+Affected paths: `src/outline/glyph_paths.rs`, `src/analysis/curve.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md` and this log.
+
+`ordinary_contour_to_bezpath` now exposes one canonical ordinary contour as a Kurbo path without a UFO contour.
+`ordinary_cubics_from_layer` converts canonical lines, quadratics and cubics into the existing analysis segments and reads smooth state directly from stable point views.
+The Norad compatibility entry point and canonical entry point share the extracted path-to-cubic conversion, including quadratic elevation, closing segments and smooth-point matching.
+
+The path fixture now requires identical ordered curve-analysis segments for closed lines, an open contour, consecutive quadratic controls and an all-off-curve implied quadratic contour.
+Hyperbezier analysis still uses its solver-backed compatibility route pending the M04 special-outline migration.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics -- --exact --test-threads=1
+cargo test --locked --lib analysis::curve -- --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused path-and-analysis comparison, all six curve-analysis unit tests and all 23 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.

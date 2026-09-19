@@ -532,6 +532,13 @@ fn canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics()
     );
     assert_eq!(canonical, legacy);
     assert_eq!(
+        runebender::analysis::curve::ordinary_cubics_from_layer(
+            project.document_layer("paths", &layer_id).unwrap(),
+        ),
+        runebender::analysis::curve::cubics_from_norad(&glyph),
+        "canonical curve-analysis input changed cubic segments"
+    );
+    assert_eq!(
         canonical
             .elements()
             .iter()

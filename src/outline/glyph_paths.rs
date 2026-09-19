@@ -91,8 +91,17 @@ pub fn contours_to_bezpath(glyph: &Glyph) -> BezPath {
 pub fn ordinary_layer_contours_to_bezpath(layer: LayerView<'_>) -> BezPath {
     let mut path = BezPath::new();
     for contour in layer.contours() {
-        append_document_contour(&mut path, contour);
+        path.extend(ordinary_contour_to_bezpath(contour));
     }
+    path
+}
+
+/// Convert one canonical ordinary contour without constructing a UFO contour.
+///
+/// Hyperbezier contours remain on their dedicated conversion path until that tool is migrated.
+pub fn ordinary_contour_to_bezpath(contour: ContourView<'_>) -> BezPath {
+    let mut path = BezPath::new();
+    append_document_contour(&mut path, contour);
     path
 }
 
