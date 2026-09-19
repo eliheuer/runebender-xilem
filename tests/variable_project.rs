@@ -3331,6 +3331,193 @@ fn canonical_contour_open_close_produces_persistable_topology() {
 }
 
 #[test]
+fn canonical_copy_paste_and_duplicate_assign_fresh_identities() {
+    let scratch = Scratch::new();
+    let point = |x, y, typ, label: &str| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            typ,
+            false,
+            Some(Name::new(label).unwrap()),
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        point.replace_lib(object_lib(label));
+        point
+    };
+    let mut first = Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Line, "first-a"),
+            point(100.0, 0.0, PointType::Line, "first-b"),
+            point(50.0, 100.0, PointType::Line, "first-c"),
+        ],
+        Some(norad::Identifier::new("first-contour").unwrap()),
+    );
+    first.replace_lib(object_lib("first-contour"));
+    let mut second = Contour::new(
+        vec![
+            point(200.0, 0.0, PointType::Move, "second-a"),
+            point(300.0, 0.0, PointType::Line, "second-b"),
+        ],
+        Some(norad::Identifier::new("second-contour").unwrap()),
+    );
+    second.replace_lib(object_lib("second-contour"));
+    let sources = [first.clone(), second.clone()];
+    let mut glyph = Glyph::new("copy-contours");
+    glyph.contours = vec![first, second];
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let source_path = scratch.0.join("CopyContours.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project.document_layer("copy-contours", &layer_id).unwrap();
+    let original_contours: Vec<_> = layer.contours().collect();
+    let original_contour_ids: Vec<_> = original_contours
+        .iter()
+        .map(|contour| contour.id())
+        .collect();
+    let original_point_ids: Vec<Vec<_>> = original_contours
+        .iter()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+    let copied = layer.copy_contours(&[original_point_ids[0][1]]).unwrap();
+    assert_eq!(copied.len(), 1);
+    assert_eq!(layer.copy_contours(&[]).unwrap().len(), 2);
+
+    let mut pasted = None;
+    project
+        .edit_document_layer("copy-contours", &layer_id, |draft| {
+            pasted = Some(draft.paste_contours(&copied)?);
+            Ok(())
+        })
+        .unwrap();
+    let pasted = pasted.unwrap();
+    assert_eq!(pasted.contours.len(), 1);
+    assert_eq!(pasted.points.len(), 3);
+
+    let mut duplicated = None;
+    project
+        .edit_document_layer("copy-contours", &layer_id, |draft| {
+            duplicated =
+                Some(draft.duplicate_contours(
+                    &[original_point_ids[1][0]],
+                    kurbo::Vec2::new(20.0, 20.0),
+                )?);
+            Ok(())
+        })
+        .unwrap();
+    let duplicated = duplicated.unwrap();
+    assert_eq!(duplicated.contours.len(), 1);
+    assert_eq!(duplicated.points.len(), 2);
+
+    let layer = project.document_layer("copy-contours", &layer_id).unwrap();
+    let contours: Vec<_> = layer.contours().collect();
+    assert_eq!(contours.len(), 4);
+    assert_eq!(contours[0].id(), original_contour_ids[0]);
+    assert_eq!(contours[1].id(), original_contour_ids[1]);
+    assert_eq!(contours[2].id(), pasted.contours[0]);
+    assert_eq!(contours[3].id(), duplicated.contours[0]);
+    assert_eq!(
+        contours[2]
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        pasted.points
+    );
+    assert_eq!(
+        contours[3]
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        duplicated.points
+    );
+    let all_ids: Vec<_> = contours
+        .iter()
+        .flat_map(|contour| contour.points().map(|point| point.id()))
+        .collect();
+    assert_eq!(all_ids.len(), all_ids.iter().collect::<HashSet<_>>().len());
+    assert_eq!(
+        contours[3]
+            .points()
+            .map(|point| point.position())
+            .collect::<Vec<_>>(),
+        [
+            kurbo::Point::new(220.0, 20.0),
+            kurbo::Point::new(320.0, 20.0)
+        ]
+    );
+
+    let projected = project.glyph_layer("copy-contours", &layer_id).unwrap();
+    for (output_index, source_index) in [(2_usize, 0_usize), (3, 1)] {
+        let output = &projected.contours[output_index];
+        let source = &sources[source_index];
+        assert!(output.identifier().is_some());
+        assert_ne!(output.identifier(), source.identifier());
+        assert_eq!(output.lib(), source.lib());
+        for (point, source_point) in output.points.iter().zip(&source.points) {
+            assert_eq!(point.name, source_point.name);
+            assert!(point.identifier().is_some());
+            assert_ne!(point.identifier(), source_point.identifier());
+            assert_eq!(point.lib(), source_point.lib());
+        }
+    }
+    assert_ne!(
+        projected.contours[2].identifier(),
+        projected.contours[3].identifier()
+    );
+    for (point, source_point) in projected.contours[3].points.iter().zip(&sources[1].points) {
+        assert_eq!(
+            (point.x, point.y),
+            (source_point.x + 20.0, source_point.y + 20.0)
+        );
+    }
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    assert_eq!(
+        reloaded
+            .glyph_layer("copy-contours", &reloaded_layer)
+            .unwrap()
+            .contours,
+        projected.contours
+    );
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("copy-contours", &layer_id, |draft| {
+                assert_eq!(
+                    draft.paste_contours(&[])?,
+                    runebender::document::PastedContours::default()
+                );
+                assert_eq!(
+                    draft.duplicate_contours(&[], kurbo::Vec2::new(20.0, 20.0))?,
+                    runebender::document::PastedContours::default()
+                );
+                assert_eq!(
+                    draft.duplicate_contours(
+                        &[original_point_ids[0][0]],
+                        kurbo::Vec2::new(f64::INFINITY, f64::INFINITY),
+                    ),
+                    Err(runebender::document::DocumentEditError::NonFinite)
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);

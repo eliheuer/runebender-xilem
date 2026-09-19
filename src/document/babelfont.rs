@@ -170,6 +170,22 @@ pub struct QuadraticSegmentInsertion {
     pub explicitized_end: Option<PointId>,
 }
 
+/// One owned canonical contour carried by copy and paste operations.
+#[derive(Clone, Debug)]
+pub struct CopiedContour {
+    path: babelfont::Path,
+    preserved: PreservedContour,
+}
+
+/// Stable identities created while pasting or duplicating canonical contours.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PastedContours {
+    /// Identities of the newly created contours in insertion order.
+    pub contours: Vec<ContourId>,
+    /// Identities of every newly created point in contour order.
+    pub points: Vec<PointId>,
+}
+
 /// Read-only access to one canonical glyph layer.
 #[derive(Clone, Copy, Debug)]
 pub struct LayerView<'a> {
@@ -293,6 +309,46 @@ impl<'a> LayerView<'a> {
                 })
             }
         })
+    }
+
+    /// Copy every contour containing a selected point, or every contour for an empty selection.
+    pub fn copy_contours(
+        self,
+        selected: &[PointId],
+    ) -> Result<Vec<CopiedContour>, DocumentEditError> {
+        for id in selected {
+            if !self.layer.paths().flat_map(|path| &path.nodes).any(|node| {
+                read_id(&node.format_specific).is_some_and(|candidate| candidate == id.0)
+            }) {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+        }
+        let selected: HashSet<_> = selected.iter().map(|id| id.0).collect();
+        let copy_all = selected.is_empty();
+        Ok(self
+            .layer
+            .paths()
+            .filter(|path| {
+                copy_all
+                    || path.nodes.iter().any(|node| {
+                        read_id(&node.format_specific).is_some_and(|id| selected.contains(&id))
+                    })
+            })
+            .map(|path| {
+                let contour_id =
+                    ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+                let preserved = self
+                    .preserved
+                    .contours
+                    .iter()
+                    .find(|candidate| candidate.id == contour_id)
+                    .expect("canonical contour preservation");
+                CopiedContour {
+                    path: path.clone(),
+                    preserved: preserved.clone(),
+                }
+            })
+            .collect())
     }
 
     /// Capture every canonical point position needed for a persistent drag.
@@ -803,6 +859,106 @@ impl LayerEditDraft {
                 .collect(),
         });
         Ok((contour_id, point_ids))
+    }
+
+    /// Append copied canonical contours with fresh document and UFO identities.
+    ///
+    /// Point names and object libraries survive the paste. Objects carrying an identifier or lib
+    /// receive a fresh UFO identifier so it remains unique within the glyph. Returns the new
+    /// contour and point identities.
+    pub fn paste_contours(
+        &mut self,
+        copied: &[CopiedContour],
+    ) -> Result<PastedContours, DocumentEditError> {
+        ensure_finite(
+            &copied
+                .iter()
+                .flat_map(|contour| contour.path.nodes.iter())
+                .flat_map(|node| [node.x, node.y])
+                .collect::<Vec<_>>(),
+        )?;
+        let mut result = PastedContours::default();
+        let mut additions = Vec::with_capacity(copied.len());
+        for copied in copied {
+            debug_assert_eq!(
+                copied.path.nodes.len(),
+                copied.preserved.points.len(),
+                "copied nodes and preservation records stay aligned"
+            );
+            let contour_id = ContourId::next();
+            result.contours.push(contour_id);
+            let mut path = copied.path.clone();
+            write_id(&mut path.format_specific, contour_id.0);
+            let points = path
+                .nodes
+                .iter_mut()
+                .zip(&copied.preserved.points)
+                .map(|(node, source)| {
+                    let point_id = PointId::next();
+                    result.points.push(point_id);
+                    write_id(&mut node.format_specific, point_id.0);
+                    PreservedPoint {
+                        id: point_id,
+                        name: source.name.clone(),
+                        metadata: ObjectMetadata {
+                            identifier: (source.metadata.identifier.is_some()
+                                || source.metadata.lib.is_some())
+                            .then(norad::Identifier::from_uuidv4),
+                            lib: source.metadata.lib.clone(),
+                        },
+                    }
+                })
+                .collect();
+            additions.push((
+                Shape::Path(path),
+                PreservedContour {
+                    id: contour_id,
+                    metadata: ObjectMetadata {
+                        identifier: (copied.preserved.metadata.identifier.is_some()
+                            || copied.preserved.metadata.lib.is_some())
+                        .then(norad::Identifier::from_uuidv4),
+                        lib: copied.preserved.metadata.lib.clone(),
+                    },
+                    points,
+                },
+            ));
+        }
+        self.layer
+            .shapes
+            .extend(additions.iter().map(|(shape, _)| shape.clone()));
+        self.preserved
+            .contours
+            .extend(additions.into_iter().map(|(_, preserved)| preserved));
+        Ok(result)
+    }
+
+    /// Duplicate every contour containing a selected point by `offset`.
+    ///
+    /// An empty selection is a no-op. The duplicate receives the same metadata treatment as a
+    /// paste and fresh stable identities. Returns those new identities.
+    pub fn duplicate_contours(
+        &mut self,
+        selected: &[PointId],
+        offset: kurbo::Vec2,
+    ) -> Result<PastedContours, DocumentEditError> {
+        if selected.is_empty() {
+            return Ok(PastedContours::default());
+        }
+        ensure_finite(&[offset.x, offset.y])?;
+        let mut copied = self.view().copy_contours(selected)?;
+        let coordinates: Vec<_> = copied
+            .iter()
+            .flat_map(|contour| &contour.path.nodes)
+            .flat_map(|node| [node.x + offset.x, node.y + offset.y])
+            .collect();
+        ensure_finite(&coordinates)?;
+        for contour in &mut copied {
+            for node in &mut contour.path.nodes {
+                node.x += offset.x;
+                node.y += offset.y;
+            }
+        }
+        self.paste_contours(&copied)
     }
 
     /// Set the exact horizontal advance and refresh Babelfont's derived width.

@@ -185,7 +185,7 @@ Acceptance: existing geometry tests use the canonical model, and targeted old/ne
 Depends on: M03.
 Start in: `outline/cleanup.rs`, `knife.rs`, `effects.rs`, `embolden.rs`, `convert.rs`, `drawing.rs`, `component_ops.rs`, `path/hyper_model.rs`, `metaballs.rs` and related format helpers.
 
-- [ ] Port pen creation/closure, point insertion/deletion, contour reversal, split/join, copy/paste and shape creation.
+- [x] Port pen creation/closure, point insertion/deletion, contour reversal, split/join, copy/paste and shape creation.
 - [ ] Port booleans, overlap removal, knife, cleanup, fit/simplify, embolden and component decomposition with explicit metadata behavior when topology is replaced.
 - [ ] Adapt hyperbezier conversion without promoting its legacy intermediate Glyph into another live font model.
 - [ ] Preserve live metaball groups, masks and HOI data as editable extensions; retain source data until the existing explicit conversion/bake commands run.

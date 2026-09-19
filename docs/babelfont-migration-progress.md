@@ -1440,4 +1440,34 @@ The focused save-reopen regression, both independent-review reproducers and all 
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
-The next M04 substep moves contour copy, paste and duplication onto canonical topology.
+### Canonical contour copy-paste substep
+
+Evidence commit: `Copy and paste canonical contours` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Copy and paste canonical contours$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/document/mod.rs`, `tests/variable_project.rs`, `docs/babelfont-migration-checklist.md`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+`LayerView::copy_contours` now captures selected contours, or every contour for an empty selection, as owned canonical geometry plus exact source metadata without constructing a UFO glyph.
+`LayerEditDraft::paste_contours` appends those contours with fresh stable document identities.
+Names and object libraries survive, while every copied object that carried an identifier or library receives a fresh UFO identifier so repeated projections and saved glyphs remain stable and unique.
+`LayerEditDraft::duplicate_contours` applies the same identity and metadata policy after validating a requested offset and every resulting coordinate.
+
+The integration oracle copies one selected contour, duplicates another by the editor's twenty-unit offset and requires unchanged original identities, fresh unique contour and point identities, exact names and libraries, fresh UFO identifiers and exact translated coordinates.
+It saves and reopens the result and verifies that empty operations and a nonfinite offset leave the snapshot and revision unchanged.
+This completes M04's first checklist item covering direct topology creation, insertion, deletion, reversal, open-close, reordering, copy, paste and duplication.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_copy_paste_and_duplicate_assign_fresh_identities -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused copy-paste regression and all 43 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep moves topology-replacing outline effects onto canonical layers with explicit metadata policy.
