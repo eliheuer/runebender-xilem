@@ -130,8 +130,9 @@ fn styled_chip<F: Fn(&mut Workspace) + Send + Sync + 'static>(
 
 /// Dimensions: the narrowest stem and bar of the reference glyphs.
 pub(crate) fn dimensions_section(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
-    use runebender::analysis::dimensions::{REFERENCE_GLYPHS, stem_and_bar};
+    use runebender::analysis::dimensions::{REFERENCE_GLYPHS, stem_and_bar_project};
     let pal = &app.palette;
+    let source = app.font.project.source_id(app.font.active());
     let fmt = |v: Option<i64>| {
         v.map(|v| v.to_string())
             .unwrap_or_else(|| "\u{2013}".into())
@@ -139,7 +140,9 @@ pub(crate) fn dimensions_section(app: &Workspace) -> impl WidgetView<Workspace> 
     let rows: Vec<_> = REFERENCE_GLYPHS
         .iter()
         .filter_map(|name| {
-            let (stem, bar) = stem_and_bar(app.font.font(), name);
+            let (stem, bar) = source.map_or((None, None), |source| {
+                stem_and_bar_project(&app.font.project, source, name)
+            });
             if stem.is_none() && bar.is_none() {
                 return None;
             }

@@ -5,9 +5,9 @@
 //! and the tabs that hold them: opening a glyph, parking and resuming,
 //! switching masters, and the axis location.
 //!
-//! The session works on a `norad::Glyph` directly so every operation in
-//! `runebender::outline::glyph_ops` and `point_ops` applies without conversion.
-//! The editor island owns the session; the app receives copies of the glyph.
+//! Point selection uses stable canonical identities.
+//! The remaining outline algorithms still operate on a compatibility `norad::Glyph` projection,
+//! with tuple indices confined to adapters inside this module until their draft APIs land.
 
 use crate::application::editor::tools::metaballs;
 use crate::application::font_model::FontModel;
@@ -19,7 +19,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};
-use runebender::outline::glyph_ops::{self, PointId};
+use runebender::document::{LayerView, PointId};
+use runebender::outline::glyph_ops::{self, PointId as LegacyPointId};
 use runebender::outline::glyph_paths;
 use runebender::outline::glyph_paths::round_units;
 use runebender::outline::point_ops;
@@ -93,13 +94,17 @@ pub(crate) struct Session {
     component_contours: Vec<Vec<norad::Contour>>,
     pub metrics: Metrics,
     pub selection: HashSet<PointId>,
+    /// Canonical point identities in the same order as the compatibility glyph projection.
+    point_ids: Vec<Vec<PointId>>,
     pub viewport: ViewPort,
     pub fitted: bool,
     /// Undo steps taken since the app last pulled this session: the
     /// pile itself is the master's, in core. The app drains these on
     /// every sync.
     pub(crate) pending: Vec<HistoryOp>,
-    drag_originals: HashMap<PointId, (f64, f64)>,
+    drag_originals: HashMap<LegacyPointId, (f64, f64)>,
+    /// A structural compatibility edit can select new points before the canonical layer reloads.
+    pending_selection_indices: Option<HashSet<LegacyPointId>>,
     in_drag: bool,
     /// The contour the pen is currently extending, if any.
     pub active_contour: Option<usize>,
@@ -141,9 +146,7 @@ impl Session {
 
     /// Build an editor session with metrics from the canonical active source.
     pub(crate) fn new_from_model(font: &FontModel, name: &str) -> Option<Self> {
-        let mut session = Self::new(font.font(), name)?;
-        session.metrics = Metrics::of_canonical(font.font_info());
-        Some(session)
+        Self::new_from_project(&font.project, name, Metrics::of_canonical(font.font_info()))
     }
 
     /// Makes the inactive session held while the overview has no glyph to open.
@@ -162,10 +165,12 @@ impl Session {
             metaballs: metaballs::MetaballSelection::default(),
             metrics: Metrics::of(font),
             selection: HashSet::new(),
+            point_ids: Vec::new(),
             viewport: ViewPort::new(),
             fitted: false,
             pending: Vec::new(),
             drag_originals: HashMap::new(),
+            pending_selection_indices: None,
             in_drag: false,
             active_contour: None,
             pen: Vec::new(),
@@ -175,8 +180,27 @@ impl Session {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn new(font: &norad::Font, name: &str) -> Option<Self> {
-        let glyph = font.get_glyph(name)?.clone();
+        let project = runebender::document::project::Project::from_source(
+            runebender::document::project::Master::from_font(
+                font.clone(),
+                std::path::PathBuf::from("memory.ufo"),
+            ),
+        );
+        Self::new_from_project(&project, name, Metrics::of(font))
+    }
+
+    fn new_from_project(
+        project: &runebender::document::project::Project,
+        name: &str,
+        metrics: Metrics,
+    ) -> Option<Self> {
+        let source = project.source_id(project.active)?;
+        let layer_id = project.document_source(source)?.default_layer();
+        let layer = project.document_layer(name, &layer_id)?;
+        let glyph = project.glyph_layer(name, &layer_id)?;
+        let font = &project.active_font().font;
         let components = glyph_paths::components_to_bezpath(&glyph, font);
         let component_paths = resolved_component_paths(font, &glyph);
         let component_contours = resolved_component_contour_sets(font, &glyph);
@@ -189,12 +213,14 @@ impl Session {
             component_paths,
             component_contours,
             metaballs: metaballs::MetaballSelection::default(),
-            metrics: Metrics::of(font),
+            metrics,
             selection: HashSet::new(),
+            point_ids: canonical_point_ids(layer),
             viewport: ViewPort::new(),
             fitted: false,
             pending: Vec::new(),
             drag_originals: HashMap::new(),
+            pending_selection_indices: None,
             in_drag: false,
             active_contour: None,
             pen: Vec::new(),
@@ -202,6 +228,88 @@ impl Session {
             selected_component: None,
             last_transform: None,
         })
+    }
+
+    fn legacy_point(&self, id: PointId) -> Option<LegacyPointId> {
+        self.point_ids
+            .iter()
+            .enumerate()
+            .find_map(|(contour, points)| {
+                points
+                    .iter()
+                    .position(|candidate| *candidate == id)
+                    .map(|point| (contour, point))
+            })
+    }
+
+    fn legacy_selection(&self) -> HashSet<LegacyPointId> {
+        self.selection
+            .iter()
+            .filter_map(|id| self.legacy_point(*id))
+            .collect()
+    }
+
+    fn select_legacy_points(&mut self, selected: HashSet<LegacyPointId>) {
+        self.selection = selected
+            .iter()
+            .filter_map(|(contour, point)| {
+                self.point_ids
+                    .get(*contour)
+                    .and_then(|points| points.get(*point))
+                    .copied()
+            })
+            .collect();
+        self.pending_selection_indices = Some(selected);
+    }
+
+    pub(crate) fn canonical_selection(&self, layer: LayerView<'_>) -> Vec<PointId> {
+        let available: HashSet<_> = layer
+            .contours()
+            .flat_map(|contour| contour.points().map(|point| point.id()))
+            .collect();
+        self.selection
+            .iter()
+            .filter(|id| available.contains(id))
+            .copied()
+            .collect()
+    }
+
+    pub(crate) fn select_canonical_points(&mut self, layer: LayerView<'_>, selected: &[PointId]) {
+        let available: HashSet<_> = layer
+            .contours()
+            .flat_map(|contour| contour.points().map(|point| point.id()))
+            .collect();
+        self.selection = selected
+            .iter()
+            .filter(|id| available.contains(id))
+            .copied()
+            .collect();
+        self.pending_selection_indices = None;
+    }
+
+    pub(crate) fn contour_selected(&self, contour: usize) -> bool {
+        self.point_ids
+            .get(contour)
+            .is_some_and(|points| points.iter().any(|point| self.selection.contains(point)))
+    }
+
+    pub(crate) fn point_id_at(&self, contour: usize, point: usize) -> Option<PointId> {
+        self.point_ids
+            .get(contour)
+            .and_then(|points| points.get(point))
+            .copied()
+    }
+
+    pub(crate) fn select_contour(&mut self, contour: usize) -> usize {
+        self.selection = self
+            .point_ids
+            .get(contour)
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+        self.pending_selection_indices = None;
+        self.selection.len()
     }
 
     pub(crate) fn advance(&self) -> f64 {
@@ -400,9 +508,17 @@ impl Session {
         let mut out = Vec::new();
         for (ci, contour) in self.glyph.contours.iter().enumerate() {
             for (pi, p) in contour.points.iter().enumerate() {
+                let Some(id) = self
+                    .point_ids
+                    .get(ci)
+                    .and_then(|points| points.get(pi))
+                    .copied()
+                else {
+                    continue;
+                };
                 let on_curve = !matches!(p.typ, norad::PointType::OffCurve);
                 out.push(PointView {
-                    id: (ci, pi),
+                    id,
                     point: Point::new(p.x, p.y),
                     on_curve,
                     smooth: on_curve && p.smooth,
@@ -421,6 +537,9 @@ impl Session {
 
     /// Record the state before an edit.
     pub(crate) fn record(&mut self, edit: EditType) {
+        if self.pending_selection_indices.is_none() {
+            self.pending_selection_indices = Some(self.legacy_selection());
+        }
         match edit {
             EditType::Drag => {
                 if !self.in_drag {
@@ -438,7 +557,63 @@ impl Session {
 
     /// Take the glyph as the master now has it, after an undo or a
     /// redo there, keeping the selection where it still fits.
+    #[cfg(test)]
     pub(crate) fn reload_glyph(&mut self, font: &norad::Font, glyph: norad::Glyph) {
+        if self.pending_selection_indices.is_none() {
+            self.pending_selection_indices = Some(self.legacy_selection());
+        }
+        let mut source = font.clone();
+        source.default_layer_mut().insert_glyph(glyph.clone());
+        let project = runebender::document::project::Project::from_source(
+            runebender::document::project::Master::from_font(
+                source,
+                std::path::PathBuf::from("memory.ufo"),
+            ),
+        );
+        let source = project.source_id(project.active).expect("one source");
+        let layer_id = project
+            .document_source(source)
+            .expect("one canonical source")
+            .default_layer();
+        let point_ids = canonical_point_ids(
+            project
+                .document_layer(&self.glyph_name, &layer_id)
+                .expect("the replacement glyph was imported"),
+        );
+        self.reload_parts(font, glyph, point_ids);
+    }
+
+    /// Rebase the compatibility projection on the canonical layer while retaining stable IDs.
+    pub(crate) fn reload_from_project(
+        &mut self,
+        project: &runebender::document::project::Project,
+        address: &runebender::document::variable::GlyphLayerAddress,
+    ) -> bool {
+        let Some(layer) = project.document_layer(&address.glyph, &address.layer) else {
+            return false;
+        };
+        let Some(glyph) = project.glyph_layer(&address.glyph, &address.layer) else {
+            return false;
+        };
+        let Some(source_index) = project.source_index(address.layer.source) else {
+            return false;
+        };
+        self.reload_parts(
+            &project.sources()[source_index].font,
+            glyph,
+            canonical_point_ids(layer),
+        );
+        true
+    }
+
+    fn reload_parts(
+        &mut self,
+        font: &norad::Font,
+        glyph: norad::Glyph,
+        point_ids: Vec<Vec<PointId>>,
+    ) {
+        let selected_ids = self.selection.clone();
+        let selected_indices = self.pending_selection_indices.take();
         self.components = glyph_paths::components_to_bezpath(&glyph, font);
         self.component_paths = resolved_component_paths(font, &glyph);
         self.component_contours = resolved_component_contour_sets(font, &glyph);
@@ -446,6 +621,27 @@ impl Session {
             .selected_component
             .filter(|index| *index < glyph.components.len());
         self.glyph = glyph;
+        self.point_ids = point_ids;
+        let available: HashSet<_> = self.point_ids.iter().flatten().copied().collect();
+        self.selection = selected_indices.map_or_else(
+            || {
+                selected_ids
+                    .into_iter()
+                    .filter(|id| available.contains(id))
+                    .collect()
+            },
+            |selected| {
+                selected
+                    .into_iter()
+                    .filter_map(|(contour, point)| {
+                        self.point_ids
+                            .get(contour)
+                            .and_then(|points| points.get(point))
+                            .copied()
+                    })
+                    .collect()
+            },
+        );
         self.refresh_metaball_preview();
         self.pen.clear();
         self.active_contour = None;
@@ -457,25 +653,21 @@ impl Session {
     }
 
     fn prune_selection(&mut self) {
-        let glyph = &self.glyph;
-        self.selection.retain(|(c, p)| {
-            glyph
-                .contours
-                .get(*c)
-                .is_some_and(|contour| *p < contour.points.len())
-        });
+        let available: HashSet<_> = self.point_ids.iter().flatten().copied().collect();
+        self.selection.retain(|id| available.contains(id));
     }
 
     pub(crate) fn begin_point_drag(&mut self) {
         self.record(EditType::Drag);
-        self.drag_originals = point_ops::drag_origins(&self.glyph, &self.selection, false);
+        self.drag_originals = point_ops::drag_origins(&self.glyph, &self.legacy_selection(), false);
     }
 
     /// Move the selection to `total` design units from where the drag began.
     pub(crate) fn drag_points_to(&mut self, total: (f64, f64)) -> bool {
+        let selection = self.legacy_selection();
         point_ops::translate_points(
             &mut self.glyph,
-            &self.selection,
+            &selection,
             &self.drag_originals,
             total,
             false,
@@ -502,9 +694,10 @@ impl Session {
             return false;
         }
         self.record(EditType::Normal);
+        let selection = self.legacy_selection();
         point_ops::translate_points(
             &mut self.glyph,
-            &self.selection,
+            &selection,
             &HashMap::new(),
             (dx, dy),
             false,
@@ -526,7 +719,8 @@ impl Session {
             return false;
         }
         self.record(EditType::Normal);
-        let changed = glyph_ops::delete_points(&mut self.glyph, &self.selection);
+        let selection = self.legacy_selection();
+        let changed = glyph_ops::delete_points(&mut self.glyph, &selection);
         self.selection.clear();
         changed
     }
@@ -743,7 +937,8 @@ impl Session {
     /// centered on the target bounding box.
     pub(crate) fn transform(&mut self, affine: kurbo::Affine) -> bool {
         self.record(EditType::Normal);
-        let changed = glyph_ops::transform_selection(&mut self.glyph, &self.selection, affine);
+        let selection = self.legacy_selection();
+        let changed = glyph_ops::transform_selection(&mut self.glyph, &selection, affine);
         if changed {
             self.last_transform = Some(affine);
         }
@@ -785,7 +980,11 @@ impl Session {
         if !width.is_finite() || width <= 0.0 || self.selected_component.is_some() {
             return false;
         }
-        let contours = self.selection.iter().map(|(contour, _)| *contour).collect();
+        let contours = self
+            .legacy_selection()
+            .into_iter()
+            .map(|(contour, _)| contour)
+            .collect();
         self.effect(|glyph| {
             runebender::outline::effects::expand_stroke_contours(glyph, &contours, width)
         })
@@ -808,7 +1007,11 @@ impl Session {
         vertical: f64,
         seed: u64,
     ) -> bool {
-        let selected = self.selection.iter().map(|(contour, _)| *contour).collect();
+        let selected = self
+            .legacy_selection()
+            .into_iter()
+            .map(|(contour, _)| contour)
+            .collect();
         self.effect(|glyph| {
             runebender::outline::effects::roughen_glyph_contours(
                 glyph, &selected, segment, horizontal, vertical, seed,
@@ -818,7 +1021,8 @@ impl Session {
 
     pub(crate) fn reverse(&mut self) -> bool {
         self.record(EditType::Normal);
-        glyph_ops::reverse_contours(&mut self.glyph, &self.selection)
+        let selection = self.legacy_selection();
+        glyph_ops::reverse_contours(&mut self.glyph, &selection)
     }
 
     pub(crate) fn decompose(&mut self) -> bool {
@@ -911,7 +1115,12 @@ impl Session {
         let mut max = (f64::NEG_INFINITY, f64::NEG_INFINITY);
         for (ci, contour) in self.glyph.contours.iter().enumerate() {
             for (pi, p) in contour.points.iter().enumerate() {
-                if self.selection.contains(&(ci, pi)) {
+                if self
+                    .point_ids
+                    .get(ci)
+                    .and_then(|points| points.get(pi))
+                    .is_some_and(|id| self.selection.contains(id))
+                {
                     min = (min.0.min(p.x), min.1.min(p.y));
                     max = (max.0.max(p.x), max.1.max(p.y));
                 }
@@ -926,7 +1135,7 @@ impl Session {
 
     /// Make the first selected on-curve point the start of its contour.
     pub(crate) fn set_start(&mut self) -> bool {
-        let Some(&(ci, pi)) = self.selection.iter().min() else {
+        let Some((ci, pi)) = self.legacy_selection().into_iter().min() else {
             return false;
         };
         self.record(EditType::Normal);
@@ -940,9 +1149,10 @@ impl Session {
     /// Round the selected corner points (fillet).
     pub(crate) fn round_corners(&mut self) -> bool {
         self.record(EditType::Normal);
-        match glyph_ops::round_selected_corners(&mut self.glyph, &self.selection) {
+        let selection = self.legacy_selection();
+        match glyph_ops::round_selected_corners(&mut self.glyph, &selection) {
             Some(next) => {
-                self.selection = next;
+                self.select_legacy_points(next);
                 true
             }
             None => false,
@@ -951,27 +1161,22 @@ impl Session {
 
     pub(crate) fn harmonize(&mut self) -> bool {
         self.record(EditType::Normal);
-        glyph_ops::curve_op(
-            &mut self.glyph,
-            &self.selection,
-            glyph_ops::CurveOp::Harmonize,
-        )
+        let selection = self.legacy_selection();
+        glyph_ops::curve_op(&mut self.glyph, &selection, glyph_ops::CurveOp::Harmonize)
     }
 
     pub(crate) fn balance(&mut self) -> bool {
         self.record(EditType::Normal);
-        glyph_ops::curve_op(
-            &mut self.glyph,
-            &self.selection,
-            glyph_ops::CurveOp::Balance,
-        )
+        let selection = self.legacy_selection();
+        glyph_ops::curve_op(&mut self.glyph, &selection, glyph_ops::CurveOp::Balance)
     }
 
     pub(crate) fn optimize(&mut self) -> bool {
         self.record(EditType::Normal);
+        let selection = self.legacy_selection();
         glyph_ops::curve_op(
             &mut self.glyph,
-            &self.selection,
+            &selection,
             glyph_ops::CurveOp::Optimize(0.12),
         )
     }
@@ -1006,9 +1211,10 @@ impl Session {
             return true;
         }
         self.record(EditType::Normal);
-        match glyph_ops::duplicate_selection(&mut self.glyph, &self.selection) {
+        let selection = self.legacy_selection();
+        match glyph_ops::duplicate_selection(&mut self.glyph, &selection) {
             Some(next) => {
-                self.selection = next;
+                self.select_legacy_points(next);
                 true
             }
             None => false,
@@ -1021,7 +1227,8 @@ impl Session {
             return false;
         }
         if let Some(transform) = transform {
-            let _ = glyph_ops::transform_selection(&mut self.glyph, &self.selection, transform);
+            let selection = self.legacy_selection();
+            let _ = glyph_ops::transform_selection(&mut self.glyph, &selection, transform);
         }
         true
     }
@@ -1033,7 +1240,8 @@ impl Session {
 
     pub(crate) fn add_extremes(&mut self) -> bool {
         self.record(EditType::Normal);
-        runebender::outline::cleanup::add_extreme_points(&mut self.glyph, &self.selection)
+        let selection = self.legacy_selection();
+        runebender::outline::cleanup::add_extreme_points(&mut self.glyph, &selection)
     }
 
     pub(crate) fn round_coordinates(&mut self) -> bool {
@@ -1048,7 +1256,8 @@ impl Session {
 
     pub(crate) fn hyper_to_cubic(&mut self) -> bool {
         self.record(EditType::Normal);
-        let changed = glyph_ops::convert_hyper_to_cubic(&mut self.glyph, &self.selection);
+        let selection = self.legacy_selection();
+        let changed = glyph_ops::convert_hyper_to_cubic(&mut self.glyph, &selection);
         if changed {
             self.selection.clear();
         }
@@ -1144,15 +1353,17 @@ impl Session {
 
     /// The contours to copy: the ones holding a selected point, or every
     /// contour when nothing is selected. This is shared with the web editor.
+    #[cfg(test)]
     pub(crate) fn contours_for_copy(&self) -> Vec<norad::Contour> {
         if self.selection.is_empty() {
             return self.glyph.contours.clone();
         }
+        let selected = self.legacy_selection();
         self.glyph
             .contours
             .iter()
             .enumerate()
-            .filter(|(index, _)| self.selection.iter().any(|(c, _)| c == index))
+            .filter(|(index, _)| selected.iter().any(|(contour, _)| contour == index))
             .map(|(_, contour)| contour.clone())
             .collect()
     }
@@ -1174,12 +1385,13 @@ impl Session {
         self.record(EditType::Normal);
         let first_new = self.glyph.contours.len();
         self.glyph.contours.extend(contours.iter().cloned());
-        self.selection.clear();
+        let mut selection = HashSet::new();
         for (offset, contour) in contours.iter().enumerate() {
             for point in 0..contour.points.len() {
-                self.selection.insert((first_new + offset, point));
+                selection.insert((first_new + offset, point));
             }
         }
+        self.select_legacy_points(selection);
         true
     }
 
@@ -1200,6 +1412,13 @@ fn resolved_component_paths(font: &norad::Font, glyph: &norad::Glyph) -> Vec<Bez
                         * glyph_paths::glyph_to_bezpath(base, font)
                 })
         })
+        .collect()
+}
+
+fn canonical_point_ids(layer: LayerView<'_>) -> Vec<Vec<PointId>> {
+    layer
+        .contours()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
         .collect()
 }
 
@@ -1348,13 +1567,9 @@ impl Workspace {
         self.active_tab = index;
         self.session = session;
         // An overview batch can change this glyph while its tab is parked.
-        if let Some(glyph) = self
-            .font
-            .font()
-            .get_glyph(&self.session.glyph_name)
-            .cloned()
-        {
-            Arc::make_mut(&mut self.session).reload_glyph(self.font.font(), glyph);
+        if let Some(address) = self.font.active_layer_address(&self.session.glyph_name) {
+            let _ =
+                Arc::make_mut(&mut self.session).reload_from_project(&self.font.project, &address);
         }
         self.tool_before_space_pan = None;
         self.tool = tool;
@@ -1525,16 +1740,11 @@ impl Workspace {
         {
             return false;
         }
-        let Some(glyph) = self
-            .font
-            .project
-            .glyph_layer(&address.glyph, &address.layer)
-        else {
-            return false;
-        };
         let mut session = (*self.session).clone();
         session.pending.clear();
-        session.reload_glyph(self.font.font(), glyph);
+        if !session.reload_from_project(&self.font.project, address) {
+            return false;
+        }
         self.session = Arc::new(session);
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             tab.session = self.session.clone();
@@ -1576,16 +1786,13 @@ impl Workspace {
         }
         drop(master);
         self.font.refresh_entry(index);
-        let Some(glyph) = self
-            .font
-            .font()
-            .get_glyph(&self.session.glyph_name)
-            .cloned()
-        else {
+        let Some(address) = self.font.active_layer_address(&self.session.glyph_name) else {
             return;
         };
         let mut session = (*self.session).clone();
-        session.reload_glyph(self.font.font(), glyph);
+        if !session.reload_from_project(&self.font.project, &address) {
+            return;
+        }
         self.session = Arc::new(session);
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             tab.session = self.session.clone();
@@ -1822,9 +2029,9 @@ impl Workspace {
             let glyph = session.glyph.clone();
             self.session = Arc::new(session);
             self.font.replace_glyph(index, glyph);
-            if let Some(aligned) = self.font.font().get_glyph(&name).cloned() {
+            if let Some(address) = self.font.active_layer_address(&name) {
                 let mut session = (*self.session).clone();
-                session.reload_glyph(self.font.font(), aligned);
+                let _ = session.reload_from_project(&self.font.project, &address);
                 self.session = Arc::new(session);
             }
             self.cells = Arc::new(cells_of(&self.font, &self.palette));
@@ -1923,7 +2130,9 @@ mod tests {
     #[test]
     fn copy_takes_the_contours_holding_a_selected_point() {
         let mut session = two_squares();
-        session.selection.insert((1, 0));
+        session
+            .selection
+            .insert(session.point_id_at(1, 0).expect("second contour point"));
         let copied = session.contours_for_copy();
         assert_eq!(copied.len(), 1);
         // The second square starts at x = 200.
@@ -1936,9 +2145,17 @@ mod tests {
         let copied = session.contours_for_copy();
         assert!(session.paste_contours(&copied));
         assert_eq!(session.glyph.contours.len(), 4);
+        let mut font = norad::Font::new();
+        font.default_layer_mut().insert_glyph(session.glyph.clone());
+        session.reload_glyph(&font, session.glyph.clone());
         // Every point of the two new contours, and nothing else.
         assert_eq!(session.selection.len(), 8);
-        assert!(session.selection.iter().all(|(c, _)| *c >= 2));
+        assert!(
+            session
+                .legacy_selection()
+                .iter()
+                .all(|(contour, _)| *contour >= 2)
+        );
     }
 
     #[test]
@@ -2106,7 +2323,9 @@ mod tests {
             assert!(!session.expand_stroke(width));
         }
         assert!(session.pending.is_empty());
-        session.selection.insert((0, 0));
+        session
+            .selection
+            .insert(session.point_id_at(0, 0).expect("first contour point"));
         assert!(session.expand_stroke(20.0));
         assert_eq!(session.glyph.contours.last(), original.last());
         assert_ne!(session.glyph.contours, original);
@@ -2135,7 +2354,7 @@ mod tests {
     fn clockwise_and_counterclockwise_rotations_are_opposites_on_the_selection() {
         let mut clockwise = two_squares();
         let original = clockwise.glyph.contours.clone();
-        clockwise.selection.extend((0..4).map(|point| (0, point)));
+        clockwise.select_contour(0);
         let mut counterclockwise = clockwise.clone();
         assert!(clockwise.rotate_90_clockwise());
         assert!(counterclockwise.rotate_90());
@@ -2154,11 +2373,18 @@ mod tests {
     #[test]
     fn duplicate_repeat_reapplies_the_last_transform_to_the_clone() {
         let mut session = two_squares();
-        session.selection.extend((0..4).map(|point| (0, point)));
+        session.select_contour(0);
         assert!(session.rotate_90());
         assert!(session.duplicate_repeat());
         assert_eq!(session.glyph.contours.len(), 3);
-        assert!(session.selection.iter().all(|(contour, _)| *contour == 2));
+        assert!(
+            session
+                .pending_selection_indices
+                .as_ref()
+                .expect("duplicate selects its new contour")
+                .iter()
+                .all(|(contour, _)| *contour == 2)
+        );
     }
 
     #[test]

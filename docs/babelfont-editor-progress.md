@@ -26,9 +26,8 @@ The draft now includes stable-ID component and anchor add/remove operations plus
 ## Remaining shared API blockers
 
 The guarded draft now covers stable point, component and anchor selection; owned gesture lifetime; canonical contour clipboard values; edit commands; metadata; and complete whole-layer rendering.
-One shared rendering gap remains before the Norad session mirror can be removed without weakening component hit testing: `resolved_document_components` still renders each top-level component through the ordinary-contour path, so smart-component and metaball bases can disagree with the complete layer renderer.
-The pipeline lane owns a full-render single-component helper for selection geometry while decomposition deliberately retains its existing integer-rounded structural-contour behavior.
-No other shared API blocker was found in the focused Session/canvas/clipboard audit.
+Integration commit `1b5234e` closed the final rendering gap with full-render single-component geometry while decomposition deliberately retains its existing integer-rounded structural-contour behavior.
+No shared API blocker remains for the Session/canvas/clipboard cutover.
 
 ## Canonical source-metadata presentation slice
 
@@ -235,16 +234,50 @@ RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources CARGO_BUILD_JOB
 
 The focused read, proposal revision guard and foreground-preservation regression passed.
 
+## Canonical editor selection and clipboard slice
+
+Implementation commit: `Move editor selection and clipboard to canonical IDs`.
+Resolve its exact ID with `git log --format=%H --grep='^Move editor selection and clipboard to canonical IDs$' -1`.
+Affected paths: `src/application/editor/session.rs`, `src/application/editor/commands.rs`, `src/application/workspace.rs`, `src/application/view/canvas/editor.rs`, `src/application/view/panels/tabs.rs`, `src/application/view/panels/editor_info.rs`, `src/application/platform/host.rs` and this log.
+
+`Session` point selection and every canvas-visible `PointView` now use the document model's stable `PointId`.
+Tuple contour/point indices are confined to adapters around outline algorithms that still consume the compatibility glyph projection.
+Canonical Project reloads retain selected IDs directly, while a legacy structural edit explicitly carries its temporary index selection only until the source guard reconciles and reloads the canonical layer.
+
+The workspace clipboard now stores owned canonical `CopiedContour` values.
+Copy reads the active `LayerView` and its stable selection, and paste appends fresh canonical contour and point identities through one guarded `CanonicalLayerTransaction`.
+The Project owns the paste history step; the application stores only ordering context and reselects the returned `PastedContours::points` after the canonical reload.
+The focused regression proves copied source points keep their identities, pasted points receive distinct identities, and Project-owned undo/redo removes and restores the pasted contour.
+
+The Dimensions panel also reads `stem_and_bar_project` from the active canonical source rather than the compatibility font.
+The direct-write `features --write` path now retains its established UFO-only format boundary while read-only Babelfont feature generation remains available.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::commands::tests::clipboard_paste_uses_canonical_contours_and_history -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::session::tests -- --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::platform::host::tests -- --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The complete binary suite passed 167 tests with four documented model or external-font tests ignored.
+All 15 focused session tests, 23 runnable host tests and the canonical clipboard regression passed.
+Warning-denied workspace/all-target Clippy, formatting and diff checks passed.
+
 ## Remaining application callers
 
-- `application/editor/session.rs` still stores and mutates a `norad::Glyph`, resolved Norad component contours and pending Norad history records.
+- `application/editor/session.rs` still stores and mutates a compatibility `norad::Glyph`, resolved Norad component contours, index-selected components and anchors, and pending Norad history records.
 - `application/font_model.rs` still exposes mutable `Master` and `norad::Font` accessors and performs font-wide edits through compatibility projections.
-- `application/workspace.rs` still stores a Norad contour clipboard and application-owned rename, Unicode and overview history values.
+- `application/workspace.rs` still stores application-owned rename, Unicode and overview history values; outline clipboard storage is canonical.
 - `application/editor/commands.rs`, inspector and tools still call legacy font/source mutation APIs.
 - `application/view/canvas/editor.rs` still paints handles and anchors from the session's Norad glyph.
 - Several panels still read compatibility font and glyph metadata pending the M07 canonical metadata surface.
 
 ## Next action
 
-Migrate the session and canvas to the guarded canonical layer transaction as soon as the shared Project boundary lands.
-In parallel, move independent read-only render/cache paths to `Project::document_layer` and stable source/layer identities without changing UI behavior.
+Move point drags onto an owned guarded layer transaction so Pointer Cancel drops the draft and Pointer Up commits exactly one Project history step.
+Then convert component and anchor selection and component render/decompose caches to stable canonical identities before removing the remaining Norad session mirror.

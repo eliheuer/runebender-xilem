@@ -18,7 +18,7 @@ use masonry::imaging::Painter;
 use masonry::kurbo;
 use masonry::kurbo::{Affine, Axis, Circle, Line, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-use runebender::outline::glyph_ops::PointId;
+use runebender::document::PointId;
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
@@ -765,7 +765,8 @@ impl EditorWidget {
                 let next = &contour.points[(pi + 1) % contour.points.len()];
                 let from = affine * Point::new(start.x, start.y);
                 let to = affine * Point::new(next.x, next.y);
-                (from.distance(to) > 0.001).then_some(((ci, pi), from, to))
+                let id = self.session.point_id_at(ci, pi)?;
+                (from.distance(to) > 0.001).then_some((id, from, to))
             })
             .collect()
     }
@@ -2947,11 +2948,15 @@ mod tests {
         let affine = editor.session.viewport.affine();
         let initial = editor.start_markers();
         assert_eq!(initial.len(), 1);
-        assert_eq!(initial[0].0, (0, 0));
+        assert_eq!(initial[0].0, editor.session.point_id_at(0, 0).unwrap());
         assert_eq!(initial[0].1, affine * Point::new(0.0, 0.0));
         assert_eq!(initial[0].2, affine * Point::new(400.0, 0.0));
         editor.session.glyph.contours[0].points[0].typ = norad::PointType::OffCurve;
-        assert_eq!(editor.start_markers()[0].0, (0, 1), "skip leading handles");
+        assert_eq!(
+            editor.start_markers()[0].0,
+            editor.session.point_id_at(0, 1).unwrap(),
+            "skip leading handles"
+        );
         editor.session.glyph.contours[0].points[0].typ = norad::PointType::Move;
         assert!(
             editor.start_markers().is_empty(),

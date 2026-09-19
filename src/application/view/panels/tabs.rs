@@ -126,18 +126,14 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         .iter()
         .enumerate()
         .map(|(ci, contour)| {
-            let active = app.session.selection.iter().any(|&(index, _)| index == ci);
+            let active = app.session.contour_selected(ci);
             recipes::toggle(
                 pal,
                 format!("Contour {} · {} nodes", ci + 1, contour.points.len()),
                 active,
                 move |app: &mut Workspace| {
-                    let Some(contour) = app.session.glyph.contours.get(ci) else {
-                        return;
-                    };
-                    let points = contour.points.len();
                     let session = Arc::make_mut(&mut app.session);
-                    session.selection = (0..points).map(|pi| (ci, pi)).collect();
+                    let points = session.select_contour(ci);
                     app.selected_points = points;
                     app.refresh_coord_bufs();
                 },

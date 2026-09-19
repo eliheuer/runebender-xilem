@@ -191,7 +191,7 @@ pub(crate) struct Workspace {
     pub(crate) kern1_buf: String,
     pub(crate) kern2_buf: String,
     /// Copied contours. The system clipboard carries text, not outlines.
-    pub(crate) clipboard: Vec<norad::Contour>,
+    pub(crate) clipboard: Vec<runebender::document::CopiedContour>,
     /// Draw the UFO background layer under the outline.
     pub(crate) show_background: bool,
     /// Ghost every attachable mark on the open glyph's anchors.

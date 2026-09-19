@@ -912,7 +912,9 @@ mod tests {
         let original_anchor_count = workspace.session.glyph.anchors.len();
 
         workspace.apply_op(|session| {
-            session.selection.insert((0, 0));
+            session
+                .selection
+                .insert(session.point_id_at(0, 0).expect("first glyph point"));
             session.nudge(2.0, 0.0)
         });
         workspace.set_advance_from_buf(format!("{}", original_width + 4.0));

@@ -354,10 +354,10 @@ impl Workspace {
             self.cells = Arc::new(cells_of(&self.font, &self.palette));
             self.modified = true;
             if matches!(self.mode, Mode::Editor(_))
-                && let Some(glyph) = self.font.font().get_glyph(&self.session.glyph_name)
+                && let Some(address) = self.font.active_layer_address(&self.session.glyph_name)
             {
                 let mut session = (*self.session).clone();
-                session.reload_glyph(self.font.font(), glyph.clone());
+                let _ = session.reload_from_project(&self.font.project, &address);
                 self.session = Arc::new(session);
                 self.refresh_metric_bufs();
             }
@@ -510,10 +510,10 @@ impl Workspace {
         if baked > 0 {
             if matches!(self.mode, Mode::Editor(_))
                 && self.session.glyph_name == name
-                && let Some(glyph) = self.font.font().get_glyph(&name)
+                && let Some(address) = self.font.active_layer_address(&name)
             {
                 let mut session = (*self.session).clone();
-                session.reload_glyph(self.font.font(), glyph.clone());
+                let _ = session.reload_from_project(&self.font.project, &address);
                 self.session = Arc::new(session);
                 self.selected_points = 0;
             }
@@ -1207,7 +1207,24 @@ impl Workspace {
         if !matches!(self.mode, Mode::Editor(_)) {
             return;
         }
-        self.clipboard = self.session.contours_for_copy();
+        let Some(address) = self.font.active_layer_address(&self.session.glyph_name) else {
+            self.note = "The active glyph layer is unavailable".into();
+            return;
+        };
+        let Some(layer) = self
+            .font
+            .project
+            .document_layer(&address.glyph, &address.layer)
+        else {
+            self.note = "The active glyph layer is unavailable".into();
+            return;
+        };
+        let selected = self.session.canonical_selection(layer);
+        let Ok(copied) = layer.copy_contours(&selected) else {
+            self.note = "The point selection changed before copying".into();
+            return;
+        };
+        self.clipboard = copied;
         self.note = match self.clipboard.len() {
             0 => "nothing to copy".into(),
             1 => "copied 1 contour".into(),
@@ -1220,8 +1237,53 @@ impl Workspace {
         if !matches!(self.mode, Mode::Editor(_)) || self.clipboard.is_empty() {
             return;
         }
-        let contours = self.clipboard.clone();
-        self.apply_op(move |session| session.paste_contours(&contours));
+        let glyph = self.session.glyph_name.clone();
+        let Some(glyph_index) = self.font.index_of(&glyph) else {
+            return;
+        };
+        let Some(address) = self.font.active_layer_address(&glyph) else {
+            self.note = "The active glyph layer is unavailable".into();
+            return;
+        };
+        let undo_depth = self.font.master().undo_depth(glyph_index);
+        let Ok(mut transaction) = self.font.project.begin_document_layer_transaction(&address)
+        else {
+            self.note = "The active glyph layer changed before pasting".into();
+            return;
+        };
+        let Ok(pasted) = transaction.draft_mut().paste_contours(&self.clipboard) else {
+            self.note = "The copied contours are no longer valid".into();
+            return;
+        };
+        let Ok(runebender::document::project::DocumentEditOutcome::Changed { .. }) = self
+            .font
+            .project
+            .commit_document_layer_transaction(transaction)
+        else {
+            self.note = "The active glyph layer changed before pasting".into();
+            return;
+        };
+        self.metadata_undo.push(MetadataEdit::DocumentLayer {
+            glyph,
+            address: address.clone(),
+            label: "paste contours".into(),
+            undo_depth,
+        });
+        self.metadata_redo.clear();
+        if self.reload_canonical_layer(&address)
+            && let Some(layer) = self
+                .font
+                .project
+                .document_layer(&address.glyph, &address.layer)
+        {
+            let mut session = (*self.session).clone();
+            session.select_canonical_points(layer, &pasted.points);
+            self.selected_points = session.selection.len();
+            self.session = Arc::new(session);
+            if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                tab.session = self.session.clone();
+            }
+        }
         self.note = format!("pasted {} contours", self.clipboard.len());
     }
 
@@ -1389,6 +1451,61 @@ mod tests {
             original
         );
         std::fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn clipboard_paste_uses_canonical_contours_and_history() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-canonical-clipboard-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(rectangle("A", 50.0, 450.0));
+        font.save(&path).expect("the fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let index = workspace.font.index_of("A").expect("A exists");
+        workspace.open_glyph(index);
+        let selected = workspace
+            .session
+            .point_id_at(0, 0)
+            .expect("the first point has canonical identity");
+        Arc::make_mut(&mut workspace.session)
+            .selection
+            .insert(selected);
+        workspace.copy_contours();
+        assert_eq!(workspace.clipboard.len(), 1);
+
+        workspace.paste_contours();
+        assert_eq!(workspace.session.glyph.contours.len(), 2);
+        assert_eq!(workspace.session.selection.len(), 4);
+        assert!(
+            workspace
+                .session
+                .points()
+                .iter()
+                .any(|point| point.id == selected),
+            "the original contour keeps its stable point identity"
+        );
+        assert!(
+            workspace
+                .session
+                .selection
+                .iter()
+                .all(|point| *point != selected)
+        );
+        assert_eq!(workspace.metadata_undo.len(), 1);
+        workspace.undo_active_edit(false);
+        assert_eq!(workspace.session.glyph.contours.len(), 1);
+        workspace.undo_active_edit(true);
+        assert_eq!(workspace.session.glyph.contours.len(), 2);
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 
     #[test]
