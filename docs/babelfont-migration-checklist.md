@@ -134,6 +134,9 @@ M07 owns the canonical document algorithms in those files; M06 retains their app
 The M08/M09 pipeline lane, task `01a0ba2a-5670-7451-b05a-bd71293b2229`, owns `interpolation.rs`, `compile.rs`, `compile_metadata.rs`, dedicated pipeline tests and `docs/babelfont-pipeline-progress.md`.
 The M10 lane, task `01a0ba89-8a9f-7c81-b89c-f37805ff39c6`, owns `proposal.rs`, `edit_batch.rs`, `experiments.rs`, `live.rs`, `nodes_live.rs`, dedicated tests and its lane progress document.
 M10 may add a narrow explicit boundary codec when the external proposal contract requires one, but it does not edit shared Project/VariableData files or application-owned callers.
+M10 is specifically authorized to add `document/babelfont/proposal_edit.rs` and the single `mod proposal_edit;` declaration needed to compile it; no other shared-parent edits are transferred.
+The M11 document/headless lane reuses task `01a0ba27-44fc-7243-a672-aacc3e5b05de` and owns `document/nodes_run.rs`, `analysis/`, dedicated tests and `docs/babelfont-headless-progress.md`.
+It retains `history.rs` and `sources.rs` only for review or integration corrections to its completed M05 cutover; M06 continues to own all application CLI adapters.
 The integration lane retains M04 special-source extensions and alone integrates returned commits.
 Worker lanes request narrow shared-model APIs from this lane and return exact reviewed commits for integration.
 No lane edits another lane's owned files, merges into main, pushes or weakens the acceptance criteria.
@@ -145,11 +148,12 @@ Shared Clippy, documentation and broader suites run at coherent integration chec
 |---|---|---|
 | M04 canonical topology and cleanup | Direct curve conversion and handle cleanup are integrated through `2b15baa`; the independent quadratic-chain correction passes. | Finish special editable-source preservation and the remaining selection/metadata acceptance before checking M04 complete. |
 | M05 history and structural replay | Canonical layer/source snapshots and Project-owned history foundations exist; the lane is validating interleaved source operations. | Return a reviewed commit that passes both Project-level and host-command replay regressions. |
-| M06 application cutover | Canonical font-info, source-comparison geometry and production session metrics are integrated. | Consume a stable top-level component resolver, then move Session mutation/history and remaining view readers off Norad. |
-| M07 metadata | Typed source, layer and component metadata foundations are integrated. | Use the transferred document algorithms and request only narrow Project whole-font transaction hooks. |
-| M08/M09 pipeline | Canonical interpolation, compiler metadata and Designspace structure foundations are integrated. | Remove the remaining source-structure and output presentation adapters, then execute direct invalidation/export acceptance. |
-| M10 proposals and versions | Newly assigned to the former curve lane. | Use stable IDs, opaque layer snapshots and guarded Project commits; request a canonical version wrapper if whole-document mutation cannot be expressed without a mirror. |
-| M11/M12 audit and adapters | Not yet complete. | Reassign a finished lane only after its current acceptance is integrated; keep headless and constructor work behind the same canonical Project APIs. |
+| M06 application cutover | Canonical font-info, source-comparison geometry, production session metrics and stable top-level component resolution are integrated. | Consume the component resolver, then move Session mutation/history and remaining view readers off Norad. |
+| M07 metadata | Typed source, layer and component metadata foundations are integrated. | Continue composition, alignment and feature algorithms while the integration lane supplies the atomic whole-glyph Project transaction. |
+| M08/M09 pipeline | Canonical interpolation, compiler metadata and Designspace structure foundations are integrated. | Correct compiler feature-include rooting to the resolved source path, then remove the final interpolation output adapter and execute invalidation/export acceptance. |
+| M10 proposals and versions | Newly assigned to the former curve lane with one bounded canonical proposal-edit child authorized. | Use stable IDs, opaque layer snapshots and guarded Project commits; its current experiment design does not require a whole-Project clone. |
+| M11 headless and analysis | Assigned to the completed history/source lane for actual `nodes_run` and analysis caller migration. | Preserve schemas, source choice and errors while routing operations through canonical Project APIs; M06 retains application CLI. |
+| M12 adapters and constructors | Not yet complete. | Reassign a finished lane after its current acceptance is integrated; keep constructor work behind the same canonical Project APIs. |
 | M13/M14 removal and final proof | Blocked by remaining caller cutovers. | Remove compatibility state only after callers land, then reserve one coherent final native/browser/preservation/clean-checkout proof. |
 
 Today's target is completion without changing the definition of complete.

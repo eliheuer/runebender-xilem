@@ -31,6 +31,21 @@ The dedicated canonical handle-cleanup suite passes 11 tests, and the complete v
 M04 remains active because the central checklist still includes special editable-source preservation and complete selection and metadata acceptance.
 M05 remains active in its owned history lane; the Project-level Designspace transaction hooks are foundations rather than a completion claim.
 
+### Stable canonical component-resolution boundary
+
+Evidence commit: `81fd9e7` (`Resolve canonical components by stable identity`).
+
+The component resolver now returns one exact rendered path and one recursively resolved canonical contour set for each top-level `ComponentId`.
+The exact path preserves the current hit-testing and selection-feedback contract, while the rounded `CopiedContour` values preserve the existing decomposition contract and source metadata.
+Missing references, cycles, excessive depth and nonfinite transforms remain explicit errors.
+
+The focused component-resolution regression passes and requires top-level identity order, exact combined geometry and nonempty decomposition payloads.
+Warning-denied library/test Clippy, formatting and diff checks also pass at this integration checkpoint.
+M06 owns consuming this API and removing the session's Norad component cache.
+
+The direct compiler-structure cutover is integrated, but independent review found that its source filename did not retain the resolved on-disk directory used by feature includes.
+Pipeline acceptance remains pending the lane-owned correction and the four focused compiler regressions.
+
 ## M00 — Establish the continuation and measurable baseline
 
 Run date: 2026-09-18 America/Los_Angeles (2026-09-19 UTC).
