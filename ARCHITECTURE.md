@@ -104,6 +104,7 @@ For a first reading, follow this path:
 `Project::glyph_sources` identifies the subset participating in that glyph's interpolation; an auxiliary layer does not become a source merely by existing.
 Babelfont owns geometry; the preserving adapter retains exact UFO values and metadata that Babelfont cannot represent.
 Stable source identities survive insertion, removal and display-order changes.
+New read-only callers use `document_glyph`, `document_layer`, `document_source` and `document_sources` to inspect canonical geometry, exact metrics and stable identities without constructing UFO values.
 `document/sources.rs` owns structural transactions and their guarded undo history; removing a source never deletes its UFO directory.
 
 `document::source::Master` is a compatibility UFO projection with source-local history and paint caches.

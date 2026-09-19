@@ -6,13 +6,13 @@
 //! The graphical editor and headless commands share this library.
 //! UFO and Designspace are Runebender's first-class formats.
 //! Importers support most other common font formats.
-//! The current project model stores each editable master as a `norad::Font`.
-//! A [`document::project::Project`] groups one or more masters with their designspace data.
+//! A [`document::project::Project`] stores canonical Babelfont glyph layers plus exact-value and
+//! metadata extensions, grouping them with one or more source records and their designspace data.
 //! Text preview builds a temporary, outline-free OpenType font for shaping.
 //!
 //! - [`analysis`] computes measurements, curvature, categories, and search results.
 //!   It borrows the in-memory source model and does not change it.
-//! - [`document`] owns the loaded UFO masters and their designspace metadata.
+//! - [`document`] owns canonical glyph layers, source records and designspace metadata.
 //!   It also handles interpolation, edit history, proposed changes, and node workflows.
 //! - [`formats`] interprets UFO lib keys and reads or writes data at the document boundary.
 //!   Its converters cover Glyphs sources, OpenType binaries, SVG, and traced images.

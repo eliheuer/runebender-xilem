@@ -251,3 +251,37 @@ The unchanged `block v0.1.6` future-incompatibility notice remains a dependency 
 
 M01 is complete: field ownership, typed preservation, identity rules, identity-aware projection and reconciliation, adversarial source fidelity and compiler quantization are all covered by executed evidence.
 The next dependency-ready milestone is M02, beginning with direct document-facing glyph, layer and source readers plus transactional mutations over Babelfont and the typed extensions.
+
+## M02 — Add direct document queries and transactional mutations
+
+Status: active.
+
+### Canonical read views substep
+
+Evidence commit: `Add canonical document read views` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Add canonical document read views$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/document/variable.rs`, `src/document/project.rs`, `src/document/mod.rs`, `src/lib.rs`, `ARCHITECTURE.md`, the M01 ownership contract, `tests/variable_project.rs` and this log.
+
+Project now exposes read-only source, glyph and layer views backed directly by canonical storage.
+The views provide stable typed identities for contours, points, components and anchors, exact horizontal and vertical advances, source names and locations, point geometry and roles, exact component matrices and anchor data without constructing a Norad glyph or font.
+Existing materializing accessors remain available only for unmigrated callers and format boundaries tracked by later milestones.
+
+The new integration test reads four source identities, all five layers of an adversarial variable glyph, exact metrics and representative contour, point, component and anchor values.
+It also verifies that the direct layer view immediately reflects an unsaved compatibility edit after reconciliation.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project document_views_read_exact_canonical_layers_and_stable_source_identity -- --exact --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused direct-reader test passed, warning-denied Clippy passed for library and integration-test targets, and public API documentation built successfully.
+Formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+This is the reader half of M02's first checklist item, so that item remains unchecked until the canonical edit draft and transaction API lands.
+The next substep is a canonical layer transaction that owns before/after state, reports no-op versus changed results and invalidates revision-dependent data only when it commits.

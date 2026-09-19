@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType};
+use runebender::document::LayerPointType;
 use runebender::document::font_memory::designspace_from_str;
 use runebender::document::project::{Master, Project};
 use runebender::document::var_model::Location;
@@ -327,6 +328,96 @@ fn mapped_axes_sources_and_instances_use_the_same_coordinates() {
     assert_eq!(project.master_locations[1], location(1.0, 0.0));
     assert_eq!(project.instances[0].1, location(0.5, 0.0));
     assert_eq!(project.axes[0].user.normalized_to_user(0.5), 650.0);
+}
+
+#[test]
+fn document_views_read_exact_canonical_layers_and_stable_source_identity() {
+    let (_scratch, mut project, _fonts) = adversarial_fixture();
+    let sources: Vec<_> = project.document_sources().collect();
+    assert_eq!(sources.len(), 4, "all document sources must be visible");
+    assert_eq!(sources[0].id(), SourceId(0), "source identity changed");
+    assert_eq!(sources[0].name(), "Regular", "source name changed");
+    assert!(
+        sources[0].path().ends_with("Regular.ufo"),
+        "source path changed"
+    );
+    let layer_id = sources[0].default_layer();
+    assert_eq!(
+        layer_id.name, "public.default",
+        "default layer address changed"
+    );
+
+    let glyph = project.document_glyph("A").unwrap();
+    assert_eq!(glyph.name(), "A", "glyph view returned the wrong name");
+    assert_eq!(
+        glyph.layer_ids().count(),
+        5,
+        "four source layers and the intermediate layer must be visible"
+    );
+    let layer = glyph.layer(&layer_id).unwrap();
+    assert_eq!(
+        layer.width(),
+        600.123_456_789,
+        "layer view must use the exact advance"
+    );
+    assert_eq!(
+        layer.height(),
+        1_000.123_456_789,
+        "layer view must use the exact vertical advance"
+    );
+    assert_eq!(layer.note(), Some("exact payload A"), "layer note changed");
+    let contours: Vec<_> = layer.contours().collect();
+    assert_eq!(contours.len(), 2, "canonical contours are missing");
+    assert_ne!(
+        contours[0].id(),
+        contours[1].id(),
+        "contours must have distinct identities"
+    );
+    let points: Vec<_> = contours[0].points().collect();
+    assert_eq!(points.len(), 2, "canonical points are missing");
+    assert_eq!(
+        points[0].point_type(),
+        LayerPointType::Line,
+        "point type changed"
+    );
+    assert_eq!(points[0].name(), Some("point 0 0"), "point name changed");
+    assert_eq!(
+        points[0].position(),
+        kurbo::Point::new(0.0, 50.0),
+        "point position changed"
+    );
+    let components: Vec<_> = layer.components().collect();
+    assert_eq!(components.len(), 2, "canonical components are missing");
+    assert_eq!(
+        components[0].reference(),
+        "base",
+        "component reference changed"
+    );
+    assert_eq!(
+        components[0].transform().as_coeffs(),
+        [1.0, 0.125, -0.25, 0.875, 0.0, -12.987_654_321],
+        "component transform must remain exact"
+    );
+    let anchors: Vec<_> = layer.anchors().collect();
+    assert_eq!(anchors.len(), 2, "canonical anchors are missing");
+    assert_eq!(anchors[0].name(), "anchor 0", "anchor name changed");
+    assert_eq!(
+        anchors[0].position(),
+        kurbo::Point::new(0.0, 700.987_654_321),
+        "anchor position changed"
+    );
+
+    assert!(
+        project.edit_layer("A", &layer_id, |glyph| {
+            glyph.width += 0.000_000_001;
+        }),
+        "compatibility edit must change the layer"
+    );
+    assert_eq!(
+        project.document_layer("A", &layer_id).unwrap().width(),
+        600.123_456_79,
+        "document reader must immediately reflect an unsaved edit"
+    );
 }
 
 #[test]

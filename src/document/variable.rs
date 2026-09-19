@@ -59,6 +59,31 @@ impl VariableGlyph {
     }
 }
 
+/// Read-only access to one glyph and all of its canonical layers.
+#[derive(Clone, Copy, Debug)]
+pub struct GlyphView<'a> {
+    name: &'a str,
+    glyph: &'a VariableGlyph,
+    data: &'a VariableData,
+}
+
+impl<'a> GlyphView<'a> {
+    /// Current glyph name in the document index.
+    pub fn name(self) -> &'a str {
+        self.name
+    }
+
+    /// Stable addresses of every source and auxiliary layer for this glyph.
+    pub fn layer_ids(self) -> impl Iterator<Item = &'a LayerId> + 'a {
+        self.glyph.layers.keys()
+    }
+
+    /// Read one canonical layer without materializing a UFO glyph.
+    pub fn layer(self, id: &LayerId) -> Option<super::babelfont::LayerView<'a>> {
+        self.data.layer_view(self.name, id)
+    }
+}
+
 /// Canonical glyph ownership plus glyph-free UFO persistence metadata.
 #[derive(Debug, Default)]
 pub(super) struct VariableData {
@@ -88,6 +113,28 @@ impl Clone for VariableData {
 }
 
 impl VariableData {
+    pub(super) fn glyph_view(&self, name: &str) -> Option<GlyphView<'_>> {
+        Some(GlyphView {
+            name: self.glyphs.get_key_value(name)?.0,
+            glyph: self.glyphs.get(name)?,
+            data: self,
+        })
+    }
+
+    pub(super) fn layer_view(
+        &self,
+        name: &str,
+        id: &LayerId,
+    ) -> Option<super::babelfont::LayerView<'_>> {
+        let preserved = self.glyphs.get(name)?.layers.get(id)?;
+        let layer = self
+            .font
+            .glyphs
+            .get(name)?
+            .get_layer(&super::babelfont::layer_key(id))?;
+        Some(super::babelfont::LayerView::new(layer, preserved))
+    }
+
     pub(super) fn from_sources(sources: &[Master]) -> Self {
         let mut data = Self::default();
         for (index, source) in sources.iter().enumerate() {

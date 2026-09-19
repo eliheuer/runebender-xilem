@@ -17,7 +17,7 @@ use kurbo::BezPath;
 
 pub use super::source::{GlyphEntry, GlyphPoint, Master, extract_anchors, extract_points};
 use super::variable::{
-    GlyphSource, LayerId, SourceEdit, SourceId, SourcesEdit, VariableData, VariableGlyph,
+    GlyphSource, GlyphView, LayerId, SourceEdit, SourceId, SourcesEdit, VariableData, VariableGlyph,
 };
 use crate::document::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
@@ -41,6 +41,46 @@ pub struct AxisInfo {
     pub default: f64,
     /// Maximum value in design coordinates.
     pub max: f64,
+}
+
+/// Read-only source metadata without exposing its compatibility font projection.
+#[derive(Clone, Copy, Debug)]
+pub struct SourceView<'a> {
+    id: SourceId,
+    name: &'a str,
+    location: &'a Location,
+    path: &'a Path,
+    default_layer_name: &'a str,
+}
+
+impl<'a> SourceView<'a> {
+    /// Stable identity of this source.
+    pub fn id(self) -> SourceId {
+        self.id
+    }
+
+    /// Display name of this source.
+    pub fn name(self) -> &'a str {
+        self.name
+    }
+
+    /// Normalized design location of this source.
+    pub fn location(self) -> &'a Location {
+        self.location
+    }
+
+    /// Persistence destination for this source.
+    pub fn path(self) -> &'a Path {
+        self.path
+    }
+
+    /// Stable address of this source's default layer.
+    pub fn default_layer(self) -> LayerId {
+        LayerId {
+            source: self.id,
+            name: self.default_layer_name.to_owned(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -1094,6 +1134,38 @@ impl Project {
     /// The variable glyph, independent of the active source or preview location.
     pub fn variable_glyph(&self, name: &str) -> Option<&VariableGlyph> {
         self.variable.glyphs.get(name)
+    }
+
+    /// Read one glyph and its canonical layers without constructing UFO values.
+    pub fn document_glyph(&self, name: &str) -> Option<GlyphView<'_>> {
+        self.variable.glyph_view(name)
+    }
+
+    /// Read one canonical layer without constructing a UFO glyph.
+    pub fn document_layer(&self, name: &str, layer: &LayerId) -> Option<super::LayerView<'_>> {
+        self.variable.layer_view(name, layer)
+    }
+
+    /// Read one source's stable identity and metadata without its UFO projection.
+    pub fn document_source(&self, id: SourceId) -> Option<SourceView<'_>> {
+        let index = self.source_index(id)?;
+        let source = self.masters.get(index)?;
+        Some(SourceView {
+            id,
+            name: self.master_names.get(index)?.as_ref(),
+            location: self.master_locations.get(index)?,
+            path: &source.source_path,
+            default_layer_name: source.font.default_layer().name().as_str(),
+        })
+    }
+
+    /// Read every source in current display order without its UFO projection.
+    pub fn document_sources(&self) -> impl DoubleEndedIterator<Item = SourceView<'_>> {
+        self.variable
+            .source_ids
+            .iter()
+            .copied()
+            .filter_map(|id| self.document_source(id))
     }
 
     /// Materialize one glyph layer for a format boundary or transitional caller.

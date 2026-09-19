@@ -1,9 +1,9 @@
 # Babelfont document field and identity ownership
 
-Status: **M01 contract — implementation incomplete**.
-Reviewed against upstream Babelfont `29bdedbbfa7d3150b651dbd7c94fce6b79677ca4`, Norad 0.13.0 and Runebender `314aa3235c372ed8d5fef7a2cddb8be3a07ad1da`.
-This contract defines the destination model for the migration.
-It does not make the current Norad mirrors or index-based projection safe.
+Status: **M01 contract implemented; later migration milestones remain**.
+Reviewed against upstream Babelfont `29bdedbbfa7d3150b651dbd7c94fce6b79677ca4`, Norad 0.18.4 and the M01 implementation ending at `bf989c16da745f6cf72960a7765b6cf9f9b85408`.
+This contract defines the destination model for the migration and now governs the typed preservation and identity-aware projection code.
+The remaining Norad source projections, reconciliation guards and legacy Master editing model are still temporary compatibility paths.
 
 ## Rules
 
@@ -86,5 +86,5 @@ It does not contain a `norad::Glyph`, `norad::Font` or a serialized round trip.
 A compiler snapshot contains only values needed by fontc plus checked quantized copies.
 A UFO/Designspace export snapshot materializes codec objects from the canonical document and preserving payloads, then discards them after writing.
 
-The existing `VariableGlyph.layers: BTreeMap<LayerId, norad::Glyph>`, `VariableData.templates`, Master fonts, source guards and positional `project_layer` restoration violate this destination contract and remain tracked migration work.
-M01 must implement typed extensions and identity-aware projection before M02 exposes direct topology transactions.
+The glyph-free `VariableData.templates`, Master compatibility fonts, source guards and reconciliation remain tracked migration work.
+M02 introduces direct document queries and transactions so later milestones can remove those paths rather than wrapping them.

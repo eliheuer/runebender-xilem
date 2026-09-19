@@ -22,9 +22,10 @@ const OBJECT_ID_KEY: &str = "com.runebender.documentObjectId";
 static NEXT_OBJECT_ID: AtomicU64 = AtomicU64::new(1);
 
 macro_rules! object_id {
-    ($name:ident) => {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        struct $name(u64);
+    ($name:ident, $doc:literal) => {
+        #[doc = $doc]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct $name(u64);
 
         impl $name {
             fn next() -> Self {
@@ -34,10 +35,19 @@ macro_rules! object_id {
     };
 }
 
-object_id!(ContourId);
-object_id!(PointId);
-object_id!(ComponentId);
-object_id!(AnchorId);
+object_id!(
+    ContourId,
+    "Stable identity of a contour in an open document."
+);
+object_id!(PointId, "Stable identity of a point in an open document.");
+object_id!(
+    ComponentId,
+    "Stable identity of a component in an open document."
+);
+object_id!(
+    AnchorId,
+    "Stable identity of an anchor in an open document."
+);
 
 #[derive(Clone, Debug)]
 struct PreservedContour {
@@ -96,6 +106,227 @@ pub(super) struct LayerPreservation {
     contours: Vec<PreservedContour>,
     components: Vec<PreservedComponent>,
     anchors: Vec<PreservedAnchor>,
+}
+
+/// A point kind in a canonical document layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerPointType {
+    /// Start an open contour without drawing a segment.
+    Move,
+    /// End a straight segment.
+    Line,
+    /// A control point outside the curve.
+    OffCurve,
+    /// End a cubic Bézier segment.
+    Curve,
+    /// End a quadratic Bézier segment.
+    QCurve,
+}
+
+/// Read-only access to one canonical glyph layer.
+#[derive(Clone, Copy, Debug)]
+pub struct LayerView<'a> {
+    layer: &'a Layer,
+    preserved: &'a LayerPreservation,
+}
+
+impl<'a> LayerView<'a> {
+    pub(super) fn new(layer: &'a Layer, preserved: &'a LayerPreservation) -> Self {
+        Self { layer, preserved }
+    }
+
+    /// The exact horizontal advance from the document extension.
+    pub fn width(self) -> f64 {
+        self.preserved.width
+    }
+
+    /// The exact vertical advance from the document extension.
+    pub fn height(self) -> f64 {
+        self.preserved.height
+    }
+
+    /// The source glyph name attached to this layer.
+    pub fn glyph_name(self) -> &'a str {
+        &self.preserved.name
+    }
+
+    /// The optional source note attached to this layer.
+    pub fn note(self) -> Option<&'a str> {
+        self.preserved.note.as_deref()
+    }
+
+    /// Unicode scalar values attached to this glyph layer.
+    pub fn codepoints(self) -> impl Iterator<Item = char> + 'a {
+        self.preserved.codepoints.iter()
+    }
+
+    /// Canonical contours in storage order.
+    pub fn contours(self) -> impl DoubleEndedIterator<Item = ContourView<'a>> + 'a {
+        self.layer.paths().map(move |path| {
+            let id = ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+            let preserved = self
+                .preserved
+                .contours
+                .iter()
+                .find(|candidate| candidate.id == id)
+                .expect("contour preservation identity");
+            ContourView { path, preserved }
+        })
+    }
+
+    /// Canonical components in storage order.
+    pub fn components(self) -> impl DoubleEndedIterator<Item = ComponentView<'a>> + 'a {
+        self.layer.components().map(move |component| {
+            let id = ComponentId(
+                read_id(&component.format_specific).expect("canonical component identity"),
+            );
+            let preserved = self
+                .preserved
+                .components
+                .iter()
+                .find(|candidate| candidate.id == id)
+                .expect("component preservation identity");
+            ComponentView {
+                component,
+                preserved,
+            }
+        })
+    }
+
+    /// Canonical anchors in storage order.
+    pub fn anchors(self) -> impl DoubleEndedIterator<Item = AnchorView<'a>> + 'a {
+        self.layer.anchors.iter().map(move |anchor| {
+            let id = AnchorId(read_id(&anchor.format_specific).expect("canonical anchor identity"));
+            let preserved = self
+                .preserved
+                .anchors
+                .iter()
+                .find(|candidate| candidate.id == id)
+                .expect("anchor preservation identity");
+            AnchorView { anchor, preserved }
+        })
+    }
+}
+
+/// Read-only access to one canonical contour.
+#[derive(Clone, Copy, Debug)]
+pub struct ContourView<'a> {
+    path: &'a babelfont::Path,
+    preserved: &'a PreservedContour,
+}
+
+impl<'a> ContourView<'a> {
+    /// Stable identity retained across ordinary edits and reorder.
+    pub fn id(self) -> ContourId {
+        self.preserved.id
+    }
+
+    /// Whether the contour connects its last point to its first point.
+    pub fn is_closed(self) -> bool {
+        self.path.closed
+    }
+
+    /// Canonical points in contour order.
+    pub fn points(self) -> impl DoubleEndedIterator<Item = PointView<'a>> + 'a {
+        self.path.nodes.iter().map(move |node| {
+            let id = PointId(read_id(&node.format_specific).expect("canonical point identity"));
+            let preserved = self
+                .preserved
+                .points
+                .iter()
+                .find(|candidate| candidate.id == id)
+                .expect("point preservation identity");
+            PointView { node, preserved }
+        })
+    }
+}
+
+/// Read-only access to one canonical contour point.
+#[derive(Clone, Copy, Debug)]
+pub struct PointView<'a> {
+    node: &'a Node,
+    preserved: &'a PreservedPoint,
+}
+
+impl<'a> PointView<'a> {
+    /// Stable identity retained across ordinary edits and reorder.
+    pub fn id(self) -> PointId {
+        self.preserved.id
+    }
+
+    /// Position in font design coordinates.
+    pub fn position(self) -> kurbo::Point {
+        kurbo::Point::new(self.node.x, self.node.y)
+    }
+
+    /// Segment role of this point.
+    pub fn point_type(self) -> LayerPointType {
+        match self.node.nodetype {
+            NodeType::Move => LayerPointType::Move,
+            NodeType::Line => LayerPointType::Line,
+            NodeType::OffCurve => LayerPointType::OffCurve,
+            NodeType::Curve => LayerPointType::Curve,
+            NodeType::QCurve => LayerPointType::QCurve,
+        }
+    }
+
+    /// Whether the point has smooth tangent continuity.
+    pub fn is_smooth(self) -> bool {
+        self.node.smooth
+    }
+
+    /// Optional source point name retained by the typed extension.
+    pub fn name(self) -> Option<&'a str> {
+        self.preserved.name.as_ref().map(norad::Name::as_str)
+    }
+}
+
+/// Read-only access to one canonical component.
+#[derive(Clone, Copy, Debug)]
+pub struct ComponentView<'a> {
+    component: &'a Component,
+    preserved: &'a PreservedComponent,
+}
+
+impl<'a> ComponentView<'a> {
+    /// Stable identity retained across ordinary edits and reorder.
+    pub fn id(self) -> ComponentId {
+        self.preserved.id
+    }
+
+    /// Name of the referenced glyph.
+    pub fn reference(self) -> &'a str {
+        self.component.reference.as_str()
+    }
+
+    /// Exact six-coefficient source transform.
+    pub fn transform(self) -> kurbo::Affine {
+        affine(self.preserved.transform)
+    }
+}
+
+/// Read-only access to one canonical anchor.
+#[derive(Clone, Copy, Debug)]
+pub struct AnchorView<'a> {
+    anchor: &'a Anchor,
+    preserved: &'a PreservedAnchor,
+}
+
+impl<'a> AnchorView<'a> {
+    /// Stable identity retained across ordinary edits and reorder.
+    pub fn id(self) -> AnchorId {
+        self.preserved.id
+    }
+
+    /// Position in font design coordinates.
+    pub fn position(self) -> kurbo::Point {
+        kurbo::Point::new(self.anchor.x, self.anchor.y)
+    }
+
+    /// Source anchor name.
+    pub fn name(self) -> &'a str {
+        &self.anchor.name
+    }
 }
 
 fn write_id(format: &mut babelfont::FormatSpecific, id: u64) {
