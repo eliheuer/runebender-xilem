@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 use crate::document::CanonicalSourceStructureSnapshot;
 use crate::document::history::{
-    HistoryDirection, HistoryReplayError, HistoryReplayOutcome, TransactionHistory,
+    EditHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome, TransactionHistory,
 };
 
 #[derive(Debug, Clone)]
@@ -85,7 +85,12 @@ impl SourceFrame {
         self == &Self::capture(project)
     }
 
-    fn restore_if_current(&self, project: &mut Project, expected: &Self) -> Result<(), String> {
+    fn restore_if_current(
+        &self,
+        project: &mut Project,
+        expected: &Self,
+        retired_histories: &mut BTreeMap<SourceId, EditHistory>,
+    ) -> Result<(), String> {
         if !expected.matches(project) {
             return Err("source structure changed after history capture".into());
         }
@@ -129,7 +134,12 @@ impl SourceFrame {
             .active
             .and_then(|active| self.sources.iter().position(|source| source.id == active))
             .unwrap_or(0);
-        project.rebuild_source_projections(&self.sources, previous_ids, previous_masters)?;
+        project.rebuild_source_projections(
+            &self.sources,
+            previous_ids,
+            previous_masters,
+            retired_histories,
+        )?;
         project.finish_source_restore();
         Ok(())
     }
@@ -138,6 +148,7 @@ impl SourceFrame {
 #[derive(Debug, Default)]
 pub(super) struct SourceHistory {
     transactions: TransactionHistory<SourceFrame>,
+    retired_histories: BTreeMap<SourceId, EditHistory>,
 }
 
 impl Project {
@@ -164,12 +175,13 @@ impl Project {
         descriptors: &[SourceDescriptor],
         previous_ids: Vec<SourceId>,
         previous_masters: Vec<Master>,
+        retired_histories: &mut BTreeMap<SourceId, EditHistory>,
     ) -> Result<(), String> {
         let mut previous = previous_ids
             .into_iter()
             .zip(previous_masters)
             .collect::<BTreeMap<_, _>>();
-        self.masters = self
+        let rebuilt = self
             .variable
             .source_ids
             .iter()
@@ -190,11 +202,18 @@ impl Project {
                     rebuilt.kerning_dirty = old.kerning_dirty;
                     rebuilt.revision = old.revision.wrapping_add(1);
                     rebuilt.history = std::mem::take(&mut old.history);
+                    retired_histories.remove(&id);
+                } else if let Some(history) = retired_histories.remove(&id) {
+                    rebuilt.history = history;
                 }
                 rebuilt.dirty = true;
                 Ok(rebuilt)
             })
             .collect::<Result<_, String>>()?;
+        for (id, mut removed) in previous {
+            retired_histories.insert(id, std::mem::take(&mut removed.history));
+        }
+        self.masters = rebuilt;
         Ok(())
     }
 
@@ -223,11 +242,13 @@ impl Project {
         };
         let current = SourceFrame::capture(self);
         let mut history = std::mem::take(&mut self.source_history);
-        let replayed = history
-            .transactions
-            .replay(&current, direction, |expected, replacement| {
-                replacement.restore_if_current(self, expected)
-            });
+        let SourceHistory {
+            transactions,
+            retired_histories,
+        } = &mut history;
+        let replayed = transactions.replay(&current, direction, |expected, replacement| {
+            replacement.restore_if_current(self, expected, retired_histories)
+        });
         self.source_history = history;
         match replayed {
             Ok(HistoryReplayOutcome::Empty) => Ok(false),
@@ -447,7 +468,10 @@ impl Project {
             .expect("validated designspace")
             .sources
             .retain(|source| source.filename != filename);
-        self.masters.remove(index);
+        let mut removed = self.masters.remove(index);
+        self.source_history
+            .retired_histories
+            .insert(id, std::mem::take(&mut removed.history));
         self.master_names.remove(index);
         self.master_locations.remove(index);
         self.variable.source_ids.remove(index);
