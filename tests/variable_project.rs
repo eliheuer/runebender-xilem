@@ -930,6 +930,163 @@ fn canonical_point_roles_keep_contour_closure_coherent() {
 }
 
 #[test]
+fn canonical_pen_builds_closed_contours_with_stable_new_identities() {
+    let scratch = Scratch::new();
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(Glyph::new("pen"));
+    let mut project = Project::from_source(Master::from_font(font, scratch.0.join("Pen.ufo")));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+
+    let mut identities = None;
+    let outcome = project
+        .edit_document_layer("pen", &layer_id, |draft| {
+            let (contour, start) = draft.start_contour(kurbo::Point::new(0.0, 0.0))?;
+            let line = draft.append_contour_segment(
+                contour,
+                None,
+                kurbo::Point::new(100.0, 0.0),
+                false,
+            )?;
+            let curve = draft.append_contour_segment(
+                contour,
+                Some([
+                    kurbo::Point::new(130.0, 40.0),
+                    kurbo::Point::new(130.0, 80.0),
+                ]),
+                kurbo::Point::new(100.0, 120.0),
+                true,
+            )?;
+            assert!(draft.close_contour(contour, None)?.is_empty());
+            let (curved_close_contour, curved_close_start) =
+                draft.start_contour(kurbo::Point::new(200.0, 0.0))?;
+            let curved_close_line = draft.append_contour_segment(
+                curved_close_contour,
+                None,
+                kurbo::Point::new(300.0, 0.0),
+                false,
+            )?;
+            let closing_controls = draft.close_contour(
+                curved_close_contour,
+                Some([
+                    kurbo::Point::new(300.0, 100.0),
+                    kurbo::Point::new(200.0, 100.0),
+                ]),
+            )?;
+            identities = Some((
+                contour,
+                start,
+                line,
+                curve,
+                curved_close_contour,
+                curved_close_start,
+                curved_close_line,
+                closing_controls,
+            ));
+            Ok(())
+        })
+        .unwrap();
+    let DocumentEditOutcome::Changed { change, .. } = outcome else {
+        panic!("canonical pen edit did not commit");
+    };
+    assert!(change.geometry_changed());
+
+    let (
+        contour_id,
+        start_id,
+        line_ids,
+        curve_ids,
+        curved_close_contour_id,
+        curved_close_start_id,
+        curved_close_line_ids,
+        closing_control_ids,
+    ) = identities.unwrap();
+    assert_eq!(line_ids.len(), 1);
+    assert_eq!(curve_ids.len(), 3);
+    let layer = project.document_layer("pen", &layer_id).unwrap();
+    let contour = layer.contours().next().unwrap();
+    assert_eq!(contour.id(), contour_id);
+    assert!(contour.is_closed());
+    assert_eq!(
+        contour.points().map(|point| point.id()).collect::<Vec<_>>(),
+        [vec![start_id], line_ids.clone(), curve_ids.clone(),].concat()
+    );
+    assert!(contour.points().all(|point| point.name().is_none()));
+    let curved_close = layer.contours().nth(1).unwrap();
+    assert_eq!(curved_close.id(), curved_close_contour_id);
+    assert!(curved_close.is_closed());
+    assert_eq!(closing_control_ids.len(), 2);
+    assert_eq!(
+        curved_close
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        [
+            vec![curved_close_start_id],
+            curved_close_line_ids.clone(),
+            closing_control_ids,
+        ]
+        .concat()
+    );
+
+    let mut expected = Glyph::new("pen");
+    let legacy_contour = runebender::outline::glyph_ops::start_contour(&mut expected, 0.0, 0.0);
+    runebender::outline::glyph_ops::append_segment(
+        &mut expected,
+        legacy_contour,
+        None,
+        100.0,
+        0.0,
+        false,
+    );
+    runebender::outline::glyph_ops::append_segment(
+        &mut expected,
+        legacy_contour,
+        Some(((130.0, 40.0), (130.0, 80.0))),
+        100.0,
+        120.0,
+        true,
+    );
+    runebender::outline::glyph_ops::close_contour(&mut expected, legacy_contour, None);
+    let curved_close_contour =
+        runebender::outline::glyph_ops::start_contour(&mut expected, 200.0, 0.0);
+    runebender::outline::glyph_ops::append_segment(
+        &mut expected,
+        curved_close_contour,
+        None,
+        300.0,
+        0.0,
+        false,
+    );
+    runebender::outline::glyph_ops::close_contour(
+        &mut expected,
+        curved_close_contour,
+        Some(((300.0, 100.0), (200.0, 100.0))),
+    );
+    assert_eq!(
+        project.glyph_layer("pen", &layer_id).unwrap().contours,
+        expected.contours,
+        "canonical pen output changed the existing contour contract"
+    );
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project.edit_document_layer("pen", &layer_id, |draft| {
+            draft.close_contour(contour_id, None)?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::NotOpenContour(
+            contour_id
+        ))
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
 fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let layer_id = project

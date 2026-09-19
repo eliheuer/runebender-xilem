@@ -480,6 +480,155 @@ impl LayerEditDraft {
         LayerView::new(&self.layer, &self.preserved)
     }
 
+    /// Start a new open contour at `position`.
+    ///
+    /// Returns the stable contour and initial-point identities.
+    pub fn start_contour(
+        &mut self,
+        position: kurbo::Point,
+    ) -> Result<(ContourId, PointId), DocumentEditError> {
+        ensure_finite(&[position.x, position.y])?;
+        let contour_id = ContourId::next();
+        let (point_id, point, preserved_point) =
+            new_document_point(position, NodeType::Move, false);
+        let mut path = babelfont::Path {
+            nodes: vec![point],
+            closed: false,
+            ..babelfont::Path::default()
+        };
+        write_id(&mut path.format_specific, contour_id.0);
+        self.layer.shapes.push(Shape::Path(path));
+        self.preserved.contours.push(PreservedContour {
+            id: contour_id,
+            metadata: ObjectMetadata {
+                identifier: None,
+                lib: None,
+            },
+            points: vec![preserved_point],
+        });
+        Ok((contour_id, point_id))
+    }
+
+    /// Append a line or cubic segment to an open contour.
+    ///
+    /// When `controls` is present, its two points precede a cubic endpoint.
+    /// Returned identities are in the same control-then-endpoint order.
+    pub fn append_contour_segment(
+        &mut self,
+        contour: ContourId,
+        controls: Option<[kurbo::Point; 2]>,
+        endpoint: kurbo::Point,
+        smooth: bool,
+    ) -> Result<Vec<PointId>, DocumentEditError> {
+        let mut coordinates = vec![endpoint.x, endpoint.y];
+        if let Some(controls) = controls {
+            coordinates.extend(controls.into_iter().flat_map(|point| [point.x, point.y]));
+        }
+        ensure_finite(&coordinates)?;
+        let shape_index = self
+            .contour_shape_index(contour)
+            .ok_or(DocumentEditError::MissingContour(contour))?;
+        let Shape::Path(path) = &self.layer.shapes[shape_index] else {
+            unreachable!("located contour is a path");
+        };
+        if path.closed
+            || path
+                .nodes
+                .first()
+                .is_none_or(|node| node.nodetype != NodeType::Move)
+        {
+            return Err(DocumentEditError::NotOpenContour(contour));
+        }
+
+        let mut additions = Vec::with_capacity(if controls.is_some() { 3 } else { 1 });
+        if let Some(controls) = controls {
+            for position in controls {
+                additions.push(new_document_point(position, NodeType::OffCurve, false));
+            }
+        }
+        additions.push(new_document_point(
+            endpoint,
+            if controls.is_some() {
+                NodeType::Curve
+            } else {
+                NodeType::Line
+            },
+            smooth,
+        ));
+        let ids = additions.iter().map(|(id, _, _)| *id).collect();
+        let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
+            unreachable!("located contour is a path");
+        };
+        path.nodes
+            .extend(additions.iter().map(|(_, node, _)| node.clone()));
+        self.preserved
+            .contours
+            .iter_mut()
+            .find(|candidate| candidate.id == contour)
+            .expect("canonical contour preservation")
+            .points
+            .extend(additions.into_iter().map(|(_, _, preserved)| preserved));
+        Ok(ids)
+    }
+
+    /// Close an open contour with an optional cubic segment back to its first point.
+    ///
+    /// Returns the stable identities of newly inserted controls in contour order.
+    pub fn close_contour(
+        &mut self,
+        contour: ContourId,
+        controls: Option<[kurbo::Point; 2]>,
+    ) -> Result<Vec<PointId>, DocumentEditError> {
+        if let Some(controls) = controls {
+            ensure_finite(
+                &controls
+                    .into_iter()
+                    .flat_map(|point| [point.x, point.y])
+                    .collect::<Vec<_>>(),
+            )?;
+        }
+        let shape_index = self
+            .contour_shape_index(contour)
+            .ok_or(DocumentEditError::MissingContour(contour))?;
+        let Shape::Path(path) = &self.layer.shapes[shape_index] else {
+            unreachable!("located contour is a path");
+        };
+        if path.closed
+            || path
+                .nodes
+                .first()
+                .is_none_or(|node| node.nodetype != NodeType::Move)
+        {
+            return Err(DocumentEditError::NotOpenContour(contour));
+        }
+
+        let additions: Vec<_> = controls
+            .into_iter()
+            .flatten()
+            .map(|position| new_document_point(position, NodeType::OffCurve, false))
+            .collect();
+        let ids = additions.iter().map(|(id, _, _)| *id).collect();
+        let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
+            unreachable!("located contour is a path");
+        };
+        path.closed = true;
+        path.nodes[0].nodetype = if additions.is_empty() {
+            NodeType::Line
+        } else {
+            NodeType::Curve
+        };
+        path.nodes
+            .extend(additions.iter().map(|(_, node, _)| node.clone()));
+        self.preserved
+            .contours
+            .iter_mut()
+            .find(|candidate| candidate.id == contour)
+            .expect("canonical contour preservation")
+            .points
+            .extend(additions.into_iter().map(|(_, _, preserved)| preserved));
+        Ok(ids)
+    }
+
     /// Set the exact horizontal advance and refresh Babelfont's derived width.
     ///
     /// Returns whether the value changed.
@@ -1040,6 +1189,13 @@ impl LayerEditDraft {
             Some((path, index))
         })
     }
+
+    fn contour_shape_index(&self, id: ContourId) -> Option<usize> {
+        self.layer.shapes.iter().position(|shape| match shape {
+            Shape::Path(path) => read_id(&path.format_specific) == Some(id.0),
+            Shape::Component(_) => false,
+        })
+    }
 }
 
 /// Why a canonical document edit could not be applied.
@@ -1051,6 +1207,10 @@ pub enum DocumentEditError {
     MissingSource,
     /// The requested point identity does not exist in the layer.
     MissingPoint(PointId),
+    /// The requested contour identity does not exist in the layer.
+    MissingContour(ContourId),
+    /// The requested contour is already closed or lacks an initial move point.
+    NotOpenContour(ContourId),
     /// A persistent drag omitted an automatically affected point's start position.
     MissingDragOrigin(PointId),
     /// The requested endpoints do not identify one direct on-curve segment.
@@ -1073,6 +1233,8 @@ impl std::fmt::Display for DocumentEditError {
             Self::MissingLayer => formatter.write_str("glyph layer does not exist"),
             Self::MissingSource => formatter.write_str("source does not exist"),
             Self::MissingPoint(id) => write!(formatter, "point {id:?} does not exist"),
+            Self::MissingContour(id) => write!(formatter, "contour {id:?} does not exist"),
+            Self::NotOpenContour(id) => write!(formatter, "contour {id:?} is not open"),
             Self::MissingDragOrigin(id) => {
                 write!(formatter, "point {id:?} is missing its drag-start position")
             }
@@ -1103,6 +1265,34 @@ fn ensure_finite(values: &[f64]) -> Result<(), DocumentEditError> {
         .all(|value| value.is_finite())
         .then_some(())
         .ok_or(DocumentEditError::NonFinite)
+}
+
+fn new_document_point(
+    position: kurbo::Point,
+    point_type: NodeType,
+    smooth: bool,
+) -> (PointId, Node, PreservedPoint) {
+    let id = PointId::next();
+    let mut point = Node {
+        x: position.x,
+        y: position.y,
+        nodetype: point_type,
+        smooth,
+        ..Node::default()
+    };
+    write_id(&mut point.format_specific, id.0);
+    (
+        id,
+        point,
+        PreservedPoint {
+            id,
+            name: None,
+            metadata: ObjectMetadata {
+                identifier: None,
+                lib: None,
+            },
+        },
+    )
 }
 
 impl<'a> AnchorView<'a> {

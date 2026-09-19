@@ -981,4 +981,36 @@ The focused regression tests, independent-review reproducer, segment-operation u
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
-The next dependency-ready milestone is M04, beginning with canonical topology edits before the larger special-outline tools.
+## M04 — Migrate topology edits and special outline tools
+
+### Canonical pen topology substep
+
+Evidence commit: `Build pen contours in canonical layers` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Build pen contours in canonical layers$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md` and this log.
+
+`LayerEditDraft` now starts an open contour, appends line or cubic segments and closes it with a line or cubic return segment directly in canonical Babelfont geometry.
+Each new contour and point receives a stable document identity when created, and the matching preservation records are inserted atomically with empty source metadata.
+Invalid coordinates, missing contours and attempts to close or extend a non-open contour reject the draft before committed state changes.
+
+The integration comparison builds line, cubic and curved-closing segments through both the canonical draft and existing Norad operation and requires identical projected contours.
+It checks returned identity order, contour closure, geometry invalidation and rejection atomicity after a second close.
+Pen creation and closure are complete within M04's first checklist item.
+Point insertion, deletion, reversal, split/join, copy/paste and shape creation remain, so the item stays open.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_pen_builds_closed_contours_with_stable_new_identities -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused pen comparison and all 30 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep continues direct canonical topology edits with point insertion and deletion.
