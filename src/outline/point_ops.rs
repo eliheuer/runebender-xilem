@@ -239,8 +239,9 @@ fn moved_indices(
             || (!independent
                 && points[index].off_curve
                 && [-1_isize, 1].into_iter().any(|direction| {
-                    step_index(index, points.len(), closed, direction)
-                        .is_some_and(|neighbor| selected.contains(&neighbor))
+                    step_index(index, points.len(), closed, direction).is_some_and(|neighbor| {
+                        selected.contains(&neighbor) && !points[neighbor].off_curve
+                    })
                 }))
         {
             moved.push(index);
@@ -659,6 +660,32 @@ mod tests {
         translate_points(&mut two_events, &selected, &originals, (1.0, 0.0), false);
         translate_points(&mut two_events, &selected, &originals, (3.0, 1.0), false);
         assert_eq!(two_events, one_event);
+    }
+
+    #[test]
+    fn unrelated_selected_handle_does_not_carry_a_smooth_opposite() {
+        let original = curve_glyph();
+        let primary: HashSet<PointId> = [(0, 4)].into_iter().collect();
+        let multiple: HashSet<PointId> = [(0, 1), (0, 4)].into_iter().collect();
+        let mut primary_result = original.clone();
+        let primary_origins = drag_origins(&primary_result, &primary, false);
+        translate_points(
+            &mut primary_result,
+            &primary,
+            &primary_origins,
+            (20.0, 0.0),
+            false,
+        );
+        let mut multiple_result = original;
+        let multiple_origins = drag_origins(&multiple_result, &multiple, false);
+        translate_points(
+            &mut multiple_result,
+            &multiple,
+            &multiple_origins,
+            (20.0, 0.0),
+            false,
+        );
+        assert_eq!(at(&multiple_result, 2), at(&primary_result, 2));
     }
 
     #[test]

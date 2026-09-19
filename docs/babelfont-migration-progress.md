@@ -854,3 +854,27 @@ git diff --check
 All nine point-operation unit tests, the focused canonical regression, all 27 variable-project integration tests and 165 application binary tests passed; four installed-model or external-font tests remained intentionally ignored.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Multi-handle drag correction
+
+Evidence commit: `Keep selected handles from carrying controls` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Keep selected handles from carrying controls$' -1`.
+Affected paths: `src/outline/point_ops.rs` and this log.
+
+Review found that the refactored moved-point classifier treated an unselected off-curve as carried when any adjacent point was selected, including another off-curve control.
+Only a selected on-curve point may carry its adjacent handles.
+
+The regression selects a smooth handle both alone and with an unrelated adjacent handle, then requires the unselected smooth opposite to retain the same mirrored position in both cases.
+
+Executed evidence:
+
+```sh
+cargo test --locked --lib outline::point_ops -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+All ten point-operation unit tests passed.
+Warning-denied Clippy, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
