@@ -40,6 +40,7 @@ No release has been published yet.
 
 ### Changed
 
+- Built interpolated sources as atomic canonical document transactions, preserving exact metadata and undo while assigning fresh object identities to the new source.
 - Moved Designspace structure, font information, component alignment, mark color, metrics keys and formulas, and metaball payloads into typed canonical document storage with guarded edits and UFO boundary projection.
 - Moved quadratic, cubic, hyperbezier, corner-rounding, handle-harmonizing, handle-balancing, and handle-optimization operations onto canonical contours.
 - Moved live proposals and experimental versions onto stable source-identified canonical layers with revision-checked installation and Project-owned undo.
