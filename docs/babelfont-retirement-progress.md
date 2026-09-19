@@ -103,15 +103,14 @@ Canonical replacements already exist: `document_source`, `document_sources`, `do
 
 The remaining non-application consumers are:
 
-- `application/cli.rs:595-863` uses `Master` for `info`, `proof`, proposal install and proposal discard.
 - `formats/svg.rs:114` and `formats/designbot.rs:15,128` accept `Master` rather than a Project source and canonical layer view.
 - `document/live.rs:277-281` materializes a `Master` for Designbot scenes.
 - `formats/babelfont_import.rs:138-300` assembles Python multi-source imports through `Master` and `Project::from_designspace`.
 - `document/filesystem.rs:16,124-143` converts a validated `ImportedUfo` into `Master` during load.
 - `document/project/constructors.rs:57` still creates a compatibility `Master` after canonical in-memory construction.
 
-`info`, `proof`, SVG and Designbot should consume Project source views and the typed renderer.
-Proposal CLI commands should use the existing Project proposal APIs and `Project::save`.
+The CLI `info`, `proof` and proposal list/install/discard callers now consume Project source views and canonical proposal operations; proposal mutations save through `Project::save`.
+The remaining SVG compatibility entry point, Designbot and live proof should consume Project source views and the typed renderer.
 Python Babelfont and filesystem imports need a canonical multi-source constructor that accepts decoded source records and canonical Designspace data without a `Master` callback.
 
 ## Source-history cleanup in the owned lane
@@ -126,7 +125,7 @@ The source structural tests must add an explicit canonical-history-before-remove
 1. Finish M06 Session and application caller cutover, using direct canonical operations wherever they already exist.
 2. Add only the two identified missing editor prerequisites: direct mask baking and guarded source image-resource mutation.
 3. Move local-AI and Nodes proposal reads, installs and discards to existing Project proposal APIs.
-4. Move CLI proof/info/proposal commands, SVG, Designbot and live proof to Project source views and typed rendering.
+4. Move the remaining SVG compatibility entry point, Designbot and live proof to Project source views and typed rendering; the CLI proof/info/proposal callers are complete.
 5. Land the M12 Project retarget transaction with feature-include relocation and the canonical Python multi-source constructor.
 6. Replace `VariableData.templates` with typed source-format preservation data and make filesystem serialization the only Norad reconstruction point.
 7. Replace `Project.masters` with the source shell, derive application caches from canonical views and delete all mutable source guards.

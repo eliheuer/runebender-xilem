@@ -6,6 +6,8 @@
 use kurbo::{Affine, BezPath, PathEl};
 
 use crate::document::project::Master;
+use crate::document::project::Project;
+use crate::document::variable::{GlyphLayerAddress, LayerId, SourceId};
 use crate::outline::glyph_ops::bezpath_to_contour;
 use crate::outline::glyph_paths;
 
@@ -204,6 +206,121 @@ pub fn proof_sheet(
     }
     svg.push_str("</svg>\n");
     Ok(ProofSheet { svg, metrics })
+}
+
+/// Render a proof sheet directly from one canonical Project source.
+pub fn proof_sheet_project(
+    project: &Project,
+    source: SourceId,
+    layer: Option<&str>,
+    names: &[String],
+    columns: usize,
+) -> Result<ProofSheet, String> {
+    if names.is_empty() {
+        return Err("no glyph to draw".into());
+    }
+    let source_view = project
+        .document_source(source)
+        .ok_or("proof source does not exist")?;
+    let default_layer = source_view.default_layer();
+    let requested_layer = layer
+        .map(|name| {
+            let exists = project
+                .document_source_layer_names(source)
+                .is_some_and(|names| names.contains(&name));
+            exists
+                .then(|| LayerId {
+                    source,
+                    name: name.to_owned(),
+                })
+                .ok_or_else(|| format!("no layer named {name}"))
+        })
+        .transpose()?;
+    let info = project
+        .document_font_info(source)
+        .ok_or("proof source has no canonical font information")?;
+    let resolved = info.metrics.resolved();
+    let columns = columns.clamp(1, names.len());
+    let cell_w = resolved.units_per_em * 1.2;
+    let cell_h = resolved.units_per_em * 1.4;
+    let rows = names.len().div_ceil(columns);
+    let mut svg = String::new();
+    svg.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" \
+         viewBox=\"0 0 {} {}\">\n<rect width=\"100%\" height=\"100%\" fill=\"white\"/>\n",
+        (cell_w * columns as f64 / 4.0).round(),
+        (cell_h * rows as f64 / 4.0).round(),
+        cell_w * columns as f64,
+        cell_h * rows as f64
+    ));
+    let mut proof_metrics = Vec::new();
+    for (index, name) in names.iter().enumerate() {
+        let layer = requested_layer
+            .as_ref()
+            .filter(|layer| project.document_layer(name, layer).is_some())
+            .unwrap_or(&default_layer);
+        let view = project
+            .document_layer(name, layer)
+            .ok_or_else(|| format!("no glyph named {name}"))?;
+        let path = project
+            .document_layer_path(&GlyphLayerAddress {
+                glyph: name.clone(),
+                layer: layer.clone(),
+            })
+            .map_err(|error| error.to_string())?;
+        let column = (index % columns) as f64;
+        let row = (index / columns) as f64;
+        let x0 = column * cell_w + resolved.units_per_em * 0.1;
+        let baseline = row * cell_h + resolved.units_per_em * 1.05;
+        let label = name
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+        svg.push_str(&format!(
+            "<text x=\"{x0}\" y=\"{}\" font-family=\"sans-serif\" font-size=\"40\">{label}</text>\n",
+            row * cell_h + 60.0
+        ));
+        let line = |y: f64, color: &str| {
+            format!(
+                "<line x1=\"{x0:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
+                 stroke=\"{color}\" stroke-width=\"2\"/>\n",
+                baseline - y,
+                x0 + view.width(),
+                baseline - y
+            )
+        };
+        svg.push_str(&line(0.0, "#999"));
+        svg.push_str(&line(resolved.ascender, "#ccc"));
+        svg.push_str(&line(resolved.descender, "#ccc"));
+        if let Some(x_height) = info.metrics.x_height {
+            svg.push_str(&line(x_height, "#bbb"));
+        }
+        if let Some(cap_height) = info.metrics.cap_height {
+            svg.push_str(&line(cap_height, "#bbb"));
+        }
+        svg.push_str(&format!(
+            "<path transform=\"translate({x0:.1} {baseline:.1}) scale(1 -1)\" d=\"{}\" fill=\"black\"/>\n",
+            path.to_svg()
+        ));
+        use kurbo::Shape as _;
+        let bounds = path.bounding_box();
+        let drawn = !path.is_empty();
+        proof_metrics.push(serde_json::json!({
+            "glyph": name,
+            "advance": view.width(),
+            "lsb": if drawn { Some(bounds.x0.round()) } else { None },
+            "rsb": if drawn { Some((view.width() - bounds.x1).round()) } else { None },
+            "bounds": if drawn { Some([bounds.x0, bounds.y0, bounds.x1, bounds.y1]) } else { None },
+            "points": view.contours().map(|contour| contour.points().count()).sum::<usize>(),
+            "contours": view.contours().count(),
+            "components": view.components().count(),
+        }));
+    }
+    svg.push_str("</svg>\n");
+    Ok(ProofSheet {
+        svg,
+        metrics: proof_metrics,
+    })
 }
 
 #[cfg(test)]

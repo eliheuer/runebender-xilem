@@ -1577,6 +1577,11 @@ impl Project {
         Some(&self.masters.get(self.source_index(id)?)?.source_path)
     }
 
+    /// Layer-container names in exact UFO order for one stable source.
+    pub fn document_source_layer_names(&self, id: SourceId) -> Option<Vec<&str>> {
+        self.variable.source_layer_names(id)
+    }
+
     /// Read every source in current display order without its UFO projection.
     pub fn document_sources(&self) -> impl DoubleEndedIterator<Item = SourceView<'_>> {
         self.variable

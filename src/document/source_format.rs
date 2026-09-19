@@ -65,6 +65,10 @@ impl SourceFormatData {
         self.layers.get(name).is_some()
     }
 
+    pub(super) fn layer_names(&self) -> impl Iterator<Item = &str> {
+        self.layers.names().map(norad::Name::as_str)
+    }
+
     pub(super) fn ensure_layer(&mut self, name: &str) -> Result<(), String> {
         self.layers
             .get_or_create_layer(name)

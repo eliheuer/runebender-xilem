@@ -17,8 +17,9 @@ use runebender::document::compose;
 use runebender::document::font_ops;
 use runebender::document::nodes;
 use runebender::document::nodes_run;
-use runebender::document::project::Master;
+use runebender::document::project::Project;
 use runebender::document::proposal;
+use runebender::document::variable::{GlyphLayerAddress, LayerId};
 use runebender::outline::embolden;
 use serde_json::json;
 
@@ -402,7 +403,7 @@ pub(crate) fn run() -> Startup {
         Command::Compile { source, out } => {
             let result = (|| -> Result<usize, String> {
                 use std::io::Write as _;
-                let project = runebender::document::project::Project::load(source)?;
+                let project = Project::load(source)?;
                 let compiled = project.compile()?;
                 let mut file = std::fs::OpenOptions::new()
                     .create_new(true)
@@ -591,105 +592,118 @@ pub(crate) fn run() -> Startup {
     ))
 }
 
-/// Loads a UFO or an imported Babelfont copy as a `Master`.
-fn open_master(path: &Path, json: bool) -> Result<Master, i32> {
-    if path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("babelfont"))
-    {
-        let project = runebender::document::project::Project::load(path)
-            .map_err(|e| fail(json, exit::USAGE, &e))?;
-        if project.sources().len() != 1 {
-            return Err(fail(
-                json,
-                exit::USAGE,
-                "this command requires a single source; open the variable project in the editor",
-            ));
-        }
-        return Ok(Master::from_font(
-            project
-                .source_snapshot(runebender::document::variable::SourceId(0))
-                .expect("one source"),
-            project.sources()[0].source_path.clone(),
+/// Load one canonical source for a headless command.
+fn open_project(path: &Path, json: bool) -> Result<Project, i32> {
+    let project = Project::load(path)
+        .map_err(|error| fail(json, exit::USAGE, &format!("{}: {error}", path.display())))?;
+    if project.document_sources().count() != 1 {
+        return Err(fail(
+            json,
+            exit::USAGE,
+            "this command requires a single source; open the variable project in the editor",
         ));
     }
-    Master::load(path).map_err(|e| fail(json, exit::USAGE, &format!("{}: {e}", path.display())))
+    Ok(project)
 }
 
-/// Saves a master, reporting a write failure as such.
-fn save_master(master: &mut Master, json: bool) -> Result<(), i32> {
-    master.save().map_err(|e| {
-        fail(
-            json,
-            exit::FAILED,
-            &format!("{}: {e}", master.source_path.display()),
-        )
-    })
+/// Save a canonical Project, reporting a write failure as such.
+fn save_project(project: &mut Project, json: bool) -> Result<(), i32> {
+    let path = project
+        .document_sources()
+        .next()
+        .map(|source| source.path().to_path_buf())
+        .unwrap_or_default();
+    project
+        .save()
+        .map_err(|error| fail(json, exit::FAILED, &format!("{}: {error}", path.display())))
 }
 
-fn codepoints(glyph: &norad::Glyph) -> Vec<String> {
-    glyph
-        .codepoints
-        .iter()
+fn codepoints(codepoints: impl Iterator<Item = char>) -> Vec<String> {
+    codepoints
         .map(|c| format!("U+{:04X}", u32::from(c)))
         .collect()
 }
 
 /// What a font is, for a person or a program about to work on it.
 fn info(source: &Path, list_glyphs: bool, json: bool) -> i32 {
-    let master = match open_master(source, json) {
-        Ok(m) => m,
+    let project = match open_project(source, json) {
+        Ok(project) => project,
         Err(code) => return code,
     };
-    let font = &master.font;
-    let drawn = font
-        .default_layer()
+    let source_id = project
+        .source_id(0)
+        .expect("one source has a stable identity");
+    let default_layer = project
+        .document_source(source_id)
+        .expect("one source")
+        .default_layer();
+    let glyph_names = project
+        .glyph_names()
+        .filter(|name| project.document_layer(name, &default_layer).is_some())
+        .collect::<Vec<_>>();
+    let drawn = glyph_names
         .iter()
-        .filter(|g| !g.contours.is_empty() || !g.components.is_empty())
+        .filter(|name| {
+            project
+                .document_layer(name, &default_layer)
+                .is_some_and(|layer| {
+                    layer.contours().next().is_some() || layer.components().next().is_some()
+                })
+        })
         .count();
-    let proposals = proposal::list(font);
-    let layers: Vec<String> = font.layers.names().map(|n| n.to_string()).collect();
+    let proposals = proposal::list_project(&project, source_id);
+    let layers = project
+        .document_source_layer_names(source_id)
+        .expect("one source retains layer structure");
+    let info = project
+        .document_font_info(source_id)
+        .expect("one source retains canonical font information");
+    let metrics = info.metrics.resolved();
+    let metadata = project
+        .document_font_metadata(source_id)
+        .expect("one source retains canonical metadata");
     if json {
         let mut out = json!({
             "ok": true,
             "source": source,
-            "family": font.font_info.family_name,
-            "style": font.font_info.style_name,
-            "unitsPerEm": master.units_per_em,
-            "ascender": master.ascender,
-            "descender": master.descender,
-            "xHeight": master.x_height,
-            "capHeight": master.cap_height,
-            "glyphs": font.default_layer().len(),
+            "family": info.names.family_name,
+            "style": info.names.style_name,
+            "unitsPerEm": metrics.units_per_em,
+            "ascender": metrics.ascender,
+            "descender": metrics.descender,
+            "xHeight": info.metrics.x_height,
+            "capHeight": info.metrics.cap_height,
+            "glyphs": glyph_names.len(),
             "drawn": drawn,
             "layers": layers,
-            "kerningPairs": font.kerning.values().map(|v| v.len()).sum::<usize>(),
+            "kerningPairs": metadata.kerning_pairs().count(),
             "proposals": proposals,
         });
         if list_glyphs {
-            out["glyphList"] = font
-                .default_layer()
+            out["glyphList"] = glyph_names
                 .iter()
-                .map(|g| json!({ "name": g.name(), "codepoints": codepoints(g) }))
+                .map(|name| {
+                    let layer = project
+                        .document_layer(name, &default_layer)
+                        .expect("collected default-layer glyph");
+                    json!({ "name": name, "codepoints": codepoints(layer.codepoints()) })
+                })
                 .collect();
         }
         println!("{out}");
     } else {
         println!(
             "{} {}",
-            font.font_info
-                .family_name
-                .as_deref()
-                .unwrap_or("(no family)"),
-            font.font_info.style_name.as_deref().unwrap_or("")
+            info.names.family_name.as_deref().unwrap_or("(no family)"),
+            info.names.style_name.as_deref().unwrap_or("")
         );
         println!(
             "{} upm, ascender {}, descender {}",
-            master.units_per_em, master.ascender, master.descender
+            metrics.units_per_em, metrics.ascender, metrics.descender
         );
         println!(
             "{} glyphs, {drawn} drawn, layers: {}",
-            font.default_layer().len(),
+            glyph_names.len(),
             layers.join(", ")
         );
         for p in &proposals {
@@ -703,8 +717,11 @@ fn info(source: &Path, list_glyphs: bool, json: bool) -> i32 {
             );
         }
         if list_glyphs {
-            for g in font.default_layer().iter() {
-                println!("  {:<24} {}", g.name(), codepoints(g).join(" "));
+            for name in glyph_names {
+                let glyph = project
+                    .document_layer(name, &default_layer)
+                    .expect("collected default-layer glyph");
+                println!("  {name:<24} {}", codepoints(glyph.codepoints()).join(" "));
             }
         }
     }
@@ -721,27 +738,56 @@ fn proof(
     layer: Option<&str>,
     json: bool,
 ) -> i32 {
-    let master = match open_master(source, json) {
-        Ok(m) => m,
+    let project = match open_project(source, json) {
+        Ok(project) => project,
         Err(code) => return code,
     };
+    let source_id = project
+        .source_id(0)
+        .expect("one source has a stable identity");
+    let default_layer = project
+        .document_source(source_id)
+        .expect("one source")
+        .default_layer();
+    let requested_layer = layer.map(|name| LayerId {
+        source: source_id,
+        name: name.into(),
+    });
     let names: Vec<String> = match glyphs {
         Some(list) => list.to_vec(),
-        None if layer.is_some() => match master.font.layers.get(layer.unwrap_or_default()) {
-            Some(l) => l.iter().map(|g| g.name().to_string()).collect(),
-            None => return fail(json, exit::USAGE, "no such layer"),
-        },
-        None => master
-            .glyphs
-            .iter()
-            .filter(|g| !g.path.is_empty())
-            .map(|g| g.name.to_string())
+        None if requested_layer.is_some() => {
+            let requested = requested_layer.as_ref().expect("checked requested layer");
+            if !project
+                .document_source_layer_names(source_id)
+                .is_some_and(|names| names.iter().any(|name| *name == requested.name))
+            {
+                return fail(json, exit::USAGE, "no such layer");
+            }
+            project
+                .glyph_names()
+                .filter(|name| project.document_layer(name, requested).is_some())
+                .map(str::to_owned)
+                .collect()
+        }
+        None => project
+            .glyph_names()
+            .filter(|name| {
+                project
+                    .document_layer_path(&GlyphLayerAddress {
+                        glyph: (*name).to_owned(),
+                        layer: default_layer.clone(),
+                    })
+                    .is_ok_and(|path| !path.is_empty())
+            })
+            .map(str::to_owned)
             .collect(),
     };
     if names.is_empty() {
         return fail(json, exit::USAGE, "no glyph to draw");
     }
-    let sheet = match runebender::formats::svg::proof_sheet(&master, layer, &names, columns) {
+    let sheet = match runebender::formats::svg::proof_sheet_project(
+        &project, source_id, layer, &names, columns,
+    ) {
         Ok(s) => s,
         Err(e) => return fail(json, exit::USAGE, &e),
     };
@@ -776,11 +822,14 @@ fn proof(
 }
 
 fn proposal_list(source: &Path, json: bool) -> i32 {
-    let font = match open(source, json) {
-        Ok(f) => f,
+    let project = match open_project(source, json) {
+        Ok(project) => project,
         Err(code) => return code,
     };
-    let list = proposal::list(&font);
+    let source_id = project
+        .source_id(0)
+        .expect("one source has a stable identity");
+    let list = proposal::list_project(&project, source_id);
     if json {
         println!("{}", json!({ "ok": true, "proposals": list }));
     } else if list.is_empty() {
@@ -810,22 +859,26 @@ fn proposal_install(
     keep_structure: bool,
     json: bool,
 ) -> i32 {
-    let mut master = match open_master(source, json) {
-        Ok(m) => m,
+    let mut project = match open_project(source, json) {
+        Ok(project) => project,
         Err(code) => return code,
     };
-    let done = match master.install_proposal(task, glyphs, keep_structure) {
-        Ok(done) => done,
-        Err(e) => {
-            if json {
-                println!("{}", json!({ "ok": false, "error": e }));
-            } else {
-                eprintln!("{e}");
+    let source_id = project
+        .source_id(0)
+        .expect("one source has a stable identity");
+    let done =
+        match proposal::install_project(&mut project, source_id, task, glyphs, keep_structure) {
+            Ok(done) => done.installed,
+            Err(e) => {
+                if json {
+                    println!("{}", json!({ "ok": false, "error": e }));
+                } else {
+                    eprintln!("{e}");
+                }
+                return exit::USAGE;
             }
-            return exit::USAGE;
-        }
-    };
-    if let Err(code) = save_master(&mut master, json) {
+        };
+    if let Err(code) = save_project(&mut project, json) {
         return code;
     }
     if json {
@@ -845,11 +898,14 @@ fn proposal_install(
 }
 
 fn proposal_discard(source: &Path, task: &str, json: bool) -> i32 {
-    let mut master = match open_master(source, json) {
-        Ok(m) => m,
+    let mut project = match open_project(source, json) {
+        Ok(project) => project,
         Err(code) => return code,
     };
-    let count = match master.discard_proposal(task) {
+    let source_id = project
+        .source_id(0)
+        .expect("one source has a stable identity");
+    let count = match proposal::discard_project(&mut project, source_id, task) {
         Ok(n) => n,
         Err(e) => {
             if json {
@@ -860,7 +916,7 @@ fn proposal_discard(source: &Path, task: &str, json: bool) -> i32 {
             return exit::USAGE;
         }
     };
-    if let Err(code) = save_master(&mut master, json) {
+    if let Err(code) = save_project(&mut project, json) {
         return code;
     }
     if json {
@@ -887,7 +943,7 @@ fn features_cmd(source: &Path, write: bool, json: bool) -> i32 {
     {
         return fail(json, exit::USAGE, "features --write requires a UFO source");
     }
-    let project = match runebender::document::project::Project::load(source) {
+    let project = match Project::load(source) {
         Ok(project) => project,
         Err(error) => {
             return fail(json, exit::USAGE, &format!("{}: {error}", source.display()));
@@ -967,7 +1023,7 @@ fn features_cmd(source: &Path, write: bool, json: bool) -> i32 {
 }
 
 fn compose_cmd(source: &Path, glyphs: Option<&[String]>, write: bool, json: bool) -> i32 {
-    let mut project = match runebender::document::project::Project::load(source) {
+    let mut project = match Project::load(source) {
         Ok(project) => project,
         Err(error) => {
             return fail(json, exit::USAGE, &format!("{}: {error}", source.display()));
@@ -1266,7 +1322,7 @@ fn nodes_run(
 /// The UFO a font path stands for: the UFO itself, or the first
 /// master of a designspace.
 fn font_master(font: &Path, master: Option<usize>) -> Result<PathBuf, String> {
-    let project = runebender::document::project::Project::load(font)?;
+    let project = Project::load(font)?;
     let index = match master {
         Some(index) => index,
         None if project.sources().len() == 1 => 0,
@@ -1280,7 +1336,7 @@ fn font_master(font: &Path, master: Option<usize>) -> Result<PathBuf, String> {
 }
 
 fn project_info(font: &Path) -> serde_json::Value {
-    match runebender::document::project::Project::load(font) {
+    match Project::load(font) {
         Ok(p) => json!({"ok": true, "project": font, "masters": p.sources().iter().enumerate()
             .map(|(index, m)| json!({"index": index, "name": p.master_names[index].as_ref(), "source": m.source_path}))
             .collect::<Vec<_>>()}),
@@ -1311,7 +1367,7 @@ fn self_json(args: &[String]) -> serde_json::Value {
 
 /// One glyph as the model reads it.
 fn read_glyph(source: &Path, name: &str, layer: Option<&str>) -> serde_json::Value {
-    let project = match runebender::document::project::Project::load(source) {
+    let project = match Project::load(source) {
         Ok(project) => project,
         Err(error) => return json!({ "ok": false, "error": error }),
     };

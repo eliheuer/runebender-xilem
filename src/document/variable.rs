@@ -324,6 +324,10 @@ impl Clone for VariableData {
 }
 
 impl VariableData {
+    pub(super) fn source_layer_names(&self, source: SourceId) -> Option<Vec<&str>> {
+        Some(self.source_formats.get(&source)?.layer_names().collect())
+    }
+
     pub(super) fn snapshot(&self) -> DocumentSnapshot {
         DocumentSnapshot {
             glyph_geometry: self.font.glyphs.clone(),

@@ -2322,8 +2322,8 @@ The complete native binary suite passed 168 tests with its four documented model
 Warning-denied library/test Clippy, formatting, copyright and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
-M12 still has one explicit close-out gap.
-The legacy CLI `open_master` and `save_master` boundary still loads and saves `Master` directly for UFO editing commands.
+At this checkpoint M12 still had one explicit close-out gap: the legacy CLI `open_master` and `save_master` boundary.
+The later canonical headless single-source change below closes that gap.
 
 ### Canonical native New Font
 
@@ -2415,7 +2415,7 @@ The unchanged `block v0.1.6` future-incompatibility notice remains a dependency 
 M13 still must replace the `Master` projection with a source shell, eliminate mutable source guards and delete remaining source-snapshot consumers before the Norad boundary can be restricted to codecs.
 
 The exact codec and preservation allowlist gap is closed.
-The remaining M12 caller and watcher gaps stay tracked separately from the completed `SourceFormatData` replacement.
+The later watcher and canonical headless single-source changes below close the remaining M12 gaps.
 
 ### Atomic semantic glyph marks
 
@@ -2466,3 +2466,32 @@ The full variable-project suite passed 71 tests, including explicit append and r
 Warning-denied library/test Clippy, formatting and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 The M06 Trace Image and SVG callers still need to consume these narrow methods; background swap also needs its Project-owned auxiliary-layer transaction before the remaining whole-glyph bridge can be deleted.
+
+### Canonical headless single-source commands
+
+Evidence commit: `Run headless source commands through Project` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Run headless source commands through Project$' -1`.
+
+The `info`, SVG `proof` and proposal list/install/discard commands now open one canonical Project source rather than loading a `Master` or mutating a standalone UFO font.
+Information and proof output read canonical source metadata, glyph layers, geometry and source-format layer order.
+Proposal installation uses the revision-checked Project transaction, and installation and discard save through Project persistence.
+Multi-source inputs fail explicitly instead of selecting a source implicitly.
+
+The proposal binary regression now writes the foreground revision record required by the canonical external-proposal contract.
+It verifies compatible installation, incompatible retention, save/reopen persistence, discard and missing-proposal failure through the command-line executable.
+
+Executed evidence:
+
+```sh
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test cli -- --test-threads=1
+cargo clippy --locked --lib --bin runebender --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+All 17 CLI integration tests passed, including canonical info, proof, proposal persistence, Babelfont import, multi-source ambiguity and existing agent/Nodes contracts.
+Warning-denied library, binary and test Clippy, formatting and whitespace checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+This closes the recorded M12 adapter and constructor gaps.
+M13 compatibility-state removal and the M14 final proof remain required before the migration is complete.
