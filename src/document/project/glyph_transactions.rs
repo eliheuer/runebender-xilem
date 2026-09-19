@@ -615,4 +615,48 @@ mod tests {
             0
         );
     }
+
+    #[test]
+    fn lifecycle_values_survive_source_save_and_reopen() {
+        let mut project = project();
+        let (copy, _) = project.duplicate_document_glyph("A").unwrap();
+        project.rename_document_glyph("A", "A.alt").unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "runebender-canonical-glyph-transaction-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        project
+            .source_snapshot(SourceId(0))
+            .unwrap()
+            .save(&path)
+            .unwrap();
+
+        let reopened = Project::from_source(Master::load(&path).unwrap());
+        let source = reopened.document_sources().next().unwrap();
+        let user = reopened
+            .document_layer("Aacute", &source.default_layer())
+            .unwrap();
+        assert_eq!(user.components().next().unwrap().reference(), "A.alt");
+        assert_eq!(user.metrics_key(true).unwrap(), Some("=A.alt+12.5"));
+        let copy = reopened
+            .document_layer(&copy, &source.default_layer())
+            .unwrap();
+        assert_eq!(copy.width(), 500.125);
+        assert_eq!(copy.codepoints().count(), 0);
+        assert_eq!(
+            reopened.sources()[0]
+                .font
+                .get_glyph("A.alt")
+                .unwrap()
+                .lib
+                .get("com.example.exact"),
+            Some(&plist::Value::Real(12.75))
+        );
+
+        std::fs::remove_dir_all(path).unwrap();
+    }
 }
