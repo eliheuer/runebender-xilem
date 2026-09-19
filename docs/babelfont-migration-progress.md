@@ -2026,3 +2026,34 @@ The unchanged `block v0.1.6` future-incompatibility notice remains a dependency 
 
 M05 remains active until the M06 application cutover retires `Master.history`, `VariableData.histories` and their compatibility undo callers.
 Those compatibility stores are parked by stable `SourceId` and `LayerId` across structural removal and restore so the transition does not lose existing undo or redo piles.
+
+### Canonical sparse structure, headless rendering and caller cutover
+
+Evidence commits: `5e9d2f1`, `278d173`, `36535d3`, `1b5234e`, `9c51a7b`, `94eb639` and `efa4362`.
+
+Canonical Designspace edits now register sparse sources and remove instances atomically, and structural replay refreshes instance projections from stable canonical state.
+The brace-layer interpolation, Designspace instance round-trip and curved trajectory regressions pass through those transactions.
+
+Headless proof and glyph analysis now read canonical Project layers and render components through the typed special-outline renderer.
+The component-selection renderer follows exact transforms, auxiliary-layer fallback, smart poles, nested metaballs, recursion limits and explicit cycle failures while preserving structural decomposition semantics for edit operations.
+Curve analysis exposes a borrowed canonical-layer entry point for callers that do not need a UFO boundary value.
+
+Application composition commands publish canonical proposal plans, root live glyph inspection reads canonical Project state, and the CLI agent reader loads Project plus an exact stable source before producing the existing JSON and revision contract.
+Experiment-branch inspection intentionally retains its isolated snapshot until the version boundary is removed during M13.
+
+Executed integration evidence:
+
+```sh
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources CARGO_BUILD_JOBS=2 cargo test --locked --lib -- --test-threads=1
+cargo test --locked --lib document::live_socket::tests::round_trip_requires_editor_dispatch_and_drop_removes_endpoint -- --exact --nocapture
+cargo check --workspace --all-targets --locked
+cargo clippy --locked --lib -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The integrated library contains 445 tests.
+The sandbox run passed 444 and failed only when the Unix live-socket test could not create its endpoint; that exact test passed outside the sandbox.
+The all-target workspace check, warning-denied library Clippy, formatting and whitespace checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+M06 remains open for Session, clipboard, canvas, history and panel callers, and M12 remains open for shared constructors and source-boundary consolidation.
