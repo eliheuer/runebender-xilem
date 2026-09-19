@@ -273,21 +273,15 @@ impl Project {
         super::compile_metadata::rules(self, &mut font)?;
         font.source = Some(self.sources()[default].source_path.join("features.fea"));
         font.masters.clear();
-        font.first_kern_groups.clear();
-        font.second_kern_groups.clear();
-        for (name, members) in &source.groups {
-            let destination = if name.starts_with("public.kern1.") {
-                &mut font.first_kern_groups
-            } else if name.starts_with("public.kern2.") {
-                &mut font.second_kern_groups
-            } else {
-                continue;
-            };
-            destination.insert(
-                name.as_str().into(),
-                members.iter().map(|name| name.as_str().into()).collect(),
-            );
-        }
+        super::compile_metadata::apply_groups(
+            &mut font,
+            source.groups.iter().map(|(name, members)| {
+                (
+                    name.to_string(),
+                    members.iter().map(ToString::to_string).collect(),
+                )
+            }),
+        );
         for (index, source) in self.sources().iter().enumerate() {
             let mut master = babelfont::Master::new(
                 self.master_names[index].as_ref(),
@@ -313,21 +307,14 @@ impl Project {
                         .insert(key, super::compile_metadata::metric(&name, value)?);
                 }
             }
-            for (left, pairs) in &source.font.kerning {
-                for (right, value) in pairs {
-                    let participant = |name: &norad::Name| {
-                        if name.starts_with("public.kern") {
-                            format!("@{name}")
-                        } else {
-                            name.to_string()
-                        }
-                    };
-                    master.kerning.insert(
-                        (participant(left).into(), participant(right).into()),
-                        super::compile_metadata::kerning(*value)?,
-                    );
-                }
-            }
+            super::compile_metadata::apply_kerning(
+                &mut master,
+                source.font.kerning.iter().flat_map(|(left, pairs)| {
+                    pairs
+                        .iter()
+                        .map(|(right, value)| (left.to_string(), right.to_string(), *value))
+                }),
+            )?;
             font.masters.push(master);
         }
         for glyph in &mut font.glyphs.0 {

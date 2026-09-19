@@ -56,47 +56,81 @@ pub(super) fn kerning(value: f64) -> Result<i16, String> {
     Ok(rounded as i16)
 }
 
-pub(super) fn glyph_category(
-    font: &norad::Font,
-    glyph: &norad::Glyph,
+/// Copy source groups into Babelfont's two compiler-side kerning-group maps.
+///
+/// The iterator uses owned strings so both canonical metadata and temporary UFO projections can
+/// feed this immutable snapshot boundary without exposing either storage model here.
+pub(super) fn apply_groups(
+    font: &mut babelfont::Font,
+    groups: impl IntoIterator<Item = (String, Vec<String>)>,
+) {
+    font.first_kern_groups.clear();
+    font.second_kern_groups.clear();
+    for (name, members) in groups {
+        let destination = if name.starts_with("public.kern1.") {
+            &mut font.first_kern_groups
+        } else if name.starts_with("public.kern2.") {
+            &mut font.second_kern_groups
+        } else {
+            continue;
+        };
+        destination.insert(name.into(), members.into_iter().map(Into::into).collect());
+    }
+}
+
+/// Quantize exact kerning pairs into one immutable Babelfont master.
+pub(super) fn apply_kerning(
+    master: &mut babelfont::Master,
+    pairs: impl IntoIterator<Item = (String, String, f64)>,
+) -> Result<(), String> {
+    for (left, right, value) in pairs {
+        let participant = |name: String| {
+            if name.starts_with("public.kern") {
+                format!("@{name}")
+            } else {
+                name
+            }
+        };
+        master.kerning.insert(
+            (participant(left).into(), participant(right).into()),
+            kerning(value)?,
+        );
+    }
+    Ok(())
+}
+
+/// Resolve a compiler category from canonical explicit data or inferred layer values.
+pub(super) fn glyph_category_from_values<'a>(
+    glyph_name: &str,
+    explicit: Option<&str>,
+    codepoints: impl IntoIterator<Item = char>,
+    anchor_names: impl IntoIterator<Item = &'a str>,
 ) -> Result<babelfont::GlyphCategory, String> {
     use babelfont::GlyphCategory;
-    let explicit = font
-        .lib
-        .get(OPEN_TYPE_CATEGORIES)
-        .and_then(plist::Value::as_dictionary)
-        .and_then(|categories| categories.get(glyph.name().as_str()))
-        .and_then(plist::Value::as_string);
     match explicit {
         Some("base") => return Ok(GlyphCategory::Base),
         Some("mark") => return Ok(GlyphCategory::Mark),
         Some("ligature") => return Ok(GlyphCategory::Ligature),
         Some(category) => {
             return Err(format!(
-                "{}: unsupported OpenType category {category}",
-                glyph.name()
+                "{glyph_name}: unsupported OpenType category {category}"
             ));
         }
         None => (),
     }
-    let mark = glyph.anchors.iter().any(|anchor| {
-        anchor
-            .name
-            .as_ref()
-            .is_some_and(|name| name.starts_with('_'))
-    }) || glyph.codepoints.iter().any(|c| {
-        matches!(
-            unicode_general_category::get_general_category(c),
-            unicode_general_category::GeneralCategory::NonspacingMark
-                | unicode_general_category::GeneralCategory::SpacingMark
-                | unicode_general_category::GeneralCategory::EnclosingMark
-        )
-    });
-    let ligature = glyph.anchors.iter().any(|anchor| {
-        anchor.name.as_ref().is_some_and(|name| {
-            name.rsplit_once('_')
-                .is_some_and(|(_, suffix)| suffix.parse::<usize>().is_ok_and(|index| index > 0))
-        })
+    let anchor_names: Vec<_> = anchor_names.into_iter().collect();
+    let mark = anchor_names.iter().any(|name| name.starts_with('_'))
+        || codepoints.into_iter().any(|codepoint| {
+            matches!(
+                unicode_general_category::get_general_category(codepoint),
+                unicode_general_category::GeneralCategory::NonspacingMark
+                    | unicode_general_category::GeneralCategory::SpacingMark
+                    | unicode_general_category::GeneralCategory::EnclosingMark
+            )
+        });
+    let ligature = anchor_names.iter().any(|name| {
+        name.rsplit_once('_')
+            .is_some_and(|(_, suffix)| suffix.parse::<usize>().is_ok_and(|index| index > 0))
     });
     Ok(if mark {
         GlyphCategory::Mark
@@ -105,6 +139,27 @@ pub(super) fn glyph_category(
     } else {
         GlyphCategory::Base
     })
+}
+
+pub(super) fn glyph_category(
+    font: &norad::Font,
+    glyph: &norad::Glyph,
+) -> Result<babelfont::GlyphCategory, String> {
+    let explicit = font
+        .lib
+        .get(OPEN_TYPE_CATEGORIES)
+        .and_then(plist::Value::as_dictionary)
+        .and_then(|categories| categories.get(glyph.name().as_str()))
+        .and_then(plist::Value::as_string);
+    glyph_category_from_values(
+        glyph.name().as_str(),
+        explicit,
+        glyph.codepoints.iter(),
+        glyph
+            .anchors
+            .iter()
+            .filter_map(|anchor| anchor.name.as_ref().map(norad::Name::as_str)),
+    )
 }
 
 pub(super) fn apply(font: &mut babelfont::Font, info: &norad::FontInfo) -> Result<(), String> {
@@ -351,5 +406,22 @@ mod tests {
         assert!(metric("metric", f64::from(i32::MAX) + 1.0).is_err());
         assert!(kerning(f64::from(i16::MIN) - 1.0).is_err());
         assert!(kerning(f64::from(i16::MAX) + 1.0).is_err());
+    }
+
+    #[test]
+    fn compiler_category_accepts_canonical_values_and_rejects_unknown_explicit_data() {
+        assert_eq!(
+            glyph_category_from_values("acutecomb", None, ['\u{301}'], std::iter::empty()).unwrap(),
+            babelfont::GlyphCategory::Mark
+        );
+        assert_eq!(
+            glyph_category_from_values("f_f", None, [], ["top_1", "top_2"]).unwrap(),
+            babelfont::GlyphCategory::Ligature
+        );
+        assert!(
+            glyph_category_from_values("future", Some("future-category"), [], std::iter::empty())
+                .unwrap_err()
+                .contains("unsupported OpenType category")
+        );
     }
 }
