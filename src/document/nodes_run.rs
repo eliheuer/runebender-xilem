@@ -976,9 +976,9 @@ fn run_node(
         "core.features" => {
             use crate::text::features;
             let source = inputs.source("source").ok_or("source is required")?;
-            let font =
-                norad::Font::load(source).map_err(|e| format!("{}: {e}", source.display()))?;
-            let generated = features::generate(&font);
+            let (project, source_id) = load_single_source(source)?;
+            let generated = features::generate_project(&project, source_id)
+                .ok_or_else(|| format!("{}: source is not in the document", source.display()))?;
             let (path, included) = features::write(source, &generated, true)?;
             out.insert("path".into(), RunValue::Path { path: path.clone() });
             Ok((
