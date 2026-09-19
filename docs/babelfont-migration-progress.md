@@ -2327,3 +2327,31 @@ The native New Font paths still serialize a temporary Norad font before reopenin
 The legacy CLI `open_master` and `save_master` boundary still loads and saves `Master` directly for UFO editing commands.
 External include files copied by Save As are not yet inputs to the native watcher fingerprint, so the existing watched-source conflict coverage remains limited to UFO and Designspace roots.
 The exact codec and preservation allowlist must be consolidated before M13 removes the compatibility adapters.
+
+### Glyph-free source-format preservation
+
+Evidence commit: `Replace UFO templates with source format data` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Replace UFO templates with source format data$' -1`.
+Affected paths: `src/document/source_format.rs`, `src/document/variable.rs`, its structural transaction modules, architecture and migration documentation.
+
+`VariableData` and `CanonicalSourceStructureSnapshot` no longer contain `BTreeMap<SourceId, norad::Font>` persistence templates.
+They retain explicit `SourceFormatData` records containing glyph-free layer order, names, exact paths, layer libs and colors, UFO metainfo, residual font-info and lib values, images and data.
+Features, groups, kerning, canonical font information, glyph metadata and geometry remain single-owned by their typed canonical stores.
+Source image insertion, auxiliary-layer structure, proposals, interpolated-source construction and structural restore now update the explicit record.
+A transient glyph-free UFO codec value is reconstructed only when an existing source-snapshot boundary requests it, then populated from canonical layers and metadata.
+
+Executed evidence:
+
+```sh
+cargo test --locked --lib document::source_format::tests::record_is_glyph_free_and_preserves_exact_format_structure -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo test --locked --lib document::filesystem::tests -- --test-threads=1
+cargo clippy --lib --tests --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused source-format invariant test, all 70 variable-project tests and all eight staged-filesystem tests passed, including exact layer structure, metadata/resource persistence, source image insertion, auxiliary layers, interpolated sources, custom GLIF paths and opaque filesystem payloads.
+Warning-denied library/test Clippy, formatting and whitespace checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+M13 still must replace the `Master` projection with a source shell, eliminate mutable source guards and delete remaining source-snapshot consumers before the Norad boundary can be restricted to codecs.

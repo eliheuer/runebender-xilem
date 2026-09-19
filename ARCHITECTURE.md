@@ -156,8 +156,9 @@ Use `edit_layer` and `undo_layer` for a specific glyph layer without switching t
 Default-layer edits share the existing editor history, while auxiliary layers have independent histories.
 Do not introduce another mutable source-font accessor.
 
-Project save materializes UFOs from canonical Babelfont geometry and preserving Norad templates, preserving font info, libs, layer order, features, kerning, groups, images and data.
-The templates and projections currently duplicate some data to preserve compatibility with existing Norad algorithms.
+Project save materializes UFOs from canonical Babelfont geometry and glyph-free source-format data, preserving font info, libs, layer order, features, kerning, groups, images and data.
+`document::source_format::SourceFormatData` retains glyph-free UFO layer structure, residual font metadata and opaque image/data resources without storing another complete font document.
+Compatibility projections still duplicate derived glyph payloads for remaining Norad algorithms.
 They are not separate editable documents.
 Native reload, live edits, proposals, experiments and browser edits cross the same scoped mutation boundary.
 

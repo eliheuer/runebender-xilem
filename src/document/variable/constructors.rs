@@ -69,14 +69,14 @@ impl VariableData {
             data.font.glyphs.0.push(geometry);
         }
 
-        // The glyph-free template is a persistence adapter created only after canonical state.
-        let template = norad::Font::new();
+        // Source-format preservation is created only after canonical state.
+        let format = crate::document::source_format::SourceFormatData::default();
         debug_assert_eq!(
-            template.default_layer().name().as_str(),
+            format.default_layer_name(),
             DEFAULT_LAYER_NAME,
-            "Norad's blank compatibility template must use the canonical default layer name"
+            "blank source-format data must use the canonical default layer name"
         );
-        data.templates.insert(source, template);
+        data.source_formats.insert(source, format);
         Ok(data)
     }
 

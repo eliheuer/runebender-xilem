@@ -50,6 +50,7 @@ No release has been published yet.
 - Made image placement install validated source resources through Project without mutable UFO-font access.
 - New fonts and in-memory UFO imports now enter through common canonical Project constructors.
   The browser-compatible UFO boundary preserves its supported metadata and default-layer glyphs while rejecting extra layers, images, data and unsafe or inconsistent paths instead of silently dropping them.
+- Replaced long-lived full UFO persistence templates with explicit glyph-free source-format records while preserving layer order and paths, residual metadata, images, data and opaque payloads.
 - Composition now writes complete revision-checked proposal plans atomically and keeps the foreground unchanged until explicit installation.
 - Moved live proposals and experimental versions onto stable source-identified canonical layers with revision-checked installation and Project-owned undo.
 - Moved source groups and exact fractional kerning into stable source-identified canonical metadata with atomic edits and UFO boundary rehydration.

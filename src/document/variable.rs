@@ -172,7 +172,7 @@ pub struct VariableGlyph {
     source_metadata: BTreeMap<SourceId, super::model::glyph_metadata::CanonicalSourceGlyphMetadata>,
 }
 
-/// Cloneable canonical editing state without UFO format templates or Master projections.
+/// Cloneable canonical editing state without source-format preservation or Master projections.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DocumentSnapshot {
     glyph_geometry: babelfont::GlyphList,
@@ -185,14 +185,14 @@ pub struct DocumentSnapshot {
 /// Opaque canonical source and layer structure for guarded document transactions.
 ///
 /// This snapshot owns Babelfont geometry, exact glyph preservation payloads, stable source
-/// identities, canonical source metadata and the immutable Norad templates needed to preserve
-/// source-format data during persistence. It deliberately excludes edit histories, derived
-/// compiler data, the document revision and the source-id allocator.
+/// identities, canonical source metadata and glyph-free source-format preservation data.
+/// It deliberately excludes edit histories, derived compiler data, the document revision and the
+/// source-id allocator.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CanonicalSourceStructureSnapshot {
     glyph_geometry: babelfont::GlyphList,
     glyphs: BTreeMap<String, VariableGlyph>,
-    templates: BTreeMap<SourceId, norad::Font>,
+    source_formats: BTreeMap<SourceId, super::source_format::SourceFormatData>,
     source_metadata: BTreeMap<SourceId, SourceMetadata>,
     source_ids: Vec<SourceId>,
     designspace: Option<super::model::designspace::CanonicalDesignspace>,
@@ -298,7 +298,7 @@ pub(super) struct VariableData {
     pub(super) compiled: std::sync::Mutex<super::compile::CompileCache>,
     pub(super) glyphs: BTreeMap<String, VariableGlyph>,
     pub(super) histories: BTreeMap<LayerId, super::history::EditHistory>,
-    templates: BTreeMap<SourceId, norad::Font>,
+    source_formats: BTreeMap<SourceId, super::source_format::SourceFormatData>,
     source_metadata: BTreeMap<SourceId, SourceMetadata>,
     designspace: Option<super::model::designspace::CanonicalDesignspace>,
     pub(super) source_ids: Vec<SourceId>,
@@ -313,7 +313,7 @@ impl Clone for VariableData {
             compiled: std::sync::Mutex::default(),
             glyphs: self.glyphs.clone(),
             histories: self.histories.clone(),
-            templates: self.templates.clone(),
+            source_formats: self.source_formats.clone(),
             source_metadata: self.source_metadata.clone(),
             designspace: self.designspace.clone(),
             source_ids: self.source_ids.clone(),
@@ -369,7 +369,7 @@ impl VariableData {
         CanonicalSourceStructureSnapshot {
             glyph_geometry: self.font.glyphs.clone(),
             glyphs: self.glyphs.clone(),
-            templates: self.templates.clone(),
+            source_formats: self.source_formats.clone(),
             source_metadata: self.source_metadata.clone(),
             source_ids: self.source_ids.clone(),
             designspace: self.designspace.clone(),
@@ -402,7 +402,7 @@ impl VariableData {
             .unwrap_or(0);
         self.font.glyphs = replacement.glyph_geometry;
         self.glyphs = replacement.glyphs;
-        self.templates = replacement.templates;
+        self.source_formats = replacement.source_formats;
         self.source_metadata = replacement.source_metadata;
         self.source_ids = replacement.source_ids;
         self.designspace = replacement.designspace;
@@ -529,20 +529,17 @@ impl VariableData {
         path: std::path::PathBuf,
         bytes: Vec<u8>,
     ) -> Result<bool, String> {
-        let template = self
-            .templates
+        let format = self
+            .source_formats
             .get_mut(&source)
             .ok_or_else(|| "source does not exist".to_owned())?;
-        if let Some(current) = template.images.get(&path) {
-            let current = current.map_err(|error| error.to_string())?;
-            if current.as_ref() == bytes {
-                return Ok(false);
-            }
+        if format
+            .image_bytes(&path)?
+            .is_some_and(|current| current.as_ref() == bytes)
+        {
+            return Ok(false);
         }
-        template
-            .images
-            .insert(path, bytes)
-            .map_err(|error| error.to_string())?;
+        format.install_image(path, bytes)?;
         self.revision = self.revision.wrapping_add(1);
         Ok(true)
     }
@@ -676,19 +673,10 @@ impl VariableData {
         if self.has_layer(id) {
             return false;
         }
-        let Some(template) = self.templates.get_mut(&id.source) else {
+        let Some(format) = self.source_formats.get_mut(&id.source) else {
             return false;
         };
-        if template.default_layer().name().as_str() == id.name {
-            return false;
-        }
-        let Some(layer) = template.layers.get(&id.name) else {
-            return false;
-        };
-        if !layer.is_empty() {
-            return false;
-        }
-        let removed = template.layers.remove(&id.name).is_some();
+        let removed = format.remove_empty_layer(&id.name);
         if removed {
             self.histories.remove(id);
             self.revision = self.revision.wrapping_add(1);
@@ -735,7 +723,8 @@ impl VariableData {
     }
 
     pub(super) fn synchronize(&mut self, sources: &[Master]) {
-        self.templates.retain(|id, _| self.source_ids.contains(id));
+        self.source_formats
+            .retain(|id, _| self.source_ids.contains(id));
         self.source_metadata
             .retain(|id, _| self.source_ids.contains(id));
         self.histories
@@ -868,37 +857,10 @@ impl VariableData {
                 changed |= glyph.source_metadata.remove(&source).is_some();
             }
         }
-        // A template contains no glyphs or canonically owned source metadata.
-        // Preserve layer ordering, paths, color, libs, images, data and all font-info fields.
-        let previous = self.templates.get(&source);
-        let mut template = previous.cloned().unwrap_or_default();
-        let same_layers = template.layers.len() == font.layers.len()
-            && template
-                .layers
-                .iter()
-                .zip(font.layers.iter())
-                .all(|(a, b)| a.name() == b.name() && a.path() == b.path());
-        if !same_layers {
-            template.layers = font.layers.clone();
-            for layer in template.layers.iter_mut() {
-                layer.clear();
-            }
-        }
-        for (target, original) in template.layers.iter_mut().zip(font.layers.iter()) {
-            target.lib.clone_from(&original.lib);
-            target.color = original.color;
-        }
-        template.meta.clone_from(&font.meta);
-        template.font_info.clone_from(&font.font_info);
-        super::model::font_info::clear_canonical_font_info_fields(&mut template.font_info);
-        template.lib.clone_from(&font.lib);
-        template.groups.clear();
-        template.kerning.clear();
-        template.features.clear();
-        template.data.clone_from(&font.data);
-        template.images.clone_from(&font.images);
-        changed |= previous != Some(&template);
-        self.templates.insert(source, template);
+        // Source-format preservation contains no glyphs or canonically owned source metadata.
+        let format = super::source_format::SourceFormatData::from_ufo(font);
+        changed |= self.source_formats.get(&source) != Some(&format);
+        self.source_formats.insert(source, format);
         if changed {
             self.revision = self.revision.wrapping_add(1);
         }
@@ -906,7 +868,7 @@ impl VariableData {
     }
 
     pub(super) fn source_font(&self, source: SourceId) -> Option<norad::Font> {
-        let mut font = self.templates.get(&source)?.clone();
+        let mut font = self.source_formats.get(&source)?.to_ufo_template();
         font.features
             .clone_from(&self.source_metadata.get(&source)?.feature_text);
         super::font_ops::write_canonical_metadata_to_ufo(

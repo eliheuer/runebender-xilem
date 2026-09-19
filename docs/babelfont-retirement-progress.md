@@ -85,6 +85,12 @@ The exact template-dependent production sites are:
 - `document/variable/proposal_transactions.rs:22,62` uses templates to validate and publish proposal layers.
 - `document/variable.rs:316,372,405,655,714,849-885` clones, restores, edits and serializes templates.
 
+Implementation update: `Replace UFO templates with source format data` removes this full-font map and replaces it with `SourceFormatData`.
+The record owns glyph-free layer order, names, exact paths, layer libs and colors, UFO metainfo, residual font info and lib values, plus data and image stores.
+Canonical features, groups, kerning, font information, glyph metadata and geometry remain outside it.
+Transient `norad::Font` values are reconstructed only when an existing compatibility or persistence boundary explicitly requests a source snapshot.
+The 70 variable-project tests and eight staged-filesystem tests preserve the prior exact save behavior; deleting the remaining source-snapshot consumers is still M13 work.
+
 `Master` remains a second live source model at `src/document/source.rs:84` and `Project.masters` at `src/document/project.rs:290`.
 Its `font`, paint cache, path, dirty flags, preserved files and legacy history mix application caches, persistence state and editing ownership.
 Before deleting it, split the noncanonical responsibilities into a source shell containing only source path, preserved filesystem payload and save status, and derive application glyph caches from canonical views.

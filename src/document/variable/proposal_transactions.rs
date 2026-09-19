@@ -19,11 +19,11 @@ impl CanonicalSourceStructureSnapshot {
         if foreground.source != source || target.source != source {
             return Err("proposal layers must belong to the selected source".into());
         }
-        let template = self.templates.get(&source).ok_or("unknown source")?;
-        if template.default_layer().name().as_str() == target.name {
+        let format = self.source_formats.get(&source).ok_or("unknown source")?;
+        if format.default_layer_name() == target.name {
             return Err("a proposal cannot replace the default layer".into());
         }
-        if template.layers.get(&target.name).is_some()
+        if format.contains_layer(&target.name)
             || self
                 .glyphs
                 .values()
@@ -59,12 +59,10 @@ impl CanonicalSourceStructureSnapshot {
             }
         }
 
-        self.templates
+        self.source_formats
             .get_mut(&source)
             .expect("validated source")
-            .layers
-            .get_or_create_layer(&target.name)
-            .map_err(|error| error.to_string())?;
+            .ensure_layer(&target.name)?;
         let mut affected = Vec::with_capacity(staged.len());
         for (name, draft) in staged {
             let address = GlyphLayerAddress {

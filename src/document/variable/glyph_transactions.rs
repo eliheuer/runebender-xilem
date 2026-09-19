@@ -259,12 +259,11 @@ impl CanonicalSourceStructureSnapshot {
 
     fn default_layer(&self, source: super::SourceId) -> Result<super::LayerId, String> {
         let name = self
-            .templates
+            .source_formats
             .get(&source)
-            .ok_or_else(|| format!("missing source template {}", source.0))?
-            .default_layer()
-            .name()
-            .to_string();
+            .ok_or_else(|| format!("missing source format data {}", source.0))?
+            .default_layer_name()
+            .to_owned();
         Ok(super::LayerId { source, name })
     }
 }

@@ -130,7 +130,7 @@ impl CanonicalSourceStructureSnapshot {
         layers: Vec<CanonicalLayerSnapshot>,
     ) -> Result<(), String> {
         if self.source_ids.contains(&source)
-            || self.templates.contains_key(&source)
+            || self.source_formats.contains_key(&source)
             || self.source_metadata.contains_key(&source)
         {
             return Err("new source identity is already in use".into());
@@ -145,16 +145,13 @@ impl CanonicalSourceStructureSnapshot {
             return Err("new source order does not match the canonical Designspace".into());
         }
         font_info.validate().map_err(|error| error.to_string())?;
-        let mut template = self
-            .templates
+        let mut format = self
+            .source_formats
             .get(&based_on)
             .cloned()
-            .ok_or("missing default source preservation template")?;
-        template.layers.retain(|layer| layer.is_default());
-        for layer in template.layers.iter_mut() {
-            layer.clear();
-        }
-        let default_layer_name = template.default_layer().name().to_string();
+            .ok_or("missing default source format data")?;
+        format.retain_default_layer();
+        let default_layer_name = format.default_layer_name().to_owned();
 
         let mut seen = std::collections::BTreeSet::new();
         for snapshot in layers {
@@ -190,7 +187,7 @@ impl CanonicalSourceStructureSnapshot {
             geometry.layers.push(layer);
         }
         self.source_ids.push(source);
-        self.templates.insert(source, template);
+        self.source_formats.insert(source, format);
         self.source_metadata.insert(
             source,
             SourceMetadata {

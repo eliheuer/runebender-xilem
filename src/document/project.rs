@@ -1697,7 +1697,7 @@ impl Project {
         self.variable.revision
     }
 
-    /// Clone the canonical editing state without UFO templates or Master projections.
+    /// Clone the canonical editing state without source-format preservation or Master projections.
     pub fn document_snapshot(&self) -> DocumentSnapshot {
         self.variable.snapshot()
     }
