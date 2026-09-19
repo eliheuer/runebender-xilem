@@ -308,12 +308,14 @@ impl Session {
             });
     }
 
+    #[cfg(test)]
     fn rebuild_component_caches(&mut self, font: &norad::Font) {
         self.component_paths = resolved_component_paths(font, &self.glyph);
         self.component_contours = resolved_component_contour_sets(font, &self.glyph);
         self.rebuild_combined_components();
     }
 
+    #[cfg(test)]
     pub(crate) fn add_component(&mut self, font: &norad::Font, base: &str) -> bool {
         let mut changed = self.glyph.clone();
         if !runebender::outline::component_ops::add_component(font, &mut changed, base) {
@@ -328,6 +330,7 @@ impl Session {
         true
     }
 
+    #[cfg(test)]
     pub(crate) fn toggle_component_alignment(&mut self, font: &norad::Font) -> bool {
         let Some(index) = self.selected_component else {
             return false;
@@ -1510,6 +1513,41 @@ impl Workspace {
         // the field, so it does not clobber input.
         self.refresh_metric_bufs();
         self.selected_points = self.session.selection.len();
+    }
+
+    /// Rebase the open transitional session after a canonical layer commit or replay.
+    pub(crate) fn reload_canonical_layer(
+        &mut self,
+        address: &runebender::document::variable::GlyphLayerAddress,
+    ) -> bool {
+        if self.font.project.source_id(self.font.active()) != Some(address.layer.source)
+            || self.session.glyph_name != address.glyph
+        {
+            return false;
+        }
+        let Some(glyph) = self
+            .font
+            .project
+            .glyph_layer(&address.glyph, &address.layer)
+        else {
+            return false;
+        };
+        let mut session = (*self.session).clone();
+        session.pending.clear();
+        session.reload_glyph(self.font.font(), glyph);
+        self.session = Arc::new(session);
+        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            tab.session = self.session.clone();
+        }
+        if let Some(index) = self.font.index_of(&address.glyph) {
+            self.font.refresh_entry(index);
+        }
+        self.cells = Arc::new(cells_of(&self.font, &self.palette));
+        self.refresh_metric_bufs();
+        self.refresh_coord_bufs();
+        self.selected_points = self.session.selection.len();
+        self.modified = true;
+        true
     }
 
     /// Undo or redo the open glyph on the master's pile, then reload

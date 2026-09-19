@@ -82,6 +82,12 @@ pub(crate) enum MetadataEdit {
         label: String,
         undo_depth: usize,
     },
+    DocumentLayer {
+        glyph: String,
+        address: runebender::document::variable::GlyphLayerAddress,
+        label: String,
+        undo_depth: usize,
+    },
 }
 
 pub(crate) struct Workspace {

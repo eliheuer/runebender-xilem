@@ -139,6 +139,56 @@ All fifteen existing session tests also passed against the integrated transactio
 Warning-denied binary Clippy, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+## Project-owned component history slice
+
+Implementation commit: `Move application edits into canonical transactions`.
+Resolve its exact ID with `git log --format=%H --grep='^Move application edits into canonical transactions$' -1`.
+Affected paths: `src/application/workspace.rs`, `src/application/font_model.rs`, `src/application/editor/commands.rs`, `src/application/editor/inspector.rs`, `src/application/editor/session.rs` and this log.
+
+The component-add and alignment-toggle commands now commit guarded `CanonicalLayerTransaction` values at the active stable `GlyphLayerAddress`.
+The alignment command translates the session's temporary component index to `ComponentId` before mutation and uses canonical cross-layer anchor resolution when re-enabling alignment.
+Application history stores only the glyph, layer address, label and legacy ordering depth; exact before and after layer values remain in Project-owned history.
+Undo and redo replay that guarded history and then rebase the open transitional session from the canonical layer projection.
+That rebase is an explicit migration adapter and does not make the Norad-backed `Session` authoritative.
+
+Integration commit `5cfe3a9` assigns one stable preserved component identifier when alignment metadata first creates a UFO object library.
+Without that invariant, a legacy movement roundtrip generated a different identifier and correctly caused guarded history replay to reject the visually identical layer as stale.
+The host regression covers canonical add, canonical alignment toggle, a later legacy movement, ordered undo and redo across both history systems, and save/reopen persistence.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked application::platform::host::tests::component_add_move_undo_and_save_reopen -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused host regression passed.
+The complete binary suite passed 166 tests with four documented model or external-font tests ignored.
+Warning-denied workspace/all-target Clippy, formatting and diff checks passed.
+The unchanged live-tool `Operation not permitted` diagnostics are sandbox-only and did not affect the file-backed editor assertions.
+
+## Canonical whole-glyph lifecycle slice
+
+Implementation commit: `Move application edits into canonical transactions`.
+Resolve its exact ID with `git log --format=%H --grep='^Move application edits into canonical transactions$' -1`.
+Affected path: `src/application/font_model.rs` and this log.
+
+`FontModel` now delegates add, batch add-missing, duplicate, remove and rename to atomic canonical whole-glyph Project transactions.
+The application no longer loops over mutable source projections for those commands or reconstructs duplicate payloads field by field.
+The Project boundary retains active-source command semantics, stable logical glyph identity, sparse and auxiliary layers, source metadata, compatibility projection refresh and legacy history rename or cleanup.
+`FontModel` now only maps transaction outcomes to the existing application return contracts and rebuilds its active-source presentation cache after a committed change.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::font_model::tests:: -- --test-threads=1
+```
+
+All six focused `FontModel` tests passed, including cross-source duplicate and remove behavior.
+
 ## Remaining application callers
 
 - `application/editor/session.rs` still stores and mutates a `norad::Glyph`, resolved Norad component contours and pending Norad history records.

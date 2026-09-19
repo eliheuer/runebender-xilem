@@ -14,7 +14,7 @@ use kurbo::{BezPath, Rect};
 use runebender::analysis::category::GlyphCategory;
 use runebender::document::canonical_metadata::{CanonicalFontMetadata, KerningSide};
 use runebender::document::model::font_info::CanonicalFontInfo;
-use runebender::document::project::{Master, Project};
+use runebender::document::project::{DocumentEditOutcome, Master, Project};
 use runebender::document::proposal;
 use runebender::document::variable::{SourceEdit, SourceFontEdit};
 use runebender::outline::glyph_paths;
@@ -109,6 +109,21 @@ impl FontModel {
         self.project
             .source_id(index)
             .and_then(|source| self.project.document_font_info(source))
+    }
+
+    /// Stable address of one glyph's active default layer.
+    pub(crate) fn active_layer_address(
+        &self,
+        glyph: &str,
+    ) -> Option<runebender::document::variable::GlyphLayerAddress> {
+        let source = self.project.source_id(self.active())?;
+        let layer = self.project.document_source(source)?.default_layer();
+        self.project.document_layer(glyph, &layer).map(|_| {
+            runebender::document::variable::GlyphLayerAddress {
+                glyph: glyph.to_owned(),
+                layer,
+            }
+        })
     }
 
     pub(crate) fn preview_font(
@@ -264,26 +279,12 @@ impl FontModel {
         default_advance: f64,
         unicode: Option<u32>,
     ) -> bool {
-        let name = name.trim();
-        if name.is_empty() || self.font().get_glyph(name).is_some() {
+        let Ok(DocumentEditOutcome::Changed { .. }) =
+            self.project
+                .add_document_glyph(name, default_advance, unicode)
+        else {
             return false;
-        }
-        let codepoint = unicode.and_then(char::from_u32).or_else(|| {
-            (name.chars().count() == 1)
-                .then(|| name.chars().next())
-                .flatten()
-        });
-        for master in self.project.edit_sources().iter_mut() {
-            if master.font.get_glyph(name).is_some() {
-                continue;
-            }
-            if let Some(index) = master.add_glyph(name, default_advance)
-                && let Some(c) = codepoint
-            {
-                master.edit_glyph(index, |g| g.codepoints = norad::Codepoints::new([c]));
-            }
-        }
-        self.project.recheck_compat(name);
+        };
         self.rebuild_cache();
         true
     }
@@ -292,12 +293,12 @@ impl FontModel {
     /// report how many were added.
     pub(crate) fn add_missing(&mut self, targets: &[(String, Option<u32>)]) -> usize {
         let advance = (self.units_per_em() * 0.5).round();
-        let mut added = 0;
-        for (name, unicode) in targets {
-            if self.add_glyph(name, advance, *unicode) {
-                added += 1;
-            }
-        }
+        let Ok((added, DocumentEditOutcome::Changed { .. })) =
+            self.project.add_missing_document_glyphs(targets, advance)
+        else {
+            return 0;
+        };
+        self.rebuild_cache();
         added
     }
 
@@ -307,55 +308,23 @@ impl FontModel {
     /// deliberately unencoded. Returns the new name, or `None` when the source
     /// is absent from the active master.
     pub(crate) fn duplicate_glyph(&mut self, source: &str) -> Option<String> {
-        self.font().get_glyph(source)?;
-        let taken: std::collections::HashSet<String> = self
-            .project
-            .sources()
-            .iter()
-            .flat_map(|master| master.name_map.keys().cloned())
-            .collect();
-        let stem = source.split('.').next().unwrap_or(source);
-        let mut counter = 1;
-        let mut name = format!("{stem}.{counter:03}");
-        while taken.contains(&name) {
-            counter += 1;
-            name = format!("{stem}.{counter:03}");
-        }
-
-        for master in self.project.edit_sources().iter_mut() {
-            let Some(original) = master.font.get_glyph(source).cloned() else {
-                continue;
-            };
-            master.add_glyph(&name, original.width);
-            if let Some(copy) = master.font.get_glyph_mut(&name) {
-                copy.contours = original.contours;
-                copy.components = original.components;
-                copy.anchors = original.anchors;
-                copy.width = original.width;
-                copy.lib = original.lib;
-            }
-            master.dirty = true;
-            master.modified_glyphs.insert(name.clone());
-            master.refresh_from_font();
-        }
-        self.project.recheck_compat(&name);
+        let Ok((name, DocumentEditOutcome::Changed { .. })) =
+            self.project.duplicate_document_glyph(source)
+        else {
+            return None;
+        };
         self.rebuild_cache();
         Some(name)
     }
 
     /// Remove `name` from every master and refresh the active-master cache.
     pub(crate) fn remove_glyph(&mut self, name: &str) -> bool {
-        let mut removed = false;
-        for master in self.project.edit_sources().iter_mut() {
-            if master.font.get_glyph(name).is_some() {
-                master.remove_glyph(name);
-                removed = true;
-            }
-        }
-        if removed {
-            self.rebuild_cache();
-        }
-        removed
+        let Ok(DocumentEditOutcome::Changed { .. }) = self.project.remove_document_glyph(name)
+        else {
+            return false;
+        };
+        self.rebuild_cache();
+        true
     }
 
     /// Rename a glyph, in every master.
@@ -366,19 +335,12 @@ impl FontModel {
     /// designspace whose sources disagree about a glyph name does not
     /// build.
     pub(crate) fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
-        let mut renamed = false;
-        for master in self.project.edit_sources().iter_mut() {
-            if runebender::document::font_ops::rename_glyph(&mut master.font, old, new) {
-                master.dirty = true;
-                let _ = master.history.rename_glyph(old, new);
-                master.refresh_from_font();
-                renamed = true;
-            }
-        }
-        if renamed {
-            self.rebuild_cache();
-        }
-        renamed
+        let Ok(DocumentEditOutcome::Changed { .. }) = self.project.rename_document_glyph(old, new)
+        else {
+            return false;
+        };
+        self.rebuild_cache();
+        true
     }
 
     /// Save every master to its UFO.
@@ -610,7 +572,7 @@ impl FontModel {
                     draft.set_font_metadata(metadata);
                     Ok(())
                 }),
-                Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+                Ok(DocumentEditOutcome::Changed { .. })
             );
         }
         changed

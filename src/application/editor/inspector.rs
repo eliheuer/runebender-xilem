@@ -452,6 +452,9 @@ impl Workspace {
             }
             | MetadataEdit::SourceMetadata {
                 glyph, undo_depth, ..
+            }
+            | MetadataEdit::DocumentLayer {
+                glyph, undo_depth, ..
             } => (glyph, *undo_depth),
         };
         let current_name = match self.mode {
@@ -524,6 +527,24 @@ impl Workspace {
                 self.modified = true;
                 format!("{} {label}", if redo { "Redid" } else { "Undid" })
             }
+            MetadataEdit::DocumentLayer { address, label, .. } => {
+                let direction = if redo {
+                    HistoryDirection::Redo
+                } else {
+                    HistoryDirection::Undo
+                };
+                let Ok(DocumentHistoryReplayOutcome::Changed { .. }) = self
+                    .font
+                    .project
+                    .replay_document_layer_history(address, direction)
+                else {
+                    return false;
+                };
+                if !self.reload_canonical_layer(address) {
+                    return false;
+                }
+                format!("{} {label}", if redo { "Redid" } else { "Undid" })
+            }
         };
         if redo {
             self.metadata_redo.pop();
@@ -556,6 +577,9 @@ impl Workspace {
             }
             | MetadataEdit::SourceMetadata {
                 glyph, undo_depth, ..
+            }
+            | MetadataEdit::DocumentLayer {
+                glyph, undo_depth, ..
             } => (glyph, *undo_depth),
         };
         let current_name = match self.mode {
@@ -575,7 +599,21 @@ impl Workspace {
                 } else {
                     HistoryDirection::Undo
                 });
+        let document_layer_available = match edit {
+            MetadataEdit::DocumentLayer { address, .. } => {
+                self.font.project.can_replay_document_layer_history(
+                    address,
+                    if redo {
+                        HistoryDirection::Redo
+                    } else {
+                        HistoryDirection::Undo
+                    },
+                )
+            }
+            _ => true,
+        };
         source_metadata_available
+            && document_layer_available
             && current_name == Some(expected.as_str())
             && self
                 .font

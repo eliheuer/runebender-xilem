@@ -10,7 +10,7 @@ use crate::application::view::canvas;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::view::theme::Palette;
 use crate::application::widgets::shortcuts;
-use crate::application::workspace::{Mode, Sel, Sort, Tool, Workspace};
+use crate::application::workspace::{MetadataEdit, Mode, Sel, Sort, Tool, Workspace};
 use std::sync::Arc;
 
 const SAMPLE_STRINGS: &[&str] = &[
@@ -27,25 +27,132 @@ impl Workspace {
     /// Add the Shapes panel's named base glyph as an undoable component.
     pub(crate) fn command_add_component(&mut self) {
         let base = self.component_base_buf.trim().to_string();
-        let mut session = (*self.session).clone();
-        if !session.add_component(self.font.font(), &base) {
+        let glyph = self.session.glyph_name.clone();
+        let Some(glyph_index) = self.font.index_of(&glyph) else {
+            return;
+        };
+        let Some(address) = self.font.active_layer_address(&glyph) else {
+            self.note = "The active glyph layer is unavailable".into();
+            return;
+        };
+        if base.is_empty()
+            || base == glyph
+            || self
+                .font
+                .project
+                .document_layer(&base, &address.layer)
+                .is_none()
+        {
             self.note = format!("Cannot add component {base}");
             return;
         }
-        self.sync_session_from(&mut session);
-        self.refresh_open_glyph();
+        let undo_depth = self.font.master().undo_depth(glyph_index);
+        let Ok(mut transaction) = self.font.project.begin_document_layer_transaction(&address)
+        else {
+            self.note = "The active glyph layer changed before adding the component".into();
+            return;
+        };
+        if transaction
+            .draft_mut()
+            .add_component(base.clone(), kurbo::Affine::IDENTITY)
+            .is_err()
+        {
+            self.note = format!("Cannot add component {base}");
+            return;
+        }
+        let Ok(runebender::document::project::DocumentEditOutcome::Changed { .. }) = self
+            .font
+            .project
+            .commit_document_layer_transaction(transaction)
+        else {
+            self.note = "The active glyph layer changed before adding the component".into();
+            return;
+        };
+        self.metadata_undo.push(MetadataEdit::DocumentLayer {
+            glyph,
+            address: address.clone(),
+            label: "component add".into(),
+            undo_depth,
+        });
+        self.metadata_redo.clear();
+        if self.reload_canonical_layer(&address)
+            && let Some(component) = self.session.glyph.components.len().checked_sub(1)
+        {
+            let mut session = (*self.session).clone();
+            let _ = session.select_component(component);
+            self.session = Arc::new(session);
+            if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                tab.session = self.session.clone();
+            }
+        }
         self.note = format!("Added component {base}");
     }
 
     /// Toggle whether the selected component follows its matching anchors.
     pub(crate) fn command_toggle_component_alignment(&mut self) {
-        let mut session = (*self.session).clone();
-        if !session.toggle_component_alignment(self.font.font()) {
+        let Some(component_index) = self.session.selected_component else {
+            return;
+        };
+        let glyph = self.session.glyph_name.clone();
+        let Some(glyph_index) = self.font.index_of(&glyph) else {
+            return;
+        };
+        let Some(address) = self.font.active_layer_address(&glyph) else {
+            self.note = "The active glyph layer is unavailable".into();
+            return;
+        };
+        let undo_depth = self.font.master().undo_depth(glyph_index);
+        let Ok(mut transaction) = self.font.project.begin_document_layer_transaction(&address)
+        else {
+            self.note = "The active glyph layer changed before component alignment".into();
+            return;
+        };
+        let Some(component) = transaction.draft().view().components().nth(component_index) else {
+            return;
+        };
+        let component_id = component.id();
+        let Ok(disabled) = transaction
+            .draft()
+            .component_alignment_disabled(component_id)
+        else {
+            return;
+        };
+        if transaction
+            .draft_mut()
+            .set_component_alignment_disabled(component_id, !disabled)
+            != Ok(true)
+        {
             return;
         }
-        let aligned = session.selected_component_aligned() == Some(true);
-        self.sync_session_from(&mut session);
-        self.refresh_open_glyph();
+        if disabled {
+            let layer = address.layer.clone();
+            let project = &self.font.project;
+            if let Err(error) = runebender::document::composites::realign_document_layer(
+                transaction.draft_mut(),
+                |name| project.document_layer(name, &layer),
+                true,
+            ) {
+                self.note = format!("Cannot align component: {error}");
+                return;
+            }
+        }
+        let Ok(runebender::document::project::DocumentEditOutcome::Changed { .. }) = self
+            .font
+            .project
+            .commit_document_layer_transaction(transaction)
+        else {
+            self.note = "The active glyph layer changed before component alignment".into();
+            return;
+        };
+        self.metadata_undo.push(MetadataEdit::DocumentLayer {
+            glyph,
+            address: address.clone(),
+            label: "component alignment".into(),
+            undo_depth,
+        });
+        self.metadata_redo.clear();
+        let _ = self.reload_canonical_layer(&address);
+        let aligned = disabled;
         self.note = if aligned {
             "Component locked to anchors"
         } else {
