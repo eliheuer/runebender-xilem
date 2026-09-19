@@ -483,6 +483,33 @@ mod tests {
     }
 
     #[test]
+    fn add_fills_a_missing_source_without_replacing_glyph_identity() {
+        let mut project = project();
+        let id = project.document_glyph("A").unwrap().id();
+        {
+            let mut sources = project.edit_sources();
+            assert!(sources[1].remove_glyph("A"));
+        }
+        assert!(project.sources()[1].font.get_glyph("A").is_none());
+        let revision = project.document_revision();
+
+        let outcome = project
+            .add_document_glyph("A", 700.375, Some('A' as u32))
+            .unwrap();
+        assert!(matches!(outcome, DocumentEditOutcome::Changed { .. }));
+        assert_eq!(project.document_revision(), revision + 1);
+        assert_eq!(project.document_glyph("A").unwrap().id(), id);
+        assert_eq!(
+            project.sources()[1].font.get_glyph("A").unwrap().width,
+            700.375
+        );
+        assert_eq!(
+            project.sources()[0].font.get_glyph("A").unwrap().width,
+            500.125
+        );
+    }
+
+    #[test]
     fn rejected_and_stale_transactions_leave_state_unchanged() {
         let mut project = project();
         let revision = project.document_revision();
