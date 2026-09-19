@@ -25,9 +25,10 @@ The draft now includes stable-ID component and anchor add/remove operations plus
 
 ## Remaining shared API blockers
 
-Removing the session's Norad mirror without dropping existing tools still requires canonical draft operations for selected-corner rounding, handle harmonize/balance/optimize, hyper-to-cubic conversion and quadratic/cubic conversion.
-Typed mark color, metaball storage and component-alignment metadata also need canonical layer reads and mutations from M07.
-M06 has reported these exact gaps to the integration lane and will not introduce duplicate application-side serialization or conversion paths.
+The guarded draft now covers stable point, component and anchor selection; owned gesture lifetime; canonical contour clipboard values; edit commands; metadata; and complete whole-layer rendering.
+One shared rendering gap remains before the Norad session mirror can be removed without weakening component hit testing: `resolved_document_components` still renders each top-level component through the ordinary-contour path, so smart-component and metaball bases can disagree with the complete layer renderer.
+The pipeline lane owns a full-render single-component helper for selection geometry while decomposition deliberately retains its existing integer-rounded structural-contour behavior.
+No other shared API blocker was found in the focused Session/canvas/clipboard audit.
 
 ## Canonical source-metadata presentation slice
 
@@ -188,6 +189,34 @@ CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::font_model:
 ```
 
 All six focused `FontModel` tests passed, including cross-source duplicate and remove behavior.
+
+## Canonical composition caller slice
+
+Implementation commit: `Write application composition proposals canonically`.
+Resolve its exact ID with `git log --format=%H --grep='^Write application composition proposals canonically$' -1`.
+Affected paths: `src/application/editor/commands.rs`, `src/application/cli.rs` and this log.
+
+The editor command now plans composition from the active canonical source and writes the complete proposal layer through `proposal::write_composition_project`.
+It no longer borrows the mutable compatibility font or calls the Norad `compose::compose` writer.
+Empty plans retain the existing no-proposal report, while invalid or stale plans fail without partial proposal state.
+
+The headless `compose` command now loads `Project`, selects the single UFO source, derives the same report through `compose::plan_project` and uses the guarded canonical writer only for a nonempty `--write` plan.
+Its JSON and human-readable report schemas are unchanged, and a written proposal is persisted through `Project::save`.
+Foreground layers remain unchanged until the existing explicit proposal-install command.
+
+Executed evidence:
+
+```sh
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources CARGO_BUILD_JOBS=1 cargo test --locked --test cli compose_derives_marks_and_the_result_shapes -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The compose CLI proposal and generated-font integration regression passed.
+The complete binary suite passed 166 tests with four documented model or external-font tests ignored.
+Warning-denied workspace/all-target Clippy, formatting and diff checks passed.
 
 ## Remaining application callers
 

@@ -960,16 +960,47 @@ fn features_cmd(source: &Path, write: bool, json: bool) -> i32 {
 }
 
 fn compose_cmd(source: &Path, glyphs: Option<&[String]>, write: bool, json: bool) -> i32 {
-    let mut font = match open(source, json) {
-        Ok(f) => f,
-        Err(code) => return code,
+    let mut project = match runebender::document::project::Project::load(source) {
+        Ok(project) => project,
+        Err(error) => {
+            return fail(json, exit::USAGE, &format!("{}: {error}", source.display()));
+        }
     };
-    let report = compose::compose(&mut font, glyphs, write);
+    let source_id = {
+        let mut sources = project.document_sources();
+        let Some(selected) = sources.next() else {
+            return fail(json, exit::USAGE, "the font has no source");
+        };
+        if sources.next().is_some() {
+            return fail(
+                json,
+                exit::USAGE,
+                "compose requires one UFO source, not a variable project",
+            );
+        }
+        selected.id()
+    };
+    let plan = match compose::plan_project(&project, source_id, glyphs) {
+        Ok(plan) => plan,
+        Err(error) => return fail(json, exit::FAILED, &format!("compose: {error}")),
+    };
+    let report = if write && !plan.replacements.is_empty() {
+        match proposal::write_composition_project(&mut project, source_id, plan) {
+            Ok(report) => report,
+            Err(error) => return fail(json, exit::FAILED, &format!("compose: {error}")),
+        }
+    } else {
+        plan.report
+    };
     if write
         && report.proposal.is_some()
-        && let Err(e) = font.save(source)
+        && let Err(error) = project.save()
     {
-        return fail(json, exit::FAILED, &format!("{}: {e}", source.display()));
+        return fail(
+            json,
+            exit::FAILED,
+            &format!("{}: {error}", source.display()),
+        );
     }
     if json {
         println!(

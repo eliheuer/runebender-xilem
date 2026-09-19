@@ -434,11 +434,36 @@ impl Workspace {
             .map(|glyph| glyph.name.clone())
             .collect();
         let only = (!names.is_empty()).then_some(names);
-        let report = runebender::document::compose::compose(
-            &mut self.font.font_mut(),
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
+            self.note = "Compose: the active source is unavailable".into();
+            return;
+        };
+        let plan = match runebender::document::compose::plan_project(
+            &self.font.project,
+            source,
             only.as_deref(),
-            true,
-        );
+        ) {
+            Ok(plan) => plan,
+            Err(error) => {
+                self.note = format!("Compose: {error}");
+                return;
+            }
+        };
+        let report = if plan.replacements.is_empty() {
+            plan.report
+        } else {
+            match runebender::document::proposal::write_composition_project(
+                &mut self.font.project,
+                source,
+                plan,
+            ) {
+                Ok(report) => report,
+                Err(error) => {
+                    self.note = format!("Compose: {error}");
+                    return;
+                }
+            }
+        };
         let proposed = report.proposed().len();
         let current = report
             .derived
