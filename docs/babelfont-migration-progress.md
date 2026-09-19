@@ -1377,4 +1377,35 @@ The focused no-op regression, both independent-review tests and all 41 variable-
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
-The next M04 substep moves split and join operations onto canonical topology.
+### Canonical contour open-close substep
+
+Evidence commit: `Open and close canonical contours` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Open and close canonical contours$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+`LayerEditDraft::toggle_contour_open` now implements the editor's split/join operation directly on canonical topology.
+Opening a closed path rotates the selected on-curve point and its preservation record to the front, changes it to a move point and marks the path open.
+Closing an open path preserves storage order, changes the initial move to a line and marks the path closed.
+Contour identity, point identities and exact source metadata survive both directions.
+
+The integration comparison performs the same open and close operations through the canonical draft and the existing editor operation and requires identical projected contours, including names, identifiers and object libraries.
+It verifies stable identity ordering and unchanged revisions when a closed off-curve control or a singleton contour cannot be opened.
+Split/join is complete within M04's first checklist item.
+Copy/paste remains, so the item stays open.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_contour_open_close_matches_existing_topology -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused open-close comparison and all 42 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep moves contour copy, paste and duplication onto canonical topology.

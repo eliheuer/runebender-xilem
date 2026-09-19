@@ -1397,6 +1397,58 @@ impl LayerEditDraft {
         Ok(true)
     }
 
+    /// Open a closed contour at an on-curve point, or close its open contour.
+    ///
+    /// Closing changes the initial move point to a line. Opening rotates the selected on-curve
+    /// point to the start and changes it to a move. Returns whether the contour changed.
+    pub fn toggle_contour_open(&mut self, point: PointId) -> Result<bool, DocumentEditError> {
+        let (shape_index, point_index) = self
+            .layer
+            .shapes
+            .iter()
+            .enumerate()
+            .find_map(|(shape_index, shape)| {
+                let Shape::Path(path) = shape else {
+                    return None;
+                };
+                let point_index = path
+                    .nodes
+                    .iter()
+                    .position(|node| read_id(&node.format_specific) == Some(point.0))?;
+                Some((shape_index, point_index))
+            })
+            .ok_or(DocumentEditError::MissingPoint(point))?;
+        let Shape::Path(path) = &self.layer.shapes[shape_index] else {
+            unreachable!("located contour is a path");
+        };
+        if path.nodes.len() < 2
+            || (path.closed && path.nodes[point_index].nodetype == NodeType::OffCurve)
+        {
+            return Ok(false);
+        }
+        let contour_id =
+            ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+        let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
+            unreachable!("located contour remains a path");
+        };
+        if path.closed {
+            path.nodes.rotate_left(point_index);
+            self.preserved
+                .contours
+                .iter_mut()
+                .find(|candidate| candidate.id == contour_id)
+                .expect("canonical contour preservation")
+                .points
+                .rotate_left(point_index);
+            path.nodes[0].nodetype = NodeType::Move;
+            path.closed = false;
+        } else {
+            path.nodes[0].nodetype = NodeType::Line;
+            path.closed = true;
+        }
+        Ok(true)
+    }
+
     /// Shift every contour point and anchor horizontally.
     ///
     /// Component transforms and the advance remain unchanged, matching a left-sidebearing edit.

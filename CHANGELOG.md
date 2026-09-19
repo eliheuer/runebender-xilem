@@ -68,6 +68,7 @@ No release has been published yet.
 - Preserved point identities and metadata when reversing open, closed and implied contours.
 - Avoided recording no-op reversals for symmetric two-control contours.
 - Preserved point and contour identities when changing a closed contour's start point.
+- Preserved contour metadata and point identities when opening or closing paths.
 - Reject unsupported Designspace fields, invalid mappings, missing sources and incompatible glyph structures before they can be silently dropped or misinterpreted.
 - Prevented external reloads, stale model results, or stale proposals from overwriting
   unsaved or subsequently edited document state.

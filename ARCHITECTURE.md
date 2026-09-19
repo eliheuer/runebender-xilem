@@ -122,6 +122,7 @@ Direct point deletion rebuilds only affected canonical contours from surviving o
 Point deletion stages the complete operation so an error in a later contour cannot commit changes to an earlier contour.
 Direct contour reversal reorders canonical points and transfers incoming segment roles without replacing objects; closed contours retain their first stored point so reversal is an exact involution, and symmetric storage reports no change.
 Changing a closed contour's start rotates canonical nodes and preservation records together, retaining point and contour identities.
+Opening a contour rotates the chosen on-curve point to a canonical move point, while closing changes the existing move to a line; both operations retain the contour and point objects.
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
 Source-wide feature text has canonical ownership in `VariableData` and changes through `edit_document_source_metadata`; UFO templates no longer retain a second feature-text value.
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.

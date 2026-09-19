@@ -3140,6 +3140,156 @@ fn canonical_contour_start_reorders_without_replacing_points() {
 }
 
 #[test]
+fn canonical_contour_open_close_matches_existing_topology() {
+    let scratch = Scratch::new();
+    let point = |x, y, typ, label: &str| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            typ,
+            typ == PointType::Curve,
+            Some(Name::new(label).unwrap()),
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        point.replace_lib(object_lib(label));
+        point
+    };
+    let mut closed = Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Line, "closed-a"),
+            point(30.0, 80.0, PointType::OffCurve, "closed-control-a"),
+            point(90.0, 80.0, PointType::OffCurve, "closed-control-b"),
+            point(120.0, 0.0, PointType::Curve, "closed-b"),
+            point(60.0, -60.0, PointType::Line, "closed-c"),
+        ],
+        Some(norad::Identifier::new("closed-toggle").unwrap()),
+    );
+    closed.replace_lib(object_lib("closed-toggle"));
+    let mut open = Contour::new(
+        vec![
+            point(200.0, 0.0, PointType::Move, "open-a"),
+            point(300.0, 0.0, PointType::Line, "open-b"),
+        ],
+        Some(norad::Identifier::new("open-toggle").unwrap()),
+    );
+    open.replace_lib(object_lib("open-toggle"));
+    let singleton = Contour::new(vec![point(400.0, 0.0, PointType::Line, "singleton")], None);
+    let mut glyph = Glyph::new("toggle-contours");
+    glyph.contours = vec![closed, open, singleton];
+    let mut expected = glyph.clone();
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project = Project::from_source(Master::from_font(
+        font,
+        scratch.0.join("ToggleContours.ufo"),
+    ));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project
+        .document_layer("toggle-contours", &layer_id)
+        .unwrap();
+    let contours: Vec<_> = layer.contours().collect();
+    let contour_ids: Vec<_> = contours.iter().map(|contour| contour.id()).collect();
+    let ids: Vec<Vec<_>> = contours
+        .iter()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("toggle-contours", &layer_id, |draft| {
+                assert!(!draft.toggle_contour_open(ids[0][1])?);
+                assert!(!draft.toggle_contour_open(ids[2][0])?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+
+    assert!(runebender::outline::cleanup::toggle_contour_open(
+        &mut expected,
+        0,
+        3
+    ));
+    assert!(runebender::outline::cleanup::toggle_contour_open(
+        &mut expected,
+        1,
+        1
+    ));
+    project
+        .edit_document_layer("toggle-contours", &layer_id, |draft| {
+            assert!(draft.toggle_contour_open(ids[0][3])?);
+            assert!(draft.toggle_contour_open(ids[1][1])?);
+            Ok(())
+        })
+        .unwrap();
+    let layer = project
+        .document_layer("toggle-contours", &layer_id)
+        .unwrap();
+    let toggled: Vec<_> = layer.contours().collect();
+    assert_eq!(
+        toggled
+            .iter()
+            .map(|contour| contour.id())
+            .collect::<Vec<_>>(),
+        contour_ids
+    );
+    assert!(!toggled[0].is_closed());
+    assert!(toggled[1].is_closed());
+    assert_eq!(
+        toggled[0]
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        [ids[0][3], ids[0][4], ids[0][0], ids[0][1], ids[0][2]]
+    );
+    assert_eq!(
+        toggled[1]
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        ids[1]
+    );
+    assert_eq!(
+        project
+            .glyph_layer("toggle-contours", &layer_id)
+            .unwrap()
+            .contours,
+        expected.contours
+    );
+
+    assert!(runebender::outline::cleanup::toggle_contour_open(
+        &mut expected,
+        0,
+        3
+    ));
+    assert!(runebender::outline::cleanup::toggle_contour_open(
+        &mut expected,
+        1,
+        1
+    ));
+    project
+        .edit_document_layer("toggle-contours", &layer_id, |draft| {
+            assert!(draft.toggle_contour_open(ids[0][1])?);
+            assert!(draft.toggle_contour_open(ids[1][1])?);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        project
+            .glyph_layer("toggle-contours", &layer_id)
+            .unwrap()
+            .contours,
+        expected.contours
+    );
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);
