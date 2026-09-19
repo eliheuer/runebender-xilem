@@ -9,6 +9,7 @@
 //! Babelfont value is unchanged. Compilation is the only quantizing boundary.
 
 mod curve_conversion;
+mod handle_cleanup;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};

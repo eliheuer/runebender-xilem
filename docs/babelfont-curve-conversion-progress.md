@@ -41,6 +41,35 @@ The proposed signatures were sent before implementation to integration lead task
 The M06 editor owner confirmed the signatures fit the real command migration.
 M06 will pass the session's stable point selection with an empty contour slice, keep tolerance `1.0` for the existing cubic-to-quadratic command and avoid recording no-op history.
 
+## Integration handoff
+
+The tested implementation commit is `54253fbe59d543b12f81f67712ed6f9e0ecfd788`.
+It was sent to the integration lead, M06 editor owner and orchestrator without a push or merge from this worker.
+The integration lead reported that its current turn was exhausted and explicitly made no acceptance claim.
+An independent follow-up review subsequently passed three cyclic-start tests across 16 starting positions for quadratic chains, exact cubics and closed hyperbezier geometry using the built library artifact.
+That review also verified closure and unique document identities; it filtered a sub-`1e-9` implicit closing-line artifact in its comparison oracle rather than requesting a product change.
+The review artifact is `/private/tmp/runebender-migration-review.porJgX/curve_conversion_cyclic_review.rs`.
+Core has supplied acceptance and a handoff for integration, but this worker has not claimed or performed the integration itself.
+
+## Canonical handle-cleanup continuation
+
+Core transferred the bounded round-corners, harmonize, balance and optimize slice to this existing worker lane after the curve-conversion review.
+The implementation lives in `src/document/babelfont/handle_cleanup.rs`, with dedicated coverage in `tests/canonical_handle_cleanup.rs`.
+
+`LayerEditDraft::round_selected_corners` validates every selected stable point identity before staging work.
+It handles selected interior line-line corners on open contours and cyclic corners on closed contours while skipping hyperbezier contours and ineligible selections.
+The original corner identity and its name/lib metadata move to the incoming fillet endpoint.
+The second endpoint and two cubic handles receive fresh identities, and the operation returns the replacement stable point selection required by the editor.
+Untouched points, contours, components, anchors, advances and layer metadata remain exact.
+
+The round-corners checkpoint passed three dedicated tests covering open and closed contours, replacement selection, metadata and identity preservation, atomic no-op/error behavior, canonical undo/redo and UFO save/reopen:
+
+```sh
+CARGO_TARGET_DIR=/private/tmp/runebender-curve-conversion-target CARGO_BUILD_JOBS=1 cargo test --locked --test canonical_handle_cleanup -- --test-threads=1
+```
+
+Harmonize, balance and optimize remain in progress in this continuation.
+
 ## Validation
 
 The implementation compiled with:
