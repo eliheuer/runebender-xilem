@@ -29,6 +29,7 @@ use serde_json::{Value, json};
 use crate::document::nodes::{Kind, NodeGraph, NodeType, Port, Registry};
 use crate::document::project::{Master, Project};
 use crate::document::proposal;
+use crate::document::variable::SourceId;
 
 /// A value on a wire, after a node ran.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -853,6 +854,33 @@ fn master_path(project: &Project, name: Option<&str>) -> Result<PathBuf, String>
         .ok_or_else(|| "the family has no master".to_string())
 }
 
+/// Load a document operation that requires one unambiguous source.
+///
+/// A `core.source` value normally names one UFO selected from a family.
+/// Typed graphs can also supply a Designspace path directly, so downstream
+/// nodes must reject that ambiguity instead of silently choosing a master.
+fn load_single_source(path: &Path) -> Result<(Project, SourceId), String> {
+    let project = Project::load(path)?;
+    let source = single_source_id(&project, path)?;
+    Ok((project, source))
+}
+
+fn single_source_id(project: &Project, path: &Path) -> Result<SourceId, String> {
+    let sources = project
+        .document_sources()
+        .map(|source| source.id())
+        .collect::<Vec<_>>();
+    match sources.as_slice() {
+        [source] => Ok(*source),
+        [] => Err(format!("{}: the document has no sources", path.display())),
+        _ => Err(format!(
+            "{}: expected one source, found {}; select a master before this node",
+            path.display(),
+            sources.len()
+        )),
+    }
+}
+
 type Outputs = BTreeMap<String, RunValue>;
 
 /// Runs one node.
@@ -930,6 +958,7 @@ fn run_node(
         "core.layer" => {
             let source = inputs.source("source").ok_or("source is required")?;
             let name = inputs.text("name").ok_or("name is required")?;
+            let _ = load_single_source(source)?;
             if layer_dir(source, name).is_none() {
                 return Err(format!("{}: no layer named {name}", source.display()));
             }
@@ -1439,5 +1468,39 @@ mod tests {
     fn cache_sits_hidden_beside_the_file() {
         let p = cache_path(Path::new("/x/bolden.nodes.json"));
         assert_eq!(p, Path::new("/x/.bolden.nodes.json.cache"));
+    }
+    #[test]
+    fn master_selection_uses_canonical_source_views() {
+        let project = source_selection_project();
+        assert_eq!(
+            master_path(&project, None).unwrap(),
+            Path::new("Regular.ufo")
+        );
+        assert_eq!(
+            master_path(&project, Some("Bold")).unwrap(),
+            Path::new("Bold.ufo")
+        );
+        assert_eq!(
+            master_path(&project, Some("Missing")).unwrap_err(),
+            "no master named Missing; the family has: Regular, Bold"
+        );
+    }
+
+    #[test]
+    fn single_source_operations_reject_ambiguous_families() {
+        let project = source_selection_project();
+        assert_eq!(
+            single_source_id(&project, Path::new("Family.designspace")).unwrap_err(),
+            "Family.designspace: expected one source, found 2; select a master before this node"
+        );
+
+        let project = Project::from_source(Master::from_font(
+            norad::Font::new(),
+            PathBuf::from("Regular.ufo"),
+        ));
+        assert_eq!(
+            single_source_id(&project, Path::new("Regular.ufo")).unwrap(),
+            SourceId(0)
+        );
     }
 }
