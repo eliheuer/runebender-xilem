@@ -75,6 +75,136 @@ impl OpenTypeGlyphCategory {
     }
 }
 
+/// A typed `public.markColor` value independent of its UFO string encoding.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MarkColor {
+    /// Red channel, from zero through one.
+    pub red: f64,
+    /// Green channel, from zero through one.
+    pub green: f64,
+    /// Blue channel, from zero through one.
+    pub blue: f64,
+    /// Alpha channel, from zero through one.
+    pub alpha: f64,
+}
+
+impl MarkColor {
+    /// Parse exactly four finite comma-separated channels from zero through one.
+    pub fn parse(value: &str) -> Option<Self> {
+        let mut values = value.split(',').map(str::trim).map(str::parse::<f64>);
+        let red = values.next()?.ok()?;
+        let green = values.next()?.ok()?;
+        let blue = values.next()?.ok()?;
+        let alpha = values.next()?.ok()?;
+        if values.next().is_some() {
+            return None;
+        }
+        let color = Self {
+            red,
+            green,
+            blue,
+            alpha,
+        };
+        color.is_valid().then_some(color)
+    }
+
+    /// Whether every channel is finite and from zero through one.
+    pub fn is_valid(self) -> bool {
+        [self.red, self.green, self.blue, self.alpha]
+            .into_iter()
+            .all(|value| value.is_finite() && (0.0..=1.0).contains(&value))
+    }
+}
+
+/// A center and its compact radial influence field in font coordinates.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Metaball {
+    /// Stable element identifier, unique within its group.
+    pub id: u32,
+    /// Horizontal position in font units.
+    pub x: f64,
+    /// Vertical position in font units, increasing upwards.
+    pub y: f64,
+    /// Support radius in font units; the field is zero beyond this radius.
+    pub radius: f64,
+    /// Field strength at the center.
+    /// Positive values add ink and negative values subtract it.
+    pub stiffness: f64,
+}
+
+/// Elements whose fields blend together.
+/// Separate groups never influence each other.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetaballGroup {
+    /// Stable group identifier, unique in one glyph.
+    pub id: u32,
+    /// Positive field level at the visible boundary.
+    pub threshold: f64,
+    /// Editable centers, retained until explicit conversion.
+    pub balls: Vec<Metaball>,
+}
+
+/// Editable metaball source data for one glyph layer.
+/// Preview contours are derived and never stored here.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Metaballs {
+    /// Schema version; currently only version one is supported.
+    pub version: u32,
+    /// Independent blending groups.
+    pub groups: Vec<MetaballGroup>,
+}
+
+impl Default for Metaballs {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            groups: Vec::new(),
+        }
+    }
+}
+
+impl Metaballs {
+    /// Validate schema, identifiers, finite coordinates and bounded field parameters.
+    ///
+    /// At most 128 groups and 256 centers are accepted.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.version != 1 {
+            return Err(format!("unsupported metaball version {}", self.version));
+        }
+        if self.groups.len() > 128 || self.groups.iter().map(|g| g.balls.len()).sum::<usize>() > 256
+        {
+            return Err("too many metaball groups or centers".into());
+        }
+        let mut groups = HashSet::new();
+        for group in &self.groups {
+            if !groups.insert(group.id)
+                || !group.threshold.is_finite()
+                || !(0.01..=100.0).contains(&group.threshold)
+            {
+                return Err("invalid metaball group identifier or threshold".into());
+            }
+            let mut ids = HashSet::new();
+            for ball in &group.balls {
+                if !ids.insert(ball.id)
+                    || !ball.x.is_finite()
+                    || !ball.y.is_finite()
+                    || ball.x.abs().max(ball.y.abs()) > 1_000_000.0
+                    || !ball.radius.is_finite()
+                    || !(1.0..=100_000.0).contains(&ball.radius)
+                    || !ball.stiffness.is_finite()
+                    || ball.stiffness.abs() > 100.0
+                {
+                    return Err("invalid metaball identifier, position, radius or stiffness".into());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// A parsed glyph spacing formula independent of its UFO lib encoding.
 #[derive(Clone, Debug, PartialEq)]
 pub enum MetricsFormula {
@@ -683,6 +813,35 @@ mod tests {
             .evaluate(f64::MAX),
             None
         );
+    }
+
+    #[test]
+    fn mark_colors_and_metaballs_validate_as_canonical_values() {
+        let color = MarkColor::parse("0.1234567890123456, 0.25, 0.5, 1").unwrap();
+        assert_eq!(color.red, 0.123_456_789_012_345_6);
+        assert!(color.is_valid());
+        assert_eq!(MarkColor::parse("0,0,0,NaN"), None);
+
+        let mut source = Metaballs {
+            version: 1,
+            groups: vec![MetaballGroup {
+                id: 7,
+                threshold: 1.0,
+                balls: vec![Metaball {
+                    id: 11,
+                    x: 12.25,
+                    y: -34.5,
+                    radius: 80.125,
+                    stiffness: -0.75,
+                }],
+            }],
+        };
+        assert_eq!(source.validate(), Ok(()));
+        let duplicate = source.groups[0].balls[0].clone();
+        source.groups[0].balls.push(duplicate);
+        let invalid = source.clone();
+        assert!(source.validate().is_err());
+        assert_eq!(source, invalid);
     }
 
     #[test]
