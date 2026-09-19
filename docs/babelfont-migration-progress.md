@@ -1384,19 +1384,19 @@ Resolve its exact ID with `git log --format=%H --grep='^Open and close canonical
 Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
 
 `LayerEditDraft::toggle_contour_open` now implements the editor's split/join operation directly on canonical topology.
-Opening a closed path rotates the selected on-curve point and its preservation record to the front, changes it to a move point and marks the path open.
+Opening a closed path removes the selected endpoint's incoming controls, rotates the surviving on-curve point and its preservation record to the front, changes it to a move point and marks the path open.
 Closing an open path preserves storage order, changes the initial move to a line and marks the path closed.
-Contour identity, point identities and exact source metadata survive both directions.
+Contour identity, surviving point identities and exact surviving source metadata persist in both directions.
 
-The integration comparison performs the same open and close operations through the canonical draft and the existing editor operation and requires identical projected contours, including names, identifiers and object libraries.
-It verifies stable identity ordering and unchanged revisions when a closed off-curve control or a singleton contour cannot be opened.
+The integration comparison covers closed cubic and quadratic endpoints plus an open line contour.
+It verifies stable identity ordering, source metadata and unchanged revisions when a closed off-curve control or a singleton contour cannot be opened.
 Split/join is complete within M04's first checklist item.
 Copy/paste remains, so the item stays open.
 
 Executed evidence:
 
 ```sh
-cargo test --locked --test variable_project canonical_contour_open_close_matches_existing_topology -- --exact --test-threads=1
+cargo test --locked --test variable_project canonical_contour_open_close_produces_persistable_topology -- --exact --test-threads=1
 RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
 cargo clippy --locked --tests -- -D warnings
 cargo doc --locked --no-deps
@@ -1405,6 +1405,38 @@ git diff --check
 ```
 
 The focused open-close comparison and all 42 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Contour open-close persistence correction
+
+Evidence commit: `Remove orphaned controls when opening contours` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Remove orphaned controls when opening contours$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Independent review found that the inherited open-contour behavior left the selected endpoint's incoming controls at the end of the new open path.
+Saving succeeded, but Norad rejected the resulting UFO during reload as `TrailingOffCurves`; closing that path produced `UnexpectedPointAfterOffCurve` instead.
+
+Canonical opening now counts the selected endpoint's incoming cubic or quadratic controls before mutation and removes their nodes and preservation records after rotation.
+It refuses to open a contour when removing the incoming controls would leave fewer than two points.
+Closing the resulting path cannot reintroduce orphaned controls.
+
+The revised integration oracle starts from a saved and reloaded valid UFO, opens cubic and quadratic endpoints, verifies the exact surviving identities and metadata, saves and reloads, closes the paths, then saves and reloads again.
+Both of the independent review's cubic persistence reproducers pass against the correction.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_contour_open_close_produces_persistable_topology -- --exact --test-threads=1
+/private/tmp/runebender-migration-review.porJgX/contour_toggle_persistence_fixed --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused save-reopen regression, both independent-review reproducers and all 42 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 

@@ -3140,31 +3140,31 @@ fn canonical_contour_start_reorders_without_replacing_points() {
 }
 
 #[test]
-fn canonical_contour_open_close_matches_existing_topology() {
+fn canonical_contour_open_close_produces_persistable_topology() {
     let scratch = Scratch::new();
     let point = |x, y, typ, label: &str| {
         let mut point = ContourPoint::new(
             x,
             y,
             typ,
-            typ == PointType::Curve,
+            typ == PointType::Curve || typ == PointType::QCurve,
             Some(Name::new(label).unwrap()),
             Some(norad::Identifier::new(label).unwrap()),
         );
         point.replace_lib(object_lib(label));
         point
     };
-    let mut closed = Contour::new(
+    let mut cubic = Contour::new(
         vec![
-            point(0.0, 0.0, PointType::Line, "closed-a"),
-            point(30.0, 80.0, PointType::OffCurve, "closed-control-a"),
-            point(90.0, 80.0, PointType::OffCurve, "closed-control-b"),
-            point(120.0, 0.0, PointType::Curve, "closed-b"),
-            point(60.0, -60.0, PointType::Line, "closed-c"),
+            point(0.0, 0.0, PointType::Line, "cubic-a"),
+            point(30.0, 80.0, PointType::OffCurve, "cubic-control-a"),
+            point(90.0, 80.0, PointType::OffCurve, "cubic-control-b"),
+            point(120.0, 0.0, PointType::Curve, "cubic-b"),
+            point(60.0, -60.0, PointType::Line, "cubic-c"),
         ],
-        Some(norad::Identifier::new("closed-toggle").unwrap()),
+        Some(norad::Identifier::new("cubic-toggle").unwrap()),
     );
-    closed.replace_lib(object_lib("closed-toggle"));
+    cubic.replace_lib(object_lib("cubic-toggle"));
     let mut open = Contour::new(
         vec![
             point(200.0, 0.0, PointType::Move, "open-a"),
@@ -3173,16 +3173,26 @@ fn canonical_contour_open_close_matches_existing_topology() {
         Some(norad::Identifier::new("open-toggle").unwrap()),
     );
     open.replace_lib(object_lib("open-toggle"));
-    let singleton = Contour::new(vec![point(400.0, 0.0, PointType::Line, "singleton")], None);
+    let mut quadratic = Contour::new(
+        vec![
+            point(400.0, 0.0, PointType::Line, "quadratic-a"),
+            point(430.0, 80.0, PointType::OffCurve, "quadratic-control-a"),
+            point(490.0, 80.0, PointType::OffCurve, "quadratic-control-b"),
+            point(520.0, 0.0, PointType::QCurve, "quadratic-b"),
+            point(460.0, -60.0, PointType::Line, "quadratic-c"),
+        ],
+        Some(norad::Identifier::new("quadratic-toggle").unwrap()),
+    );
+    quadratic.replace_lib(object_lib("quadratic-toggle"));
+    let singleton = Contour::new(vec![point(600.0, 0.0, PointType::Line, "singleton")], None);
     let mut glyph = Glyph::new("toggle-contours");
-    glyph.contours = vec![closed, open, singleton];
+    glyph.contours = vec![cubic, open, quadratic, singleton];
     let mut expected = glyph.clone();
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(glyph);
-    let mut project = Project::from_source(Master::from_font(
-        font,
-        scratch.0.join("ToggleContours.ufo"),
-    ));
+    let source_path = scratch.0.join("ToggleContours.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
     let layer_id = project
         .document_source(SourceId(0))
         .unwrap()
@@ -3203,7 +3213,7 @@ fn canonical_contour_open_close_matches_existing_topology() {
         project
             .edit_document_layer("toggle-contours", &layer_id, |draft| {
                 assert!(!draft.toggle_contour_open(ids[0][1])?);
-                assert!(!draft.toggle_contour_open(ids[2][0])?);
+                assert!(!draft.toggle_contour_open(ids[3][0])?);
                 Ok(())
             })
             .unwrap(),
@@ -3211,11 +3221,20 @@ fn canonical_contour_open_close_matches_existing_topology() {
     );
     assert_eq!(project.document_snapshot(), snapshot);
 
-    assert!(runebender::outline::cleanup::toggle_contour_open(
-        &mut expected,
-        0,
-        3
-    ));
+    for (contour, point_index) in [(0_usize, 3_usize), (2, 3)] {
+        assert!(runebender::outline::cleanup::toggle_contour_open(
+            &mut expected,
+            contour,
+            point_index
+        ));
+        while expected.contours[contour]
+            .points
+            .last()
+            .is_some_and(|point| point.typ == PointType::OffCurve)
+        {
+            expected.contours[contour].points.pop();
+        }
+    }
     assert!(runebender::outline::cleanup::toggle_contour_open(
         &mut expected,
         1,
@@ -3225,6 +3244,7 @@ fn canonical_contour_open_close_matches_existing_topology() {
         .edit_document_layer("toggle-contours", &layer_id, |draft| {
             assert!(draft.toggle_contour_open(ids[0][3])?);
             assert!(draft.toggle_contour_open(ids[1][1])?);
+            assert!(draft.toggle_contour_open(ids[2][3])?);
             Ok(())
         })
         .unwrap();
@@ -3241,51 +3261,72 @@ fn canonical_contour_open_close_matches_existing_topology() {
     );
     assert!(!toggled[0].is_closed());
     assert!(toggled[1].is_closed());
+    assert!(!toggled[2].is_closed());
+    for contour in [0_usize, 2] {
+        assert_eq!(
+            toggled[contour]
+                .points()
+                .map(|point| point.id())
+                .collect::<Vec<_>>(),
+            [ids[contour][3], ids[contour][4], ids[contour][0]]
+        );
+        assert_eq!(
+            toggled[contour]
+                .points()
+                .map(|point| point.name().unwrap())
+                .collect::<Vec<_>>(),
+            if contour == 0 {
+                vec!["cubic-b", "cubic-c", "cubic-a"]
+            } else {
+                vec!["quadratic-b", "quadratic-c", "quadratic-a"]
+            }
+        );
+    }
+    let projected = project.glyph_layer("toggle-contours", &layer_id).unwrap();
+    assert_eq!(projected.contours, expected.contours);
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
     assert_eq!(
-        toggled[0]
-            .points()
-            .map(|point| point.id())
-            .collect::<Vec<_>>(),
-        [ids[0][3], ids[0][4], ids[0][0], ids[0][1], ids[0][2]]
-    );
-    assert_eq!(
-        toggled[1]
-            .points()
-            .map(|point| point.id())
-            .collect::<Vec<_>>(),
-        ids[1]
-    );
-    assert_eq!(
-        project
-            .glyph_layer("toggle-contours", &layer_id)
+        reloaded
+            .glyph_layer("toggle-contours", &reloaded_layer)
             .unwrap()
             .contours,
-        expected.contours
+        projected.contours
     );
 
-    assert!(runebender::outline::cleanup::toggle_contour_open(
-        &mut expected,
-        0,
-        3
-    ));
-    assert!(runebender::outline::cleanup::toggle_contour_open(
-        &mut expected,
-        1,
-        1
-    ));
+    for (contour, point_index) in [(0_usize, 1_usize), (1, 1), (2, 1)] {
+        assert!(runebender::outline::cleanup::toggle_contour_open(
+            &mut expected,
+            contour,
+            point_index
+        ));
+    }
     project
         .edit_document_layer("toggle-contours", &layer_id, |draft| {
-            assert!(draft.toggle_contour_open(ids[0][1])?);
+            assert!(draft.toggle_contour_open(ids[0][0])?);
             assert!(draft.toggle_contour_open(ids[1][1])?);
+            assert!(draft.toggle_contour_open(ids[2][0])?);
             Ok(())
         })
         .unwrap();
+    let projected = project.glyph_layer("toggle-contours", &layer_id).unwrap();
+    assert_eq!(projected.contours, expected.contours);
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
     assert_eq!(
-        project
-            .glyph_layer("toggle-contours", &layer_id)
+        reloaded
+            .glyph_layer("toggle-contours", &reloaded_layer)
             .unwrap()
             .contours,
-        expected.contours
+        projected.contours
     );
 }
 

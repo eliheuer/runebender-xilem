@@ -1399,8 +1399,9 @@ impl LayerEditDraft {
 
     /// Open a closed contour at an on-curve point, or close its open contour.
     ///
-    /// Closing changes the initial move point to a line. Opening rotates the selected on-curve
-    /// point to the start and changes it to a move. Returns whether the contour changed.
+    /// Closing changes the initial move point to a line. Opening removes the selected endpoint's
+    /// incoming controls, rotates that point to the start and changes it to a move. Returns whether
+    /// the contour changed.
     pub fn toggle_contour_open(&mut self, point: PointId) -> Result<bool, DocumentEditError> {
         let (shape_index, point_index) = self
             .layer
@@ -1426,6 +1427,28 @@ impl LayerEditDraft {
         {
             return Ok(false);
         }
+        let incoming_controls = if path.closed {
+            let mut count = 0_usize;
+            let mut index = if point_index == 0 {
+                path.nodes.len() - 1
+            } else {
+                point_index - 1
+            };
+            while path.nodes[index].nodetype == NodeType::OffCurve {
+                count += 1;
+                index = if index == 0 {
+                    path.nodes.len() - 1
+                } else {
+                    index - 1
+                };
+            }
+            if path.nodes.len() - count < 2 {
+                return Ok(false);
+            }
+            count
+        } else {
+            0
+        };
         let contour_id =
             ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
         let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
@@ -1433,13 +1456,17 @@ impl LayerEditDraft {
         };
         if path.closed {
             path.nodes.rotate_left(point_index);
-            self.preserved
+            let preserved = self
+                .preserved
                 .contours
                 .iter_mut()
                 .find(|candidate| candidate.id == contour_id)
-                .expect("canonical contour preservation")
+                .expect("canonical contour preservation");
+            preserved.points.rotate_left(point_index);
+            path.nodes.truncate(path.nodes.len() - incoming_controls);
+            preserved
                 .points
-                .rotate_left(point_index);
+                .truncate(preserved.points.len() - incoming_controls);
             path.nodes[0].nodetype = NodeType::Move;
             path.closed = false;
         } else {
