@@ -1790,3 +1790,27 @@ Warning-denied targeted Clippy, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 M07 remains incomplete because canonical glyph metadata, rename/remove transactions, history and application callers have not been integrated.
 The next shared prerequisite is a narrow canonical-layer snapshot rebind operation for explicitly authorized glyph renames; the reviewed M05 integration remains unmerged until its embedded snapshot addresses are updated atomically.
+
+### Canonical layer snapshot rename prerequisite
+
+Evidence commit: `Add guarded snapshot rename rebinding` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Add guarded snapshot rename rebinding$' -1`.
+Affected paths: `src/document/babelfont.rs` and this log.
+
+Independent review rejected the first M05 Project integration because moving only a history map key left each `CanonicalLayerSnapshot` bound to its old glyph address and preservation name.
+`CanonicalLayerSnapshot::rebind_glyph` is a crate-private operation for that explicit rename transaction.
+It requires the complete old address and an unchanged stable `LayerId`, then changes only the snapshot glyph address and preserved glyph name.
+Stale old addresses and cross-layer requests fail without mutation, so ordinary guarded restore still rejects arbitrary cross-glyph snapshots.
+
+Executed evidence:
+
+```sh
+cargo test --locked --lib document::babelfont::tests::layer_snapshot_rebind_requires_the_exact_old_address_and_layer -- --exact --test-threads=1
+cargo clippy --locked --lib -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused stale-address, cross-layer and successful rename cases passed while retaining exact width and note values.
+The M05 integration must still preflight destination collisions and rebind every before/after value across undo and redo atomically before it is accepted.

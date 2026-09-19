@@ -207,6 +207,30 @@ impl CanonicalLayerSnapshot {
         &self.address
     }
 
+    /// Rebind this snapshot during one explicitly authorized glyph rename.
+    ///
+    /// Both the complete current address and unchanged layer identity must match.
+    /// Arbitrary cross-layer or stale-address rebinding is rejected without mutation.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the M05 history rename integration consumes this shared prerequisite"
+        )
+    )]
+    pub(crate) fn rebind_glyph(
+        &mut self,
+        old: &super::variable::GlyphLayerAddress,
+        new: &super::variable::GlyphLayerAddress,
+    ) -> bool {
+        if &self.address != old || old.layer != new.layer {
+            return false;
+        }
+        self.address = new.clone();
+        self.preserved.name.clone_from(&new.glyph);
+        true
+    }
+
     pub(super) fn into_parts(self) -> (Layer, LayerPreservation) {
         (self.layer, self.preserved)
     }
@@ -4061,6 +4085,53 @@ pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> nor
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn layer_snapshot_rebind_requires_the_exact_old_address_and_layer() {
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 500.125;
+        glyph.note = Some("retain me".into());
+        let layer_id = LayerId {
+            source: super::super::variable::SourceId(7),
+            name: "public.default".into(),
+        };
+        let old = super::super::variable::GlyphLayerAddress {
+            glyph: "A".into(),
+            layer: layer_id.clone(),
+        };
+        let (layer, preserved) = layer_from_ufo(&glyph, &layer_id, true);
+        let mut snapshot = CanonicalLayerSnapshot::new(old.clone(), layer, preserved);
+        let original = snapshot.clone();
+
+        let stale = super::super::variable::GlyphLayerAddress {
+            glyph: "B".into(),
+            layer: layer_id.clone(),
+        };
+        let renamed = super::super::variable::GlyphLayerAddress {
+            glyph: "A.alt".into(),
+            layer: layer_id.clone(),
+        };
+        assert!(!snapshot.rebind_glyph(&stale, &renamed));
+        assert_eq!(snapshot, original);
+
+        let wrong_layer = super::super::variable::GlyphLayerAddress {
+            glyph: "A.alt".into(),
+            layer: LayerId {
+                source: layer_id.source,
+                name: "background".into(),
+            },
+        };
+        assert!(!snapshot.rebind_glyph(&old, &wrong_layer));
+        assert_eq!(snapshot, original);
+
+        assert!(snapshot.rebind_glyph(&old, &renamed));
+        assert_eq!(snapshot.address(), &renamed);
+        let (layer, preserved) = snapshot.into_parts();
+        let projected = project_layer(&layer, &preserved);
+        assert_eq!(projected.name().as_str(), "A.alt");
+        assert_eq!(projected.width, 500.125);
+        assert_eq!(projected.note.as_deref(), Some("retain me"));
+    }
 
     fn identifier(value: &str) -> norad::Identifier {
         norad::Identifier::new(value).unwrap()
