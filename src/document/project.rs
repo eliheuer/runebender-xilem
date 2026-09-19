@@ -83,6 +83,21 @@ impl<'a> SourceView<'a> {
     }
 }
 
+/// Result of applying one canonical layer edit draft.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerEditOutcome {
+    /// The draft matched the current layer exactly and did not commit.
+    Unchanged {
+        /// Current document revision, unchanged by this operation.
+        revision: u64,
+    },
+    /// The draft committed atomically and invalidated revision-dependent data.
+    Changed {
+        /// Document revision after the commit.
+        revision: u64,
+    },
+}
+
 #[derive(Debug)]
 /// An open variable font with canonical glyph-local layers and source metadata.
 /// UFO projections support existing tools through scoped edits.
@@ -1166,6 +1181,60 @@ impl Project {
             .iter()
             .copied()
             .filter_map(|id| self.document_source(id))
+    }
+
+    /// Current canonical document revision used by derived compiler data.
+    pub fn document_revision(&self) -> u64 {
+        self.variable.revision
+    }
+
+    /// Apply an owned canonical layer draft atomically.
+    ///
+    /// Returning an error from `edit` discards the draft.
+    /// An unchanged draft does not advance the document revision or update compatibility data.
+    pub fn edit_document_layer(
+        &mut self,
+        name: &str,
+        layer: &LayerId,
+        edit: impl FnOnce(&mut super::LayerEditDraft) -> Result<(), super::LayerEditError>,
+    ) -> Result<LayerEditOutcome, super::LayerEditError> {
+        let mut draft = self
+            .variable
+            .layer_edit_draft(name, layer)
+            .ok_or(super::LayerEditError::MissingLayer)?;
+        edit(&mut draft)?;
+        if !self.variable.commit_layer_edit(name, layer, draft) {
+            return Ok(LayerEditOutcome::Unchanged {
+                revision: self.variable.revision,
+            });
+        }
+        self.synchronize_compatibility_layer(name, layer);
+        Ok(LayerEditOutcome::Changed {
+            revision: self.variable.revision,
+        })
+    }
+
+    fn synchronize_compatibility_layer(&mut self, name: &str, layer: &LayerId) {
+        let payload = self
+            .variable
+            .project_layer(name, layer)
+            .expect("committed layer remains projectable");
+        let index = self
+            .source_index(layer.source)
+            .expect("committed layer retains its source");
+        let source = &mut self.masters[index];
+        source
+            .font
+            .layers
+            .get_mut(&layer.name)
+            .expect("committed layer retains its compatibility projection")
+            .insert_glyph(payload);
+        source.dirty = true;
+        source.modified_glyphs.insert(name.to_owned());
+        if let Some(&index) = source.name_map.get(name) {
+            source.rebuild_entry(index);
+        }
+        self.recheck_compat(name);
     }
 
     /// Materialize one glyph layer for a format boundary or transitional caller.

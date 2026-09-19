@@ -160,7 +160,7 @@ Normal compiler quantization is tested separately from editable-source fidelity.
 Depends on: M01.
 Start in: `document/project.rs`, `variable.rs`, `source.rs`, `sources.rs`.
 
-- [ ] Add document-facing glyph/layer/source readers and edit drafts/transactions backed by Babelfont plus the M01 extensions.
+- [x] Add document-facing glyph/layer/source readers and edit drafts/transactions backed by Babelfont plus the M01 extensions.
 - [ ] Make geometry, metadata and structural edits atomic with accurate changed/no-change results and revision invalidation.
 - [ ] Provide explicit change information for affected layers, dependent components, source metadata and compilation; keep paint caches derived and read-only.
 - [ ] Introduce canonical clone/snapshot support needed by history and experimental versions, without cloning a parallel Norad document.

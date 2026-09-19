@@ -285,3 +285,37 @@ The unchanged `block v0.1.6` future-incompatibility notice remains a dependency 
 
 This is the reader half of M02's first checklist item, so that item remains unchecked until the canonical edit draft and transaction API lands.
 The next substep is a canonical layer transaction that owns before/after state, reports no-op versus changed results and invalidates revision-dependent data only when it commits.
+
+### Atomic canonical layer transaction substep
+
+Evidence commit: `Add atomic canonical layer transactions` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Add atomic canonical layer transactions$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/document/variable.rs`, `src/document/project.rs`, `src/document/mod.rs`, `tests/variable_project.rs`, `tests/variable_compile.rs`, `ARCHITECTURE.md`, the checklist and this log.
+
+`Project::edit_document_layer` now creates an owned canonical draft, applies a fallible edit closure and commits Babelfont geometry plus typed exact-value extensions together.
+The initial draft operations cover exact horizontal and vertical advances, point position, type and smooth state, exact component transforms and anchor position by stable object identity.
+Every in-place operation reports whether it changed its value and rejects non-finite numeric input.
+
+An error discards the complete draft, and a draft that returns to its starting state reports `Unchanged`; neither case advances the document revision.
+A changed draft replaces both canonical halves atomically, advances the revision once and invalidates the compiled-preview cache through its existing revision key.
+The commit then refreshes one temporary Master glyph projection for callers not yet migrated; that synchronization is isolated in `synchronize_compatibility_layer` and remains scheduled for removal in M12.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_layer_transactions_commit_atomically_and_skip_noops -- --exact --test-threads=1
+cargo test --locked --test variable_compile canonical_layer_transaction_invalidates_compiled_preview -- --exact --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The transaction test passed for no-op detection, failed-edit rollback, exact metrics, direct point, component and anchor mutation, one-step revision invalidation and compatibility projection refresh.
+The compiler test passed and verified that a canonical advance edit replaces the cached preview and reaches shaped OpenType output while the document retains its exact `f64` value.
+Warning-denied Clippy passed for library and integration-test targets, and public API documentation built successfully.
+Formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+M02's first checklist item is complete.
+The next substep is richer change information for geometry, metrics, dependent components and compilation, followed by document-level metadata and structural transaction coverage.

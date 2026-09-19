@@ -5,8 +5,8 @@
 
 use norad::{Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::document::font_memory::designspace_from_str;
-use runebender::document::project::{Master, Project};
-use runebender::document::variable::SourceId;
+use runebender::document::project::{LayerEditOutcome, Master, Project};
+use runebender::document::variable::{LayerId, SourceId};
 use runebender::text::shape::ShapingFont;
 use skrifa::raw::TableProvider as _;
 
@@ -156,6 +156,50 @@ fn compiler_quantizes_exact_editable_metrics_only_in_its_snapshot() {
         still_exact.kerning[&Name::new("A").unwrap()][&Name::new("V").unwrap()],
         -50.5,
         "compilation must not rewrite editable kerning"
+    );
+}
+
+#[test]
+fn canonical_layer_transaction_invalidates_compiled_preview() {
+    let mut project = project();
+    let initial = project.compiled_preview().unwrap();
+    let revision = project.document_revision();
+    let layer = LayerId {
+        source: SourceId(0),
+        name: "public.default".into(),
+    };
+    let outcome = project
+        .edit_document_layer("A", &layer, |draft| {
+            assert!(draft.set_width(720.4)?, "advance did not change");
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        outcome,
+        LayerEditOutcome::Changed {
+            revision: revision + 1
+        },
+        "canonical edit reported the wrong revision"
+    );
+    assert_eq!(
+        project.document_layer("A", &layer).unwrap().width(),
+        720.4,
+        "canonical advance lost precision"
+    );
+
+    let edited = project.compiled_preview().unwrap();
+    assert!(
+        !std::sync::Arc::ptr_eq(&initial, &edited),
+        "canonical edit reused a stale compiled preview"
+    );
+    let shaped = ShapingFont::from_bytes((*edited.bytes).clone())
+        .unwrap()
+        .at_normalized(vec![0.0])
+        .shape("A", false)
+        .unwrap();
+    assert_eq!(
+        shaped[0].x_advance, 720.0,
+        "compiled preview missed the canonical advance edit"
     );
 }
 

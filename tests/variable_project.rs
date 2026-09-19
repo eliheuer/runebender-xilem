@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::document::LayerPointType;
 use runebender::document::font_memory::designspace_from_str;
-use runebender::document::project::{Master, Project};
+use runebender::document::project::{LayerEditOutcome, Master, Project};
 use runebender::document::var_model::Location;
 use runebender::document::variable::{LayerId, SourceId};
 
@@ -417,6 +417,143 @@ fn document_views_read_exact_canonical_layers_and_stable_source_identity() {
         project.document_layer("A", &layer_id).unwrap().width(),
         600.123_456_79,
         "document reader must immediately reflect an unsaved edit"
+    );
+}
+
+#[test]
+fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
+    let (_scratch, mut project, _fonts) = adversarial_fixture();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project.document_layer("A", &layer_id).unwrap();
+    let original_width = layer.width();
+    let original_height = layer.height();
+    let point = layer.contours().next().unwrap().points().next().unwrap();
+    let point_id = point.id();
+    let original_point = point.position();
+    let component_id = layer.components().next().unwrap().id();
+    let anchor_id = layer.anchors().next().unwrap().id();
+    let revision = project.document_revision();
+
+    let unchanged = project
+        .edit_document_layer("A", &layer_id, |draft| {
+            assert!(!draft.set_width(original_width)?, "equal width changed");
+            assert!(
+                !draft.set_point_position(point_id, original_point)?,
+                "equal point position changed"
+            );
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        unchanged,
+        LayerEditOutcome::Unchanged { revision },
+        "no-op draft must not commit"
+    );
+    assert_eq!(
+        project.document_revision(),
+        revision,
+        "no-op draft advanced the revision"
+    );
+
+    let error = project
+        .edit_document_layer("A", &layer_id, |draft| {
+            draft.set_width(725.123_456_789)?;
+            draft.set_point_position(point_id, kurbo::Point::new(f64::NAN, 10.0))?;
+            Ok(())
+        })
+        .unwrap_err();
+    assert_eq!(
+        error,
+        runebender::document::LayerEditError::NonFinite,
+        "invalid draft returned the wrong error"
+    );
+    assert_eq!(
+        project.document_revision(),
+        revision,
+        "failed draft advanced the revision"
+    );
+    assert_eq!(
+        project.document_layer("A", &layer_id).unwrap().width(),
+        original_width,
+        "failed draft leaked an earlier mutation"
+    );
+    assert_eq!(
+        project.document_layer("A", &layer_id).unwrap().height(),
+        original_height,
+        "failed draft changed an unrelated exact metric"
+    );
+
+    let transform = kurbo::Affine::new([1.25, 0.375, -0.125, 0.75, 15.5, -22.25]);
+    let changed = project
+        .edit_document_layer("A", &layer_id, |draft| {
+            assert!(draft.set_width(725.123_456_789)?, "width did not change");
+            assert!(draft.set_height(1_025.5)?, "height did not change");
+            assert!(
+                draft.set_point_position(point_id, kurbo::Point::new(12.5, 62.25))?,
+                "point did not move"
+            );
+            assert!(
+                draft.set_point_smooth(point_id, true)?,
+                "point smooth state did not change"
+            );
+            assert!(
+                draft.set_component_transform(component_id, transform)?,
+                "component transform did not change"
+            );
+            assert!(
+                draft.set_anchor_position(anchor_id, kurbo::Point::new(25.25, 725.75))?,
+                "anchor did not move"
+            );
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        changed,
+        LayerEditOutcome::Changed {
+            revision: revision + 1
+        },
+        "changed draft reported the wrong revision"
+    );
+    let layer = project.document_layer("A", &layer_id).unwrap();
+    assert_eq!(layer.width(), 725.123_456_789, "exact width changed");
+    assert_eq!(layer.height(), 1_025.5, "exact height changed");
+    let point = layer.contours().next().unwrap().points().next().unwrap();
+    assert_eq!(
+        point.position(),
+        kurbo::Point::new(12.5, 62.25),
+        "canonical point edit is missing"
+    );
+    assert!(point.is_smooth(), "canonical smooth edit is missing");
+    assert_eq!(
+        layer.components().next().unwrap().transform(),
+        transform,
+        "exact component edit is missing"
+    );
+    assert_eq!(
+        layer.anchors().next().unwrap().position(),
+        kurbo::Point::new(25.25, 725.75),
+        "canonical anchor edit is missing"
+    );
+    let projected = project.source_snapshot(SourceId(0)).unwrap();
+    let projected = projected.get_glyph("A").unwrap();
+    assert_eq!(
+        projected.width, 725.123_456_789,
+        "compatibility projection missed the committed width"
+    );
+    assert_eq!(
+        projected.components[0].transform,
+        norad::AffineTransform {
+            x_scale: 1.25,
+            xy_scale: 0.375,
+            yx_scale: -0.125,
+            y_scale: 0.75,
+            x_offset: 15.5,
+            y_offset: -22.25,
+        },
+        "compatibility projection missed the exact transform"
     );
 }
 

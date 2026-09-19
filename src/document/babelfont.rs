@@ -49,35 +49,35 @@ object_id!(
     "Stable identity of an anchor in an open document."
 );
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct PreservedContour {
     id: ContourId,
     metadata: ObjectMetadata,
     points: Vec<PreservedPoint>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct PreservedPoint {
     id: PointId,
     name: Option<norad::Name>,
     metadata: ObjectMetadata,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct PreservedComponent {
     id: ComponentId,
     transform: norad::AffineTransform,
     metadata: ObjectMetadata,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct PreservedAnchor {
     id: AnchorId,
     color: Option<norad::Color>,
     metadata: ObjectMetadata,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct ObjectMetadata {
     identifier: Option<norad::Identifier>,
     lib: Option<plist::Dictionary>,
@@ -93,7 +93,7 @@ impl ObjectMetadata {
 }
 
 /// Exact UFO values and object metadata that Babelfont cannot represent faithfully.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct LayerPreservation {
     name: String,
     width: f64,
@@ -310,6 +310,233 @@ impl<'a> ComponentView<'a> {
 pub struct AnchorView<'a> {
     anchor: &'a Anchor,
     preserved: &'a PreservedAnchor,
+}
+
+/// An atomic, owned edit draft for one canonical glyph layer.
+#[derive(Clone, Debug)]
+pub struct LayerEditDraft {
+    layer: Layer,
+    preserved: LayerPreservation,
+}
+
+impl LayerEditDraft {
+    pub(super) fn new(layer: Layer, preserved: LayerPreservation) -> Self {
+        Self { layer, preserved }
+    }
+
+    pub(super) fn into_parts(self) -> (Layer, LayerPreservation) {
+        (self.layer, self.preserved)
+    }
+
+    pub(super) fn unchanged_from(&self, layer: &Layer, preserved: &LayerPreservation) -> bool {
+        self.layer == *layer && self.preserved == *preserved
+    }
+
+    /// Read the draft using the same canonical view as a committed layer.
+    pub fn view(&self) -> LayerView<'_> {
+        LayerView::new(&self.layer, &self.preserved)
+    }
+
+    /// Set the exact horizontal advance and refresh Babelfont's derived width.
+    ///
+    /// Returns whether the value changed.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the exact f64 value remains authoritative in the document extension"
+    )]
+    pub fn set_width(&mut self, width: f64) -> Result<bool, LayerEditError> {
+        ensure_finite(&[width])?;
+        if self.preserved.width == width {
+            return Ok(false);
+        }
+        self.preserved.width = width;
+        self.layer.width = width as f32;
+        Ok(true)
+    }
+
+    /// Set the exact vertical advance.
+    ///
+    /// Returns whether the value changed.
+    pub fn set_height(&mut self, height: f64) -> Result<bool, LayerEditError> {
+        ensure_finite(&[height])?;
+        if self.preserved.height == height {
+            return Ok(false);
+        }
+        self.preserved.height = height;
+        Ok(true)
+    }
+
+    /// Set one point's position by stable identity.
+    ///
+    /// Returns whether the value changed.
+    pub fn set_point_position(
+        &mut self,
+        id: PointId,
+        position: kurbo::Point,
+    ) -> Result<bool, LayerEditError> {
+        ensure_finite(&[position.x, position.y])?;
+        let node = self.node_mut(id).ok_or(LayerEditError::MissingPoint(id))?;
+        if node.x == position.x && node.y == position.y {
+            return Ok(false);
+        }
+        node.x = position.x;
+        node.y = position.y;
+        Ok(true)
+    }
+
+    /// Set one point's segment role by stable identity.
+    ///
+    /// Returns whether the value changed.
+    pub fn set_point_type(
+        &mut self,
+        id: PointId,
+        point_type: LayerPointType,
+    ) -> Result<bool, LayerEditError> {
+        let node = self.node_mut(id).ok_or(LayerEditError::MissingPoint(id))?;
+        let node_type = match point_type {
+            LayerPointType::Move => NodeType::Move,
+            LayerPointType::Line => NodeType::Line,
+            LayerPointType::OffCurve => NodeType::OffCurve,
+            LayerPointType::Curve => NodeType::Curve,
+            LayerPointType::QCurve => NodeType::QCurve,
+        };
+        if node.nodetype == node_type {
+            return Ok(false);
+        }
+        node.nodetype = node_type;
+        Ok(true)
+    }
+
+    /// Set one point's smooth state by stable identity.
+    ///
+    /// Returns whether the value changed.
+    pub fn set_point_smooth(&mut self, id: PointId, smooth: bool) -> Result<bool, LayerEditError> {
+        let node = self.node_mut(id).ok_or(LayerEditError::MissingPoint(id))?;
+        if node.smooth == smooth {
+            return Ok(false);
+        }
+        node.smooth = smooth;
+        Ok(true)
+    }
+
+    /// Set one component's exact affine transform by stable identity.
+    ///
+    /// Returns whether the value changed.
+    pub fn set_component_transform(
+        &mut self,
+        id: ComponentId,
+        transform: kurbo::Affine,
+    ) -> Result<bool, LayerEditError> {
+        let coefficients = transform.as_coeffs();
+        ensure_finite(&coefficients)?;
+        let preserved = self
+            .preserved
+            .components
+            .iter_mut()
+            .find(|candidate| candidate.id == id)
+            .ok_or(LayerEditError::MissingComponent(id))?;
+        let exact = norad::AffineTransform {
+            x_scale: coefficients[0],
+            xy_scale: coefficients[1],
+            yx_scale: coefficients[2],
+            y_scale: coefficients[3],
+            x_offset: coefficients[4],
+            y_offset: coefficients[5],
+        };
+        if preserved.transform == exact {
+            return Ok(false);
+        }
+        let component = self
+            .layer
+            .shapes
+            .iter_mut()
+            .find_map(|shape| match shape {
+                Shape::Component(component)
+                    if read_id(&component.format_specific) == Some(id.0) =>
+                {
+                    Some(component)
+                }
+                Shape::Path(_) | Shape::Component(_) => None,
+            })
+            .expect("preserved component has canonical geometry");
+        preserved.transform = exact;
+        component.transform = transform.into();
+        Ok(true)
+    }
+
+    /// Set one anchor's position by stable identity.
+    ///
+    /// Returns whether the value changed.
+    pub fn set_anchor_position(
+        &mut self,
+        id: AnchorId,
+        position: kurbo::Point,
+    ) -> Result<bool, LayerEditError> {
+        ensure_finite(&[position.x, position.y])?;
+        let anchor = self
+            .layer
+            .anchors
+            .iter_mut()
+            .find(|candidate| read_id(&candidate.format_specific) == Some(id.0))
+            .ok_or(LayerEditError::MissingAnchor(id))?;
+        if anchor.x == position.x && anchor.y == position.y {
+            return Ok(false);
+        }
+        anchor.x = position.x;
+        anchor.y = position.y;
+        Ok(true)
+    }
+
+    fn node_mut(&mut self, id: PointId) -> Option<&mut Node> {
+        self.layer
+            .shapes
+            .iter_mut()
+            .filter_map(|shape| match shape {
+                Shape::Path(path) => Some(path),
+                Shape::Component(_) => None,
+            })
+            .flat_map(|path| &mut path.nodes)
+            .find(|node| read_id(&node.format_specific) == Some(id.0))
+    }
+}
+
+/// Why a canonical layer edit could not be applied.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerEditError {
+    /// The requested glyph layer does not exist.
+    MissingLayer,
+    /// The requested point identity does not exist in the layer.
+    MissingPoint(PointId),
+    /// The requested component identity does not exist in the layer.
+    MissingComponent(ComponentId),
+    /// The requested anchor identity does not exist in the layer.
+    MissingAnchor(AnchorId),
+    /// A numeric edit contained NaN or infinity.
+    NonFinite,
+}
+
+impl std::fmt::Display for LayerEditError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingLayer => formatter.write_str("glyph layer does not exist"),
+            Self::MissingPoint(id) => write!(formatter, "point {id:?} does not exist"),
+            Self::MissingComponent(id) => write!(formatter, "component {id:?} does not exist"),
+            Self::MissingAnchor(id) => write!(formatter, "anchor {id:?} does not exist"),
+            Self::NonFinite => {
+                formatter.write_str("document coordinates and metrics must be finite")
+            }
+        }
+    }
+}
+
+impl std::error::Error for LayerEditError {}
+
+fn ensure_finite(values: &[f64]) -> Result<(), LayerEditError> {
+    values
+        .iter()
+        .all(|value| value.is_finite())
+        .then_some(())
+        .ok_or(LayerEditError::NonFinite)
 }
 
 impl<'a> AnchorView<'a> {

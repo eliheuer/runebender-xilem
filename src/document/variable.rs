@@ -135,6 +135,53 @@ impl VariableData {
         Some(super::babelfont::LayerView::new(layer, preserved))
     }
 
+    pub(super) fn layer_edit_draft(
+        &self,
+        name: &str,
+        id: &LayerId,
+    ) -> Option<super::LayerEditDraft> {
+        let preserved = self.glyphs.get(name)?.layers.get(id)?.clone();
+        let layer = self
+            .font
+            .glyphs
+            .get(name)?
+            .get_layer(&super::babelfont::layer_key(id))?
+            .clone();
+        Some(super::LayerEditDraft::new(layer, preserved))
+    }
+
+    pub(super) fn commit_layer_edit(
+        &mut self,
+        name: &str,
+        id: &LayerId,
+        draft: super::LayerEditDraft,
+    ) -> bool {
+        let key = super::babelfont::layer_key(id);
+        let Some(preserved) = self
+            .glyphs
+            .get_mut(name)
+            .and_then(|glyph| glyph.layers.get_mut(id))
+        else {
+            return false;
+        };
+        let Some(layer) = self
+            .font
+            .glyphs
+            .get_mut(name)
+            .and_then(|glyph| glyph.get_layer_mut(&key))
+        else {
+            return false;
+        };
+        if draft.unchanged_from(layer, preserved) {
+            return false;
+        }
+        let (new_layer, new_preserved) = draft.into_parts();
+        *layer = new_layer;
+        *preserved = new_preserved;
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
     pub(super) fn from_sources(sources: &[Master]) -> Self {
         let mut data = Self::default();
         for (index, source) in sources.iter().enumerate() {
