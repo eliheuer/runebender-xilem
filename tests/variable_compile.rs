@@ -11,13 +11,16 @@ use runebender::document::variable::{LayerId, SourceId};
 use runebender::text::shape::ShapingFont;
 use skrifa::raw::TableProvider as _;
 
-fn project() -> Project {
-    let doc = designspace_from_str(r#"<designspace format="5.0">
+fn designspace() -> norad::designspace::DesignSpaceDocument {
+    designspace_from_str(r#"<designspace format="5.0">
       <axes><axis tag="wght" name="Weight" minimum="400" default="400" maximum="900"/></axes>
       <sources>
         <source filename="Regular.ufo" name="regular"><location><dimension name="Weight" xvalue="400"/></location></source>
         <source filename="Bold.ufo" name="bold"><location><dimension name="Weight" xvalue="900"/></location></source>
-      </sources></designspace>"#).unwrap();
+      </sources></designspace>"#).unwrap()
+}
+
+fn project_from_designspace(doc: norad::designspace::DesignSpaceDocument) -> Project {
     Project::from_designspace(doc, |name| {
         let bold = name == "Bold.ufo";
         let mut font = Font::new();
@@ -55,6 +58,10 @@ fn project() -> Project {
         Ok(Master::from_font(font, name.into()))
     })
     .unwrap()
+}
+
+fn project() -> Project {
+    project_from_designspace(designspace())
 }
 
 #[test]
@@ -216,12 +223,17 @@ fn canonical_layer_transaction_invalidates_compiled_preview() {
 #[test]
 fn text_buffer_applies_variable_kerning_once_and_reuses_compilation_across_locations() {
     use runebender::text::buffer::{TextBuffer, TextGlyphInventory, TextKerningModel};
-    let project = project();
+    let mut project = project();
     let compiled = project.compiled_preview().unwrap();
     assert!(std::sync::Arc::ptr_eq(
         &compiled,
         &project.compiled_preview().unwrap()
     ));
+    project.location.insert("Weight".into(), 1.0);
+    assert!(
+        std::sync::Arc::ptr_eq(&compiled, &project.compiled_preview().unwrap()),
+        "slider-only location changes must reuse immutable compiled inputs"
+    );
     let mut buffer = TextBuffer::new();
     buffer.set_glyph_inventory(TextGlyphInventory::from_font(&project.sources()[0].font));
     buffer.set_kerning_model(TextKerningModel::from_font(&project.sources()[0].font));
@@ -241,27 +253,36 @@ fn text_buffer_applies_variable_kerning_once_and_reuses_compilation_across_locat
 
 #[test]
 fn designspace_rules_are_present_in_the_compiled_variable_shaper() {
-    let mut project = project();
-    project
-        .ds_doc
-        .as_mut()
-        .unwrap()
-        .rules
-        .rules
-        .push(norad::designspace::Rule {
-            name: Some("weight alternate".into()),
-            condition_sets: vec![norad::designspace::ConditionSet {
-                conditions: vec![norad::designspace::Condition {
-                    name: "Weight".into(),
-                    minimum: Some(650.0),
-                    maximum: None,
-                }],
+    let weight_rule = |minimum| norad::designspace::Rule {
+        name: Some("weight alternate".into()),
+        condition_sets: vec![norad::designspace::ConditionSet {
+            conditions: vec![norad::designspace::Condition {
+                name: "Weight".into(),
+                minimum: Some(minimum),
+                maximum: None,
             }],
-            substitutions: vec![norad::designspace::Substitution {
-                name: Name::new("A").unwrap(),
-                with: Name::new("V").unwrap(),
-            }],
-        });
+        }],
+        substitutions: vec![norad::designspace::Substitution {
+            name: Name::new("A").unwrap(),
+            with: Name::new("V").unwrap(),
+        }],
+    };
+    let overlap_rule = || {
+        let mut rule = weight_rule(800.0);
+        rule.substitutions[0].name = Name::new("V").unwrap();
+        rule.substitutions[0].with = Name::new("AV").unwrap();
+        rule
+    };
+
+    let mut doc = designspace();
+    doc.rules.rules.push(weight_rule(650.0));
+    let mut project = project_from_designspace(doc);
+    project.axes.clear();
+    project.master_locations.clear();
+    project.master_names.clear();
+    project.instances.clear();
+    project.brace.clear();
+    project.ds_doc.as_mut().unwrap().rules.rules.clear();
     let compiled = project.compile().unwrap();
     for (location, name) in [(0.0, "A"), (1.0, "V")] {
         let shaping = ShapingFont::from_bytes((*compiled.bytes).clone())
@@ -270,17 +291,11 @@ fn designspace_rules_are_present_in_the_compiled_variable_shaper() {
         let shaped = shaping.shape("A", false).unwrap();
         assert_eq!(shaping.glyph_name(shaped[0].glyph_id), Some(name));
     }
-    let mut overlapping = project.ds_doc.as_ref().unwrap().rules.rules[0].clone();
-    overlapping.condition_sets[0].conditions[0].minimum = Some(800.0);
-    overlapping.substitutions[0].name = Name::new("V").unwrap();
-    overlapping.substitutions[0].with = Name::new("AV").unwrap();
-    project
-        .ds_doc
-        .as_mut()
-        .unwrap()
-        .rules
-        .rules
-        .push(overlapping);
+
+    let mut doc = designspace();
+    doc.rules.rules.push(weight_rule(650.0));
+    doc.rules.rules.push(overlap_rule());
+    let project = project_from_designspace(doc);
     let compiled = project.compile().unwrap();
     for (location, name) in [(0.0, "A"), (0.6, "V"), (0.9, "AV")] {
         let shaping = ShapingFont::from_bytes((*compiled.bytes).clone())
@@ -289,8 +304,11 @@ fn designspace_rules_are_present_in_the_compiled_variable_shaper() {
         let shaped = shaping.shape("A", false).unwrap();
         assert_eq!(shaping.glyph_name(shaped[0].glyph_id), Some(name));
     }
-    project.ds_doc.as_mut().unwrap().rules.rules[0].condition_sets[0].conditions[0].minimum =
-        Some(650.25);
+
+    let mut doc = designspace();
+    doc.rules.rules.push(weight_rule(650.25));
+    doc.rules.rules.push(overlap_rule());
+    let project = project_from_designspace(doc);
     let compiled = project.compile().unwrap();
     for (location, name) in [(0.5, "A"), (0.501, "V"), (0.9, "AV")] {
         let shaping = ShapingFont::from_bytes((*compiled.bytes).clone())

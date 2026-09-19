@@ -402,6 +402,10 @@ impl CanonicalRule {
 pub struct CanonicalCompilerStructure {
     /// Ordered continuous axes.
     pub axes: Vec<CanonicalAxis>,
+    /// Ordered full source descriptors.
+    pub sources: Vec<SourceDescriptor>,
+    /// Exact full/sparse Designspace source order.
+    pub source_order: Vec<SourceOrderEntry>,
     /// Ordered named instances.
     pub instances: Vec<CanonicalInstance>,
     /// Rule processing order.
@@ -798,6 +802,8 @@ impl CanonicalDesignspace {
     pub fn compiler_structure(&self) -> CanonicalCompilerStructure {
         CanonicalCompilerStructure {
             axes: self.axes.clone(),
+            sources: self.sources.clone(),
+            source_order: self.source_order.clone(),
             instances: self.instances.clone(),
             rule_processing: self.rule_processing,
             rules: self.rules.clone(),

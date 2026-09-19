@@ -5,7 +5,6 @@
 
 use super::model::font_info::{CanonicalFontInfo, OpenTypeWidthClass};
 use super::model::glyph_metadata::OpenTypeGlyphCategory;
-use super::project::Project;
 
 /// Quantize an exact editable units-per-em value for OpenType compilation.
 pub(super) fn units_per_em(value: f64) -> Result<u16, String> {
@@ -242,21 +241,32 @@ pub(super) fn metrics(
     clippy::cast_possible_truncation,
     reason = "normalized coordinates are bounded to F2Dot14"
 )]
-pub(super) fn rules(project: &Project, font: &mut babelfont::Font) -> Result<(), String> {
+pub(super) fn rules(
+    structure: Option<&super::model::designspace::CanonicalCompilerStructure>,
+    font: &mut babelfont::Font,
+) -> Result<(), String> {
     use std::fmt::Write as _;
-    let Some(doc) = &project.ds_doc else {
+    let Some(structure) = structure else {
         return Ok(());
     };
-    if doc.rules.rules.is_empty() {
+    if structure.rules.is_empty() {
         return Ok(());
     }
-    let domains: Vec<(i32, i32)> = project
+    let domains: Vec<(i32, i32)> = structure
         .axes
         .iter()
         .map(|axis| {
             (
-                if axis.min < axis.default { -16384 } else { 0 },
-                if axis.max > axis.default { 16384 } else { 0 },
+                if axis.design_minimum() < axis.design_default() {
+                    -16384
+                } else {
+                    0
+                },
+                if axis.design_maximum() > axis.design_default() {
+                    16384
+                } else {
+                    0
+                },
             )
         })
         .collect();
@@ -265,24 +275,24 @@ pub(super) fn rules(project: &Project, font: &mut babelfont::Font) -> Result<(),
         .map(|(lo, hi)| [*lo, hi + 1].into())
         .collect();
     let mut regions = Vec::new();
-    for rule in &doc.rules.rules {
+    for rule in &structure.rules {
         let mut sets = Vec::new();
         for set in &rule.condition_sets {
             let mut bounds = domains.clone();
             for condition in &set.conditions {
-                let index = project
+                let index = structure
                     .axes
                     .iter()
-                    .position(|axis| axis.name == condition.name)
+                    .position(|axis| axis.id() == condition.axis)
                     .ok_or("rule refers to an unknown axis")?;
-                let axis = &project.axes[index];
-                let min = condition.minimum.map(f64::from).unwrap_or(axis.min);
-                let max = condition.maximum.map(f64::from).unwrap_or(axis.max);
+                let axis = &structure.axes[index];
+                let min = condition.minimum.unwrap_or_else(|| axis.design_minimum());
+                let max = condition.maximum.unwrap_or_else(|| axis.design_maximum());
                 if !min.is_finite() || !max.is_finite() || min > max {
                     return Err("invalid Designspace rule bounds".into());
                 }
-                let lo = (axis.user.design_to_normalized(min) * 16384.0).round() as i32;
-                let hi = (axis.user.design_to_normalized(max) * 16384.0).round() as i32;
+                let lo = (axis.coordinates.design_to_normalized(min) * 16384.0).round() as i32;
+                let hi = (axis.coordinates.design_to_normalized(max) * 16384.0).round() as i32;
                 bounds[index].0 = bounds[index].0.max(lo);
                 bounds[index].1 = bounds[index].1.min(hi);
             }
@@ -315,27 +325,26 @@ pub(super) fn rules(project: &Project, font: &mut babelfont::Font) -> Result<(),
             .collect();
     }
     let mut fea = String::new();
-    for (index, rule) in doc.rules.rules.iter().enumerate() {
+    for (index, rule) in structure.rules.iter().enumerate() {
         if rule.substitutions.is_empty() {
             continue;
         }
         writeln!(fea, "lookup RunebenderRule{index} {{").expect("write to string");
         for sub in &rule.substitutions {
-            writeln!(fea, "sub {} by {};", sub.name, sub.with).expect("write to string");
+            writeln!(fea, "sub {} by {};", sub.name, sub.replacement).expect("write to string");
         }
         writeln!(fea, "}} RunebenderRule{index};").expect("write to string");
     }
-    let feature = if doc.rules.processing == norad::designspace::RuleProcessing::Last {
-        "rclt"
-    } else {
-        "rvrn"
+    let feature = match structure.rule_processing {
+        super::model::designspace::RuleProcessing::First => "rvrn",
+        super::model::designspace::RuleProcessing::Last => "rclt",
     };
     for (cell_index, cell) in cells.iter().enumerate() {
         let active: Vec<_> = regions
             .iter()
             .enumerate()
             .filter_map(|(index, sets)| {
-                (!doc.rules.rules[index].substitutions.is_empty()
+                (!structure.rules[index].substitutions.is_empty()
                     && sets.iter().any(|bounds| {
                         bounds
                             .iter()
@@ -350,10 +359,14 @@ pub(super) fn rules(project: &Project, font: &mut babelfont::Font) -> Result<(),
         }
         let name = format!("RunebenderRegion{cell_index}");
         writeln!(fea, "conditionset {name} {{").expect("write to string");
-        for (axis, (lo, hi)) in project.axes.iter().zip(cell) {
-            let min = axis.user.normalized_to_user(f64::from(*lo) / 16384.0);
-            let max = axis.user.normalized_to_user(f64::from(*hi) / 16384.0);
-            writeln!(fea, "{} {min} {max};", axis.tag).expect("write to string");
+        for (axis, (lo, hi)) in structure.axes.iter().zip(cell) {
+            let min = axis
+                .coordinates
+                .normalized_to_user(f64::from(*lo) / 16384.0);
+            let max = axis
+                .coordinates
+                .normalized_to_user(f64::from(*hi) / 16384.0);
+            writeln!(fea, "{} {min} {max};", axis.coordinates.tag).expect("write to string");
         }
         writeln!(fea, "}} {name};\nvariation {feature} {name} {{").expect("write to string");
         for index in active {

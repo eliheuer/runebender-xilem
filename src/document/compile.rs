@@ -6,23 +6,54 @@
 //! Preview and export share Babelfont's fontc source. No saved UFO, subprocess,
 //! Python environment or repository build script participates in this pipeline.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use babelfont::convertors::fontir::{BabelfontIrSource, CompilationOptions};
 use fontdrasil::coords::{DesignCoord, DesignLocation};
 
 use super::project::Project;
-use super::var_model::Location;
+use super::variable::{LayerId, SourceId};
 use crate::text::shape::ShapingFont;
 
 type CompileResult = Result<Arc<CompiledFont>, String>;
 
 #[derive(Debug, Default)]
 pub(super) struct CompileCache {
-    key: Option<(u64, String)>,
+    key: Option<(
+        u64,
+        Option<super::model::designspace::CanonicalCompilerStructure>,
+    )>,
     result: Option<Result<Arc<CompiledFont>, String>>,
     pending: Option<PreviewJob>,
     queued: Option<babelfont::Font>,
+}
+
+struct CompileSourceInput {
+    id: SourceId,
+    name: String,
+    location: DesignLocation,
+    path: PathBuf,
+    default_layer: LayerId,
+    is_default: bool,
+}
+
+fn canonical_design_location(
+    axes: &[super::model::designspace::CanonicalAxis],
+    location: &super::model::designspace::CanonicalLocation,
+) -> Result<DesignLocation, String> {
+    axes.iter()
+        .map(|axis| {
+            let tag = babelfont::Tag::new(
+                axis.coordinates
+                    .tag
+                    .as_bytes()
+                    .try_into()
+                    .map_err(|_| "invalid axis tag")?,
+            );
+            Ok((tag, DesignCoord::new(location.design(axis))))
+        })
+        .collect()
 }
 
 /// One background compilation. Completion is polled by the host's event loop.
@@ -241,13 +272,61 @@ impl Project {
         feature_text: Option<&str>,
     ) -> Result<babelfont::Font, String> {
         let mut font = self.variable_font().clone();
-        font.axes = self
-            .axes
+        let structure = self.compiler_structure();
+        let axes = structure
+            .as_ref()
+            .map(|structure| structure.axes.as_slice())
+            .unwrap_or_default();
+        font.axes = axes
             .iter()
-            .map(|axis| axis.user.backend())
+            .map(|axis| {
+                let mut backend = axis.coordinates.backend()?;
+                backend.hidden = axis.hidden;
+                for label in &axis.labels {
+                    backend
+                        .name
+                        .insert(label.language.clone(), label.value.clone());
+                }
+                Ok::<_, String>(backend)
+            })
             .collect::<Result<_, _>>()?;
-        let default = self.default_source_index();
-        let default_id = self.source_id(default).expect("default source identity");
+        let compile_sources = if let Some(structure) = &structure {
+            structure
+                .sources
+                .iter()
+                .map(|source| {
+                    let normalized = source.location.to_normalized(&structure.axes)?;
+                    Ok(CompileSourceInput {
+                        id: source.id(),
+                        name: source.display_name().to_owned(),
+                        location: canonical_design_location(&structure.axes, &source.location)?,
+                        path: PathBuf::from(&source.filename),
+                        default_layer: source.default_layer.clone(),
+                        is_default: normalized.values().all(|value| value.abs() < 1e-9),
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?
+        } else {
+            let default = self.default_source_index();
+            self.document_sources()
+                .enumerate()
+                .map(|(index, source)| {
+                    Ok(CompileSourceInput {
+                        id: source.id(),
+                        name: source.name().to_owned(),
+                        location: DesignLocation::default(),
+                        path: source.path().to_path_buf(),
+                        default_layer: source.default_layer(),
+                        is_default: index == default,
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?
+        };
+        let default_source = compile_sources
+            .iter()
+            .find(|source| source.is_default)
+            .ok_or("designspace has no default source")?;
+        let default_id = default_source.id;
         let info = self
             .document_font_info(default_id)
             .expect("default source retains canonical font info");
@@ -272,13 +351,8 @@ impl Project {
             .join("\n");
         font.features = babelfont::Features::from_fea(&features);
         super::compile_metadata::apply(&mut font, info)?;
-        super::compile_metadata::rules(self, &mut font)?;
-        font.source = Some(
-            self.document_source(default_id)
-                .expect("default source identity")
-                .path()
-                .join("features.fea"),
-        );
+        super::compile_metadata::rules(structure.as_ref(), &mut font)?;
+        font.source = Some(default_source.path.join("features.fea"));
         font.masters.clear();
         let default_metadata = self
             .document_font_metadata(default_id)
@@ -290,12 +364,12 @@ impl Project {
                 .iter()
                 .map(|(name, members)| (name.clone(), members.clone())),
         );
-        for source in self.document_sources() {
-            let source_id = source.id();
+        for source in &compile_sources {
+            let source_id = source.id;
             let mut master = babelfont::Master::new(
-                source.name(),
+                &source.name,
                 source_id.0.to_string(),
-                self.design_location(source.location())?,
+                source.location.clone(),
             );
             let info = self
                 .document_font_info(source_id)
@@ -341,20 +415,20 @@ impl Project {
                 && source_glyph_metadata.is_none_or(|metadata| metadata.exported());
             for source in sources {
                 let key = super::babelfont::layer_key(&source.layer);
-                if let Some(layer) = glyph.get_layer_mut(&key)
-                    && self.brace.iter().any(|brace| {
-                        Some(brace.master) == self.source_index(source.layer.source)
-                            && brace.layer == source.layer.name
-                    })
+                if let Some(sparse) = structure.as_ref().and_then(|structure| {
+                    structure
+                        .sparse_sources
+                        .iter()
+                        .find(|sparse| sparse.layer == source.layer)
+                }) && let Some(layer) = glyph.get_layer_mut(&key)
                 {
-                    layer.location = Some(self.design_location(&source.location)?);
+                    layer.location = Some(canonical_design_location(
+                        &structure.as_ref().expect("sparse source structure").axes,
+                        &sparse.location,
+                    )?);
                 }
             }
-            let default_layer = self
-                .document_source(default_id)
-                .expect("default source identity")
-                .default_layer();
-            if let Some(layer) = self.document_layer(&glyph.name, &default_layer) {
+            if let Some(layer) = self.document_layer(&glyph.name, &default_source.default_layer) {
                 glyph.codepoints = layer.codepoints().map(u32::from).collect();
                 let explicit_category =
                     source_glyph_metadata.and_then(|metadata| metadata.category());
@@ -366,42 +440,23 @@ impl Project {
                 )?;
             }
         }
-        font.instances = self
-            .instances
-            .iter()
-            .enumerate()
-            .map(|(index, (name, location))| {
-                Ok(babelfont::Instance {
-                    id: format!("instance-{index}"),
-                    name: name.as_ref().into(),
-                    location: self.design_location(location)?,
-                    ..babelfont::Instance::default()
+        font.instances = if let Some(structure) = &structure {
+            structure
+                .instances
+                .iter()
+                .map(|instance| {
+                    Ok(babelfont::Instance {
+                        id: format!("instance-{}", instance.id().get()),
+                        name: instance.display_name().into(),
+                        location: canonical_design_location(&structure.axes, &instance.location)?,
+                        ..babelfont::Instance::default()
+                    })
                 })
-            })
-            .collect::<Result<_, String>>()?;
+                .collect::<Result<_, String>>()?
+        } else {
+            Vec::new()
+        };
         Ok(font)
-    }
-
-    fn design_location(&self, location: &Location) -> Result<DesignLocation, String> {
-        self.axes
-            .iter()
-            .map(|axis| {
-                let tag = babelfont::Tag::new(
-                    axis.tag
-                        .as_bytes()
-                        .try_into()
-                        .map_err(|_| "invalid axis tag")?,
-                );
-                let normalized = location.get(&axis.name).copied().unwrap_or(0.0);
-                let design = super::var_model::denormalize_value(
-                    normalized,
-                    axis.min,
-                    axis.default,
-                    axis.max,
-                );
-                Ok((tag, DesignCoord::new(design)))
-            })
-            .collect()
     }
 
     /// Compile current unsaved sources into a complete static or variable TTF.
@@ -410,14 +465,13 @@ impl Project {
     }
 
     /// Reuse the compiled revision when only the preview location changes.
-    fn compile_key(&self) -> (u64, String) {
-        (
-            self.variable.revision,
-            format!(
-                "{:?}{:?}{:?}{:?}{:?}",
-                self.axes, self.master_locations, self.master_names, self.instances, self.ds_doc
-            ),
-        )
+    fn compile_key(
+        &self,
+    ) -> (
+        u64,
+        Option<super::model::designspace::CanonicalCompilerStructure>,
+    ) {
+        (self.variable.revision, self.compiler_structure())
     }
 
     /// Reuse a compiled revision for headless callers and deterministic proofs.
