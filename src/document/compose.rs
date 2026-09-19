@@ -452,7 +452,7 @@ pub fn compose(font: &mut Font, names: Option<&[String]>, write: bool) -> Report
     }
 }
 
-fn document_by_codepoint(layers: &HashMap<String, LayerView<'_>>) -> HashMap<u32, String> {
+fn document_by_codepoint(layers: &[(String, LayerView<'_>)]) -> HashMap<u32, String> {
     let mut map = HashMap::new();
     for (name, layer) in layers {
         for codepoint in layer.codepoints() {
@@ -655,34 +655,33 @@ pub fn plan_document<'a, 'recipe>(
     names: Option<&[String]>,
     mut explicit_recipe: impl FnMut(&str) -> Option<&'recipe str>,
 ) -> CompositionPlan {
-    let layers: HashMap<_, _> = layers
+    let ordered_layers: Vec<_> = layers
         .into_iter()
         .map(|layer| (layer.glyph_name().to_owned(), layer))
         .collect();
-    let codepoints = document_by_codepoint(&layers);
-    let explicit_recipes: HashMap<_, _> = layers
-        .keys()
-        .map(|name| (name.clone(), explicit_recipe(name).map(ToOwned::to_owned)))
+    let codepoints = document_by_codepoint(&ordered_layers);
+    let layers: HashMap<_, _> = ordered_layers.iter().cloned().collect();
+    let explicit_recipes: HashMap<_, _> = ordered_layers
+        .iter()
+        .map(|(name, _)| (name.clone(), explicit_recipe(name).map(ToOwned::to_owned)))
         .collect();
     let wanted = names.map_or_else(
         || {
-            let mut names: Vec<_> = layers
-                .keys()
-                .filter(|name| {
+            ordered_layers
+                .iter()
+                .filter(|(name, _)| {
                     document_recipe(
                         &layers,
                         &codepoints,
                         name,
                         explicit_recipes
-                            .get(*name)
+                            .get(name)
                             .and_then(|recipe| recipe.as_deref()),
                     )
                     .is_some_and(|recipe| recipe.base != name.as_str())
                 })
-                .cloned()
-                .collect();
-            names.sort();
-            names
+                .map(|(name, _)| name.clone())
+                .collect()
         },
         <[String]>::to_vec,
     );
@@ -823,6 +822,38 @@ mod tests {
             plan.replacements[0].codepoints,
             glyph.codepoints.iter().collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn canonical_duplicate_codepoint_resolution_preserves_glyph_order() {
+        let mut font = latin();
+        font.default_layer_mut().insert_glyph(glyph(
+            "A.alternate",
+            900.0,
+            Some('A'),
+            &[("top", 450.0, 1_000.0)],
+        ));
+        let (_, expected) = derive(&font, "Aacute").unwrap();
+        assert_eq!(expected.recipe.base, "A");
+        assert_eq!(expected.advance, 700.0);
+        let project = Project::from_source(Master::from_font(
+            font,
+            PathBuf::from("DuplicateUnicodeCompose.ufo"),
+        ));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        for _ in 0..32 {
+            let plan = plan_document(
+                project
+                    .glyph_names()
+                    .filter_map(|name| project.document_layer(name, &layer)),
+                Some(&["Aacute".into()]),
+                |_| None,
+            );
+            assert_eq!(plan.report.derived, [expected.clone()]);
+        }
     }
 
     #[test]
