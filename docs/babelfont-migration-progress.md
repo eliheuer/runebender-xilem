@@ -1649,3 +1649,43 @@ Warning-denied Clippy, public API documentation, formatting and diff checks pass
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
 The next M04 substep moves remaining topology-replacing outline effects and component decomposition onto canonical geometry.
+
+### Quadratic-chain correction and canonical component decomposition
+
+Evidence commit: `Resolve canonical components and quadratic chains` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Resolve canonical components and quadratic chains$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/outline/component_ops.rs`, `src/outline/glyph_paths.rs`, `src/outline/path/mod.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Follow-up knife review found that QCurve endpoints with two or more preceding controls still lost their implied joins in pure quadratic and mixed cubic/quadratic contours.
+The canonical and compatibility path adapters now normalize each QCurve control run into explicit midpoint joins for the geometry engine.
+This normalization covers open and closed contours, closing runs, rotated starts, all-off-curve contours and mixed-degree contours without changing canonical source topology.
+The regression matrix compares visible and engine segments for one, two and three-control quadratic runs with and without neighboring cubic segments.
+It also checks analytical preview intersections, slicing, retained quadratic output and save-reopen persistence.
+
+Canonical component decomposition now resolves nested layer shapes directly through caller-supplied canonical layers.
+The resolver composes exact component transforms and rounds only at the established decomposition boundary.
+`LayerEditDraft::decompose_components` retains existing contours and anchors, removes component objects and pastes resolved contours with fresh document and UFO identities.
+Names and object libraries from the base contours remain attached, avoiding duplicate source identifiers when the same base is decomposed more than once.
+Missing bases, cycles, excessive depth and nonfinite transformed geometry are explicit errors.
+Components whose resolved bases contain no contours are still removed successfully.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_knife_preserves_all_off_curve_and_mixed_degree_geometry -- --exact --test-threads=1
+cargo test --locked --test variable_project canonical_component_decomposition_resolves_nested_metadata_safely -- --exact --test-threads=1
+cargo test --locked --test variable_project canonical_measurement_inputs_match_legacy_geometry -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib outline::knife -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib component -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused quadratic-chain, decomposition and compatibility regressions, all 12 knife unit tests, all eight component-filtered unit tests and all 52 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep moves the remaining topology-replacing outline effects onto canonical geometry.

@@ -4073,9 +4073,70 @@ fn canonical_knife_preserves_all_off_curve_and_mixed_degree_geometry() {
         ],
         None,
     ));
+    let mut quadratic_chain = Glyph::new("quadratic-chain-knife");
+    quadratic_chain.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move),
+            point(0.0, 128.0, PointType::OffCurve),
+            point(128.0, 128.0, PointType::OffCurve),
+            point(128.0, 0.0, PointType::QCurve),
+        ],
+        None,
+    ));
+    let mut three_control_chain = Glyph::new("three-control-chain-knife");
+    three_control_chain.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move),
+            point(0.0, 128.0, PointType::OffCurve),
+            point(64.0, 192.0, PointType::OffCurve),
+            point(128.0, 128.0, PointType::OffCurve),
+            point(128.0, 0.0, PointType::QCurve),
+        ],
+        None,
+    ));
+    let mut mixed_chain = Glyph::new("mixed-chain-knife");
+    mixed_chain.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move),
+            point(0.0, 128.0, PointType::OffCurve),
+            point(128.0, 128.0, PointType::OffCurve),
+            point(128.0, 0.0, PointType::Curve),
+            point(160.0, -128.0, PointType::OffCurve),
+            point(224.0, -128.0, PointType::OffCurve),
+            point(256.0, 0.0, PointType::QCurve),
+        ],
+        None,
+    ));
+    let closed_chain_points = vec![
+        point(0.0, 0.0, PointType::QCurve),
+        point(0.0, 128.0, PointType::OffCurve),
+        point(128.0, 128.0, PointType::OffCurve),
+        point(128.0, 0.0, PointType::QCurve),
+        point(128.0, -128.0, PointType::OffCurve),
+        point(0.0, -128.0, PointType::OffCurve),
+    ];
+    let mut closed_chain = Glyph::new("closed-chain-knife");
+    closed_chain
+        .contours
+        .push(Contour::new(closed_chain_points.clone(), None));
+    let mut rotated_closed_chain = Glyph::new("rotated-closed-chain-knife");
+    let mut rotated_points = closed_chain_points;
+    rotated_points.rotate_left(4);
+    rotated_closed_chain
+        .contours
+        .push(Contour::new(rotated_points, None));
     let mut font = Font::new();
-    font.default_layer_mut().insert_glyph(all_off_curve);
-    font.default_layer_mut().insert_glyph(mixed);
+    for glyph in [
+        all_off_curve,
+        mixed,
+        quadratic_chain,
+        three_control_chain,
+        mixed_chain,
+        closed_chain,
+        rotated_closed_chain,
+    ] {
+        font.default_layer_mut().insert_glyph(glyph);
+    }
     let source_path = scratch.0.join("KnifePathKinds.ufo");
     font.save(&source_path).unwrap();
     let mut project = Project::load(&source_path).unwrap();
@@ -4083,7 +4144,15 @@ fn canonical_knife_preserves_all_off_curve_and_mixed_degree_geometry() {
         .document_source(SourceId(0))
         .unwrap()
         .default_layer();
-    for name in ["all-off-curve-knife", "mixed-knife"] {
+    for name in [
+        "all-off-curve-knife",
+        "mixed-knife",
+        "quadratic-chain-knife",
+        "three-control-chain-knife",
+        "mixed-chain-knife",
+        "closed-chain-knife",
+        "rotated-closed-chain-knife",
+    ] {
         let contour = project
             .document_layer(name, &layer_id)
             .unwrap()
@@ -4100,6 +4169,29 @@ fn canonical_knife_preserves_all_off_curve_and_mixed_degree_geometry() {
                 .collect::<Vec<_>>()
         );
     }
+    let closed_segments = runebender::outline::path::Path::from_document_contour(
+        project
+            .document_layer("closed-chain-knife", &layer_id)
+            .unwrap()
+            .contours()
+            .next()
+            .unwrap(),
+    )
+    .to_bezpath()
+    .segments()
+    .collect::<Vec<_>>();
+    let rotated_segments = runebender::outline::path::Path::from_document_contour(
+        project
+            .document_layer("rotated-closed-chain-knife", &layer_id)
+            .unwrap()
+            .contours()
+            .next()
+            .unwrap(),
+    )
+    .to_bezpath()
+    .segments()
+    .collect::<Vec<_>>();
+    assert_eq!(closed_segments, rotated_segments);
     let hits = runebender::outline::knife::knife_hit_points_in_layer(
         project.document_layer("mixed-knife", &layer_id).unwrap(),
         kurbo::Point::new(-10.0, 80.0),
@@ -4582,6 +4674,206 @@ fn canonical_embolden_preserves_structure_identities_and_metadata() {
             .glyph_layer("delta-target", &reloaded_layer)
             .unwrap(),
         projected_delta
+    );
+}
+
+#[test]
+fn canonical_component_decomposition_resolves_nested_metadata_safely() {
+    let scratch = Scratch::new();
+    let point = |x, y, label: &str| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            PointType::Line,
+            false,
+            Some(Name::new(label).unwrap()),
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        point.replace_lib(object_lib(label));
+        point
+    };
+    let mut base_contour = Contour::new(
+        vec![
+            point(0.0, 0.0, "base-a"),
+            point(100.0, 0.0, "base-b"),
+            point(100.0, 100.0, "base-c"),
+            point(0.0, 100.0, "base-d"),
+        ],
+        Some(norad::Identifier::new("base-contour").unwrap()),
+    );
+    base_contour.replace_lib(object_lib("base-contour"));
+    let mut base = Glyph::new("base");
+    base.contours.push(base_contour.clone());
+    let mut middle = Glyph::new("middle");
+    middle.components.push(Component::new(
+        Name::new("base").unwrap(),
+        norad::AffineTransform {
+            x_offset: 10.25,
+            y_offset: 20.75,
+            ..Default::default()
+        },
+        None,
+    ));
+    let existing = Contour::new(
+        vec![
+            point(300.0, 0.0, "existing-a"),
+            point(400.0, 0.0, "existing-b"),
+            point(400.0, 100.0, "existing-c"),
+            point(300.0, 100.0, "existing-d"),
+        ],
+        Some(norad::Identifier::new("existing-contour").unwrap()),
+    );
+    let mut target = Glyph::new("decompose-target");
+    target.contours.push(existing.clone());
+    let mut component = Component::new(
+        Name::new("middle").unwrap(),
+        norad::AffineTransform {
+            x_scale: 1.5,
+            y_scale: 0.75,
+            x_offset: 5.5,
+            y_offset: -7.25,
+            ..Default::default()
+        },
+        Some(norad::Identifier::new("target-component").unwrap()),
+    );
+    component.replace_lib(object_lib("target-component"));
+    target.components.push(component);
+    let mut anchor = Anchor::new(
+        50.25,
+        150.75,
+        Some(Name::new("top").unwrap()),
+        None,
+        Some(norad::Identifier::new("decompose-anchor").unwrap()),
+    );
+    anchor.replace_lib(object_lib("decompose-anchor"));
+    target.anchors.push(anchor.clone());
+    let empty_base = Glyph::new("empty-base");
+    let mut empty_target = Glyph::new("empty-decompose-target");
+    empty_target.components.push(Component::new(
+        Name::new("empty-base").unwrap(),
+        norad::AffineTransform::default(),
+        None,
+    ));
+    let mut expected = target.clone();
+    let mut font = Font::new();
+    for glyph in [base.clone(), middle, target, empty_base, empty_target] {
+        font.default_layer_mut().insert_glyph(glyph);
+    }
+    expected
+        .contours
+        .extend(runebender::outline::component_ops::resolved_component_contours(&font, &expected));
+    expected.components.clear();
+    let source_path = scratch.0.join("DecomposeComponents.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project
+        .document_layer("decompose-target", &layer_id)
+        .unwrap();
+    let existing_id = layer.contours().next().unwrap().id();
+    let existing_points: Vec<_> = layer
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.id())
+        .collect();
+    let anchor_id = layer.anchors().next().unwrap().id();
+    let resolved =
+        runebender::outline::component_ops::resolved_document_component_contours(layer, |name| {
+            project.document_layer(name, &layer_id)
+        })
+        .unwrap();
+    assert_eq!(resolved.len(), 1);
+    project
+        .edit_document_layer("decompose-target", &layer_id, |draft| {
+            assert!(draft.decompose_components(&resolved)?);
+            assert!(!draft.decompose_components(&resolved)?);
+            Ok(())
+        })
+        .unwrap();
+    let layer = project
+        .document_layer("decompose-target", &layer_id)
+        .unwrap();
+    let contours: Vec<_> = layer.contours().collect();
+    assert_eq!(contours.len(), 2);
+    assert_eq!(contours[0].id(), existing_id);
+    assert_eq!(
+        contours[0]
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        existing_points
+    );
+    assert_ne!(contours[1].id(), existing_id);
+    assert!(layer.components().next().is_none());
+    assert_eq!(layer.anchors().next().unwrap().id(), anchor_id);
+    let projected = project.glyph_layer("decompose-target", &layer_id).unwrap();
+    assert_eq!(
+        runebender::outline::glyph_paths::contours_to_bezpath(&projected),
+        runebender::outline::glyph_paths::contours_to_bezpath(&expected)
+    );
+    assert_eq!(projected.contours[0], existing);
+    assert_eq!(projected.anchors, [anchor.clone()]);
+    assert_eq!(projected.contours[1].lib(), base_contour.lib());
+    assert_ne!(
+        projected.contours[1].identifier(),
+        base_contour.identifier()
+    );
+    for (point, source) in projected.contours[1]
+        .points
+        .iter()
+        .zip(&base_contour.points)
+    {
+        assert_eq!(point.name, source.name);
+        assert_eq!(point.lib(), source.lib());
+        assert_ne!(point.identifier(), source.identifier());
+    }
+    let empty_layer = project
+        .document_layer("empty-decompose-target", &layer_id)
+        .unwrap();
+    let empty_resolved = runebender::outline::component_ops::resolved_document_component_contours(
+        empty_layer,
+        |name| project.document_layer(name, &layer_id),
+    )
+    .unwrap();
+    assert!(empty_resolved.is_empty());
+    project
+        .edit_document_layer("empty-decompose-target", &layer_id, |draft| {
+            assert!(draft.decompose_components(&empty_resolved)?);
+            assert!(!draft.decompose_components(&empty_resolved)?);
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        project
+            .document_layer("empty-decompose-target", &layer_id)
+            .unwrap()
+            .components()
+            .next()
+            .is_none()
+    );
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    assert_eq!(
+        reloaded
+            .glyph_layer("decompose-target", &reloaded_layer)
+            .unwrap(),
+        projected
+    );
+    assert!(
+        reloaded
+            .glyph_layer("empty-decompose-target", &reloaded_layer)
+            .unwrap()
+            .components
+            .is_empty()
     );
 }
 

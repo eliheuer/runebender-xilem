@@ -20,6 +20,8 @@ pub enum ComponentResolveError {
     Cycle(Vec<String>),
     /// A component graph exceeded the defensive recursion limit.
     TooDeep,
+    /// A component transform produced a coordinate outside the finite range.
+    NonFinite,
 }
 
 impl std::fmt::Display for ComponentResolveError {
@@ -28,6 +30,9 @@ impl std::fmt::Display for ComponentResolveError {
             Self::Missing(name) => write!(formatter, "missing component base {name}"),
             Self::Cycle(names) => write!(formatter, "component cycle: {}", names.join(" -> ")),
             Self::TooDeep => formatter.write_str("component graph exceeds 64 layers"),
+            Self::NonFinite => {
+                formatter.write_str("component transform produced nonfinite geometry")
+            }
         }
     }
 }

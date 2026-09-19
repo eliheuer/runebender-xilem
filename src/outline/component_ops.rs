@@ -8,6 +8,86 @@ use norad::{Contour, Font, Glyph};
 
 use crate::outline::glyph_paths;
 
+/// Resolve every canonical component into transformed contour copies.
+///
+/// Nested components use the caller's layer resolver. Geometry is rounded to integer font units,
+/// matching the existing decomposition command, while contour and point source metadata remains
+/// attached for the canonical paste boundary to re-identify safely.
+pub fn resolved_document_component_contours<'a>(
+    layer: crate::document::LayerView<'a>,
+    mut resolve: impl FnMut(&str) -> Option<crate::document::LayerView<'a>>,
+) -> Result<Vec<crate::document::CopiedContour>, glyph_paths::ComponentResolveError> {
+    fn collect<'a>(
+        layer: crate::document::LayerView<'a>,
+        transform: kurbo::Affine,
+        resolve: &mut impl FnMut(&str) -> Option<crate::document::LayerView<'a>>,
+        stack: &mut Vec<String>,
+        output: &mut Vec<crate::document::CopiedContour>,
+    ) -> Result<(), glyph_paths::ComponentResolveError> {
+        if stack.len() > 64 {
+            return Err(glyph_paths::ComponentResolveError::TooDeep);
+        }
+        for shape in layer.shapes() {
+            match shape {
+                crate::document::LayerShapeView::Contour(contour) => {
+                    output.push(
+                        contour
+                            .copied()
+                            .transformed_rounded(transform)
+                            .ok_or(glyph_paths::ComponentResolveError::NonFinite)?,
+                    );
+                }
+                crate::document::LayerShapeView::Component(component) => {
+                    let name = component.reference();
+                    if let Some(start) = stack.iter().position(|entry| entry == name) {
+                        let mut cycle = stack[start..].to_vec();
+                        cycle.push(name.to_owned());
+                        return Err(glyph_paths::ComponentResolveError::Cycle(cycle));
+                    }
+                    let base = resolve(name).ok_or_else(|| {
+                        glyph_paths::ComponentResolveError::Missing(name.to_owned())
+                    })?;
+                    stack.push(name.to_owned());
+                    let result = collect(
+                        base,
+                        transform * component.transform(),
+                        resolve,
+                        stack,
+                        output,
+                    );
+                    stack.pop();
+                    result?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    let mut output = Vec::new();
+    let mut stack = vec![layer.glyph_name().to_owned()];
+    for component in layer.components() {
+        let name = component.reference();
+        if let Some(start) = stack.iter().position(|entry| entry == name) {
+            let mut cycle = stack[start..].to_vec();
+            cycle.push(name.to_owned());
+            return Err(glyph_paths::ComponentResolveError::Cycle(cycle));
+        }
+        let base = resolve(name)
+            .ok_or_else(|| glyph_paths::ComponentResolveError::Missing(name.to_owned()))?;
+        stack.push(name.to_owned());
+        let result = collect(
+            base,
+            component.transform(),
+            &mut resolve,
+            &mut stack,
+            &mut output,
+        );
+        stack.pop();
+        result?;
+    }
+    Ok(output)
+}
+
 /// Contours of a glyph's components, recursively resolved and
 /// rounded to integer units.
 pub fn resolved_component_contours(font: &Font, glyph: &Glyph) -> Vec<Contour> {

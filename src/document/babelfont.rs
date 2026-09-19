@@ -177,6 +177,25 @@ pub struct CopiedContour {
     preserved: PreservedContour,
 }
 
+impl CopiedContour {
+    /// Return a transformed copy rounded to integer font units.
+    ///
+    /// Source metadata remains attached to each object. Returns `None` if the transform produces
+    /// a nonfinite coordinate.
+    pub fn transformed_rounded(&self, transform: kurbo::Affine) -> Option<Self> {
+        let mut copied = self.clone();
+        for node in &mut copied.path.nodes {
+            let point = transform * kurbo::Point::new(node.x, node.y);
+            if !point.x.is_finite() || !point.y.is_finite() {
+                return None;
+            }
+            node.x = point.x.round();
+            node.y = point.y.round();
+        }
+        Some(copied)
+    }
+}
+
 /// Stable identities created while pasting or duplicating canonical contours.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PastedContours {
@@ -432,6 +451,14 @@ impl<'a> ContourView<'a> {
             .identifier
             .as_ref()
             .is_some_and(|identifier| identifier.as_ref().contains("hyper"))
+    }
+
+    /// Copy this contour with its canonical geometry and exact source metadata.
+    pub fn copied(self) -> CopiedContour {
+        CopiedContour {
+            path: self.path.clone(),
+            preserved: self.preserved.clone(),
+        }
     }
 
     /// Canonical points in contour order.
@@ -1333,6 +1360,26 @@ impl LayerEditDraft {
             next.next();
         }
         self.apply_point_replacements(&replacements)
+    }
+
+    /// Replace every component with pre-resolved canonical contours.
+    ///
+    /// Existing contours and anchors retain their identities and exact metadata. Decomposed
+    /// contours preserve source names and libraries while receiving fresh document and UFO
+    /// identities. Returns whether components were replaced.
+    pub fn decompose_components(
+        &mut self,
+        resolved: &[CopiedContour],
+    ) -> Result<bool, DocumentEditError> {
+        if self.layer.components().next().is_none() {
+            return Ok(false);
+        }
+        self.paste_contours(resolved)?;
+        self.layer
+            .shapes
+            .retain(|shape| matches!(shape, Shape::Path(_)));
+        self.preserved.components.clear();
+        Ok(true)
     }
 
     fn apply_point_replacements(
