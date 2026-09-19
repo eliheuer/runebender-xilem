@@ -34,7 +34,8 @@ M05 remains active in its owned history lane; the Project-level Designspace tran
 The 2026-09-19 identity audit reopened one M01 substep because `VariableGlyph` did not yet store the stable `GlyphId` promised by the field-ownership contract.
 Evidence commits `15f065b`, `b2498c8`, `f8a31da`, `6f2ddce` and `14accbe` close that gap with stable glyph identity, atomic whole-glyph add, duplicate, rename and removal transactions, fresh copied object identities and typed smart-metadata initialization.
 The follow-up proof covers filling a missing source layer without replacing `GlyphId`, preserves active-source command eligibility and retains the established invalid-Unicode fallback for one-character glyph names.
-All 10 focused lifecycle tests, the smart-component identity regression and warning-denied library/test Clippy pass on the integrated branch.
+The save/reopen follow-up `7524a94` additionally preserves component references, exact metrics-key spelling, opaque lib data, advances and cleared Unicode after duplicate and rename.
+All 11 focused lifecycle tests, the smart-component identity regression and warning-denied library/test Clippy pass on the integrated branch.
 
 ### Canonical smart metadata, rendering and re-interpolation checkpoint
 
@@ -51,9 +52,16 @@ Hyperbezier rendering is integrated through `e7fbedc`, exact accumulated compone
 Evidence commits `8713aa0`, `7d34a07` and `3a44690` add typed metaball and one-axis or two-axis smart-component rendering, route `Project::document_layer_path` through it with same-source pole collection and apply the same explicit recursion bound to ordinary and smart paths.
 All 10 focused renderer tests and all five matched component-graph integration tests pass, including nested metaballs, bilinear smart poles, full affine accumulation, selected-layer fallback, nonfinite rejection and the generated depth-limit chain.
 
+Evidence commit `4419585` moves valid HOI intermediate points into typed exact-preserving layer storage and makes interpolation read that canonical value directly.
+Malformed HOI payloads remain untouched in the opaque lib, and import/export retains the sole boundary key and exact valid dictionary representation.
+The existing HOI interpolation and boundary tests plus the new typed valid/invalid payload test pass.
+
+Evidence commit `9ecb21e` replaces interpolated-source UFO cloning with one staged canonical source transaction using fresh object identities and retained logical `GlyphId` values.
+The combined variable-project suite passes 63 tests, including failure atomicity, undo/redo, save/reopen, metadata preservation and source identity.
+
 ### Canonical proposals, versions and headless callers
 
-Evidence commits: `42850df`, `8f300a2`, `7d4bd9b`, `d5ece36` and `9ae2bc4`.
+Evidence commits: `42850df`, `8f300a2`, `7d4bd9b`, `d5ece36`, `9ae2bc4` and `7718d1c`.
 
 Proposal batches, review layers, installation, isolated experimental versions, live tools and Nodes-live routing now use canonical layer snapshots and stable source/layer identities.
 Invalid task names and invalid later glyphs reject before publication or revision changes.
@@ -64,8 +72,19 @@ Focused evidence passes 10 proposal-batch tests, seven experiment tests, five li
 Headless proposal installation and source comparison now call the same canonical Project operations as the editor.
 The headless Nodes suite passes six tests, including exact shifted-geometry comparison behavior.
 
-The internal selective proposal replacement still round-trips through a Norad glyph before canonical reconciliation.
-M10 owns replacing that internal editing path with a direct canonical replacement while retaining the explicit external proposal serialization contract and revision-token meaning.
+Composition plans now carry foreground revision tokens and publish the complete proposal layer through one guarded canonical source-structure commit.
+Selective proposal and isolated-version installation build canonical layer drafts directly, preserving stable identities, foreground metadata and Project-owned undo while retaining the explicit external proposal serialization contract.
+The hardening follow-up `087e0e7` matches identifiers before structural fallbacks across reordered contours, points, components and anchors and includes all object metadata in direct payload equality.
+The integrated proposal, edit-batch, compose and experiment suites pass 8, 11, 8 and 7 tests respectively.
+
+### Canonical application mutation checkpoint
+
+Evidence commit: `2e16e09` (`Move application edits into canonical transactions`).
+
+FontModel add, add-missing, duplicate, remove and rename wrappers now delegate to the atomic whole-glyph Project APIs.
+Component addition and alignment toggles commit guarded canonical layer transactions and Project-owned history.
+The complete application binary suite passes 166 enabled tests with four documented ignores, and strict workspace all-target Clippy passes.
+M06 remains open because Session still uses a transitional projected-glyph rebase and mixed legacy history while its remaining canvas, clipboard, compose and CLI callers move.
 
 ### Stable canonical component-resolution boundary
 
