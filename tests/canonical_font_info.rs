@@ -207,6 +207,7 @@ fn project_owns_font_info_and_preserves_unowned_fields_through_save() {
     assert_eq!(changed_revision, revision.wrapping_add(1));
     assert_eq!(change.source_metadata(), &[source_id]);
     assert!(change.metadata_changed());
+    assert!(change.metrics_changed());
     assert!(change.requires_compilation());
     assert_eq!(project.document_font_info(source_id), Some(&edited));
 
@@ -242,4 +243,37 @@ fn project_owns_font_info_and_preserves_unowned_fields_through_save() {
         reloaded.source_snapshot(source_id).unwrap().font_info,
         expected
     );
+}
+
+#[test]
+fn project_rejects_invalid_font_info_without_changing_canonical_or_projected_state() {
+    let mut source = norad::Font::new();
+    source.font_info = populated_font_info();
+    let mut project = Project::from_source(runebender::document::project::Master::from_font(
+        source,
+        PathBuf::from("InvalidFontInfo.ufo"),
+    ));
+    let source_id = SourceId(0);
+    let canonical = project.document_font_info(source_id).unwrap().clone();
+    let projection = project.source_snapshot(source_id).unwrap();
+    let document = project.document_snapshot();
+    let revision = project.document_revision();
+
+    let mut negative_upm = canonical.clone();
+    negative_upm.metrics.units_per_em = Some(-1.0);
+    let mut infinite_ascender = canonical.clone();
+    infinite_ascender.metrics.ascender = Some(f64::INFINITY);
+    for invalid in [negative_upm, infinite_ascender] {
+        assert_eq!(
+            project.edit_document_source_metadata(source_id, |draft| {
+                assert!(draft.set_font_info(invalid));
+                Ok(())
+            }),
+            Err(runebender::document::DocumentEditError::InvalidFontInfo)
+        );
+        assert_eq!(project.document_font_info(source_id), Some(&canonical));
+        assert_eq!(project.source_snapshot(source_id).unwrap(), projection);
+        assert_eq!(project.document_snapshot(), document);
+        assert_eq!(project.document_revision(), revision);
+    }
 }
