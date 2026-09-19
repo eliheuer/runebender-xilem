@@ -3957,6 +3957,93 @@ impl LayerEditDraft {
         Ok(true)
     }
 
+    /// Convert selected live metaball groups to explicit cubic contours.
+    ///
+    /// `None` converts every group and an empty slice converts none. All sampling and curve
+    /// fitting complete on a staged draft, so an invalid group or empty sampled outline leaves
+    /// geometry and live source data unchanged. Generated topology receives fresh identities and
+    /// empty source metadata while existing contours, components and anchors remain exact.
+    pub fn collapse_metaballs(
+        &mut self,
+        groups: Option<&[u32]>,
+        options: crate::outline::metaballs::OutlineOptions,
+    ) -> Result<usize, String> {
+        let mut data = self.view().metaballs().map_err(|error| error.to_string())?;
+        let selected: HashSet<_> = groups
+            .map(|groups| groups.iter().copied().collect())
+            .unwrap_or_else(|| data.groups.iter().map(|group| group.id).collect());
+        if selected
+            .iter()
+            .any(|id| !data.groups.iter().any(|group| group.id == *id))
+        {
+            return Err("unknown metaball group".into());
+        }
+        if selected.is_empty() {
+            return Ok(0);
+        }
+        let mut generated = Vec::new();
+        for group in data
+            .groups
+            .iter()
+            .filter(|group| selected.contains(&group.id))
+        {
+            let paths = crate::outline::metaballs::preview(group, options)?;
+            if paths.is_empty() {
+                return Err("metaball group has no sampled outline; source preserved".into());
+            }
+            for path in paths {
+                let smooth_at = path
+                    .segments()
+                    .map(|segment| {
+                        (
+                            crate::outline::glyph_paths::point_key(
+                                segment.end().x,
+                                segment.end().y,
+                            ),
+                            true,
+                        )
+                    })
+                    .collect();
+                generated.push(
+                    Self::replacement_contour_from_path(&path, &smooth_at)
+                        .map_err(|error| error.to_string())?
+                        .ok_or_else(|| "metaball outline did not produce a contour".to_owned())?,
+                );
+            }
+        }
+        data.groups.retain(|group| !selected.contains(&group.id));
+        let mut staged = self.clone();
+        let insert_at = staged
+            .layer
+            .shapes
+            .iter()
+            .rposition(|shape| matches!(shape, Shape::Path(_)))
+            .map_or_else(
+                || {
+                    staged
+                        .layer
+                        .shapes
+                        .iter()
+                        .position(|shape| matches!(shape, Shape::Component(_)))
+                        .unwrap_or(staged.layer.shapes.len())
+                },
+                |index| index + 1,
+            );
+        staged.layer.shapes.splice(
+            insert_at..insert_at,
+            generated.iter().map(|item| item.0.clone()),
+        );
+        staged
+            .preserved
+            .contours
+            .extend(generated.into_iter().map(|item| item.1));
+        staged
+            .set_metaballs(data)
+            .map_err(|error| error.to_string())?;
+        *self = staged;
+        Ok(selected.len())
+    }
+
     /// Replace typed HOI intermediate points without materializing a UFO glyph.
     pub fn set_hoi_intermediates(&mut self, points: HoiIntermediates) -> bool {
         let replacement = (!points.is_empty()).then_some(points);

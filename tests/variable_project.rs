@@ -4543,6 +4543,172 @@ fn canonical_mask_baking_replaces_topology_and_clears_the_boundary_key() {
 }
 
 #[test]
+fn canonical_metaball_collapse_is_selected_atomic_and_persistable() {
+    use runebender::formats::metaballs::{Metaball, MetaballGroup, Metaballs};
+    use runebender::outline::metaballs::OutlineOptions;
+
+    let scratch = Scratch::new();
+    let mut existing = Contour::new(
+        vec![
+            ContourPoint::new(500.0, 0.0, PointType::Line, false, None, None),
+            ContourPoint::new(600.0, 0.0, PointType::Line, false, None, None),
+            ContourPoint::new(600.0, 100.0, PointType::Line, false, None, None),
+            ContourPoint::new(500.0, 100.0, PointType::Line, false, None, None),
+        ],
+        Some(norad::Identifier::new("existing").unwrap()),
+    );
+    existing.replace_lib(object_lib("existing"));
+    let data = Metaballs {
+        version: 1,
+        groups: vec![
+            MetaballGroup {
+                id: 1,
+                threshold: 0.5,
+                balls: vec![Metaball {
+                    id: 1,
+                    x: 0.0,
+                    y: 0.0,
+                    radius: 100.0,
+                    stiffness: 2.0,
+                }],
+            },
+            MetaballGroup {
+                id: 2,
+                threshold: 0.5,
+                balls: vec![Metaball {
+                    id: 1,
+                    x: 250.0,
+                    y: 0.0,
+                    radius: 100.0,
+                    stiffness: 2.0,
+                }],
+            },
+        ],
+    };
+    let mut glyph = Glyph::new("metaball-collapse");
+    glyph.contours.push(existing.clone());
+    runebender::formats::metaballs::write_metaballs(&mut glyph, &data).unwrap();
+    let mut expected = glyph.clone();
+    assert_eq!(
+        runebender::outline::metaballs::collapse(
+            &mut expected,
+            Some(&[1]),
+            OutlineOptions::default()
+        )
+        .unwrap(),
+        1
+    );
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let source_path = scratch.0.join("MetaballCollapse.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let existing_id = project
+        .document_layer("metaball-collapse", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .id();
+
+    project
+        .edit_document_layer("metaball-collapse", &layer_id, |draft| {
+            assert_eq!(
+                draft
+                    .collapse_metaballs(Some(&[1]), OutlineOptions::default())
+                    .map_err(|_| runebender::document::DocumentEditError::Rejected)?,
+                1
+            );
+            Ok(())
+        })
+        .unwrap();
+    let layer = project
+        .document_layer("metaball-collapse", &layer_id)
+        .unwrap();
+    assert_eq!(layer.contours().next().unwrap().id(), existing_id);
+    assert_eq!(
+        layer.metaballs().unwrap().groups,
+        data.groups[1..],
+        "selected collapse removed the wrong live group"
+    );
+    let projected = project.glyph_layer("metaball-collapse", &layer_id).unwrap();
+    assert_eq!(projected.contours, expected.contours);
+    assert_eq!(projected.contours[0], existing);
+    assert!(projected.contours[1..].iter().all(|contour| {
+        contour.identifier().is_none()
+            && contour.lib().is_none()
+            && contour.points.iter().all(|point| {
+                point.name.is_none() && point.identifier().is_none() && point.lib().is_none()
+            })
+    }));
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    let mut transaction = project
+        .begin_document_layer_transaction(&GlyphLayerAddress {
+            glyph: "metaball-collapse".into(),
+            layer: layer_id.clone(),
+        })
+        .unwrap();
+    let draft_contours = transaction.draft().view().contours().count();
+    let draft_metaballs = transaction.draft().view().metaballs().unwrap();
+    assert!(
+        transaction
+            .draft_mut()
+            .collapse_metaballs(Some(&[99]), OutlineOptions::default())
+            .is_err()
+    );
+    assert_eq!(
+        transaction.draft().view().contours().count(),
+        draft_contours
+    );
+    assert_eq!(
+        transaction.draft().view().metaballs().unwrap(),
+        draft_metaballs
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+
+    project
+        .edit_document_layer("metaball-collapse", &layer_id, |draft| {
+            assert_eq!(
+                draft
+                    .collapse_metaballs(None, OutlineOptions::default())
+                    .map_err(|_| runebender::document::DocumentEditError::Rejected)?,
+                1
+            );
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        project
+            .document_layer("metaball-collapse", &layer_id)
+            .unwrap()
+            .metaballs()
+            .unwrap()
+            .groups
+            .is_empty()
+    );
+    let projected = project.glyph_layer("metaball-collapse", &layer_id).unwrap();
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    assert_eq!(
+        reloaded
+            .glyph_layer("metaball-collapse", &reloaded_layer)
+            .unwrap(),
+        projected
+    );
+}
+
+#[test]
 fn canonical_boolean_successfully_clears_empty_results() {
     let scratch = Scratch::new();
     for (case, operation, right_x) in [

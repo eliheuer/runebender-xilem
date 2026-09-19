@@ -2234,3 +2234,30 @@ The existing package tests continue to cover exact fractional layer widths, inte
 
 This substep does not expand the Python package format contract or add Rust Babelfont JSON support.
 Save As feature-include relocation remains a separate open M12 gap.
+
+### Direct canonical metaball collapse
+
+Evidence commit: `Collapse canonical metaballs directly` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Collapse canonical metaballs directly$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+`LayerEditDraft::collapse_metaballs` samples and fits selected or all typed live metaball groups without materializing a UFO glyph.
+The complete operation runs against a staged canonical draft, so an unknown group, empty sampled outline or invalid replacement contour preserves both geometry and live source data.
+Generated cubic contours receive fresh stable identities and empty source metadata, while existing contours, components and anchors remain exact.
+Successful conversion removes only the selected groups and inserts generated paths before components in the established glyph paint order.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_metaball_collapse_is_selected_atomic_and_persistable -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib outline::metaballs -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --lib --tests --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused regression compares selected conversion with the established UFO-boundary implementation, checks draft and Project atomicity on an unknown group, converts the remaining groups and verifies save/reopen persistence.
+The metaball unit suite and full variable-project suite passed, as did warning-denied library/test Clippy.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+The M06 application callers still need to invoke this direct draft operation before the explicit-conversion portion of M04 can close.

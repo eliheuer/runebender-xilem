@@ -45,6 +45,7 @@ No release has been published yet.
 - Moved Designspace structure, font information, component alignment, mark color, metrics keys and formulas, metaball payloads, and HOI intermediate points into typed canonical document storage with guarded edits and UFO boundary projection.
 - Moved quadratic, cubic, hyperbezier, corner-rounding, handle-harmonizing, handle-balancing, and handle-optimization operations onto canonical contours.
 - Moved explicit mask baking onto canonical contours and cleared the persisted mask key only after successful subtraction.
+- Moved selected and whole-layer metaball collapse onto staged canonical layer edits that retain live groups until conversion succeeds.
 - Made image placement install validated source resources through Project without mutable UFO-font access.
 - New fonts and in-memory UFO imports now enter through common canonical Project constructors.
   The browser-compatible UFO boundary preserves its supported metadata and default-layer glyphs while rejecting extra layers, images, data and unsafe or inconsistent paths instead of silently dropping them.
