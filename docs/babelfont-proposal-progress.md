@@ -52,7 +52,7 @@ The experiment tests cover stable source reorder, removed sources, atomic confli
 The live tests cover authorization, canonical proposal creation and installation, structural refusal, drawing installation and canonical undo and redo.
 The Nodes live tests cover stable branch connections, isolated edits, result preservation, explicit apply routing and new-UFO export.
 
-Focused results on 2026-09-19 were 8 proposal batch tests, 7 experiment tests, 5 live-tool tests and 4 Nodes live tests, all passing.
+Focused results on 2026-09-19 were 9 proposal batch tests, 7 experiment tests, 5 live-tool tests and 4 Nodes live tests, all passing.
 Strict workspace validation remains the integration branch's responsibility after the M06 and M11 callers land.
 
 ## Remaining integration boundaries

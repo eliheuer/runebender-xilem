@@ -730,6 +730,52 @@ mod tests {
     }
 
     #[test]
+    fn invalid_canonical_batch_does_not_publish_earlier_glyphs() {
+        let mut project = Project::new_font("canonical.ufo".into());
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        let original_a = project.document_layer("A", &layer).unwrap().width();
+        let revision = project.document_revision();
+        let batch = EditBatch {
+            task: "atomic-canonical".into(),
+            reason: "verify complete staging".into(),
+            edits: vec![
+                GlyphEdit {
+                    glyph: "A".into(),
+                    expected_revision: canonical_glyph_revision(
+                        project.document_layer("A", &layer).unwrap(),
+                    )
+                    .unwrap(),
+                    operations: vec![Operation::SetWidth {
+                        width: original_a + 20.0,
+                    }],
+                },
+                GlyphEdit {
+                    glyph: "B".into(),
+                    expected_revision: canonical_glyph_revision(
+                        project.document_layer("B", &layer).unwrap(),
+                    )
+                    .unwrap(),
+                    operations: vec![Operation::SetPoint {
+                        contour: usize::MAX,
+                        point: 0,
+                        x: 1.0,
+                        y: 2.0,
+                    }],
+                },
+            ],
+        };
+
+        assert!(propose_project(&mut project, source, &batch).is_err());
+        assert_eq!(project.document_revision(), revision);
+        assert_eq!(
+            project.document_layer("A", &layer).unwrap().width(),
+            original_a
+        );
+        assert!(proposal::list_project(&project, source).is_empty());
+    }
+
+    #[test]
     fn adopted_external_proposals_without_a_revision_fail_closed() {
         let mut project = Project::new_font("canonical.ufo".into());
         let source = project.source_id(0).unwrap();
