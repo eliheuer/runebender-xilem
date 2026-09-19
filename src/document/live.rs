@@ -453,14 +453,16 @@ fn handle(project: &mut Project, name: &str, args: &Value) -> Result<Value, Stri
             json!({"ok":true,"total":matches.len(),"offset":offset,"glyphs":rows?,
                 "next_offset": (offset.saturating_add(limit) < matches.len()).then_some(offset.saturating_add(limit))})
         }
-        "read_glyph" => crate::analysis::glyph::read_glyph(
-            &master.font,
-            object
+        "read_glyph" => {
+            let glyph = object
                 .get("glyph")
                 .and_then(Value::as_str)
-                .ok_or("glyph is required")?,
-            layer,
-        ),
+                .ok_or("glyph is required")?;
+            match branch {
+                Some(_) => crate::analysis::glyph::read_glyph(&master.font, glyph, layer),
+                None => crate::analysis::glyph::read_project_glyph(project, source, glyph, layer),
+            }
+        }
         "proof" => {
             let names: Vec<String> = match object.get("glyphs") {
                 Some(value) => serde_json::from_value(value.clone()).map_err(|e| e.to_string())?,
