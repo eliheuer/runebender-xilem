@@ -8,6 +8,8 @@
 //! takes geometry from Babelfont, restoring exact numbers when their corresponding
 //! Babelfont value is unchanged. Compilation is the only quantizing boundary.
 
+mod curve_conversion;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 
