@@ -48,30 +48,11 @@ impl RawProxy for BrowserProxy {
 }
 
 fn demo_state() -> AppState {
-    let data: serde_json::Value =
-        serde_json::from_str(include_str!("../../web/demo-font.json")).unwrap();
-    let mut font = norad::Font::new();
-    font.font_info.family_name = Some("Virtua Grotesk".into());
-    font.font_info.style_name = Some("Regular".into());
-    font.font_info.units_per_em = Some(
-        data["info"]["unitsPerEm"]
-            .as_f64()
-            .unwrap_or(1024.)
-            .try_into()
-            .unwrap(),
-    );
-    font.font_info.ascender = data["info"]["ascender"].as_f64();
-    font.font_info.descender = data["info"]["descender"].as_f64();
-    font.font_info.cap_height = data["info"]["capHeight"].as_f64();
-    font.font_info.x_height = data["info"]["xHeight"].as_f64();
-    for glif in data["glyphs"].as_array().unwrap() {
-        font.default_layer_mut()
-            .insert_glyph(norad::Glyph::parse_raw(glif.as_str().unwrap().as_bytes()).unwrap());
-    }
-    let mut project =
-        runebender::document::project::Project::new_font("VirtuaGrotesk-Regular.ufo".into());
-    project.edit_sources()[0] =
-        runebender::document::project::Master::from_font(font, "VirtuaGrotesk-Regular.ufo".into());
+    let project = runebender::document::font_memory::project_from_embedded_glif_json(
+        "VirtuaGrotesk-Regular.ufo".into(),
+        include_str!("../../web/demo-font.json"),
+    )
+    .expect("the embedded browser demo font is valid");
     let mut workspace = Workspace::from_model(FontModel::from_project(project)).unwrap();
     // Open a real, editable graph in memory so Nodes is useful on first visit.
     workspace.new_nodes_file();

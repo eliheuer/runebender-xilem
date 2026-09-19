@@ -16,6 +16,7 @@ use std::path::{Component, Path, PathBuf};
 
 use norad::designspace::DesignSpaceDocument;
 use norad::{Font, Glyph};
+use serde::Deserialize;
 
 /// Parse a designspace document from XML text.
 pub fn designspace_from_str(xml: &str) -> Result<DesignSpaceDocument, String> {
@@ -39,6 +40,24 @@ pub struct UfoProjectFiles {
     pub project: crate::document::project::Project,
     /// Glyph name to path relative to the UFO root, exactly as declared by `contents.plist`.
     pub glif_paths: HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct EmbeddedGlifFont {
+    info: EmbeddedGlifFontInfo,
+    glyphs: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EmbeddedGlifFontInfo {
+    family_name: String,
+    style_name: String,
+    units_per_em: f64,
+    ascender: f64,
+    descender: f64,
+    cap_height: f64,
+    x_height: f64,
 }
 
 /// Assemble a font from UFO files given as (path, bytes) pairs. Paths
@@ -160,6 +179,51 @@ pub fn project_from_ufo_files<'a>(
         project,
         glif_paths,
     })
+}
+
+/// Decode an embedded font-info plus raw-GLIF JSON bundle into canonical Project ownership.
+///
+/// This is the browser demo's compact transport format, not a persisted font format.
+pub fn project_from_embedded_glif_json(
+    source_path: PathBuf,
+    json: &str,
+) -> Result<crate::document::project::Project, String> {
+    let embedded: EmbeddedGlifFont =
+        serde_json::from_str(json).map_err(|error| format!("embedded font JSON: {error}"))?;
+    let mut font = Font::new();
+    font.font_info.family_name = Some(embedded.info.family_name);
+    font.font_info.style_name = Some(embedded.info.style_name);
+    font.font_info.units_per_em = Some(
+        embedded
+            .info
+            .units_per_em
+            .try_into()
+            .map_err(|error| format!("embedded font unitsPerEm: {error}"))?,
+    );
+    font.font_info.ascender = Some(embedded.info.ascender);
+    font.font_info.descender = Some(embedded.info.descender);
+    font.font_info.cap_height = Some(embedded.info.cap_height);
+    font.font_info.x_height = Some(embedded.info.x_height);
+
+    let mut names = HashSet::new();
+    let layer = font.default_layer_mut();
+    for (index, raw_glif) in embedded.glyphs.into_iter().enumerate() {
+        let glyph = Glyph::parse_raw(raw_glif.as_bytes())
+            .map_err(|error| format!("embedded glyph {index}: {error}"))?;
+        let name = glyph.name().as_str();
+        crate::document::canonical_metadata::validate_name(name)
+            .map_err(|error| error.to_string())?;
+        if !names.insert(name.to_owned()) {
+            return Err(format!("duplicate embedded glyph name {name:?}"));
+        }
+        if glyph.image.is_some() {
+            return Err(format!(
+                "embedded glyph {name:?}: images are not supported in memory"
+            ));
+        }
+        layer.insert_glyph(glyph);
+    }
+    crate::document::project::Project::from_ufo_boundary(source_path, &font, HashMap::new())
 }
 
 fn validate_file_inventory<'a>(
@@ -365,6 +429,39 @@ mod tests {
             snapshot.lib["com.linebender.test"].as_string(),
             Some("preserved")
         );
+        assert!(!project.sources()[0].dirty);
+    }
+
+    #[test]
+    fn embedded_glif_json_enters_project_canonically() {
+        let project = project_from_embedded_glif_json(
+            PathBuf::from("VirtuaGrotesk-Regular.ufo"),
+            include_str!("../../web/demo-font.json"),
+        )
+        .expect("the browser demo imports");
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        assert_eq!(project.glyph_names().count(), 863);
+        assert_eq!(
+            project
+                .document_font_info(source)
+                .unwrap()
+                .names
+                .family_name
+                .as_deref(),
+            Some("Virtua Grotesk")
+        );
+        assert_eq!(
+            project
+                .document_font_info(source)
+                .unwrap()
+                .metrics
+                .units_per_em,
+            Some(1024.0)
+        );
+        let a = project.document_layer("A", &layer).unwrap();
+        assert_eq!(a.width(), 716.0);
+        assert_eq!(a.codepoints().collect::<Vec<_>>(), ['A']);
         assert!(!project.sources()[0].dirty);
     }
 
