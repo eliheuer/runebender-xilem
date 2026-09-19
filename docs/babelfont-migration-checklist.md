@@ -2,7 +2,7 @@
 
 Audit date: 2026-09-18.
 Audited implementation: `6350cf3`, including the pipeline implementation at `5cbf51b`.
-Status: **PLANNED — migration incomplete**.
+Status: **IN PROGRESS — M00 complete; migration incomplete**.
 This document is the implementation checklist and handoff for the dedicated scheduled task.
 Implementation is paused in the originating task; the scheduled task owns the continuation.
 
@@ -125,7 +125,8 @@ The automation must not claim completion merely because it reached a time or usa
 
 ## Ordered implementation checklist
 
-The boxes below are intentionally unchecked: this audit is complete, but none of these migration milestones has been implemented by this planning change.
+Completed boxes have executed evidence in [the progress log](babelfont-migration-progress.md).
+M00 establishes the baseline; it does not change document ownership or complete any M01–M14 implementation work.
 Dependencies identify the minimum prerequisite, not permission for multiple concurrent writers.
 
 ### M00 — Establish the continuation and measurable baseline
@@ -133,10 +134,10 @@ Dependencies identify the minimum prerequisite, not permission for multiple conc
 Depends on: none.
 Start in: this document, `tests/variable_project.rs`, `tests/variable_compile.rs`, `tests/babelfont_contract.rs`, `web/README.md`.
 
-- [ ] Verify the isolated task checkout includes the committed migration and this plan; record its branch, baseline and clean/owned-dirty state.
-- [ ] Create the progress log and a reviewed inventory that separates production Norad use from boundary codecs, test fixtures, comments and obsolete APIs.
-- [ ] Record the existing 569-passing/4-ignored validation as historical evidence; run the three focused suites to establish the worker's environment.
-- [ ] Record the exact existing behavior of drag grouping, auxiliary history, metadata history, source undo, proposal apply and experimental-version conflicts before changing ownership.
+- [x] Verify the isolated task checkout includes the committed migration and this plan; record its branch, baseline and clean/owned-dirty state.
+- [x] Create the progress log and a reviewed inventory that separates production Norad use from boundary codecs, test fixtures, comments and obsolete APIs.
+- [x] Record the existing 569-passing/4-ignored validation as historical evidence; run the three focused suites to establish the worker's environment.
+- [x] Record the exact existing behavior of drag grouping, auxiliary history, metadata history, source undo, proposal apply and experimental-version conflicts before changing ownership.
 
 Acceptance: commands run successfully in the continuation checkout, and every runtime family in the inventory has an assigned milestone.
 
