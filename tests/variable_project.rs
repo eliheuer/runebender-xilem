@@ -519,6 +519,108 @@ fn document_views_read_exact_canonical_layers_and_stable_source_identity() {
 }
 
 #[test]
+fn all_source_codepoint_edits_publish_once_and_round_trip_exactly() {
+    let (scratch, mut project) = fixture();
+    let original = project
+        .document_sources()
+        .map(|source| {
+            (
+                source.id(),
+                project
+                    .source_snapshot(source.id())
+                    .unwrap()
+                    .get_glyph("A")
+                    .unwrap()
+                    .clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let values = vec![
+        vec!['A', 'A', '\u{391}'],
+        vec!['B'],
+        vec!['C', '\u{410}'],
+        Vec::new(),
+    ];
+    let expected = vec![
+        vec!['A', '\u{391}'],
+        vec!['B'],
+        vec!['C', '\u{410}'],
+        vec![],
+    ];
+    let before_revision = project.document_revision();
+
+    let DocumentEditOutcome::Changed { revision, change } =
+        project.set_document_glyph_codepoints("A", &values).unwrap()
+    else {
+        panic!("different codepoints did not commit")
+    };
+    assert_eq!(revision, before_revision + 1);
+    assert_eq!(change.affected_layers().len(), 3);
+    assert!(!change.geometry_changed());
+    assert!(!change.metrics_changed());
+    assert!(change.metadata_changed());
+    assert!(change.requires_compilation());
+    assert_eq!(
+        project.document_glyph_codepoints("A"),
+        Some(expected.clone())
+    );
+    for (index, (((source, mut glyph), codepoints), projected)) in original
+        .into_iter()
+        .zip(&expected)
+        .zip(project.sources().iter())
+        .enumerate()
+    {
+        glyph.codepoints = norad::Codepoints::new(codepoints.iter().copied());
+        assert_eq!(project.source_id(index), Some(source));
+        assert_eq!(projected.font.get_glyph("A"), Some(&glyph));
+    }
+
+    assert!(matches!(
+        project
+            .set_document_glyph_codepoints("A", &expected)
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision } if revision == before_revision + 1
+    ));
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project.set_document_glyph_codepoints("A", &expected[..expected.len() - 1]),
+        Err(runebender::document::DocumentEditError::SourceCountMismatch)
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+
+    project.save().unwrap();
+    let reloaded = Project::load(&scratch.0.join("Font.designspace")).unwrap();
+    assert_eq!(reloaded.document_glyph_codepoints("A"), Some(expected));
+}
+
+#[test]
+fn all_source_codepoint_edit_rejects_a_later_missing_layer_without_mutation() {
+    let scratch = Scratch::new();
+    let doc = designspace_from_str(DESIGNSPACE).unwrap();
+    let mut project = Project::from_designspace(doc, |filename| {
+        let mut font = Font::new();
+        if filename == "Regular.ufo" {
+            font.default_layer_mut().insert_glyph(glyph("A", 0.0));
+            font.layers.new_layer("intermediate").unwrap();
+        }
+        Ok(Master::from_font(font, scratch.0.join(filename)))
+    })
+    .unwrap();
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    let values = vec![vec!['A']; project.document_sources().count()];
+
+    assert_eq!(
+        project.set_document_glyph_codepoints("A", &values),
+        Err(runebender::document::DocumentEditError::MissingLayer)
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
 fn canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics() {
     let scratch = Scratch::new();
     let point = |x, y, typ| ContourPoint::new(x, y, typ, false, None, None);

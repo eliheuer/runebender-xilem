@@ -144,6 +144,7 @@ Source-wide feature text, groups and exact fractional kerning have canonical own
 Source image-resource insertion uses a stable-`SourceId` Project operation that validates UFO image rules and updates persistence state without exposing a mutable source font.
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.
 `CanonicalLayerSnapshot` captures one opaque addressed layer with the same geometry and extensions; guarded restore compares the complete live state before replacing it, advances the revision once and refreshes the compatibility projection without recording legacy history.
+Multi-source glyph metadata uses staged layer drafts and one batch publication; Unicode replacement validates the complete source set before mutation, advances the revision once and refreshes every changed projection.
 `CanonicalSourceMetadataSnapshot` captures feature text, groups and exact kerning for the complete stable source set; guarded whole-snapshot restore ignores display reorder, rejects stale or changed source sets and refreshes all affected projections in one revision.
 Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact extensions first, then refresh only the affected compatibility projection.
 Background send, swap and clear stage a complete canonical source snapshot and record guarded source-history transactions for both standalone UFO and Designspace documents.

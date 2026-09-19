@@ -2600,3 +2600,23 @@ The unchanged `block v0.1.6` future-incompatibility notice remains a dependency 
 
 This closes the recorded M12 adapter and constructor gaps.
 M13 compatibility-state removal and the M14 final proof remain required before the migration is complete.
+
+### Atomic canonical Unicode propagation
+
+Evidence commit: `Edit glyph Unicode across sources canonically` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Edit glyph Unicode across sources canonically$' -1`.
+
+`Project::document_glyph_codepoints` reads exact ordered Unicode values from each canonical default layer in document source order.
+`Project::set_document_glyph_codepoints` stages every layer before publication, rejects a source-count mismatch or any missing layer without mutation, removes later duplicate scalars and publishes all changed layers in one document revision.
+The operation refreshes only changed compatibility projections and reports metadata plus compilation invalidation without claiming geometry or metrics changes.
+
+Executed evidence:
+
+```sh
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources CARGO_BUILD_JOBS=2 cargo test --locked --test variable_project all_source_codepoint -- --nocapture
+CARGO_BUILD_JOBS=2 cargo clippy --locked --test variable_project -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused regressions cover ordered deduplication, exact preservation of unrelated glyph data, one-revision publication, compatibility projection refresh, no-op suppression, count and later-missing-layer failure atomicity, and save/reopen persistence.

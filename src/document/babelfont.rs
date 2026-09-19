@@ -793,6 +793,16 @@ impl LayerEditDraft {
         LayerView::new(&self.layer, &self.preserved)
     }
 
+    /// Replace the Unicode scalar values, retaining order and removing later duplicates.
+    pub fn set_codepoints(&mut self, codepoints: impl IntoIterator<Item = char>) -> bool {
+        let codepoints = norad::Codepoints::new(codepoints);
+        if self.preserved.codepoints == codepoints {
+            return false;
+        }
+        self.preserved.codepoints = codepoints;
+        true
+    }
+
     /// Start a new open contour at `position`.
     ///
     /// Returns the stable contour and initial-point identities.
@@ -4316,6 +4326,8 @@ pub enum DocumentEditError {
     MissingLayer,
     /// The requested source identity does not exist.
     MissingSource,
+    /// The number of source-scoped values does not match the document source count.
+    SourceCountMismatch,
     /// Canonical font information failed validation.
     InvalidFontInfo,
     /// Layer metadata is malformed, nonfinite or uses an unsupported schema.
@@ -4351,6 +4363,9 @@ impl std::fmt::Display for DocumentEditError {
         match self {
             Self::MissingLayer => formatter.write_str("glyph layer does not exist"),
             Self::MissingSource => formatter.write_str("source does not exist"),
+            Self::SourceCountMismatch => {
+                formatter.write_str("source value count does not match the document")
+            }
             Self::InvalidFontInfo => formatter.write_str("font information is invalid"),
             Self::InvalidLayerMetadata => formatter.write_str("glyph-layer metadata is invalid"),
             Self::MissingPoint(id) => write!(formatter, "point {id:?} does not exist"),

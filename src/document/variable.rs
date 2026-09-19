@@ -606,6 +606,61 @@ impl VariableData {
         Some(delta)
     }
 
+    pub(super) fn commit_layer_edits(
+        &mut self,
+        drafts: Vec<(GlyphLayerAddress, super::LayerEditDraft)>,
+    ) -> Option<Vec<(GlyphLayerAddress, super::babelfont::LayerDelta)>> {
+        let mut seen = HashSet::new();
+        let deltas = drafts
+            .iter()
+            .map(|(address, draft)| {
+                if !seen.insert(address.clone()) {
+                    return None;
+                }
+                let preserved = self
+                    .glyphs
+                    .get(&address.glyph)?
+                    .layers
+                    .get(&address.layer)?;
+                let layer = self
+                    .font
+                    .glyphs
+                    .get(&address.glyph)?
+                    .get_layer(&super::babelfont::layer_key(&address.layer))?;
+                Some(draft.delta_from(layer, preserved))
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let changed = drafts
+            .into_iter()
+            .zip(deltas)
+            .filter_map(|((address, draft), delta)| {
+                if delta.is_empty() {
+                    return None;
+                }
+                let (layer, preserved) = draft.into_parts();
+                *self
+                    .font
+                    .glyphs
+                    .get_mut(&address.glyph)
+                    .expect("validated glyph geometry")
+                    .get_layer_mut(&super::babelfont::layer_key(&address.layer))
+                    .expect("validated glyph layer geometry") = layer;
+                *self
+                    .glyphs
+                    .get_mut(&address.glyph)
+                    .expect("validated glyph preservation")
+                    .layers
+                    .get_mut(&address.layer)
+                    .expect("validated glyph layer preservation") = preserved;
+                Some((address, delta))
+            })
+            .collect::<Vec<_>>();
+        if !changed.is_empty() {
+            self.revision = self.revision.wrapping_add(1);
+        }
+        Some(changed)
+    }
+
     pub(super) fn copy_layer(&mut self, name: &str, from: &LayerId, to: &LayerId) -> bool {
         if self
             .glyphs

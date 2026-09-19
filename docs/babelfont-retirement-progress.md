@@ -76,6 +76,7 @@ The `edit_sources` occurrences in `application/platform/host.rs`, `document/live
 
 Current integration update: local-AI proposal adoption, preview, list, installation, discard, Cmd+Z and dedicated Undo Install use canonical Project APIs and addressed layer history.
 `Master::install_proposal` and `Master::discard_proposal` are deleted; the standalone UFO helpers remain only for the explicit external contract and fixtures.
+Canonical `Project::document_glyph_codepoints` and `set_document_glyph_codepoints` now supply the Unicode read and atomic all-source write boundary; the application caller is the remaining cutover step before its mutable-source dependency can be removed.
 
 ## Long-lived source templates and projections
 

@@ -2071,6 +2071,79 @@ impl Project {
         })
     }
 
+    /// Read one glyph's exact Unicode values in document source order.
+    pub fn document_glyph_codepoints(&self, name: &str) -> Option<Vec<Vec<char>>> {
+        self.document_sources()
+            .map(|source| {
+                self.document_layer(name, &source.default_layer())
+                    .map(|layer| layer.codepoints().collect())
+            })
+            .collect()
+    }
+
+    /// Replace one glyph's Unicode values across every document source atomically.
+    ///
+    /// The values are paired with full sources in document order. A count mismatch or missing
+    /// default-layer glyph leaves every layer, compatibility projection and revision unchanged.
+    pub fn set_document_glyph_codepoints(
+        &mut self,
+        name: &str,
+        values: &[Vec<char>],
+    ) -> Result<DocumentEditOutcome, super::DocumentEditError> {
+        let layers = self
+            .document_sources()
+            .map(SourceView::default_layer)
+            .collect::<Vec<_>>();
+        if layers.len() != values.len() {
+            return Err(super::DocumentEditError::SourceCountMismatch);
+        }
+        let drafts = layers
+            .into_iter()
+            .zip(values)
+            .map(|(layer, codepoints)| {
+                let address = GlyphLayerAddress {
+                    glyph: name.to_owned(),
+                    layer,
+                };
+                let mut draft = self
+                    .variable
+                    .layer_edit_draft(&address.glyph, &address.layer)
+                    .ok_or(super::DocumentEditError::MissingLayer)?;
+                draft.set_codepoints(codepoints.iter().copied());
+                Ok((address, draft))
+            })
+            .collect::<Result<Vec<_>, super::DocumentEditError>>()?;
+        let changed = self
+            .variable
+            .commit_layer_edits(drafts)
+            .ok_or(super::DocumentEditError::MissingLayer)?;
+        if changed.is_empty() {
+            return Ok(DocumentEditOutcome::Unchanged {
+                revision: self.variable.revision,
+            });
+        }
+        let affected_layers = changed
+            .into_iter()
+            .map(|(address, _)| address)
+            .collect::<Vec<_>>();
+        let dependent_layers = self.variable.dependent_component_layers(name);
+        for address in &affected_layers {
+            self.synchronize_compatibility_layer(&address.glyph, &address.layer);
+        }
+        Ok(DocumentEditOutcome::Changed {
+            revision: self.variable.revision,
+            change: DocumentChange {
+                affected_layers,
+                dependent_layers,
+                source_metadata: Vec::new(),
+                geometry: false,
+                metrics: false,
+                metadata: true,
+                compilation: true,
+            },
+        })
+    }
+
     /// Apply an owned source-metadata draft atomically.
     ///
     /// Returning an error from `edit` discards the draft.
