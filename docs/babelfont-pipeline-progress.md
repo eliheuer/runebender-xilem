@@ -39,11 +39,14 @@ Baseline: `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
   Canonical Project queries now supply exact advances, codepoints, UPM, groups, pairs, feature text, anchors and component-propagated anchors; boundary-parity tests retain the existing behavior.
 - `6434f69` (`Keep preview interpolation results canonical`) routes compatibility checks, ghost/preview advances and outlines, recursive component resolution, and trajectory sampling through owned `InterpolatedLayer` values without constructing UFO glyphs.
   Canonical contour conversion retains open/closed state, quadratic and cubic roles, and hyperbezier rendering; the remaining UFO materialization is limited to explicit compatibility write callers awaiting their owning source/application cutovers.
+- `12764cc` (`Read interpolation structure canonically`) removes live interpolation reads of legacy axes, master locations, brace sources, instance/rule projections and the cached variation model.
+  Full and sparse glyph participation, mapped coordinates, kerning interpolation, source snapping, instance display data, rules, trajectory sampling and HOI endpoints now use the Project-owned canonical Designspace by stable identity.
 
 ## Executed checks
 
 - `cargo test --locked --lib canonical_interpolation -- --test-threads=1`: 2 passed.
 - `cargo test --locked --lib document::interpolation::tests:: -- --test-threads=1`: 3 passed.
+- `cargo test --locked --test variable_project interpolation_structure_ignores_legacy_designspace_projections -- --exact --test-threads=1`: 1 passed.
 - `cargo test --locked --lib compiler_ -- --test-threads=1`: 2 passed.
 - `RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project interpolation_ -- --test-threads=1`: 2 passed.
 - `RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project source_authoring_keeps_identity_and_round_trips_the_designspace -- --exact --test-threads=1`: 1 passed.
@@ -84,6 +87,7 @@ The focused HOI fixture test could not run through interpolation with the curren
 The Project-owned compiler query and typed cache key are implemented.
 M08 and M09 are still not complete because every source-authoring command, undo and redo path must mutate or restore that same canonical owner before compatibility projections can be considered non-authoritative.
 The explicit source-creation, re-interpolate and format compatibility APIs still project canonical interpolation results back to Norad for callers that have not yet accepted a canonical result or transaction.
+HOI intermediate control data also still crosses its typed UFO-lib codec through one projected glyph because the canonical layer metadata API does not yet expose that persisted extension.
 Those remaining caller cutovers require implementation and focused round-trip, invalidation and preservation proof; the presence of the canonical model and compiler query is not sufficient completion evidence.
 
 ## Next concrete step
