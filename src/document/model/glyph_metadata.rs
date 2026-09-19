@@ -75,49 +75,25 @@ impl OpenTypeGlyphCategory {
     }
 }
 
-/// Canonical editable metadata for one glyph identity.
+/// Canonical metadata stored with one glyph layer.
 ///
-/// The glyph's mutable name remains in the document name index rather than this value.
-/// Unknown glyph-lib entries remain in the format-preservation payload.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CanonicalGlyphMetadata {
+/// Codepoints and notes are GLIF fields, so auxiliary layers and different sources can preserve
+/// distinct values without a source-font mirror.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CanonicalLayerGlyphMetadata {
     codepoints: Vec<char>,
     note: Option<String>,
-    exported: bool,
-    category: Option<OpenTypeGlyphCategory>,
 }
 
-impl Default for CanonicalGlyphMetadata {
-    fn default() -> Self {
-        Self {
-            codepoints: Vec::new(),
-            note: None,
-            exported: true,
-            category: None,
-        }
-    }
-}
-
-impl CanonicalGlyphMetadata {
-    /// Construct canonical metadata, retaining codepoint order and the first occurrence of each
-    /// scalar value.
-    pub fn new(
-        codepoints: impl IntoIterator<Item = char>,
-        note: Option<String>,
-        exported: bool,
-        category: Option<OpenTypeGlyphCategory>,
-    ) -> Self {
+impl CanonicalLayerGlyphMetadata {
+    /// Construct layer metadata, retaining codepoint order and the first occurrence of each scalar.
+    pub fn new(codepoints: impl IntoIterator<Item = char>, note: Option<String>) -> Self {
         let mut unique = HashSet::new();
         let codepoints = codepoints
             .into_iter()
             .filter(|codepoint| unique.insert(*codepoint))
             .collect();
-        Self {
-            codepoints,
-            note,
-            exported,
-            category,
-        }
+        Self { codepoints, note }
     }
 
     /// Unicode scalar values in source order.
@@ -128,16 +104,6 @@ impl CanonicalGlyphMetadata {
     /// The optional glyph note, preserving the distinction between absent and empty.
     pub fn note(&self) -> Option<&str> {
         self.note.as_deref()
-    }
-
-    /// Whether the glyph participates in export.
-    pub fn exported(&self) -> bool {
-        self.exported
-    }
-
-    /// The explicit OpenType category, or `None` when it should be inferred.
-    pub fn category(&self) -> Option<&OpenTypeGlyphCategory> {
-        self.category.as_ref()
     }
 
     /// Replace the Unicode scalar values, retaining order and removing later duplicates.
@@ -162,6 +128,42 @@ impl CanonicalGlyphMetadata {
         self.note = note;
         true
     }
+}
+
+/// Canonical source-wide metadata for one glyph identity.
+///
+/// Export and category are font-lib values keyed by glyph name at the UFO boundary.
+/// The live document attaches them to stable glyph identity instead.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CanonicalSourceGlyphMetadata {
+    exported: bool,
+    category: Option<OpenTypeGlyphCategory>,
+}
+
+impl Default for CanonicalSourceGlyphMetadata {
+    fn default() -> Self {
+        Self {
+            exported: true,
+            category: None,
+        }
+    }
+}
+
+impl CanonicalSourceGlyphMetadata {
+    /// Construct source-wide metadata for one glyph identity.
+    pub fn new(exported: bool, category: Option<OpenTypeGlyphCategory>) -> Self {
+        Self { exported, category }
+    }
+
+    /// Whether the glyph participates in export.
+    pub fn exported(&self) -> bool {
+        self.exported
+    }
+
+    /// The explicit OpenType category, or `None` when it should be inferred.
+    pub fn category(&self) -> Option<&OpenTypeGlyphCategory> {
+        self.category.as_ref()
+    }
 
     /// Change whether the glyph participates in export.
     pub fn set_exported(&mut self, exported: bool) -> bool {
@@ -179,6 +181,87 @@ impl CanonicalGlyphMetadata {
         }
         self.category = category;
         true
+    }
+}
+
+/// One default-layer UFO boundary value composed from canonical layer and source metadata.
+///
+/// This is a transfer value, not another live owner.
+/// The glyph's mutable name remains in the document name index, and unknown glyph-lib entries
+/// remain in the format-preservation payload.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CanonicalGlyphMetadata {
+    layer: CanonicalLayerGlyphMetadata,
+    source: CanonicalSourceGlyphMetadata,
+}
+
+impl CanonicalGlyphMetadata {
+    /// Construct one boundary value from its layer-local and source-wide fields.
+    pub fn new(
+        codepoints: impl IntoIterator<Item = char>,
+        note: Option<String>,
+        exported: bool,
+        category: Option<OpenTypeGlyphCategory>,
+    ) -> Self {
+        Self {
+            layer: CanonicalLayerGlyphMetadata::new(codepoints, note),
+            source: CanonicalSourceGlyphMetadata::new(exported, category),
+        }
+    }
+
+    /// The layer-local canonical value.
+    pub fn layer(&self) -> &CanonicalLayerGlyphMetadata {
+        &self.layer
+    }
+
+    /// The source-wide canonical value for this glyph identity.
+    pub fn source(&self) -> &CanonicalSourceGlyphMetadata {
+        &self.source
+    }
+
+    /// Split this boundary value into its two canonical owners.
+    pub fn into_parts(self) -> (CanonicalLayerGlyphMetadata, CanonicalSourceGlyphMetadata) {
+        (self.layer, self.source)
+    }
+
+    /// Unicode scalar values in source order.
+    pub fn codepoints(&self) -> &[char] {
+        self.layer.codepoints()
+    }
+
+    /// The optional glyph note, preserving the distinction between absent and empty.
+    pub fn note(&self) -> Option<&str> {
+        self.layer.note()
+    }
+
+    /// Whether the glyph participates in export.
+    pub fn exported(&self) -> bool {
+        self.source.exported()
+    }
+
+    /// The explicit OpenType category, or `None` when it should be inferred.
+    pub fn category(&self) -> Option<&OpenTypeGlyphCategory> {
+        self.source.category()
+    }
+
+    /// Replace the Unicode scalar values, retaining order and removing later duplicates.
+    pub fn set_codepoints(&mut self, codepoints: impl IntoIterator<Item = char>) -> bool {
+        self.layer.set_codepoints(codepoints)
+    }
+
+    /// Replace the glyph note exactly.
+    pub fn set_note(&mut self, note: Option<String>) -> bool {
+        self.layer.set_note(note)
+    }
+
+    /// Change whether the glyph participates in export.
+    pub fn set_exported(&mut self, exported: bool) -> bool {
+        self.source.set_exported(exported)
+    }
+
+    /// Set or clear the explicit OpenType category.
+    pub fn set_category(&mut self, category: Option<OpenTypeGlyphCategory>) -> bool {
+        self.source.set_category(category)
     }
 }
 
@@ -286,7 +369,7 @@ pub fn write_canonical_glyph_metadata_to_ufo(
     let glyph_changed = glyph
         .codepoints
         .iter()
-        .ne(metadata.codepoints.iter().copied())
+        .ne(metadata.codepoints().iter().copied())
         || glyph.note.as_deref() != metadata.note();
 
     let mut lib = font.lib.clone();
@@ -332,8 +415,8 @@ pub fn write_canonical_glyph_metadata_to_ufo(
         .default_layer_mut()
         .get_glyph_mut(glyph_name)
         .expect("validated glyph remains present");
-    glyph.codepoints = norad::Codepoints::new(metadata.codepoints.iter().copied());
-    glyph.note = metadata.note.clone();
+    glyph.codepoints = norad::Codepoints::new(metadata.codepoints().iter().copied());
+    glyph.note = metadata.note().map(ToOwned::to_owned);
     Ok(true)
 }
 
@@ -441,6 +524,14 @@ mod tests {
         assert!(!metadata.exported());
         assert_eq!(
             metadata.category().map(OpenTypeGlyphCategory::as_source),
+            Some("future-category")
+        );
+        let (layer, source) = metadata.clone().into_parts();
+        assert_eq!(layer.codepoints(), ['A', '\u{391}']);
+        assert_eq!(layer.note(), Some(""));
+        assert!(!source.exported());
+        assert_eq!(
+            source.category().map(OpenTypeGlyphCategory::as_source),
             Some("future-category")
         );
         assert!(!metadata.set_codepoints(['A', '\u{391}']));
