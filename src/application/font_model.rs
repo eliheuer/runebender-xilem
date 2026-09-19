@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use kurbo::{BezPath, Rect};
 use runebender::analysis::category::GlyphCategory;
+use runebender::document::canonical_metadata::{CanonicalFontMetadata, KerningSide};
 use runebender::document::project::{Master, Project};
 use runebender::document::proposal;
 use runebender::document::variable::{SourceEdit, SourceFontEdit};
@@ -64,6 +65,36 @@ pub(crate) struct FontModel {
 }
 
 impl FontModel {
+    fn default_source_id(&self) -> runebender::document::variable::SourceId {
+        let index = self
+            .project
+            .master_locations
+            .iter()
+            .position(|location| location.values().all(|value| *value == 0.0))
+            .unwrap_or(0);
+        self.project
+            .source_id(index)
+            .expect("the default source has a stable identity")
+    }
+
+    /// Canonical feature text supplied by the default source.
+    pub(crate) fn feature_text(&self) -> &str {
+        self.project
+            .document_feature_text(self.default_source_id())
+            .expect("the default source has canonical feature text")
+    }
+
+    /// Canonical group and exact kerning values for the active source.
+    pub(crate) fn font_metadata(&self) -> &CanonicalFontMetadata {
+        let source = self
+            .project
+            .source_id(self.active())
+            .expect("the active source has a stable identity");
+        self.project
+            .document_font_metadata(source)
+            .expect("the active source has canonical font metadata")
+    }
+
     pub(crate) fn feature_font(&self) -> &norad::Font {
         &self.project.feature_source().font
     }
@@ -528,7 +559,13 @@ impl FontModel {
     ///
     /// `first_side` is the left side in left-to-right text: `public.kern1`.
     pub(crate) fn kern_group(&self, glyph: &str, first_side: bool) -> String {
-        runebender::document::font_ops::kern_group(self.font(), glyph, first_side)
+        let side = if first_side {
+            KerningSide::First
+        } else {
+            KerningSide::Second
+        };
+        self.font_metadata()
+            .kerning_group(glyph, side)
             .map(|name| name.to_string())
             .unwrap_or_default()
     }
