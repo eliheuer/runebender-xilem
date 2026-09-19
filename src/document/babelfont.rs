@@ -506,11 +506,29 @@ impl LayerEditDraft {
         if !min.x.is_finite() {
             return Ok(false);
         }
-        let center = ((min.x + max.x) / 2.0, (min.y + max.y) / 2.0);
+        let center = (min.x * 0.5 + max.x * 0.5, min.y * 0.5 + max.y * 0.5);
+        ensure_finite(&[center.0, center.1])?;
         let transform = kurbo::Affine::translate(center)
             * transform
             * kurbo::Affine::translate((-center.0, -center.1));
-        let mut changed = false;
+        ensure_finite(&transform.as_coeffs())?;
+        let mut replacements = Vec::new();
+        for node in self.layer.paths().flat_map(|path| &path.nodes) {
+            if !targeted(node) {
+                continue;
+            }
+            let position = transform * kurbo::Point::new(node.x, node.y);
+            ensure_finite(&[position.x, position.y])?;
+            if node.x != position.x || node.y != position.y {
+                replacements.push((
+                    read_id(&node.format_specific).expect("canonical point identity"),
+                    position,
+                ));
+            }
+        }
+        if replacements.is_empty() {
+            return Ok(false);
+        }
         for node in self
             .layer
             .shapes
@@ -521,17 +539,14 @@ impl LayerEditDraft {
             })
             .flat_map(|path| &mut path.nodes)
         {
-            if !targeted(node) {
-                continue;
-            }
-            let position = transform * kurbo::Point::new(node.x, node.y);
-            if node.x != position.x || node.y != position.y {
+            let id = read_id(&node.format_specific).expect("canonical point identity");
+            if let Some((_, position)) = replacements.iter().find(|(candidate, _)| *candidate == id)
+            {
                 node.x = position.x;
                 node.y = position.y;
-                changed = true;
             }
         }
-        Ok(changed)
+        Ok(true)
     }
 
     /// Set one point's segment role by stable identity.

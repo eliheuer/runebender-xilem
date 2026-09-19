@@ -700,3 +700,31 @@ git diff --check
 The focused selection-transform comparison and all 25 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Selection-transform overflow correction
+
+Evidence commit: `Reject nonfinite derived point transforms` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Reject nonfinite derived point transforms$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs` and this log.
+
+Review found that finite affine coefficients could overflow while composing the selection-centered transform or applying it to finite points.
+`LayerEditDraft::transform_points` now computes a finite-safe bounding-box center, validates the composed affine and precomputes every transformed position before changing the draft.
+Any nonfinite derived value rejects the complete operation with `DocumentEditError::NonFinite`; values are never clamped into the editable source.
+
+The regression test applies a finite `f64::MAX` scale to ordinary finite points and requires the canonical snapshot and revision to remain unchanged.
+The valid reflected transform, missing-point rejection, explicitly nonfinite affine and identity no-op cases continue to pass.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_selection_transform_matches_legacy_geometry_atomically -- --exact --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused transform regression and all 25 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.

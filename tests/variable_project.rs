@@ -1046,6 +1046,15 @@ fn canonical_selection_transform_matches_legacy_geometry_atomically() {
     assert_eq!(project.document_snapshot(), snapshot);
     assert_eq!(project.document_revision(), revision);
     assert_eq!(
+        project.edit_document_layer("A", &layer_id, |draft| {
+            draft.transform_points(&[], kurbo::Affine::scale(f64::MAX))?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::NonFinite)
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+    assert_eq!(
         project
             .edit_document_layer("A", &layer_id, |draft| {
                 assert!(!draft.transform_points(&[], kurbo::Affine::IDENTITY)?);
