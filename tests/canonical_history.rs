@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 use runebender::document::history::{
     CanonicalHistory, DocumentHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome,
+    SourceMetadataHistory,
 };
 use runebender::document::project::{Master, Project};
 use runebender::document::variable::{GlyphLayerAddress, LayerId, SourceId};
@@ -601,4 +602,84 @@ fn project_history_rename_collision_leaves_every_stack_unchanged() {
         ),
         0
     );
+}
+
+#[test]
+fn source_metadata_history_restores_exact_values_and_preserves_noop_redo() {
+    let (mut project, address) = project_fixture();
+    let source = address.layer.source;
+    let before_text = project.document_feature_text(source).unwrap().to_owned();
+    let before = SourceMetadataHistory::capture(&project);
+    let mut history = SourceMetadataHistory::default();
+
+    project
+        .edit_document_source_metadata(source, |draft| {
+            draft.set_feature_text("feature kern { pos A B -123.25; } kern;".into());
+            Ok(())
+        })
+        .unwrap();
+    assert!(history.record_completed(&project, before));
+    let after = SourceMetadataHistory::capture(&project);
+    let after_text = project.document_feature_text(source).unwrap().to_owned();
+
+    let revision = project.document_revision();
+    assert_eq!(
+        history.replay(&mut project, HistoryDirection::Undo),
+        Ok(HistoryReplayOutcome::Applied)
+    );
+    assert_eq!(project.document_revision(), revision.wrapping_add(1));
+    assert_eq!(
+        project.document_feature_text(source),
+        Some(before_text.as_str())
+    );
+    assert_eq!(history.depth(HistoryDirection::Redo), 1);
+
+    let unchanged = SourceMetadataHistory::capture(&project);
+    assert!(!history.record_completed(&project, unchanged));
+    assert_eq!(history.depth(HistoryDirection::Redo), 1);
+
+    let revision = project.document_revision();
+    assert_eq!(
+        history.replay(&mut project, HistoryDirection::Redo),
+        Ok(HistoryReplayOutcome::Applied)
+    );
+    assert_eq!(project.document_revision(), revision.wrapping_add(1));
+    assert_eq!(SourceMetadataHistory::capture(&project), after);
+    assert_eq!(
+        project.document_feature_text(source),
+        Some(after_text.as_str())
+    );
+}
+
+#[test]
+fn source_metadata_history_rejects_stale_replay_without_moving_the_stack() {
+    let (mut project, address) = project_fixture();
+    let source = address.layer.source;
+    let before = SourceMetadataHistory::capture(&project);
+    let mut history = SourceMetadataHistory::default();
+
+    project
+        .edit_document_source_metadata(source, |draft| {
+            draft.set_feature_text("feature kern { pos A B -123.25; } kern;".into());
+            Ok(())
+        })
+        .unwrap();
+    assert!(history.record_completed(&project, before));
+    project
+        .edit_document_source_metadata(source, |draft| {
+            draft.set_feature_text("feature liga { sub A B by C; } liga;".into());
+            Ok(())
+        })
+        .unwrap();
+    let later = project.capture_document_source_metadata();
+    let revision = project.document_revision();
+
+    assert_eq!(
+        history.replay(&mut project, HistoryDirection::Undo),
+        Err(HistoryReplayError::Stale)
+    );
+    assert_eq!(project.capture_document_source_metadata(), later);
+    assert_eq!(project.document_revision(), revision);
+    assert_eq!(history.depth(HistoryDirection::Undo), 1);
+    assert_eq!(history.depth(HistoryDirection::Redo), 0);
 }

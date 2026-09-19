@@ -18,9 +18,11 @@ use norad::Glyph;
 use crate::outline::glyph_ops::{self, GlyphSnapshot};
 use crate::ui::editing::undo::UndoState;
 
-use super::CanonicalLayerSnapshot;
-use super::project::{DocumentEditOutcome, DocumentHistoryError, Project};
+use super::project::{
+    DocumentEditOutcome, DocumentHistoryError, DocumentSourceMetadataHistoryError, Project,
+};
 use super::variable::GlyphLayerAddress;
+use super::{CanonicalLayerSnapshot, CanonicalSourceMetadataSnapshot};
 
 const MAX_CANONICAL_HISTORY: usize = 128;
 
@@ -549,6 +551,88 @@ impl DocumentHistory {
     /// Forget all canonical history after replacing the open document.
     pub fn clear(&mut self) {
         self.layers.clear();
+    }
+}
+
+/// Document-owned history over the complete canonical source-metadata set.
+///
+/// One transaction may change metadata in several sources. Snapshots are keyed by
+/// stable source identity rather than display order, and Project restores the whole
+/// set atomically so replay cannot partially update a document.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SourceMetadataHistory {
+    transactions: TransactionHistory<CanonicalSourceMetadataSnapshot>,
+}
+
+impl SourceMetadataHistory {
+    /// Capture canonical metadata for every current source before a transaction.
+    pub fn capture(project: &Project) -> CanonicalSourceMetadataSnapshot {
+        project.capture_document_source_metadata()
+    }
+
+    /// Record the complete live source-metadata set after a transaction.
+    ///
+    /// An unchanged transaction records nothing and retains redo.
+    pub fn record_completed(
+        &mut self,
+        project: &Project,
+        before: CanonicalSourceMetadataSnapshot,
+    ) -> bool {
+        let after = Self::capture(project);
+        self.transactions.record(before, after)
+    }
+
+    /// Extend the newest transaction with the current complete metadata set.
+    ///
+    /// `previous` must equal the after-state of the newest transaction. Returning
+    /// every source to the transaction origin removes the resulting no-op step.
+    pub fn coalesce_completed(
+        &mut self,
+        project: &Project,
+        previous: &CanonicalSourceMetadataSnapshot,
+    ) -> bool {
+        self.transactions.coalesce(previous, Self::capture(project))
+    }
+
+    /// Drop the newest undo transaction after an operation reports no usable change.
+    pub fn discard_last(&mut self) -> bool {
+        self.transactions.discard_last()
+    }
+
+    /// Undo or redo one whole-source metadata transaction through guarded restoration.
+    pub fn replay(
+        &mut self,
+        project: &mut Project,
+        direction: HistoryDirection,
+    ) -> Result<HistoryReplayOutcome, HistoryReplayError<DocumentSourceMetadataHistoryError>> {
+        let current = Self::capture(project);
+        self.transactions
+            .replay(&current, direction, |expected, replacement| {
+                let outcome = project
+                    .restore_document_source_metadata_if_current(expected, replacement.clone())?;
+                match outcome {
+                    DocumentEditOutcome::Changed { .. } => Ok(()),
+                    DocumentEditOutcome::Unchanged { .. } => {
+                        debug_assert!(false, "a recorded history transaction must change metadata");
+                        Err(DocumentSourceMetadataHistoryError::Stale)
+                    }
+                }
+            })
+    }
+
+    /// Whether a source-metadata transaction can replay in `direction`.
+    pub fn can_replay(&self, direction: HistoryDirection) -> bool {
+        self.transactions.can_replay(direction)
+    }
+
+    /// Number of source-metadata transactions available in `direction`.
+    pub fn depth(&self, direction: HistoryDirection) -> usize {
+        self.transactions.depth(direction)
+    }
+
+    /// Forget all source-metadata history after replacing the open document.
+    pub fn clear(&mut self) {
+        self.transactions.clear();
     }
 }
 
