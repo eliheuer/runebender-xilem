@@ -7,6 +7,55 @@ use super::project::Project;
 
 const OPEN_TYPE_CATEGORIES: &str = "public.openTypeCategories";
 
+/// Quantize an exact editable units-per-em value for OpenType compilation.
+pub(super) fn units_per_em(value: f64) -> Result<u16, String> {
+    if !value.is_finite() {
+        return Err("units per em must be finite".into());
+    }
+    let rounded = value.round();
+    if !(16.0..=16384.0).contains(&rounded) {
+        return Err("units per em must be between 16 and 16384".into());
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the rounded value was checked against the complete accepted u16 subrange"
+    )]
+    Ok(rounded as u16)
+}
+
+/// Quantize an exact editable metric for Babelfont's integer compiler snapshot.
+pub(super) fn metric(name: &str, value: f64) -> Result<i32, String> {
+    if !value.is_finite() {
+        return Err(format!("{name} must be finite"));
+    }
+    let rounded = value.round();
+    if rounded < f64::from(i32::MIN) || rounded > f64::from(i32::MAX) {
+        return Err(format!("{name} is outside the OpenType metric range"));
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the rounded value was checked against the complete i32 range"
+    )]
+    Ok(rounded as i32)
+}
+
+/// Quantize one exact source kerning value for Babelfont's compiler snapshot.
+pub(super) fn kerning(value: f64) -> Result<i16, String> {
+    if !value.is_finite() {
+        return Err("kerning must be finite".into());
+    }
+    let rounded = value.round();
+    if rounded < f64::from(i16::MIN) || rounded > f64::from(i16::MAX) {
+        return Err("kerning is outside the OpenType compiler range".into());
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the rounded value was checked against the complete i16 range"
+    )]
+    Ok(rounded as i16)
+}
+
 pub(super) fn glyph_category(
     font: &norad::Font,
     glyph: &norad::Glyph,
@@ -274,4 +323,33 @@ pub(super) fn rules(project: &Project, font: &mut babelfont::Font) -> Result<(),
             babelfont::Features::from_fea(&format!("{}\n{fea}", font.features.to_fea()));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compiler_quantization_is_checked_and_does_not_change_exact_inputs() {
+        let upm = 1000.6;
+        let ascender = 812.75;
+        let kern = -50.5;
+        assert_eq!(units_per_em(upm).unwrap(), 1001);
+        assert_eq!(metric("ascender", ascender).unwrap(), 813);
+        assert_eq!(kerning(kern).unwrap(), -51);
+        assert_eq!(upm, 1000.6);
+        assert_eq!(ascender, 812.75);
+        assert_eq!(kern, -50.5);
+
+        for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(units_per_em(invalid).is_err());
+            assert!(metric("metric", invalid).is_err());
+            assert!(kerning(invalid).is_err());
+        }
+        assert!(units_per_em(15.49).is_err());
+        assert!(units_per_em(16384.5).is_err());
+        assert!(metric("metric", f64::from(i32::MAX) + 1.0).is_err());
+        assert!(kerning(f64::from(i16::MIN) - 1.0).is_err());
+        assert!(kerning(f64::from(i16::MAX) + 1.0).is_err());
+    }
 }

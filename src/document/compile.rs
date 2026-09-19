@@ -237,10 +237,6 @@ impl Project {
         CompiledFont::build(self.snapshot_with_features(Some(features))?).map(|_| ())
     }
 
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "OpenType metrics are quantized only in the compiler snapshot"
-    )]
     fn snapshot_with_features(
         &self,
         feature_text: Option<&str>,
@@ -255,14 +251,11 @@ impl Project {
         let default_id = self.source_id(default).expect("default source identity");
         let source = &self.sources()[default].font;
         let info = &source.font_info;
-        font.upm = info
-            .units_per_em
-            .map(|v| v.as_f64())
-            .unwrap_or(1000.0)
-            .round() as u16;
-        if !(16..=16384).contains(&font.upm) {
-            return Err("units per em must be between 16 and 16384".into());
-        }
+        font.upm = super::compile_metadata::units_per_em(
+            info.units_per_em
+                .map(|value| value.as_f64())
+                .unwrap_or(1000.0),
+        )?;
         font.names.family_name = info.family_name.as_deref().unwrap_or("Untitled").into();
         font.names.preferred_subfamily_name =
             info.style_name.as_deref().unwrap_or("Regular").into();
@@ -314,7 +307,10 @@ impl Project {
                 (babelfont::MetricType::ItalicAngle, info.italic_angle),
             ] {
                 if let Some(value) = value {
-                    master.metrics.insert(key, value.round() as i32);
+                    let name = format!("{key:?}");
+                    master
+                        .metrics
+                        .insert(key, super::compile_metadata::metric(&name, value)?);
                 }
             }
             for (left, pairs) in &source.font.kerning {
@@ -328,7 +324,7 @@ impl Project {
                     };
                     master.kerning.insert(
                         (participant(left).into(), participant(right).into()),
-                        value.round() as i16,
+                        super::compile_metadata::kerning(*value)?,
                     );
                 }
             }
