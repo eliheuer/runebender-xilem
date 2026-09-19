@@ -26,9 +26,11 @@ use kurbo::{Point, Vec2};
 use norad::{AffineTransform, Anchor, Component, Font, Glyph, Name};
 use serde::{Deserialize, Serialize};
 
-use crate::document::LayerView;
 use crate::document::composites::{AlignInput, realign_component_offsets};
+use crate::document::project::Project;
 use crate::document::proposal::{self, ProposalSummary};
+use crate::document::variable::SourceId;
+use crate::document::{DocumentEditError, LayerView};
 
 /// The task name, and so the proposal layer's suffix.
 pub const TASK: &str = "compose";
@@ -716,6 +718,42 @@ pub fn plan_document<'a, 'recipe>(
     }
 }
 
+/// Plan composition for one canonical Project source.
+///
+/// Explicit recipes are read from their typed layer owner before planning, so malformed source
+/// metadata rejects the complete read-only pass instead of being silently ignored.
+pub fn plan_project(
+    project: &Project,
+    source: SourceId,
+    names: Option<&[String]>,
+) -> Result<CompositionPlan, DocumentEditError> {
+    let layer = project
+        .document_source(source)
+        .ok_or(DocumentEditError::MissingSource)?
+        .default_layer();
+    let recipes = project
+        .glyph_names()
+        .filter_map(|name| {
+            project
+                .document_layer(name, &layer)
+                .map(|layer| (name, layer))
+        })
+        .map(|(name, layer)| {
+            Ok((
+                name.to_owned(),
+                layer.composition_recipe_source()?.map(ToOwned::to_owned),
+            ))
+        })
+        .collect::<Result<HashMap<_, _>, DocumentEditError>>()?;
+    Ok(plan_document(
+        project
+            .glyph_names()
+            .filter_map(|name| project.document_layer(name, &layer)),
+        names,
+        |name| recipes.get(name).and_then(|recipe| recipe.as_deref()),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -799,6 +837,10 @@ mod tests {
                 .filter_map(|name| project.document_layer(name, &layer)),
             Some(&["Aacute".into()]),
             |_| None,
+        );
+        assert_eq!(
+            plan_project(&project, SourceId(0), Some(&["Aacute".into()])).unwrap(),
+            plan
         );
         assert!(plan.report.skipped.is_empty());
         assert_eq!(plan.report.derived, [expected.clone()]);
@@ -946,5 +988,9 @@ mod tests {
         assert_eq!(plan.report.derived[0].recipe.source, RecipeSource::Lib);
         assert_eq!(plan.report.derived[0].recipe.base, "A");
         assert_eq!(plan.report.derived[0].recipe.marks, ["acute"]);
+        assert_eq!(
+            plan_project(&project, SourceId(0), Some(&["Aacute.alt".into()]),).unwrap(),
+            plan
+        );
     }
 }
