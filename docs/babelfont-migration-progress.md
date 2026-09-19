@@ -2138,12 +2138,13 @@ Executed evidence:
 cargo test --locked --test variable_project canonical_hyper_conversion_replaces_only_selected_topology -- --exact --test-threads=1
 RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib outline::knife -- --test-threads=1
 cargo test --locked --test variable_project canonical_knife_replaces_only_cut_contours_and_preserves_quadratics -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
 cargo clippy --lib --tests --locked -- -D warnings
 cargo fmt --all --check
 git diff --check
 ```
 
-The focused hyperbezier conversion regression passed selected-only conversion, fresh replacement identities and metadata, exact retention of the unselected contour, invalid-selection atomicity, convert-all behavior and save/reopen persistence.
+The focused hyperbezier conversion regression and all 65 variable-project tests passed selected-only conversion, fresh replacement identities and metadata, exact retention of the unselected contour, invalid-selection atomicity, convert-all behavior and save/reopen persistence.
 All 12 knife tests and the canonical knife integration regression passed after sharing the replacement helper.
 Warning-denied library/test Clippy passed, and the unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 The M06 caller still needs to invoke this direct draft operation before M04's explicit-conversion checkbox can close.
