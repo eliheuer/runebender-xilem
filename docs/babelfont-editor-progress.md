@@ -307,7 +307,8 @@ git diff --check
 - Place Image installs bytes through a stable-source Project operation and attaches the image through the layer draft; it no longer mutates `FontModel::font_mut().images`.
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
 - No production application caller materializes or reconciles a whole glyph; compatibility projection helpers remain test-only while M13 removes the bridge itself.
-- `FontModel` still exposes mutable source/font access for Unicode, metrics formulas, local-model workflow boundaries and source retargeting; those callers remain M06/M13 work rather than completion claims.
+- Production application code no longer calls `FontModel::master_mut` or `font_mut`; the two accessors are confined to stale-state and persistence fixtures.
+- Direct source-projection mutation remains in Unicode propagation, metrics-formula application and Save As retargeting; those callers remain M06/M13 work rather than completion claims.
 - Pen, Rectangle, Ellipse and Knife Pointer Cancel paths now have real widget-event coverage.
 
 ## Canonical Session storage and history cutover
@@ -569,6 +570,41 @@ The focused application regression covers no-op suppression, send, swap, clear, 
 The complete binary suite passed 172 tests with four documented model or external-font tests ignored.
 Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
 
+## Canonical overview-advance and proposal-history slice
+
+Implementation commit: `Replay overview and proposal edits canonically`.
+Resolve its exact ID with `git log --format=%H --grep='^Replay overview and proposal edits canonically$' -1`.
+Affected paths: `src/application/editor/commands.rs`, `src/application/editor/inspector.rs`, `src/application/editor/session.rs`, `src/application/editor/tools/local_ai.rs`, `src/application/font_model.rs`, `src/application/platform/host.rs`, `src/application/platform/live.rs`, `src/application/workspace.rs` and this log.
+
+Overview advance edits now use a guarded canonical layer transaction and join the same stable-source batch history as semantic marks and metaball conversion.
+Overview Undo/Redo no longer falls back to `Master.history` or mutable source projections.
+
+The local-model panel now lists, previews, adopts, installs and discards proposals through the canonical Project proposal APIs.
+Each changed install records its stable foreground address and exact layer-history depth; both Cmd+Z and the panel's dedicated Undo Install replay Project-owned history and refuse to consume a later unrelated edit.
+Application `DocumentLayer` labels now carry their expected canonical history depth, preventing an untracked canonical install from consuming an older editor label.
+The live-document proposal path records the same stable installed addresses.
+
+Production `undo_open_glyph`, overview undo, proposal workflows and overview advance no longer call legacy `Master` history.
+Production `FontModel::master_mut` and `font_mut` accessors are now test-only.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::platform::host::tests::source_commands_preserve_glyph_history_across_removal_and_reorder -- --exact
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::tools::local_ai::tests::completed_single_glyph_task_waits_for_explicit_install -- --exact
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::tools::local_ai::tests::proposal_history_does_not_consume_an_older_editor_label -- --exact
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+CARGO_BUILD_JOBS=1 ./web/build.sh
+CARGO_BUILD_JOBS=1 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='-C target-feature=+simd128' cargo clippy --manifest-path web/Cargo.toml --locked --target wasm32-unknown-unknown --no-deps -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused regressions cover stable-source overview undo after source reorder/removal/restoration, guarded external proposal adoption, canonical preview/install, zero legacy history, Cmd+Z undo/redo, dedicated Undo Install and ordering against an older editor label.
+The complete binary suite passed 173 tests with four documented model or external-font tests ignored.
+Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
+
 ## Next action
 
-Replace remaining `FontModel::font_mut`, `master_mut`, `edit_sources` and legacy history callers with canonical Project operations, then remove the test-only compatibility bridge itself during M13.
+Replace the remaining Unicode, metrics-formula and Save As `edit_sources` callers with canonical Project operations, then remove the test-only compatibility bridge itself during M13.

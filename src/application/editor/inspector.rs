@@ -537,7 +537,25 @@ impl Workspace {
                 self.modified = true;
                 format!("{} {label}", if redo { "Redid" } else { "Undid" })
             }
-            MetadataEdit::DocumentLayer { address, label, .. } => {
+            MetadataEdit::DocumentLayer {
+                address,
+                label,
+                layer_history_depth,
+                ..
+            } => {
+                let expected_depth = if redo {
+                    layer_history_depth.saturating_sub(1)
+                } else {
+                    *layer_history_depth
+                };
+                if self
+                    .font
+                    .project
+                    .document_layer_history_depth(address, HistoryDirection::Undo)
+                    != expected_depth
+                {
+                    return false;
+                }
                 let direction = if redo {
                     HistoryDirection::Redo
                 } else {
@@ -645,7 +663,16 @@ impl Workspace {
                     HistoryDirection::Undo
                 });
         let document_layer_available = match edit {
-            MetadataEdit::DocumentLayer { address, .. } => {
+            MetadataEdit::DocumentLayer {
+                address,
+                layer_history_depth,
+                ..
+            } => {
+                let expected_depth = if redo {
+                    layer_history_depth.saturating_sub(1)
+                } else {
+                    *layer_history_depth
+                };
                 self.font.project.can_replay_document_layer_history(
                     address,
                     if redo {
@@ -653,7 +680,11 @@ impl Workspace {
                     } else {
                         HistoryDirection::Undo
                     },
-                )
+                ) && self
+                    .font
+                    .project
+                    .document_layer_history_depth(address, HistoryDirection::Undo)
+                    == expected_depth
             }
             _ => true,
         };
@@ -732,7 +763,6 @@ impl Workspace {
             && let Some(i) = self.selected
         {
             let glyph = self.font.glyphs[i].name.clone();
-            self.font.master_mut().record_undo(i);
             if self.font.set_glyph_advance(i, width) {
                 self.overview_undo.push(OverviewEditBatch {
                     source: self
@@ -744,8 +774,6 @@ impl Workspace {
                 });
                 self.overview_redo.clear();
                 self.modified = true;
-            } else {
-                self.font.master_mut().discard_last_undo(i);
             }
         }
     }

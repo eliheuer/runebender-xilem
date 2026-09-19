@@ -688,6 +688,20 @@ mod tests {
         let old_width = app.font.font().get_glyph("A").unwrap().width;
         app.overview_set_advance("750".into());
         let source = app.font.project.source_id(1).unwrap();
+        let address = app.font.active_layer_address("A").unwrap();
+        assert_eq!(
+            app.font
+                .master()
+                .undo_depth(app.font.index_of("A").unwrap()),
+            0
+        );
+        assert_eq!(
+            app.font.project.document_layer_history_depth(
+                &address,
+                runebender::document::history::HistoryDirection::Undo,
+            ),
+            1
+        );
         app.change_sources("up");
         assert_eq!(app.font.project.source_index(source), Some(0));
         app.change_sources("remove");

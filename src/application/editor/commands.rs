@@ -71,6 +71,10 @@ impl Workspace {
             glyph,
             address: address.clone(),
             label: "component add".into(),
+            layer_history_depth: self.font.project.document_layer_history_depth(
+                &address,
+                runebender::document::history::HistoryDirection::Undo,
+            ),
             undo_depth,
         });
         self.metadata_redo.clear();
@@ -149,6 +153,10 @@ impl Workspace {
             glyph,
             address: address.clone(),
             label: "component alignment".into(),
+            layer_history_depth: self.font.project.document_layer_history_depth(
+                &address,
+                runebender::document::history::HistoryDirection::Undo,
+            ),
             undo_depth,
         });
         self.metadata_redo.clear();
@@ -271,6 +279,10 @@ impl Workspace {
                 glyph: name.clone(),
                 address: address.clone(),
                 label: "reinterpolate".into(),
+                layer_history_depth: self.font.project.document_layer_history_depth(
+                    &address,
+                    runebender::document::history::HistoryDirection::Undo,
+                ),
                 undo_depth,
             });
             self.metadata_redo.clear();
@@ -546,6 +558,10 @@ impl Workspace {
                     glyph: name.clone(),
                     address: address.clone(),
                     label: "bake masks".into(),
+                    layer_history_depth: self.font.project.document_layer_history_depth(
+                        address,
+                        runebender::document::history::HistoryDirection::Undo,
+                    ),
                     undo_depth,
                 });
                 self.metadata_redo.clear();
@@ -1225,6 +1241,10 @@ impl Workspace {
             glyph,
             address: address.clone(),
             label: "paste contours".into(),
+            layer_history_depth: self.font.project.document_layer_history_depth(
+                &address,
+                runebender::document::history::HistoryDirection::Undo,
+            ),
             undo_depth,
         });
         self.metadata_redo.clear();

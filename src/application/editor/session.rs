@@ -2246,6 +2246,10 @@ impl Workspace {
                         glyph: name.clone(),
                         address: address.clone(),
                         label: label.into(),
+                        layer_history_depth: self.font.project.document_layer_history_depth(
+                            &address,
+                            runebender::document::history::HistoryDirection::Undo,
+                        ),
                         undo_depth,
                     });
                     self.metadata_redo.clear();
@@ -2322,8 +2326,8 @@ impl Workspace {
         true
     }
 
-    /// Undo or redo the open glyph on the master's pile, then reload
-    /// the session from the master.
+    /// Undo or redo the open glyph through Project-owned history, then reload the canonical
+    /// session.
     pub(crate) fn undo_open_glyph(&mut self, redo: bool) {
         let Mode::Editor(index) = self.mode else {
             return;
@@ -2331,13 +2335,20 @@ impl Workspace {
         if self.metadata_history_step(redo) {
             return;
         }
-        let mut master = self.font.master_mut();
-        let done = if redo {
-            master.redo(index)
-        } else {
-            master.undo(index)
+        let Some(address) = self.font.active_layer_address(&self.session.glyph_name) else {
+            return;
         };
-        if !done {
+        let direction = if redo {
+            runebender::document::history::HistoryDirection::Redo
+        } else {
+            runebender::document::history::HistoryDirection::Undo
+        };
+        if !matches!(
+            self.font
+                .project
+                .replay_document_layer_history(&address, direction),
+            Ok(runebender::document::project::DocumentHistoryReplayOutcome::Changed { .. })
+        ) {
             self.note = if redo {
                 "Nothing to redo"
             } else {
@@ -2346,11 +2357,7 @@ impl Workspace {
             .into();
             return;
         }
-        drop(master);
         self.font.refresh_entry(index);
-        let Some(address) = self.font.active_layer_address(&self.session.glyph_name) else {
-            return;
-        };
         let mut session = (*self.session).clone();
         if !session.reload_from_project(&self.font.project, &address) {
             return;
@@ -2426,40 +2433,33 @@ impl Workspace {
                 layer: layer.clone(),
             })
             .collect::<Vec<_>>();
-        let canonical = addresses.iter().all(|address| {
+        if !addresses.iter().all(|address| {
             self.font
                 .project
                 .can_replay_document_layer_history(address, direction)
-        });
-        if canonical {
-            for address in &addresses {
-                if self
-                    .font
-                    .project
-                    .replay_document_layer_history(address, direction)
-                    .is_err()
-                {
-                    self.note = "The overview edit changed before history replay".into();
-                    if redo {
-                        self.overview_redo.push(batch);
-                    } else {
-                        self.overview_undo.push(batch);
-                    }
-                    return;
-                }
+        }) {
+            self.note = "The overview edit changed before history replay".into();
+            if redo {
+                self.overview_redo.push(batch);
+            } else {
+                self.overview_undo.push(batch);
             }
-        } else {
-            let Some(mut master) = self.font.project.edit_source(batch.source) else {
-                return;
-            };
-            for glyph in &batch.glyphs {
-                if let Some(&index) = master.name_map.get(glyph) {
-                    if redo {
-                        master.redo(index);
-                    } else {
-                        master.undo(index);
-                    }
+            return;
+        }
+        for address in &addresses {
+            if self
+                .font
+                .project
+                .replay_document_layer_history(address, direction)
+                .is_err()
+            {
+                self.note = "The overview edit changed before history replay".into();
+                if redo {
+                    self.overview_redo.push(batch);
+                } else {
+                    self.overview_undo.push(batch);
                 }
+                return;
             }
         }
         if Some(batch.source) == self.font.project.source_id(self.font.active()) {

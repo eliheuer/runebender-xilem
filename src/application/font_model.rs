@@ -1,11 +1,9 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The application-facing font model: the engine's `Project` (one `Master` per source, each
-//! with its own undo pile), plus the denormalized per-glyph cache the
-//! grid paints from. The shell reads the active master through
-//! [`FontModel::font`] and writes through [`FontModel::font_mut`]; the
-//! masters, axes and locations are the project's.
+//! The application-facing font model: the engine's canonical `Project`, plus the denormalized
+//! per-glyph cache the grid paints from. The shell may read the transitional active-master
+//! projection, but production writes go through Project operations.
 
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
@@ -16,6 +14,7 @@ use runebender::document::canonical_metadata::{CanonicalFontMetadata, KerningSid
 use runebender::document::model::font_info::CanonicalFontInfo;
 use runebender::document::project::{DocumentEditOutcome, Master, Project};
 use runebender::document::proposal;
+#[cfg(test)]
 use runebender::document::variable::{SourceEdit, SourceFontEdit};
 use runebender::outline::glyph_paths;
 
@@ -177,6 +176,7 @@ impl FontModel {
         self.project.active_font()
     }
 
+    #[cfg(test)]
     pub(crate) fn master_mut(&mut self) -> SourceEdit<'_> {
         self.project.active_font_mut()
     }
@@ -186,8 +186,8 @@ impl FontModel {
         &self.master().font
     }
 
-    /// The active master's font, to write. Marks the master dirty; a
-    /// caller that changes glyph outlines refreshes the cache after.
+    /// Test-only access to the active source projection for stale-state fixtures.
+    #[cfg(test)]
     pub(crate) fn font_mut(&mut self) -> SourceFontEdit<'_> {
         self.master_mut().into_font()
     }
@@ -459,12 +459,15 @@ impl FontModel {
     /// A glyph from a waiting proposal layer, as a path for the
     /// read-only comparison overlay.
     pub(crate) fn proposal_outline(&self, task: &str, glyph: &str) -> Option<BezPath> {
-        let font = self.font();
-        let proposed = font
-            .layers
-            .get(&proposal::layer_name(task))?
-            .get_glyph(glyph)?;
-        Some(glyph_paths::glyph_to_bezpath(proposed, font))
+        let source = self.project.source_id(self.active())?;
+        let address = runebender::document::variable::GlyphLayerAddress {
+            glyph: glyph.to_owned(),
+            layer: runebender::document::variable::LayerId {
+                source,
+                name: proposal::layer_name(task),
+            },
+        };
+        self.project.document_layer_path(&address).ok()
     }
 
     /// Another glyph's outline, for the reference underlay.
@@ -647,13 +650,23 @@ impl FontModel {
             return false;
         }
         let width = width.max(0.0);
-        let Some(entry) = self.glyphs.get(index) else {
+        let Some(name) = self.glyphs.get(index).map(|entry| entry.name.clone()) else {
             return false;
         };
-        if entry.advance == width {
+        let Some(address) = self.active_layer_address(&name) else {
+            return false;
+        };
+        let Ok(mut transaction) = self.project.begin_document_layer_transaction(&address) else {
+            return false;
+        };
+        if transaction.draft_mut().set_width(width) != Ok(true)
+            || !matches!(
+                self.project.commit_document_layer_transaction(transaction),
+                Ok(DocumentEditOutcome::Changed { .. })
+            )
+        {
             return false;
         }
-        self.master_mut().set_advance(index, width);
         self.refresh_entry(index);
         true
     }

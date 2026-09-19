@@ -9,16 +9,18 @@
 //! seam: save first, run on a thread, pull the proposal layer into the
 //! open font, and hand it to the font engine to install or discard.
 //!
-//! The font is the engine's `Master`, and an install
-//! records one undo step per glyph on its pile. "Undo install" in the
-//! panel takes the most recent one back; Cmd+Z over the open glyph
-//! does the same through the editor.
+//! Proposal review and installation operate on the canonical Project.
+//! Each changed foreground layer records one Project-owned history step,
+//! and "Undo install" replays the most recent exact layer address.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use runebender::document::history::HistoryDirection;
+use runebender::document::project::DocumentHistoryReplayOutcome;
 use runebender::document::proposal::{self, ProposalSummary};
+use runebender::document::variable::GlyphLayerAddress;
 
 use crate::application::editor::session::Session;
 use crate::application::view::canvas::grid::cells_of;
@@ -138,9 +140,16 @@ pub(crate) struct LocalAiState {
     pub(crate) proposals: Vec<ProposalSummary>,
     /// The proposal drawn over the active glyph for comparison.
     pub(crate) preview_task: Option<String>,
-    /// Glyphs installed, most recent last, so Undo install knows the
-    /// order.
-    pub(crate) installed_order: Vec<String>,
+    /// Canonical foreground edits installed, most recent last, so Undo install can verify and
+    /// replay the exact Project history step.
+    pub(crate) installed_order: Vec<InstalledProposalEdit>,
+}
+
+/// One canonical proposal installation and its expected Project history depth.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct InstalledProposalEdit {
+    pub(crate) address: GlyphLayerAddress,
+    pub(crate) layer_history_depth: usize,
 }
 
 /// The pump's message: something arrived from the run thread.
@@ -354,9 +363,14 @@ impl Workspace {
 
     /// What the active master has waiting, from any task.
     pub(crate) fn refresh_proposals(&mut self) {
-        self.ai.proposals = proposal::list(self.font.font())
+        self.ai.proposals = self
+            .font
+            .project
+            .source_id(self.font.active())
+            .map(|source| proposal::list_project(&self.font.project, source))
+            .unwrap_or_default()
             .into_iter()
-            .filter(|p| !p.glyphs.is_empty())
+            .filter(|proposal| !proposal.glyphs.is_empty())
             .collect();
         if self
             .ai
@@ -388,34 +402,44 @@ impl Workspace {
         source: &Path,
     ) -> Result<ProposalSummary, String> {
         let on_disk = norad::Font::load(source).map_err(|e| e.to_string())?;
-        let layer_name = proposal::layer_name(task);
-        let glyphs: Vec<norad::Glyph> = on_disk
-            .layers
-            .get(&layer_name)
-            .map(|l| l.iter().cloned().collect())
-            .unwrap_or_default();
-        if glyphs.is_empty() {
-            return Err(format!("font-ml left no {layer_name} layer"));
+        let source = self
+            .font
+            .project
+            .source_id(self.font.active())
+            .ok_or("the active source is unavailable")?;
+        if proposal::find_project(&self.font.project, source, task).is_ok() {
+            proposal::discard_project(&mut self.font.project, source, task)
+                .map_err(|error| error.to_string())?;
         }
-        let mut font = self.font.font_mut();
-        font.layers.remove(&layer_name);
-        let summary = proposal::write(&mut font, task, glyphs).map_err(|e| e.to_string())?;
+        let summary =
+            proposal::adopt_external_project(&mut self.font.project, source, &on_disk, task)
+                .map_err(|error| error.to_string())?;
         self.modified = true;
         Ok(summary)
     }
 
-    /// Install a waiting proposal: one undo step per glyph, on the
-    /// master's pile.
+    /// Install a waiting proposal with one canonical history step per changed glyph.
     pub(crate) fn install_proposal(&mut self, task: &str, only: Option<Vec<String>>) {
-        let result = self
-            .font
-            .master_mut()
-            .install_proposal(task, only.as_deref(), true);
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
+            self.note = "The active source is unavailable".into();
+            return;
+        };
+        let result =
+            proposal::install_project(&mut self.font.project, source, task, only.as_deref(), true);
         match result {
-            Ok(done) => {
+            Ok(result) => {
+                let done = result.installed;
                 self.ai
                     .installed_order
-                    .extend(done.installed.iter().cloned());
+                    .extend(result.affected.into_iter().map(|address| {
+                        InstalledProposalEdit {
+                            layer_history_depth: self
+                                .font
+                                .project
+                                .document_layer_history_depth(&address, HistoryDirection::Undo),
+                            address,
+                        }
+                    }));
                 self.after_font_change(&done.installed);
                 self.note = format!(
                     "Installed {} glyphs from {}{}. Undo install takes them back one at a time.",
@@ -438,23 +462,46 @@ impl Workspace {
 
     /// Take back the most recent install, one glyph.
     pub(crate) fn undo_install(&mut self) {
-        let Some(name) = self.ai.installed_order.pop() else {
+        let Some(edit) = self.ai.installed_order.pop() else {
             self.note = "Nothing installed to undo".into();
             return;
         };
-        let Some(index) = self.font.index_of(&name) else {
+        if self
+            .font
+            .project
+            .document_layer_history_depth(&edit.address, HistoryDirection::Undo)
+            != edit.layer_history_depth
+            || !self
+                .font
+                .project
+                .can_replay_document_layer_history(&edit.address, HistoryDirection::Undo)
+        {
+            self.ai.installed_order.push(edit);
+            self.note = "The installed glyph changed before Undo install".into();
             return;
-        };
-        if self.font.master_mut().undo(index) {
+        }
+        let name = edit.address.glyph.clone();
+        if matches!(
+            self.font
+                .project
+                .replay_document_layer_history(&edit.address, HistoryDirection::Undo),
+            Ok(DocumentHistoryReplayOutcome::Changed { .. })
+        ) {
             self.after_font_change(std::slice::from_ref(&name));
             self.note = format!("Undid install of {name}");
+        } else {
+            self.ai.installed_order.push(edit);
+            self.note = "The installed glyph could not be restored".into();
         }
     }
 
     /// Drop a waiting proposal without installing it.
     pub(crate) fn discard_proposal(&mut self, task: &str) {
-        let mut font = self.font.font_mut();
-        match proposal::discard(&mut font, task) {
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
+            self.note = "The active source is unavailable".into();
+            return;
+        };
+        match proposal::discard_project(&mut self.font.project, source, task) {
             Ok(n) => {
                 self.modified = true;
                 self.note = format!("Discarded {n} proposed glyphs");
@@ -464,7 +511,6 @@ impl Workspace {
         if self.ai.preview_task.as_deref() == Some(task) {
             self.ai.preview_task = None;
         }
-        drop(font);
         self.refresh_proposals();
     }
 
@@ -483,8 +529,7 @@ impl Workspace {
             && let Some(fresh) = Session::new_from_model(&self.font, &self.session.glyph_name)
         {
             // The open glyph was replaced under the session; start it
-            // again on the new outline. The install's own undo is on
-            // the master's pile, so Cmd+Z in the editor takes it back.
+            // again on the new canonical outline.
             let mut fresh = fresh;
             fresh.viewport = self.session.viewport.clone();
             fresh.fitted = self.session.fitted;
@@ -776,6 +821,13 @@ mod tests {
         let mut proposed = original.clone();
         proposed.width = 620.0;
         proposed.contours[0].points[1].x += 20.0;
+        let revision = runebender::document::edit_batch::glyph_revision(&original)
+            .expect("the foreground revision is available");
+        runebender::formats::lib_keys::write_proposal_base(
+            &mut proposed,
+            &revision,
+            "test canonical proposal install",
+        );
         proposal::write(&mut font, "bolden", vec![proposed.clone()])
             .expect("the proposal is valid");
         font.save(&path).expect("the proposal fixture saves");
@@ -818,10 +870,91 @@ mod tests {
         assert!(workspace.underlay().proposal.is_some());
 
         workspace.install_proposal("bolden", Some(vec!["A".into()]));
-        assert_eq!(workspace.font.font().get_glyph("A"), Some(&proposed));
+        let mut installed = proposed.clone();
+        installed
+            .lib
+            .remove(runebender::formats::lib_keys::PROPOSAL_BASE_KEY);
+        assert_eq!(workspace.font.font().get_glyph("A"), Some(&installed));
         assert!(workspace.ai.preview_task.is_none());
+        let address = workspace.font.active_layer_address("A").unwrap();
+        assert_eq!(workspace.font.master().undo_depth(0), 0);
+        assert_eq!(
+            workspace
+                .font
+                .project
+                .document_layer_history_depth(&address, HistoryDirection::Undo),
+            1
+        );
+        workspace.undo_open_glyph(false);
+        assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
+        workspace.undo_open_glyph(true);
+        assert_eq!(workspace.font.font().get_glyph("A"), Some(&installed));
         workspace.undo_install();
         assert_eq!(workspace.font.font().get_glyph("A"), Some(&original));
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn proposal_history_does_not_consume_an_older_editor_label() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-xilem-proposal-history-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = 500.0;
+        font.default_layer_mut().insert_glyph(glyph);
+        font.save(&path).expect("the fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.open_glyph(0);
+        workspace.set_advance_from_buf("510".into());
+        assert_eq!(workspace.metadata_undo.len(), 1);
+        let source = workspace.font.project.source_id(0).unwrap();
+        let layer = workspace
+            .font
+            .project
+            .document_source(source)
+            .unwrap()
+            .default_layer();
+        let revision = runebender::document::edit_batch::canonical_glyph_revision(
+            workspace.font.project.document_layer("A", &layer).unwrap(),
+        )
+        .unwrap();
+        let batch = runebender::document::edit_batch::EditBatch {
+            task: "spacing".into(),
+            reason: "test application history ordering".into(),
+            edits: vec![runebender::document::edit_batch::GlyphEdit {
+                glyph: "A".into(),
+                expected_revision: revision,
+                operations: vec![runebender::document::edit_batch::Operation::SetWidth {
+                    width: 620.0,
+                }],
+            }],
+        };
+        runebender::document::edit_batch::propose_project(
+            &mut workspace.font.project,
+            source,
+            &batch,
+        )
+        .unwrap();
+        workspace.refresh_proposals();
+        workspace.install_proposal(&batch.task, None);
+        assert_eq!(workspace.session.advance(), 620.0);
+        assert_eq!(workspace.metadata_undo.len(), 1);
+
+        workspace.undo_open_glyph(false);
+        assert_eq!(workspace.session.advance(), 510.0);
+        assert_eq!(workspace.metadata_undo.len(), 1);
+        workspace.undo_open_glyph(false);
+        assert_eq!(workspace.session.advance(), 500.0);
+        assert!(workspace.metadata_undo.is_empty());
+        assert_eq!(workspace.font.master().undo_depth(0), 0);
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
@@ -1133,7 +1266,8 @@ mod tests {
             workspace.font.font().get_glyph("R").expect("installed R"),
             &proposed
         );
-        assert_eq!(workspace.ai.installed_order, vec!["R"]);
+        assert_eq!(workspace.ai.installed_order.len(), 1);
+        assert_eq!(workspace.ai.installed_order[0].address.glyph, "R");
 
         workspace.undo_install();
         assert_eq!(
