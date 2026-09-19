@@ -126,12 +126,7 @@ pub fn resolve(graph: &NodeGraph, project: &Project, id: u32) -> Result<Version,
                 n.values
                     .get("source")
                     .and_then(Value::as_u64)
-                    .or_else(|| {
-                        project
-                            .source_id(project.active)
-                            .map(|source| source.0 as u64)
-                    })
-                    .ok_or("the active source is no longer loaded")?,
+                    .ok_or("Choose a stable source for this live font node")?,
             )
             .map_err(|_| "source identity is too large")?;
             let source = SourceId(source);
@@ -322,7 +317,23 @@ pub fn import_versions(graph: &mut NodeGraph, project: &Project) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use super::super::font_memory::designspace_from_str;
+    use super::super::project::Master;
     use super::*;
+
+    fn two_source_project() -> Project {
+        let font = Project::new_font("synthetic.ufo".into())
+            .source_snapshot(SourceId(0))
+            .unwrap();
+        let document = designspace_from_str(
+            r#"<designspace format="5.0"><axes><axis name="Weight" tag="wght" minimum="0" default="0" maximum="1"/></axes><sources><source filename="first.ufo"><location><dimension name="Weight" xvalue="0"/></location></source><source filename="second.ufo"><location><dimension name="Weight" xvalue="1"/></location></source></sources></designspace>"#,
+        )
+        .unwrap();
+        Project::from_designspace(document, |path| {
+            Ok(Master::from_font(font.clone(), path.into()))
+        })
+        .unwrap()
+    }
     #[test]
     fn agent_versions_import_once_with_their_parent_connections() {
         let mut p = Project::new_font("test.ufo".into());
@@ -434,5 +445,25 @@ mod tests {
         assert!(discard(&mut p, a.branch.as_ref().unwrap()).is_ok());
         assert!(resolve(&g, &p, 3).is_err());
         assert_eq!(resolve(&g, &p, 5).unwrap(), b);
+    }
+
+    #[test]
+    fn live_source_nodes_never_redirect_after_reorder_or_removal() {
+        let mut project = two_source_project();
+        let source = project.source_id(1).unwrap();
+        let graph = starter(source);
+        assert_eq!(resolve(&graph, &project, 1).unwrap().source, source);
+        assert!(project.move_source(source, 0).unwrap());
+        assert_eq!(resolve(&graph, &project, 1).unwrap().source, source);
+        project.remove_source(source).unwrap();
+        assert!(resolve(&graph, &project, 1).is_err());
+
+        let mut unbound = NodeGraph::default();
+        let live = unbound.add("live.font", [0.0, 0.0]);
+        assert!(
+            resolve(&unbound, &project, live)
+                .unwrap_err()
+                .contains("stable source")
+        );
     }
 }

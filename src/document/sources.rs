@@ -661,4 +661,31 @@ impl Project {
         self.record_source_change(before);
         Ok(())
     }
+
+    /// Remove an empty auxiliary layer container from canonical persistence and its projection.
+    ///
+    /// A default layer or a layer that still contains any glyph is rejected without mutation.
+    pub fn remove_empty_auxiliary_layer(&mut self, id: &LayerId) -> Result<bool, String> {
+        let index = self.source_index(id.source).ok_or("unknown source")?;
+        if self.masters[index].font.default_layer().name().as_str() == id.name {
+            return Err("the default layer cannot be removed".into());
+        }
+        let Some(layer) = self.masters[index].font.layers.get(&id.name) else {
+            return Ok(false);
+        };
+        if !layer.is_empty() || self.variable.has_layer(id) {
+            return Err("the auxiliary layer still contains glyphs".into());
+        }
+        let before = SourceFrame::capture(self);
+        if !self.variable.remove_empty_layer_container(id) {
+            return Err("canonical auxiliary layer container is inconsistent".into());
+        }
+        let removed = self.masters[index].font.layers.remove(&id.name).is_some();
+        debug_assert!(
+            removed,
+            "validated compatibility layer container must remain removable"
+        );
+        self.record_source_change(before);
+        Ok(true)
+    }
 }

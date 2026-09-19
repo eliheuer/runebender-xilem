@@ -416,7 +416,13 @@ pub fn install_project(
             .map_err(project_error)?;
         installed.push(address.glyph);
     }
-    let layer_removed = find_project(project, source, task).is_err();
+    let layer_removed = if find_project(project, source, task).is_err() {
+        project
+            .remove_empty_auxiliary_layer(&proposal_layer)
+            .map_err(project_error)?
+    } else {
+        false
+    };
     Ok(ProjectProposalInstall {
         affected,
         changes,
@@ -441,6 +447,14 @@ pub fn discard_project(
         project
             .remove_glyph_layer(glyph, &layer)
             .map_err(project_error)?;
+    }
+    if !project
+        .remove_empty_auxiliary_layer(&layer)
+        .map_err(project_error)?
+    {
+        return Err(project_error(
+            "proposal layer container disappeared during discard",
+        ));
     }
     Ok(summary.glyphs.len())
 }

@@ -33,6 +33,7 @@ Batch validation and proposal drafts complete before the first canonical proposa
 Install candidates, revision checks, structure checks and replacement snapshots complete before the first foreground mutation.
 Stale and incompatible candidates remain reviewable in the proposal layer.
 Successful selected installs remove only the installed proposal glyphs and leave unselected or skipped glyphs in place.
+Installing or discarding the last proposal glyph removes the empty auxiliary layer container from canonical persistence and the compatibility projection, so save and reopen cannot resurrect it.
 
 Experimental apply checks every selected layer and optional metadata change against the shared root baseline before mutation.
 Unrelated root edits survive selective apply and guarded undo-apply.
@@ -47,12 +48,12 @@ Transient Norad fonts remain only for current proof, shaping and explicit new-UF
 
 ## Focused verification
 
-The canonical proposal tests cover guarded root installation and undo, stale revision rejection, unguarded external proposal rejection and isolated-version installation.
+The canonical proposal tests cover guarded root installation and undo, stale revision rejection, unguarded external proposal rejection, isolated-version installation and removal of the last proposal layer across save and reopen.
 The experiment tests cover stable source reorder, removed sources, atomic conflict rejection, selective apply, unrelated root edits, guarded undo and isolated child state.
 The live tests cover authorization, canonical proposal creation and installation, structural refusal, drawing installation and canonical undo and redo.
-The Nodes live tests cover stable branch connections, isolated edits, result preservation, explicit apply routing and new-UFO export.
+The Nodes live tests cover stable branch connections, source reorder and removal, missing-binding refusal, isolated edits, result preservation, explicit apply routing and new-UFO export.
 
-Focused results on 2026-09-19 were 9 proposal batch tests, 7 experiment tests, 5 live-tool tests and 4 Nodes live tests, all passing.
+Focused results on 2026-09-19 were 10 proposal batch tests, 7 experiment tests, 5 live-tool tests and 5 Nodes live tests, all passing.
 Strict workspace validation remains the integration branch's responsibility after the M06 and M11 callers land.
 
 ## Remaining integration boundaries

@@ -622,8 +622,32 @@ pub fn save_proposal(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use crate::document::history::HistoryDirection;
     use crate::document::variable::GlyphLayerAddress;
+
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new() -> Self {
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "runebender-canonical-proposal-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     fn fixture() -> (Font, EditBatch) {
         let mut font = Font::new();
@@ -687,6 +711,43 @@ mod tests {
             project.document_layer("A", &layer).unwrap().width(),
             original
         );
+    }
+
+    #[test]
+    fn last_install_removes_the_proposal_layer_from_save_and_reopen() {
+        let scratch = Scratch::new();
+        let path = scratch.0.join("Canonical.ufo");
+        let mut project = Project::new_font(path.clone());
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        let batch = EditBatch {
+            task: "saved-cleanly".into(),
+            reason: "verify the empty layer container is removed".into(),
+            edits: vec![GlyphEdit {
+                glyph: "A".into(),
+                expected_revision: canonical_glyph_revision(
+                    project.document_layer("A", &layer).unwrap(),
+                )
+                .unwrap(),
+                operations: vec![Operation::SetWidth { width: 701.0 }],
+            }],
+        };
+        propose_project(&mut project, source, &batch).unwrap();
+        let installed = proposal::install_project(&mut project, source, &batch.task, None, true)
+            .unwrap()
+            .installed;
+        assert!(installed.layer_removed);
+        project.save().unwrap();
+
+        let saved = Font::load(&path).unwrap();
+        assert!(
+            saved
+                .layers
+                .get(&proposal::layer_name(&batch.task))
+                .is_none()
+        );
+        let reopened = Project::load(&path).unwrap();
+        assert!(proposal::list_project(&reopened, reopened.source_id(0).unwrap()).is_empty());
     }
 
     #[test]

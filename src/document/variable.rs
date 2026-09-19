@@ -640,6 +640,36 @@ impl VariableData {
         true
     }
 
+    pub(super) fn remove_empty_layer_container(&mut self, id: &LayerId) -> bool {
+        if self.has_layer(id) {
+            return false;
+        }
+        let Some(template) = self.templates.get_mut(&id.source) else {
+            return false;
+        };
+        if template.default_layer().name().as_str() == id.name {
+            return false;
+        }
+        let Some(layer) = template.layers.get(&id.name) else {
+            return false;
+        };
+        if !layer.is_empty() {
+            return false;
+        }
+        let removed = template.layers.remove(&id.name).is_some();
+        if removed {
+            self.histories.remove(id);
+            self.revision = self.revision.wrapping_add(1);
+        }
+        removed
+    }
+
+    pub(super) fn has_layer(&self, id: &LayerId) -> bool {
+        self.glyphs
+            .values()
+            .any(|glyph| glyph.layers.contains_key(id))
+    }
+
     pub(super) fn dependent_component_layers(&self, name: &str) -> Vec<GlyphLayerAddress> {
         self.glyphs
             .iter()
