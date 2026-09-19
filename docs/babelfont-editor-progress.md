@@ -12,15 +12,22 @@ The clean isolated worktree was advanced from `314aa3235c372ed8d5fef7a2cddb8be3a
 This lane owns editor sessions, application commands, `FontModel`, workspace state, canvas and panel presentation, platform session synchronization and browser application bootstrap when directly required by M06.
 M10 and M11 proposal, live-tool, Nodes and headless workflow migrations remain outside this lane except for unavoidable compiling adapters.
 
-## Required shared APIs
+## Integrated shared APIs
 
-M06 has requested Project-owned canonical history wrappers from the core and history lanes.
-The required surface records and coalesces completed `GlyphLayerAddress` transactions, discards a no-op group, queries undo/redo and replays guarded history while returning invalidation information.
+M06 integrated Project-owned canonical history wrappers from the core and history lanes.
+The surface records and coalesces completed `GlyphLayerAddress` transactions, discards a no-op group, queries undo/redo and replays guarded history while returning invalidation information.
 Session will not own another undo pile.
 
-M06 has also requested an owned guarded canonical layer transaction for the editor island.
-It must begin from a `GlyphLayerAddress`, expose the existing `LayerEditDraft` read/write surface, retain the exact base state and commit only when the addressed live layer still matches that base.
+M06 also integrated an owned guarded canonical layer transaction for the editor island.
+It begins from a `GlyphLayerAddress`, exposes the existing `LayerEditDraft` read/write surface, retains the exact base state and commits only when the addressed live layer still matches that base.
 This lets the canvas preview a pointer gesture locally and commit once without retaining a mutable Norad glyph or reconciling a complete source font after input.
+The draft now includes stable-ID component and anchor add/remove operations plus image replacement.
+
+## Remaining shared API blockers
+
+Removing the session's Norad mirror without dropping existing tools still requires canonical draft operations for selected-corner rounding, handle harmonize/balance/optimize, hyper-to-cubic conversion and quadratic/cubic conversion.
+Typed mark color, metaball storage and component-alignment metadata also need canonical layer reads and mutations from M07.
+M06 has reported these exact gaps to the integration lane and will not introduce duplicate application-side serialization or conversion paths.
 
 ## Canonical source-metadata presentation slice
 
@@ -71,6 +78,7 @@ git diff --check
 
 All eight focused inspector tests passed.
 The kerning regression covers canonical group edit, Project-owned undo/redo, source dirty state and save/reopen persistence.
+All fifteen existing session tests also passed against the integrated transaction and history APIs, preserving the current editor contract while the remaining canonical hooks are completed.
 Warning-denied binary Clippy, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
