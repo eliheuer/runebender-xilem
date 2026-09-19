@@ -1,0 +1,144 @@
+// Copyright 2026 the Runebender Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! Regression coverage for exact canonical font-info values and their UFO boundary.
+
+use runebender::document::model::font_info::{
+    CanonicalFontInfo, CanonicalFontInfoError, OpenTypeWidthClass, clear_canonical_font_info_fields,
+};
+
+fn populated_font_info() -> norad::FontInfo {
+    let mut info = norad::FontInfo {
+        family_name: Some("Canonical Family".into()),
+        style_name: Some("Optical Regular".into()),
+        copyright: Some("Copyright exact".into()),
+        trademark: Some("Trademark exact".into()),
+        open_type_name_designer: Some("Designer".into()),
+        open_type_name_designer_url: Some("https://designer.invalid".into()),
+        open_type_name_manufacturer: Some("Manufacturer".into()),
+        open_type_name_manufacturer_url: Some("https://manufacturer.invalid".into()),
+        open_type_name_description: Some("Description".into()),
+        open_type_name_license: Some("License".into()),
+        open_type_name_license_url: Some("https://license.invalid".into()),
+        open_type_name_version: Some("Version 1.234".into()),
+        open_type_name_unique_id: Some("CanonicalFamily-Regular-1.234".into()),
+        open_type_name_sample_text: Some("Hamburgefonts".into()),
+        postscript_full_name: Some("Canonical Family Optical Regular".into()),
+        postscript_font_name: Some("CanonicalFamily-OpticalRegular".into()),
+        open_type_name_preferred_family_name: Some("Canonical Family Optical".into()),
+        open_type_name_preferred_subfamily_name: Some("Regular".into()),
+        open_type_name_wws_family_name: Some("Canonical Family".into()),
+        open_type_name_wws_subfamily_name: Some("Regular".into()),
+        units_per_em: Some(norad::fontinfo::NonNegativeIntegerOrFloat::try_from(1000.125).unwrap()),
+        ascender: Some(812.75),
+        descender: Some(-213.125),
+        x_height: Some(523.625),
+        cap_height: Some(712.875),
+        italic_angle: Some(-11.25),
+        open_type_hhea_ascender: Some(813),
+        open_type_hhea_descender: Some(-213),
+        open_type_hhea_line_gap: Some(17),
+        open_type_hhea_caret_slope_rise: Some(1000),
+        open_type_hhea_caret_slope_run: Some(195),
+        open_type_hhea_caret_offset: Some(2),
+        open_type_os2_typo_ascender: Some(800),
+        open_type_os2_typo_descender: Some(-200),
+        open_type_os2_typo_line_gap: Some(20),
+        open_type_os2_subscript_x_size: Some(650),
+        open_type_os2_subscript_y_size: Some(600),
+        open_type_os2_subscript_x_offset: Some(10),
+        open_type_os2_subscript_y_offset: Some(75),
+        open_type_os2_superscript_x_size: Some(651),
+        open_type_os2_superscript_y_size: Some(601),
+        open_type_os2_superscript_x_offset: Some(11),
+        open_type_os2_superscript_y_offset: Some(76),
+        open_type_os2_strikeout_size: Some(51),
+        open_type_os2_strikeout_position: Some(251),
+        open_type_os2_win_ascent: Some(1024),
+        open_type_os2_win_descent: Some(256),
+        open_type_head_flags: Some(vec![0, 3, 15, 20]),
+        open_type_os2_type: Some(vec![2, 3, 8]),
+        open_type_os2_selection: Some(vec![7, 8, 9]),
+        open_type_os2_weight_class: Some(450),
+        open_type_os2_width_class: Some(norad::fontinfo::Os2WidthClass::SemiCondensed),
+        open_type_os2_vendor_id: Some("TEST".into()),
+        note: Some(String::new()),
+        version_major: Some(1),
+        version_minor: Some(234),
+        ..Default::default()
+    };
+    info.open_type_name_compatible_full_name = Some("unowned compatible name".into());
+    info.postscript_blue_scale = Some(0.039_625);
+    info
+}
+
+#[test]
+fn canonical_font_info_round_trips_exactly_and_clears_only_owned_fields() {
+    let original = populated_font_info();
+    let canonical = CanonicalFontInfo::from_ufo(&original).unwrap();
+    assert_eq!(canonical.metrics.units_per_em, Some(1000.125));
+    assert_eq!(canonical.metrics.ascender, Some(812.75));
+    assert_eq!(canonical.metrics.descender, Some(-213.125));
+    assert_eq!(
+        canonical.open_type.width_class,
+        Some(OpenTypeWidthClass::SemiCondensed)
+    );
+    assert_eq!(canonical.note.as_deref(), Some(""));
+
+    let mut unchanged = original.clone();
+    assert!(!canonical.write_to_ufo(&mut unchanged).unwrap());
+    assert_eq!(unchanged, original);
+
+    let mut template = original.clone();
+    assert!(clear_canonical_font_info_fields(&mut template));
+    assert_eq!(
+        CanonicalFontInfo::from_ufo(&template).unwrap(),
+        CanonicalFontInfo::default()
+    );
+    assert_eq!(
+        template.open_type_name_compatible_full_name.as_deref(),
+        Some("unowned compatible name")
+    );
+    assert_eq!(template.postscript_blue_scale, Some(0.039_625));
+
+    assert!(canonical.write_to_ufo(&mut template).unwrap());
+    assert_eq!(template, original);
+}
+
+#[test]
+fn canonical_font_info_rejects_invalid_floats_before_mutation() {
+    let mut canonical = CanonicalFontInfo::from_ufo(&populated_font_info()).unwrap();
+    canonical.metrics.ascender = Some(f64::NAN);
+    let mut target = populated_font_info();
+    let before = target.clone();
+    assert_eq!(
+        canonical.write_to_ufo(&mut target),
+        Err(CanonicalFontInfoError::NonFinite("ascender"))
+    );
+    assert_eq!(target, before);
+
+    canonical.metrics.ascender = Some(800.0);
+    canonical.metrics.units_per_em = Some(-1.0);
+    assert_eq!(
+        canonical.write_to_ufo(&mut target),
+        Err(CanonicalFontInfoError::NegativeUnitsPerEm)
+    );
+    assert_eq!(target, before);
+}
+
+#[test]
+fn editor_metric_defaults_are_resolved_without_becoming_stored_values() {
+    let metrics = CanonicalFontInfo::default().metrics;
+    assert_eq!(
+        metrics.resolved(),
+        runebender::document::model::font_info::ResolvedFontMetrics {
+            units_per_em: 1000.0,
+            ascender: 800.0,
+            descender: -200.0,
+            x_height: 500.0,
+            cap_height: 700.0,
+        }
+    );
+    assert_eq!(metrics.units_per_em, None);
+    assert_eq!(metrics.ascender, None);
+}

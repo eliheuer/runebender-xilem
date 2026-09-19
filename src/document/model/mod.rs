@@ -1,9 +1,10 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Kerning lookup with group fallback, glyph metadata, and entity ids.
+//! Font and glyph metadata, kerning lookup with group fallback, and entity ids.
 
 pub mod entity_id;
+pub mod font_info;
 pub mod glyph_metadata;
 pub mod kerning;
 
