@@ -369,3 +369,174 @@ fn corner_rounding_requires_adjacent_line_segments() {
         "incoming line role survives on the original corner identity"
     );
 }
+
+fn handle_fixture() -> (Scratch, Project, LayerId, GlyphLayerAddress) {
+    let scratch = Scratch::new();
+    let source_path = scratch.0.join("Handles.ufo");
+    let mut glyph = Glyph::new("handles");
+    glyph.width = 700.125;
+    glyph.contours.push(contour(
+        vec![
+            point(0.0, 0.0, PointType::Curve, "join"),
+            point(0.0, 50.0, PointType::OffCurve, "out-adjacent"),
+            point(-80.0, 80.0, PointType::OffCurve, "out-far"),
+            point(-120.0, 120.0, PointType::Curve, "next"),
+            point(-140.0, 70.0, PointType::OffCurve, "middle-a"),
+            point(-130.0, -50.0, PointType::OffCurve, "middle-b"),
+            point(-100.0, -90.0, PointType::Curve, "previous"),
+            point(-70.0, -50.0, PointType::OffCurve, "in-far"),
+            point(0.0, -30.0, PointType::OffCurve, "in-adjacent"),
+        ],
+        "handles",
+    ));
+    glyph.contours[0].points[0].smooth = true;
+    glyph.contours.push(contour(
+        vec![
+            point(200.0, 0.0, PointType::Move, "open-start"),
+            point(220.0, 40.0, PointType::OffCurve, "open-control-a"),
+            point(280.0, 40.0, PointType::OffCurve, "open-control-b"),
+            point(300.0, 0.0, PointType::Curve, "open-end"),
+        ],
+        "open-handles",
+    ));
+    let mut other = Glyph::new("other-handle");
+    other.contours.push(contour(
+        vec![
+            point(0.0, 0.0, PointType::Move, "other-start"),
+            point(10.0, 0.0, PointType::Line, "other-end"),
+        ],
+        "other-handle",
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    font.default_layer_mut().insert_glyph(other);
+    let project = Project::from_source(Master::from_font(font, source_path));
+    let layer = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let address = GlyphLayerAddress {
+        glyph: "handles".into(),
+        layer: layer.clone(),
+    };
+    (scratch, project, layer, address)
+}
+
+#[test]
+fn harmonize_moves_only_adjacent_handles_with_stable_identity() {
+    let (_scratch, mut project, layer, address) = handle_fixture();
+    let before = project.document_layer("handles", &layer).unwrap();
+    let contour = before.contours().next().unwrap();
+    let points: Vec<_> = contour.points().collect();
+    let join = points[0].id();
+    let incoming = points[8].id();
+    let outgoing = points[1].id();
+    let identities: Vec<_> = points.iter().map(|point| point.id()).collect();
+    let positions: Vec<_> = points.iter().map(|point| point.position()).collect();
+    let expected = crate_expected_harmonize(&positions).expect("fixture is harmonizable");
+
+    let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+    assert!(
+        transaction.draft_mut().harmonize_handles(&[join]).unwrap(),
+        "selected smooth cubic join harmonizes"
+    );
+    project
+        .commit_document_layer_transaction(transaction)
+        .unwrap();
+
+    let after = project.document_layer("handles", &layer).unwrap();
+    let points: Vec<_> = after.contours().next().unwrap().points().collect();
+    assert_eq!(
+        points.iter().map(|point| point.id()).collect::<Vec<_>>(),
+        identities,
+        "harmonize preserves every point identity and storage position"
+    );
+    assert_eq!(
+        points[8].position(),
+        expected.0,
+        "incoming adjacent handle uses the shared geometry primitive"
+    );
+    assert_eq!(
+        points[1].position(),
+        expected.1,
+        "outgoing adjacent handle uses the shared geometry primitive"
+    );
+    assert_eq!(points[0].position(), positions[0]);
+    assert_eq!(points[2].position(), positions[2]);
+    assert_eq!(points[7].position(), positions[7]);
+    assert!(points.iter().any(|point| point.id() == incoming));
+    assert!(points.iter().any(|point| point.id() == outgoing));
+
+    assert!(matches!(
+        project
+            .replay_document_layer_history(&address, HistoryDirection::Undo)
+            .unwrap(),
+        DocumentHistoryReplayOutcome::Changed { .. }
+    ));
+    let restored: Vec<_> = project
+        .document_layer("handles", &layer)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.position())
+        .collect();
+    assert_eq!(
+        restored, positions,
+        "undo restores exact fractional geometry"
+    );
+}
+
+fn crate_expected_harmonize(points: &[kurbo::Point]) -> Option<(kurbo::Point, kurbo::Point)> {
+    runebender::analysis::curve::harmonize(points[7], points[8], points[0], points[1], points[2])
+        .map(|(incoming, outgoing)| (incoming.round(), outgoing.round()))
+}
+
+#[test]
+fn harmonize_selection_scope_and_errors_are_atomic() {
+    let (_scratch, mut project, layer, _address) = handle_fixture();
+    let handle = project
+        .document_layer("handles", &layer)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .nth(1)
+        .unwrap()
+        .id();
+    let foreign = project
+        .document_layer("other-handle", &layer)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .next()
+        .unwrap()
+        .id();
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("handles", &layer, |draft| {
+                assert!(
+                    !draft.harmonize_handles(&[handle])?,
+                    "selecting only a handle does not select its smooth join"
+                );
+                assert_eq!(
+                    draft.harmonize_handles(&[foreign]),
+                    Err(runebender::document::DocumentEditError::MissingPoint(
+                        foreign
+                    )),
+                    "foreign point identity is rejected"
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision },
+        "caught no-op and error leave the draft unchanged"
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+}

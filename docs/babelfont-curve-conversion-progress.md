@@ -68,7 +68,14 @@ The round-corners checkpoint passed three dedicated tests covering open and clos
 CARGO_TARGET_DIR=/private/tmp/runebender-curve-conversion-target CARGO_BUILD_JOBS=1 cargo test --locked --test canonical_handle_cleanup -- --test-threads=1
 ```
 
-Harmonize, balance and optimize remain in progress in this continuation.
+`LayerEditDraft::harmonize_handles` preserves the current command's selected-smooth-node scope, with an empty selection considering every eligible join.
+It changes only the two handles adjacent to a smooth join between closed cubic segments, retains their identities and metadata, and leaves open, hyperbezier, degenerate and ineligible mixed-curve joins untouched.
+It uses the shared `analysis::curve::harmonize` primitive and preserves the command's integer-grid result without materializing a UFO glyph.
+
+Two harmonize regressions brought the dedicated suite to five passing tests.
+They cover exact stable-ID handle movement, selection scope, canonical undo and caught-error/no-op atomicity.
+
+Balance and optimize remain in progress in this continuation.
 
 ## Validation
 

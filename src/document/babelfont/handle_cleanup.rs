@@ -101,6 +101,100 @@ impl LayerEditDraft {
         *self = staged;
         Ok(Some(next_selection))
     }
+
+    /// Harmonize the handles around selected smooth on-curve points.
+    ///
+    /// An empty selection considers every eligible smooth join on closed ordinary contours.
+    /// Open, hyperbezier and non-cubic joins remain untouched. Surviving point identities and all
+    /// source metadata stay attached to the moved handles.
+    pub fn harmonize_handles(&mut self, selected: &[PointId]) -> Result<bool, DocumentEditError> {
+        validate_selected_points(self, selected)?;
+        let selected: HashSet<_> = selected.iter().copied().collect();
+        let all = selected.is_empty();
+        let mut staged = self.clone();
+        let mut changed = false;
+
+        for shape_index in 0..staged.layer.shapes.len() {
+            let Shape::Path(path) = &staged.layer.shapes[shape_index] else {
+                continue;
+            };
+            let contour_id = read_id(&path.format_specific).expect("canonical contour identity");
+            let hyper = staged
+                .preserved
+                .contours
+                .iter()
+                .find(|contour| contour.id.0 == contour_id)
+                .expect("canonical contour preservation")
+                .hyper;
+            if hyper || !path.closed || path.nodes.len() < 5 {
+                continue;
+            }
+            let Shape::Path(path) = &mut staged.layer.shapes[shape_index] else {
+                unreachable!("shape kind was checked above");
+            };
+            let original = path.nodes.clone();
+            let length = original.len();
+            let mut updates = Vec::new();
+            for index in 0..length {
+                let node = &original[index];
+                let id = PointId(read_id(&node.format_specific).expect("canonical point identity"));
+                if node.nodetype == NodeType::OffCurve
+                    || !node.smooth
+                    || (!all && !selected.contains(&id))
+                {
+                    continue;
+                }
+                let [
+                    first_incoming,
+                    adjacent_incoming,
+                    adjacent_outgoing,
+                    second_outgoing,
+                ] = [
+                    (index + length - 2) % length,
+                    (index + length - 1) % length,
+                    (index + 1) % length,
+                    (index + 2) % length,
+                ];
+                if [
+                    first_incoming,
+                    adjacent_incoming,
+                    adjacent_outgoing,
+                    second_outgoing,
+                ]
+                .into_iter()
+                .any(|candidate| original[candidate].nodetype != NodeType::OffCurve)
+                {
+                    continue;
+                }
+                let Some((incoming, outgoing)) = crate::analysis::curve::harmonize(
+                    node_position(&original[first_incoming]),
+                    node_position(&original[adjacent_incoming]),
+                    node_position(node),
+                    node_position(&original[adjacent_outgoing]),
+                    node_position(&original[second_outgoing]),
+                ) else {
+                    continue;
+                };
+                let incoming = incoming.round();
+                let outgoing = outgoing.round();
+                ensure_points_finite(&[incoming, outgoing])?;
+                updates.push((adjacent_incoming, incoming));
+                updates.push((adjacent_outgoing, outgoing));
+            }
+            for (index, position) in updates {
+                let node = &mut path.nodes[index];
+                if node.x != position.x || node.y != position.y {
+                    node.x = position.x;
+                    node.y = position.y;
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            *self = staged;
+        }
+        Ok(changed)
+    }
 }
 
 struct RoundedContour {
@@ -364,4 +458,8 @@ fn ensure_points_finite(points: &[Point]) -> Result<(), DocumentEditError> {
         .all(|point| point.x.is_finite() && point.y.is_finite())
         .then_some(())
         .ok_or(DocumentEditError::NonFinite)
+}
+
+fn node_position(node: &Node) -> Point {
+    Point::new(node.x, node.y)
 }
