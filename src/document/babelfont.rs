@@ -1290,6 +1290,47 @@ impl LayerEditDraft {
         Ok(result)
     }
 
+    /// Append contours decoded at an explicit UFO boundary with fresh stable identities.
+    ///
+    /// Source names, identifiers and object libraries are retained exactly.
+    /// The complete input is validated before the draft changes.
+    pub fn append_imported_contours(
+        &mut self,
+        contours: &[norad::Contour],
+    ) -> Result<PastedContours, DocumentEditError> {
+        let (shapes, preserved, result) = decode_imported_contours(contours)?;
+        self.layer.shapes.extend(shapes);
+        self.preserved.contours.extend(preserved);
+        Ok(result)
+    }
+
+    /// Replace only the contours from an explicit UFO boundary.
+    ///
+    /// Components, anchors, advances and all layer metadata remain unchanged.
+    /// An exact contour no-op retains the existing stable identities.
+    pub fn replace_imported_contours(
+        &mut self,
+        contours: &[norad::Contour],
+    ) -> Result<bool, DocumentEditError> {
+        if project_contours(&self.layer, &self.preserved) == contours {
+            return Ok(false);
+        }
+        let (shapes, preserved, _) = decode_imported_contours(contours)?;
+        let insert_at = self
+            .layer
+            .shapes
+            .iter()
+            .take_while(|shape| !matches!(shape, Shape::Path(_)))
+            .filter(|shape| matches!(shape, Shape::Component(_)))
+            .count();
+        self.layer
+            .shapes
+            .retain(|shape| matches!(shape, Shape::Component(_)));
+        self.layer.shapes.splice(insert_at..insert_at, shapes);
+        self.preserved.contours = preserved;
+        Ok(true)
+    }
+
     /// Duplicate every contour containing a selected point by `offset`.
     ///
     /// An empty selection is a no-op. The duplicate receives the same metadata treatment as a
@@ -4413,6 +4454,63 @@ fn new_document_point(
     )
 }
 
+fn decode_imported_contours(
+    contours: &[norad::Contour],
+) -> Result<(Vec<Shape>, Vec<PreservedContour>, PastedContours), DocumentEditError> {
+    ensure_finite(
+        &contours
+            .iter()
+            .flat_map(|contour| &contour.points)
+            .flat_map(|point| [point.x, point.y])
+            .collect::<Vec<_>>(),
+    )?;
+    let mut result = PastedContours::default();
+    let mut shapes = Vec::with_capacity(contours.len());
+    let mut preserved = Vec::with_capacity(contours.len());
+    for contour in contours {
+        let contour_id = ContourId::next();
+        result.contours.push(contour_id);
+        let mut path = babelfont::Path {
+            closed: contour.is_closed(),
+            ..babelfont::Path::default()
+        };
+        write_id(&mut path.format_specific, contour_id.0);
+        let mut points = Vec::with_capacity(contour.points.len());
+        for point in &contour.points {
+            let point_id = PointId::next();
+            result.points.push(point_id);
+            let mut node = Node {
+                x: point.x,
+                y: point.y,
+                nodetype: match point.typ {
+                    norad::PointType::Move => NodeType::Move,
+                    norad::PointType::Line => NodeType::Line,
+                    norad::PointType::OffCurve => NodeType::OffCurve,
+                    norad::PointType::Curve => NodeType::Curve,
+                    norad::PointType::QCurve => NodeType::QCurve,
+                },
+                smooth: point.smooth,
+                ..Node::default()
+            };
+            write_id(&mut node.format_specific, point_id.0);
+            path.nodes.push(node);
+            points.push(PreservedPoint {
+                id: point_id,
+                name: point.name.clone(),
+                metadata: ObjectMetadata::new(point.identifier(), point.lib()),
+            });
+        }
+        shapes.push(Shape::Path(path));
+        preserved.push(PreservedContour {
+            id: contour_id,
+            hyper: crate::outline::path::hyper_model::norad_contour_is_hyper(contour),
+            metadata: ObjectMetadata::new(contour.identifier(), contour.lib()),
+            points,
+        });
+    }
+    Ok((shapes, preserved, result))
+}
+
 fn reverse_contour(path: &mut babelfont::Path, preserved: &mut PreservedContour) -> bool {
     debug_assert_eq!(
         path.nodes.len(),
@@ -5031,6 +5129,53 @@ fn affine(t: norad::AffineTransform) -> kurbo::Affine {
     ])
 }
 
+fn project_contours(layer: &Layer, preserved: &LayerPreservation) -> Vec<norad::Contour> {
+    layer
+        .paths()
+        .map(|path| {
+            let preserved_contour = read_id(&path.format_specific)
+                .and_then(|id| preserved.contours.iter().find(|item| item.id.0 == id));
+            let points = path
+                .nodes
+                .iter()
+                .map(|node| {
+                    let original = read_id(&node.format_specific).and_then(|id| {
+                        let item = preserved_contour?;
+                        item.points.iter().find(|point| point.id.0 == id)
+                    });
+                    let typ = match node.nodetype {
+                        NodeType::Move => norad::PointType::Move,
+                        NodeType::Line => norad::PointType::Line,
+                        NodeType::OffCurve => norad::PointType::OffCurve,
+                        NodeType::Curve => norad::PointType::Curve,
+                        NodeType::QCurve => norad::PointType::QCurve,
+                    };
+                    let mut point = norad::ContourPoint::new(
+                        node.x,
+                        node.y,
+                        typ,
+                        node.smooth,
+                        original.and_then(|item| item.name.clone()),
+                        original.and_then(|item| item.metadata.identifier.clone()),
+                    );
+                    if let Some(lib) = original.and_then(|item| item.metadata.lib.clone()) {
+                        point.replace_lib(lib);
+                    }
+                    point
+                })
+                .collect();
+            let mut contour = norad::Contour::new(
+                points,
+                preserved_contour.and_then(|item| item.metadata.identifier.clone()),
+            );
+            if let Some(lib) = preserved_contour.and_then(|item| item.metadata.lib.clone()) {
+                contour.replace_lib(lib);
+            }
+            contour
+        })
+        .collect()
+}
+
 #[expect(
     clippy::cast_possible_truncation,
     reason = "compare with the original narrowed Babelfont advance"
@@ -5078,50 +5223,7 @@ pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> nor
     if layer.width != preserved.width as f32 {
         glyph.width = f64::from(layer.width);
     }
-    glyph.contours = layer
-        .paths()
-        .map(|path| {
-            let preserved_contour = read_id(&path.format_specific)
-                .and_then(|id| preserved.contours.iter().find(|item| item.id.0 == id));
-            let points = path
-                .nodes
-                .iter()
-                .map(|node| {
-                    let original = read_id(&node.format_specific).and_then(|id| {
-                        let item = preserved_contour?;
-                        item.points.iter().find(|point| point.id.0 == id)
-                    });
-                    let typ = match node.nodetype {
-                        NodeType::Move => norad::PointType::Move,
-                        NodeType::Line => norad::PointType::Line,
-                        NodeType::OffCurve => norad::PointType::OffCurve,
-                        NodeType::Curve => norad::PointType::Curve,
-                        NodeType::QCurve => norad::PointType::QCurve,
-                    };
-                    let mut point = norad::ContourPoint::new(
-                        node.x,
-                        node.y,
-                        typ,
-                        node.smooth,
-                        original.and_then(|item| item.name.clone()),
-                        original.and_then(|item| item.metadata.identifier.clone()),
-                    );
-                    if let Some(lib) = original.and_then(|item| item.metadata.lib.clone()) {
-                        point.replace_lib(lib);
-                    }
-                    point
-                })
-                .collect();
-            let mut contour = norad::Contour::new(
-                points,
-                preserved_contour.and_then(|item| item.metadata.identifier.clone()),
-            );
-            if let Some(lib) = preserved_contour.and_then(|item| item.metadata.lib.clone()) {
-                contour.replace_lib(lib);
-            }
-            contour
-        })
-        .collect();
+    glyph.contours = project_contours(layer, preserved);
     glyph.components = layer
         .components()
         .map(|component| {

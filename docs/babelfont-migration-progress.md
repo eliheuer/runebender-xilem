@@ -2380,3 +2380,28 @@ Both canonical layer-metadata tests passed, including atomic rejection, semantic
 Warning-denied library/test Clippy, formatting and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 The M06 foreground and overview callers still need to pass the theme's frozen label/color pair to this draft operation before their whole-glyph compatibility paths can be deleted.
+
+### Direct imported-contour boundaries
+
+Evidence commit: `Import contours without whole-glyph reconciliation` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Import contours without whole-glyph reconciliation$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, architecture and migration documentation.
+
+`LayerEditDraft::append_imported_contours` and `replace_imported_contours` decode an explicit `norad::Contour` boundary payload directly into canonical paths.
+Every inserted contour and point receives a fresh stable document identity, while source names, identifiers and object libraries retain their exact boundary values.
+The complete payload is checked for nonfinite geometry before mutation.
+Replacement changes contours only, preserving components, anchors, exact advances and layer metadata, and an exact no-op retains the existing stable identities.
+
+Executed evidence:
+
+```sh
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --lib --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The full variable-project suite passed 71 tests, including explicit append and replace proof for invalid-input atomicity, no-op identity preservation, source metadata, unrelated components/anchors/advance and save/reopen persistence.
+Warning-denied library/test Clippy, formatting and whitespace checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+The M06 Trace Image and SVG callers still need to consume these narrow methods; background swap also needs its Project-owned auxiliary-layer transaction before the remaining whole-glyph bridge can be deleted.

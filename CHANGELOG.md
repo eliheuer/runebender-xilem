@@ -46,6 +46,7 @@ No release has been published yet.
 - Made semantic glyph-mark edits update or clear the Runebender label and public UFO color atomically while preserving exact source color spelling on a no-op.
 - Moved quadratic, cubic, hyperbezier, corner-rounding, handle-harmonizing, handle-balancing, and handle-optimization operations onto canonical contours.
 - Moved hyperbezier pen creation, point appending, and closure onto typed canonical contours with stable object identities.
+- Added atomic canonical contour import for SVG append and image-trace replacement without whole-glyph reconciliation.
 - Moved explicit mask baking onto canonical contours and cleared the persisted mask key only after successful subtraction.
 - Moved selected and whole-layer metaball collapse onto staged canonical layer edits that retain live groups until conversion succeeds.
 - Made image placement install validated source resources through Project without mutable UFO-font access.

@@ -7397,3 +7397,187 @@ fn invalid_maps_missing_layers_and_missing_sources_fail_explicitly() {
         .is_err()
     );
 }
+
+#[test]
+fn imported_contour_append_and_replace_are_atomic_and_persistable() {
+    let scratch = Scratch::new();
+    let source_path = scratch.0.join("ImportedContours.ufo");
+    let point = |x: f64, y: f64, label: &str| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            PointType::Line,
+            false,
+            Some(Name::new(label).unwrap()),
+            Some(norad::Identifier::new(&format!("point-{label}")).unwrap()),
+        );
+        point.replace_lib(plist::Dictionary::from_iter([(
+            String::from("owner"),
+            plist::Value::String(label.into()),
+        )]));
+        point
+    };
+    let mut original = Contour::new(
+        vec![
+            point(0.0, 0.0, "original-a"),
+            point(100.0, 0.0, "original-b"),
+            point(50.0, 100.0, "original-c"),
+        ],
+        Some(norad::Identifier::new("contour-original").unwrap()),
+    );
+    original.replace_lib(plist::Dictionary::from_iter([(
+        String::from("owner"),
+        plist::Value::String("original".into()),
+    )]));
+    let mut glyph = Glyph::new("A");
+    glyph.width = 500.25;
+    glyph.contours.push(original);
+    glyph.components.push(Component::new(
+        Name::new("B").unwrap(),
+        norad::AffineTransform::default(),
+        None,
+    ));
+    glyph.anchors.push(Anchor::new(
+        50.0,
+        700.0,
+        Some(Name::new("top").unwrap()),
+        None,
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(Glyph::new("B"));
+    font.default_layer_mut().insert_glyph(glyph);
+    font.save(&source_path).unwrap();
+
+    let mut project = Project::load(&source_path).unwrap();
+    let layer = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let before = project.document_layer("A", &layer).unwrap();
+    let original_contour_id = before.contours().next().unwrap().id();
+    let original_point_ids = before
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.id())
+        .collect::<Vec<_>>();
+    let exact = project.source_snapshot(SourceId(0)).unwrap();
+    let exact_contours = exact.get_glyph("A").unwrap().contours.clone();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("A", &layer, |draft| {
+                assert!(!draft.replace_imported_contours(&exact_contours)?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    let unchanged = project.document_layer("A", &layer).unwrap();
+    assert_eq!(
+        unchanged.contours().next().unwrap().id(),
+        original_contour_id
+    );
+    assert_eq!(
+        unchanged
+            .contours()
+            .next()
+            .unwrap()
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        original_point_ids
+    );
+
+    let mut imported = Contour::new(
+        vec![
+            point(200.0, 10.0, "imported-a"),
+            point(300.0, 10.0, "imported-b"),
+            point(250.0, 120.0, "imported-c"),
+        ],
+        Some(norad::Identifier::new("contour-imported").unwrap()),
+    );
+    imported.replace_lib(plist::Dictionary::from_iter([(
+        String::from("owner"),
+        plist::Value::String("imported".into()),
+    )]));
+    let mut invalid = imported.clone();
+    invalid.points[1].x = f64::NAN;
+    let snapshot = project.document_snapshot();
+    assert_eq!(
+        project.edit_document_layer("A", &layer, |draft| {
+            draft.append_imported_contours(&[imported.clone(), invalid])?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::NonFinite)
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+
+    let mut pasted = None;
+    let DocumentEditOutcome::Changed { change, .. } = project
+        .edit_document_layer("A", &layer, |draft| {
+            pasted = Some(draft.append_imported_contours(&[imported.clone()])?);
+            Ok(())
+        })
+        .unwrap()
+    else {
+        panic!("imported contour append did not commit")
+    };
+    assert!(change.geometry_changed());
+    let pasted = pasted.unwrap();
+    assert_eq!(pasted.contours.len(), 1);
+    assert_eq!(pasted.points.len(), 3);
+    let appended = project.document_layer("A", &layer).unwrap();
+    let appended_contours = appended.contours().collect::<Vec<_>>();
+    assert_eq!(appended_contours[0].id(), original_contour_id);
+    assert_eq!(appended_contours[1].id(), pasted.contours[0]);
+    assert!(
+        pasted
+            .points
+            .iter()
+            .all(|id| !original_point_ids.contains(id))
+    );
+    assert_eq!(
+        project.glyph_layer("A", &layer).unwrap().contours[1],
+        imported
+    );
+
+    let mut replacement = imported.clone();
+    replacement.points[0].x = 225.0;
+    assert!(matches!(
+        project
+            .edit_document_layer("A", &layer, |draft| {
+                assert!(draft.replace_imported_contours(&[replacement.clone()])?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Changed { .. }
+    ));
+    let replaced = project.document_layer("A", &layer).unwrap();
+    assert_eq!(replaced.width(), 500.25);
+    assert_eq!(replaced.components().count(), 1);
+    assert_eq!(replaced.anchors().count(), 1);
+    assert_ne!(replaced.contours().next().unwrap().id(), pasted.contours[0]);
+    assert_eq!(
+        project.glyph_layer("A", &layer).unwrap().contours,
+        [replacement]
+    );
+
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let reloaded_glyph = reloaded.glyph_layer("A", &reloaded_layer).unwrap();
+    assert_eq!(reloaded_glyph.width, 500.25);
+    assert_eq!(
+        reloaded_glyph.contours,
+        project.glyph_layer("A", &layer).unwrap().contours
+    );
+    assert_eq!(reloaded_glyph.components.len(), 1);
+    assert_eq!(reloaded_glyph.anchors.len(), 1);
+}
