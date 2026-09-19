@@ -1793,8 +1793,10 @@ impl Project {
             .variable
             .source_metadata_edit_draft(source)
             .ok_or(super::DocumentEditError::MissingSource)?;
+        let metrics_before = draft.font_info().metrics.clone();
         edit(&mut draft)?;
-        if !self.variable.commit_source_metadata_edit(source, draft) {
+        let metrics_changed = metrics_before != draft.font_info().metrics;
+        if !self.variable.commit_source_metadata_edit(source, draft)? {
             return Ok(DocumentEditOutcome::Unchanged {
                 revision: self.variable.revision,
             });
@@ -1807,7 +1809,7 @@ impl Project {
                 dependent_layers: Vec::new(),
                 source_metadata: vec![source],
                 geometry: false,
-                metrics: false,
+                metrics: metrics_changed,
                 metadata: true,
                 compilation: true,
             },
@@ -1838,6 +1840,11 @@ impl Project {
             Ok(current) => current != font_metadata,
             Err(_) => true,
         };
+        let font_info_changed =
+            match super::model::font_info::CanonicalFontInfo::from_ufo(&source.font.font_info) {
+                Ok(current) => current != font_info,
+                Err(_) => true,
+            };
         source.font.features = feature_text;
         super::font_ops::write_canonical_metadata_to_ufo(&mut source.font, &font_metadata)
             .expect("canonical source metadata must remain writable as UFO");
@@ -1846,6 +1853,9 @@ impl Project {
             .expect("canonical font info must remain writable as UFO");
         source.dirty = true;
         source.kerning_dirty |= kerning_changed;
+        if font_info_changed {
+            source.refresh_from_font();
+        }
     }
 
     fn synchronize_compatibility_layer(&mut self, name: &str, layer: &LayerId) {

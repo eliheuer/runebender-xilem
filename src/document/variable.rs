@@ -478,16 +478,21 @@ impl VariableData {
         &mut self,
         source: SourceId,
         draft: SourceMetadataEditDraft,
-    ) -> bool {
+    ) -> Result<bool, super::DocumentEditError> {
+        draft
+            .metadata
+            .font_info
+            .validate()
+            .map_err(|_| super::DocumentEditError::InvalidFontInfo)?;
         let Some(metadata) = self.source_metadata.get_mut(&source) else {
-            return false;
+            return Err(super::DocumentEditError::MissingSource);
         };
         if *metadata == draft.metadata {
-            return false;
+            return Ok(false);
         }
         *metadata = draft.metadata;
         self.revision = self.revision.wrapping_add(1);
-        true
+        Ok(true)
     }
 
     pub(super) fn commit_layer_edit(

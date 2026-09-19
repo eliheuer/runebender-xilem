@@ -3474,6 +3474,8 @@ pub enum DocumentEditError {
     MissingLayer,
     /// The requested source identity does not exist.
     MissingSource,
+    /// Canonical font information failed validation.
+    InvalidFontInfo,
     /// The requested point identity does not exist in the layer.
     MissingPoint(PointId),
     /// The requested contour identity does not exist in the layer.
@@ -3503,6 +3505,7 @@ impl std::fmt::Display for DocumentEditError {
         match self {
             Self::MissingLayer => formatter.write_str("glyph layer does not exist"),
             Self::MissingSource => formatter.write_str("source does not exist"),
+            Self::InvalidFontInfo => formatter.write_str("font information is invalid"),
             Self::MissingPoint(id) => write!(formatter, "point {id:?} does not exist"),
             Self::MissingContour(id) => write!(formatter, "contour {id:?} does not exist"),
             Self::NotOpenContour(id) => write!(formatter, "contour {id:?} is not open"),

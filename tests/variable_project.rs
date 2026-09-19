@@ -5516,6 +5516,31 @@ fn source_glyph_export_and_category_have_canonical_project_queries() {
 }
 
 #[test]
+fn invalid_font_info_edits_are_rejected_before_document_mutation() {
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(Glyph::new("A"));
+    let mut project = Project::from_source(Master::from_font(
+        font,
+        PathBuf::from("InvalidFontInfo.ufo"),
+    ));
+    let source = SourceId(0);
+    let before = project.document_snapshot();
+    let revision = project.document_revision();
+    let mut invalid = project.document_font_info(source).unwrap().clone();
+    invalid.metrics.units_per_em = Some(-1.0);
+
+    assert_eq!(
+        project.edit_document_source_metadata(source, |draft| {
+            draft.set_font_info(invalid);
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::InvalidFontInfo)
+    );
+    assert_eq!(project.document_snapshot(), before);
+    assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
 fn canonical_source_metadata_snapshot_restore_is_atomic_and_order_independent() {
     let (_scratch, mut project) = fixture();
     let source = SourceId(1);
