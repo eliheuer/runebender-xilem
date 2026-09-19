@@ -540,3 +540,91 @@ fn harmonize_selection_scope_and_errors_are_atomic() {
     );
     assert_eq!(project.document_snapshot(), snapshot);
 }
+
+#[test]
+fn balance_scopes_a_cubic_by_any_stable_segment_point() {
+    let (_scratch, mut project, layer, _address) = handle_fixture();
+    let before = project.document_layer("handles", &layer).unwrap();
+    let points: Vec<_> = before.contours().next().unwrap().points().collect();
+    let identities: Vec<_> = points.iter().map(|point| point.id()).collect();
+    let positions: Vec<_> = points.iter().map(|point| point.position()).collect();
+    let selected_handle = points[4].id();
+    let expected = runebender::analysis::curve::balance(
+        positions[3],
+        positions[4],
+        positions[5],
+        positions[6],
+    )
+    .map(|(first, second)| (first.round(), second.round()))
+    .expect("fixture cubic is balanceable");
+
+    assert!(matches!(
+        project
+            .edit_document_layer("handles", &layer, |draft| {
+                assert!(draft.balance_handles(&[selected_handle])?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Changed { .. }
+    ));
+
+    let projected = project.glyph_layer("handles", &layer).unwrap();
+    let after = project.document_layer("handles", &layer).unwrap();
+    let points: Vec<_> = after.contours().next().unwrap().points().collect();
+    assert_eq!(
+        points.iter().map(|point| point.id()).collect::<Vec<_>>(),
+        identities,
+        "balance preserves every stable point identity"
+    );
+    assert_eq!(points[4].position(), expected.0);
+    assert_eq!(points[5].position(), expected.1);
+    assert_eq!(points[0].position(), positions[0]);
+    assert_eq!(points[3].position(), positions[3]);
+    assert_eq!(points[6].position(), positions[6]);
+    assert_eq!(
+        projected.contours[0].points[4].name.as_deref(),
+        Some("middle-a")
+    );
+    let expected_lib = object_lib("middle-a");
+    assert_eq!(
+        projected.contours[0].points[4].lib(),
+        Some(&expected_lib),
+        "moved handle keeps its source metadata"
+    );
+}
+
+#[test]
+fn balance_ignores_open_and_unselected_segments_without_history() {
+    let (_scratch, mut project, layer, address) = handle_fixture();
+    let open_handle = project
+        .document_layer("handles", &layer)
+        .unwrap()
+        .contours()
+        .nth(1)
+        .unwrap()
+        .points()
+        .nth(1)
+        .unwrap()
+        .id();
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+
+    assert_eq!(
+        project
+            .edit_document_layer("handles", &layer, |draft| {
+                assert!(
+                    !draft.balance_handles(&[open_handle])?,
+                    "open cubic segments are not balance candidates"
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(
+        project.document_layer_history_depth(&address, HistoryDirection::Undo),
+        0,
+        "a no-op balance records no history"
+    );
+}

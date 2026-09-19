@@ -195,6 +195,89 @@ impl LayerEditDraft {
         }
         Ok(changed)
     }
+
+    /// Balance the handles of selected cubic segments.
+    ///
+    /// Selecting any point belonging to an explicit cubic segment puts that segment in scope.
+    /// An empty selection considers every eligible segment on closed ordinary contours. Open,
+    /// hyperbezier and non-cubic segments remain untouched, and surviving point identities and
+    /// metadata stay attached to the moved handles.
+    pub fn balance_handles(&mut self, selected: &[PointId]) -> Result<bool, DocumentEditError> {
+        validate_selected_points(self, selected)?;
+        let selected: HashSet<_> = selected.iter().copied().collect();
+        let all = selected.is_empty();
+        let mut staged = self.clone();
+        let mut changed = false;
+
+        for shape_index in 0..staged.layer.shapes.len() {
+            let Shape::Path(path) = &staged.layer.shapes[shape_index] else {
+                continue;
+            };
+            let contour_id = read_id(&path.format_specific).expect("canonical contour identity");
+            let hyper = staged
+                .preserved
+                .contours
+                .iter()
+                .find(|contour| contour.id.0 == contour_id)
+                .expect("canonical contour preservation")
+                .hyper;
+            if hyper || !path.closed || path.nodes.len() < 4 {
+                continue;
+            }
+            let Shape::Path(path) = &mut staged.layer.shapes[shape_index] else {
+                unreachable!("shape kind was checked above");
+            };
+            let original = path.nodes.clone();
+            let length = original.len();
+            let mut updates = Vec::new();
+            for start in 0..length {
+                let first = (start + 1) % length;
+                let second = (start + 2) % length;
+                let end = (start + 3) % length;
+                if original[start].nodetype == NodeType::OffCurve
+                    || original[first].nodetype != NodeType::OffCurve
+                    || original[second].nodetype != NodeType::OffCurve
+                    || original[end].nodetype == NodeType::OffCurve
+                {
+                    continue;
+                }
+                let segment_ids = [start, first, second, end].map(|index| {
+                    PointId(
+                        read_id(&original[index].format_specific)
+                            .expect("canonical point identity"),
+                    )
+                });
+                if !all && !segment_ids.iter().any(|id| selected.contains(id)) {
+                    continue;
+                }
+                let Some((first_position, second_position)) = crate::analysis::curve::balance(
+                    node_position(&original[start]),
+                    node_position(&original[first]),
+                    node_position(&original[second]),
+                    node_position(&original[end]),
+                ) else {
+                    continue;
+                };
+                let first_position = first_position.round();
+                let second_position = second_position.round();
+                ensure_points_finite(&[first_position, second_position])?;
+                updates.push((first, first_position));
+                updates.push((second, second_position));
+            }
+            for (index, position) in updates {
+                let node = &mut path.nodes[index];
+                if node.x != position.x || node.y != position.y {
+                    node.x = position.x;
+                    node.y = position.y;
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            *self = staged;
+        }
+        Ok(changed)
+    }
 }
 
 struct RoundedContour {

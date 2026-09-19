@@ -75,7 +75,14 @@ It uses the shared `analysis::curve::harmonize` primitive and preserves the comm
 Two harmonize regressions brought the dedicated suite to five passing tests.
 They cover exact stable-ID handle movement, selection scope, canonical undo and caught-error/no-op atomicity.
 
-Balance and optimize remain in progress in this continuation.
+`LayerEditDraft::balance_handles` puts a cubic segment in scope when any of its four stable point identities is selected, with an empty selection considering every eligible segment.
+It uses the shared `analysis::curve::balance` primitive, preserves the command's rounded result, and moves only the two existing handles.
+Open, hyperbezier, degenerate and non-cubic segments remain untouched, while all surviving point identities and metadata remain exact.
+
+Two balance regressions brought the dedicated suite to seven passing tests.
+They cover segment selection through a handle identity, exact shared-primitive output, source metadata preservation and no-op history behavior for open contours.
+
+Optimize remains in progress in this continuation.
 
 ## Validation
 
