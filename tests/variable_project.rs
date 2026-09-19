@@ -2324,6 +2324,86 @@ fn canonical_implied_quadratic_insertion_materializes_stable_endpoints() {
 }
 
 #[test]
+fn canonical_implied_quadratic_insertion_rejects_stale_segment_identity() {
+    let scratch = Scratch::new();
+    let point = |x, y, typ| ContourPoint::new(x, y, typ, false, None, None);
+    let mut glyph = Glyph::new("stale-implied-hit");
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move),
+            point(0.0, 128.0, PointType::OffCurve),
+            point(128.0, 128.0, PointType::OffCurve),
+            point(128.0, 0.0, PointType::QCurve),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project = Project::from_source(Master::from_font(
+        font,
+        scratch.0.join("StaleImpliedHit.ufo"),
+    ));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project
+        .document_layer("stale-implied-hit", &layer_id)
+        .unwrap();
+    let endpoint = layer
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .nth(3)
+        .unwrap()
+        .id();
+    let stale = runebender::outline::segment_ops::ordinary_layer_segments(layer)
+        .into_iter()
+        .next()
+        .unwrap();
+
+    project
+        .edit_document_layer("stale-implied-hit", &layer_id, |draft| {
+            assert!(draft.set_point_type(endpoint, LayerPointType::Curve)?);
+            Ok(())
+        })
+        .unwrap();
+    let current = runebender::outline::segment_ops::ordinary_layer_segments(
+        project
+            .document_layer("stale-implied-hit", &layer_id)
+            .unwrap(),
+    );
+    assert_eq!(current.len(), 1);
+    assert!(matches!(current[0].seg, kurbo::PathSeg::Cubic(_)));
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("stale-implied-hit", &layer_id, |draft| {
+                assert_eq!(
+                    draft.insert_point_on_quadratic_segment(
+                        stale.start,
+                        stale.controls[0],
+                        stale.end,
+                        0.5,
+                    ),
+                    Err(runebender::document::DocumentEditError::NotDirectSegment(
+                        stale.point_ids()[0],
+                        stale.point_ids()[1]
+                    ))
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);

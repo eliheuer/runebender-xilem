@@ -1480,6 +1480,25 @@ impl LayerEditDraft {
                 None
             }
         };
+        let is_quadratic_pair = |first: usize, second: usize| {
+            if path.nodes[first].nodetype != NodeType::OffCurve
+                || path.nodes[second].nodetype != NodeType::OffCurve
+                || next(first) != Some(second)
+            {
+                return false;
+            }
+            let mut index = second;
+            for _ in 0..path.nodes.len() {
+                let Some(candidate) = next(index) else {
+                    return false;
+                };
+                if path.nodes[candidate].nodetype != NodeType::OffCurve {
+                    return path.nodes[candidate].nodetype == NodeType::QCurve;
+                }
+                index = candidate;
+            }
+            path.closed
+        };
         let start_valid = match start {
             DocumentSegmentEndpoint::Point(_) => {
                 let index = start_indices.expect("stored endpoint index").0;
@@ -1488,10 +1507,7 @@ impl LayerEditDraft {
             }
             DocumentSegmentEndpoint::Implied { .. } => {
                 let (first, second) = start_indices.expect("implied endpoint indices");
-                path.nodes[first].nodetype == NodeType::OffCurve
-                    && path.nodes[second].nodetype == NodeType::OffCurve
-                    && next(first) == Some(second)
-                    && second == control_index
+                is_quadratic_pair(first, second) && second == control_index
             }
         };
         let end_valid = match end {
@@ -1506,10 +1522,7 @@ impl LayerEditDraft {
             }
             DocumentSegmentEndpoint::Implied { .. } => {
                 let (first, second) = end_indices.expect("implied endpoint indices");
-                path.nodes[first].nodetype == NodeType::OffCurve
-                    && path.nodes[second].nodetype == NodeType::OffCurve
-                    && first == control_index
-                    && next(first) == Some(second)
+                is_quadratic_pair(first, second) && first == control_index
             }
         };
         if !start_valid || !end_valid {

@@ -1176,4 +1176,35 @@ The focused implied-quadratic regression, segment-operation unit suite and all 3
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+### Implied-quadratic stale-topology correction
+
+Evidence commit: `Reject stale implied quadratic hits` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Reject stale implied quadratic hits$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Independent review found that adjacency alone did not prove two controls still defined an implied quadratic endpoint.
+A retained hit could therefore be applied after the chain's terminating point changed from quadratic to cubic, replacing one current cubic with three quadratics.
+
+Implied endpoint validation now follows the consecutive controls to their terminating on-curve point and requires a quadratic endpoint.
+A closed contour made entirely of off-curve points remains an explicitly valid quadratic chain.
+The repository regression commits the topology change, catches the stale-hit rejection in a later draft and requires its snapshot and revision to remain unchanged.
+
+The independent review's stale-hit reproducer now passes.
+Its companion coverage also passes all 36 combinations of every segment in a three-control open chain, every rotation of a three-control all-off-curve contour and three split parameters, while preserving neighboring geometry.
+
+```sh
+cargo test --locked --test variable_project canonical_implied_quadratic_insertion_rejects_stale_segment_identity -- --exact --test-threads=1
+cargo test --locked --test variable_project canonical_implied_quadratic_insertion_materializes_stable_endpoints -- --exact --test-threads=1
+/private/tmp/runebender-migration-review.porJgX/implied_insertion_review_fixed --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused repository regressions, both independent-review tests and all 35 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
 The next M04 substep moves point deletion onto canonical topology.

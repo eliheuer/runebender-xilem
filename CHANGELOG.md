@@ -62,6 +62,7 @@ No release has been published yet.
 - Matched ordinary quadratic hit testing to drawn implied joins and all-off-curve contours.
 - Made line-to-curve conversion produce one cubic for zero-control quadratic segments.
 - Prevented extreme finite coordinates from committing nonfinite points during segment insertion.
+- Rejected stale implied-quadratic segment identities after contour topology changes.
 - Reject unsupported Designspace fields, invalid mappings, missing sources and incompatible glyph structures before they can be silently dropped or misinterpreted.
 - Prevented external reloads, stale model results, or stale proposals from overwriting
   unsaved or subsequently edited document state.
