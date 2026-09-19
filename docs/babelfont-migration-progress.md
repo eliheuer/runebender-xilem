@@ -2057,3 +2057,22 @@ The sandbox run passed 444 and failed only when the Unix live-socket test could 
 The all-target workspace check, warning-denied library Clippy, formatting and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 M06 remains open for Session, clipboard, canvas, history and panel callers, and M12 remains open for shared constructors and source-boundary consolidation.
+
+### Intermediate native testing checkpoint
+
+On 2026-09-19 the user authorized promoting the immutable integration checkpoint `bb2180773ffd17c92db7f9870fea44dd4ff231c5` for hands-on native Xilem testing.
+The coordinating task fast-forwarded the primary checkout and verified local `main` and GitHub `origin/main` at that exact commit.
+The previous main commit `314aa3235c372ed8d5fef7a2cddb8be3a07ad1da` is retained by local rollback branch `codex/pre-babelfont-testing-20260919`.
+
+The exact checkpoint passed all 451 library tests, including the Unix live-socket test outside the sandbox, plus 326 binary and integration tests with four documented binary ignores.
+Warning-denied native all-target Clippy, formatting, copyright, rustdoc and doctests, native release build, advisory review, optimized browser build and warning-denied WASM Clippy passed.
+The browser interaction and export matrix passed at device-pixel ratios 1, 2 and 1.25, and Gray and Light native/browser captures were inspected.
+A clean local clone reused dependency caches without source or path-patch changes.
+All 1,744 original Virtua Grotesk source files were SHA-256 verified unchanged after the proof.
+The checkpoint logs and native/browser result manifests are stored under `/private/tmp/runebender-main-checkpoint-fr6dvh0y-evidence`.
+The disposable testing copy and pinned native executable and launcher are stored under `/private/tmp/runebender-virtua-test-bb21807`.
+
+This promotion is an intermediate testing checkpoint, not migration completion.
+Later isolated commits `fb629a0`, `352e513` and `7fd409b` respectively move browser construction, stale compiler-metadata clearing, and Session point-selection/clipboard state further toward the canonical architecture; they are not part of the promoted checkpoint.
+M06 Session/canvas/gesture/history work, remaining M12 native callers, M13 compatibility removal and M14 final proof remain required before the migration can be marked complete.
+The pinned test copy and executable are reserved for user testing and must not be modified by migration work.
