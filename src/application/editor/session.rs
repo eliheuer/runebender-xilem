@@ -14,12 +14,13 @@ use crate::application::font_model::FontModel;
 use crate::application::platform::host;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::view::panels::sections::metric_bufs;
-use crate::application::workspace::{Mode, Tab, TextContext, Tool, Workspace};
+use crate::application::workspace::{MetadataEdit, Mode, Tab, TextContext, Tool, Workspace};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};
-use runebender::document::{LayerView, PointId};
+use runebender::document::project::CanonicalLayerTransaction;
+use runebender::document::{AnchorId, ComponentId, LayerView, PointId};
 use runebender::outline::glyph_ops::{self, PointId as LegacyPointId};
 use runebender::outline::glyph_paths;
 use runebender::outline::glyph_paths::round_units;
@@ -89,9 +90,17 @@ pub(crate) struct Session {
     /// Components, resolved against the font at session creation.
     pub components: BezPath,
     /// Resolved path for each top-level component, for selection and feedback.
-    component_paths: Vec<BezPath>,
-    /// Contours the components resolve to, precomputed for decompose.
-    component_contours: Vec<Vec<norad::Contour>>,
+    component_cache: Vec<runebender::outline::component_ops::ResolvedDocumentComponent>,
+    /// Canonical anchors in the same order as the compatibility glyph projection.
+    anchor_ids: Vec<AnchorId>,
+    /// Fresh no-op transaction used to start one owned canonical edit.
+    canonical_base: Option<CanonicalLayerTransaction>,
+    /// Completed canonical edit waiting for the workspace Project to commit it.
+    pub(crate) pending_canonical: Option<CanonicalLayerTransaction>,
+    pending_canonical_label: Option<&'static str>,
+    active_point_drag: Option<CanonicalPointDrag>,
+    active_component_drag: Option<CanonicalComponentDrag>,
+    active_anchor_drag: Option<CanonicalGesture>,
     pub metrics: Metrics,
     pub selection: HashSet<PointId>,
     /// Canonical point identities in the same order as the compatibility glyph projection.
@@ -102,9 +111,9 @@ pub(crate) struct Session {
     /// pile itself is the master's, in core. The app drains these on
     /// every sync.
     pub(crate) pending: Vec<HistoryOp>,
-    drag_originals: HashMap<LegacyPointId, (f64, f64)>,
     /// A structural compatibility edit can select new points before the canonical layer reloads.
     pending_selection_indices: Option<HashSet<LegacyPointId>>,
+    pending_component_index: Option<usize>,
     in_drag: bool,
     /// The contour the pen is currently extending, if any.
     pub active_contour: Option<usize>,
@@ -112,9 +121,9 @@ pub(crate) struct Session {
     /// `active_contour` on each change.
     pen: Vec<PenPt>,
     /// The currently selected anchor, if any.
-    pub selected_anchor: Option<usize>,
+    pub selected_anchor: Option<AnchorId>,
     /// The selected top-level component, if any.
-    pub selected_component: Option<usize>,
+    pub selected_component: Option<ComponentId>,
     /// Last flip or rotation, re-applied by Duplicate + Repeat.
     last_transform: Option<kurbo::Affine>,
 }
@@ -126,6 +135,27 @@ pub(crate) enum HistoryOp {
     Record(Box<norad::Glyph>),
     /// The last step turned out empty; drop it.
     DiscardLast,
+}
+
+#[derive(Clone)]
+struct CanonicalPointDrag {
+    transaction: CanonicalLayerTransaction,
+    origins: Vec<(PointId, Point)>,
+    changed: bool,
+}
+
+#[derive(Clone)]
+struct CanonicalGesture {
+    transaction: CanonicalLayerTransaction,
+    changed: bool,
+}
+
+#[derive(Clone)]
+struct CanonicalComponentDrag {
+    gesture: CanonicalGesture,
+    component_cache: Vec<runebender::outline::component_ops::ResolvedDocumentComponent>,
+    components: BezPath,
+    source_component: norad::Component,
 }
 
 /// One point in the pen's in-progress buffer.
@@ -160,8 +190,14 @@ impl Session {
             glyph: norad::Glyph::new(".notdef"),
             metaball_preview: BezPath::new(),
             components: BezPath::new(),
-            component_paths: Vec::new(),
-            component_contours: Vec::new(),
+            component_cache: Vec::new(),
+            anchor_ids: Vec::new(),
+            canonical_base: None,
+            pending_canonical: None,
+            pending_canonical_label: None,
+            active_point_drag: None,
+            active_component_drag: None,
+            active_anchor_drag: None,
             metaballs: metaballs::MetaballSelection::default(),
             metrics: Metrics::of(font),
             selection: HashSet::new(),
@@ -169,8 +205,8 @@ impl Session {
             viewport: ViewPort::new(),
             fitted: false,
             pending: Vec::new(),
-            drag_originals: HashMap::new(),
             pending_selection_indices: None,
+            pending_component_index: None,
             in_drag: false,
             active_contour: None,
             pen: Vec::new(),
@@ -200,18 +236,28 @@ impl Session {
         let layer_id = project.document_source(source)?.default_layer();
         let layer = project.document_layer(name, &layer_id)?;
         let glyph = project.glyph_layer(name, &layer_id)?;
-        let font = &project.active_font().font;
-        let components = glyph_paths::components_to_bezpath(&glyph, font);
-        let component_paths = resolved_component_paths(font, &glyph);
-        let component_contours = resolved_component_contour_sets(font, &glyph);
+        let address = runebender::document::variable::GlyphLayerAddress {
+            glyph: name.to_owned(),
+            layer: layer_id,
+        };
+        let component_cache = resolved_document_components(project, &address).ok()?;
+        let components = combined_component_path(&component_cache);
+        let anchor_ids = layer.anchors().map(|anchor| anchor.id()).collect();
+        let canonical_base = project.begin_document_layer_transaction(&address).ok();
         Some(Self {
             glyph_name: name.to_string(),
             metaball_preview: runebender::outline::metaballs::glyph_preview(&glyph)
                 .unwrap_or_default(),
             glyph,
             components,
-            component_paths,
-            component_contours,
+            component_cache,
+            anchor_ids,
+            canonical_base,
+            pending_canonical: None,
+            pending_canonical_label: None,
+            active_point_drag: None,
+            active_component_drag: None,
+            active_anchor_drag: None,
             metaballs: metaballs::MetaballSelection::default(),
             metrics,
             selection: HashSet::new(),
@@ -219,8 +265,8 @@ impl Session {
             viewport: ViewPort::new(),
             fitted: false,
             pending: Vec::new(),
-            drag_originals: HashMap::new(),
             pending_selection_indices: None,
+            pending_component_index: None,
             in_drag: false,
             active_contour: None,
             pen: Vec::new(),
@@ -374,52 +420,101 @@ impl Session {
     }
 
     pub(crate) fn selected_component_path(&self) -> Option<&BezPath> {
-        self.component_paths.get(self.selected_component?)
+        let selected = self.selected_component?;
+        self.component_cache
+            .iter()
+            .find(|component| component.id == selected)
+            .map(|component| &component.path)
     }
 
-    pub(crate) fn component_at(&self, point: Point) -> Option<usize> {
+    pub(crate) fn component_at(&self, point: Point) -> Option<ComponentId> {
         use kurbo::Shape as _;
-        self.component_paths
+        self.component_cache
             .iter()
-            .enumerate()
             .rev()
-            .find(|(_, path)| path.contains(point))
-            .map(|(index, _)| index)
+            .find(|component| component.path.contains(point))
+            .map(|component| component.id)
     }
 
     pub(crate) fn select_component(&mut self, index: usize) -> bool {
-        if index >= self.glyph.components.len() {
+        let Some(component) = self.component_cache.get(index) else {
             return false;
-        }
+        };
         self.selection.clear();
         self.selected_anchor = None;
-        self.selected_component = Some(index);
+        self.selected_component = Some(component.id);
         true
     }
 
+    pub(crate) fn select_component_id(&mut self, id: ComponentId) -> bool {
+        let Some(index) = self
+            .component_cache
+            .iter()
+            .position(|component| component.id == id)
+        else {
+            return false;
+        };
+        self.select_component(index)
+    }
+
+    pub(crate) fn component_selected(&self, index: usize) -> bool {
+        self.component_cache
+            .get(index)
+            .is_some_and(|component| Some(component.id) == self.selected_component)
+    }
+
+    fn selected_component_index(&self) -> Option<usize> {
+        let selected = self.selected_component?;
+        self.component_cache
+            .iter()
+            .position(|component| component.id == selected)
+    }
+
     pub(crate) fn selected_component_aligned(&self) -> Option<bool> {
-        self.glyph
-            .components
-            .get(self.selected_component?)
-            .map(|component| {
-                !runebender::document::composites::component_alignment_disabled(component)
-            })
+        let selected = self.selected_component?;
+        self.canonical_base
+            .as_ref()?
+            .draft()
+            .view()
+            .components()
+            .find(|component| component.id() == selected)
+            .map(|component| !component.alignment_disabled())
     }
 
     fn rebuild_combined_components(&mut self) {
-        self.components = self
-            .component_paths
-            .iter()
-            .fold(BezPath::new(), |mut all, path| {
-                all.extend(path.iter());
-                all
-            });
+        self.components = combined_component_path(&self.component_cache);
     }
 
     #[cfg(test)]
     fn rebuild_component_caches(&mut self, font: &norad::Font) {
-        self.component_paths = resolved_component_paths(font, &self.glyph);
-        self.component_contours = resolved_component_contour_sets(font, &self.glyph);
+        let selected = self.selected_component_index();
+        let mut source = font.clone();
+        source.default_layer_mut().insert_glyph(self.glyph.clone());
+        let project = runebender::document::project::Project::from_source(
+            runebender::document::project::Master::from_font(
+                source,
+                std::path::PathBuf::from("memory.ufo"),
+            ),
+        );
+        let source = project.source_id(project.active).expect("one source");
+        let layer = project
+            .document_source(source)
+            .expect("one canonical source")
+            .default_layer();
+        let address = runebender::document::variable::GlyphLayerAddress {
+            glyph: self.glyph_name.clone(),
+            layer,
+        };
+        self.component_cache = resolved_document_components(&project, &address).unwrap_or_default();
+        self.anchor_ids = project
+            .document_layer(&address.glyph, &address.layer)
+            .into_iter()
+            .flat_map(|layer| layer.anchors().map(|anchor| anchor.id()))
+            .collect();
+        self.canonical_base = project.begin_document_layer_transaction(&address).ok();
+        self.selected_component = selected
+            .and_then(|index| self.component_cache.get(index))
+            .map(|component| component.id);
         self.rebuild_combined_components();
     }
 
@@ -431,16 +526,16 @@ impl Session {
         }
         self.record(EditType::Normal);
         self.glyph = changed;
-        self.selected_component = Some(self.glyph.components.len() - 1);
         self.selection.clear();
         self.selected_anchor = None;
         self.rebuild_component_caches(font);
+        self.selected_component = self.component_cache.last().map(|component| component.id);
         true
     }
 
     #[cfg(test)]
     pub(crate) fn toggle_component_alignment(&mut self, font: &norad::Font) -> bool {
-        let Some(index) = self.selected_component else {
+        let Some(index) = self.selected_component_index() else {
             return false;
         };
         let mut changed = self.glyph.clone();
@@ -467,27 +562,64 @@ impl Session {
         {
             return false;
         }
-        self.record(EditType::Drag);
-        self.translate_selected_component(dx, dy)
+        let selected = self.selected_component.expect("checked above");
+        if self.active_component_drag.is_none() {
+            let Some(transaction) = self.canonical_base.clone() else {
+                return false;
+            };
+            let Some(index) = self.selected_component_index() else {
+                return false;
+            };
+            let Some(source_component) = self.glyph.components.get(index).cloned() else {
+                return false;
+            };
+            self.active_component_drag = Some(CanonicalComponentDrag {
+                gesture: CanonicalGesture {
+                    transaction,
+                    changed: false,
+                },
+                component_cache: self.component_cache.clone(),
+                components: self.components.clone(),
+                source_component,
+            });
+            self.in_drag = true;
+        }
+        let changed = {
+            let drag = self.active_component_drag.as_mut().expect("initialized");
+            let Some(transform) = drag
+                .gesture
+                .transaction
+                .draft()
+                .view()
+                .components()
+                .find(|component| component.id() == selected)
+                .map(|component| component.transform())
+            else {
+                return false;
+            };
+            let Ok(changed) = drag
+                .gesture
+                .transaction
+                .draft_mut()
+                .set_component_transform(selected, kurbo::Affine::translate((dx, dy)) * transform)
+            else {
+                return false;
+            };
+            drag.gesture.changed |= changed;
+            changed
+        };
+        changed && self.translate_selected_component(dx, dy)
     }
 
     fn translate_selected_component(&mut self, dx: f64, dy: f64) -> bool {
-        let Some(index) = self.selected_component else {
+        let Some(index) = self.selected_component_index() else {
             return false;
         };
         let changed =
             runebender::outline::component_ops::translate_component(&mut self.glyph, index, dx, dy);
         if changed {
-            if let Some(path) = self.component_paths.get_mut(index) {
-                *path = kurbo::Affine::translate((dx, dy)) * path.clone();
-            }
-            if let Some(contours) = self.component_contours.get_mut(index) {
-                for contour in contours {
-                    for point in &mut contour.points {
-                        point.x += dx;
-                        point.y += dy;
-                    }
-                }
+            if let Some(component) = self.component_cache.get_mut(index) {
+                component.path = kurbo::Affine::translate((dx, dy)) * component.path.clone();
             }
             self.rebuild_combined_components();
         }
@@ -495,7 +627,27 @@ impl Session {
     }
 
     pub(crate) fn end_component_drag(&mut self) {
-        self.record(EditType::DragUp);
+        if let Some(drag) = self.active_component_drag.take()
+            && drag.gesture.changed
+        {
+            self.pending_canonical = Some(drag.gesture.transaction);
+            self.pending_canonical_label = Some("component drag");
+        }
+        self.in_drag = false;
+    }
+
+    pub(crate) fn cancel_component_drag(&mut self) {
+        let Some(drag) = self.active_component_drag.take() else {
+            return;
+        };
+        if let Some(index) = self.selected_component_index()
+            && let Some(component) = self.glyph.components.get_mut(index)
+        {
+            *component = drag.source_component;
+        }
+        self.component_cache = drag.component_cache;
+        self.components = drag.components;
+        self.in_drag = false;
     }
 
     pub(crate) fn outline(&self) -> BezPath {
@@ -580,7 +732,25 @@ impl Session {
                 .document_layer(&self.glyph_name, &layer_id)
                 .expect("the replacement glyph was imported"),
         );
-        self.reload_parts(font, glyph, point_ids);
+        let address = runebender::document::variable::GlyphLayerAddress {
+            glyph: self.glyph_name.clone(),
+            layer: layer_id,
+        };
+        let component_cache = resolved_document_components(&project, &address).unwrap_or_default();
+        let anchor_ids = project
+            .document_layer(&address.glyph, &address.layer)
+            .expect("the replacement glyph was imported")
+            .anchors()
+            .map(|anchor| anchor.id())
+            .collect();
+        let canonical_base = project.begin_document_layer_transaction(&address).ok();
+        self.reload_parts(
+            glyph,
+            point_ids,
+            component_cache,
+            anchor_ids,
+            canonical_base,
+        );
     }
 
     /// Rebase the compatibility projection on the canonical layer while retaining stable IDs.
@@ -595,33 +765,57 @@ impl Session {
         let Some(glyph) = project.glyph_layer(&address.glyph, &address.layer) else {
             return false;
         };
-        let Some(source_index) = project.source_index(address.layer.source) else {
+        let Ok(component_cache) = resolved_document_components(project, address) else {
             return false;
         };
+        let anchor_ids = layer.anchors().map(|anchor| anchor.id()).collect();
+        let canonical_base = project.begin_document_layer_transaction(address).ok();
         self.reload_parts(
-            &project.sources()[source_index].font,
             glyph,
             canonical_point_ids(layer),
+            component_cache,
+            anchor_ids,
+            canonical_base,
         );
         true
     }
 
     fn reload_parts(
         &mut self,
-        font: &norad::Font,
         glyph: norad::Glyph,
         point_ids: Vec<Vec<PointId>>,
+        component_cache: Vec<runebender::outline::component_ops::ResolvedDocumentComponent>,
+        anchor_ids: Vec<AnchorId>,
+        canonical_base: Option<CanonicalLayerTransaction>,
     ) {
         let selected_ids = self.selection.clone();
         let selected_indices = self.pending_selection_indices.take();
-        self.components = glyph_paths::components_to_bezpath(&glyph, font);
-        self.component_paths = resolved_component_paths(font, &glyph);
-        self.component_contours = resolved_component_contour_sets(font, &glyph);
-        self.selected_component = self
-            .selected_component
-            .filter(|index| *index < glyph.components.len());
+        let selected_component_index = self.pending_component_index.take();
+        self.components = combined_component_path(&component_cache);
+        self.component_cache = component_cache;
+        self.selected_component = selected_component_index.map_or_else(
+            || {
+                self.selected_component.filter(|selected| {
+                    self.component_cache
+                        .iter()
+                        .any(|component| component.id == *selected)
+                })
+            },
+            |index| {
+                self.component_cache
+                    .get(index)
+                    .map(|component| component.id)
+            },
+        );
         self.glyph = glyph;
         self.point_ids = point_ids;
+        self.anchor_ids = anchor_ids;
+        self.canonical_base = canonical_base;
+        self.pending_canonical = None;
+        self.pending_canonical_label = None;
+        self.active_point_drag = None;
+        self.active_component_drag = None;
+        self.active_anchor_drag = None;
         let available: HashSet<_> = self.point_ids.iter().flatten().copied().collect();
         self.selection = selected_indices.map_or_else(
             || {
@@ -648,7 +842,7 @@ impl Session {
         self.in_drag = false;
         self.selected_anchor = self
             .selected_anchor
-            .filter(|index| *index < self.glyph.anchors.len());
+            .filter(|selected| self.anchor_ids.contains(selected));
         self.prune_selection();
     }
 
@@ -658,25 +852,95 @@ impl Session {
     }
 
     pub(crate) fn begin_point_drag(&mut self) {
-        self.record(EditType::Drag);
-        self.drag_originals = point_ops::drag_origins(&self.glyph, &self.legacy_selection(), false);
+        let Some(transaction) = self.canonical_base.clone() else {
+            return;
+        };
+        let selected: Vec<_> = self.selection.iter().copied().collect();
+        let Ok(origins) = transaction
+            .draft()
+            .view()
+            .point_drag_origins(&selected, false)
+        else {
+            return;
+        };
+        self.active_point_drag = Some(CanonicalPointDrag {
+            transaction,
+            origins,
+            changed: false,
+        });
+        self.in_drag = true;
     }
 
     /// Move the selection to `total` design units from where the drag began.
     pub(crate) fn drag_points_to(&mut self, total: (f64, f64)) -> bool {
-        let selection = self.legacy_selection();
-        point_ops::translate_points(
-            &mut self.glyph,
-            &selection,
-            &self.drag_originals,
-            total,
-            false,
-        )
+        let selected: Vec<_> = self.selection.iter().copied().collect();
+        let (changed, positions) = {
+            let Some(drag) = &mut self.active_point_drag else {
+                return false;
+            };
+            let Ok(changed) = drag.transaction.draft_mut().translate_points(
+                &selected,
+                &drag.origins,
+                kurbo::Vec2::new(total.0, total.1),
+                false,
+            ) else {
+                return false;
+            };
+            drag.changed |= changed;
+            let positions = drag
+                .transaction
+                .draft()
+                .view()
+                .contours()
+                .flat_map(|contour| contour.points().map(|point| (point.id(), point.position())))
+                .collect();
+            (changed, positions)
+        };
+        self.sync_glyph_points(positions);
+        changed
     }
 
     pub(crate) fn end_point_drag(&mut self) {
-        self.record(EditType::DragUp);
-        self.drag_originals.clear();
+        if let Some(drag) = self.active_point_drag.take()
+            && drag.changed
+        {
+            self.pending_canonical = Some(drag.transaction);
+            self.pending_canonical_label = Some("point drag");
+        }
+        self.in_drag = false;
+    }
+
+    pub(crate) fn cancel_point_drag(&mut self) {
+        self.active_point_drag = None;
+        self.in_drag = false;
+        let positions = self.canonical_base.as_ref().map(|base| {
+            base.draft()
+                .view()
+                .contours()
+                .flat_map(|contour| contour.points().map(|point| (point.id(), point.position())))
+                .collect()
+        });
+        if let Some(positions) = positions {
+            self.sync_glyph_points(positions);
+        }
+    }
+
+    fn sync_glyph_points(&mut self, positions: Vec<(PointId, Point)>) {
+        let updates: Vec<_> = positions
+            .into_iter()
+            .filter_map(|(id, position)| self.legacy_point(id).map(|index| (index, position)))
+            .collect();
+        for ((contour, point), position) in updates {
+            if let Some(point) = self
+                .glyph
+                .contours
+                .get_mut(contour)
+                .and_then(|contour| contour.points.get_mut(point))
+            {
+                point.x = position.x;
+                point.y = position.y;
+            }
+        }
     }
 
     pub(crate) fn nudge(&mut self, dx: f64, dy: f64) -> bool {
@@ -705,11 +969,11 @@ impl Session {
     }
 
     pub(crate) fn delete_selected(&mut self) -> bool {
-        if let Some(index) = self.selected_component.take() {
+        if let Some(index) = self.selected_component_index() {
+            self.selected_component = None;
             self.record(EditType::Normal);
             if runebender::outline::component_ops::delete_component(&mut self.glyph, index) {
-                self.component_paths.remove(index);
-                self.component_contours.remove(index);
+                self.component_cache.remove(index);
                 self.rebuild_combined_components();
                 return true;
             }
@@ -1026,16 +1290,24 @@ impl Session {
     }
 
     pub(crate) fn decompose(&mut self) -> bool {
-        if self.glyph.components.is_empty() || self.component_contours.is_empty() {
+        if self.component_cache.is_empty() {
             return false;
         }
-        self.record(EditType::Normal);
-        for contours in &mut self.component_contours {
-            self.glyph.contours.append(contours);
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return false;
+        };
+        let resolved: Vec<_> = self
+            .component_cache
+            .iter()
+            .flat_map(|component| component.contours.iter().cloned())
+            .collect();
+        if transaction.draft_mut().decompose_components(&resolved) != Ok(true) {
+            return false;
         }
-        self.glyph.components.clear();
+        self.pending_canonical = Some(transaction);
+        self.pending_canonical_label = Some("decompose components");
         self.components = BezPath::new();
-        self.component_paths.clear();
+        self.component_cache.clear();
         self.selected_component = None;
         true
     }
@@ -1182,32 +1454,15 @@ impl Session {
     }
 
     pub(crate) fn duplicate(&mut self) -> bool {
-        if let Some(index) = self.selected_component {
-            let Some(path) = self.component_paths.get(index).cloned() else {
-                return false;
-            };
+        if let Some(index) = self.selected_component_index() {
             self.record(EditType::Normal);
             let Some(next) =
                 runebender::outline::component_ops::duplicate_component(&mut self.glyph, index)
             else {
                 return false;
             };
-            self.component_paths
-                .push(kurbo::Affine::translate((20.0, 20.0)) * path);
-            let mut contours = self
-                .component_contours
-                .get(index)
-                .cloned()
-                .unwrap_or_default();
-            for contour in &mut contours {
-                for point in &mut contour.points {
-                    point.x += 20.0;
-                    point.y += 20.0;
-                }
-            }
-            self.component_contours.push(contours);
-            self.selected_component = Some(next);
-            self.rebuild_combined_components();
+            self.pending_component_index = Some(next);
+            self.selected_component = None;
             return true;
         }
         self.record(EditType::Normal);
@@ -1274,8 +1529,8 @@ impl Session {
         runebender::outline::convert::cubics_to_quads(&mut self.glyph, 1.0)
     }
 
-    /// Index of the anchor near `p` (design space), if within `tol`.
-    pub(crate) fn anchor_at(&self, p: Point, tol: f64) -> Option<usize> {
+    /// Stable identity of the anchor near `p` (design space), if within `tol`.
+    pub(crate) fn anchor_at(&self, p: Point, tol: f64) -> Option<AnchorId> {
         self.glyph
             .anchors
             .iter()
@@ -1286,43 +1541,124 @@ impl Session {
                     .distance(p)
                     .total_cmp(&Point::new(b.1.x, b.1.y).distance(p))
             })
-            .map(|(i, _)| i)
+            .and_then(|(index, _)| self.anchor_ids.get(index).copied())
+    }
+
+    pub(crate) fn anchor_selected(&self, index: usize) -> bool {
+        self.anchor_ids
+            .get(index)
+            .is_some_and(|anchor| Some(*anchor) == self.selected_anchor)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn anchor_id_at(&self, index: usize) -> Option<AnchorId> {
+        self.anchor_ids.get(index).copied()
     }
 
     pub(crate) fn add_anchor(&mut self, x: f64, y: f64) {
-        self.record(EditType::Normal);
+        if !x.is_finite() || !y.is_finite() {
+            return;
+        }
         let n = self.glyph.anchors.len();
-        let name = norad::Name::new(&format!("anchor.{n}")).ok();
-        self.glyph
-            .anchors
-            .push(norad::Anchor::new(x, y, name, None, None));
-        self.selected_anchor = Some(n);
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return;
+        };
+        let Ok(anchor) = transaction
+            .draft_mut()
+            .add_anchor(format!("anchor.{n}"), Point::new(x, y))
+        else {
+            return;
+        };
+        self.selected_anchor = Some(anchor);
+        self.pending_canonical = Some(transaction);
+        self.pending_canonical_label = Some("add anchor");
     }
 
-    pub(crate) fn move_anchor(&mut self, idx: usize, x: f64, y: f64) {
+    pub(crate) fn move_anchor(&mut self, id: AnchorId, x: f64, y: f64) {
+        let Some(idx) = self
+            .anchor_ids
+            .iter()
+            .position(|candidate| *candidate == id)
+        else {
+            return;
+        };
         let Some(anchor) = self.glyph.anchors.get(idx) else {
             return;
         };
         if !x.is_finite() || !y.is_finite() || (anchor.x == x && anchor.y == y) {
             return;
         }
-        self.record(EditType::Drag);
+        if self.active_anchor_drag.is_none() {
+            let Some(transaction) = self.canonical_base.clone() else {
+                return;
+            };
+            self.active_anchor_drag = Some(CanonicalGesture {
+                transaction,
+                changed: false,
+            });
+            self.in_drag = true;
+        }
+        let drag = self.active_anchor_drag.as_mut().expect("initialized");
+        let Ok(changed) = drag
+            .transaction
+            .draft_mut()
+            .set_anchor_position(id, Point::new(x, y))
+        else {
+            return;
+        };
+        drag.changed |= changed;
         let anchor = &mut self.glyph.anchors[idx];
         anchor.x = x;
         anchor.y = y;
     }
 
+    pub(crate) fn end_anchor_drag(&mut self) {
+        if let Some(drag) = self.active_anchor_drag.take()
+            && drag.changed
+        {
+            self.pending_canonical = Some(drag.transaction);
+            self.pending_canonical_label = Some("anchor drag");
+        }
+        self.in_drag = false;
+    }
+
+    pub(crate) fn cancel_anchor_drag(&mut self) {
+        self.active_anchor_drag = None;
+        self.in_drag = false;
+        let position = self.selected_anchor.and_then(|selected| {
+            self.canonical_base
+                .as_ref()?
+                .draft()
+                .view()
+                .anchors()
+                .find(|anchor| anchor.id() == selected)
+                .map(|anchor| anchor.position())
+        });
+        if let (Some(selected), Some(position)) = (self.selected_anchor, position)
+            && let Some(index) = self
+                .anchor_ids
+                .iter()
+                .position(|candidate| *candidate == selected)
+            && let Some(anchor) = self.glyph.anchors.get_mut(index)
+        {
+            anchor.x = position.x;
+            anchor.y = position.y;
+        }
+    }
+
     pub(crate) fn delete_selected_anchor(&mut self) -> bool {
-        let Some(idx) = self.selected_anchor.take() else {
+        let Some(id) = self.selected_anchor.take() else {
             return false;
         };
-        if idx < self.glyph.anchors.len() {
-            self.record(EditType::Normal);
-            self.glyph.anchors.remove(idx);
-            true
-        } else {
-            false
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return false;
+        };
+        if transaction.draft_mut().remove_anchor(id) != Ok(true) {
+            return false;
         }
+        self.pending_canonical = Some(transaction);
+        self.pending_canonical_label = Some("delete anchor");
+        true
     }
 
     /// Continuity of every on-curve node: corner, kink, G1, G2, G3.
@@ -1401,20 +1737,6 @@ impl Session {
     }
 }
 
-fn resolved_component_paths(font: &norad::Font, glyph: &norad::Glyph) -> Vec<BezPath> {
-    glyph
-        .components
-        .iter()
-        .map(|component| {
-            font.get_glyph(&component.base)
-                .map_or_else(BezPath::new, |base| {
-                    glyph_paths::component_affine(&component.transform)
-                        * glyph_paths::glyph_to_bezpath(base, font)
-                })
-        })
-        .collect()
-}
-
 fn canonical_point_ids(layer: LayerView<'_>) -> Vec<Vec<PointId>> {
     layer
         .contours()
@@ -1422,21 +1744,43 @@ fn canonical_point_ids(layer: LayerView<'_>) -> Vec<Vec<PointId>> {
         .collect()
 }
 
-/// Resolve each top-level component separately so selection edits and
-/// decomposition keep the same cached geometry.
-fn resolved_component_contour_sets(
-    font: &norad::Font,
-    glyph: &norad::Glyph,
-) -> Vec<Vec<norad::Contour>> {
-    glyph
-        .components
+fn resolved_document_components(
+    project: &runebender::document::project::Project,
+    address: &runebender::document::variable::GlyphLayerAddress,
+) -> Result<
+    Vec<runebender::outline::component_ops::ResolvedDocumentComponent>,
+    glyph_paths::ComponentResolveError,
+> {
+    let root = project
+        .document_layer(&address.glyph, &address.layer)
+        .expect("the addressed canonical layer exists");
+    runebender::outline::component_ops::resolved_document_components(
+        root,
+        |name| project.document_layer(name, &address.layer),
+        |name| {
+            project
+                .document_glyph(name)
+                .map(|glyph| {
+                    glyph
+                        .layer_ids()
+                        .filter(|candidate| candidate.source == address.layer.source)
+                        .filter_map(|candidate| glyph.layer(candidate))
+                        .collect()
+                })
+                .unwrap_or_default()
+        },
+    )
+}
+
+fn combined_component_path(
+    components: &[runebender::outline::component_ops::ResolvedDocumentComponent],
+) -> BezPath {
+    components
         .iter()
-        .map(|component| {
-            let mut wrapper = norad::Glyph::new("component-wrapper");
-            wrapper.components.push(component.clone());
-            runebender::outline::component_ops::resolved_component_contours(font, &wrapper)
+        .fold(BezPath::new(), |mut path, component| {
+            path.extend(component.path.iter());
+            path
         })
-        .collect()
 }
 
 impl Workspace {
@@ -1703,6 +2047,55 @@ impl Workspace {
     /// editor event so save/preview see interactive edits).
     pub(crate) fn sync_session_from(&mut self, session: &mut Session) {
         let name = session.glyph_name.clone();
+        if let Some(mut transaction) = session.pending_canonical.take() {
+            let label = session
+                .pending_canonical_label
+                .take()
+                .unwrap_or("canonical editor edit");
+            let address = transaction.address().clone();
+            let alignment = if matches!(label, "add anchor" | "anchor drag" | "delete anchor") {
+                let layer = address.layer.clone();
+                let project = &self.font.project;
+                runebender::document::composites::realign_document_layer(
+                    transaction.draft_mut(),
+                    |glyph| project.document_layer(glyph, &layer),
+                    true,
+                )
+            } else {
+                Ok(false)
+            };
+            let undo_depth = self
+                .font
+                .index_of(&name)
+                .map(|index| self.font.master().undo_depth(index))
+                .unwrap_or_default();
+            let outcome = alignment.map_err(|error| error.to_string()).and_then(|_| {
+                self.font
+                    .project
+                    .commit_document_layer_transaction(transaction)
+                    .map_err(|error| error.to_string())
+            });
+            match outcome {
+                Ok(runebender::document::project::DocumentEditOutcome::Changed { .. }) => {
+                    self.metadata_undo.push(MetadataEdit::DocumentLayer {
+                        glyph: name.clone(),
+                        address: address.clone(),
+                        label: label.into(),
+                        undo_depth,
+                    });
+                    self.metadata_redo.clear();
+                    session.pending.clear();
+                    let _ = session.reload_from_project(&self.font.project, &address);
+                }
+                Ok(runebender::document::project::DocumentEditOutcome::Unchanged { .. }) => {
+                    let _ = session.reload_from_project(&self.font.project, &address);
+                }
+                Err(error) => {
+                    self.note = format!("The active glyph layer changed before commit: {error}");
+                    let _ = session.reload_from_project(&self.font.project, &address);
+                }
+            }
+        }
         if session
             .pending
             .iter()
@@ -2185,7 +2578,11 @@ mod tests {
         font.default_layer_mut().insert_glyph(composite);
 
         let mut session = Session::new(&font, "composite").unwrap();
-        assert_eq!(session.component_at(Point::new(50.0, 60.0)), Some(0));
+        let first_component = session.component_cache[0].id;
+        assert_eq!(
+            session.component_at(Point::new(50.0, 60.0)),
+            Some(first_component)
+        );
         assert!(session.select_component(0));
         assert_eq!(session.selected_component_aligned(), Some(true));
         assert!(!session.drag_component_by(10.0, 0.0));
@@ -2194,36 +2591,47 @@ mod tests {
         assert_eq!(session.selected_component_aligned(), Some(false));
         session.pending.clear();
         assert!(session.drag_component_by(10.0, 0.0));
+        session.cancel_component_drag();
+        assert_eq!(session.glyph.components[0].transform.x_offset, 30.0);
+        assert_eq!(session.glyph.components[0].transform.y_offset, 40.0);
+        assert!(session.pending_canonical.is_none());
+        assert!(session.drag_component_by(10.0, 0.0));
         assert!(session.drag_component_by(5.0, 5.0));
-        assert_eq!(
-            session.pending.len(),
-            1,
-            "one pointer gesture, one undo step"
-        );
+        assert!(session.pending.is_empty());
         session.end_component_drag();
         assert!(!session.gesture_in_progress());
+        assert!(session.pending_canonical.is_some());
         assert_eq!(session.glyph.components[0].transform.x_offset, 45.0);
         assert_eq!(session.glyph.components[0].transform.y_offset, 45.0);
         assert!(session.component_at(Point::new(50.0, 50.0)).is_some());
 
         assert!(session.duplicate());
         assert_eq!(session.glyph.components.len(), 2);
-        assert_eq!(session.selected_component, Some(1));
+        let mut changed_font = font.clone();
+        changed_font
+            .default_layer_mut()
+            .insert_glyph(session.glyph.clone());
+        session.reload_glyph(&changed_font, session.glyph.clone());
+        assert!(session.component_selected(1));
         assert!(session.delete_selected());
         assert_eq!(session.glyph.components.len(), 1);
         assert_eq!(session.selected_component, None);
 
-        let before_drag = match &session.pending[0] {
-            HistoryOp::Record(glyph) => (**glyph).clone(),
-            HistoryOp::DiscardLast => panic!("drag must record its original glyph"),
-        };
-        session.reload_glyph(&font, before_drag);
+        session.reload_glyph(
+            &font,
+            font.get_glyph("composite").expect("original glyph").clone(),
+        );
         assert_eq!(session.glyph.components[0].transform.x_offset, 30.0);
-        assert_eq!(session.component_at(Point::new(50.0, 60.0)), Some(0));
+        assert!(session.component_at(Point::new(50.0, 60.0)).is_some());
         assert!(session.select_component(0));
         assert!(session.decompose());
-        assert_eq!(session.glyph.contours.len(), 1);
-        assert!(session.glyph.components.is_empty());
+        let draft = session
+            .pending_canonical
+            .as_ref()
+            .expect("canonical edit")
+            .draft();
+        assert_eq!(draft.view().contours().count(), 1);
+        assert_eq!(draft.view().components().count(), 0);
     }
 
     #[test]
@@ -2240,7 +2648,7 @@ mod tests {
         assert!(session.pending.is_empty());
         assert!(session.add_component(&font, "base"));
         assert_eq!(session.pending.len(), 1);
-        assert_eq!(session.selected_component, Some(0));
+        assert!(session.component_selected(0));
     }
 
     #[test]
@@ -2398,18 +2806,39 @@ mod tests {
             None,
             None,
         ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut().insert_glyph(session.glyph.clone());
+        session.reload_glyph(&font, session.glyph.clone());
+        let anchor = session.anchor_id_at(0).expect("canonical anchor identity");
 
-        session.move_anchor(0, 120.0, 220.0);
-        session.move_anchor(0, 140.0, 240.0);
-        assert_eq!(session.pending.len(), 1);
+        session.selected_anchor = Some(anchor);
+        session.move_anchor(anchor, 120.0, 220.0);
+        session.cancel_anchor_drag();
+        assert_eq!(
+            (session.glyph.anchors[0].x, session.glyph.anchors[0].y),
+            (100.0, 200.0)
+        );
+        assert!(session.pending_canonical.is_none());
+
+        session.move_anchor(anchor, 120.0, 220.0);
+        session.move_anchor(anchor, 140.0, 240.0);
+        assert!(session.pending.is_empty());
         assert!(session.gesture_in_progress());
-        let HistoryOp::Record(before) = &session.pending[0] else {
-            panic!("anchor drag records its starting glyph");
-        };
-        assert_eq!((before.anchors[0].x, before.anchors[0].y), (100.0, 200.0));
-        session.end_metric_drag();
+        let draft = session
+            .active_anchor_drag
+            .as_ref()
+            .expect("owned anchor transaction")
+            .transaction
+            .draft();
+        assert_eq!(
+            draft.view().anchors().next().unwrap().position(),
+            Point::new(140.0, 240.0)
+        );
+        session.end_anchor_drag();
         assert!(!session.gesture_in_progress());
+        assert!(session.pending_canonical.is_some());
 
+        session.pending_canonical = None;
         session.pending.clear();
         session.drag_advance(520.0);
         session.drag_advance(540.0);
@@ -2423,7 +2852,7 @@ mod tests {
         assert_eq!(session.advance(), 540.0);
 
         session.pending.clear();
-        session.move_anchor(0, f64::NAN, 10.0);
+        session.move_anchor(anchor, f64::NAN, 10.0);
         session.drag_advance(f64::INFINITY);
         assert!(session.pending.is_empty());
     }
@@ -2472,28 +2901,38 @@ mod tests {
             None,
         ));
         font.default_layer_mut().insert_glyph(composite);
-        let mut master = Master::from_font(font, std::path::PathBuf::new());
-        let index = master.name_map["composite"];
-        let mut session = Session::new(&master.font, "composite").expect("composite exists");
+        let mut project = runebender::document::project::Project::from_source(Master::from_font(
+            font,
+            std::path::PathBuf::new(),
+        ));
+        let source = project.document_sources().next().unwrap();
+        let address = runebender::document::variable::GlyphLayerAddress {
+            glyph: "composite".into(),
+            layer: source.default_layer(),
+        };
+        let mut session = Session::new_from_project(
+            &project,
+            "composite",
+            Metrics::of(&project.active_font().font),
+        )
+        .expect("composite exists");
         let before_bounds = session.components.bounding_box();
 
         assert!(session.decompose());
-        for op in session.pending.drain(..) {
-            if let HistoryOp::Record(glyph) = op {
-                master.history.record("composite", &glyph);
-            }
-        }
-        master.edit_glyph(index, |glyph| *glyph = session.glyph.clone());
+        project
+            .commit_document_layer_transaction(
+                session.pending_canonical.take().expect("canonical edit"),
+            )
+            .unwrap();
+        session.reload_from_project(&project, &address);
         assert!(session.components.elements().is_empty());
-        assert!(master.undo(index));
-        session.reload_glyph(
-            &master.font,
-            master
-                .font
-                .get_glyph("composite")
-                .expect("component restored")
-                .clone(),
-        );
+        project
+            .replay_document_layer_history(
+                &address,
+                runebender::document::history::HistoryDirection::Undo,
+            )
+            .unwrap();
+        session.reload_from_project(&project, &address);
         assert_eq!(session.glyph.components.len(), 1);
         assert_eq!(session.components.bounding_box(), before_bounds);
     }

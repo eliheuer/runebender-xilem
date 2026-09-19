@@ -1842,8 +1842,9 @@ mod tests {
         let target = workspace.font.index_of("target").unwrap();
         workspace.open_glyph(target);
         workspace.apply_op(|session| {
-            session.move_anchor(0, 400.0, 600.0);
-            session.end_metric_drag();
+            let anchor = session.anchor_id_at(0).expect("canonical anchor identity");
+            session.move_anchor(anchor, 400.0, 600.0);
+            session.end_anchor_drag();
             true
         });
         let component = &workspace.session.glyph.components[0];

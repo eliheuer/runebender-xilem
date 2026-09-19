@@ -1423,13 +1423,15 @@ mod size_tests {
         app.open_glyph(app.font.index_of("beh-ar").expect("beh-ar"));
 
         let mut session = (*app.session).clone();
-        session.selected_anchor = Some(0);
-        session.move_anchor(0, 340.0, 560.0);
-        session.move_anchor(0, 360.0, 580.0);
-        session.end_metric_drag();
+        let anchor = session.anchor_id_at(0).expect("canonical anchor identity");
+        session.selected_anchor = Some(anchor);
+        session.move_anchor(anchor, 340.0, 560.0);
+        session.move_anchor(anchor, 360.0, 580.0);
+        session.end_anchor_drag();
+        app.sync_session_from(&mut session);
         app.session = Arc::new(session);
-        app.refresh_open_glyph();
-        assert_eq!(app.font.master().undo_depth(0), 1);
+        assert_eq!(app.font.master().undo_depth(0), 0);
+        assert_eq!(app.metadata_undo.len(), 1);
         app.undo_open_glyph(false);
         assert_eq!(
             (
@@ -1448,10 +1450,11 @@ mod size_tests {
         );
 
         let mut session = (*app.session).clone();
-        session.selected_anchor = Some(0);
+        let anchor = session.anchor_id_at(0).expect("canonical anchor identity");
+        session.selected_anchor = Some(anchor);
         assert!(session.delete_selected_anchor());
+        app.sync_session_from(&mut session);
         app.session = Arc::new(session);
-        app.refresh_open_glyph();
         assert!(app.session.glyph.anchors.is_empty());
         app.undo_open_glyph(false);
         assert_eq!(app.session.glyph.anchors.len(), 1);

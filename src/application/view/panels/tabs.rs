@@ -151,7 +151,7 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
             recipes::toggle(
                 pal,
                 format!("{} · component", component.base),
-                app.session.selected_component == Some(index),
+                app.session.component_selected(index),
                 move |app: &mut Workspace| {
                     Arc::make_mut(&mut app.session).select_component(index);
                     app.selected_points = 0;

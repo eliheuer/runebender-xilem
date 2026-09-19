@@ -18,7 +18,7 @@ use masonry::imaging::Painter;
 use masonry::kurbo;
 use masonry::kurbo::{Affine, Axis, Circle, Line, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-use runebender::document::PointId;
+use runebender::document::{AnchorId, PointId};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
@@ -376,9 +376,9 @@ enum Drag {
         start: Point,
         current: Point,
     },
-    /// Dragging an anchor by index.
+    /// Dragging an anchor by stable document identity.
     Anchor {
-        idx: usize,
+        id: AnchorId,
     },
     /// Dragging one top-level component; `last` is in design space.
     Component {
@@ -1444,7 +1444,7 @@ impl Widget for EditorWidget {
             let anchor_color = pal.mark("pink").unwrap_or_else(|| pal.role("danger"));
             for (ai, anchor) in self.session.glyph.anchors.iter().enumerate() {
                 let p = affine * Point::new(anchor.x, anchor.y);
-                let selected = self.session.selected_anchor == Some(ai);
+                let selected = self.session.anchor_selected(ai);
                 let (ring, inner) = if selected {
                     (
                         pal.point_outline.unwrap_or(pal.text),
@@ -1900,14 +1900,14 @@ impl Widget for EditorWidget {
                             }
                         }
                         // Anchor hit takes priority over points.
-                        if let Some(ai) = self.session.anchor_at(
+                        if let Some(anchor) = self.session.anchor_at(
                             self.screen_to_glyph_design(at),
                             HIT_RADIUS_PX / self.session.viewport.zoom,
                         ) {
-                            self.session.selected_anchor = Some(ai);
+                            self.session.selected_anchor = Some(anchor);
                             self.session.selected_component = None;
                             self.session.selection.clear();
-                            self.drag = Drag::Anchor { idx: ai };
+                            self.drag = Drag::Anchor { id: anchor };
                             self.emit(ctx, false);
                             ctx.set_handled();
                             return;
@@ -1930,8 +1930,8 @@ impl Widget for EditorWidget {
                             }
                             None => {
                                 let design = self.screen_to_glyph_design(at);
-                                if let Some(index) = self.session.component_at(design) {
-                                    self.session.select_component(index);
+                                if let Some(component) = self.session.component_at(design) {
+                                    self.session.select_component_id(component);
                                     self.drag = Drag::Component { last: design };
                                     self.emit(ctx, false);
                                     ctx.set_handled();
@@ -1986,10 +1986,10 @@ impl Widget for EditorWidget {
                             ctx.request_render();
                         }
                     }
-                    Drag::Anchor { idx } => {
-                        let idx = *idx;
+                    Drag::Anchor { id } => {
+                        let id = *id;
                         let d = glyph_design;
-                        self.session.move_anchor(idx, d.x.round(), d.y.round());
+                        self.session.move_anchor(id, d.x.round(), d.y.round());
                         ctx.request_render();
                     }
                     Drag::Component { last } => {
@@ -2039,69 +2039,89 @@ impl Widget for EditorWidget {
                     Drag::None => {}
                 }
             }
-            PointerEvent::Up(_) | PointerEvent::Cancel(_) => match &self.drag {
-                Drag::Metaballs { changed, .. } => {
-                    let changed = *changed;
-                    self.session.end_metric_drag();
-                    self.drag = Drag::None;
-                    self.emit(ctx, changed);
-                }
-                Drag::Points { .. } => {
-                    self.session.end_point_drag();
-                    self.drag = Drag::None;
-                    self.emit(ctx, true);
-                }
-                Drag::Pen { origin, dragging } => {
-                    if !dragging {
-                        self.session.pen_corner(origin.x, origin.y);
+            event @ (PointerEvent::Up(_) | PointerEvent::Cancel(_)) => {
+                let cancelled = matches!(event, PointerEvent::Cancel(_));
+                match &self.drag {
+                    Drag::Metaballs { changed, .. } => {
+                        let changed = *changed;
+                        self.session.end_metric_drag();
+                        self.drag = Drag::None;
+                        self.emit(ctx, changed);
                     }
-                    self.drag = Drag::None;
-                    self.emit(ctx, true);
-                }
-                Drag::Marquee {
-                    start,
-                    current,
-                    additive,
-                } => {
-                    let rect = Rect::from_points(*start, *current);
-                    let additive = *additive;
-                    if !additive {
-                        self.session.selection.clear();
-                    }
-                    for (id, sp, _, _, _) in self.screen_points() {
-                        if rect.contains(sp) {
-                            self.session.selection.insert(id);
+                    Drag::Points { .. } => {
+                        if cancelled {
+                            self.session.cancel_point_drag();
+                        } else {
+                            self.session.end_point_drag();
                         }
+                        self.drag = Drag::None;
+                        self.emit(ctx, !cancelled);
                     }
-                    self.drag = Drag::None;
-                    self.emit(ctx, false);
-                }
-                Drag::Anchor { .. } | Drag::AdvanceLine | Drag::LeftLine { .. } => {
-                    self.session.end_metric_drag();
-                    self.drag = Drag::None;
-                    self.emit(ctx, true);
-                }
-                Drag::Component { .. } => {
-                    self.session.end_component_drag();
-                    self.drag = Drag::None;
-                    self.emit(ctx, true);
-                }
-                Drag::Shape { start, current } => {
-                    let (s0, c0) = (*start, *current);
-                    match self.tool {
-                        Tool::Rect => self.session.add_rect(s0.x, s0.y, c0.x, c0.y),
-                        Tool::Ellipse => self.session.add_ellipse(s0.x, s0.y, c0.x, c0.y),
-                        Tool::Knife => {
-                            self.session.knife_cut(s0, c0);
+                    Drag::Pen { origin, dragging } => {
+                        if !dragging {
+                            self.session.pen_corner(origin.x, origin.y);
                         }
-                        _ => {}
+                        self.drag = Drag::None;
+                        self.emit(ctx, true);
                     }
-                    self.drag = Drag::None;
-                    self.emit(ctx, true);
+                    Drag::Marquee {
+                        start,
+                        current,
+                        additive,
+                    } => {
+                        let rect = Rect::from_points(*start, *current);
+                        let additive = *additive;
+                        if !additive {
+                            self.session.selection.clear();
+                        }
+                        for (id, sp, _, _, _) in self.screen_points() {
+                            if rect.contains(sp) {
+                                self.session.selection.insert(id);
+                            }
+                        }
+                        self.drag = Drag::None;
+                        self.emit(ctx, false);
+                    }
+                    Drag::Anchor { .. } => {
+                        if cancelled {
+                            self.session.cancel_anchor_drag();
+                        } else {
+                            self.session.end_anchor_drag();
+                        }
+                        self.drag = Drag::None;
+                        self.emit(ctx, !cancelled);
+                    }
+                    Drag::AdvanceLine | Drag::LeftLine { .. } => {
+                        self.session.end_metric_drag();
+                        self.drag = Drag::None;
+                        self.emit(ctx, true);
+                    }
+                    Drag::Component { .. } => {
+                        if cancelled {
+                            self.session.cancel_component_drag();
+                        } else {
+                            self.session.end_component_drag();
+                        }
+                        self.drag = Drag::None;
+                        self.emit(ctx, !cancelled);
+                    }
+                    Drag::Shape { start, current } => {
+                        let (s0, c0) = (*start, *current);
+                        match self.tool {
+                            Tool::Rect => self.session.add_rect(s0.x, s0.y, c0.x, c0.y),
+                            Tool::Ellipse => self.session.add_ellipse(s0.x, s0.y, c0.x, c0.y),
+                            Tool::Knife => {
+                                self.session.knife_cut(s0, c0);
+                            }
+                            _ => {}
+                        }
+                        self.drag = Drag::None;
+                        self.emit(ctx, true);
+                    }
+                    Drag::Pan { .. } => self.drag = Drag::None,
+                    Drag::None => {}
                 }
-                Drag::Pan { .. } => self.drag = Drag::None,
-                Drag::None => {}
-            },
+            }
             PointerEvent::Scroll(PointerScrollEvent { delta, state, .. }) => {
                 let at = ctx.local_position(state.position);
                 let dy = match delta {

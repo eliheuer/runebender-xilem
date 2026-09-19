@@ -90,7 +90,7 @@ impl Workspace {
 
     /// Toggle whether the selected component follows its matching anchors.
     pub(crate) fn command_toggle_component_alignment(&mut self) {
-        let Some(component_index) = self.session.selected_component else {
+        let Some(component_id) = self.session.selected_component else {
             return;
         };
         let glyph = self.session.glyph_name.clone();
@@ -107,10 +107,14 @@ impl Workspace {
             self.note = "The active glyph layer changed before component alignment".into();
             return;
         };
-        let Some(component) = transaction.draft().view().components().nth(component_index) else {
+        if !transaction
+            .draft()
+            .view()
+            .components()
+            .any(|component| component.id() == component_id)
+        {
             return;
-        };
-        let component_id = component.id();
+        }
         let Ok(disabled) = transaction
             .draft()
             .component_alignment_disabled(component_id)
@@ -1504,6 +1508,57 @@ mod tests {
         assert_eq!(workspace.session.glyph.contours.len(), 1);
         workspace.undo_active_edit(true);
         assert_eq!(workspace.session.glyph.contours.len(), 2);
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn point_drag_cancel_noop_and_commit_use_one_canonical_history_step() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-canonical-point-drag-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(rectangle("A", 50.0, 450.0));
+        font.save(&path).expect("the fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let index = workspace.font.index_of("A").expect("A exists");
+        workspace.open_glyph(index);
+        let selected = workspace.session.point_id_at(0, 0).unwrap();
+        Arc::make_mut(&mut workspace.session)
+            .selection
+            .insert(selected);
+
+        let mut cancelled = (*workspace.session).clone();
+        cancelled.begin_point_drag();
+        assert!(cancelled.drag_points_to((20.0, 10.0)));
+        cancelled.cancel_point_drag();
+        workspace.sync_session_from(&mut cancelled);
+        assert_eq!(workspace.session.glyph.contours[0].points[0].x, 50.0);
+        assert!(workspace.metadata_undo.is_empty());
+
+        let mut no_op = (*workspace.session).clone();
+        no_op.begin_point_drag();
+        no_op.end_point_drag();
+        workspace.sync_session_from(&mut no_op);
+        assert!(workspace.metadata_undo.is_empty());
+
+        let mut committed = (*workspace.session).clone();
+        committed.begin_point_drag();
+        assert!(committed.drag_points_to((30.0, 10.0)));
+        committed.end_point_drag();
+        workspace.sync_session_from(&mut committed);
+        assert_eq!(workspace.session.glyph.contours[0].points[0].x, 80.0);
+        assert_eq!(workspace.metadata_undo.len(), 1);
+        assert_eq!(workspace.font.master().undo_depth(index), 0);
+        workspace.undo_active_edit(false);
+        assert_eq!(workspace.session.glyph.contours[0].points[0].x, 50.0);
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }

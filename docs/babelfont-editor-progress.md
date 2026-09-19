@@ -268,16 +268,46 @@ The complete binary suite passed 167 tests with four documented model or externa
 All 15 focused session tests, 23 runnable host tests and the canonical clipboard regression passed.
 Warning-denied workspace/all-target Clippy, formatting and diff checks passed.
 
+## Canonical component, anchor and pointer-gesture slice
+
+Implementation commit: `Move editor objects and gestures into canonical transactions`.
+Resolve its exact ID with `git log --format=%H --grep='^Move editor objects and gestures into canonical transactions$' -1`.
+Affected paths: `src/application/editor/session.rs`, `src/application/editor/commands.rs`, `src/application/editor/inspector.rs`, `src/application/platform/host.rs`, `src/application/view/canvas/editor.rs`, `src/application/view/panels/tabs.rs` and this log.
+
+Component and anchor selection now use stable `ComponentId` and `AnchorId` values rather than tuple order or array indices.
+The Session component cache now comes from `resolved_document_components`, so combined paint geometry, hit testing and selected-component feedback share the complete canonical smart-component, hyperbezier and metaball renderer.
+Canonical resolved contour copies drive component decomposition, which commits through one guarded Project transaction.
+Anchor add and delete also use guarded canonical layer edits.
+The remaining legacy component duplication algorithm carries an index only until the canonical source reload assigns and selects the new stable identity.
+
+Point, component and anchor pointer drags now own cloned `CanonicalLayerTransaction` values for the gesture lifetime.
+Pointer motion mutates only the owned draft and a paint-time compatibility projection.
+Pointer Cancel drops the transaction and restores the base projection, a no-op Pointer Up creates no history, and a changed Pointer Up hands exactly one labeled transaction to Project.
+Application history retains only ordering context, and the legacy source history receives no point, component or anchor drag snapshot.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::session::tests -- --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::commands::tests::point_drag_cancel_noop_and_commit_use_one_canonical_history_step -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::inspector::size_tests::anchor_drag_delete_undo_and_reopen -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::platform::host::tests::component_add_move_undo_and_save_reopen -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
 ## Remaining application callers
 
-- `application/editor/session.rs` still stores and mutates a compatibility `norad::Glyph`, resolved Norad component contours, index-selected components and anchors, and pending Norad history records.
+- `application/editor/session.rs` still stores and mutates a compatibility `norad::Glyph` for legacy outline algorithms, pen/shape tools, metrics and several filters, and retains pending Norad history records for those adapters.
 - `application/font_model.rs` still exposes mutable `Master` and `norad::Font` accessors and performs font-wide edits through compatibility projections.
 - `application/workspace.rs` still stores application-owned rename, Unicode and overview history values; outline clipboard storage is canonical.
 - `application/editor/commands.rs`, inspector and tools still call legacy font/source mutation APIs.
-- `application/view/canvas/editor.rs` still paints handles and anchors from the session's Norad glyph.
+- `application/view/canvas/editor.rs` still paints direct contour and anchor positions from the Session compatibility projection, though their selection identities and pointer transactions are canonical.
 - Several panels still read compatibility font and glyph metadata pending the M07 canonical metadata surface.
 
 ## Next action
 
-Move point drags onto an owned guarded layer transaction so Pointer Cancel drops the draft and Pointer Up commits exactly one Project history step.
-Then convert component and anchor selection and component render/decompose caches to stable canonical identities before removing the remaining Norad session mirror.
+Move pen, shape, knife, metric and remaining outline commands from the compatibility projection onto `LayerEditDraft` operations.
+Then remove `Session::glyph`, `HistoryOp` and the application-to-source whole-glyph synchronization path.
