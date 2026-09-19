@@ -68,3 +68,59 @@ Review `formats/designspace.rs` and `formats/babelfont_import.rs` together with 
 Existing source tools retain full Norad projections, so memory cost and edit reconciliation are visible migration debt.
 No claim is made that Rust Babelfont JSON, every Python package field, or all Designspace extensions are editable.
 No sibling repository, remote branch, deployment, or merge is part of this change.
+
+## Counterpunch pipeline continuation, 2026-09-18
+
+Implementation: `5cbf51beabd29385801a244a16df2ca90df011a3`.
+The earlier sections record the initial glyph-local ownership migration.
+This continuation adds canonical Babelfont geometry, preserving UFO adapters, complete in-memory fontc compilation, variable shaping/export, and source authoring.
+The [capability and research record](counterpunch-parity.md) distinguishes the implemented scope from remaining Counterpunch/Fontra gaps.
+
+The native suite passes 569 tests, with four existing tests requiring local models or an adjacent full-font checkout ignored.
+The new six-test compiler suite checks variable outlines and advances, kerning applied once, ligatures, live mark anchors, overlapping and fractional Designspace rules, revision reuse, stale-worker invalidation and font-wide feature editing independent of master selection.
+The 12-test variable-project suite includes source creation at an intermediate location, exact original-layer preservation, source identity across reorder/removal, save/reopen and guarded structural undo.
+An application test additionally removes and restores a source before undoing its earlier glyph edit.
+
+The headless CLI compiled the existing Virtua Grotesk Designspace into a 141,696-byte variable TTF without saving its source files.
+Its tables include GDEF, GPOS, GSUB, HVAR, STAT, fvar and gvar.
+A local debug invocation took 0.91 seconds wall-clock; this is a single local measurement, not a general performance guarantee.
+
+```sh
+target/debug/runebender compile "$RUNEBENDER_TEST_FONTS/VirtuaGrotesk.designspace" \
+  --out /tmp/runebender-live-variable.ttf
+```
+
+The output path must be new; the CLI refuses to overwrite it.
+Desktop Export instead writes a TTF under the source directory's `exports/` folder, using an immutable snapshot of unsaved edits.
+
+Gray and Light captures were inspected for the expanded Masters controls at 1100 by 900 pixels and standalone-UFO Layers controls at 1100 by 720 pixels.
+An additional Gray capture shows `wght=500`, the interpolated glyph and shaped `AV` in the proof strip.
+These are headless rendering checks; native pointer, OS IME, accessibility and GPU behavior are not certified by them.
+
+The browser quality test now downloads a TTF before and after a real pointer edit and compares the exported `glyf` table to prove unsaved geometry reaches export.
+It also verifies the TrueType header, table bounds and the presence of cmap, glyf, hmtx and GPOS.
+
+### Final continuation gates
+
+| Check | Result |
+|---|---|
+| Formatting, copyright and whitespace checks | Pass |
+| Native warning-denied Clippy and documentation | Pass |
+| Full native test suite | 569 passed; 4 existing tests ignored |
+| Native optimized build | Pass |
+| Locked dependency advisory check | Pass |
+| Browser optimized build and warning-denied Clippy | Pass |
+| Browser interaction and export checks | Pass at all three display densities |
+
+The browser's export-before-and-after-edit check runs at 1× density; its other interaction checks run at all three densities.
+The final Gray and Light browser captures were inspected.
+
+| Density | Frames rendered during test | Median render time | P95 render time |
+|---|---|---|---|
+| 1× | 144 | 3.9 ms | 5.5 ms |
+| 2× | 144 | 9.0 ms | 11.1 ms |
+| 1.25× | 136 | 5.2 ms | 6.9 ms |
+
+The final tested WASM SHA-256 is `270f16af547676cc292c4c492be3b54a6da226e9981fc27818f0db7867825f58`.
+These are working-checkout checks, not a new clean-checkout proof or a native input/accessibility certification.
+The existing `block` 0.1.6 future-compatibility notice remains visible.
