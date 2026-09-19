@@ -43,8 +43,9 @@ The focused component-resolution regression passes and requires top-level identi
 Warning-denied library/test Clippy, formatting and diff checks also pass at this integration checkpoint.
 M06 owns consuming this API and removing the session's Norad component cache.
 
-The direct compiler-structure cutover is integrated, but independent review found that its source filename did not retain the resolved on-disk directory used by feature includes.
-Pipeline acceptance remains pending the lane-owned correction and the four focused compiler regressions.
+Independent review found that the first direct compiler-structure cutover did not retain the resolved on-disk directory used by feature includes.
+The lane-owned correction is integrated as `6087674`, and its two include-path regressions, all nine variable-compiler tests, all five text-feature tests and the canonical text-input parity regression pass.
+Production native text inventory, kerning and generated mark features now read canonical Project queries through `0b3e008`.
 
 ### Guarded cross-lane Project hooks
 
