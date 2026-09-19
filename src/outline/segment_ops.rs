@@ -12,6 +12,7 @@
 use kurbo::{CubicBez, Line, ParamCurve, ParamCurveNearest, PathSeg, Point, QuadBez};
 use norad::{ContourPoint, Glyph, PointType};
 
+pub use crate::document::DocumentSegmentEndpoint;
 use crate::document::{LayerPointType, LayerView, PointId as DocumentPointId};
 use crate::outline::glyph_ops::PointId;
 
@@ -38,40 +39,6 @@ impl SegmentHit {
         ids.extend(self.controls.iter().map(|&i| (self.contour, i)));
         ids.push((self.contour, self.end));
         ids
-    }
-}
-
-/// A canonical segment endpoint backed by a stored point or an implied quadratic join.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DocumentSegmentEndpoint {
-    /// An explicit on-curve point.
-    Point(DocumentPointId),
-    /// The midpoint between two consecutive quadratic controls.
-    Implied {
-        /// The first source control.
-        first_control: DocumentPointId,
-        /// The second source control.
-        second_control: DocumentPointId,
-    },
-}
-
-impl DocumentSegmentEndpoint {
-    fn append_source_ids(self, output: &mut Vec<DocumentPointId>) {
-        let mut push = |id| {
-            if !output.contains(&id) {
-                output.push(id);
-            }
-        };
-        match self {
-            Self::Point(id) => push(id),
-            Self::Implied {
-                first_control,
-                second_control,
-            } => {
-                push(first_control);
-                push(second_control);
-            }
-        }
     }
 }
 

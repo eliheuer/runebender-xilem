@@ -125,6 +125,51 @@ pub enum LayerPointType {
     QCurve,
 }
 
+/// A canonical segment endpoint backed by a stored point or an implied quadratic join.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentSegmentEndpoint {
+    /// An explicit on-curve point.
+    Point(PointId),
+    /// The midpoint between two consecutive quadratic controls.
+    Implied {
+        /// The first source control.
+        first_control: PointId,
+        /// The second source control.
+        second_control: PointId,
+    },
+}
+
+impl DocumentSegmentEndpoint {
+    pub(crate) fn append_source_ids(self, output: &mut Vec<PointId>) {
+        let mut push = |id| {
+            if !output.contains(&id) {
+                output.push(id);
+            }
+        };
+        match self {
+            Self::Point(id) => push(id),
+            Self::Implied {
+                first_control,
+                second_control,
+            } => {
+                push(first_control);
+                push(second_control);
+            }
+        }
+    }
+}
+
+/// Stable identities created while inserting a point on an implied quadratic segment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QuadraticSegmentInsertion {
+    /// The inserted on-curve point selected by the editing operation.
+    pub point: PointId,
+    /// A stored point created to retain an implied start position, when required.
+    pub explicitized_start: Option<PointId>,
+    /// A stored point created to retain an implied end position, when required.
+    pub explicitized_end: Option<PointId>,
+}
+
 /// Read-only access to one canonical glyph layer.
 #[derive(Clone, Copy, Debug)]
 pub struct LayerView<'a> {
@@ -1341,6 +1386,202 @@ impl LayerEditDraft {
             }
         };
         Ok(inserted)
+    }
+
+    /// Insert one on-curve point on a quadratic segment with stored or implied endpoints.
+    ///
+    /// An implied endpoint is materialized as a fresh on-curve point when subdivision would
+    /// otherwise move either control that defines it. The source control retains its identity and
+    /// metadata. All computed coordinates are validated before mutation.
+    pub fn insert_point_on_quadratic_segment(
+        &mut self,
+        start: DocumentSegmentEndpoint,
+        control: PointId,
+        end: DocumentSegmentEndpoint,
+        parameter: f64,
+    ) -> Result<QuadraticSegmentInsertion, DocumentEditError> {
+        ensure_finite(&[parameter])?;
+        let parameter = parameter.clamp(0.0, 1.0);
+        let representative = |endpoint| match endpoint {
+            DocumentSegmentEndpoint::Point(id) => id,
+            DocumentSegmentEndpoint::Implied { first_control, .. } => first_control,
+        };
+        let invalid =
+            || DocumentEditError::NotDirectSegment(representative(start), representative(end));
+        let locate = |id: PointId| {
+            self.layer
+                .shapes
+                .iter()
+                .enumerate()
+                .find_map(|(shape_index, shape)| {
+                    let Shape::Path(path) = shape else {
+                        return None;
+                    };
+                    path.nodes
+                        .iter()
+                        .position(|node| read_id(&node.format_specific) == Some(id.0))
+                        .map(|node_index| (shape_index, node_index))
+                })
+        };
+        let (shape_index, control_index) =
+            locate(control).ok_or(DocumentEditError::MissingPoint(control))?;
+        let resolve = |endpoint: DocumentSegmentEndpoint| match endpoint {
+            DocumentSegmentEndpoint::Point(id) => {
+                let (shape, index) = locate(id).ok_or(DocumentEditError::MissingPoint(id))?;
+                let Shape::Path(path) = &self.layer.shapes[shape] else {
+                    unreachable!("located endpoint is in a path");
+                };
+                Ok((
+                    shape,
+                    kurbo::Point::new(path.nodes[index].x, path.nodes[index].y),
+                    Some((index, index)),
+                ))
+            }
+            DocumentSegmentEndpoint::Implied {
+                first_control,
+                second_control,
+            } => {
+                let (first_shape, first) =
+                    locate(first_control).ok_or(DocumentEditError::MissingPoint(first_control))?;
+                let (second_shape, second) = locate(second_control)
+                    .ok_or(DocumentEditError::MissingPoint(second_control))?;
+                if first_shape != second_shape {
+                    return Err(invalid());
+                }
+                let Shape::Path(path) = &self.layer.shapes[first_shape] else {
+                    unreachable!("located endpoint is in a path");
+                };
+                Ok((
+                    first_shape,
+                    kurbo::Point::new(path.nodes[first].x, path.nodes[first].y).midpoint(
+                        kurbo::Point::new(path.nodes[second].x, path.nodes[second].y),
+                    ),
+                    Some((first, second)),
+                ))
+            }
+        };
+        let (start_shape, start_position, start_indices) = resolve(start)?;
+        let (end_shape, end_position, end_indices) = resolve(end)?;
+        if start_shape != shape_index || end_shape != shape_index {
+            return Err(invalid());
+        }
+        let Shape::Path(path) = &self.layer.shapes[shape_index] else {
+            unreachable!("located segment is in a path");
+        };
+        if path.nodes[control_index].nodetype != NodeType::OffCurve {
+            return Err(invalid());
+        }
+        let next = |index| {
+            if index + 1 < path.nodes.len() {
+                Some(index + 1)
+            } else if path.closed {
+                Some(0)
+            } else {
+                None
+            }
+        };
+        let start_valid = match start {
+            DocumentSegmentEndpoint::Point(_) => {
+                let index = start_indices.expect("stored endpoint index").0;
+                path.nodes[index].nodetype != NodeType::OffCurve
+                    && next(index) == Some(control_index)
+            }
+            DocumentSegmentEndpoint::Implied { .. } => {
+                let (first, second) = start_indices.expect("implied endpoint indices");
+                path.nodes[first].nodetype == NodeType::OffCurve
+                    && path.nodes[second].nodetype == NodeType::OffCurve
+                    && next(first) == Some(second)
+                    && second == control_index
+            }
+        };
+        let end_valid = match end {
+            DocumentSegmentEndpoint::Point(_) => {
+                let index = end_indices.expect("stored endpoint index").0;
+                path.nodes[index].nodetype != NodeType::OffCurve
+                    && next(control_index) == Some(index)
+                    && matches!(
+                        path.nodes[index].nodetype,
+                        NodeType::Curve | NodeType::QCurve
+                    )
+            }
+            DocumentSegmentEndpoint::Implied { .. } => {
+                let (first, second) = end_indices.expect("implied endpoint indices");
+                path.nodes[first].nodetype == NodeType::OffCurve
+                    && path.nodes[second].nodetype == NodeType::OffCurve
+                    && first == control_index
+                    && next(first) == Some(second)
+            }
+        };
+        if !start_valid || !end_valid {
+            return Err(invalid());
+        }
+        let control_position =
+            kurbo::Point::new(path.nodes[control_index].x, path.nodes[control_index].y);
+        let quad = kurbo::QuadBez::new(start_position, control_position, end_position);
+        let left = quad.subsegment(0.0..parameter);
+        let right = quad.subsegment(parameter..1.0);
+        let snap = |point: kurbo::Point| {
+            kurbo::Point::new(
+                crate::outline::point_ops::snap_coord(point.x),
+                crate::outline::point_ops::snap_coord(point.y),
+            )
+        };
+        let left_control = snap(left.p1);
+        let split_position = snap(left.p2);
+        let right_control = snap(right.p1);
+        ensure_finite(&[
+            start_position.x,
+            start_position.y,
+            end_position.x,
+            end_position.y,
+            left_control.x,
+            left_control.y,
+            split_position.x,
+            split_position.y,
+            right_control.x,
+            right_control.y,
+        ])?;
+        let contour_id =
+            ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+        let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
+            unreachable!("located segment is in a path");
+        };
+        let preserved = self
+            .preserved
+            .contours
+            .iter_mut()
+            .find(|candidate| candidate.id == contour_id)
+            .expect("canonical contour preservation");
+
+        let mut control_index = control_index;
+        let explicitized_start =
+            matches!(start, DocumentSegmentEndpoint::Implied { .. }).then(|| {
+                let created = new_document_point(start_position, NodeType::QCurve, false);
+                path.nodes.insert(control_index, created.1);
+                preserved.points.insert(control_index, created.2);
+                control_index += 1;
+                created.0
+            });
+        path.nodes[control_index].x = left_control.x;
+        path.nodes[control_index].y = left_control.y;
+        let split = new_document_point(split_position, NodeType::QCurve, false);
+        let right = new_document_point(right_control, NodeType::OffCurve, false);
+        let insert_index = control_index + 1;
+        path.nodes.insert(insert_index, split.1);
+        path.nodes.insert(insert_index + 1, right.1);
+        preserved.points.insert(insert_index, split.2);
+        preserved.points.insert(insert_index + 1, right.2);
+        let explicitized_end = matches!(end, DocumentSegmentEndpoint::Implied { .. }).then(|| {
+            let created = new_document_point(end_position, NodeType::QCurve, false);
+            path.nodes.insert(insert_index + 2, created.1);
+            preserved.points.insert(insert_index + 2, created.2);
+            created.0
+        });
+        Ok(QuadraticSegmentInsertion {
+            point: split.0,
+            explicitized_start,
+            explicitized_end,
+        })
     }
 
     /// Convert one direct on-curve segment to a cubic with snapped thirds handles.

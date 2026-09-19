@@ -1143,4 +1143,37 @@ The focused repository regression, both independent-review tests and all 33 vari
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
-The next M04 substep completes point insertion at implied quadratic endpoints before point deletion.
+### Canonical implied-quadratic insertion substep
+
+Evidence commit: `Insert points on implied canonical quadratics` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Insert points on implied canonical quadratics$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/document/mod.rs`, `src/outline/segment_ops.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md` and this log.
+
+Canonical segment endpoint identity now belongs to the document model while `outline::segment_ops` retains its compatibility re-export.
+`LayerEditDraft::insert_point_on_quadratic_segment` accepts the stored or implied endpoints reported by canonical hit testing and subdivides that exact quadratic directly.
+When moving the source control would change an implied start or end midpoint, the operation first materializes that midpoint as a fresh stored on-curve point.
+The source control retains its stable identity and metadata, while the inserted point, new right control and materialized endpoints receive fresh identities.
+All endpoint and subdivision coordinates are validated before mutation.
+
+The integration oracle covers an open consecutive-control chain and an all-off-curve closed contour.
+It requires exact De Casteljau geometry after insertion, verifies stable source-control identities and names, checks every returned identity exists and confirms caught overflow leaves the snapshot and revision unchanged.
+Point insertion is now complete within M04's first checklist item.
+Deletion, reversal, split/join and copy/paste remain, so the item stays open.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_implied_quadratic_insertion_materializes_stable_endpoints -- --exact --test-threads=1
+cargo test --locked --lib outline::segment_ops -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused implied-quadratic regression, segment-operation unit suite and all 34 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep moves point deletion onto canonical topology.

@@ -2146,6 +2146,184 @@ fn canonical_segment_insertion_preserves_existing_control_identities() {
 }
 
 #[test]
+fn canonical_implied_quadratic_insertion_materializes_stable_endpoints() {
+    use kurbo::ParamCurve;
+    use runebender::document::DocumentSegmentEndpoint;
+
+    let scratch = Scratch::new();
+    let point = |x, y, typ, label: Option<&str>| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            typ,
+            false,
+            label.map(|label| Name::new(label).unwrap()),
+            label.map(|label| norad::Identifier::new(label).unwrap()),
+        );
+        if let Some(label) = label {
+            point.replace_lib(object_lib(label));
+        }
+        point
+    };
+    let mut glyph = Glyph::new("implied-insertion");
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move, None),
+            point(0.0, 80.0, PointType::OffCurve, Some("open first")),
+            point(80.0, 80.0, PointType::OffCurve, Some("open second")),
+            point(80.0, 0.0, PointType::QCurve, None),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(200.0, 0.0, PointType::OffCurve, Some("closed first")),
+            point(280.0, 80.0, PointType::OffCurve, Some("closed second")),
+            point(360.0, 0.0, PointType::OffCurve, Some("closed third")),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(-f64::MAX, 200.0, PointType::Move, None),
+            point(f64::MAX, 200.0, PointType::OffCurve, None),
+            point(f64::MAX, 300.0, PointType::OffCurve, None),
+            point(0.0, 300.0, PointType::QCurve, None),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project = Project::from_source(Master::from_font(
+        font,
+        scratch.0.join("ImpliedInsertion.ufo"),
+    ));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project
+        .document_layer("implied-insertion", &layer_id)
+        .unwrap();
+    let ids: Vec<Vec<_>> = layer
+        .contours()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+    let before = runebender::outline::segment_ops::ordinary_layer_segments(layer);
+    let open_hit = before[0].clone();
+    let closed_hit = before[2].clone();
+    let overflow_hit = before[5].clone();
+    assert!(matches!(
+        open_hit.end,
+        DocumentSegmentEndpoint::Implied { .. }
+    ));
+    assert!(matches!(
+        closed_hit.start,
+        DocumentSegmentEndpoint::Implied { .. }
+    ));
+    assert!(matches!(
+        closed_hit.end,
+        DocumentSegmentEndpoint::Implied { .. }
+    ));
+
+    let mut insertions = None;
+    project
+        .edit_document_layer("implied-insertion", &layer_id, |draft| {
+            let open = draft.insert_point_on_quadratic_segment(
+                open_hit.start,
+                open_hit.controls[0],
+                open_hit.end,
+                0.5,
+            )?;
+            let closed = draft.insert_point_on_quadratic_segment(
+                closed_hit.start,
+                closed_hit.controls[0],
+                closed_hit.end,
+                0.5,
+            )?;
+            insertions = Some((open, closed));
+            Ok(())
+        })
+        .unwrap();
+
+    let (open_insertion, closed_insertion) = insertions.unwrap();
+    assert_eq!(open_insertion.explicitized_start, None);
+    assert!(open_insertion.explicitized_end.is_some());
+    assert!(closed_insertion.explicitized_start.is_some());
+    assert!(closed_insertion.explicitized_end.is_some());
+    let after = runebender::outline::segment_ops::ordinary_layer_segments(
+        project
+            .document_layer("implied-insertion", &layer_id)
+            .unwrap(),
+    );
+    let split = |segment: &runebender::outline::segment_ops::DocumentSegmentHit| {
+        let kurbo::PathSeg::Quad(quad) = segment.seg else {
+            panic!("fixture segment was not quadratic");
+        };
+        [
+            kurbo::PathSeg::Quad(quad.subsegment(0.0..0.5)),
+            kurbo::PathSeg::Quad(quad.subsegment(0.5..1.0)),
+        ]
+    };
+    let mut expected = Vec::new();
+    expected.extend(split(&open_hit));
+    expected.push(before[1].seg);
+    expected.extend(split(&closed_hit));
+    expected.push(before[3].seg);
+    expected.push(before[4].seg);
+    expected.extend(before[5..].iter().map(|hit| hit.seg));
+    assert_eq!(
+        after.iter().map(|hit| hit.seg).collect::<Vec<_>>(),
+        expected,
+        "materializing implied endpoints changed quadratic geometry"
+    );
+
+    let layer = project
+        .document_layer("implied-insertion", &layer_id)
+        .unwrap();
+    let points: Vec<Vec<_>> = layer
+        .contours()
+        .map(|contour| contour.points().collect())
+        .collect();
+    assert_eq!(points[0][1].id(), ids[0][1]);
+    assert_eq!(points[0][1].name(), Some("open first"));
+    assert_eq!(points[1][1].id(), ids[1][0]);
+    assert_eq!(points[1][1].name(), Some("closed first"));
+    let created = [
+        open_insertion.point,
+        open_insertion.explicitized_end.unwrap(),
+        closed_insertion.point,
+        closed_insertion.explicitized_start.unwrap(),
+        closed_insertion.explicitized_end.unwrap(),
+    ];
+    for id in created {
+        assert!(points.iter().flatten().any(|point| point.id() == id));
+    }
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("implied-insertion", &layer_id, |draft| {
+                assert_eq!(
+                    draft.insert_point_on_quadratic_segment(
+                        overflow_hit.start,
+                        overflow_hit.controls[0],
+                        overflow_hit.end,
+                        0.5,
+                    ),
+                    Err(runebender::document::DocumentEditError::NonFinite)
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);
