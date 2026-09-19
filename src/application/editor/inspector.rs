@@ -1160,7 +1160,7 @@ mod size_tests {
 
     fn projected_glyph(session: &Session) -> norad::Glyph {
         session
-            .compatibility_glyph()
+            .projected_glyph()
             .expect("an editor session has a canonical layer")
     }
 

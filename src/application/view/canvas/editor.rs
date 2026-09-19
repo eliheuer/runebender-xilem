@@ -2845,7 +2845,7 @@ mod tests {
 
     fn projected_glyph(session: &Session) -> norad::Glyph {
         session
-            .compatibility_glyph()
+            .projected_glyph()
             .expect("an editor session has a canonical layer")
     }
 
@@ -3014,38 +3014,49 @@ mod tests {
         assert_eq!(initial[0].0, editor.session.point_id_at(0, 0).unwrap());
         assert_eq!(initial[0].1, affine * Point::new(0.0, 0.0));
         assert_eq!(initial[0].2, affine * Point::new(400.0, 0.0));
+        let first = editor.session.point_id_at(0, 0).unwrap();
         assert!(
             editor
                 .session
-                .compatibility_edit("test point kind", |glyph| {
-                    glyph.contours[0].points[0].typ = norad::PointType::OffCurve;
-                    true
+                .stage_canonical_string_edit("test point kind", |draft| {
+                    draft
+                        .set_point_type(first, runebender::document::LayerPointType::OffCurve)
+                        .map_err(|error| error.to_string())
                 })
+                .unwrap()
         );
         assert_eq!(
             editor.start_markers()[0].0,
             editor.session.point_id_at(0, 1).unwrap(),
             "skip leading handles"
         );
+        let first = editor.session.point_id_at(0, 0).unwrap();
         assert!(
             editor
                 .session
-                .compatibility_edit("test open path", |glyph| {
-                    glyph.contours[0].points[0].typ = norad::PointType::Move;
-                    true
+                .stage_canonical_string_edit("test open path", |draft| {
+                    draft
+                        .set_point_type(first, runebender::document::LayerPointType::Move)
+                        .map_err(|error| error.to_string())
                 })
+                .unwrap()
         );
         assert!(
             editor.start_markers().is_empty(),
             "open paths have no marker"
         );
+        let points = (0..)
+            .map_while(|index| editor.session.point_id_at(0, index))
+            .collect::<Vec<_>>();
         assert!(
             editor
                 .session
-                .compatibility_edit("test empty path", |glyph| {
-                    glyph.contours[0].points.clear();
-                    true
+                .stage_canonical_string_edit("test empty path", |draft| {
+                    draft
+                        .delete_points(&points)
+                        .map_err(|error| error.to_string())
                 })
+                .unwrap()
         );
         assert!(
             editor.start_markers().is_empty(),

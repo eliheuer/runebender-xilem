@@ -137,7 +137,6 @@ pub enum DocumentHistoryReplayOutcome {
 pub struct CanonicalLayerTransaction {
     base: super::CanonicalLayerSnapshot,
     draft: super::LayerEditDraft,
-    default: bool,
 }
 
 impl CanonicalLayerTransaction {
@@ -154,27 +153,6 @@ impl CanonicalLayerTransaction {
     /// Mutate the owned canonical edit draft.
     pub fn draft_mut(&mut self) -> &mut super::LayerEditDraft {
         &mut self.draft
-    }
-
-    /// Materialize a short-lived UFO glyph for a legacy outline algorithm.
-    ///
-    /// The returned glyph is a detached codec value, not editable document state. Reconcile it
-    /// into this transaction before committing so canonical identities and history remain owned
-    /// by Project.
-    pub fn compatibility_glyph(&self) -> norad::Glyph {
-        self.draft.compatibility_glyph()
-    }
-
-    /// Reconcile a detached UFO algorithm result into this canonical transaction.
-    ///
-    /// Stable identities are retained where source objects can be matched. Nonfinite editable
-    /// geometry is rejected before the draft changes, and an identical glyph is a no-op.
-    pub fn reconcile_compatibility_glyph(
-        &mut self,
-        glyph: &norad::Glyph,
-    ) -> Result<bool, super::DocumentEditError> {
-        self.draft
-            .reconcile_compatibility_glyph(glyph, &self.base.address().layer, self.default)
     }
 }
 
@@ -1715,14 +1693,10 @@ impl Project {
         let base = self
             .capture_document_layer(address)
             .ok_or_else(|| DocumentHistoryError::MissingLayer(address.clone()))?;
-        let default = self
-            .document_source(address.layer.source)
-            .is_some_and(|source| source.default_layer() == address.layer);
         let (layer, preserved) = base.clone().into_parts();
         Ok(CanonicalLayerTransaction {
             base,
             draft: super::LayerEditDraft::new(layer, preserved),
-            default,
         })
     }
 

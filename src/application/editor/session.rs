@@ -380,12 +380,11 @@ impl Session {
         self.current_layer()?.codepoints().next()
     }
 
-    /// Materialize a detached UFO value only for an application boundary that still consumes the
-    /// legacy codec. It is never retained as Session state.
+    /// Materialize a detached UFO value for application fixtures.
     #[cfg(test)]
-    pub(crate) fn compatibility_glyph(&self) -> Option<norad::Glyph> {
-        self.current_transaction()
-            .map(CanonicalLayerTransaction::compatibility_glyph)
+    pub(crate) fn projected_glyph(&self) -> Option<norad::Glyph> {
+        self.current_layer()
+            .map(runebender::formats::ufo::glyph_from_layer)
     }
 
     pub(crate) fn anchor_points(&self) -> Vec<(AnchorId, Point)> {
@@ -566,42 +565,6 @@ impl Session {
             return Ok(false);
         };
         if !edit(transaction.draft_mut())? {
-            return Ok(false);
-        }
-        self.pending_canonical = Some(transaction);
-        self.pending_canonical_label = Some(label);
-        Ok(true)
-    }
-
-    /// Run one legacy outline algorithm against a detached UFO codec value, then immediately
-    /// reconcile its result into an owned canonical transaction.
-    #[cfg(test)]
-    pub(crate) fn compatibility_edit(
-        &mut self,
-        label: &'static str,
-        edit: impl FnOnce(&mut norad::Glyph) -> bool,
-    ) -> bool {
-        self.compatibility_edit_result(label, |glyph| Ok(edit(glyph)))
-            .unwrap_or(false)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn compatibility_edit_result(
-        &mut self,
-        label: &'static str,
-        edit: impl FnOnce(&mut norad::Glyph) -> Result<bool, String>,
-    ) -> Result<bool, String> {
-        let Some(mut transaction) = self.canonical_base.clone() else {
-            return Ok(false);
-        };
-        let mut glyph = transaction.compatibility_glyph();
-        if !edit(&mut glyph)? {
-            return Ok(false);
-        }
-        if !transaction
-            .reconcile_compatibility_glyph(&glyph)
-            .map_err(|error| error.to_string())?
-        {
             return Ok(false);
         }
         self.pending_canonical = Some(transaction);
@@ -1892,7 +1855,7 @@ impl Session {
         let Some(transaction) = self.current_transaction() else {
             return Vec::new();
         };
-        let glyph = transaction.compatibility_glyph();
+        let glyph = runebender::formats::ufo::glyph_from_layer(transaction.draft().view());
         if self.selection.is_empty() {
             return glyph.contours;
         }
@@ -2671,7 +2634,7 @@ mod tests {
 
     fn projected_glyph(session: &Session) -> norad::Glyph {
         session
-            .compatibility_glyph()
+            .projected_glyph()
             .expect("an editor session has a canonical layer")
     }
 

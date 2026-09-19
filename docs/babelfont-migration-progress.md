@@ -2467,6 +2467,37 @@ Warning-denied library/test Clippy, formatting and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 The M06 Trace Image and SVG callers still need to consume these narrow methods; background swap also needs its Project-owned auxiliary-layer transaction before the remaining whole-glyph bridge can be deleted.
 
+### Detached whole-glyph bridge removal
+
+Evidence commit: `Delete the detached whole-glyph bridge` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Delete the detached whole-glyph bridge$' -1`.
+
+The last production bridge users, background send/swap/clear, now use guarded canonical source-history transactions.
+`CanonicalLayerTransaction::compatibility_glyph`, `CanonicalLayerTransaction::reconcile_compatibility_glyph` and both `LayerEditDraft` implementations are deleted, together with the bridge-only geometry validator and regression.
+Canonical transactions no longer carry the default-layer flag that existed only for whole-glyph reconciliation.
+
+Application fixtures that need exact UFO equality use the explicit read-only `formats::ufo::glyph_from_layer` codec.
+It materializes a detached value and offers no write-back path.
+The start-marker fixture that previously edited this projection now changes point roles and removes points through stable canonical identities.
+
+Executed evidence:
+
+```sh
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo test --locked --bin runebender -- --test-threads=1
+cargo clippy --locked --lib --bin runebender --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+All 73 variable-project tests passed.
+The native binary suite passed 175 tests with four documented ignores, including the canonical background regression and the direct start-marker draft edits.
+Warning-denied library, binary and test Clippy, formatting and whitespace checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+This closes the named M13 detached-bridge acceptance item.
+The Master shell, mutable source guards, legacy history and remaining source-snapshot consumers still block M13 completion.
+
 ### Canonical headless single-source commands
 
 Evidence commit: `Run headless source commands through Project` (the commit containing this substep).

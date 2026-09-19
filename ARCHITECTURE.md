@@ -151,6 +151,7 @@ Send copies contours and exact width into the conventional background while omit
 Review proposals use those auxiliary layers under stable source identities; revision-checked batches stage canonical drafts before publication, and guarded installation records Project-owned foreground history.
 Experimental versions clone canonical layer drafts and canonical source metadata for the session, and they apply selected changes only after root-baseline conflict checks.
 The GLIF SHA and external UFO proposal format remain explicit transient codec boundaries rather than editable Norad mirrors.
+`formats::ufo` provides read-only detached UFO values for format adapters and fixtures; there is no corresponding whole-glyph reconciliation path into Project.
 `document/sources.rs` owns structural transactions and their guarded undo history; removing a source never deletes its UFO directory.
 `document/filesystem.rs` loads complete UFO and Designspace source sets before construction and stages every save artifact before replacing live destinations.
 The native file watcher resolves nested feature includes through Project and fingerprints those dependencies with the UFO and Designspace roots so a changed external include blocks overwrite.

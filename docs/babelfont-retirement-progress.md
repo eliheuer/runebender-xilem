@@ -19,6 +19,9 @@ Only the public wrappers at `src/document/project.rs:162-175` and the private im
 The active M06 worktree is expected to use the bridge transiently while deleting `Session`'s stored UFO glyph.
 Every such use must be replaced by a direct `LayerEditDraft` operation before M13 deletes the four methods.
 
+Current integration update: all four methods are deleted after the application background callers moved to canonical Project transactions.
+Application fixtures obtain read-only detached glyphs through `formats::ufo`; that explicit codec has no reconciliation operation.
+
 ## Legacy glyph history callers
 
 The canonical replacement already exists in `Project::begin_document_layer_transaction`, `commit_document_layer_transaction`, `document_layer_history_depth`, `can_replay_document_layer_history` and `replay_document_layer_history`.
@@ -130,7 +133,7 @@ The source structural tests must add an explicit canonical-history-before-remove
 6. Replace `VariableData.templates` with typed source-format preservation data and make filesystem serialization the only Norad reconstruction point.
 7. Replace `Project.masters` with the source shell, derive application caches from canonical views and delete all mutable source guards.
 8. Delete legacy `Master.history`, `VariableData.histories`, `Project::edit_layer`, `Project::undo_layer` and the source-history parking code after the source-removal history regression passes.
-9. Delete the compatibility glyph bridge and its reconciliation wrapper.
+9. Complete: delete the compatibility glyph bridge and its reconciliation wrapper.
 10. Run a final search-based architecture gate that permits Norad only in named codec modules and fixtures, followed by the full M14 native, browser, preservation and clean-checkout proof.
 
 ## Audit commands
