@@ -113,6 +113,7 @@ New mutations use `edit_document_layer` and its owned `LayerEditDraft`; a failed
 Layer drafts address points by stable `PointId` for individual movement, snapped handle-aware dragging, smooth-state changes and selection transforms without positional remapping.
 Persistent point drags capture stable origins for selected points, carried handles and smooth-coupled handles before the first snapped event.
 They also shift contour points and anchors together for left-sidebearing edits while exact advance changes remain explicit metric operations.
+Direct line-to-cubic conversion inserts newly identified canonical controls while retaining endpoint identity and metadata, including on wraparound closing segments.
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
 Source-wide feature text has canonical ownership in `VariableData` and changes through `edit_document_source_metadata`; UFO templates no longer retain a second feature-text value.
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.

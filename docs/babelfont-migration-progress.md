@@ -878,3 +878,33 @@ git diff --check
 All ten point-operation unit tests passed.
 Warning-denied Clippy, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Canonical line-segment conversion substep
+
+Evidence commit: `Convert canonical line segments directly` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Convert canonical line segments directly$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, the migration checklist and this log.
+
+`LayerEditDraft::convert_line_to_curve` now converts a direct canonical on-curve segment to a cubic without materializing or reconciling a UFO glyph.
+It inserts snapped one-third and two-third controls with fresh stable identities, retains endpoint identity and metadata and supports the wraparound closing segment of a cyclic contour.
+Missing points and endpoint pairs that no longer identify a direct line fail before mutation.
+
+The integration comparison converts both the forward and closing segments of a metadata-bearing cyclic contour and requires the complete projected glyph to equal the existing segment operation after each step.
+It verifies the original endpoint identities, the new control identities and caught-error transaction atomicity.
+
+This completes M03's second checklist item: point movement, selection transforms, smoothing, sidebearing shifts and line-segment conversion now operate directly on canonical geometry.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_line_segments_convert_with_stable_endpoint_identity -- --exact --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused segment comparison and all 28 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.

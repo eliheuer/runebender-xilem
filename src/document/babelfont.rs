@@ -837,6 +837,110 @@ impl LayerEditDraft {
         Ok(true)
     }
 
+    /// Convert one direct on-curve segment to a cubic with snapped thirds handles.
+    ///
+    /// The endpoints retain their stable identities and source metadata.
+    /// Returns the new control-point identities in contour order.
+    pub fn convert_line_to_curve(
+        &mut self,
+        start: PointId,
+        end: PointId,
+    ) -> Result<[PointId; 2], DocumentEditError> {
+        let locate = |id: PointId| {
+            self.layer
+                .shapes
+                .iter()
+                .enumerate()
+                .find_map(|(shape_index, shape)| {
+                    let Shape::Path(path) = shape else {
+                        return None;
+                    };
+                    path.nodes
+                        .iter()
+                        .position(|node| read_id(&node.format_specific) == Some(id.0))
+                        .map(|node_index| (shape_index, node_index))
+                })
+        };
+        let (shape_index, start_index) =
+            locate(start).ok_or(DocumentEditError::MissingPoint(start))?;
+        let (end_shape, end_index) = locate(end).ok_or(DocumentEditError::MissingPoint(end))?;
+        if shape_index != end_shape {
+            return Err(DocumentEditError::NotLineSegment(start, end));
+        }
+        let Shape::Path(path) = &self.layer.shapes[shape_index] else {
+            unreachable!("located shape is a path");
+        };
+        let wraps = path.closed && start_index + 1 == path.nodes.len() && end_index == 0;
+        if !(end_index == start_index + 1 || wraps)
+            || path.nodes[start_index].nodetype == NodeType::OffCurve
+            || path.nodes[end_index].nodetype == NodeType::OffCurve
+        {
+            return Err(DocumentEditError::NotLineSegment(start, end));
+        }
+        let start_position =
+            kurbo::Point::new(path.nodes[start_index].x, path.nodes[start_index].y);
+        let end_position = kurbo::Point::new(path.nodes[end_index].x, path.nodes[end_index].y);
+        let snapped = |point: kurbo::Point| {
+            kurbo::Point::new(
+                crate::outline::point_ops::snap_coord(point.x),
+                crate::outline::point_ops::snap_coord(point.y),
+            )
+        };
+        let first_position = snapped(start_position.lerp(end_position, 1.0 / 3.0));
+        let second_position = snapped(start_position.lerp(end_position, 2.0 / 3.0));
+        ensure_finite(&[
+            first_position.x,
+            first_position.y,
+            second_position.x,
+            second_position.y,
+        ])?;
+        let point_ids = [PointId::next(), PointId::next()];
+        let node = |id: PointId, position: kurbo::Point| {
+            let mut node = Node {
+                x: position.x,
+                y: position.y,
+                nodetype: NodeType::OffCurve,
+                ..Node::default()
+            };
+            write_id(&mut node.format_specific, id.0);
+            node
+        };
+        let insert_index = if wraps { start_index + 1 } else { end_index };
+        let contour_id =
+            ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+        let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
+            unreachable!("located shape is a path");
+        };
+        path.nodes
+            .insert(insert_index, node(point_ids[0], first_position));
+        path.nodes
+            .insert(insert_index + 1, node(point_ids[1], second_position));
+        let shifted_end = if wraps { end_index } else { end_index + 2 };
+        if path.nodes[shifted_end].nodetype == NodeType::Line {
+            path.nodes[shifted_end].nodetype = NodeType::Curve;
+        }
+        let preserved = self
+            .preserved
+            .contours
+            .iter_mut()
+            .find(|candidate| candidate.id == contour_id)
+            .expect("canonical contour preservation");
+        for (offset, id) in point_ids.iter().copied().enumerate() {
+            preserved.points.insert(
+                insert_index + offset,
+                PreservedPoint {
+                    id,
+                    name: None,
+                    metadata: ObjectMetadata {
+                        identifier: None,
+                        lib: None,
+                    },
+                },
+            );
+        }
+        Ok(point_ids)
+    }
+
     /// Set one component's exact affine transform by stable identity.
     ///
     /// Returns whether the value changed.
@@ -949,6 +1053,8 @@ pub enum DocumentEditError {
     MissingPoint(PointId),
     /// A persistent drag omitted an automatically affected point's start position.
     MissingDragOrigin(PointId),
+    /// The requested endpoints do not identify one direct on-curve segment.
+    NotLineSegment(PointId, PointId),
     /// A move point was requested anywhere except the start of an open contour.
     NonInitialMove(PointId),
     /// The requested component identity does not exist in the layer.
@@ -969,6 +1075,12 @@ impl std::fmt::Display for DocumentEditError {
             Self::MissingPoint(id) => write!(formatter, "point {id:?} does not exist"),
             Self::MissingDragOrigin(id) => {
                 write!(formatter, "point {id:?} is missing its drag-start position")
+            }
+            Self::NotLineSegment(start, end) => {
+                write!(
+                    formatter,
+                    "points {start:?} and {end:?} do not form a line segment"
+                )
             }
             Self::NonInitialMove(id) => {
                 write!(formatter, "point {id:?} cannot be a noninitial move point")

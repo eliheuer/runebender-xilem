@@ -1399,6 +1399,124 @@ fn canonical_smoothing_and_sidebearing_shift_match_legacy_geometry_atomically() 
 }
 
 #[test]
+fn canonical_line_segments_convert_with_stable_endpoint_identity() {
+    let (_scratch, mut project, _fonts) = adversarial_fixture();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let points: Vec<_> = project
+        .document_layer("A", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.id())
+        .collect();
+    let [first, second] = [points[0], points[1]];
+    let mut expected = project.glyph_layer("A", &layer_id).unwrap();
+    let forward = runebender::outline::segment_ops::segments(&expected)
+        .into_iter()
+        .find(|hit| hit.contour == 0 && hit.start == 0 && hit.end == 1)
+        .unwrap();
+    runebender::outline::segment_ops::convert_line_to_curve(&mut expected, &forward).unwrap();
+
+    let mut new_controls = None;
+    let outcome = project
+        .edit_document_layer("A", &layer_id, |draft| {
+            new_controls = Some(draft.convert_line_to_curve(first, second)?);
+            Ok(())
+        })
+        .unwrap();
+    let DocumentEditOutcome::Changed { .. } = outcome else {
+        panic!("line conversion reported no canonical change");
+    };
+    assert_eq!(
+        project.glyph_layer("A", &layer_id).unwrap(),
+        expected,
+        "canonical forward line conversion diverged from the editor operation"
+    );
+    let converted_ids: Vec<_> = project
+        .document_layer("A", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.id())
+        .collect();
+    assert_eq!(converted_ids[0], first);
+    assert_eq!(converted_ids[3], second);
+    assert_eq!(new_controls.unwrap(), [converted_ids[1], converted_ids[2]]);
+
+    let closing = runebender::outline::segment_ops::segments(&expected)
+        .into_iter()
+        .find(|hit| hit.contour == 0 && hit.start == 3 && hit.end == 0)
+        .unwrap();
+    runebender::outline::segment_ops::convert_line_to_curve(&mut expected, &closing).unwrap();
+    project
+        .edit_document_layer("A", &layer_id, |draft| {
+            draft.convert_line_to_curve(second, first)?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        project.glyph_layer("A", &layer_id).unwrap(),
+        expected,
+        "canonical closing-line conversion changed wraparound ordering"
+    );
+    let final_ids: Vec<_> = project
+        .document_layer("A", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.id())
+        .collect();
+    assert_eq!(final_ids[0], first);
+    assert_eq!(final_ids[3], second);
+    assert_eq!(&final_ids[1..3], &converted_ids[1..3]);
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    let missing = project
+        .document_layer("B", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .next()
+        .unwrap()
+        .id();
+    assert_eq!(
+        project
+            .edit_document_layer("A", &layer_id, |draft| {
+                assert_eq!(
+                    draft.convert_line_to_curve(first, second),
+                    Err(runebender::document::DocumentEditError::NotLineSegment(
+                        first, second
+                    ))
+                );
+                assert_eq!(
+                    draft.convert_line_to_curve(first, missing),
+                    Err(runebender::document::DocumentEditError::MissingPoint(
+                        missing
+                    ))
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision },
+        "caught segment-conversion errors changed the canonical document"
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);

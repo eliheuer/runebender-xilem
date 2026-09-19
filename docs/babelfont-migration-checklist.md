@@ -174,7 +174,7 @@ Depends on: M02.
 Start in: `outline/glyph_paths.rs`, `glyph_ops.rs`, `point_ops.rs`, `segment_ops.rs`, `analysis/curve.rs`, `analysis/dimensions.rs`.
 
 - [ ] Move path conversion, bounds, point/anchor extraction, hit-testing inputs and component resolution onto document geometry.
-- [ ] Port point movement, selection transforms, smoothing, sidebearing shifts and segment conversion without per-operation UFO materialization.
+- [x] Port point movement, selection transforms, smoothing, sidebearing shifts and segment conversion without per-operation UFO materialization.
 - [ ] Preserve open contours, cyclic closed contours, quadratic implied points, empty glyphs and mixed path/component ordering.
 - [ ] Port geometry analysis inputs and verify recursive component cycles/missing references still fail explicitly.
 
