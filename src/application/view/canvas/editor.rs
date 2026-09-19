@@ -640,7 +640,7 @@ impl EditorWidget {
         // live in the font model, and reaching them means threading two
         // strings through the widget, the view, `build`, `rebuild` and
         // the constructor.
-        if let Some(codepoint) = self.session.glyph.codepoints.iter().next() {
+        if let Some(codepoint) = self.session.codepoint() {
             header_text(
                 painter,
                 width - PAD,
@@ -749,25 +749,9 @@ impl EditorWidget {
     fn start_markers(&self) -> Vec<(PointId, Point, Point)> {
         let affine = self.glyph_affine();
         self.session
-            .glyph
-            .contours
-            .iter()
-            .enumerate()
-            .filter_map(|(ci, contour)| {
-                if contour.points.first()?.typ == norad::PointType::Move {
-                    return None;
-                }
-                let pi = contour
-                    .points
-                    .iter()
-                    .position(|p| p.typ != norad::PointType::OffCurve)?;
-                let start = &contour.points[pi];
-                let next = &contour.points[(pi + 1) % contour.points.len()];
-                let from = affine * Point::new(start.x, start.y);
-                let to = affine * Point::new(next.x, next.y);
-                let id = self.session.point_id_at(ci, pi)?;
-                (from.distance(to) > 0.001).then_some((id, from, to))
-            })
+            .start_markers()
+            .into_iter()
+            .map(|(id, from, to)| (id, affine * from, affine * to))
             .collect()
     }
 
@@ -1324,22 +1308,10 @@ impl Widget for EditorWidget {
                 .draw();
 
             let handle = Stroke::new(1.0);
-            for contour in &self.session.glyph.contours {
-                let n = contour.points.len();
-                for i in 0..n {
-                    if !matches!(contour.points[i].typ, norad::PointType::OffCurve) {
-                        continue;
-                    }
-                    let off = affine * Point::new(contour.points[i].x, contour.points[i].y);
-                    for j in [(i + n - 1) % n, (i + 1) % n] {
-                        if !matches!(contour.points[j].typ, norad::PointType::OffCurve) {
-                            let on = affine * Point::new(contour.points[j].x, contour.points[j].y);
-                            painter
-                                .stroke(Line::new(off, on), &handle, pal.handle_line)
-                                .draw();
-                        }
-                    }
-                }
+            for line in self.session.handle_lines() {
+                painter
+                    .stroke(affine * line, &handle, pal.handle_line)
+                    .draw();
             }
 
             let marker_scale = point_marker_scale(self.session.viewport.zoom);
@@ -1442,9 +1414,9 @@ impl Widget for EditorWidget {
             // Anchors use the same point construction, with solid pink inside
             // the shared dark keyline. Selection retains the node palette.
             let anchor_color = pal.mark("pink").unwrap_or_else(|| pal.role("danger"));
-            for (ai, anchor) in self.session.glyph.anchors.iter().enumerate() {
-                let p = affine * Point::new(anchor.x, anchor.y);
-                let selected = self.session.anchor_selected(ai);
+            for (anchor, position) in self.session.anchor_points() {
+                let p = affine * position;
+                let selected = self.session.selected_anchor == Some(anchor);
                 let (ring, inner) = if selected {
                     (
                         pal.point_outline.unwrap_or(pal.text),
@@ -1545,9 +1517,7 @@ impl Widget for EditorWidget {
                 text_label::draw(painter, mid, &text, 11.0, color, Anchor::Middle);
             }
             if self.view.sizes {
-                use kurbo::Shape as _;
-                for hit in runebender::outline::segment_ops::segments(&self.session.glyph) {
-                    let bounds = hit.seg.bounding_box();
+                for bounds in self.session.segment_bounds() {
                     if bounds.width() < 1.0 && bounds.height() < 1.0 {
                         continue;
                     }
@@ -1608,7 +1578,7 @@ impl Widget for EditorWidget {
         }
 
         if self.tool == Tool::Metaball
-            && let Ok(source) = runebender::formats::metaballs::read_metaballs(&self.session.glyph)
+            && let Ok(source) = self.session.metaball_data()
         {
             for group in source.groups {
                 for ball in group.balls {
@@ -2044,9 +2014,13 @@ impl Widget for EditorWidget {
                 match &self.drag {
                     Drag::Metaballs { changed, .. } => {
                         let changed = *changed;
-                        self.session.end_metric_drag();
+                        if cancelled {
+                            self.session.cancel_metaball_drag();
+                        } else {
+                            self.session.end_metaball_drag();
+                        }
                         self.drag = Drag::None;
-                        self.emit(ctx, changed);
+                        self.emit(ctx, changed && !cancelled);
                     }
                     Drag::Points { .. } => {
                         if cancelled {
@@ -2092,9 +2066,13 @@ impl Widget for EditorWidget {
                         self.emit(ctx, !cancelled);
                     }
                     Drag::AdvanceLine | Drag::LeftLine { .. } => {
-                        self.session.end_metric_drag();
+                        if cancelled {
+                            self.session.cancel_metric_drag();
+                        } else {
+                            self.session.end_metric_drag();
+                        }
                         self.drag = Drag::None;
-                        self.emit(ctx, true);
+                        self.emit(ctx, !cancelled);
                     }
                     Drag::Component { .. } => {
                         if cancelled {
@@ -2788,8 +2766,9 @@ impl<F: Fn(&mut Workspace, EditorEvent) + 'static> View<Workspace, (), ViewCtx> 
                 // The island is the live source of truth while editing. Pull its
                 // session back into the app before the callback runs, so save and
                 // the grid preview see the edits (the widget edits its own clone).
-                app.sync_session_from(&mut element.widget.session);
-                (self.on_event)(app, *event);
+                if app.sync_session_from(&mut element.widget.session) {
+                    (self.on_event)(app, *event);
+                }
                 MessageResult::Action(())
             }
             None => MessageResult::Stale,
@@ -2805,6 +2784,12 @@ mod tests {
     use masonry::theme::default_property_set;
     use masonry::ui_events::pointer::PointerState;
     use masonry_testing::{PRIMARY_MOUSE, TestHarness};
+
+    fn projected_glyph(session: &Session) -> norad::Glyph {
+        session
+            .compatibility_glyph()
+            .expect("an editor session has a canonical layer")
+    }
 
     fn session() -> Session {
         let mut font = norad::Font::new();
@@ -2971,18 +2956,39 @@ mod tests {
         assert_eq!(initial[0].0, editor.session.point_id_at(0, 0).unwrap());
         assert_eq!(initial[0].1, affine * Point::new(0.0, 0.0));
         assert_eq!(initial[0].2, affine * Point::new(400.0, 0.0));
-        editor.session.glyph.contours[0].points[0].typ = norad::PointType::OffCurve;
+        assert!(
+            editor
+                .session
+                .compatibility_edit("test point kind", |glyph| {
+                    glyph.contours[0].points[0].typ = norad::PointType::OffCurve;
+                    true
+                })
+        );
         assert_eq!(
             editor.start_markers()[0].0,
             editor.session.point_id_at(0, 1).unwrap(),
             "skip leading handles"
         );
-        editor.session.glyph.contours[0].points[0].typ = norad::PointType::Move;
+        assert!(
+            editor
+                .session
+                .compatibility_edit("test open path", |glyph| {
+                    glyph.contours[0].points[0].typ = norad::PointType::Move;
+                    true
+                })
+        );
         assert!(
             editor.start_markers().is_empty(),
             "open paths have no marker"
         );
-        editor.session.glyph.contours[0].points.clear();
+        assert!(
+            editor
+                .session
+                .compatibility_edit("test empty path", |glyph| {
+                    glyph.contours[0].points.clear();
+                    true
+                })
+        );
         assert!(
             editor.start_markers().is_empty(),
             "empty contours are harmless"
@@ -3426,7 +3432,7 @@ mod tests {
     fn metaball_pointer_gesture_adds_live_source_with_one_undo_step() {
         let mut editor = widget();
         editor.tool = Tool::Metaball;
-        let original = editor.session.glyph.clone();
+        let original = projected_glyph(&editor.session);
         let mut harness =
             TestHarness::create_with_size(default_property_set(), editor.prepare(), (600, 400));
         harness.mouse_move(Point::new(300.0, 200.0));
@@ -3435,18 +3441,15 @@ mod tests {
         harness.mouse_button_release(Some(PointerButton::Primary));
         harness.edit_root_widget(|root| {
             let session = &root.widget.session;
-            let source = runebender::formats::metaballs::read_metaballs(&session.glyph).unwrap();
+            let source = session.metaball_data().unwrap();
             assert_eq!(source.groups.len(), 1);
             assert_eq!(source.groups[0].balls.len(), 1);
             assert_eq!(
-                session.glyph.contours, original.contours,
+                projected_glyph(session).contours,
+                original.contours,
                 "live metaballs do not create font points"
             );
-            assert_eq!(
-                session.pending.len(),
-                1,
-                "placing and dragging is one undo step"
-            );
+            assert!(session.pending_canonical.is_some());
             assert!(!session.gesture_in_progress());
             assert!(!session.metaball_preview.elements().is_empty());
         });

@@ -121,15 +121,14 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
     let pal = &app.palette;
     let contours = app
         .session
-        .glyph
-        .contours
-        .iter()
+        .contour_point_counts()
+        .into_iter()
         .enumerate()
-        .map(|(ci, contour)| {
+        .map(|(ci, point_count)| {
             let active = app.session.contour_selected(ci);
             recipes::toggle(
                 pal,
-                format!("Contour {} · {} nodes", ci + 1, contour.points.len()),
+                format!("Contour {} · {} nodes", ci + 1, point_count),
                 active,
                 move |app: &mut Workspace| {
                     let session = Arc::make_mut(&mut app.session);
@@ -143,14 +142,13 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
         .collect::<Vec<_>>();
     let components = app
         .session
-        .glyph
-        .components
-        .iter()
+        .component_references()
+        .into_iter()
         .enumerate()
-        .map(|(index, component)| {
+        .map(|(index, reference)| {
             recipes::toggle(
                 pal,
-                format!("{} · component", component.base),
+                format!("{reference} · component"),
                 app.session.component_selected(index),
                 move |app: &mut Workspace| {
                     Arc::make_mut(&mut app.session).select_component(index);
@@ -218,7 +216,8 @@ fn shapes_panel(app: &Workspace) -> impl WidgetView<Workspace> + use<> {
                     ),
                 )
             }),
-            (app.session.glyph.contours.is_empty() && app.session.glyph.components.is_empty())
+            app.session
+                .outline_is_empty()
                 .then(|| label("No contours or components").color(pal.text_muted)),
         ),
     )

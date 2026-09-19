@@ -52,14 +52,13 @@ impl Workspace {
             self.note = "The active glyph layer changed before adding the component".into();
             return;
         };
-        if transaction
+        let Ok(component_id) = transaction
             .draft_mut()
             .add_component(base.clone(), kurbo::Affine::IDENTITY)
-            .is_err()
-        {
+        else {
             self.note = format!("Cannot add component {base}");
             return;
-        }
+        };
         let Ok(runebender::document::project::DocumentEditOutcome::Changed { .. }) = self
             .font
             .project
@@ -75,11 +74,9 @@ impl Workspace {
             undo_depth,
         });
         self.metadata_redo.clear();
-        if self.reload_canonical_layer(&address)
-            && let Some(component) = self.session.glyph.components.len().checked_sub(1)
-        {
+        if self.reload_canonical_layer(&address) {
             let mut session = (*self.session).clone();
-            let _ = session.select_component(component);
+            let _ = session.select_component_id(component_id);
             self.session = Arc::new(session);
             if let Some(tab) = self.tabs.get_mut(self.active_tab) {
                 tab.session = self.session.clone();
@@ -246,32 +243,42 @@ impl Workspace {
         let Some(name) = self.font.glyphs.get(index).map(|glyph| glyph.name.clone()) else {
             return;
         };
-        let rebuilt = match self.font.project.reinterpolated_from_others(&name) {
-            Ok(glyph) => glyph,
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
+            self.note = "The active source is unavailable".into();
+            return;
+        };
+        let Some(address) = self.font.active_layer_address(&name) else {
+            self.note = "The active glyph layer is unavailable".into();
+            return;
+        };
+        let undo_depth = self.font.master().undo_depth(index);
+        let outcome = match self
+            .font
+            .project
+            .reinterpolate_document_layer(&name, source)
+        {
+            Ok(outcome) => outcome,
             Err(error) => {
                 self.note = error;
                 return;
             }
         };
-        if matches!(self.mode, Mode::Editor(_)) {
-            self.apply_op(move |session| {
-                session.record(runebender::ui::editing::edit_types::EditType::Normal);
-                session.glyph.contours = rebuilt.contours;
-                session.glyph.width = rebuilt.width;
-                session.selection.clear();
-                true
+        if matches!(
+            outcome,
+            runebender::document::project::DocumentEditOutcome::Changed { .. }
+        ) {
+            self.metadata_undo.push(MetadataEdit::DocumentLayer {
+                glyph: name.clone(),
+                address: address.clone(),
+                label: "reinterpolate".into(),
+                undo_depth,
             });
-        } else {
-            let mut master = self.font.master_mut();
-            if let Some(original) = master.font.get_glyph(&name).cloned() {
-                master.history.record(&name, &original);
+            self.metadata_redo.clear();
+            self.font.rebuild_cache();
+            if matches!(self.mode, Mode::Editor(_)) {
+                let _ = self.reload_canonical_layer(&address);
+                Arc::make_mut(&mut self.session).selection.clear();
             }
-            master.edit_glyph(index, |glyph| {
-                glyph.contours = rebuilt.contours;
-                glyph.width = rebuilt.width;
-            });
-            drop(master);
-            self.font.refresh_entry(index);
             self.cells = Arc::new(cells_of(&self.font, &self.palette));
             self.modified = true;
         }
@@ -491,33 +498,64 @@ impl Workspace {
         let Some(name) = self.font.glyphs.get(index).map(|glyph| glyph.name.clone()) else {
             return;
         };
-        let active = self.font.active();
+        let active_source = self.font.project.source_id(self.font.active());
+        let undo_depth = self.font.master().undo_depth(index);
+        let addresses = self
+            .font
+            .project
+            .document_sources()
+            .filter_map(|source| {
+                let address = runebender::document::variable::GlyphLayerAddress {
+                    glyph: name.clone(),
+                    layer: source.default_layer(),
+                };
+                self.font
+                    .project
+                    .document_layer(&name, &address.layer)
+                    .is_some()
+                    .then_some((source.id(), address))
+            })
+            .collect::<Vec<_>>();
         let mut baked = 0;
-        for (master_index, master) in self.font.project.edit_sources().iter_mut().enumerate() {
-            let Some(glyph_index) = master.name_map.get(&name).copied() else {
+        let mut active_address = None;
+        for (source, address) in addresses {
+            let Ok(mut transaction) = self.font.project.begin_document_layer_transaction(&address)
+            else {
                 continue;
             };
-            if master_index == active
-                && let Some(glyph) = master.font.get_glyph(&name)
-            {
-                master.history.record(&name, glyph);
+            if transaction.draft_mut().bake_masks() != Ok(true) {
+                continue;
             }
-            if master
-                .edit_glyph(glyph_index, runebender::formats::lib_keys::bake_masks)
-                .unwrap_or(false)
-            {
+            if matches!(
+                self.font
+                    .project
+                    .commit_document_layer_transaction(transaction),
+                Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+            ) {
                 baked += 1;
+                if Some(source) == active_source {
+                    active_address = Some(address);
+                }
             }
         }
         self.font.project.compute_compat();
         self.font.rebuild_cache();
         if baked > 0 {
+            if let Some(address) = active_address.as_ref() {
+                self.metadata_undo.push(MetadataEdit::DocumentLayer {
+                    glyph: name.clone(),
+                    address: address.clone(),
+                    label: "bake masks".into(),
+                    undo_depth,
+                });
+                self.metadata_redo.clear();
+            }
             if matches!(self.mode, Mode::Editor(_))
                 && self.session.glyph_name == name
-                && let Some(address) = self.font.active_layer_address(&name)
+                && let Some(address) = active_address.as_ref()
             {
                 let mut session = (*self.session).clone();
-                let _ = session.reload_from_project(&self.font.project, &address);
+                let _ = session.reload_from_project(&self.font.project, address);
                 self.session = Arc::new(session);
                 self.selected_points = 0;
             }
@@ -810,16 +848,19 @@ impl Workspace {
                 return;
             }
         };
-        let _ = self
-            .font
-            .font_mut()
-            .images
-            .insert(std::path::PathBuf::from(&file_name), bytes);
-        self.apply_op(move |session| {
-            session.record(runebender::ui::editing::edit_types::EditType::Normal);
-            session.glyph.image = Some(placed);
-            true
-        });
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
+            self.note = "Place image: the active source is unavailable".into();
+            return;
+        };
+        if let Err(error) = self.font.project.install_document_source_image(
+            source,
+            std::path::PathBuf::from(&file_name),
+            bytes,
+        ) {
+            self.note = format!("Place image: {error}");
+            return;
+        }
+        self.apply_op(move |session| session.set_image(Some(placed)));
         self.show_background = true;
         self.note = format!("Placed {file_name} · {width}×{height}px");
     }
@@ -847,14 +888,10 @@ impl Workspace {
 
     /// Unlink the open glyph's background image, preserving the stored file.
     pub(crate) fn command_remove_image(&mut self) {
-        if !matches!(self.mode, Mode::Editor(_)) || self.session.glyph.image.is_none() {
+        if !matches!(self.mode, Mode::Editor(_)) || !self.session.has_image() {
             return;
         }
-        self.apply_op(|session| {
-            session.record(runebender::ui::editing::edit_types::EditType::Normal);
-            session.glyph.image = None;
-            true
-        });
+        self.apply_op(|session| session.set_image(None));
         self.note = "Removed image".into();
     }
 
@@ -1334,7 +1371,10 @@ impl Workspace {
             return;
         }
         let name = self.session.glyph_name.clone();
-        let contours = self.session.glyph.contours.clone();
+        let Some(foreground) = self.session.compatibility_glyph() else {
+            return;
+        };
+        let contours = foreground.contours;
         let width = self.session.advance();
         self.font.send_to_background(&name, contours, width);
         self.show_background = true;
@@ -1352,7 +1392,10 @@ impl Workspace {
             self.note = "no background to swap".into();
             return;
         };
-        let foreground = self.session.glyph.contours.clone();
+        let Some(foreground) = self.session.compatibility_glyph() else {
+            return;
+        };
+        let foreground = foreground.contours;
         let width = self.session.advance();
         self.apply_op(move |session| session.set_contours(background));
         self.font.send_to_background(&name, foreground, width);
@@ -1386,6 +1429,12 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn projected_glyph(session: &Session) -> norad::Glyph {
+        session
+            .compatibility_glyph()
+            .expect("an editor session has a canonical layer")
+    }
 
     fn rectangle(name: &str, x0: f64, x1: f64) -> norad::Glyph {
         let mut glyph = norad::Glyph::new(name);
@@ -1441,11 +1490,12 @@ mod tests {
         assert_eq!(app.font.master().undo_depth(index), 0);
         app.stroke_buf = "20".into();
         app.command_expand_stroke();
-        assert_ne!(app.session.glyph.contours, original);
-        assert_eq!(app.session.glyph.width, 500.0);
-        assert_eq!(app.font.master().undo_depth(index), 1);
+        assert_ne!(projected_glyph(&app.session).contours, original);
+        assert_eq!(app.session.advance(), 500.0);
+        assert_eq!(app.font.master().undo_depth(index), 0);
+        assert_eq!(app.metadata_undo.len(), 1);
         app.undo_active_edit(false);
-        assert_eq!(app.session.glyph.contours, original);
+        assert_eq!(projected_glyph(&app.session).contours, original);
         assert_eq!(
             norad::Font::load(&path)
                 .unwrap()
@@ -1486,7 +1536,7 @@ mod tests {
         assert_eq!(workspace.clipboard.len(), 1);
 
         workspace.paste_contours();
-        assert_eq!(workspace.session.glyph.contours.len(), 2);
+        assert_eq!(projected_glyph(&workspace.session).contours.len(), 2);
         assert_eq!(workspace.session.selection.len(), 4);
         assert!(
             workspace
@@ -1505,9 +1555,9 @@ mod tests {
         );
         assert_eq!(workspace.metadata_undo.len(), 1);
         workspace.undo_active_edit(false);
-        assert_eq!(workspace.session.glyph.contours.len(), 1);
+        assert_eq!(projected_glyph(&workspace.session).contours.len(), 1);
         workspace.undo_active_edit(true);
-        assert_eq!(workspace.session.glyph.contours.len(), 2);
+        assert_eq!(projected_glyph(&workspace.session).contours.len(), 2);
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
@@ -1540,7 +1590,10 @@ mod tests {
         assert!(cancelled.drag_points_to((20.0, 10.0)));
         cancelled.cancel_point_drag();
         workspace.sync_session_from(&mut cancelled);
-        assert_eq!(workspace.session.glyph.contours[0].points[0].x, 50.0);
+        assert_eq!(
+            projected_glyph(&workspace.session).contours[0].points[0].x,
+            50.0
+        );
         assert!(workspace.metadata_undo.is_empty());
 
         let mut no_op = (*workspace.session).clone();
@@ -1554,11 +1607,65 @@ mod tests {
         assert!(committed.drag_points_to((30.0, 10.0)));
         committed.end_point_drag();
         workspace.sync_session_from(&mut committed);
-        assert_eq!(workspace.session.glyph.contours[0].points[0].x, 80.0);
+        assert_eq!(
+            projected_glyph(&workspace.session).contours[0].points[0].x,
+            80.0
+        );
         assert_eq!(workspace.metadata_undo.len(), 1);
         assert_eq!(workspace.font.master().undo_depth(index), 0);
         workspace.undo_active_edit(false);
-        assert_eq!(workspace.session.glyph.contours[0].points[0].x, 50.0);
+        assert_eq!(
+            projected_glyph(&workspace.session).contours[0].points[0].x,
+            50.0
+        );
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
+    }
+
+    #[test]
+    fn rejected_session_transaction_never_falls_back_to_a_legacy_write() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-rejected-session-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(rectangle("A", 50.0, 450.0));
+        font.save(&path).expect("the fixture saves");
+
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        let index = workspace.font.index_of("A").expect("A exists");
+        workspace.open_glyph(index);
+        let selected = workspace.session.point_id_at(0, 0).unwrap();
+        let mut stale = (*workspace.session).clone();
+        stale.selection.insert(selected);
+        assert!(stale.nudge(20.0, 0.0));
+
+        workspace
+            .font
+            .project
+            .remove_document_glyph("A")
+            .expect("the canonical glyph is removed before the stale edit commits");
+        let undo_steps = workspace.metadata_undo.len();
+        let legacy_steps = workspace.font.master().undo_depth(index);
+        assert!(!workspace.modified);
+
+        let accepted = workspace.sync_session_from(&mut stale);
+        if accepted {
+            workspace.refresh_open_glyph();
+        }
+        assert!(!accepted);
+        assert!(!workspace.sync_session_from(&mut stale));
+        assert_eq!(workspace.metadata_undo.len(), undo_steps);
+        assert_eq!(workspace.font.master().undo_depth(index), legacy_steps);
+        assert!(!workspace.modified);
+        assert!(workspace.font.project.document_glyph("A").is_none());
+        assert!(workspace.font.font().get_glyph("A").is_none());
+        assert!(workspace.note.contains("could not be reloaded"));
 
         std::fs::remove_dir_all(path).expect("the fixture is removed");
     }

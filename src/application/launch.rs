@@ -33,14 +33,7 @@ pub(crate) fn run(
         let mut sess = (*workspace.session).clone();
         sess.select_all();
         workspace.selected_points = sess.selection_bounds().map(|_| 999).unwrap_or(0);
-        let n = {
-            let mut c = 0;
-            for co in &sess.glyph.contours {
-                c += co.points.len();
-            }
-            c
-        };
-        workspace.selected_points = n;
+        workspace.selected_points = sess.point_count();
         workspace.session = Arc::new(sess);
         workspace.refresh_coord_bufs();
     }

@@ -6,11 +6,8 @@
 use crate::application::editor::session::Session;
 use crate::application::view::canvas::grid::cells_of;
 use crate::application::workspace::{Mode, OverviewEditBatch, Workspace};
-use runebender::formats::metaballs::{
-    Metaball, MetaballGroup, Metaballs, read_metaballs, write_metaballs,
-};
+use runebender::formats::metaballs::{Metaball, MetaballGroup};
 use runebender::outline::metaballs::{OutlineOptions, collapse};
-use runebender::ui::editing::edit_types::EditType;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -25,46 +22,38 @@ pub(crate) struct MetaballSelection {
 impl Session {
     pub(crate) fn refresh_metaball_preview(&mut self) {
         self.metaballs.drafts.clear();
-        match runebender::outline::metaballs::glyph_preview(&self.glyph) {
-            Ok(path) => {
+        let source = self.metaball_data().map_err(|error| error.to_string());
+        match source.and_then(|source| {
+            let mut path = kurbo::BezPath::new();
+            for group in &source.groups {
+                for contour in
+                    runebender::outline::metaballs::preview(group, OutlineOptions::default())?
+                {
+                    path.extend(contour);
+                }
+            }
+            Ok((source, path))
+        }) {
+            Ok((source, path)) => {
                 self.metaball_preview = path;
                 self.metaballs.error = None;
+                self.metaballs.selected.retain(|(g, b)| {
+                    source
+                        .groups
+                        .iter()
+                        .any(|group| group.id == *g && group.balls.iter().any(|ball| ball.id == *b))
+                });
             }
             Err(error) => {
                 self.metaball_preview = kurbo::BezPath::new();
                 self.metaballs.error = Some(error);
             }
         }
-        if let Ok(source) = read_metaballs(&self.glyph) {
-            self.metaballs.selected.retain(|(g, b)| {
-                source
-                    .groups
-                    .iter()
-                    .any(|group| group.id == *g && group.balls.iter().any(|ball| ball.id == *b))
-            });
-        }
-    }
-
-    fn store_metaballs(&mut self, source: &Metaballs, drag: bool) -> Result<bool, String> {
-        // Validate and serialize before touching either history or live data.
-        let mut glyph = self.glyph.clone();
-        if !write_metaballs(&mut glyph, source)? {
-            return Ok(false);
-        }
-        self.record(if drag {
-            EditType::Drag
-        } else {
-            EditType::Normal
-        });
-        self.glyph = glyph;
-        self.refresh_metaball_preview();
-        self.metaballs.drafts.clear();
-        Ok(true)
     }
 
     pub(crate) fn metaball_click(&mut self, at: kurbo::Point, radius: f64, shift: bool) -> bool {
         let result = (|| {
-            let mut source = read_metaballs(&self.glyph)?;
+            let mut source = self.metaball_data().map_err(|error| error.to_string())?;
             let hit = source
                 .groups
                 .iter()
@@ -131,7 +120,8 @@ impl Session {
                 stiffness: 2.0,
             });
             let selected = (group.id, id);
-            let changed = self.store_metaballs(&source, true)?;
+            let changed = self.store_metaballs(source, true)?;
+            self.refresh_metaball_preview();
             self.metaballs.selected = HashSet::from([selected]);
             self.metaballs.active_group = Some(selected.0);
             Ok::<_, String>(changed)
@@ -151,7 +141,7 @@ impl Session {
 
     pub(crate) fn move_metaballs(&mut self, delta: kurbo::Vec2, drag: bool) -> bool {
         let result = (|| {
-            let mut source = read_metaballs(&self.glyph)?;
+            let mut source = self.metaball_data().map_err(|error| error.to_string())?;
             for group in &mut source.groups {
                 for ball in &mut group.balls {
                     if self.metaballs.selected.contains(&(group.id, ball.id)) {
@@ -160,13 +150,15 @@ impl Session {
                     }
                 }
             }
-            self.store_metaballs(&source, drag)
+            let changed = self.store_metaballs(source, drag)?;
+            self.refresh_metaball_preview();
+            Ok(changed)
         })();
         self.metaball_result(result)
     }
 
     pub(crate) fn select_all_metaballs(&mut self) {
-        if let Ok(source) = read_metaballs(&self.glyph) {
+        if let Ok(source) = self.metaball_data() {
             self.metaballs.selected = source
                 .groups
                 .iter()
@@ -178,13 +170,13 @@ impl Session {
 
     pub(crate) fn delete_metaballs(&mut self) -> bool {
         let result = (|| {
-            let mut source = read_metaballs(&self.glyph)?;
+            let mut source = self.metaball_data().map_err(|error| error.to_string())?;
             for g in &mut source.groups {
                 g.balls
                     .retain(|b| !self.metaballs.selected.contains(&(g.id, b.id)));
             }
             source.groups.retain(|g| !g.balls.is_empty());
-            self.store_metaballs(&source, false)
+            self.store_metaballs(source, false)
         })();
         let changed = self.metaball_result(result);
         if changed {
@@ -197,7 +189,7 @@ impl Session {
         if let Some(value) = self.metaballs.drafts.get(field) {
             return value.clone();
         }
-        let Ok(source) = read_metaballs(&self.glyph) else {
+        let Ok(source) = self.metaball_data() else {
             return String::new();
         };
         let mut values = source
@@ -227,7 +219,7 @@ impl Session {
             let value = value
                 .parse::<f64>()
                 .map_err(|_| "Enter a number".to_string())?;
-            let mut source = read_metaballs(&self.glyph)?;
+            let mut source = self.metaball_data().map_err(|error| error.to_string())?;
             for g in &mut source.groups {
                 for b in &mut g.balls {
                     if self.metaballs.selected.contains(&(g.id, b.id)) {
@@ -241,7 +233,7 @@ impl Session {
                     }
                 }
             }
-            self.store_metaballs(&source, false)
+            self.store_metaballs(source, false)
         })();
         self.metaball_result(result)
     }
@@ -252,20 +244,19 @@ impl Session {
             if selected && ids.is_empty() {
                 return Ok(false);
             }
-            let mut glyph = self.glyph.clone();
-            let count = collapse(
-                &mut glyph,
-                selected.then_some(ids.as_slice()),
-                OutlineOptions::default(),
-            )?;
-            if count == 0 {
-                return Ok(false);
+            let changed = self.compatibility_edit_result("collapse metaballs", |glyph| {
+                collapse(
+                    glyph,
+                    selected.then_some(ids.as_slice()),
+                    OutlineOptions::default(),
+                )
+                .map(|count| count > 0)
+            })?;
+            if changed {
+                self.metaballs = MetaballSelection::default();
+                self.refresh_metaball_preview();
             }
-            self.record(EditType::Normal);
-            self.glyph = glyph;
-            self.metaballs = MetaballSelection::default();
-            self.refresh_metaball_preview();
-            Ok(true)
+            Ok(changed)
         })();
         self.metaball_result(result)
     }
@@ -282,47 +273,68 @@ impl Workspace {
 
 impl Workspace {
     pub(crate) fn collapse_font_metaballs(&mut self) {
-        // The overview already owns an atomic multi-glyph undo context.
         if !matches!(self.mode, Mode::Overview) {
             return;
         }
-        let prepared = (|| {
-            let mut glyphs = Vec::new();
-            for (index, entry) in self.font.glyphs.iter().enumerate() {
-                let Some(mut glyph) = self.font.font().get_glyph(&entry.name).cloned() else {
-                    continue;
-                };
-                if collapse(&mut glyph, None, OutlineOptions::default())? > 0 {
-                    glyphs.push((index, glyph));
-                }
-            }
-            Ok::<_, String>(glyphs)
-        })();
-        let glyphs = match prepared {
-            Ok(glyphs) => glyphs,
-            Err(error) => {
-                self.note = error;
-                return;
-            }
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
+            self.note = "The active source is unavailable".into();
+            return;
         };
-        if glyphs.is_empty() {
+        let Some(layer) = self
+            .font
+            .project
+            .document_source(source)
+            .map(|source| source.default_layer())
+        else {
+            self.note = "The active source layer is unavailable".into();
+            return;
+        };
+        let candidates = self
+            .font
+            .glyphs
+            .iter()
+            .map(|entry| entry.name.clone())
+            .collect::<Vec<_>>();
+        let mut names = Vec::new();
+        for name in candidates {
+            let address = runebender::document::variable::GlyphLayerAddress {
+                glyph: name.clone(),
+                layer: layer.clone(),
+            };
+            let Ok(mut transaction) = self.font.project.begin_document_layer_transaction(&address)
+            else {
+                continue;
+            };
+            let mut glyph = transaction.compatibility_glyph();
+            let collapsed = match collapse(&mut glyph, None, OutlineOptions::default()) {
+                Ok(collapsed) => collapsed,
+                Err(error) => {
+                    self.note = error;
+                    return;
+                }
+            };
+            if collapsed == 0 || transaction.reconcile_compatibility_glyph(&glyph) != Ok(true) {
+                continue;
+            }
+            if matches!(
+                self.font
+                    .project
+                    .commit_document_layer_transaction(transaction),
+                Ok(runebender::document::project::DocumentEditOutcome::Changed { .. })
+            ) {
+                names.push(name);
+            }
+        }
+        if names.is_empty() {
             self.note = "No live metaballs in this master".into();
             return;
         }
-        let names = glyphs.iter().map(|(_, g)| g.name().to_string()).collect();
-        for (index, glyph) in glyphs {
-            self.font.master_mut().record_undo(index);
-            self.font.replace_glyph(index, glyph);
-        }
         self.overview_undo.push(OverviewEditBatch {
-            source: self
-                .font
-                .project
-                .source_id(self.font.active())
-                .expect("active source identity"),
+            source,
             glyphs: names,
         });
         self.overview_redo.clear();
+        self.font.rebuild_cache();
         self.cells = Arc::new(cells_of(&self.font, &self.palette));
         self.modified = true;
         self.note = "Converted this master's live metaballs to cubic contours".into();
@@ -333,6 +345,12 @@ impl Workspace {
 mod tests {
     use super::*;
     use crate::application::workspace::Tool;
+
+    fn projected_glyph(session: &Session) -> norad::Glyph {
+        session
+            .compatibility_glyph()
+            .expect("an editor session has a canonical layer")
+    }
 
     #[test]
     fn live_sources_save_reopen_convert_and_undo_in_xilem() {
@@ -350,44 +368,44 @@ mod tests {
             app.select_tool(Tool::Metaball);
             app.edit_metaballs(|s| {
                 let changed = s.metaball_click(kurbo::Point::new(250.0, 200.0), 10.0, false);
-                s.end_metric_drag();
+                s.end_metaball_drag();
                 changed
             });
             app.edit_metaballs(|s| {
                 let changed = s.metaball_click(kurbo::Point::new(250.0, 400.0), 10.0, false);
-                s.end_metric_drag();
+                s.end_metaball_drag();
                 changed
             });
             Arc::make_mut(&mut app.session).select_all_metaballs();
             app.edit_metaballs(|s| s.set_metaball_value("Radius", "200".into()));
-            assert!(app.session.glyph.contours.is_empty());
+            assert!(app.session.outline_is_empty());
             assert_eq!(
-                read_metaballs(&app.session.glyph).unwrap().groups[0]
-                    .balls
-                    .len(),
+                app.session.metaball_data().unwrap().groups[0].balls.len(),
                 2
             );
-            let before = app.session.glyph.clone();
+            let before = projected_glyph(&app.session);
             app.edit_metaballs(|s| s.set_metaball_value("Radius", "NaN".into()));
             assert_eq!(
-                app.session.glyph, before,
+                projected_glyph(&app.session),
+                before,
                 "invalid input preserves live source"
             );
             app.edit_metaballs(|s| s.collapse_metaballs(false));
-            assert!(!app.session.glyph.contours.is_empty());
+            assert!(!app.session.outline_is_empty());
             app.undo_open_glyph(false);
             assert_eq!(
-                app.session.glyph, before,
+                projected_glyph(&app.session),
+                before,
                 "conversion undo restores exact source"
             );
             app.undo_open_glyph(true);
-            assert!(!app.session.glyph.contours.is_empty());
+            assert!(!app.session.outline_is_empty());
             app.undo_open_glyph(false);
         }
         app.font.font().save(&path).unwrap();
         let reopened = norad::Font::load(&path).unwrap();
         assert_eq!(
-            read_metaballs(reopened.get_glyph("i").unwrap())
+            runebender::formats::metaballs::read_metaballs(reopened.get_glyph("i").unwrap())
                 .unwrap()
                 .groups[0]
                 .balls
@@ -406,7 +424,7 @@ mod tests {
         app.undo_active_edit(true);
         app.open_glyph(app.font.index_of("i").unwrap());
         assert!(
-            !app.session.glyph.contours.is_empty(),
+            !app.session.outline_is_empty(),
             "parked tabs load the converted glyph"
         );
         std::fs::remove_dir_all(path).unwrap();

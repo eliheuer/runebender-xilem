@@ -300,14 +300,56 @@ git diff --check
 
 ## Remaining application callers
 
-- `application/editor/session.rs` still stores and mutates a compatibility `norad::Glyph` for legacy outline algorithms, pen/shape tools, metrics and several filters, and retains pending Norad history records for those adapters.
-- `application/font_model.rs` still exposes mutable `Master` and `norad::Font` accessors and performs font-wide edits through compatibility projections.
-- `application/workspace.rs` still stores application-owned rename, Unicode and overview history values; outline clipboard storage is canonical.
-- `application/editor/commands.rs`, inspector and tools still call legacy font/source mutation APIs.
-- `application/view/canvas/editor.rs` still paints direct contour and anchor positions from the Session compatibility projection, though their selection identities and pointer transactions are canonical.
-- Several panels still read compatibility font and glyph metadata pending the M07 canonical metadata surface.
+- `Session` no longer stores a `norad::Glyph`, tuple point or anchor identities, `HistoryOp`, pending legacy snapshots or a second outline undo pile.
+- The canvas, panels, browser state and inspector now read points, contours, components, anchors, metrics, Unicode, images, segment bounds, analysis geometry and metaball data through canonical views.
+- Point, component, anchor, metric and metaball gestures own canonical transactions; cancel drops the draft, a no-op creates no history and Pointer Up publishes one transaction.
+- Direct canonical draft operations now own filters, cleanup, transforms, shapes, anchors, images, boolean operations, knife cuts, curve conversion, re-interpolation and mask baking.
+- Place Image installs bytes through a stable-source Project operation and attaches the image through the layer draft; it no longer mutates `FontModel::font_mut().images`.
+- Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
+- The remaining temporary bridge callers are exact and finite: pen contour materialization and close; hyperbezier start, append and close; mark-label writes; compatibility contour replacement and its test-only paste helper; selected metaball collapse; background send and swap; and the mark-cloud read projection.
+- `FontModel` still exposes mutable source/font access for overview marks, Unicode, metrics formulas, local-model workflow boundaries, source retargeting and background layers; those callers remain M06/M13 work rather than completion claims.
+
+## Canonical Session storage and history cutover
+
+Implementation commit: `Remove the Session UFO cache and legacy history`.
+Resolve its exact ID with `git log --format=%H --grep='^Remove the Session UFO cache and legacy history$' -1`.
+Affected paths: `src/application/editor/session.rs`, editor commands and tools, canvas and panel readers, `src/application/font_model.rs`, application tests and this log.
+
+`Session` now retains canonical layer transactions, stable object identities and presentation caches only.
+There is no long-lived UFO glyph, legacy selection map, `HistoryOp` queue or application-to-Master whole-glyph synchronization path.
+The application callback runs only after `sync_session_from` accepts and reloads a canonical transaction.
+A stale transaction therefore cannot fall through to a later compatibility write, and a failed canonical reload retains a diagnostic and rejects later widget messages from that session.
+
+The temporary bridge requested earlier was integrated as core commit `ed4ad11` and consumed only for short-lived algorithms that have not yet received a direct draft operation:
+
+```rust
+impl CanonicalLayerTransaction {
+    pub fn compatibility_glyph(&self) -> norad::Glyph;
+    pub fn reconcile_compatibility_glyph(
+        &mut self,
+        glyph: &norad::Glyph,
+    ) -> Result<bool, DocumentEditError>;
+}
+```
+
+This is migration debt, not a public editing architecture or an M13 completion claim.
+Direct hyperbezier conversion, mask baking and stable-source image installation have already replaced three would-be bridge or mutable-font callers.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo check --workspace --all-targets --locked
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::session::tests:: -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused Session suite passes nine tests.
+The complete binary suite passes 163 tests with four documented model or external-font tests ignored.
+The rejected-transaction regression proves no fallback write, no dirty/history change and a retained reload diagnostic after the canonical glyph disappears before commit.
 
 ## Next action
 
-Move pen, shape, knife, metric and remaining outline commands from the compatibility projection onto `LayerEditDraft` operations.
-Then remove `Session::glyph`, `HistoryOp` and the application-to-source whole-glyph synchronization path.
+Delete the finite bridge list above, replace remaining `FontModel::font_mut`, `master_mut`, `edit_sources` and legacy history callers with canonical Project operations, then remove the bridge itself during M13.

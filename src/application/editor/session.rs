@@ -20,12 +20,10 @@ use std::sync::Arc;
 
 use masonry::kurbo::{self as kurbo, BezPath, Point, Rect};
 use runebender::document::project::CanonicalLayerTransaction;
-use runebender::document::{AnchorId, ComponentId, LayerView, PointId};
-use runebender::outline::glyph_ops::{self, PointId as LegacyPointId};
+use runebender::document::{AnchorId, ComponentId, LayerPointType, LayerView, PointId};
+use runebender::outline::glyph_ops;
 use runebender::outline::glyph_paths;
 use runebender::outline::glyph_paths::round_units;
-use runebender::outline::point_ops;
-use runebender::ui::editing::edit_types::EditType;
 use runebender::ui::editing::viewport::ViewPort;
 
 /// Boolean operation kinds, mapped to `linesweeper::BinaryOp` internally.
@@ -84,36 +82,29 @@ pub(crate) struct PointView {
 #[derive(Clone)]
 pub(crate) struct Session {
     pub glyph_name: String,
-    pub glyph: norad::Glyph,
     pub metaballs: metaballs::MetaballSelection,
     pub metaball_preview: BezPath,
     /// Components, resolved against the font at session creation.
     pub components: BezPath,
     /// Resolved path for each top-level component, for selection and feedback.
     component_cache: Vec<runebender::outline::component_ops::ResolvedDocumentComponent>,
-    /// Canonical anchors in the same order as the compatibility glyph projection.
-    anchor_ids: Vec<AnchorId>,
     /// Fresh no-op transaction used to start one owned canonical edit.
     canonical_base: Option<CanonicalLayerTransaction>,
     /// Completed canonical edit waiting for the workspace Project to commit it.
     pub(crate) pending_canonical: Option<CanonicalLayerTransaction>,
     pending_canonical_label: Option<&'static str>,
+    /// A rejected transaction whose layer could not be reloaded cannot fall through a later
+    /// compatibility sync from the same widget-owned session.
+    sync_rejected: bool,
     active_point_drag: Option<CanonicalPointDrag>,
     active_component_drag: Option<CanonicalComponentDrag>,
     active_anchor_drag: Option<CanonicalGesture>,
+    active_metric_drag: Option<CanonicalGesture>,
+    active_metaball_drag: Option<CanonicalGesture>,
     pub metrics: Metrics,
     pub selection: HashSet<PointId>,
-    /// Canonical point identities in the same order as the compatibility glyph projection.
-    point_ids: Vec<Vec<PointId>>,
     pub viewport: ViewPort,
     pub fitted: bool,
-    /// Undo steps taken since the app last pulled this session: the
-    /// pile itself is the master's, in core. The app drains these on
-    /// every sync.
-    pub(crate) pending: Vec<HistoryOp>,
-    /// A structural compatibility edit can select new points before the canonical layer reloads.
-    pending_selection_indices: Option<HashSet<LegacyPointId>>,
-    pending_component_index: Option<usize>,
     in_drag: bool,
     /// The contour the pen is currently extending, if any.
     pub active_contour: Option<usize>,
@@ -126,15 +117,6 @@ pub(crate) struct Session {
     pub selected_component: Option<ComponentId>,
     /// Last flip or rotation, re-applied by Duplicate + Repeat.
     last_transform: Option<kurbo::Affine>,
-}
-
-/// An undo step the session took, for the master's pile.
-#[derive(Clone)]
-pub(crate) enum HistoryOp {
-    /// The glyph as it was before an edit.
-    Record(Box<norad::Glyph>),
-    /// The last step turned out empty; drop it.
-    DiscardLast,
 }
 
 #[derive(Clone)]
@@ -155,7 +137,6 @@ struct CanonicalComponentDrag {
     gesture: CanonicalGesture,
     component_cache: Vec<runebender::outline::component_ops::ResolvedDocumentComponent>,
     components: BezPath,
-    source_component: norad::Component,
 }
 
 /// One point in the pen's in-progress buffer.
@@ -187,26 +168,23 @@ impl Session {
     pub(crate) fn inactive(font: &norad::Font) -> Self {
         Self {
             glyph_name: String::new(),
-            glyph: norad::Glyph::new(".notdef"),
             metaball_preview: BezPath::new(),
             components: BezPath::new(),
             component_cache: Vec::new(),
-            anchor_ids: Vec::new(),
             canonical_base: None,
             pending_canonical: None,
             pending_canonical_label: None,
+            sync_rejected: false,
             active_point_drag: None,
             active_component_drag: None,
             active_anchor_drag: None,
+            active_metric_drag: None,
+            active_metaball_drag: None,
             metaballs: metaballs::MetaballSelection::default(),
             metrics: Metrics::of(font),
             selection: HashSet::new(),
-            point_ids: Vec::new(),
             viewport: ViewPort::new(),
             fitted: false,
-            pending: Vec::new(),
-            pending_selection_indices: None,
-            pending_component_index: None,
             in_drag: false,
             active_contour: None,
             pen: Vec::new(),
@@ -234,78 +212,63 @@ impl Session {
     ) -> Option<Self> {
         let source = project.source_id(project.active)?;
         let layer_id = project.document_source(source)?.default_layer();
-        let layer = project.document_layer(name, &layer_id)?;
-        let glyph = project.glyph_layer(name, &layer_id)?;
+        project.document_layer(name, &layer_id)?;
         let address = runebender::document::variable::GlyphLayerAddress {
             glyph: name.to_owned(),
             layer: layer_id,
         };
         let component_cache = resolved_document_components(project, &address).ok()?;
         let components = combined_component_path(&component_cache);
-        let anchor_ids = layer.anchors().map(|anchor| anchor.id()).collect();
         let canonical_base = project.begin_document_layer_transaction(&address).ok();
-        Some(Self {
+        let mut session = Self {
             glyph_name: name.to_string(),
-            metaball_preview: runebender::outline::metaballs::glyph_preview(&glyph)
-                .unwrap_or_default(),
-            glyph,
+            metaball_preview: BezPath::new(),
             components,
             component_cache,
-            anchor_ids,
             canonical_base,
             pending_canonical: None,
             pending_canonical_label: None,
+            sync_rejected: false,
             active_point_drag: None,
             active_component_drag: None,
             active_anchor_drag: None,
+            active_metric_drag: None,
+            active_metaball_drag: None,
             metaballs: metaballs::MetaballSelection::default(),
             metrics,
             selection: HashSet::new(),
-            point_ids: canonical_point_ids(layer),
             viewport: ViewPort::new(),
             fitted: false,
-            pending: Vec::new(),
-            pending_selection_indices: None,
-            pending_component_index: None,
             in_drag: false,
             active_contour: None,
             pen: Vec::new(),
             selected_anchor: None,
             selected_component: None,
             last_transform: None,
-        })
+        };
+        session.refresh_metaball_preview();
+        Some(session)
     }
 
-    fn legacy_point(&self, id: PointId) -> Option<LegacyPointId> {
-        self.point_ids
-            .iter()
+    #[cfg(test)]
+    fn legacy_point(&self, id: PointId) -> Option<(usize, usize)> {
+        self.current_layer()?
+            .contours()
             .enumerate()
             .find_map(|(contour, points)| {
                 points
-                    .iter()
-                    .position(|candidate| *candidate == id)
+                    .points()
+                    .position(|candidate| candidate.id() == id)
                     .map(|point| (contour, point))
             })
     }
 
-    fn legacy_selection(&self) -> HashSet<LegacyPointId> {
+    #[cfg(test)]
+    fn legacy_selection(&self) -> HashSet<(usize, usize)> {
         self.selection
             .iter()
             .filter_map(|id| self.legacy_point(*id))
             .collect()
-    }
-
-    fn select_legacy_points(&mut self, selected: HashSet<LegacyPointId>) {
-        self.selection = selected
-            .iter()
-            .filter_map(|(contour, point)| {
-                self.point_ids
-                    .get(*contour)
-                    .and_then(|points| points.get(*point))
-                    .copied()
-            })
-            .collect();
-        self.pending_selection_indices = Some(selected);
     }
 
     pub(crate) fn canonical_selection(&self, layer: LayerView<'_>) -> Vec<PointId> {
@@ -330,36 +293,240 @@ impl Session {
             .filter(|id| available.contains(id))
             .copied()
             .collect();
-        self.pending_selection_indices = None;
     }
 
     pub(crate) fn contour_selected(&self, contour: usize) -> bool {
-        self.point_ids
-            .get(contour)
-            .is_some_and(|points| points.iter().any(|point| self.selection.contains(point)))
+        self.current_layer()
+            .and_then(|layer| layer.contours().nth(contour))
+            .is_some_and(|contour| {
+                contour
+                    .points()
+                    .any(|point| self.selection.contains(&point.id()))
+            })
     }
 
+    pub(crate) fn contour_point_counts(&self) -> Vec<usize> {
+        self.current_layer()
+            .into_iter()
+            .flat_map(|layer| layer.contours().map(|contour| contour.points().count()))
+            .collect()
+    }
+
+    pub(crate) fn component_references(&self) -> Vec<String> {
+        self.current_layer()
+            .into_iter()
+            .flat_map(|layer| {
+                layer
+                    .components()
+                    .map(|component| component.reference().to_owned())
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
     pub(crate) fn point_id_at(&self, contour: usize, point: usize) -> Option<PointId> {
-        self.point_ids
-            .get(contour)
-            .and_then(|points| points.get(point))
-            .copied()
+        self.current_layer()?
+            .contours()
+            .nth(contour)?
+            .points()
+            .nth(point)
+            .map(|point| point.id())
     }
 
     pub(crate) fn select_contour(&mut self, contour: usize) -> usize {
         self.selection = self
-            .point_ids
-            .get(contour)
+            .current_layer()
+            .and_then(|layer| layer.contours().nth(contour))
             .into_iter()
-            .flatten()
-            .copied()
+            .flat_map(|contour| contour.points().map(|point| point.id()))
             .collect();
-        self.pending_selection_indices = None;
         self.selection.len()
     }
 
     pub(crate) fn advance(&self) -> f64 {
-        self.glyph.width
+        self.current_layer().map_or(0.0, LayerView::width)
+    }
+
+    pub(crate) fn has_image(&self) -> bool {
+        self.current_layer()
+            .is_some_and(|layer| layer.image().is_some())
+    }
+
+    pub(crate) fn codepoint(&self) -> Option<char> {
+        self.current_layer()?.codepoints().next()
+    }
+
+    /// Materialize a detached UFO value only for an application boundary that still consumes the
+    /// legacy codec. It is never retained as Session state.
+    pub(crate) fn compatibility_glyph(&self) -> Option<norad::Glyph> {
+        self.current_transaction()
+            .map(CanonicalLayerTransaction::compatibility_glyph)
+    }
+
+    pub(crate) fn anchor_points(&self) -> Vec<(AnchorId, Point)> {
+        self.current_layer()
+            .into_iter()
+            .flat_map(|layer| {
+                layer
+                    .anchors()
+                    .map(|anchor| (anchor.id(), anchor.position()))
+            })
+            .collect()
+    }
+
+    pub(crate) fn handle_lines(&self) -> Vec<kurbo::Line> {
+        let Some(layer) = self.current_layer() else {
+            return Vec::new();
+        };
+        let mut lines = Vec::new();
+        for contour in layer.contours() {
+            let points: Vec<_> = contour
+                .points()
+                .map(|point| (point.position(), point.point_type()))
+                .collect();
+            let count = points.len();
+            for index in 0..count {
+                if !matches!(points[index].1, LayerPointType::OffCurve) {
+                    continue;
+                }
+                for neighbor in [(index + count - 1) % count, (index + 1) % count] {
+                    if !matches!(points[neighbor].1, LayerPointType::OffCurve) {
+                        lines.push(kurbo::Line::new(points[index].0, points[neighbor].0));
+                    }
+                }
+            }
+        }
+        lines
+    }
+
+    pub(crate) fn start_markers(&self) -> Vec<(PointId, Point, Point)> {
+        self.current_layer()
+            .into_iter()
+            .flat_map(|layer| {
+                layer.contours().filter_map(|contour| {
+                    if !contour.is_closed() {
+                        return None;
+                    }
+                    let points = contour.points().collect::<Vec<_>>();
+                    let point = points
+                        .iter()
+                        .position(|point| point.point_type() != LayerPointType::OffCurve)?;
+                    let next = (point + 1) % points.len();
+                    let from = points[point].position();
+                    let to = points[next].position();
+                    (from.distance(to) > 0.001).then_some((points[point].id(), from, to))
+                })
+            })
+            .collect()
+    }
+
+    pub(crate) fn segment_bounds(&self) -> Vec<Rect> {
+        use kurbo::Shape as _;
+        self.current_layer()
+            .into_iter()
+            .flat_map(runebender::outline::segment_ops::ordinary_layer_segments)
+            .map(|segment| segment.seg.bounding_box())
+            .collect()
+    }
+
+    pub(crate) fn metaball_data(
+        &self,
+    ) -> Result<
+        runebender::document::model::glyph_metadata::Metaballs,
+        runebender::document::DocumentEditError,
+    > {
+        self.current_layer()
+            .ok_or(runebender::document::DocumentEditError::MissingLayer)?
+            .metaballs()
+    }
+
+    pub(crate) fn set_image(&mut self, image: Option<norad::Image>) -> bool {
+        self.stage_canonical_edit("set image", move |draft| Ok(draft.set_image(image)))
+    }
+
+    fn current_layer(&self) -> Option<LayerView<'_>> {
+        self.current_transaction()
+            .map(|transaction| transaction.draft().view())
+    }
+
+    fn current_transaction(&self) -> Option<&CanonicalLayerTransaction> {
+        self.active_point_drag
+            .as_ref()
+            .map(|drag| &drag.transaction)
+            .or_else(|| {
+                self.active_component_drag
+                    .as_ref()
+                    .map(|drag| &drag.gesture.transaction)
+            })
+            .or_else(|| {
+                self.active_anchor_drag
+                    .as_ref()
+                    .map(|drag| &drag.transaction)
+            })
+            .or_else(|| {
+                self.active_metric_drag
+                    .as_ref()
+                    .map(|drag| &drag.transaction)
+            })
+            .or_else(|| {
+                self.active_metaball_drag
+                    .as_ref()
+                    .map(|drag| &drag.transaction)
+            })
+            .or(self.pending_canonical.as_ref())
+            .or(self.canonical_base.as_ref())
+    }
+
+    fn stage_canonical_edit(
+        &mut self,
+        label: &'static str,
+        edit: impl FnOnce(
+            &mut runebender::document::LayerEditDraft,
+        ) -> Result<bool, runebender::document::DocumentEditError>,
+    ) -> bool {
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return false;
+        };
+        if edit(transaction.draft_mut()) != Ok(true) {
+            return false;
+        }
+        self.pending_canonical = Some(transaction);
+        self.pending_canonical_label = Some(label);
+        true
+    }
+
+    /// Run one legacy outline algorithm against a detached UFO codec value, then immediately
+    /// reconcile its result into an owned canonical transaction.
+    pub(crate) fn compatibility_edit(
+        &mut self,
+        label: &'static str,
+        edit: impl FnOnce(&mut norad::Glyph) -> bool,
+    ) -> bool {
+        self.compatibility_edit_result(label, |glyph| Ok(edit(glyph)))
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn compatibility_edit_result(
+        &mut self,
+        label: &'static str,
+        edit: impl FnOnce(&mut norad::Glyph) -> Result<bool, String>,
+    ) -> Result<bool, String> {
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return Ok(false);
+        };
+        let mut glyph = transaction.compatibility_glyph();
+        if !edit(&mut glyph)? {
+            return Ok(false);
+        }
+        if !transaction
+            .reconcile_compatibility_glyph(&glyph)
+            .map_err(|error| error.to_string())?
+        {
+            return Ok(false);
+        }
+        self.pending_canonical = Some(transaction);
+        self.pending_canonical_label = Some(label);
+        Ok(true)
     }
 
     /// Whether a gesture currently owns the session's undo transaction.
@@ -376,39 +543,113 @@ impl Session {
         if !dx.is_finite() || dx == 0.0 {
             return;
         }
-        self.record(EditType::Drag);
-        for contour in &mut self.glyph.contours {
-            for p in &mut contour.points {
-                p.x += dx;
-            }
+        if self.active_metric_drag.is_none() {
+            let Some(transaction) = self.canonical_base.clone() else {
+                return;
+            };
+            self.active_metric_drag = Some(CanonicalGesture {
+                transaction,
+                changed: false,
+            });
         }
-        for a in &mut self.glyph.anchors {
-            a.x += dx;
-        }
+        let drag = self.active_metric_drag.as_mut().expect("initialized");
+        let Ok(changed) = drag.transaction.draft_mut().shift_points_and_anchors_x(dx) else {
+            return;
+        };
+        drag.changed |= changed;
+        self.in_drag = true;
     }
 
     pub(crate) fn set_advance(&mut self, w: f64) {
         let width = w.max(0.0);
-        if !w.is_finite() || self.glyph.width == width {
+        if !w.is_finite() || self.advance() == width {
             return;
         }
-        self.record(EditType::Normal);
-        self.glyph.width = width;
+        let _ = self.stage_canonical_edit("set advance", |draft| draft.set_width(width));
     }
 
     /// Set advance during a pointer gesture, grouped into one undo step.
     pub(crate) fn drag_advance(&mut self, w: f64) {
         let width = w.max(0.0);
-        if !w.is_finite() || self.glyph.width == width {
+        if !w.is_finite() || self.advance() == width {
             return;
         }
-        self.record(EditType::Drag);
-        self.glyph.width = width;
+        if self.active_metric_drag.is_none() {
+            let Some(transaction) = self.canonical_base.clone() else {
+                return;
+            };
+            self.active_metric_drag = Some(CanonicalGesture {
+                transaction,
+                changed: false,
+            });
+        }
+        let drag = self.active_metric_drag.as_mut().expect("initialized");
+        let Ok(changed) = drag.transaction.draft_mut().set_width(width) else {
+            return;
+        };
+        drag.changed |= changed;
+        self.in_drag = true;
     }
 
-    /// Close an anchor, advance, or sidebearing pointer transaction.
+    /// Close an advance or sidebearing pointer transaction.
     pub(crate) fn end_metric_drag(&mut self) {
-        self.record(EditType::DragUp);
+        if let Some(drag) = self.active_metric_drag.take()
+            && drag.changed
+        {
+            self.pending_canonical = Some(drag.transaction);
+            self.pending_canonical_label = Some("metric drag");
+        }
+        self.in_drag = false;
+    }
+
+    pub(crate) fn cancel_metric_drag(&mut self) {
+        self.active_metric_drag = None;
+        self.in_drag = false;
+    }
+
+    pub(crate) fn store_metaballs(
+        &mut self,
+        source: runebender::document::model::glyph_metadata::Metaballs,
+        drag: bool,
+    ) -> Result<bool, String> {
+        if !drag {
+            return Ok(self
+                .stage_canonical_edit("edit metaballs", move |draft| draft.set_metaballs(source)));
+        }
+        if self.active_metaball_drag.is_none() {
+            let Some(transaction) = self.canonical_base.clone() else {
+                return Ok(false);
+            };
+            self.active_metaball_drag = Some(CanonicalGesture {
+                transaction,
+                changed: false,
+            });
+        }
+        let gesture = self.active_metaball_drag.as_mut().expect("initialized");
+        let changed = gesture
+            .transaction
+            .draft_mut()
+            .set_metaballs(source)
+            .map_err(|error| error.to_string())?;
+        gesture.changed |= changed;
+        self.in_drag = true;
+        Ok(changed)
+    }
+
+    pub(crate) fn end_metaball_drag(&mut self) {
+        if let Some(drag) = self.active_metaball_drag.take()
+            && drag.changed
+        {
+            self.pending_canonical = Some(drag.transaction);
+            self.pending_canonical_label = Some("metaball drag");
+        }
+        self.in_drag = false;
+    }
+
+    pub(crate) fn cancel_metaball_drag(&mut self) {
+        self.active_metaball_drag = None;
+        self.in_drag = false;
+        self.refresh_metaball_preview();
     }
 
     pub(crate) fn outline_arc(&self) -> Arc<BezPath> {
@@ -485,74 +726,6 @@ impl Session {
         self.components = combined_component_path(&self.component_cache);
     }
 
-    #[cfg(test)]
-    fn rebuild_component_caches(&mut self, font: &norad::Font) {
-        let selected = self.selected_component_index();
-        let mut source = font.clone();
-        source.default_layer_mut().insert_glyph(self.glyph.clone());
-        let project = runebender::document::project::Project::from_source(
-            runebender::document::project::Master::from_font(
-                source,
-                std::path::PathBuf::from("memory.ufo"),
-            ),
-        );
-        let source = project.source_id(project.active).expect("one source");
-        let layer = project
-            .document_source(source)
-            .expect("one canonical source")
-            .default_layer();
-        let address = runebender::document::variable::GlyphLayerAddress {
-            glyph: self.glyph_name.clone(),
-            layer,
-        };
-        self.component_cache = resolved_document_components(&project, &address).unwrap_or_default();
-        self.anchor_ids = project
-            .document_layer(&address.glyph, &address.layer)
-            .into_iter()
-            .flat_map(|layer| layer.anchors().map(|anchor| anchor.id()))
-            .collect();
-        self.canonical_base = project.begin_document_layer_transaction(&address).ok();
-        self.selected_component = selected
-            .and_then(|index| self.component_cache.get(index))
-            .map(|component| component.id);
-        self.rebuild_combined_components();
-    }
-
-    #[cfg(test)]
-    pub(crate) fn add_component(&mut self, font: &norad::Font, base: &str) -> bool {
-        let mut changed = self.glyph.clone();
-        if !runebender::outline::component_ops::add_component(font, &mut changed, base) {
-            return false;
-        }
-        self.record(EditType::Normal);
-        self.glyph = changed;
-        self.selection.clear();
-        self.selected_anchor = None;
-        self.rebuild_component_caches(font);
-        self.selected_component = self.component_cache.last().map(|component| component.id);
-        true
-    }
-
-    #[cfg(test)]
-    pub(crate) fn toggle_component_alignment(&mut self, font: &norad::Font) -> bool {
-        let Some(index) = self.selected_component_index() else {
-            return false;
-        };
-        let mut changed = self.glyph.clone();
-        let Some(component) = changed.components.get_mut(index) else {
-            return false;
-        };
-        let aligned = !runebender::document::composites::component_alignment_disabled(component);
-        runebender::document::composites::set_component_alignment_disabled(component, aligned);
-        if !aligned {
-            runebender::document::composites::realign_glyph(font, &mut changed, true);
-        }
-        self.record(EditType::Normal);
-        self.glyph = changed;
-        self.rebuild_component_caches(font);
-        true
-    }
-
     pub(crate) fn drag_component_by(&mut self, dx: f64, dy: f64) -> bool {
         if self.selected_component.is_none()
             || self.selected_component_aligned() == Some(true)
@@ -567,12 +740,6 @@ impl Session {
             let Some(transaction) = self.canonical_base.clone() else {
                 return false;
             };
-            let Some(index) = self.selected_component_index() else {
-                return false;
-            };
-            let Some(source_component) = self.glyph.components.get(index).cloned() else {
-                return false;
-            };
             self.active_component_drag = Some(CanonicalComponentDrag {
                 gesture: CanonicalGesture {
                     transaction,
@@ -580,7 +747,6 @@ impl Session {
                 },
                 component_cache: self.component_cache.clone(),
                 components: self.components.clone(),
-                source_component,
             });
             self.in_drag = true;
         }
@@ -608,16 +774,10 @@ impl Session {
             drag.gesture.changed |= changed;
             changed
         };
-        changed && self.translate_selected_component(dx, dy)
-    }
-
-    fn translate_selected_component(&mut self, dx: f64, dy: f64) -> bool {
-        let Some(index) = self.selected_component_index() else {
-            return false;
-        };
-        let changed =
-            runebender::outline::component_ops::translate_component(&mut self.glyph, index, dx, dy);
         if changed {
+            let Some(index) = self.selected_component_index() else {
+                return false;
+            };
             if let Some(component) = self.component_cache.get_mut(index) {
                 component.path = kurbo::Affine::translate((dx, dy)) * component.path.clone();
             }
@@ -640,41 +800,34 @@ impl Session {
         let Some(drag) = self.active_component_drag.take() else {
             return;
         };
-        if let Some(index) = self.selected_component_index()
-            && let Some(component) = self.glyph.components.get_mut(index)
-        {
-            *component = drag.source_component;
-        }
         self.component_cache = drag.component_cache;
         self.components = drag.components;
         self.in_drag = false;
     }
 
     pub(crate) fn outline(&self) -> BezPath {
-        let mut path = glyph_paths::contours_to_bezpath(&self.glyph);
+        let mut path = self.current_layer().map_or_else(BezPath::new, |layer| {
+            glyph_paths::ordinary_layer_contours_to_bezpath(layer)
+        });
         path.extend(self.metaball_preview.clone());
         path
     }
 
     pub(crate) fn points(&self) -> Vec<PointView> {
         let mut out = Vec::new();
-        for (ci, contour) in self.glyph.contours.iter().enumerate() {
-            for (pi, p) in contour.points.iter().enumerate() {
-                let Some(id) = self
-                    .point_ids
-                    .get(ci)
-                    .and_then(|points| points.get(pi))
-                    .copied()
-                else {
-                    continue;
-                };
-                let on_curve = !matches!(p.typ, norad::PointType::OffCurve);
+        let Some(layer) = self.current_layer() else {
+            return out;
+        };
+        for contour in layer.contours() {
+            for (index, point) in contour.points().enumerate() {
+                let point_type = point.point_type();
+                let on_curve = !matches!(point_type, LayerPointType::OffCurve);
                 out.push(PointView {
-                    id,
-                    point: Point::new(p.x, p.y),
+                    id: point.id(),
+                    point: point.position(),
                     on_curve,
-                    smooth: on_curve && p.smooth,
-                    start: pi == 0,
+                    smooth: on_curve && point.is_smooth(),
+                    start: index == 0,
                 });
             }
         }
@@ -682,172 +835,90 @@ impl Session {
     }
 
     pub(crate) fn point_count(&self) -> usize {
-        self.glyph.contours.iter().map(|c| c.points.len()).sum()
+        self.current_layer()
+            .map(|layer| {
+                layer
+                    .contours()
+                    .map(|contour| contour.points().count())
+                    .sum()
+            })
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn outline_is_empty(&self) -> bool {
+        self.current_layer().is_none_or(|layer| {
+            layer.contours().next().is_none() && layer.components().next().is_none()
+        })
     }
 
     // ---- edits ----
 
-    /// Record the state before an edit.
-    pub(crate) fn record(&mut self, edit: EditType) {
-        if self.pending_selection_indices.is_none() {
-            self.pending_selection_indices = Some(self.legacy_selection());
-        }
-        match edit {
-            EditType::Drag => {
-                if !self.in_drag {
-                    self.pending
-                        .push(HistoryOp::Record(Box::new(self.glyph.clone())));
-                    self.in_drag = true;
-                }
-            }
-            EditType::DragUp => self.in_drag = false,
-            _ => self
-                .pending
-                .push(HistoryOp::Record(Box::new(self.glyph.clone()))),
-        }
-    }
-
-    /// Take the glyph as the master now has it, after an undo or a
-    /// redo there, keeping the selection where it still fits.
-    #[cfg(test)]
-    pub(crate) fn reload_glyph(&mut self, font: &norad::Font, glyph: norad::Glyph) {
-        if self.pending_selection_indices.is_none() {
-            self.pending_selection_indices = Some(self.legacy_selection());
-        }
-        let mut source = font.clone();
-        source.default_layer_mut().insert_glyph(glyph.clone());
-        let project = runebender::document::project::Project::from_source(
-            runebender::document::project::Master::from_font(
-                source,
-                std::path::PathBuf::from("memory.ufo"),
-            ),
-        );
-        let source = project.source_id(project.active).expect("one source");
-        let layer_id = project
-            .document_source(source)
-            .expect("one canonical source")
-            .default_layer();
-        let point_ids = canonical_point_ids(
-            project
-                .document_layer(&self.glyph_name, &layer_id)
-                .expect("the replacement glyph was imported"),
-        );
-        let address = runebender::document::variable::GlyphLayerAddress {
-            glyph: self.glyph_name.clone(),
-            layer: layer_id,
-        };
-        let component_cache = resolved_document_components(&project, &address).unwrap_or_default();
-        let anchor_ids = project
-            .document_layer(&address.glyph, &address.layer)
-            .expect("the replacement glyph was imported")
-            .anchors()
-            .map(|anchor| anchor.id())
-            .collect();
-        let canonical_base = project.begin_document_layer_transaction(&address).ok();
-        self.reload_parts(
-            glyph,
-            point_ids,
-            component_cache,
-            anchor_ids,
-            canonical_base,
-        );
-    }
-
-    /// Rebase the compatibility projection on the canonical layer while retaining stable IDs.
+    /// Rebase the session on the canonical layer while retaining stable selections.
     pub(crate) fn reload_from_project(
         &mut self,
         project: &runebender::document::project::Project,
         address: &runebender::document::variable::GlyphLayerAddress,
     ) -> bool {
-        let Some(layer) = project.document_layer(&address.glyph, &address.layer) else {
+        if project
+            .document_layer(&address.glyph, &address.layer)
+            .is_none()
+        {
             return false;
-        };
-        let Some(glyph) = project.glyph_layer(&address.glyph, &address.layer) else {
-            return false;
-        };
+        }
         let Ok(component_cache) = resolved_document_components(project, address) else {
             return false;
         };
-        let anchor_ids = layer.anchors().map(|anchor| anchor.id()).collect();
         let canonical_base = project.begin_document_layer_transaction(address).ok();
-        self.reload_parts(
-            glyph,
-            canonical_point_ids(layer),
-            component_cache,
-            anchor_ids,
-            canonical_base,
-        );
+        self.reload_parts(component_cache, canonical_base);
         true
     }
 
     fn reload_parts(
         &mut self,
-        glyph: norad::Glyph,
-        point_ids: Vec<Vec<PointId>>,
         component_cache: Vec<runebender::outline::component_ops::ResolvedDocumentComponent>,
-        anchor_ids: Vec<AnchorId>,
         canonical_base: Option<CanonicalLayerTransaction>,
     ) {
         let selected_ids = self.selection.clone();
-        let selected_indices = self.pending_selection_indices.take();
-        let selected_component_index = self.pending_component_index.take();
         self.components = combined_component_path(&component_cache);
         self.component_cache = component_cache;
-        self.selected_component = selected_component_index.map_or_else(
-            || {
-                self.selected_component.filter(|selected| {
-                    self.component_cache
-                        .iter()
-                        .any(|component| component.id == *selected)
-                })
-            },
-            |index| {
-                self.component_cache
-                    .get(index)
-                    .map(|component| component.id)
-            },
-        );
-        self.glyph = glyph;
-        self.point_ids = point_ids;
-        self.anchor_ids = anchor_ids;
+        self.selected_component = self.selected_component.filter(|selected| {
+            self.component_cache
+                .iter()
+                .any(|component| component.id == *selected)
+        });
         self.canonical_base = canonical_base;
         self.pending_canonical = None;
         self.pending_canonical_label = None;
+        self.sync_rejected = false;
         self.active_point_drag = None;
         self.active_component_drag = None;
         self.active_anchor_drag = None;
-        let available: HashSet<_> = self.point_ids.iter().flatten().copied().collect();
-        self.selection = selected_indices.map_or_else(
-            || {
-                selected_ids
-                    .into_iter()
-                    .filter(|id| available.contains(id))
-                    .collect()
-            },
-            |selected| {
-                selected
-                    .into_iter()
-                    .filter_map(|(contour, point)| {
-                        self.point_ids
-                            .get(contour)
-                            .and_then(|points| points.get(point))
-                            .copied()
-                    })
-                    .collect()
-            },
-        );
+        self.active_metric_drag = None;
+        self.active_metaball_drag = None;
+        self.selection = selected_ids;
         self.refresh_metaball_preview();
-        self.pen.clear();
-        self.active_contour = None;
         self.in_drag = false;
+        let anchors: HashSet<_> = self
+            .current_layer()
+            .into_iter()
+            .flat_map(|layer| layer.anchors().map(|anchor| anchor.id()))
+            .collect();
         self.selected_anchor = self
             .selected_anchor
-            .filter(|selected| self.anchor_ids.contains(selected));
+            .filter(|selected| anchors.contains(selected));
         self.prune_selection();
     }
 
     fn prune_selection(&mut self) {
-        let available: HashSet<_> = self.point_ids.iter().flatten().copied().collect();
+        let available: HashSet<_> = self
+            .current_layer()
+            .into_iter()
+            .flat_map(|layer| {
+                layer
+                    .contours()
+                    .flat_map(|contour| contour.points().map(|point| point.id()))
+            })
+            .collect();
         self.selection.retain(|id| available.contains(id));
     }
 
@@ -874,29 +945,18 @@ impl Session {
     /// Move the selection to `total` design units from where the drag began.
     pub(crate) fn drag_points_to(&mut self, total: (f64, f64)) -> bool {
         let selected: Vec<_> = self.selection.iter().copied().collect();
-        let (changed, positions) = {
-            let Some(drag) = &mut self.active_point_drag else {
-                return false;
-            };
-            let Ok(changed) = drag.transaction.draft_mut().translate_points(
-                &selected,
-                &drag.origins,
-                kurbo::Vec2::new(total.0, total.1),
-                false,
-            ) else {
-                return false;
-            };
-            drag.changed |= changed;
-            let positions = drag
-                .transaction
-                .draft()
-                .view()
-                .contours()
-                .flat_map(|contour| contour.points().map(|point| (point.id(), point.position())))
-                .collect();
-            (changed, positions)
+        let Some(drag) = &mut self.active_point_drag else {
+            return false;
         };
-        self.sync_glyph_points(positions);
+        let Ok(changed) = drag.transaction.draft_mut().translate_points(
+            &selected,
+            &drag.origins,
+            kurbo::Vec2::new(total.0, total.1),
+            false,
+        ) else {
+            return false;
+        };
+        drag.changed |= changed;
         changed
     }
 
@@ -913,79 +973,59 @@ impl Session {
     pub(crate) fn cancel_point_drag(&mut self) {
         self.active_point_drag = None;
         self.in_drag = false;
-        let positions = self.canonical_base.as_ref().map(|base| {
-            base.draft()
-                .view()
-                .contours()
-                .flat_map(|contour| contour.points().map(|point| (point.id(), point.position())))
-                .collect()
-        });
-        if let Some(positions) = positions {
-            self.sync_glyph_points(positions);
-        }
-    }
-
-    fn sync_glyph_points(&mut self, positions: Vec<(PointId, Point)>) {
-        let updates: Vec<_> = positions
-            .into_iter()
-            .filter_map(|(id, position)| self.legacy_point(id).map(|index| (index, position)))
-            .collect();
-        for ((contour, point), position) in updates {
-            if let Some(point) = self
-                .glyph
-                .contours
-                .get_mut(contour)
-                .and_then(|contour| contour.points.get_mut(point))
-            {
-                point.x = position.x;
-                point.y = position.y;
-            }
-        }
     }
 
     pub(crate) fn nudge(&mut self, dx: f64, dy: f64) -> bool {
-        if self.selected_component.is_some() {
-            if !dx.is_finite() || !dy.is_finite() || (dx == 0.0 && dy == 0.0) {
-                return false;
-            }
+        if !dx.is_finite() || !dy.is_finite() || (dx == 0.0 && dy == 0.0) {
+            return false;
+        }
+        if let Some(component) = self.selected_component {
             if self.selected_component_aligned() == Some(true) {
                 return false;
             }
-            self.record(EditType::Normal);
-            return self.translate_selected_component(dx, dy);
+            return self.stage_canonical_edit("nudge component", |draft| {
+                let transform = draft
+                    .view()
+                    .components()
+                    .find(|candidate| candidate.id() == component)
+                    .map(|candidate| candidate.transform())
+                    .ok_or(runebender::document::DocumentEditError::MissingComponent(
+                        component,
+                    ))?;
+                draft.set_component_transform(
+                    component,
+                    kurbo::Affine::translate((dx, dy)) * transform,
+                )
+            });
         }
         if self.selection.is_empty() {
             return false;
         }
-        self.record(EditType::Normal);
-        let selection = self.legacy_selection();
-        point_ops::translate_points(
-            &mut self.glyph,
-            &selection,
-            &HashMap::new(),
-            (dx, dy),
-            false,
-        )
+        let selection = self.selected_point_ids();
+        self.stage_canonical_edit("nudge points", |draft| {
+            draft.translate_points(&selection, &[], kurbo::Vec2::new(dx, dy), false)
+        })
     }
 
     pub(crate) fn delete_selected(&mut self) -> bool {
-        if let Some(index) = self.selected_component_index() {
-            self.selected_component = None;
-            self.record(EditType::Normal);
-            if runebender::outline::component_ops::delete_component(&mut self.glyph, index) {
-                self.component_cache.remove(index);
-                self.rebuild_combined_components();
-                return true;
+        if let Some(component) = self.selected_component {
+            let changed = self.stage_canonical_edit("delete component", |draft| {
+                draft.remove_component(component)
+            });
+            if changed {
+                self.selected_component = None;
             }
-            return false;
+            return changed;
         }
         if self.selection.is_empty() {
             return false;
         }
-        self.record(EditType::Normal);
-        let selection = self.legacy_selection();
-        let changed = glyph_ops::delete_points(&mut self.glyph, &selection);
-        self.selection.clear();
+        let selection = self.selected_point_ids();
+        let changed =
+            self.stage_canonical_edit("delete points", |draft| draft.delete_points(&selection));
+        if changed {
+            self.selection.clear();
+        }
         changed
     }
 
@@ -1000,17 +1040,6 @@ impl Session {
 
     /// Write the pen buffer into `active_contour`, creating it if needed.
     fn pen_sync(&mut self) {
-        let ci = match self.active_contour {
-            Some(c) if c < self.glyph.contours.len() => c,
-            _ => {
-                self.glyph
-                    .contours
-                    .push(norad::Contour::new(Vec::new(), None));
-                let c = self.glyph.contours.len() - 1;
-                self.active_contour = Some(c);
-                c
-            }
-        };
         let mut points = Vec::with_capacity(self.pen.len());
         let mut prev_off = false;
         for (i, pt) in self.pen.iter().enumerate() {
@@ -1028,14 +1057,31 @@ impl Session {
             ));
             prev_off = pt.off;
         }
-        self.glyph.contours[ci].points = points;
+        let contour_count = self
+            .current_layer()
+            .map(|layer| layer.contours().count())
+            .unwrap_or_default();
+        let contour = self
+            .active_contour
+            .filter(|contour| *contour < contour_count)
+            .unwrap_or(contour_count);
+        let changed = self.compatibility_edit("pen contour", move |glyph| {
+            if contour == glyph.contours.len() {
+                glyph.contours.push(norad::Contour::new(Vec::new(), None));
+            }
+            let Some(target) = glyph.contours.get_mut(contour) else {
+                return false;
+            };
+            target.points = points;
+            true
+        });
+        if changed {
+            self.active_contour = Some(contour);
+        }
     }
 
     /// Place a corner on-curve point (a plain click).
     pub(crate) fn pen_corner(&mut self, x: f64, y: f64) {
-        if self.pen.is_empty() {
-            self.record(EditType::Normal);
-        }
         self.pen.push(PenPt {
             point: Point::new(x, y),
             off: false,
@@ -1047,9 +1093,6 @@ impl Session {
     /// Begin a smooth point with symmetric handles at `origin`; the outgoing
     /// handle starts at `to`.
     pub(crate) fn pen_smooth_begin(&mut self, origin: Point, to: Point) {
-        if self.pen.is_empty() {
-            self.record(EditType::Normal);
-        }
         self.pen.push(PenPt {
             point: origin,
             off: true,
@@ -1081,30 +1124,36 @@ impl Session {
 
     /// Close the active contour.
     pub(crate) fn pen_close(&mut self) {
-        if let Some(c) = self.active_contour.take()
-            && let Some(contour) = self.glyph.contours.get_mut(c)
-            && contour.points.first().map(|p| p.typ) == Some(norad::PointType::Move)
-            && contour.points.len() > 1
-        {
-            let first = contour.points.remove(0);
-            let typ = if contour
-                .points
-                .last()
-                .map(|p| p.typ == norad::PointType::OffCurve)
-                .unwrap_or(false)
-            {
-                norad::PointType::Curve
-            } else {
-                norad::PointType::Line
-            };
-            contour.points.push(norad::ContourPoint::new(
-                first.x,
-                first.y,
-                typ,
-                first.smooth,
-                None,
-                None,
-            ));
+        if let Some(c) = self.active_contour.take() {
+            let _ = self.compatibility_edit("close pen contour", move |glyph| {
+                let Some(contour) = glyph.contours.get_mut(c) else {
+                    return false;
+                };
+                if contour.points.first().map(|point| point.typ) != Some(norad::PointType::Move)
+                    || contour.points.len() <= 1
+                {
+                    return false;
+                }
+                let first = contour.points.remove(0);
+                let typ = if contour
+                    .points
+                    .last()
+                    .is_some_and(|point| point.typ == norad::PointType::OffCurve)
+                {
+                    norad::PointType::Curve
+                } else {
+                    norad::PointType::Line
+                };
+                contour.points.push(norad::ContourPoint::new(
+                    first.x,
+                    first.y,
+                    typ,
+                    first.smooth,
+                    None,
+                    None,
+                ));
+                true
+            });
         }
         self.pen.clear();
     }
@@ -1120,28 +1169,47 @@ impl Session {
     /// Add a hyperbezier on-curve point (smooth), starting a contour if idle.
     pub(crate) fn hyper_add(&mut self, x: f64, y: f64, corner: bool) {
         if self.active_contour.is_none() {
-            self.record(EditType::Normal);
-            let c = glyph_ops::start_hyper_contour(&mut self.glyph, x, y);
-            self.active_contour = Some(c);
-            if corner {
-                // First point corner-ness is applied on the Move via append below.
+            let mut contour = None;
+            if self.compatibility_edit("start hyperbezier", |glyph| {
+                contour = Some(glyph_ops::start_hyper_contour(glyph, x, y));
+                true
+            }) {
+                self.active_contour = contour;
+                if corner {
+                    // First point corner-ness is applied on the Move via append below.
+                }
             }
         } else if let Some(c) = self.active_contour {
-            glyph_ops::append_hyper_point(&mut self.glyph, c, x, y, corner);
+            let _ = self.compatibility_edit("append hyperbezier", move |glyph| {
+                if c >= glyph.contours.len() {
+                    return false;
+                }
+                glyph_ops::append_hyper_point(glyph, c, x, y, corner);
+                true
+            });
         }
     }
 
     pub(crate) fn hyper_close(&mut self) {
         if let Some(c) = self.active_contour.take() {
-            self.record(EditType::Normal);
-            glyph_ops::close_hyper_contour(&mut self.glyph, c);
+            let _ = self.compatibility_edit("close hyperbezier", move |glyph| {
+                if c >= glyph.contours.len() {
+                    return false;
+                }
+                glyph_ops::close_hyper_contour(glyph, c);
+                true
+            });
         }
     }
 
     pub(crate) fn first_contour_point(&self) -> Option<Point> {
         let c = self.active_contour?;
-        let p = self.glyph.contours.get(c)?.points.first()?;
-        Some(Point::new(p.x, p.y))
+        self.current_layer()?
+            .contours()
+            .nth(c)?
+            .points()
+            .next()
+            .map(|point| point.position())
     }
 
     pub(crate) fn hyper_is_active(&self) -> bool {
@@ -1155,16 +1223,10 @@ impl Session {
         if (rx - lx).abs() < 1.0 || (ty - by).abs() < 1.0 {
             return;
         }
-        self.record(EditType::Normal);
-        let corner =
-            |x, y| norad::ContourPoint::new(x, y, norad::PointType::Line, false, None, None);
-        let points = vec![
-            corner(lx, by),
-            corner(rx, by),
-            corner(rx, ty),
-            corner(lx, ty),
-        ];
-        self.glyph.contours.push(norad::Contour::new(points, None));
+        let rect = Rect::new(lx, by, rx, ty);
+        let _ = self.stage_canonical_edit("add rectangle", |draft| {
+            draft.add_shape_contour(rect, false).map(|_| true)
+        });
     }
 
     /// Add a closed ellipse contour (four cubic segments).
@@ -1174,35 +1236,19 @@ impl Session {
         if rx < 1.0 || ry < 1.0 {
             return;
         }
-        self.record(EditType::Normal);
-        const K: f64 = 0.552_284_749_831;
-        let on = |x, y| norad::ContourPoint::new(x, y, norad::PointType::Curve, true, None, None);
-        let off =
-            |x, y| norad::ContourPoint::new(x, y, norad::PointType::OffCurve, false, None, None);
-        // Start at East, go counter-clockwise through N, W, S.
-        let points = vec![
-            on(cx + rx, cy),
-            off(cx + rx, cy + ry * K),
-            off(cx + rx * K, cy + ry),
-            on(cx, cy + ry),
-            off(cx - rx * K, cy + ry),
-            off(cx - rx, cy + ry * K),
-            on(cx - rx, cy),
-            off(cx - rx, cy - ry * K),
-            off(cx - rx * K, cy - ry),
-            on(cx, cy - ry),
-            off(cx + rx * K, cy - ry),
-            off(cx + rx, cy - ry * K),
-        ];
-        self.glyph.contours.push(norad::Contour::new(points, None));
+        let rect = Rect::new(cx - rx, cy - ry, cx + rx, cy + ry);
+        let _ = self.stage_canonical_edit("add ellipse", |draft| {
+            draft.add_shape_contour(rect, true).map(|_| true)
+        });
     }
 
     /// Apply an affine to the selection (or the whole glyph if none),
     /// centered on the target bounding box.
     pub(crate) fn transform(&mut self, affine: kurbo::Affine) -> bool {
-        self.record(EditType::Normal);
-        let selection = self.legacy_selection();
-        let changed = glyph_ops::transform_selection(&mut self.glyph, &selection, affine);
+        let selection = self.selected_point_ids();
+        let changed = self.stage_canonical_edit("transform points", |draft| {
+            draft.transform_points(&selection, affine)
+        });
         if changed {
             self.last_transform = Some(affine);
         }
@@ -1227,41 +1273,38 @@ impl Session {
         self.transform(kurbo::Affine::new([0.0, -1.0, 1.0, 0.0, 0.0, 0.0]))
     }
 
-    /// Apply a whole-glyph outline effect under one undo record.
-    fn effect(&mut self, operation: impl FnOnce(&mut norad::Glyph) -> bool) -> bool {
-        let mut changed = self.glyph.clone();
-        if !operation(&mut changed) {
-            return false;
-        }
-        self.record(EditType::Normal);
-        self.glyph = changed;
-        self.selection.clear();
-        true
-    }
-
     /// Expand selected contours (or all contours) under one undo record.
     pub(crate) fn expand_stroke(&mut self, width: f64) -> bool {
         if !width.is_finite() || width <= 0.0 || self.selected_component.is_some() {
             return false;
         }
-        let contours = self
-            .legacy_selection()
-            .into_iter()
-            .map(|(contour, _)| contour)
-            .collect();
-        self.effect(|glyph| {
-            runebender::outline::effects::expand_stroke_contours(glyph, &contours, width)
-        })
+        let selection = self.selected_point_ids();
+        let changed = self.stage_canonical_edit("expand stroke", |draft| {
+            draft.expand_stroke(&selection, width)
+        });
+        if changed {
+            self.selection.clear();
+        }
+        changed
     }
 
     pub(crate) fn offset(&mut self, delta: f64) -> bool {
-        self.effect(|glyph| runebender::outline::effects::offset_glyph_contours(glyph, delta))
+        let changed =
+            self.stage_canonical_edit("offset contours", |draft| draft.offset_contours(delta));
+        if changed {
+            self.selection.clear();
+        }
+        changed
     }
 
     pub(crate) fn extrude(&mut self, offset: f64, angle: f64, keep_front: bool) -> bool {
-        self.effect(|glyph| {
-            runebender::outline::effects::extrude_glyph_contours(glyph, offset, angle, keep_front)
-        })
+        let changed = self.stage_canonical_edit("extrude contours", |draft| {
+            draft.extrude_contours(offset, angle, keep_front)
+        });
+        if changed {
+            self.selection.clear();
+        }
+        changed
     }
 
     pub(crate) fn roughen(
@@ -1271,22 +1314,21 @@ impl Session {
         vertical: f64,
         seed: u64,
     ) -> bool {
-        let selected = self
-            .legacy_selection()
-            .into_iter()
-            .map(|(contour, _)| contour)
-            .collect();
-        self.effect(|glyph| {
-            runebender::outline::effects::roughen_glyph_contours(
-                glyph, &selected, segment, horizontal, vertical, seed,
-            )
-        })
+        let selection = self.selected_point_ids();
+        let changed = self.stage_canonical_edit("roughen contours", |draft| {
+            draft.roughen_contours(&selection, segment, horizontal, vertical, seed)
+        });
+        if changed {
+            self.selection.clear();
+        }
+        changed
     }
 
     pub(crate) fn reverse(&mut self) -> bool {
-        self.record(EditType::Normal);
-        let selection = self.legacy_selection();
-        glyph_ops::reverse_contours(&mut self.glyph, &selection)
+        let selection = self.selected_point_ids();
+        self.stage_canonical_edit("reverse contours", |draft| {
+            draft.reverse_contours(&selection)
+        })
     }
 
     pub(crate) fn decompose(&mut self) -> bool {
@@ -1319,56 +1361,42 @@ impl Session {
             BoolOp::Intersect => linesweeper::BinaryOp::Intersection,
             BoolOp::Exclude => linesweeper::BinaryOp::Xor,
         };
-        if let Some(contours) = glyph_ops::boolean_contours(&self.glyph, op) {
-            self.record(EditType::Normal);
-            self.glyph.contours = contours;
+        let changed =
+            self.stage_canonical_edit("boolean contours", |draft| draft.boolean_contours(op));
+        if changed {
             self.selection.clear();
-            true
-        } else {
-            false
-        }
-    }
-
-    pub(crate) fn remove_overlap(&mut self) -> bool {
-        if let Some(contours) = glyph_ops::remove_overlap(&self.glyph) {
-            self.record(EditType::Normal);
-            self.glyph.contours = contours;
-            self.selection.clear();
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Points where a knife line from p0 to p1 crosses the outline.
-    pub(crate) fn knife_hits(&self, p0: Point, p1: Point) -> Vec<Point> {
-        runebender::outline::knife::knife_hit_points(&self.glyph, p0, p1)
-    }
-
-    /// Cut the outline along the line p0..p1.
-    pub(crate) fn knife_cut(&mut self, p0: Point, p1: Point) -> bool {
-        self.record(EditType::Normal);
-        let changed = runebender::outline::knife::knife_cut_glyph(&mut self.glyph, p0, p1);
-        if !changed {
-            // Nothing cut; drop the empty undo group we just pushed.
-            if matches!(self.pending.last(), Some(HistoryOp::Record(_))) {
-                self.pending.pop();
-            } else {
-                self.pending.push(HistoryOp::DiscardLast);
-            }
         }
         changed
     }
 
+    pub(crate) fn remove_overlap(&mut self) -> bool {
+        let changed = self.stage_canonical_edit("remove overlap", |draft| draft.remove_overlap());
+        if changed {
+            self.selection.clear();
+        }
+        changed
+    }
+
+    /// Points where a knife line from p0 to p1 crosses the outline.
+    pub(crate) fn knife_hits(&self, p0: Point, p1: Point) -> Vec<Point> {
+        self.current_layer().map_or_else(Vec::new, |layer| {
+            runebender::outline::knife::knife_hit_points_in_layer(layer, p0, p1)
+        })
+    }
+
+    /// Cut the outline along the line p0..p1.
+    pub(crate) fn knife_cut(&mut self, p0: Point, p1: Point) -> bool {
+        self.stage_canonical_edit("knife cut", |draft| draft.knife_cut(p0, p1))
+    }
+
     /// The glyph's contours as core `Path`s (for measurement/analysis).
     pub(crate) fn paths(&self) -> Vec<runebender::outline::path::Path> {
-        self.glyph
-            .contours
-            .iter()
-            .map(|c| {
-                runebender::outline::path::Path::from_contour(
-                    &runebender::outline::path::hyper_model::Contour::from_norad(c),
-                )
+        self.current_layer()
+            .into_iter()
+            .flat_map(|layer| {
+                layer
+                    .contours()
+                    .map(runebender::outline::path::Path::from_document_contour)
             })
             .collect()
     }
@@ -1385,18 +1413,13 @@ impl Session {
     pub(crate) fn selection_bounds(&self) -> Option<Rect> {
         let mut min = (f64::INFINITY, f64::INFINITY);
         let mut max = (f64::NEG_INFINITY, f64::NEG_INFINITY);
-        for (ci, contour) in self.glyph.contours.iter().enumerate() {
-            for (pi, p) in contour.points.iter().enumerate() {
-                if self
-                    .point_ids
-                    .get(ci)
-                    .and_then(|points| points.get(pi))
-                    .is_some_and(|id| self.selection.contains(id))
-                {
-                    min = (min.0.min(p.x), min.1.min(p.y));
-                    max = (max.0.max(p.x), max.1.max(p.y));
-                }
-            }
+        for point in self
+            .points()
+            .into_iter()
+            .filter(|point| self.selection.contains(&point.id))
+        {
+            min = (min.0.min(point.point.x), min.1.min(point.point.y));
+            max = (max.0.max(point.point.x), max.1.max(point.point.y));
         }
         if min.0.is_finite() {
             Some(Rect::new(min.0, min.1, max.0, max.1))
@@ -1405,75 +1428,109 @@ impl Session {
         }
     }
 
+    fn first_selected_point(&self) -> Option<PointId> {
+        self.current_layer()?.contours().find_map(|contour| {
+            contour
+                .points()
+                .find(|point| self.selection.contains(&point.id()))
+                .map(|point| point.id())
+        })
+    }
+
+    fn selected_point_ids(&self) -> Vec<PointId> {
+        let Some(layer) = self.current_layer() else {
+            return Vec::new();
+        };
+        self.canonical_selection(layer)
+    }
+
     /// Make the first selected on-curve point the start of its contour.
     pub(crate) fn set_start(&mut self) -> bool {
-        let Some((ci, pi)) = self.legacy_selection().into_iter().min() else {
+        let Some(point) = self.first_selected_point() else {
             return false;
         };
-        self.record(EditType::Normal);
-        let ok = glyph_ops::set_contour_start(&mut self.glyph, ci, pi);
-        if ok {
+        let changed =
+            self.stage_canonical_edit("set contour start", |draft| draft.set_contour_start(point));
+        if changed {
             self.selection.clear();
         }
-        ok
+        changed
     }
 
     /// Round the selected corner points (fillet).
     pub(crate) fn round_corners(&mut self) -> bool {
-        self.record(EditType::Normal);
-        let selection = self.legacy_selection();
-        match glyph_ops::round_selected_corners(&mut self.glyph, &selection) {
-            Some(next) => {
-                self.select_legacy_points(next);
-                true
-            }
-            None => false,
-        }
+        let selection = self.selected_point_ids();
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return false;
+        };
+        let Ok(Some(next)) = transaction.draft_mut().round_selected_corners(&selection) else {
+            return false;
+        };
+        self.selection = next.into_iter().collect();
+        self.pending_canonical = Some(transaction);
+        self.pending_canonical_label = Some("round corners");
+        true
     }
 
     pub(crate) fn harmonize(&mut self) -> bool {
-        self.record(EditType::Normal);
-        let selection = self.legacy_selection();
-        glyph_ops::curve_op(&mut self.glyph, &selection, glyph_ops::CurveOp::Harmonize)
+        let selection = self.selected_point_ids();
+        self.stage_canonical_edit("harmonize handles", |draft| {
+            draft.harmonize_handles(&selection)
+        })
     }
 
     pub(crate) fn balance(&mut self) -> bool {
-        self.record(EditType::Normal);
-        let selection = self.legacy_selection();
-        glyph_ops::curve_op(&mut self.glyph, &selection, glyph_ops::CurveOp::Balance)
+        let selection = self.selected_point_ids();
+        self.stage_canonical_edit("balance handles", |draft| draft.balance_handles(&selection))
     }
 
     pub(crate) fn optimize(&mut self) -> bool {
-        self.record(EditType::Normal);
-        let selection = self.legacy_selection();
-        glyph_ops::curve_op(
-            &mut self.glyph,
-            &selection,
-            glyph_ops::CurveOp::Optimize(0.12),
-        )
+        let selection = self.selected_point_ids();
+        self.stage_canonical_edit("optimize handles", |draft| {
+            draft.optimize_handles(&selection, 0.12)
+        })
     }
 
     pub(crate) fn duplicate(&mut self) -> bool {
-        if let Some(index) = self.selected_component_index() {
-            self.record(EditType::Normal);
-            let Some(next) =
-                runebender::outline::component_ops::duplicate_component(&mut self.glyph, index)
+        if let Some(component) = self.selected_component {
+            let Some(mut transaction) = self.canonical_base.clone() else {
+                return false;
+            };
+            let Some((reference, transform)) = transaction
+                .draft()
+                .view()
+                .components()
+                .find(|candidate| candidate.id() == component)
+                .map(|candidate| (candidate.reference().to_owned(), candidate.transform()))
             else {
                 return false;
             };
-            self.pending_component_index = Some(next);
-            self.selected_component = None;
+            let transform = kurbo::Affine::translate((20.0, 20.0)) * transform;
+            let Ok(next) = transaction.draft_mut().add_component(reference, transform) else {
+                return false;
+            };
+            self.selected_component = Some(next);
+            self.pending_canonical = Some(transaction);
+            self.pending_canonical_label = Some("duplicate component");
             return true;
         }
-        self.record(EditType::Normal);
-        let selection = self.legacy_selection();
-        match glyph_ops::duplicate_selection(&mut self.glyph, &selection) {
-            Some(next) => {
-                self.select_legacy_points(next);
-                true
-            }
-            None => false,
+        let selection = self.selected_point_ids();
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return false;
+        };
+        let Ok(next) = transaction
+            .draft_mut()
+            .duplicate_contours(&selection, kurbo::Vec2::new(20.0, 20.0))
+        else {
+            return false;
+        };
+        if next.points.is_empty() {
+            return false;
         }
+        self.selection = next.points.into_iter().collect();
+        self.pending_canonical = Some(transaction);
+        self.pending_canonical_label = Some("duplicate contours");
+        true
     }
 
     pub(crate) fn duplicate_repeat(&mut self) -> bool {
@@ -1481,38 +1538,44 @@ impl Session {
         if !self.duplicate() {
             return false;
         }
-        if let Some(transform) = transform {
-            let selection = self.legacy_selection();
-            let _ = glyph_ops::transform_selection(&mut self.glyph, &selection, transform);
+        if let Some(transform) = transform
+            && self.selected_component.is_none()
+            && let Some(transaction) = &mut self.pending_canonical
+        {
+            let selection: Vec<_> = self.selection.iter().copied().collect();
+            let _ = transaction
+                .draft_mut()
+                .transform_points(&selection, transform);
         }
         true
     }
 
     pub(crate) fn tidy_paths(&mut self) -> bool {
-        self.record(EditType::Normal);
-        runebender::outline::cleanup::tidy_contours(&mut self.glyph) > 0
+        self.stage_canonical_edit("tidy paths", |draft| Ok(draft.tidy_contours() > 0))
     }
 
     pub(crate) fn add_extremes(&mut self) -> bool {
-        self.record(EditType::Normal);
-        let selection = self.legacy_selection();
-        runebender::outline::cleanup::add_extreme_points(&mut self.glyph, &selection)
+        let selection = self.selected_point_ids();
+        self.stage_canonical_edit("add extremes", |draft| draft.add_extreme_points(&selection))
     }
 
     pub(crate) fn round_coordinates(&mut self) -> bool {
-        self.record(EditType::Normal);
-        runebender::outline::cleanup::round_glyph_coordinates(&mut self.glyph) > 0
+        self.stage_canonical_edit("round coordinates", |draft| {
+            Ok(draft.round_coordinates() > 0)
+        })
     }
 
     pub(crate) fn correct_path_direction(&mut self) -> bool {
-        self.record(EditType::Normal);
-        runebender::outline::cleanup::correct_path_directions(&mut self.glyph) > 0
+        self.stage_canonical_edit("correct path direction", |draft| {
+            draft.correct_path_directions().map(|count| count > 0)
+        })
     }
 
     pub(crate) fn hyper_to_cubic(&mut self) -> bool {
-        self.record(EditType::Normal);
-        let selection = self.legacy_selection();
-        let changed = glyph_ops::convert_hyper_to_cubic(&mut self.glyph, &selection);
+        let selection = self.selected_point_ids();
+        let changed = self.stage_canonical_edit("convert hyperbeziers", |draft| {
+            draft.convert_hyper_to_cubic(&selection)
+        });
         if changed {
             self.selection.clear();
         }
@@ -1520,46 +1583,46 @@ impl Session {
     }
 
     pub(crate) fn quads_to_cubics(&mut self) -> bool {
-        self.record(EditType::Normal);
-        runebender::outline::convert::quads_to_cubics(&mut self.glyph)
+        self.stage_canonical_edit("convert quadratics", |draft| {
+            draft.convert_quadratics_to_cubics()
+        })
     }
 
     pub(crate) fn cubics_to_quads(&mut self) -> bool {
-        self.record(EditType::Normal);
-        runebender::outline::convert::cubics_to_quads(&mut self.glyph, 1.0)
+        self.stage_canonical_edit("convert cubics", |draft| {
+            draft.convert_cubics_to_quadratics(1.0)
+        })
     }
 
     /// Stable identity of the anchor near `p` (design space), if within `tol`.
     pub(crate) fn anchor_at(&self, p: Point, tol: f64) -> Option<AnchorId> {
-        self.glyph
-            .anchors
-            .iter()
-            .enumerate()
-            .filter(|(_, a)| Point::new(a.x, a.y).distance(p) <= tol)
+        self.current_layer()?
+            .anchors()
+            .filter(|anchor| anchor.position().distance(p) <= tol)
             .min_by(|a, b| {
-                Point::new(a.1.x, a.1.y)
+                a.position()
                     .distance(p)
-                    .total_cmp(&Point::new(b.1.x, b.1.y).distance(p))
+                    .total_cmp(&b.position().distance(p))
             })
-            .and_then(|(index, _)| self.anchor_ids.get(index).copied())
-    }
-
-    pub(crate) fn anchor_selected(&self, index: usize) -> bool {
-        self.anchor_ids
-            .get(index)
-            .is_some_and(|anchor| Some(*anchor) == self.selected_anchor)
+            .map(|anchor| anchor.id())
     }
 
     #[cfg(test)]
     pub(crate) fn anchor_id_at(&self, index: usize) -> Option<AnchorId> {
-        self.anchor_ids.get(index).copied()
+        self.current_layer()?
+            .anchors()
+            .nth(index)
+            .map(|anchor| anchor.id())
     }
 
     pub(crate) fn add_anchor(&mut self, x: f64, y: f64) {
         if !x.is_finite() || !y.is_finite() {
             return;
         }
-        let n = self.glyph.anchors.len();
+        let n = self
+            .current_layer()
+            .map(|layer| layer.anchors().count())
+            .unwrap_or_default();
         let Some(mut transaction) = self.canonical_base.clone() else {
             return;
         };
@@ -1575,14 +1638,12 @@ impl Session {
     }
 
     pub(crate) fn move_anchor(&mut self, id: AnchorId, x: f64, y: f64) {
-        let Some(idx) = self
-            .anchor_ids
-            .iter()
-            .position(|candidate| *candidate == id)
-        else {
-            return;
-        };
-        let Some(anchor) = self.glyph.anchors.get(idx) else {
+        let Some(anchor) = self.current_layer().and_then(|layer| {
+            layer
+                .anchors()
+                .find(|candidate| candidate.id() == id)
+                .map(|anchor| anchor.position())
+        }) else {
             return;
         };
         if !x.is_finite() || !y.is_finite() || (anchor.x == x && anchor.y == y) {
@@ -1607,9 +1668,6 @@ impl Session {
             return;
         };
         drag.changed |= changed;
-        let anchor = &mut self.glyph.anchors[idx];
-        anchor.x = x;
-        anchor.y = y;
     }
 
     pub(crate) fn end_anchor_drag(&mut self) {
@@ -1625,25 +1683,6 @@ impl Session {
     pub(crate) fn cancel_anchor_drag(&mut self) {
         self.active_anchor_drag = None;
         self.in_drag = false;
-        let position = self.selected_anchor.and_then(|selected| {
-            self.canonical_base
-                .as_ref()?
-                .draft()
-                .view()
-                .anchors()
-                .find(|anchor| anchor.id() == selected)
-                .map(|anchor| anchor.position())
-        });
-        if let (Some(selected), Some(position)) = (self.selected_anchor, position)
-            && let Some(index) = self
-                .anchor_ids
-                .iter()
-                .position(|candidate| *candidate == selected)
-            && let Some(anchor) = self.glyph.anchors.get_mut(index)
-        {
-            anchor.x = position.x;
-            anchor.y = position.y;
-        }
     }
 
     pub(crate) fn delete_selected_anchor(&mut self) -> bool {
@@ -1663,7 +1702,10 @@ impl Session {
 
     /// Continuity of every on-curve node: corner, kink, G1, G2, G3.
     pub(crate) fn continuity(&self) -> Vec<runebender::analysis::curve::NodeContinuity> {
-        let cubics = runebender::analysis::curve::cubics_from_norad(&self.glyph);
+        let Some(layer) = self.current_layer() else {
+            return Vec::new();
+        };
+        let cubics = runebender::analysis::curve::cubics_from_layer(layer);
         runebender::analysis::curve::node_continuity(&cubics)
     }
 
@@ -1674,7 +1716,10 @@ impl Session {
     }
 
     pub(crate) fn curvature_comb(&self) -> Vec<Vec<runebender::analysis::curve::CombSample>> {
-        let cubics = runebender::analysis::curve::cubics_from_norad(&self.glyph);
+        let Some(layer) = self.current_layer() else {
+            return Vec::new();
+        };
+        let cubics = runebender::analysis::curve::cubics_from_layer(layer);
         let maxk = runebender::analysis::curve::max_curvature(&cubics);
         if maxk <= 1e-12 {
             return Vec::new();
@@ -1683,19 +1728,27 @@ impl Session {
     }
 
     pub(crate) fn set_mark(&mut self, label: Option<&str>) {
-        self.record(EditType::Normal);
-        runebender::ui::theme::set_glyph_mark(&mut self.glyph, label);
+        let label = label.map(str::to_owned);
+        let _ = self.compatibility_edit("set glyph mark", move |glyph| {
+            let before = glyph.lib.clone();
+            runebender::ui::theme::set_glyph_mark(glyph, label.as_deref());
+            glyph.lib != before
+        });
     }
 
     /// The contours to copy: the ones holding a selected point, or every
     /// contour when nothing is selected. This is shared with the web editor.
     #[cfg(test)]
     pub(crate) fn contours_for_copy(&self) -> Vec<norad::Contour> {
+        let Some(transaction) = self.current_transaction() else {
+            return Vec::new();
+        };
+        let glyph = transaction.compatibility_glyph();
         if self.selection.is_empty() {
-            return self.glyph.contours.clone();
+            return glyph.contours;
         }
         let selected = self.legacy_selection();
-        self.glyph
+        glyph
             .contours
             .iter()
             .enumerate()
@@ -1707,10 +1760,17 @@ impl Session {
     /// Replace every contour, keeping the advance. Used by the swap with
     /// the background layer, which is an edit like any other.
     pub(crate) fn set_contours(&mut self, contours: Vec<norad::Contour>) -> bool {
-        self.record(EditType::Normal);
-        self.glyph.contours = contours;
-        self.selection.clear();
-        true
+        let changed = self.compatibility_edit("replace contours", move |glyph| {
+            if glyph.contours == contours {
+                return false;
+            }
+            glyph.contours = contours;
+            true
+        });
+        if changed {
+            self.selection.clear();
+        }
+        changed
     }
 
     /// Append contours to the glyph, and select the points they brought.
@@ -1718,16 +1778,25 @@ impl Session {
         if contours.is_empty() {
             return false;
         }
-        self.record(EditType::Normal);
-        let first_new = self.glyph.contours.len();
-        self.glyph.contours.extend(contours.iter().cloned());
-        let mut selection = HashSet::new();
-        for (offset, contour) in contours.iter().enumerate() {
-            for point in 0..contour.points.len() {
-                selection.insert((first_new + offset, point));
-            }
+        let contours = contours.to_vec();
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return false;
+        };
+        let mut glyph = transaction.compatibility_glyph();
+        let first_new = glyph.contours.len();
+        glyph.contours.extend(contours.iter().cloned());
+        if transaction.reconcile_compatibility_glyph(&glyph) != Ok(true) {
+            return false;
         }
-        self.select_legacy_points(selection);
+        let ids: Vec<Vec<_>> = transaction
+            .draft()
+            .view()
+            .contours()
+            .map(|contour| contour.points().map(|point| point.id()).collect())
+            .collect();
+        self.selection = ids.into_iter().skip(first_new).flatten().collect();
+        self.pending_canonical = Some(transaction);
+        self.pending_canonical_label = Some("paste compatibility contours");
         true
     }
 
@@ -1735,13 +1804,6 @@ impl Session {
         self.selected_component = None;
         self.selection = self.points().into_iter().map(|p| p.id).collect();
     }
-}
-
-fn canonical_point_ids(layer: LayerView<'_>) -> Vec<Vec<PointId>> {
-    layer
-        .contours()
-        .map(|contour| contour.points().map(|point| point.id()).collect())
-        .collect()
 }
 
 fn resolved_document_components(
@@ -2045,8 +2107,13 @@ impl Workspace {
     /// the model + grid cache so the overview preview matches.
     /// Replace the app's session with the island's live one (called on every
     /// editor event so save/preview see interactive edits).
-    pub(crate) fn sync_session_from(&mut self, session: &mut Session) {
+    pub(crate) fn sync_session_from(&mut self, session: &mut Session) -> bool {
+        if session.sync_rejected {
+            return false;
+        }
         let name = session.glyph_name.clone();
+        let mut accepted = true;
+        let mut retain_session = true;
         if let Some(mut transaction) = session.pending_canonical.take() {
             let label = session
                 .pending_canonical_label
@@ -2084,43 +2151,48 @@ impl Workspace {
                         undo_depth,
                     });
                     self.metadata_redo.clear();
-                    session.pending.clear();
-                    let _ = session.reload_from_project(&self.font.project, &address);
+                    if !session.reload_from_project(&self.font.project, &address) {
+                        self.note = "The committed glyph layer could not be reloaded".into();
+                        session.sync_rejected = true;
+                        accepted = false;
+                        retain_session = false;
+                    }
                 }
                 Ok(runebender::document::project::DocumentEditOutcome::Unchanged { .. }) => {
-                    let _ = session.reload_from_project(&self.font.project, &address);
+                    if !session.reload_from_project(&self.font.project, &address) {
+                        self.note = "The unchanged glyph layer could not be reloaded".into();
+                        session.sync_rejected = true;
+                        accepted = false;
+                        retain_session = false;
+                    }
                 }
                 Err(error) => {
                     self.note = format!("The active glyph layer changed before commit: {error}");
-                    let _ = session.reload_from_project(&self.font.project, &address);
+                    accepted = false;
+                    if !session.reload_from_project(&self.font.project, &address) {
+                        self.note
+                            .push_str("; the canonical layer could not be reloaded");
+                        session.sync_rejected = true;
+                        retain_session = false;
+                    }
                 }
             }
         }
-        if session
-            .pending
-            .iter()
-            .any(|operation| matches!(operation, HistoryOp::Record(_)))
-        {
-            self.metadata_redo.clear();
-        }
-        let mut master = self.font.master_mut();
-        for op in session.pending.drain(..) {
-            match op {
-                HistoryOp::Record(glyph) => {
-                    master.history.record(&name, &glyph);
-                }
-                HistoryOp::DiscardLast => {
-                    master.history.discard_last(&name);
-                }
+        if !accepted {
+            if retain_session {
+                self.session = Arc::new(session.clone());
+                self.refresh_metric_bufs();
+                self.selected_points = self.session.selection.len();
             }
+            return false;
         }
-        drop(master);
         self.session = Arc::new(session.clone());
         // Keep the panel's advance field in step after canvas edits
         // (sidebearing/advance drags). This path is never hit by typing in
         // the field, so it does not clobber input.
         self.refresh_metric_bufs();
         self.selected_points = self.session.selection.len();
+        true
     }
 
     /// Rebase the open transitional session after a canonical layer commit or replay.
@@ -2134,7 +2206,6 @@ impl Workspace {
             return false;
         }
         let mut session = (*self.session).clone();
-        session.pending.clear();
         if !session.reload_from_project(&self.font.project, address) {
             return false;
         }
@@ -2208,7 +2279,12 @@ impl Workspace {
         if !matches!(self.mode, Mode::Overview) {
             return;
         }
-        if self.metadata_history_step(redo) {
+        let has_overview_batch = if redo {
+            !self.overview_redo.is_empty()
+        } else {
+            !self.overview_undo.is_empty()
+        };
+        if !has_overview_batch && self.metadata_history_step(redo) {
             return;
         }
         let batch = if redo {
@@ -2225,7 +2301,12 @@ impl Workspace {
             .into();
             return;
         };
-        let Some(mut master) = self.font.project.edit_source(batch.source) else {
+        let Some(layer) = self
+            .font
+            .project
+            .document_source(batch.source)
+            .map(|source| source.default_layer())
+        else {
             self.note = "Restore the removed source before undoing its glyph edits".into();
             if redo {
                 self.overview_redo.push(batch);
@@ -2234,16 +2315,55 @@ impl Workspace {
             }
             return;
         };
-        for glyph in &batch.glyphs {
-            if let Some(&index) = master.name_map.get(glyph) {
-                if redo {
-                    master.redo(index);
-                } else {
-                    master.undo(index);
+        let direction = if redo {
+            runebender::document::history::HistoryDirection::Redo
+        } else {
+            runebender::document::history::HistoryDirection::Undo
+        };
+        let addresses = batch
+            .glyphs
+            .iter()
+            .map(|glyph| runebender::document::variable::GlyphLayerAddress {
+                glyph: glyph.clone(),
+                layer: layer.clone(),
+            })
+            .collect::<Vec<_>>();
+        let canonical = addresses.iter().all(|address| {
+            self.font
+                .project
+                .can_replay_document_layer_history(address, direction)
+        });
+        if canonical {
+            for address in &addresses {
+                if self
+                    .font
+                    .project
+                    .replay_document_layer_history(address, direction)
+                    .is_err()
+                {
+                    self.note = "The overview edit changed before history replay".into();
+                    if redo {
+                        self.overview_redo.push(batch);
+                    } else {
+                        self.overview_undo.push(batch);
+                    }
+                    return;
+                }
+            }
+        } else {
+            let Some(mut master) = self.font.project.edit_source(batch.source) else {
+                return;
+            };
+            for glyph in &batch.glyphs {
+                if let Some(&index) = master.name_map.get(glyph) {
+                    if redo {
+                        master.redo(index);
+                    } else {
+                        master.undo(index);
+                    }
                 }
             }
         }
-        drop(master);
         if Some(batch.source) == self.font.project.source_id(self.font.active()) {
             self.font.rebuild_cache();
         }
@@ -2311,10 +2431,7 @@ impl Workspace {
                 self.name_buf = name;
                 self.unicode_buf = self
                     .session
-                    .glyph
-                    .codepoints
-                    .iter()
-                    .next()
+                    .codepoint()
                     .map(|codepoint| format!("{:04X}", codepoint as u32))
                     .unwrap_or_default();
                 self.refresh_metric_bufs();
@@ -2393,39 +2510,10 @@ impl Workspace {
     }
 
     pub(crate) fn refresh_open_glyph(&mut self) {
-        if let Mode::Editor(index) = self.mode {
-            // Inspector fields edit a cloned `Session` directly rather than
-            // travelling through the canvas rebuild hook. Move their pending
-            // history into the engine before replacing the live glyph, just as
-            // `sync_session_from` does for pointer and keyboard edits.
+        if matches!(self.mode, Mode::Editor(_)) {
             let mut session = (*self.session).clone();
-            let name = session.glyph_name.clone();
-            if session
-                .pending
-                .iter()
-                .any(|operation| matches!(operation, HistoryOp::Record(_)))
-            {
-                self.metadata_redo.clear();
-            }
-            let mut master = self.font.master_mut();
-            for op in session.pending.drain(..) {
-                match op {
-                    HistoryOp::Record(glyph) => {
-                        master.history.record(&name, &glyph);
-                    }
-                    HistoryOp::DiscardLast => {
-                        master.history.discard_last(&name);
-                    }
-                }
-            }
-            drop(master);
-            let glyph = session.glyph.clone();
-            self.session = Arc::new(session);
-            self.font.replace_glyph(index, glyph);
-            if let Some(address) = self.font.active_layer_address(&name) {
-                let mut session = (*self.session).clone();
-                let _ = session.reload_from_project(&self.font.project, &address);
-                self.session = Arc::new(session);
+            if !self.sync_session_from(&mut session) {
+                return;
             }
             self.cells = Arc::new(cells_of(&self.font, &self.palette));
             self.modified = true;
@@ -2442,6 +2530,12 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn projected_glyph(session: &Session) -> norad::Glyph {
+        session
+            .compatibility_glyph()
+            .expect("an editor session has a canonical layer")
+    }
 
     /// A glyph with two square contours, so copy has something to choose
     /// between.
@@ -2467,54 +2561,6 @@ mod tests {
     }
 
     #[test]
-    fn edits_land_on_the_masters_pile_and_undo_from_it() {
-        use runebender::document::project::Master;
-        let mut session = two_squares();
-        let mut master = Master::from_font(
-            {
-                let mut font = norad::Font::new();
-                font.default_layer_mut().insert_glyph(session.glyph.clone());
-                font
-            },
-            std::path::PathBuf::new(),
-        );
-        let index = master.name_map["test"];
-        // Two point edits, two steps waiting for the app to pull them.
-        let x = |s: &Session| s.glyph.contours[0].points[0].x;
-        session.record(EditType::Normal);
-        session.glyph.contours[0].points[0].x = 50.0;
-        session.record(EditType::Normal);
-        session.glyph.contours[0].points[0].x = 75.0;
-        assert_eq!(session.pending.len(), 2);
-        // What the app does on sync: drain onto the master's pile and
-        // write the session's glyph through.
-        for op in session.pending.drain(..) {
-            if let HistoryOp::Record(glyph) = op {
-                master.history.record("test", &glyph);
-            }
-        }
-        let edited = session.glyph.clone();
-        master.edit_glyph(index, |g| *g = edited);
-        assert_eq!(master.undo_depth(index), 2);
-        assert!(master.undo(index));
-        let back = master.font.get_glyph("test").expect("still there").clone();
-        session.reload_glyph(&master.font, back);
-        assert_eq!(x(&session), 50.0);
-        assert!(master.undo(index));
-        session.reload_glyph(
-            &master.font,
-            master.font.get_glyph("test").expect("still there").clone(),
-        );
-        assert_eq!(x(&session), 0.0);
-        assert!(master.redo(index));
-        session.reload_glyph(
-            &master.font,
-            master.font.get_glyph("test").expect("still there").clone(),
-        );
-        assert_eq!(x(&session), 50.0);
-    }
-
-    #[test]
     fn copy_with_no_selection_takes_every_contour() {
         let session = two_squares();
         assert_eq!(session.contours_for_copy().len(), 2);
@@ -2537,10 +2583,7 @@ mod tests {
         let mut session = two_squares();
         let copied = session.contours_for_copy();
         assert!(session.paste_contours(&copied));
-        assert_eq!(session.glyph.contours.len(), 4);
-        let mut font = norad::Font::new();
-        font.default_layer_mut().insert_glyph(session.glyph.clone());
-        session.reload_glyph(&font, session.glyph.clone());
+        assert_eq!(projected_glyph(&session).contours.len(), 4);
         // Every point of the two new contours, and nothing else.
         assert_eq!(session.selection.len(), 8);
         assert!(
@@ -2552,254 +2595,77 @@ mod tests {
     }
 
     #[test]
-    fn component_selection_editing_and_cache_round_trip() {
-        let mut font = norad::Font::new();
-        let mut base = norad::Glyph::new("base");
-        base.contours.push(norad::Contour::new(
-            [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
-                .into_iter()
-                .map(|(x, y)| {
-                    norad::ContourPoint::new(x, y, norad::PointType::Line, false, None, None)
-                })
-                .collect(),
-            None,
-        ));
-        font.default_layer_mut().insert_glyph(base);
-        let mut composite = norad::Glyph::new("composite");
-        composite.components.push(norad::Component::new(
-            norad::Name::new("base").unwrap(),
-            norad::AffineTransform {
-                x_offset: 30.0,
-                y_offset: 40.0,
-                ..Default::default()
-            },
-            None,
-        ));
-        font.default_layer_mut().insert_glyph(composite);
-
-        let mut session = Session::new(&font, "composite").unwrap();
-        let first_component = session.component_cache[0].id;
-        assert_eq!(
-            session.component_at(Point::new(50.0, 60.0)),
-            Some(first_component)
-        );
-        assert!(session.select_component(0));
-        assert_eq!(session.selected_component_aligned(), Some(true));
-        assert!(!session.drag_component_by(10.0, 0.0));
-        assert!(session.pending.is_empty());
-        assert!(session.toggle_component_alignment(&font));
-        assert_eq!(session.selected_component_aligned(), Some(false));
-        session.pending.clear();
-        assert!(session.drag_component_by(10.0, 0.0));
-        session.cancel_component_drag();
-        assert_eq!(session.glyph.components[0].transform.x_offset, 30.0);
-        assert_eq!(session.glyph.components[0].transform.y_offset, 40.0);
-        assert!(session.pending_canonical.is_none());
-        assert!(session.drag_component_by(10.0, 0.0));
-        assert!(session.drag_component_by(5.0, 5.0));
-        assert!(session.pending.is_empty());
-        session.end_component_drag();
-        assert!(!session.gesture_in_progress());
-        assert!(session.pending_canonical.is_some());
-        assert_eq!(session.glyph.components[0].transform.x_offset, 45.0);
-        assert_eq!(session.glyph.components[0].transform.y_offset, 45.0);
-        assert!(session.component_at(Point::new(50.0, 50.0)).is_some());
-
-        assert!(session.duplicate());
-        assert_eq!(session.glyph.components.len(), 2);
-        let mut changed_font = font.clone();
-        changed_font
-            .default_layer_mut()
-            .insert_glyph(session.glyph.clone());
-        session.reload_glyph(&changed_font, session.glyph.clone());
-        assert!(session.component_selected(1));
-        assert!(session.delete_selected());
-        assert_eq!(session.glyph.components.len(), 1);
-        assert_eq!(session.selected_component, None);
-
-        session.reload_glyph(
-            &font,
-            font.get_glyph("composite").expect("original glyph").clone(),
-        );
-        assert_eq!(session.glyph.components[0].transform.x_offset, 30.0);
-        assert!(session.component_at(Point::new(50.0, 60.0)).is_some());
-        assert!(session.select_component(0));
-        assert!(session.decompose());
-        let draft = session
-            .pending_canonical
-            .as_ref()
-            .expect("canonical edit")
-            .draft();
-        assert_eq!(draft.view().contours().count(), 1);
-        assert_eq!(draft.view().components().count(), 0);
-    }
-
-    #[test]
-    fn adding_a_component_validates_before_recording() {
-        let mut font = norad::Font::new();
-        font.default_layer_mut()
-            .insert_glyph(norad::Glyph::new("base"));
-        font.default_layer_mut()
-            .insert_glyph(norad::Glyph::new("target"));
-        let mut session = Session::new(&font, "target").unwrap();
-
-        assert!(!session.add_component(&font, "missing"));
-        assert!(!session.add_component(&font, "target"));
-        assert!(session.pending.is_empty());
-        assert!(session.add_component(&font, "base"));
-        assert_eq!(session.pending.len(), 1);
-        assert!(session.component_selected(0));
-    }
-
-    #[test]
-    fn locking_a_component_snaps_it_to_matching_anchors() {
-        let mut font = norad::Font::new();
-        let mut carrier = norad::Glyph::new("carrier");
-        carrier.anchors.push(norad::Anchor::new(
-            300.0,
-            500.0,
-            norad::Name::new("top").ok(),
-            None,
-            None,
-        ));
-        font.default_layer_mut().insert_glyph(carrier);
-        let mut mark = norad::Glyph::new("mark");
-        mark.anchors.push(norad::Anchor::new(
-            20.0,
-            30.0,
-            norad::Name::new("_top").ok(),
-            None,
-            None,
-        ));
-        font.default_layer_mut().insert_glyph(mark);
-        let mut composite = norad::Glyph::new("composite");
-        composite.components.push(norad::Component::new(
-            norad::Name::new("carrier").unwrap(),
-            norad::AffineTransform::default(),
-            None,
-        ));
-        let mut loose = norad::Component::new(
-            norad::Name::new("mark").unwrap(),
-            norad::AffineTransform::default(),
-            None,
-        );
-        runebender::document::composites::set_component_alignment_disabled(&mut loose, true);
-        composite.components.push(loose);
-        font.default_layer_mut().insert_glyph(composite);
-
-        let mut session = Session::new(&font, "composite").unwrap();
-        assert!(session.select_component(1));
-        assert_eq!(session.selected_component_aligned(), Some(false));
-        assert!(session.toggle_component_alignment(&font));
-        assert_eq!(session.selected_component_aligned(), Some(true));
-        assert_eq!(session.glyph.components[1].transform.x_offset, 280.0);
-        assert_eq!(session.glyph.components[1].transform.y_offset, 470.0);
-        assert_eq!(session.pending.len(), 1);
-    }
-
-    #[test]
     fn pasting_nothing_changes_nothing() {
         let mut session = two_squares();
         assert!(!session.paste_contours(&[]));
-        assert_eq!(session.glyph.contours.len(), 2);
+        assert_eq!(projected_glyph(&session).contours.len(), 2);
     }
 
     #[test]
     fn parameterized_filters_record_only_real_edits() {
         let mut unchanged = two_squares();
         assert!(!unchanged.offset(0.0));
-        assert!(unchanged.pending.is_empty());
+        assert!(unchanged.pending_canonical.is_none());
 
         let mut offset = two_squares();
         assert!(offset.offset(10.0));
-        assert_eq!(offset.pending.len(), 1);
+        assert!(offset.pending_canonical.is_some());
 
         let mut extrude = two_squares();
         assert!(extrude.extrude(20.0, 30.0, false));
-        assert_eq!(extrude.pending.len(), 1);
+        assert!(extrude.pending_canonical.is_some());
 
         let mut rough = two_squares();
         assert!(rough.roughen(10.0, 4.0, 4.0, 7));
-        assert_eq!(rough.pending.len(), 1);
+        assert!(rough.pending_canonical.is_some());
     }
 
     #[test]
     fn stroke_expansion_targets_selected_contours_and_records_the_original() {
         let mut session = two_squares();
-        let original = session.glyph.contours.clone();
+        let original = projected_glyph(&session).contours;
         for width in [0.0, -1.0, f64::NAN, f64::INFINITY] {
             assert!(!session.expand_stroke(width));
         }
-        assert!(session.pending.is_empty());
+        assert!(session.pending_canonical.is_none());
         session
             .selection
             .insert(session.point_id_at(0, 0).expect("first contour point"));
         assert!(session.expand_stroke(20.0));
-        assert_eq!(session.glyph.contours.last(), original.last());
-        assert_ne!(session.glyph.contours, original);
+        let expanded = projected_glyph(&session).contours;
+        assert_eq!(expanded.last(), original.last());
+        assert_ne!(expanded, original);
         assert!(session.selection.is_empty());
-        assert_eq!(session.pending.len(), 1);
-        let HistoryOp::Record(before) = &session.pending[0] else {
-            panic!("undo snapshot");
-        };
-        assert_eq!(before.contours, original);
+        assert!(session.pending_canonical.is_some());
         let mut all = two_squares();
         assert!(all.expand_stroke(20.0));
-        assert!(all.glyph.contours.len() > original.len());
-    }
-
-    #[test]
-    fn cleanup_command_records_an_edit_and_changes_the_glyph() {
-        let mut session = two_squares();
-        session.glyph.contours[0].points[0].x = 0.4;
-
-        assert!(session.round_coordinates());
-        assert_eq!(session.glyph.contours[0].points[0].x, 0.0);
-        assert!(matches!(session.pending.last(), Some(HistoryOp::Record(_))));
+        assert!(projected_glyph(&all).contours.len() > original.len());
     }
 
     #[test]
     fn clockwise_and_counterclockwise_rotations_are_opposites_on_the_selection() {
         let mut clockwise = two_squares();
-        let original = clockwise.glyph.contours.clone();
+        let original = projected_glyph(&clockwise).contours;
         clockwise.select_contour(0);
         let mut counterclockwise = clockwise.clone();
         assert!(clockwise.rotate_90_clockwise());
         assert!(counterclockwise.rotate_90());
-        let cw = &clockwise.glyph.contours[0].points[0];
-        let ccw = &counterclockwise.glyph.contours[0].points[0];
+        let clockwise_glyph = projected_glyph(&clockwise);
+        let counterclockwise_glyph = projected_glyph(&counterclockwise);
+        let cw = &clockwise_glyph.contours[0].points[0];
+        let ccw = &counterclockwise_glyph.contours[0].points[0];
         assert_eq!((cw.x, cw.y), (0.0, 100.0));
         assert_eq!((ccw.x, ccw.y), (100.0, 0.0));
-        assert_eq!(clockwise.glyph.contours[1], original[1]);
-        assert_eq!(counterclockwise.glyph.contours[1], original[1]);
-        assert_eq!(clockwise.pending.len(), 1);
-        assert!(clockwise.rotate_90());
-        assert_eq!(clockwise.glyph.contours, original);
-        assert_eq!(clockwise.pending.len(), 2);
-    }
-
-    #[test]
-    fn duplicate_repeat_reapplies_the_last_transform_to_the_clone() {
-        let mut session = two_squares();
-        session.select_contour(0);
-        assert!(session.rotate_90());
-        assert!(session.duplicate_repeat());
-        assert_eq!(session.glyph.contours.len(), 3);
-        assert!(
-            session
-                .pending_selection_indices
-                .as_ref()
-                .expect("duplicate selects its new contour")
-                .iter()
-                .all(|(contour, _)| *contour == 2)
-        );
+        assert_eq!(clockwise_glyph.contours[1], original[1]);
+        assert_eq!(counterclockwise_glyph.contours[1], original[1]);
+        assert!(clockwise.pending_canonical.is_some());
     }
 
     #[test]
     fn anchor_and_metric_drags_record_one_closed_transaction() {
-        let mut session = two_squares();
-        session.glyph.width = 500.0;
-        session.glyph.anchors.push(norad::Anchor::new(
+        let mut glyph = projected_glyph(&two_squares());
+        glyph.width = 500.0;
+        glyph.anchors.push(norad::Anchor::new(
             100.0,
             200.0,
             Some(norad::Name::new("top").expect("anchor name")),
@@ -2807,22 +2673,18 @@ mod tests {
             None,
         ));
         let mut font = norad::Font::new();
-        font.default_layer_mut().insert_glyph(session.glyph.clone());
-        session.reload_glyph(&font, session.glyph.clone());
+        font.default_layer_mut().insert_glyph(glyph);
+        let mut session = Session::new(&font, "test").expect("glyph is there");
         let anchor = session.anchor_id_at(0).expect("canonical anchor identity");
 
         session.selected_anchor = Some(anchor);
         session.move_anchor(anchor, 120.0, 220.0);
         session.cancel_anchor_drag();
-        assert_eq!(
-            (session.glyph.anchors[0].x, session.glyph.anchors[0].y),
-            (100.0, 200.0)
-        );
+        assert_eq!(session.anchor_points()[0].1, Point::new(100.0, 200.0));
         assert!(session.pending_canonical.is_none());
 
         session.move_anchor(anchor, 120.0, 220.0);
         session.move_anchor(anchor, 140.0, 240.0);
-        assert!(session.pending.is_empty());
         assert!(session.gesture_in_progress());
         let draft = session
             .active_anchor_drag
@@ -2839,22 +2701,18 @@ mod tests {
         assert!(session.pending_canonical.is_some());
 
         session.pending_canonical = None;
-        session.pending.clear();
         session.drag_advance(520.0);
         session.drag_advance(540.0);
-        assert_eq!(session.pending.len(), 1);
+        assert!(session.pending_canonical.is_none());
         session.end_metric_drag();
         assert!(!session.gesture_in_progress());
-        let HistoryOp::Record(before) = &session.pending[0] else {
-            panic!("advance drag records its starting glyph");
-        };
-        assert_eq!(before.width, 500.0);
+        assert!(session.pending_canonical.is_some());
         assert_eq!(session.advance(), 540.0);
 
-        session.pending.clear();
+        session.pending_canonical = None;
         session.move_anchor(anchor, f64::NAN, 10.0);
         session.drag_advance(f64::INFINITY);
-        assert!(session.pending.is_empty());
+        assert!(session.pending_canonical.is_none());
     }
 
     #[test]
@@ -2933,7 +2791,7 @@ mod tests {
             )
             .unwrap();
         session.reload_from_project(&project, &address);
-        assert_eq!(session.glyph.components.len(), 1);
+        assert_eq!(projected_glyph(&session).components.len(), 1);
         assert_eq!(session.components.bounding_box(), before_bounds);
     }
 }

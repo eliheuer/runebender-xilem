@@ -754,18 +754,6 @@ impl FontModel {
         }
         changed
     }
-
-    /// Replace the glyph at `index` in the active master after an edit,
-    /// and refresh its cache entry.
-    pub(crate) fn replace_glyph(&mut self, index: usize, glyph: norad::Glyph) {
-        if self.glyphs.get(index).is_none() {
-            return;
-        }
-        self.master_mut().edit_glyph(index, |slot| *slot = glyph);
-        self.refresh_entry(index);
-        let name = self.glyphs[index].name.clone();
-        self.project.recheck_compat(&name);
-    }
 }
 
 /// Whether an existing save target, or the directory for a new one, is writable.

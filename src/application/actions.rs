@@ -177,7 +177,7 @@ impl Entry {
             }
             A::TraceImage | A::PlaceImage | A::ImportSvg => editor,
             A::BoldenWithModel => editor && app.ai.job.is_none(),
-            A::RemoveImage => editor && app.session.glyph.image.is_some(),
+            A::RemoveImage => editor && app.session.has_image(),
             A::Reinterpolate => app.selected.is_some() && app.font.master_count() > 1,
             A::NextMaster | A::PreviousMaster => app.font.master_count() > 1,
             A::ShowAllMasters | A::NextSampleString | A::PreviousSampleString => editor,

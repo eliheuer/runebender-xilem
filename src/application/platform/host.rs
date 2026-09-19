@@ -603,6 +603,12 @@ mod tests {
     use super::*;
     use crate::application::widgets::shortcuts;
 
+    fn projected_glyph(session: &Session) -> norad::Glyph {
+        session
+            .compatibility_glyph()
+            .expect("an editor session has a canonical layer")
+    }
+
     #[test]
     fn imported_babelfont_starts_unsaved() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -878,7 +884,7 @@ mod tests {
                 .expect("the source glyph exists")
                 .clone();
             workspace.open_glyph(index);
-            assert_eq!(workspace.session.glyph, source_glyph);
+            assert_eq!(projected_glyph(&workspace.session), source_glyph);
             assert_eq!(workspace.name_buf, name);
             assert_eq!(
                 workspace.unicode_buf,
@@ -907,9 +913,9 @@ mod tests {
 
         let index = workspace.font.index_of("R").expect("Virtua contains R");
         workspace.open_glyph(index);
-        let original_x = workspace.session.glyph.contours[0].points[0].x;
+        let original_x = projected_glyph(&workspace.session).contours[0].points[0].x;
         let original_width = workspace.session.advance();
-        let original_anchor_count = workspace.session.glyph.anchors.len();
+        let original_anchor_count = workspace.session.anchor_points().len();
 
         workspace.apply_op(|session| {
             session
@@ -927,19 +933,25 @@ mod tests {
         for _ in 0..3 {
             workspace.undo_active_edit(false);
         }
-        assert_eq!(workspace.session.glyph.contours[0].points[0].x, original_x);
+        assert_eq!(
+            projected_glyph(&workspace.session).contours[0].points[0].x,
+            original_x
+        );
         assert_eq!(workspace.session.advance(), original_width);
-        assert_eq!(workspace.session.glyph.anchors.len(), original_anchor_count);
+        assert_eq!(
+            workspace.session.anchor_points().len(),
+            original_anchor_count
+        );
         for _ in 0..3 {
             workspace.undo_active_edit(true);
         }
         assert_eq!(
-            workspace.session.glyph.contours[0].points[0].x,
+            projected_glyph(&workspace.session).contours[0].points[0].x,
             original_x + 2.0
         );
         assert_eq!(workspace.session.advance(), original_width + 4.0);
         assert_eq!(
-            workspace.session.glyph.anchors.len(),
+            workspace.session.anchor_points().len(),
             original_anchor_count + 1
         );
 
@@ -1121,15 +1133,25 @@ mod tests {
         let mut workspace = Workspace::open(&path).expect("the fixture opens");
         workspace.open_glyph(0);
         workspace.set_advance_from_buf("620".into());
+        let address = workspace
+            .font
+            .active_layer_address("A")
+            .expect("A has an active canonical layer");
         assert!(workspace.save());
         assert_eq!(
             workspace.note,
             format!("Saved {}", path.file_name().unwrap().to_string_lossy())
         );
-        assert!(workspace.font.master().can_undo(0));
+        assert!(workspace.font.project.can_replay_document_layer_history(
+            &address,
+            runebender::document::history::HistoryDirection::Undo,
+        ));
         workspace.reload_from_disk();
         assert_eq!(workspace.session.advance(), 620.0);
-        assert!(workspace.font.master().can_undo(0));
+        assert!(workspace.font.project.can_replay_document_layer_history(
+            &address,
+            runebender::document::history::HistoryDirection::Undo,
+        ));
         workspace.undo_active_edit(false);
         assert_eq!(workspace.session.advance(), 500.0);
         workspace.revert_to_saved();
@@ -1171,7 +1193,7 @@ mod tests {
         let mut workspace = Workspace::open(&path).expect("the metadata fixture opens");
         let index = workspace.font.index_of("A").expect("A exists");
         workspace.open_glyph(index);
-        let original = workspace.session.glyph.clone();
+        let original = projected_glyph(&workspace.session);
 
         workspace.set_advance_from_buf("NaN".into());
         workspace.set_lsb_from_buf("inf".into());
@@ -1179,33 +1201,17 @@ mod tests {
         workspace.set_unicode_from_buf("not hex".into());
         workspace.name_buf = "B".into();
         workspace.commit_rename();
-        assert_eq!(workspace.session.glyph, original);
+        assert_eq!(projected_glyph(&workspace.session), original);
         assert!(!workspace.modified, "invalid fields do not dirty the font");
         assert_eq!(workspace.name_buf, "A");
         assert_eq!(workspace.note, "Cannot rename A to B");
 
         workspace.set_unicode_from_buf("U+0628".into());
-        assert_eq!(
-            workspace
-                .session
-                .glyph
-                .codepoints
-                .iter()
-                .collect::<Vec<_>>(),
-            ['\u{0628}']
-        );
+        assert_eq!(workspace.session.codepoint(), Some('\u{0628}'));
         workspace.undo_active_edit(false);
-        assert!(workspace.session.glyph.codepoints.is_empty());
+        assert_eq!(workspace.session.codepoint(), None);
         workspace.undo_active_edit(true);
-        assert_eq!(
-            workspace
-                .session
-                .glyph
-                .codepoints
-                .iter()
-                .collect::<Vec<_>>(),
-            ['\u{0628}']
-        );
+        assert_eq!(workspace.session.codepoint(), Some('\u{0628}'));
 
         workspace.set_advance_from_buf("620".into());
         assert_eq!(workspace.session.advance(), 620.0);
@@ -1757,35 +1763,41 @@ mod tests {
         workspace.open_glyph(target);
         workspace.component_base_buf = "base".into();
         workspace.command_add_component();
-        assert_eq!(workspace.session.glyph.components.len(), 1);
+        assert_eq!(projected_glyph(&workspace.session).components.len(), 1);
         assert_eq!(workspace.session.selected_component_aligned(), Some(true));
         workspace.command_toggle_component_alignment();
         assert_eq!(workspace.session.selected_component_aligned(), Some(false));
         workspace.apply_op(|session| session.nudge(30.0, 40.0));
         assert_eq!(
-            workspace.session.glyph.components[0].transform.x_offset,
+            projected_glyph(&workspace.session).components[0]
+                .transform
+                .x_offset,
             30.0
         );
         workspace.undo_active_edit(false);
         assert_eq!(
-            workspace.session.glyph.components[0].transform.x_offset,
+            projected_glyph(&workspace.session).components[0]
+                .transform
+                .x_offset,
             0.0
         );
         workspace.undo_active_edit(false);
         assert_eq!(workspace.session.selected_component_aligned(), Some(true));
         workspace.undo_active_edit(false);
-        assert!(workspace.session.glyph.components.is_empty());
+        assert!(projected_glyph(&workspace.session).components.is_empty());
         workspace.undo_active_edit(true);
-        assert_eq!(workspace.session.glyph.components.len(), 1);
+        assert_eq!(projected_glyph(&workspace.session).components.len(), 1);
         workspace.undo_active_edit(true);
         assert!(
             runebender::document::composites::component_alignment_disabled(
-                &workspace.session.glyph.components[0]
+                &projected_glyph(&workspace.session).components[0]
             )
         );
         workspace.undo_active_edit(true);
         assert_eq!(
-            workspace.session.glyph.components[0].transform.y_offset,
+            projected_glyph(&workspace.session).components[0]
+                .transform
+                .y_offset,
             40.0
         );
         assert!(workspace.save());
@@ -1847,11 +1859,13 @@ mod tests {
             session.end_anchor_drag();
             true
         });
-        let component = &workspace.session.glyph.components[0];
+        let glyph = projected_glyph(&workspace.session);
+        let component = &glyph.components[0];
         assert_eq!(component.transform.x_offset, 380.0);
         assert_eq!(component.transform.y_offset, 570.0);
         workspace.undo_active_edit(false);
-        let component = &workspace.session.glyph.components[0];
+        let glyph = projected_glyph(&workspace.session);
+        let component = &glyph.components[0];
         assert_eq!(component.transform.x_offset, 280.0);
         assert_eq!(component.transform.y_offset, 470.0);
         std::fs::remove_dir_all(path).expect("the attachment fixture is removed");

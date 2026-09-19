@@ -135,7 +135,10 @@ impl Workspace {
             .and_then(|task| self.font.proposal_outline(task, &self.session.glyph_name))
             .map(Arc::new);
         let mark_cloud = if self.show_mark_cloud {
-            mark_cloud(&self.font, &self.session.glyph)
+            self.session
+                .compatibility_glyph()
+                .map(|glyph| mark_cloud(&self.font, &glyph))
+                .unwrap_or_default()
         } else {
             Vec::new()
         };
@@ -271,6 +274,7 @@ impl Workspace {
                     return;
                 }
                 sess.shift_glyph(delta);
+                sess.end_metric_drag();
                 self.session = Arc::new(sess);
                 self.refresh_open_glyph();
                 self.advance_buf = format!("{}", round_units(self.session.advance()));
@@ -349,14 +353,16 @@ impl Workspace {
             return false;
         }
         let active = values.get(self.font.active()).cloned().unwrap_or_default();
-        if self.session.glyph_name == name {
-            Arc::make_mut(&mut self.session).glyph.codepoints =
-                norad::Codepoints::new(active.iter().copied());
-        }
-        for tab in &mut self.tabs {
-            if tab.session.glyph_name == name {
-                Arc::make_mut(&mut tab.session).glyph.codepoints =
-                    norad::Codepoints::new(active.iter().copied());
+        if let Some(address) = self.font.active_layer_address(name) {
+            if self.session.glyph_name == name {
+                let _ = Arc::make_mut(&mut self.session)
+                    .reload_from_project(&self.font.project, &address);
+            }
+            for tab in &mut self.tabs {
+                if tab.session.glyph_name == name {
+                    let _ = Arc::make_mut(&mut tab.session)
+                        .reload_from_project(&self.font.project, &address);
+                }
             }
         }
         self.selected = self.font.index_of(name);
@@ -1082,6 +1088,12 @@ impl Workspace {
 mod size_tests {
     use super::*;
 
+    fn projected_glyph(session: &Session) -> norad::Glyph {
+        session
+            .compatibility_glyph()
+            .expect("an editor session has a canonical layer")
+    }
+
     fn disposable_font(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
             "runebender-{name}-{}-{}.ufo",
@@ -1216,13 +1228,14 @@ mod size_tests {
         app.set_coord_size(false, "400".into());
         assert_eq!(app.session.selection_bounds().unwrap().height(), 400.0);
         assert_eq!(app.coord_point(), Some(reference));
-        let before = app.session.glyph.clone();
+        let before = projected_glyph(&app.session);
         for invalid in ["NaN", "inf", "0", "-10", "-"] {
             app.set_coord_size(true, invalid.into());
-            assert_eq!(app.session.glyph, before);
+            assert_eq!(projected_glyph(&app.session), before);
         }
         app.undo_open_glyph(false);
-        let points = &app.session.glyph.contours[0].points;
+        let glyph = projected_glyph(&app.session);
+        let points = &glyph.contours[0].points;
         assert_eq!(points[2].y - points[0].y, 200.0);
         std::fs::remove_dir_all(path).expect("remove disposable font");
     }
@@ -1434,19 +1447,13 @@ mod size_tests {
         assert_eq!(app.metadata_undo.len(), 1);
         app.undo_open_glyph(false);
         assert_eq!(
-            (
-                app.session.glyph.anchors[0].x,
-                app.session.glyph.anchors[0].y
-            ),
-            (300.0, 500.0)
+            app.session.anchor_points()[0].1,
+            kurbo::Point::new(300.0, 500.0)
         );
         app.undo_open_glyph(true);
         assert_eq!(
-            (
-                app.session.glyph.anchors[0].x,
-                app.session.glyph.anchors[0].y
-            ),
-            (360.0, 580.0)
+            app.session.anchor_points()[0].1,
+            kurbo::Point::new(360.0, 580.0)
         );
 
         let mut session = (*app.session).clone();
@@ -1455,9 +1462,9 @@ mod size_tests {
         assert!(session.delete_selected_anchor());
         app.sync_session_from(&mut session);
         app.session = Arc::new(session);
-        assert!(app.session.glyph.anchors.is_empty());
+        assert!(app.session.anchor_points().is_empty());
         app.undo_open_glyph(false);
-        assert_eq!(app.session.glyph.anchors.len(), 1);
+        assert_eq!(app.session.anchor_points().len(), 1);
         assert!(app.save());
         let reopened = Workspace::open(&path).expect("reopen saved anchor");
         let anchor = &reopened.font.font().get_glyph("beh-ar").unwrap().anchors[0];

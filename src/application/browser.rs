@@ -354,7 +354,7 @@ where
     }
     fn state(&self) -> String {
         let w = self.app.workspace.as_ref().unwrap();
-        serde_json::json!({"nodes":w.nodes.graph.as_ref().map(|g| &g.graph),"simd":cfg!(target_feature="simd128"),"scale":self.scale,"mode":match w.mode { Mode::Overview=>"overview",Mode::Editor(_)=>"editor",Mode::Nodes=>"nodes" },"modified":w.modified,"glyph":w.session.glyph_name,"selected_points":w.selected_points,"glyph_count":w.font.glyphs.len(),"note":w.note,"points":w.session.glyph.contours.iter().flat_map(|c|c.points.iter().map(|p|(p.x,p.y))).collect::<Vec<_>>(),"zoom":w.session.viewport.zoom}).to_string()
+        serde_json::json!({"nodes":w.nodes.graph.as_ref().map(|g| &g.graph),"simd":cfg!(target_feature="simd128"),"scale":self.scale,"mode":match w.mode { Mode::Overview=>"overview",Mode::Editor(_)=>"editor",Mode::Nodes=>"nodes" },"modified":w.modified,"glyph":w.session.glyph_name,"selected_points":w.selected_points,"glyph_count":w.font.glyphs.len(),"note":w.note,"points":w.session.points().into_iter().map(|p|(p.point.x,p.point.y)).collect::<Vec<_>>(),"zoom":w.session.viewport.zoom}).to_string()
     }
 }
 fn create<V, F>(
