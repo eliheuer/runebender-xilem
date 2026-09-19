@@ -82,6 +82,34 @@ All six focused `FontModel` tests passed.
 All fifteen focused session tests passed.
 Warning-denied binary Clippy, formatting and diff checks passed.
 
+## Canonical feature-generation caller slice
+
+Implementation commit: `Generate application features from canonical layers`.
+Resolve its exact ID with `git log --format=%H --grep='^Generate application features from canonical layers$' -1`.
+Affected paths: `src/application/editor/inspector.rs`, `src/application/font_model.rs`, `src/application/cli.rs` and this log.
+
+The inspector now combines its unsaved feature draft with mark and mkmk features generated from canonical active-source layers.
+It no longer clones the compatibility UFO to collect anchors, and it retains the existing review-before-Apply workflow.
+The headless `features` command now loads `Project`, requires exactly one source and calls `features::generate_project` for canonical anchor resolution.
+Its existing generated-file, JSON and human-readable output paths remain unchanged.
+
+The lane synchronized with integration checkpoint `c22fa17` before this cutover.
+That merge exposed and removed one obsolete duplicate `CanonicalSourceStructureSnapshot` block from the lane's older core ancestry; the retained definition includes canonical Designspace state and matches the integration branch.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::inspector::size_tests::generated_features_are_undoable -- --exact --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --locked --bin runebender -- -D warnings
+target/debug/runebender --json features tests/fixtures/incompatible/Regular.ufo
+cargo fmt --all --check
+git diff --check
+```
+
+The generated-feature apply, undo, redo and save/reopen regression passed.
+The headless canonical command returned its unchanged successful empty-feature JSON contract for the checked-in UFO fixture.
+Warning-denied binary Clippy, formatting and diff checks passed.
+
 ## Project-owned source-metadata history slice
 
 Implementation commit: `Move application metadata history into Project`.

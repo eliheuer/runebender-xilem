@@ -880,12 +880,36 @@ fn proposal_discard(source: &Path, task: &str, json: bool) -> i32 {
 /// written beside `features.fea` with an include line.
 fn features_cmd(source: &Path, write: bool, json: bool) -> i32 {
     use runebender::text::features;
-    let font = match open(source, json) {
-        Ok(f) => f,
-        Err(code) => return code,
+    let project = match runebender::document::project::Project::load(source) {
+        Ok(project) => project,
+        Err(error) => {
+            return fail(json, exit::USAGE, &format!("{}: {error}", source.display()));
+        }
     };
-    let generated = features::generate(&font);
-    let own_mark = features::defines_mark_features(&font.features);
+    let mut sources = project.document_sources();
+    let Some(selected) = sources.next() else {
+        return fail(json, exit::USAGE, "the font has no source");
+    };
+    if sources.next().is_some() {
+        return fail(
+            json,
+            exit::USAGE,
+            "features requires one UFO source, not a variable project",
+        );
+    }
+    let source_id = selected.id();
+    let Some(generated) = features::generate_project(&project, source_id) else {
+        return fail(
+            json,
+            exit::FAILED,
+            "the source has no canonical feature inputs",
+        );
+    };
+    let own_mark = features::defines_mark_features(
+        project
+            .document_feature_text(source_id)
+            .expect("the selected source has canonical feature text"),
+    );
     let written = if write {
         match features::write(source, &generated, true) {
             Ok((path, included)) => Some((path, included)),

@@ -970,9 +970,27 @@ impl Workspace {
 
     /// Put generated mark and mkmk lookups in the feature draft for review.
     pub(crate) fn generate_features(&mut self) {
-        let mut draft = self.font.feature_font().clone();
-        draft.features = self.features_buf.clone();
-        let fea = runebender::text::features::with_generated(&draft);
+        let Some(source) = self.font.project.source_id(self.font.active()) else {
+            self.features_status = Some("The active source is unavailable".into());
+            return;
+        };
+        let Some(layer) = self
+            .font
+            .project
+            .document_source(source)
+            .map(|source| source.default_layer())
+        else {
+            self.features_status = Some("The active source layer is unavailable".into());
+            return;
+        };
+        let fea = runebender::text::features::with_generated_document(
+            &self.features_buf,
+            self.font
+                .project
+                .glyph_names()
+                .filter_map(|name| self.font.project.document_layer(name, &layer)),
+            |name| self.font.project.document_layer(name, &layer),
+        );
         if fea == self.features_buf {
             self.features_status = Some("Nothing to generate from anchors".into());
             return;

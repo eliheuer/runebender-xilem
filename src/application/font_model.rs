@@ -111,9 +111,6 @@ impl FontModel {
             .and_then(|source| self.project.document_font_info(source))
     }
 
-    pub(crate) fn feature_font(&self) -> &norad::Font {
-        &self.project.feature_source().font
-    }
     pub(crate) fn preview_font(
         &self,
     ) -> Result<Option<Arc<runebender::document::compile::CompiledFont>>, String> {
