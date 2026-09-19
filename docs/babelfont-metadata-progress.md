@@ -16,6 +16,8 @@ M07 must not be marked complete until the M05 history and M06 application integr
 
 Evidence commit: `b814d6c` (`Add canonical font metadata values`).
 Follow-up evidence commit: `709c6f2` (`Preserve canonical UFO glyph metadata`).
+Group-operation commits: `4aad3aa` (`Make canonical group renames atomic`) and `3541f35` (`Reject ambiguous canonical group edits`).
+Project integration regression: `d40ca12` (`Test canonical source metadata transactions`).
 
 `CanonicalFontMetadata` now retains every UFO group and exact source-local `f64` kerning value without a Norad or Babelfont live model.
 Kerning participants distinguish glyphs from side-specific groups, and pair construction rejects a group on the wrong side.
@@ -32,6 +34,13 @@ The follow-up adds strict one-step UFO decoding and atomic encoding for Unicode,
 Malformed standardized payloads are rejected before mutation, and an unchanged encode preserves list and dictionary ordering.
 The [official UFO group contract](https://unifiedfontobject.org/versions/ufo3/groups.plist/) permits duplicate members in arbitrary groups and ignores later duplicate kerning-group members, so canonical import now preserves group order and duplicates exactly.
 The [official lib key contract](https://unifiedfontobject.org/versions/ufo3/lib.plist/) defines `unassigned` alongside base, mark, ligature and component, and the canonical category type now represents it explicitly.
+Group rename retains membership and rewrites every pair reference in one staged operation.
+Whole-group edits reject adding a glyph to two kerning groups on one side while arbitrary groups remain free to overlap and retain duplicates.
+
+The lead's `a1f3d35` (`Own source groups and kerning canonically`) is adopted through merge commit `578c76e`.
+`SourceMetadata` now owns the value by stable `SourceId`; the preserving UFO template no longer owns groups or kerning.
+Project read and edit transactions report canonical metadata invalidation, while source snapshots and save materialize a temporary UFO boundary value.
+The dedicated Project regression proves exact import, changed/no-op/rejected atomicity, compilation invalidation and save/reload persistence.
 
 ## Executed checks
 
@@ -48,7 +57,7 @@ cargo fmt --all --check
 git diff --check
 ```
 
-The canonical integration suite passed seven tests.
+The canonical integration suite now passes ten tests.
 The focused font-metadata UFO boundary test passed one test, glyph metadata passed six tests, and the existing glyph-operation regression group passed eighteen tests.
 Warning-denied test Clippy, public API documentation, formatting and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
@@ -57,7 +66,7 @@ A later exact-name filter matched zero tests; the corrected focused command abov
 
 ## Integration dependencies and handoffs
 
-The lead task `01a0b7b7-4302-76c1-acde-bba76548faa4` was asked to give `variable::SourceMetadata` one `CanonicalFontMetadata` value per `SourceId`, remove groups and kerning from the preserving template after promotion, rehydrate them only at UFO export, and expose immutable Project reads plus `SourceMetadataEditDraft` mutation.
+The lead task `01a0b7b7-4302-76c1-acde-bba76548faa4` gave `variable::SourceMetadata` one `CanonicalFontMetadata` value per `SourceId`, removed groups and kerning from the preserving template, rehydrates them only at UFO export and exposes immutable Project reads plus `SourceMetadataEditDraft` mutation in `a1f3d35`.
 The same request asks the lead-owned central rename transaction to change the canonical name index and component references while invoking `rename_glyph_references` for every source.
 The lead reserved these hooks according to the coordinating task.
 
@@ -67,6 +76,6 @@ Its compiler snapshot must quantize a copy, reject unsupported categories explic
 
 ## Next concrete step
 
-Hand `b814d6c` followed by `709c6f2` to the lead for selective integration and adjust only the small module path or accessor names it requests.
-Once the lead's reserved source-metadata hooks land, add Project-level exact group and kerning read/edit regressions plus save-reopen proof without editing its central files independently.
-After the M05 history API lands, add canonical metadata snapshot replay tests covering no-op suppression, redo invalidation, source reorder and failed replay atomicity.
+The lead has integrated `b814d6c`, `709c6f2` and `4aad3aa`; hand it `3541f35` plus the dedicated Project regression `d40ca12`.
+The history lane has the `a1f3d35` API and is preparing guarded source-metadata history without UFO serialization.
+After that M05 API lands, add canonical metadata snapshot replay tests covering no-op suppression, redo invalidation, source reorder and failed replay atomicity.
