@@ -37,10 +37,13 @@ Baseline: `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
   Dedicated tests prove both the snapshot path and compilation of a Designspace-relative include outside the repository.
 - `246b2bb` (`Build native text inputs from canonical sources`) removes the native text tool's production reads of the active Norad font for glyph inventory, kerning and generated mark features.
   Canonical Project queries now supply exact advances, codepoints, UPM, groups, pairs, feature text, anchors and component-propagated anchors; boundary-parity tests retain the existing behavior.
+- `6434f69` (`Keep preview interpolation results canonical`) routes compatibility checks, ghost/preview advances and outlines, recursive component resolution, and trajectory sampling through owned `InterpolatedLayer` values without constructing UFO glyphs.
+  Canonical contour conversion retains open/closed state, quadratic and cubic roles, and hyperbezier rendering; the remaining UFO materialization is limited to explicit compatibility write callers awaiting their owning source/application cutovers.
 
 ## Executed checks
 
 - `cargo test --locked --lib canonical_interpolation -- --test-threads=1`: 2 passed.
+- `cargo test --locked --lib document::interpolation::tests:: -- --test-threads=1`: 3 passed.
 - `cargo test --locked --lib compiler_ -- --test-threads=1`: 2 passed.
 - `RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project interpolation_ -- --test-threads=1`: 2 passed.
 - `RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project source_authoring_keeps_identity_and_round_trips_the_designspace -- --exact --test-threads=1`: 1 passed.
@@ -63,8 +66,8 @@ The focused HOI fixture test could not run through interpolation with the curren
 
 ## Integration dependencies
 
-- `Project::interpolation_layers` now passes canonical `LayerView` values into `InterpolatedLayer` construction without materializing Norad inputs.
-  Existing callers still require a final Norad return value, so `interpolation.rs` retains a labeled output projection after the canonical calculation.
+- `Project::interpolation_layers` passes canonical `LayerView` values into `InterpolatedLayer` construction without materializing Norad inputs.
+  Compatibility, preview, outline and trajectory readers now consume the canonical result directly; source creation, re-interpolate and explicit format compatibility callers still request a final UFO projection.
 - Canonical group and kerning storage now feeds compilation directly through `Project::document_font_metadata` and `CanonicalFontMetadata::{groups, kerning_pairs}`.
   `raw_kerning` remains confined to format-boundary materialization.
 - Canonical layer-glyph metadata owns codepoints and notes, and compiler codepoints plus inferred categories read its `LayerView` projection directly.
@@ -80,7 +83,7 @@ The focused HOI fixture test could not run through interpolation with the curren
 
 The Project-owned compiler query and typed cache key are implemented.
 M08 and M09 are still not complete because every source-authoring command, undo and redo path must mutate or restore that same canonical owner before compatibility projections can be considered non-authoritative.
-The existing interpolation API also still projects canonical results back to Norad for application callers that have not yet accepted the canonical result type.
+The explicit source-creation, re-interpolate and format compatibility APIs still project canonical interpolation results back to Norad for callers that have not yet accepted a canonical result or transaction.
 Those remaining caller cutovers require implementation and focused round-trip, invalidation and preservation proof; the presence of the canonical model and compiler query is not sufficient completion evidence.
 
 ## Next concrete step
