@@ -113,14 +113,15 @@ pub fn ordinary_contour_to_bezpath(contour: ContourView<'_>) -> BezPath {
 ///
 /// `resolve` selects the layer used for each component base in the caller's source context.
 /// Missing references and cycles are errors rather than silently omitted outlines.
-/// Hyperbezier and smart-component behavior remain on their dedicated paths until migration.
+/// Hyperbezier contours use the canonical spline conversion; smart components and metaballs remain
+/// on their dedicated paths until their typed document metadata is available here.
 pub fn ordinary_layer_to_bezpath<'a>(
     layer: LayerView<'a>,
     mut resolve: impl FnMut(&str) -> Option<LayerView<'a>>,
 ) -> Result<BezPath, ComponentResolveError> {
     let mut path = BezPath::new();
     let mut stack = vec![layer.glyph_name().to_owned()];
-    append_document_shapes(&mut path, layer, &mut resolve, &mut stack)?;
+    append_document_shapes(&mut path, layer, &mut resolve, &mut stack, Affine::IDENTITY)?;
     Ok(path)
 }
 
@@ -461,13 +462,22 @@ fn append_document_shapes<'a>(
     layer: LayerView<'a>,
     resolve: &mut impl FnMut(&str) -> Option<LayerView<'a>>,
     stack: &mut Vec<String>,
+    transform: Affine,
 ) -> Result<(), ComponentResolveError> {
     if stack.len() > 64 {
         return Err(ComponentResolveError::TooDeep);
     }
     for shape in layer.shapes() {
         match shape {
-            LayerShapeView::Contour(contour) => append_document_contour(path, contour),
+            LayerShapeView::Contour(contour) => {
+                let mut contour_path = BezPath::new();
+                append_document_contour(&mut contour_path, contour);
+                let transformed = transform * contour_path;
+                if !transformed.elements().iter().all(path_element_is_finite) {
+                    return Err(ComponentResolveError::NonFinite);
+                }
+                path.extend(transformed.elements().iter().copied());
+            }
             LayerShapeView::Component(component) => {
                 let name = component.reference();
                 if let Some(start) = stack.iter().position(|entry| entry == name) {
@@ -477,21 +487,30 @@ fn append_document_shapes<'a>(
                 }
                 let base =
                     resolve(name).ok_or_else(|| ComponentResolveError::Missing(name.to_owned()))?;
+                let combined = transform * component.transform();
+                if !combined.as_coeffs().iter().all(|value| value.is_finite()) {
+                    return Err(ComponentResolveError::NonFinite);
+                }
                 stack.push(name.to_owned());
-                let mut component_path = BezPath::new();
-                let result = append_document_shapes(&mut component_path, base, resolve, stack);
+                let result = append_document_shapes(path, base, resolve, stack, combined);
                 stack.pop();
                 result?;
-                path.extend(
-                    (component.transform() * component_path)
-                        .elements()
-                        .iter()
-                        .copied(),
-                );
             }
         }
     }
     Ok(())
+}
+
+fn path_element_is_finite(element: &kurbo::PathEl) -> bool {
+    let point_is_finite = |point: &Point| point.x.is_finite() && point.y.is_finite();
+    match element {
+        kurbo::PathEl::MoveTo(point) | kurbo::PathEl::LineTo(point) => point_is_finite(point),
+        kurbo::PathEl::QuadTo(first, second) => point_is_finite(first) && point_is_finite(second),
+        kurbo::PathEl::CurveTo(first, second, third) => {
+            point_is_finite(first) && point_is_finite(second) && point_is_finite(third)
+        }
+        kurbo::PathEl::ClosePath => true,
+    }
 }
 
 fn append_contour(path: &mut BezPath, contour: &Contour) {
@@ -615,7 +634,34 @@ mod canonical_render_tests {
     use super::*;
     use crate::document::project::Project;
     use crate::document::source::Master;
-    use crate::document::variable::SourceId;
+    use crate::document::variable::{LayerId, SourceId};
+    use kurbo::Shape;
+    use norad::{AffineTransform, Component, Name};
+
+    fn rectangle(name: &str, x1: f64, y1: f64) -> Glyph {
+        let mut glyph = Glyph::new(name);
+        glyph.contours.push(Contour::new(
+            vec![
+                ContourPoint::new(0.0, 0.0, PointType::Line, false, None, None),
+                ContourPoint::new(x1, 0.0, PointType::Line, false, None, None),
+                ContourPoint::new(x1, y1, PointType::Line, false, None, None),
+                ContourPoint::new(0.0, y1, PointType::Line, false, None, None),
+            ],
+            None,
+        ));
+        glyph
+    }
+
+    fn component(base: &str, transform: AffineTransform) -> Component {
+        Component::new(Name::new(base).unwrap(), transform, None)
+    }
+
+    fn canonical_path(project: &Project, glyph: &str, layer: &LayerId) -> BezPath {
+        ordinary_layer_to_bezpath(project.document_layer(glyph, layer).unwrap(), |name| {
+            project.document_layer(name, layer)
+        })
+        .unwrap()
+    }
 
     #[test]
     fn canonical_hyperbezier_matches_the_ufo_boundary() {
@@ -640,6 +686,121 @@ mod canonical_render_tests {
         assert_eq!(
             ordinary_layer_contours_to_bezpath(canonical),
             contours_to_bezpath(&glyph)
+        );
+    }
+
+    #[test]
+    fn canonical_nested_full_affines_match_the_ufo_boundary() {
+        let base = rectangle("base", 120.25, 70.75);
+        let mut middle = rectangle("middle", 33.0, 44.0);
+        middle.components.push(component(
+            "base",
+            AffineTransform {
+                x_scale: 1.25,
+                xy_scale: 0.375,
+                yx_scale: -0.625,
+                y_scale: 0.875,
+                x_offset: 17.5,
+                y_offset: -23.25,
+            },
+        ));
+        let mut top = Glyph::new("top");
+        top.components.push(component(
+            "middle",
+            AffineTransform {
+                x_scale: -0.75,
+                xy_scale: 0.2,
+                yx_scale: 0.45,
+                y_scale: 1.5,
+                x_offset: 411.125,
+                y_offset: 92.625,
+            },
+        ));
+        let mut font = Font::default();
+        for glyph in [base, middle, top] {
+            font.default_layer_mut().insert_glyph(glyph);
+        }
+        let expected = glyph_to_bezpath(font.get_glyph("top").unwrap(), &font);
+        let project = Project::from_source(Master::from_font(font, "Affine.ufo".into()));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        let actual = canonical_path(&project, "top", &layer);
+
+        assert_eq!(actual, expected);
+        assert_eq!(actual.bounding_box(), expected.bounding_box());
+    }
+
+    #[test]
+    fn selected_auxiliary_layer_falls_back_to_the_source_default_for_components() {
+        let mut font = Font::default();
+        font.default_layer_mut()
+            .insert_glyph(rectangle("base", 80.0, 50.0));
+        let proposal = font
+            .layers
+            .new_layer("com.runebender.proposal.test")
+            .unwrap();
+        let mut top = Glyph::new("top");
+        top.components.push(component(
+            "base",
+            AffineTransform {
+                x_scale: 0.8,
+                xy_scale: 0.25,
+                yx_scale: -0.1,
+                y_scale: 1.2,
+                x_offset: 123.0,
+                y_offset: 45.0,
+            },
+        ));
+        proposal.insert_glyph(top.clone());
+        let expected = glyph_to_bezpath(&top, &font);
+        let project = Project::from_source(Master::from_font(font, "Overlay.ufo".into()));
+        let default = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+        let selected = LayerId {
+            source: SourceId(0),
+            name: "com.runebender.proposal.test".into(),
+        };
+        let actual =
+            ordinary_layer_to_bezpath(project.document_layer("top", &selected).unwrap(), |name| {
+                project
+                    .document_layer(name, &selected)
+                    .or_else(|| project.document_layer(name, &default))
+            })
+            .unwrap();
+
+        assert_eq!(actual, expected);
+        assert_eq!(actual.bounding_box(), expected.bounding_box());
+    }
+
+    #[test]
+    fn canonical_component_render_rejects_nonfinite_transforms() {
+        let mut top = Glyph::new("top");
+        top.components.push(component(
+            "base",
+            AffineTransform {
+                x_scale: f64::INFINITY,
+                ..AffineTransform::default()
+            },
+        ));
+        let mut font = Font::default();
+        font.default_layer_mut()
+            .insert_glyph(rectangle("base", 80.0, 50.0));
+        font.default_layer_mut().insert_glyph(top);
+        let project = Project::from_source(Master::from_font(font, "NonFinite.ufo".into()));
+        let layer = project
+            .document_source(SourceId(0))
+            .unwrap()
+            .default_layer();
+
+        assert_eq!(
+            ordinary_layer_to_bezpath(project.document_layer("top", &layer).unwrap(), |name| {
+                project.document_layer(name, &layer)
+            }),
+            Err(ComponentResolveError::NonFinite)
         );
     }
 }
