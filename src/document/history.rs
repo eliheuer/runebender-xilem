@@ -1,26 +1,268 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The one undo pile.
+//! Canonical and compatibility undo piles.
 //!
-//! Every shell used to keep its own stack of glyph snapshots, with its
-//! own idea of what counts as one step. This module keeps the pile in
-//! core, one stack per glyph name, so the editor, the command line,
-//! and a model proposal all push and pop the same way. A shell calls
-//! [`EditHistory::record`] before it changes a glyph and
-//! [`EditHistory::undo`] when the user asks; it never holds a snapshot
-//! itself.
+//! [`CanonicalHistory`] stores exact before-and-after document-layer snapshots
+//! by stable source/layer address and rejects stale replay. The older
+//! [`EditHistory`] remains temporarily for callers that still edit UFO projections.
 //!
-//! Stacks are keyed by glyph name, so history survives switching
-//! glyphs and the grid, and a font-wide operation (a proposed master)
-//! leaves one step per glyph, undone one glyph at a time.
+//! Both forms keep independent per-glyph stacks, so history survives switching
+//! glyphs and the grid, and a font-wide operation leaves one step per glyph,
+//! undone one glyph at a time.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use norad::Glyph;
 
 use crate::outline::glyph_ops::{self, GlyphSnapshot};
 use crate::ui::editing::undo::UndoState;
+
+use super::variable::GlyphLayerAddress;
+
+const MAX_CANONICAL_HISTORY: usize = 128;
+
+/// Direction for replaying canonical document history.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HistoryDirection {
+    /// Restore the state before the most recent edit.
+    Undo,
+    /// Restore the state after the most recently undone edit.
+    Redo,
+}
+
+/// Result of a canonical history replay request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HistoryReplayOutcome {
+    /// The selected glyph layer had no step in the requested direction.
+    Empty,
+    /// The selected glyph layer replayed one step.
+    Applied,
+}
+
+/// Why canonical history replay did not apply a step.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HistoryReplayError<E> {
+    /// The live layer no longer matches the state expected by this step.
+    Stale,
+    /// The document rejected the replacement without changing its state.
+    Apply(E),
+}
+
+impl<E: std::fmt::Display> std::fmt::Display for HistoryReplayError<E> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Stale => formatter.write_str("history step is stale"),
+            Self::Apply(error) => write!(formatter, "history replay failed: {error}"),
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> std::error::Error for HistoryReplayError<E> {}
+
+#[derive(Clone, Debug, PartialEq)]
+struct CanonicalStep<S> {
+    before: S,
+    after: S,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct LayerHistory<S> {
+    undo: VecDeque<CanonicalStep<S>>,
+    redo: VecDeque<CanonicalStep<S>>,
+}
+
+impl<S> Default for LayerHistory<S> {
+    fn default() -> Self {
+        Self {
+            undo: VecDeque::with_capacity(MAX_CANONICAL_HISTORY),
+            redo: VecDeque::new(),
+        }
+    }
+}
+
+/// Exact before-and-after history for canonical glyph layers.
+///
+/// Each stack is addressed by a stable source and layer identity plus the current
+/// glyph name. A rename moves the complete stack to the glyph's new name. Ordinary
+/// edits retain one layer snapshot per side of a step instead of cloning the whole
+/// document.
+///
+/// Replay is conflict safe: the caller supplies the live snapshot, which must equal
+/// the side of the step being replaced. The stack moves only after `apply` succeeds,
+/// so stale and rejected operations leave both document and history unchanged.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CanonicalHistory<S> {
+    stacks: BTreeMap<GlyphLayerAddress, LayerHistory<S>>,
+}
+
+impl<S> Default for CanonicalHistory<S> {
+    fn default() -> Self {
+        Self {
+            stacks: BTreeMap::new(),
+        }
+    }
+}
+
+impl<S: PartialEq> CanonicalHistory<S> {
+    /// Record one completed canonical edit.
+    ///
+    /// A no-op records nothing and retains redo history. A real edit clears redo
+    /// only for this glyph layer.
+    pub fn record(&mut self, address: GlyphLayerAddress, before: S, after: S) -> bool {
+        if before == after {
+            return false;
+        }
+        let stack = self.stacks.entry(address).or_default();
+        stack.redo.clear();
+        stack.undo.push_back(CanonicalStep { before, after });
+        if stack.undo.len() > MAX_CANONICAL_HISTORY {
+            stack.undo.pop_front();
+        }
+        true
+    }
+
+    /// Extend the latest step with the next state in the same gesture.
+    ///
+    /// `current` must equal the latest recorded after-state. The original before-state
+    /// is retained, so a drag remains one undo step. Returning to the original state
+    /// removes the no-op step.
+    pub fn coalesce(&mut self, address: &GlyphLayerAddress, current: &S, after: S) -> bool {
+        let Some(stack) = self.stacks.get_mut(address) else {
+            return false;
+        };
+        let Some(step) = stack.undo.back_mut() else {
+            return false;
+        };
+        if &step.after != current {
+            return false;
+        }
+        step.after = after;
+        if step.before == step.after {
+            stack.undo.pop_back();
+        }
+        true
+    }
+
+    /// Drop the most recently recorded undo step for one glyph layer.
+    ///
+    /// This is used when a gesture opened a history group but its operation later
+    /// proved invalid or unchanged.
+    pub fn discard_last(&mut self, address: &GlyphLayerAddress) -> bool {
+        self.stacks
+            .get_mut(address)
+            .is_some_and(|stack| stack.undo.pop_back().is_some())
+    }
+
+    /// Atomically replay one step through the document's canonical restore operation.
+    ///
+    /// `current` is compared before `apply` runs. The closure receives the expected
+    /// live state and replacement so the document boundary can repeat the comparison
+    /// in the same transaction that installs the replacement.
+    pub fn replay<E>(
+        &mut self,
+        address: &GlyphLayerAddress,
+        current: &S,
+        direction: HistoryDirection,
+        apply: impl FnOnce(&S, &S) -> Result<(), E>,
+    ) -> Result<HistoryReplayOutcome, HistoryReplayError<E>> {
+        let Some(stack) = self.stacks.get_mut(address) else {
+            return Ok(HistoryReplayOutcome::Empty);
+        };
+        let step = match direction {
+            HistoryDirection::Undo => stack.undo.back(),
+            HistoryDirection::Redo => stack.redo.back(),
+        };
+        let Some(step) = step else {
+            return Ok(HistoryReplayOutcome::Empty);
+        };
+        let (expected, replacement) = match direction {
+            HistoryDirection::Undo => (&step.after, &step.before),
+            HistoryDirection::Redo => (&step.before, &step.after),
+        };
+        if current != expected {
+            return Err(HistoryReplayError::Stale);
+        }
+        apply(expected, replacement).map_err(HistoryReplayError::Apply)?;
+        match direction {
+            HistoryDirection::Undo => {
+                let step = stack
+                    .undo
+                    .pop_back()
+                    .expect("the replayed undo step exists");
+                stack.redo.push_back(step);
+            }
+            HistoryDirection::Redo => {
+                let step = stack
+                    .redo
+                    .pop_back()
+                    .expect("the replayed redo step exists");
+                stack.undo.push_back(step);
+            }
+        }
+        Ok(HistoryReplayOutcome::Applied)
+    }
+
+    /// Whether a glyph layer has a step in `direction`.
+    pub fn can_replay(&self, address: &GlyphLayerAddress, direction: HistoryDirection) -> bool {
+        self.depth(address, direction) != 0
+    }
+
+    /// Number of steps available for one glyph layer in `direction`.
+    pub fn depth(&self, address: &GlyphLayerAddress, direction: HistoryDirection) -> usize {
+        self.stacks.get(address).map_or(0, |stack| match direction {
+            HistoryDirection::Undo => stack.undo.len(),
+            HistoryDirection::Redo => stack.redo.len(),
+        })
+    }
+
+    /// Move every layer history when a glyph is renamed.
+    ///
+    /// Returns false without changing any stack if the new name already has history.
+    pub fn rename_glyph(&mut self, old: &str, new: &str) -> bool {
+        if old == new {
+            return false;
+        }
+        let old_addresses = self
+            .stacks
+            .keys()
+            .filter(|address| address.glyph == old)
+            .cloned()
+            .collect::<Vec<_>>();
+        if self.stacks.keys().any(|address| address.glyph == new) {
+            return false;
+        }
+        for old_address in old_addresses {
+            let stack = self
+                .stacks
+                .remove(&old_address)
+                .expect("the collected history address exists");
+            self.stacks.insert(
+                GlyphLayerAddress {
+                    glyph: new.to_owned(),
+                    layer: old_address.layer,
+                },
+                stack,
+            );
+        }
+        true
+    }
+
+    /// Forget every layer history for one glyph after permanent removal.
+    pub fn clear_glyph(&mut self, name: &str) {
+        self.stacks.retain(|address, _| address.glyph != name);
+    }
+
+    /// Forget one layer's history after permanent removal.
+    pub fn clear_layer(&mut self, address: &GlyphLayerAddress) {
+        self.stacks.remove(address);
+    }
+
+    /// Forget all canonical history, such as after replacing the open document.
+    pub fn clear(&mut self) {
+        self.stacks.clear();
+    }
+}
 
 /// Undo and redo stacks for every glyph of one master.
 #[derive(Debug, Clone, Default)]
