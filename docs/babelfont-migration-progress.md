@@ -2074,7 +2074,7 @@ The disposable testing copy and pinned native executable and launcher are stored
 
 This promotion is an intermediate testing checkpoint, not migration completion.
 Later isolated commits `fb629a0`, `352e513` and `7fd409b` respectively move browser construction, stale compiler-metadata clearing, and Session point-selection/clipboard state further toward the canonical architecture; they are not part of the promoted checkpoint.
-M06 Session/canvas/gesture/history work, remaining M12 native callers, M13 compatibility removal and M14 final proof remain required before the migration can be marked complete.
+M06 application caller work, the remaining M12 CLI and watcher boundaries, M13 compatibility removal and M14 final proof remain required before the migration can be marked complete.
 The pinned test copy and executable are reserved for user testing and must not be modified by migration work.
 
 ### Canonical editor objects and transaction compatibility bridge
@@ -2120,7 +2120,7 @@ cargo test --locked document::filesystem::tests:: -- --test-threads=1
 ```
 
 Both focused tests passed: one preserves custom GLIF paths and opaque payloads across a canonical edit/save, and one proves an invalid later source prevents replacement of every destination.
-M12 remains active for CLI and imported-format construction, native New Font and Save As, feature-include relocation, watched-source acceptance and the final serialization allowlist.
+M12 remains active for the legacy CLI source boundary and external feature-include watcher coverage.
 
 ### Direct canonical hyperbezier conversion
 
@@ -2322,11 +2322,31 @@ The complete native binary suite passed 168 tests with its four documented model
 Warning-denied library/test Clippy, formatting, copyright and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
-M12 still has four explicit close-out gaps.
-The native New Font paths still serialize a temporary Norad font before reopening it instead of constructing and publishing the common canonical Project directly.
+M12 still has two explicit close-out gaps.
 The legacy CLI `open_master` and `save_master` boundary still loads and saves `Master` directly for UFO editing commands.
 External include files copied by Save As are not yet inputs to the native watcher fingerprint, so the existing watched-source conflict coverage remains limited to UFO and Designspace roots.
-The exact codec and preservation allowlist must be consolidated before M13 removes the compatibility adapters.
+
+### Canonical native New Font
+
+Evidence commit: `Open native new fonts as canonical projects` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Open native new fonts as canonical projects$' -1`.
+
+Both native New Font entry points now construct `Project::new_font`, save through Project persistence and initialize the application directly from that canonical Project.
+They no longer materialize an application-side Norad font or reload it to create editor state.
+The welcome-screen regression verifies the canonical template's glyph count and exact space advance before handing the temporary document to Save As.
+
+Executed evidence:
+
+```sh
+cargo test --locked --bin runebender welcome_new_font_opens_the_canonical_project -- --test-threads=1
+cargo test --locked --lib document::project::constructors::tests::new_font_save_and_reopen_preserve_the_template -- --exact --test-threads=1
+cargo clippy --locked --bin runebender --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+Both focused regressions and warning-denied binary/test Clippy passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
 ### Glyph-free source-format preservation
 

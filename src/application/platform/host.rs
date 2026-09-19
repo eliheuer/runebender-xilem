@@ -568,7 +568,6 @@ impl Workspace {
             self.note = "Save or discard changes before creating a new font".into();
             return;
         }
-        let font = runebender::document::new_font::new_font("Untitled", "Regular", 400);
         let dir = self
             .font
             .source()
@@ -581,11 +580,12 @@ impl Workspace {
             path = dir.join(format!("Untitled-{n}.ufo"));
             n += 1;
         }
-        if let Err(e) = font.save(&path) {
+        let mut project = runebender::document::project::Project::new_font(path.clone());
+        if let Err(e) = project.save() {
             self.note = format!("could not write {}: {e}", path.display());
             return;
         }
-        match Self::open(&path) {
+        match Self::from_model(FontModel::from_project(project)) {
             Ok(mut fresh) => {
                 fresh.theme_id = self.theme_id;
                 fresh.palette = self.palette.clone();
@@ -2061,6 +2061,47 @@ mod tests {
             "Save or discard changes before creating a new font"
         );
         std::fs::remove_dir_all(path).expect("the empty UFO fixture is removed");
+    }
+
+    #[test]
+    fn new_font_replaces_a_clean_workspace_with_a_canonical_project() {
+        let directory = std::env::temp_dir().join(format!(
+            "runebender-xilem-new-canonical-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        std::fs::create_dir(&directory).expect("the fixture directory is created");
+        let original = directory.join("Original.ufo");
+        norad::Font::new()
+            .save(&original)
+            .expect("the original fixture saves");
+        let mut workspace = Workspace::open(&original).expect("the original fixture opens");
+
+        workspace.new_font();
+
+        assert_eq!(workspace.font.source(), directory.join("Untitled.ufo"));
+        assert_eq!(workspace.font.project.glyph_names().count(), 324);
+        let source = workspace.font.project.source_id(0).unwrap();
+        let layer = workspace
+            .font
+            .project
+            .document_source(source)
+            .unwrap()
+            .default_layer();
+        assert_eq!(
+            workspace
+                .font
+                .project
+                .document_layer("space", &layer)
+                .unwrap()
+                .width(),
+            260.0
+        );
+        assert!(workspace.font.source().is_dir());
+        std::fs::remove_dir_all(directory).expect("the fixture directory is removed");
     }
 
     #[test]

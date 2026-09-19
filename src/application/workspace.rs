@@ -403,13 +403,17 @@ impl AppState {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |duration| duration.as_nanos()),
             ));
-            let font = runebender::document::new_font::new_font("Untitled", "Regular", 400);
-            match font.save(&path) {
-                Ok(()) => {
-                    self.open_path(&path);
-                    if let Some(workspace) = self.workspace.as_mut() {
-                        workspace.note = "new font · Save As picks where it lives".into();
-                    }
+            let mut project = runebender::document::project::Project::new_font(path);
+            match project
+                .save()
+                .and_then(|()| Workspace::from_model(FontModel::from_project(project)))
+            {
+                Ok(mut workspace) => {
+                    workspace.note = "new font · Save As picks where it lives".into();
+                    self.theme_id = workspace.theme_id;
+                    self.palette = workspace.palette.clone();
+                    self.workspace = Some(workspace);
+                    self.notice = None;
                 }
                 Err(error) => self.notice = Some(format!("could not create new font: {error}")),
             }
@@ -526,6 +530,34 @@ mod tests {
         let app = AppState::open(None);
         assert!(app.workspace.is_none());
         assert_eq!(app.notice, None);
+    }
+
+    #[test]
+    fn welcome_new_font_opens_the_canonical_project() {
+        let mut app = AppState::open(None);
+        app.dispatch(shortcuts::AppAction::NewFont);
+        let workspace = app.workspace.as_ref().expect("the new project opens");
+        let source = workspace.font.project.source_id(0).unwrap();
+        let layer = workspace
+            .font
+            .project
+            .document_source(source)
+            .unwrap()
+            .default_layer();
+        assert_eq!(workspace.font.project.glyph_names().count(), 324);
+        assert_eq!(
+            workspace
+                .font
+                .project
+                .document_layer("space", &layer)
+                .unwrap()
+                .width(),
+            260.0
+        );
+        assert_eq!(workspace.note, "new font · Save As picks where it lives");
+        let path = workspace.font.source().to_path_buf();
+        assert!(path.is_dir());
+        std::fs::remove_dir_all(path).expect("the new-font fixture is removed");
     }
 
     #[test]
