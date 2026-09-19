@@ -733,6 +733,27 @@ impl LayerEditDraft {
         (self.layer, self.preserved)
     }
 
+    pub(super) fn compatibility_glyph(&self) -> norad::Glyph {
+        project_layer(&self.layer, &self.preserved)
+    }
+
+    pub(super) fn reconcile_compatibility_glyph(
+        &mut self,
+        glyph: &norad::Glyph,
+        id: &LayerId,
+        default: bool,
+    ) -> Result<bool, DocumentEditError> {
+        validate_compatibility_geometry(glyph)?;
+        let (layer, preserved) =
+            reconcile_layer_from_ufo(glyph, id, default, &self.layer, &self.preserved);
+        if layer == self.layer && preserved == self.preserved {
+            return Ok(false);
+        }
+        self.layer = layer;
+        self.preserved = preserved;
+        Ok(true)
+    }
+
     pub(super) fn delta_from(&self, layer: &Layer, preserved: &LayerPreservation) -> LayerDelta {
         let metrics =
             self.preserved.width != preserved.width || self.preserved.height != preserved.height;
@@ -3935,6 +3956,43 @@ fn ensure_finite(values: &[f64]) -> Result<(), DocumentEditError> {
         .all(|value| value.is_finite())
         .then_some(())
         .ok_or(DocumentEditError::NonFinite)
+}
+
+fn validate_compatibility_geometry(glyph: &norad::Glyph) -> Result<(), DocumentEditError> {
+    ensure_finite(&[glyph.width, glyph.height])?;
+    for point in glyph.contours.iter().flat_map(|contour| &contour.points) {
+        ensure_finite(&[point.x, point.y])?;
+    }
+    for component in &glyph.components {
+        let transform = component.transform;
+        ensure_finite(&[
+            transform.x_scale,
+            transform.xy_scale,
+            transform.yx_scale,
+            transform.y_scale,
+            transform.x_offset,
+            transform.y_offset,
+        ])?;
+    }
+    for anchor in &glyph.anchors {
+        ensure_finite(&[anchor.x, anchor.y])?;
+    }
+    let mut lib = glyph.lib.clone();
+    SmartComponentAxes::take_from_lib(&mut lib)
+        .map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+    let component_order = glyph
+        .components
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            ComponentId(u64::try_from(index).expect("component count fits stable identity storage"))
+        })
+        .collect::<Vec<_>>();
+    SmartComponentValues::take_from_lib(&mut lib, &component_order)
+        .map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+    SmartComponentPole::take_from_lib(&mut lib)
+        .map_err(|_| DocumentEditError::InvalidLayerMetadata)?;
+    Ok(())
 }
 
 fn new_document_point(
