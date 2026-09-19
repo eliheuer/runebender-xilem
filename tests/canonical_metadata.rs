@@ -7,13 +7,17 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use runebender::document::font_memory::designspace_from_str;
 use runebender::document::font_ops::{
     CanonicalFontMetadata, CanonicalMetadataError, KerningParticipant, KerningSide,
+};
+use runebender::document::history::{
+    HistoryDirection, HistoryReplayError, HistoryReplayOutcome, SourceMetadataHistory,
 };
 use runebender::document::model::glyph_metadata::{
     CanonicalGlyphMetadata, GlyphMetadataError, OpenTypeGlyphCategory, parse_codepoints,
 };
-use runebender::document::project::{DocumentEditOutcome, Project};
+use runebender::document::project::{DocumentEditOutcome, Master, Project};
 use runebender::document::variable::SourceId;
 
 static SCRATCH_ID: AtomicUsize = AtomicUsize::new(0);
@@ -60,6 +64,43 @@ fn raw_metadata() -> CanonicalFontMetadata {
         ]),
     )
     .unwrap()
+}
+
+fn variable_metadata_project() -> (Scratch, Project) {
+    let scratch = Scratch::new();
+    let designspace = designspace_from_str(include_str!("fixtures/variable/TwoAxes.designspace"))
+        .expect("fixture Designspace parses");
+    let project = Project::from_designspace(designspace, |filename| {
+        let source_index = match filename {
+            "Regular.ufo" => 0,
+            "Heavy.ufo" => 1,
+            "Wide.ufo" => 2,
+            "HeavyWide.ufo" => 3,
+            other => panic!("unexpected fixture source {other}"),
+        };
+        let mut font = norad::Font::new();
+        font.features = format!("# source {source_index}\n");
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("A"));
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("V"));
+        if filename == "Regular.ufo" {
+            font.layers
+                .new_layer("intermediate")
+                .unwrap()
+                .insert_glyph(norad::Glyph::new("A"));
+        }
+        font.kerning.insert(
+            norad::Name::new("A").unwrap(),
+            BTreeMap::from([(
+                norad::Name::new("V").unwrap(),
+                -80.25 - f64::from(source_index),
+            )]),
+        );
+        Ok(Master::from_font(font, scratch.0.join(filename)))
+    })
+    .expect("fixture project loads");
+    (scratch, project)
 }
 
 #[test]
@@ -417,4 +458,110 @@ fn project_source_metadata_is_atomic_and_survives_save_reload() {
             norad::Name::new("A").unwrap()
         ]
     );
+}
+
+#[test]
+fn source_metadata_history_replays_multiple_sources_across_reordering() {
+    let (_scratch, mut project) = variable_metadata_project();
+    let first = SourceId(0);
+    let second = SourceId(2);
+    let before = SourceMetadataHistory::capture(&project);
+    let mut history = SourceMetadataHistory::default();
+
+    for (source, text, value) in [
+        (first, "feature kern { pos A V -91.375; } kern;", -91.375),
+        (second, "feature kern { pos A V -113.625; } kern;", -113.625),
+    ] {
+        project
+            .edit_document_source_metadata(source, |draft| {
+                draft.set_feature_text(text.into());
+                let mut metadata = draft.font_metadata().clone();
+                metadata
+                    .set_kerning_pair(
+                        KerningParticipant::glyph("A").unwrap(),
+                        KerningParticipant::glyph("V").unwrap(),
+                        Some(value),
+                    )
+                    .unwrap();
+                draft.set_font_metadata(metadata);
+                Ok(())
+            })
+            .unwrap();
+    }
+    assert!(history.record_completed(&project, before.clone()));
+    let after = SourceMetadataHistory::capture(&project);
+    assert!(project.move_source(second, 0).unwrap());
+    assert_eq!(project.source_index(second), Some(0));
+
+    let revision = project.document_revision();
+    assert_eq!(
+        history.replay(&mut project, HistoryDirection::Undo),
+        Ok(HistoryReplayOutcome::Applied)
+    );
+    assert_eq!(project.document_revision(), revision.wrapping_add(1));
+    assert_eq!(SourceMetadataHistory::capture(&project), before);
+    assert_eq!(project.source_index(second), Some(0));
+    let no_op = SourceMetadataHistory::capture(&project);
+    assert!(!history.record_completed(&project, no_op));
+    assert!(history.can_replay(HistoryDirection::Redo));
+
+    assert_eq!(
+        history.replay(&mut project, HistoryDirection::Redo),
+        Ok(HistoryReplayOutcome::Applied)
+    );
+    assert_eq!(SourceMetadataHistory::capture(&project), after);
+    assert_eq!(
+        project.source_snapshot(second).unwrap().kerning["A"]["V"],
+        -113.625
+    );
+
+    assert_eq!(
+        history.replay(&mut project, HistoryDirection::Undo),
+        Ok(HistoryReplayOutcome::Applied)
+    );
+    let new_before = SourceMetadataHistory::capture(&project);
+    project
+        .edit_document_source_metadata(SourceId(3), |draft| {
+            draft.set_feature_text("feature liga { sub A A by A; } liga;".into());
+            Ok(())
+        })
+        .unwrap();
+    assert!(history.record_completed(&project, new_before));
+    assert!(!history.can_replay(HistoryDirection::Redo));
+}
+
+#[test]
+fn multi_source_metadata_history_rejects_stale_replay_atomically() {
+    let (_scratch, mut project) = variable_metadata_project();
+    let before = SourceMetadataHistory::capture(&project);
+    let mut history = SourceMetadataHistory::default();
+    for (source, text) in [
+        (SourceId(0), "feature kern { pos A V -90; } kern;"),
+        (SourceId(1), "feature kern { pos A V -100; } kern;"),
+    ] {
+        project
+            .edit_document_source_metadata(source, |draft| {
+                draft.set_feature_text(text.into());
+                Ok(())
+            })
+            .unwrap();
+    }
+    assert!(history.record_completed(&project, before));
+
+    project
+        .edit_document_source_metadata(SourceId(3), |draft| {
+            draft.set_feature_text("feature liga { sub A A by A; } liga;".into());
+            Ok(())
+        })
+        .unwrap();
+    let live = SourceMetadataHistory::capture(&project);
+    let revision = project.document_revision();
+    assert_eq!(
+        history.replay(&mut project, HistoryDirection::Undo),
+        Err(HistoryReplayError::Stale)
+    );
+    assert_eq!(SourceMetadataHistory::capture(&project), live);
+    assert_eq!(project.document_revision(), revision);
+    assert_eq!(history.depth(HistoryDirection::Undo), 1);
+    assert_eq!(history.depth(HistoryDirection::Redo), 0);
 }
