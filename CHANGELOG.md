@@ -43,6 +43,8 @@ No release has been published yet.
 - Built interpolated sources as atomic canonical document transactions, preserving exact metadata and undo while assigning fresh object identities to the new source.
 - Moved Designspace structure, font information, component alignment, mark color, metrics keys and formulas, metaball payloads, and HOI intermediate points into typed canonical document storage with guarded edits and UFO boundary projection.
 - Moved quadratic, cubic, hyperbezier, corner-rounding, handle-harmonizing, handle-balancing, and handle-optimization operations onto canonical contours.
+- New fonts and in-memory UFO imports now enter through common canonical Project constructors.
+  The browser-compatible UFO boundary preserves its supported metadata and default-layer glyphs while rejecting extra layers, images, data and unsafe or inconsistent paths instead of silently dropping them.
 - Composition now writes complete revision-checked proposal plans atomically and keeps the foreground unchanged until explicit installation.
 - Moved live proposals and experimental versions onto stable source-identified canonical layers with revision-checked installation and Project-owned undo.
 - Moved source groups and exact fractional kerning into stable source-identified canonical metadata with atomic edits and UFO boundary rehydration.
