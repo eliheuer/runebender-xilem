@@ -80,6 +80,39 @@ fn glyph(name: &str, x: f64) -> Glyph {
     glyph
 }
 
+fn assert_glyph_content_eq(actual: &Glyph, expected: &Glyph) {
+    let mut expected = expected.clone();
+    for (expected, actual) in expected.guidelines.iter_mut().zip(&actual.guidelines) {
+        if let Some(identifier) = actual.identifier().cloned() {
+            expected.replace_identifier(identifier);
+        }
+    }
+    for (expected, actual) in expected.anchors.iter_mut().zip(&actual.anchors) {
+        if let Some(identifier) = actual.identifier().cloned() {
+            expected.replace_identifier(identifier);
+        }
+    }
+    for (expected, actual) in expected.components.iter_mut().zip(&actual.components) {
+        if let Some(identifier) = actual.identifier().cloned() {
+            expected.replace_identifier(identifier);
+        }
+    }
+    for (expected, actual) in expected.contours.iter_mut().zip(&actual.contours) {
+        if let Some(identifier) = actual.identifier().cloned() {
+            expected.replace_identifier(identifier);
+        }
+        for (expected, actual) in expected.points.iter_mut().zip(&actual.points) {
+            if let Some(identifier) = actual.identifier().cloned() {
+                expected.replace_identifier(identifier);
+            }
+        }
+    }
+    assert_eq!(
+        actual, &expected,
+        "glyph semantics changed with fresh identities"
+    );
+}
+
 fn fixture() -> (Scratch, Project) {
     let scratch = Scratch::new();
     let doc = designspace_from_str(DESIGNSPACE).unwrap();
@@ -5949,15 +5982,104 @@ fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
     let (scratch, mut project) = fixture();
     let original = project.source_snapshot(SourceId(1)).unwrap();
     let original_metadata = project.document_font_metadata(SourceId(1)).unwrap().clone();
+    let default = project.source_snapshot(SourceId(0)).unwrap();
+    let default_layer = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let logical_a = project.document_glyph("A").unwrap().id();
+    let default_a = project.document_layer("A", &default_layer).unwrap();
+    let contour_ids = default_a
+        .contours()
+        .map(|contour| contour.id())
+        .collect::<Vec<_>>();
+    let point_ids = default_a
+        .contours()
+        .flat_map(|contour| contour.points().map(|point| point.id()))
+        .collect::<Vec<_>>();
+    let anchor_ids = default_a
+        .anchors()
+        .map(|anchor| anchor.id())
+        .collect::<Vec<_>>();
+    let component_ids = project
+        .document_layer("C", &default_layer)
+        .unwrap()
+        .components()
+        .map(|component| component.id())
+        .collect::<Vec<_>>();
     let target = location(0.25, 0.0);
     let expected = project.try_interpolated_at("A", &target).unwrap();
+    let expected_component = project.try_interpolated_at("C", &target).unwrap();
+    let expected_kerning = project.interpolated_kerning_at("A", "B", &target).unwrap();
+    let revision = project.document_revision();
+    let before = project.document_snapshot();
     let added = project
         .add_interpolated_source("Medium", "Medium.ufo", &target)
         .unwrap();
-    assert_eq!(
-        project.source_snapshot(added).unwrap().get_glyph("A"),
-        Some(&expected)
+    assert_eq!(project.document_revision(), revision.wrapping_add(1));
+    assert_eq!(project.document_glyph("A").unwrap().id(), logical_a);
+    let added_layer = project.document_source(added).unwrap().default_layer();
+    let added_a = project.document_layer("A", &added_layer).unwrap();
+    assert!(
+        added_a
+            .contours()
+            .all(|contour| !contour_ids.contains(&contour.id()))
     );
+    assert!(
+        added_a
+            .contours()
+            .flat_map(|contour| contour.points())
+            .all(|point| !point_ids.contains(&point.id()))
+    );
+    assert!(
+        added_a
+            .anchors()
+            .all(|anchor| !anchor_ids.contains(&anchor.id()))
+    );
+    assert!(
+        project
+            .document_layer("C", &added_layer)
+            .unwrap()
+            .components()
+            .all(|component| !component_ids.contains(&component.id()))
+    );
+    let added_font = project.source_snapshot(added).unwrap();
+    assert_glyph_content_eq(added_font.get_glyph("A").unwrap(), &expected);
+    assert_glyph_content_eq(added_font.get_glyph("C").unwrap(), &expected_component);
+    assert_eq!(added_font.lib, default.lib);
+    assert_eq!(added_font.data, default.data);
+    assert_eq!(added_font.images, default.images);
+    assert_eq!(
+        project.document_feature_text(added),
+        project.document_feature_text(SourceId(0))
+    );
+    assert_eq!(
+        project.document_source_glyph_metadata(added, "A"),
+        project.document_source_glyph_metadata(SourceId(0), "A")
+    );
+    assert_eq!(
+        project.document_font_metadata(added).unwrap().groups(),
+        project
+            .document_font_metadata(SourceId(0))
+            .unwrap()
+            .groups()
+    );
+    assert_eq!(
+        project
+            .document_font_metadata(added)
+            .unwrap()
+            .resolved_kerning("A", "B"),
+        Some(expected_kerning)
+    );
+    assert_eq!(
+        project.document_font_info(added).unwrap().note,
+        project.document_font_info(SourceId(0)).unwrap().note
+    );
+    let after = project.document_snapshot();
+    assert!(project.undo_sources(false).unwrap());
+    assert_eq!(project.document_snapshot(), before);
+    assert!(project.undo_sources(true).unwrap());
+    assert_eq!(project.document_snapshot(), after);
     assert!(project.move_source(SourceId(1), 0).unwrap());
     assert_eq!(project.source_index(SourceId(1)), Some(0));
     assert_eq!(
@@ -5969,7 +6091,10 @@ fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
     project.save().unwrap();
     let reloaded = Project::load(&scratch.0.join("Font.designspace")).unwrap();
     assert_eq!(reloaded.master_names[0].as_ref(), "Heavy");
-    assert_eq!(reloaded.sources()[4].font.get_glyph("A"), Some(&expected));
+    assert_glyph_content_eq(
+        reloaded.sources()[4].font.get_glyph("A").unwrap(),
+        &expected,
+    );
     project.remove_source(added).unwrap();
     assert!(
         scratch.0.join("Medium.ufo").exists(),
@@ -5977,9 +6102,13 @@ fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
     );
     assert!(project.source_snapshot(added).is_none());
     assert!(project.undo_sources(false).unwrap());
-    assert_eq!(
-        project.source_snapshot(added).unwrap().get_glyph("A"),
-        Some(&expected)
+    assert_glyph_content_eq(
+        project
+            .source_snapshot(added)
+            .unwrap()
+            .get_glyph("A")
+            .unwrap(),
+        &expected,
     );
     assert!(project.undo_sources(true).unwrap());
     assert!(project.source_snapshot(added).is_none());
@@ -6001,9 +6130,13 @@ fn full_source_can_replace_intermediate_participation_without_losing_the_layer()
     assert!(project.brace.is_empty());
     assert_eq!(project.try_interpolated_at("A", &target).unwrap(), expected);
     assert_eq!(project.source_snapshot(SourceId(0)).unwrap(), original);
-    assert_eq!(
-        project.source_snapshot(added).unwrap().get_glyph("A"),
-        Some(&expected)
+    assert_glyph_content_eq(
+        project
+            .source_snapshot(added)
+            .unwrap()
+            .get_glyph("A")
+            .unwrap(),
+        &expected,
     );
     project.save().unwrap();
     let reloaded = Project::load(&scratch.0.join("Font.designspace")).unwrap();
@@ -6014,6 +6147,30 @@ fn full_source_can_replace_intermediate_participation_without_losing_the_layer()
     );
     assert!(project.undo_sources(false).unwrap());
     assert_eq!(project.brace.len(), 1);
+}
+
+#[test]
+fn failed_interpolated_source_is_atomic() {
+    let (_scratch, mut project) = fixture();
+    let incompatible = project
+        .document_source(SourceId(1))
+        .unwrap()
+        .default_layer();
+    assert!(project.edit_layer("A", &incompatible, |glyph| glyph.contours.clear()));
+    let before = project.document_snapshot();
+    let revision = project.document_revision();
+    let source_count = project.document_sources().count();
+
+    assert!(
+        project
+            .add_interpolated_source("Broken", "Broken.ufo", &location(0.25, 0.0))
+            .is_err()
+    );
+    assert_eq!(project.document_snapshot(), before);
+    assert_eq!(project.document_revision(), revision);
+    assert_eq!(project.document_sources().count(), source_count);
+    assert!(!project.has_source_history(false));
+    assert!(!project.has_source_history(true));
 }
 
 #[test]

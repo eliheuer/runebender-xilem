@@ -23,6 +23,12 @@ Nodes that require one physical source reject a multi-source document explicitly
 Its `RunValue::Path` output and JSON report fields remain unchanged.
 Writing `features.generated.fea` and its include line remains an explicit filesystem boundary.
 
+`Project::add_interpolated_source` now stages every glyph through canonical interpolation and M07's canonical layer-clone factory.
+It installs the complete source, source metadata and Designspace replacement in one guarded structural transaction.
+The new source retains each logical `GlyphId` while assigning fresh layer-object identities for contours, points, components and anchors.
+Feature text, glyph export metadata, groups, interpolated exact kerning, typed font information and UFO preservation resources are carried through canonical owners.
+The Norad `Master` is materialized only after the canonical commit as a compatibility and persistence projection.
+
 ## Required behavior retained
 
 The `RunValue` tagged JSON schema remains unchanged.
@@ -49,9 +55,6 @@ It must retain explicit layer selection, default drawn-glyph filtering and the e
 `analysis::glyph` must read canonical layers and component-resolved bounds.
 Its revision token must continue to use the exact `glif-sha256:` codec contract until all batch clients migrate together.
 
-`add_interpolated_source` must install the canonical interpolation result into the new stable source identity.
-The UFO written at the final persistence boundary must remain an output adapter, not the editing model used to create the source.
-
 ## Focused evidence
 
 The following checks passed on this lane after the source-selection and feature-generation cutovers:
@@ -61,7 +64,9 @@ CARGO_BUILD_JOBS=2 cargo test --locked --lib document::nodes_run::tests -- --tes
 CARGO_BUILD_JOBS=2 cargo test --locked --lib text::features::tests::canonical_generation_matches_the_legacy_source_projection -- --test-threads=1
 CARGO_BUILD_JOBS=2 cargo test --locked --lib document::composites::tests::canonical_alignment_matches_legacy_and_preserves_exact_linear_transform -- --test-threads=1
 CARGO_BUILD_JOBS=2 cargo test --locked --lib document::compose::tests -- --test-threads=1
+CARGO_BUILD_JOBS=2 cargo test --locked --test variable_project -- --test-threads=1
 CARGO_BUILD_JOBS=2 cargo clippy --locked --lib -- -D warnings
+CARGO_BUILD_JOBS=2 cargo clippy --locked --test variable_project -- -D warnings
 cargo fmt --all --check
 git diff --check
 ```
@@ -70,7 +75,9 @@ The nodes-run suite passed five tests.
 The canonical feature parity check passed.
 The canonical component-alignment check passed.
 The composition suite passed six tests.
+The variable-project suite passed 61 tests, including canonical source creation, fresh object identity, exact metadata and resource preservation, one-step revision history, error atomicity, undo/redo and save/reopen.
 Warning-denied library Clippy, formatting and whitespace checks passed.
+Warning-denied Clippy also passed for the variable-project integration target.
 
 These are focused lane checks, not the final integrated migration proof.
 The final proof must run after every caller above is canonical and after the core integration lane has assembled all migration lanes.

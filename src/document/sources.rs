@@ -8,13 +8,16 @@
 //! overwrite later content edits, which must be undone first.
 
 use super::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::document::CanonicalSourceStructureSnapshot;
+use crate::document::canonical_metadata::{CanonicalFontMetadata, KerningParticipant};
 use crate::document::history::{
     EditHistory, HistoryDirection, HistoryReplayError, HistoryReplayOutcome, TransactionHistory,
 };
 use crate::document::model::designspace::{CanonicalLocation, SourceDescriptor, SourceOrderEntry};
+use crate::document::model::font_info::CanonicalFontInfo;
+use crate::document::variable::source_builder;
 
 #[derive(Debug, Clone)]
 struct SourceFrame {
@@ -278,6 +281,102 @@ impl Project {
         self.source_history.transactions.record(before, after);
     }
 
+    fn record_canonical_source_change(&mut self, before: SourceFrame) {
+        self.finish_source_restore();
+        let after = SourceFrame::capture(self);
+        self.source_history.transactions.record(before, after);
+    }
+
+    fn interpolated_source_metadata(
+        &self,
+        default_source: SourceId,
+        name: &str,
+        location: &Location,
+    ) -> Result<(String, CanonicalFontMetadata, CanonicalFontInfo), String> {
+        let feature_text = self
+            .document_feature_text(default_source)
+            .ok_or("missing default source feature text")?
+            .to_owned();
+        let source_metadata = self
+            .document_sources()
+            .map(|source| {
+                self.document_font_metadata(source.id())
+                    .cloned()
+                    .ok_or_else(|| format!("missing metadata for source {}", source.id().0))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let pairs = source_metadata
+            .iter()
+            .flat_map(|metadata| {
+                metadata
+                    .kerning_pairs()
+                    .map(|(left, right, _)| (left.clone(), right.clone()))
+            })
+            .collect::<BTreeSet<(KerningParticipant, KerningParticipant)>>();
+        let mut font_metadata = CanonicalFontMetadata::from_raw(
+            self.document_font_metadata(default_source)
+                .ok_or("missing default source metadata")?
+                .groups()
+                .clone(),
+            BTreeMap::new(),
+        )
+        .map_err(|error| error.to_string())?;
+        let model = VariationModel::new(&self.master_locations)?;
+        for (left, right) in pairs {
+            let values = source_metadata
+                .iter()
+                .map(|metadata| {
+                    vec![
+                        metadata
+                            .kerning_pairs()
+                            .find_map(|(candidate_left, candidate_right, value)| {
+                                (candidate_left == &left && candidate_right == &right)
+                                    .then_some(value)
+                            })
+                            .unwrap_or(0.0),
+                    ]
+                })
+                .collect::<Vec<_>>();
+            let value = model.interpolate(&values, location)?[0];
+            font_metadata
+                .set_kerning_pair(left, right, Some(value))
+                .map_err(|error| error.to_string())?;
+        }
+
+        let source_info = self
+            .document_sources()
+            .map(|source| {
+                self.document_font_info(source.id())
+                    .cloned()
+                    .ok_or_else(|| format!("missing font info for source {}", source.id().0))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let metrics = source_info
+            .iter()
+            .map(|info| {
+                let resolved = info.metrics.resolved();
+                vec![
+                    resolved.ascender,
+                    resolved.descender,
+                    resolved.x_height,
+                    resolved.cap_height,
+                ]
+            })
+            .collect::<Vec<_>>();
+        let metrics = model.interpolate(&metrics, location)?;
+        let mut font_info = self
+            .document_font_info(default_source)
+            .cloned()
+            .ok_or("missing default source font info")?;
+        font_info.names.style_name = Some(name.to_owned());
+        font_info.metrics.ascender = Some(metrics[0]);
+        font_info.metrics.descender = Some(metrics[1]);
+        font_info.metrics.x_height = Some(metrics[2]);
+        font_info.metrics.cap_height = Some(metrics[3]);
+        font_info.validate().map_err(|error| error.to_string())?;
+        Ok((feature_text, font_metadata, font_info))
+    }
+
     /// Whether a structural source/layer operation is available to undo or redo.
     pub fn has_source_history(&self, redo: bool) -> bool {
         let direction = if redo {
@@ -369,79 +468,81 @@ impl Project {
             .iter()
             .position(|l| l.values().all(|v| *v == 0.0))
             .ok_or("missing default source")?;
-        let mut font = self.masters[default].font.clone();
-        font.layers.retain(|layer| layer.is_default());
-        font.default_layer_mut().clear();
-        for glyph in self.glyph_names() {
-            if self.glyph_sources(glyph)?.is_empty() {
+        let default_source = self
+            .source_id(default)
+            .ok_or("missing default source identity")?;
+        let default_layer = self
+            .document_source(default_source)
+            .ok_or("missing default source")?
+            .default_layer();
+        let id = SourceId(self.variable.next_source);
+        let target_layer = LayerId {
+            source: id,
+            name: default_layer.name.clone(),
+        };
+        let glyph_names = self.glyph_names().map(str::to_owned).collect::<Vec<_>>();
+        let mut layers = Vec::new();
+        for glyph in glyph_names {
+            if self.glyph_sources(&glyph)?.is_empty() {
                 continue;
             }
-            font.default_layer_mut()
-                .insert_glyph(self.try_interpolated_at(glyph, &location)?);
-        }
-        let pairs: std::collections::BTreeSet<_> = self
-            .masters
-            .iter()
-            .flat_map(|m| {
-                m.font.kerning.iter().flat_map(|(left, pairs)| {
-                    pairs.keys().map(move |right| (left.clone(), right.clone()))
+            let interpolated = self.try_interpolated_layer_at(&glyph, &location)?;
+            let base = self
+                .capture_document_layer(&GlyphLayerAddress {
+                    glyph: glyph.clone(),
+                    layer: default_layer.clone(),
                 })
-            })
-            .collect();
-        font.kerning.clear();
-        for (left, right) in pairs {
-            let value = self.interpolated_kerning_at(&left, &right, &location)?;
-            font.kerning.entry(left).or_default().insert(right, value);
+                .ok_or_else(|| format!("missing default layer for {glyph}"))?;
+            layers.push(source_builder::interpolated_source_layer(
+                base,
+                &interpolated,
+                GlyphLayerAddress {
+                    glyph,
+                    layer: target_layer.clone(),
+                },
+            )?);
         }
-        let model = VariationModel::new(&self.master_locations)?;
-        let metrics: Vec<_> = self
-            .masters
-            .iter()
-            .map(|m| {
-                vec![
-                    m.font.font_info.ascender.unwrap_or(800.0),
-                    m.font.font_info.descender.unwrap_or(-200.0),
-                    m.font.font_info.x_height.unwrap_or(500.0),
-                    m.font.font_info.cap_height.unwrap_or(700.0),
-                ]
-            })
-            .collect();
-        let metrics = model.interpolate(&metrics, &location)?;
-        font.font_info.ascender = Some(metrics[0]);
-        font.font_info.descender = Some(metrics[1]);
-        font.font_info.x_height = Some(metrics[2]);
-        font.font_info.cap_height = Some(metrics[3]);
-        font.font_info.style_name = Some(name.to_owned());
-        let before = SourceFrame::capture(self);
-        // A full source at an intermediate location takes over participation.
-        // Keep the original sparse layer and its metadata as an auxiliary layer.
-        let id = SourceId(self.variable.next_source);
-        let default_layer = LayerId {
-            source: id,
-            name: font.default_layer().name().to_string(),
-        };
+        let (feature_text, font_metadata, font_info) =
+            self.interpolated_source_metadata(default_source, name, &location)?;
         let mut descriptor =
-            SourceDescriptor::new(id, filename.to_owned(), exact_location, default_layer)?;
+            SourceDescriptor::new(id, filename.to_owned(), exact_location, target_layer)?;
         descriptor.name = Some(format!("source-{}", id.0));
         descriptor.style_name = Some(name.to_owned());
         let mut replacement = designspace.clone();
         let display_index = replacement.sources().len();
+        // A full source at an intermediate location takes over participation.
+        // Keep the original sparse layer and its metadata as an auxiliary layer.
         replacement.edit_checked(|draft| {
             draft.remove_sparse_at_normalized_location(&location)?;
             draft.insert_source(descriptor, display_index)
         })?;
-        self.variable.source_ids.push(id);
-        if let Err(error) = self.install_source_designspace_edit(&designspace, replacement) {
-            self.variable.source_ids.pop();
-            return Err(error);
-        }
-        self.variable.next_source += 1;
+        let designspace_projection = replacement.to_norad()?;
+        let before = SourceFrame::capture(self);
+        let mut canonical = before.canonical.clone();
+        canonical.add_interpolated_source(
+            id,
+            default_source,
+            replacement,
+            feature_text,
+            font_metadata,
+            font_info,
+            layers,
+        )?;
+        self.variable
+            .restore_source_structure_if_current(&before.canonical, canonical)
+            .map_err(|_| "canonical source structure changed while adding a source")?;
+        let font = self
+            .variable
+            .source_font(id)
+            .expect("the committed canonical source must remain projectable");
+        self.ds_doc = Some(designspace_projection);
+        self.ds_dirty = true;
         self.brace.retain(|source| source.location != location);
         self.masters.push(Master::from_font(font, destination));
         self.master_names.push(name.into());
         self.master_locations.push(location);
         self.active = self.masters.len() - 1;
-        self.record_source_change(before);
+        self.record_canonical_source_change(before);
         Ok(id)
     }
 
