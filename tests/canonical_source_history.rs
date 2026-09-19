@@ -8,9 +8,8 @@ use std::path::PathBuf;
 use norad::{Contour, ContourPoint, Font, Glyph, PointType};
 use runebender::document::font_memory::designspace_from_str;
 use runebender::document::history::HistoryDirection;
-use runebender::document::project::{DocumentHistoryReplayOutcome, Master, Project};
-use runebender::document::var_model::Location;
-use runebender::document::variable::SourceId;
+use runebender::document::project::{Master, Project};
+use runebender::document::variable::{GlyphLayerAddress, SourceId};
 
 const DESIGNSPACE: &str = include_str!("fixtures/variable/TwoAxes.designspace");
 
@@ -54,58 +53,106 @@ fn fixture() -> Project {
     .unwrap()
 }
 
-#[test]
-fn restored_source_keeps_an_older_canonical_layer_undo_valid() {
-    let mut project = fixture();
-    let source = SourceId(1);
-    let layer = project.document_source(source).unwrap().default_layer();
-    let address = runebender::document::variable::GlyphLayerAddress {
+fn address(project: &Project) -> GlyphLayerAddress {
+    GlyphLayerAddress {
         glyph: "A".into(),
-        layer,
-    };
-    let before = project.capture_document_layer(&address).unwrap();
+        layer: project
+            .document_source(SourceId(1))
+            .unwrap()
+            .default_layer(),
+    }
+}
 
-    let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
-    transaction.draft_mut().set_width(725.875).unwrap();
+fn set_width(project: &mut Project, address: &GlyphLayerAddress, width: f64) {
+    let mut transaction = project.begin_document_layer_transaction(address).unwrap();
+    transaction.draft_mut().set_width(width).unwrap();
     project
         .commit_document_layer_transaction(transaction)
         .unwrap();
-
-    project.remove_source(source).unwrap();
-    assert!(project.document_source(source).is_none());
-    assert!(project.undo_sources(false).unwrap());
-    assert_eq!(project.document_source(source).unwrap().id(), source);
-    assert!(matches!(
-        project.replay_document_layer_history(&address, HistoryDirection::Undo),
-        Ok(DocumentHistoryReplayOutcome::Changed { .. })
-    ));
-    assert_eq!(project.capture_document_layer(&address), Some(before));
 }
 
 #[test]
-fn descriptor_only_structural_replay_advances_the_revision_once() {
+fn removed_source_roundtrip_preserves_both_existing_layer_history_piles() {
     let mut project = fixture();
+    let address = address(&project);
+    let initial = project.capture_document_layer(&address).unwrap();
+    set_width(&mut project, &address, 600.375);
+    let first = project.capture_document_layer(&address).unwrap();
+    set_width(&mut project, &address, 700.875);
+    let second = project.capture_document_layer(&address).unwrap();
+    project
+        .replay_document_layer_history(&address, HistoryDirection::Undo)
+        .unwrap();
+
+    project.remove_source(SourceId(1)).unwrap();
+    assert!(project.undo_sources(false).unwrap());
+    assert_eq!(
+        project.capture_document_layer(&address),
+        Some(first.clone())
+    );
+    project
+        .replay_document_layer_history(&address, HistoryDirection::Redo)
+        .unwrap();
+    assert_eq!(
+        project.capture_document_layer(&address),
+        Some(second.clone())
+    );
+
+    assert!(project.undo_sources(true).is_err());
+    assert!(project.has_source_history(true));
+    project
+        .replay_document_layer_history(&address, HistoryDirection::Undo)
+        .unwrap();
+    assert!(project.undo_sources(true).unwrap());
+    assert!(project.document_source(SourceId(1)).is_none());
+    assert!(project.undo_sources(false).unwrap());
+
+    project
+        .replay_document_layer_history(&address, HistoryDirection::Undo)
+        .unwrap();
+    assert_eq!(project.capture_document_layer(&address), Some(initial));
+    project
+        .replay_document_layer_history(&address, HistoryDirection::Redo)
+        .unwrap();
+    assert_eq!(project.capture_document_layer(&address), Some(first));
+    project
+        .replay_document_layer_history(&address, HistoryDirection::Redo)
+        .unwrap();
+    assert_eq!(project.capture_document_layer(&address), Some(second));
+}
+
+#[test]
+fn descriptor_replay_keeps_a_pending_layer_transaction_and_rejected_redo() {
+    let mut project = fixture();
+    let address = address(&project);
+    let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
+    transaction.draft_mut().set_width(750.625).unwrap();
     let source = SourceId(1);
     let original = project.document_source(source).unwrap();
     let original_name = original.name().to_owned();
-    let original_location = original.location().clone();
-    let target: Location = [("Weight".into(), 0.75), ("Width".into(), 0.0)].into();
+    let target = [("Weight".into(), 0.75), ("Width".into(), 0.0)].into();
 
     project
         .update_source(source, &original_name, &target)
         .unwrap();
     let edited_revision = project.document_revision();
-    assert_eq!(project.document_source(source).unwrap().location(), &target);
-
     assert!(project.undo_sources(false).unwrap());
-    let undo_revision = project.document_revision();
-    assert_eq!(undo_revision, edited_revision.wrapping_add(1));
-    assert_eq!(
-        project.document_source(source).unwrap().location(),
-        &original_location
-    );
+    assert_eq!(project.document_revision(), edited_revision.wrapping_add(1));
+    project
+        .commit_document_layer_transaction(transaction)
+        .unwrap();
+    let committed = project.capture_document_layer(&address).unwrap();
+    let revision = project.document_revision();
 
+    assert!(project.undo_sources(true).is_err());
+    assert_eq!(project.document_revision(), revision);
+    assert_eq!(project.capture_document_layer(&address), Some(committed));
+    assert!(project.has_source_history(true));
+    project
+        .replay_document_layer_history(&address, HistoryDirection::Undo)
+        .unwrap();
+    let revision = project.document_revision();
     assert!(project.undo_sources(true).unwrap());
-    assert_eq!(project.document_revision(), undo_revision.wrapping_add(1));
+    assert_eq!(project.document_revision(), revision.wrapping_add(1));
     assert_eq!(project.document_source(source).unwrap().location(), &target);
 }

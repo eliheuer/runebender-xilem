@@ -1,15 +1,16 @@
 # Babelfont canonical history lane
 
-Status: **ACTIVE — canonical layer and source-metadata history implemented; document-owned storage, structural history and caller migration remain**.
+Status: **ACTIVE — canonical layer, metadata and structural history are Project-owned; application caller migration remains**.
 
-This lane owns `src/document/history.rs`, focused canonical-history tests and this progress record.
-The lead task retains canonical model storage, Project/source/application wiring and the central migration documents.
+This lane owns `src/document/history.rs`, `src/document/sources.rs`, focused canonical-history tests and this progress record.
+The lead task retains canonical model storage, Project wiring and the central migration documents; M06 owns application migration.
 Parallel authorization supersedes only the checklist's single-writer rule; M05 acceptance remains unchanged.
 
 ## Baseline
 
 The clean isolated checkout was fast-forwarded from `314aa3235c372ed8d5fef7a2cddb8be3a07ad1da` to the shared migration commit `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
 The metadata continuation branch `codex/babelfont-history-metadata` starts from lead commit `bae2bb19665ad0c48e537e5a984c46050768bcba`, which includes the atomic source-metadata boundary from `bfdc4a5`.
+The structural continuation branch `codex/babelfont-structural-history` starts from integrated metadata checkpoint `0b06ad2` and adopts the Project-owned history boundary from `c6d84d4`.
 
 ## Completed slice
 
@@ -95,16 +96,36 @@ The canonical suite passed 13 tests and the history unit suite passed 8 tests.
 Warning-denied Clippy and public API documentation passed.
 The existing `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+## Project ownership and structural history
+
+Shared boundary commit: `c6d84d4` (`Own canonical history in Project`).
+Structural implementation commits: `740560b` (`Store canonical source structure in history`) and `2e71cac` (`Advance revisions for descriptor history`).
+
+Project now owns `DocumentHistory` and `SourceMetadataHistory`, initializes both piles in every constructor and exposes canonical begin/record/coalesce/discard/query/replay operations.
+Layer replay returns the exact `DocumentChange` required by application invalidation and accepts no Norad glyph value.
+
+`SourceFrame` no longer clones `Vec<Master>` or `VariableData` into its undo and redo stacks.
+It stores an opaque canonical structural snapshot plus stable-`SourceId` source and brace descriptors, the Designspace source document and the active source identity.
+The opaque snapshot contains Babelfont geometry, glyph preservation payloads, canonical metadata and the immutable Norad templates still required as persistence adapters; it deliberately excludes histories, derived compiler data, the live revision and the source-ID allocator.
+Structural replay compares the complete live structure, installs canonically through the guarded model boundary and rebuilds `Master` only as a compatibility projection.
+Surviving projection bookkeeping moves into the rebuilt projection rather than being cloned into history.
+Source paths and stable identities are retained, source-ID allocation never moves backward and every real replay advances the canonical revision exactly once, including a location-only descriptor transaction.
+
+The dedicated structural suite proves that repeated source removal and restoration preserve both Project-owned layer undo and redo piles, reject stale structural redo without consuming either stack and keep a pending layer transaction valid across descriptor-only edit and undo.
+Independent coordinator review first exercised the same interleavings against the built library; those cases are now permanent regressions in `tests/canonical_source_history.rs`.
+The full 58-test variable Project suite, 13 canonical history tests and 2 structural history tests pass.
+Formatting, whitespace validation, warning-denied all-tests Clippy and public API documentation also pass.
+The existing `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
 ## Remaining integration dependency
 
 The lead supplied and integrated the requested layer capture/restore API in `d840ec5`.
-The lead still owns placement of `DocumentHistory` in canonical Project storage and migration of shared Project/source/application call sites.
 The lead supplied the atomic whole-source metadata boundary in `bfdc4a5`; `95ccc5e` now supplies its concrete history wrapper.
-Source-structural history still needs an exact canonical structural snapshot/restore boundary coordinated with the lead.
+The lead supplied Project-owned history and canonical structural snapshot/restore in `c6d84d4`; structural consumers are integrated in `740560b` and `2e71cac`.
+M06 owns migration of application callers to these Project APIs.
 
 ## Next concrete step
 
-Integrate `95ccc5e` after `bfdc4a5` and add the document-owned history fields and caller migration in lead-owned files.
-Coordinate source-structural history and application call sites with the lead rather than editing its owned files here.
+Support M06 while it migrates application callers and remove legacy Norad history only after every migrated caller and acceptance test passes.
 The legacy Norad `EditHistory` remains intentionally compiling for staged callers and is not counted as migrated or complete.
 M05 remains open until integrated acceptance passes and the temporary history is removed from migrated callers.
