@@ -28,6 +28,8 @@ use crate::formats::lib_keys::hoi_quad_at;
 #[path = "project/glyph_transactions.rs"]
 mod glyph_transactions;
 pub use glyph_transactions::{CanonicalGlyphTransaction, GlyphTransactionError};
+#[path = "project/constructors.rs"]
+mod constructors;
 #[path = "project/proposal_transactions.rs"]
 mod proposal_transactions;
 #[path = "sources.rs"]
@@ -458,10 +460,8 @@ impl Project {
     /// File → New Font: one master from the GF-shaped template. The
     /// source path is where Save will write; Save As picks it.
     pub fn new_font(path: PathBuf) -> Self {
-        let font = crate::document::new_font::new_font("Untitled", "Regular", 400);
-        let mut model = Master::from_font(font, path);
-        model.dirty = true;
-        Self::from_source(model)
+        Self::new_canonical_font(path, "Untitled", "Regular", 400)
+            .expect("the checked-in new-font template is valid")
     }
 
     /// Build a project from one format-adapter source projection.

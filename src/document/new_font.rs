@@ -1,14 +1,17 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! A blank UFO set up the way Google Fonts expects, with the GF Latin
-//! Core glyph set as empty encoded glyphs. This is File > New Font in
-//! the editor. A port of runebender-web's newProject.ts, built through
-//! norad instead of hand-written plists.
+//! Canonical File > New Font input data.
+//!
+//! The GF Latin Core template is decoded into typed font information and empty glyph-layer
+//! records. Project constructs the canonical document first and derives its temporary UFO
+//! compatibility projection afterwards.
 
 use std::sync::OnceLock;
 
 use serde::Deserialize;
+
+use super::model::font_info::{CanonicalFontInfo, CanonicalFontMetrics, CanonicalFontNames};
 
 /// Units per em for a new font.
 pub const UPM: f64 = 1000.0;
@@ -33,7 +36,7 @@ struct TemplateGlyph {
     unicode: Option<String>,
 }
 
-fn template() -> &'static [TemplateGlyph] {
+fn template_glyphs() -> &'static [TemplateGlyph] {
     static GLYPHS: OnceLock<Vec<TemplateGlyph>> = OnceLock::new();
     GLYPHS.get_or_init(|| {
         serde_json::from_str(include_str!("../../data/new-font-template.json"))
@@ -41,39 +44,87 @@ fn template() -> &'static [TemplateGlyph] {
     })
 }
 
-/// Build a new master with GF-shaped fontinfo and the GF Latin Core
-/// glyph set as empty encoded glyphs.
-pub fn new_font(family: &str, style: &str, weight_class: i32) -> norad::Font {
-    let mut font = norad::Font::new();
-    let info = &mut font.font_info;
-    info.family_name = Some(family.to_string());
-    info.style_name = Some(style.to_string());
-    info.units_per_em = norad::fontinfo::NonNegativeIntegerOrFloat::try_from(UPM).ok();
-    info.ascender = Some(ASCENDER);
-    info.descender = Some(DESCENDER);
-    info.cap_height = Some(CAP_HEIGHT);
-    info.x_height = Some(X_HEIGHT);
-    info.open_type_os2_weight_class = Some(weight_class.max(1) as u32);
+/// One empty canonical glyph in the new-font template.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct NewFontGlyph {
+    pub(super) name: String,
+    pub(super) width: f64,
+    pub(super) codepoint: Option<char>,
+}
 
-    let layer = font.default_layer_mut();
-    for entry in template() {
-        let mut glyph = norad::Glyph::new(entry.name.as_str());
-        glyph.width = if entry.name == "space" {
-            SPACE_WIDTH
-        } else {
-            DEFAULT_WIDTH
-        };
-        if let Some(codepoint) = entry
-            .unicode
-            .as_deref()
-            .and_then(|hex| u32::from_str_radix(hex, 16).ok())
-            .and_then(char::from_u32)
-        {
-            glyph.codepoints = norad::Codepoints::new([codepoint]);
-        }
-        layer.insert_glyph(glyph);
-    }
-    font
+/// Complete typed input for constructing a new canonical document.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct NewFontSpecification {
+    pub(super) font_info: CanonicalFontInfo,
+    pub(super) glyphs: Vec<NewFontGlyph>,
+}
+
+/// Decode the checked-in GF-shaped template without constructing a UFO font.
+pub(super) fn specification(
+    family: &str,
+    style: &str,
+    weight_class: u32,
+) -> Result<NewFontSpecification, String> {
+    let font_info = CanonicalFontInfo {
+        names: CanonicalFontNames {
+            family_name: Some(family.to_owned()),
+            style_name: Some(style.to_owned()),
+            ..CanonicalFontNames::default()
+        },
+        metrics: CanonicalFontMetrics {
+            units_per_em: Some(UPM),
+            ascender: Some(ASCENDER),
+            descender: Some(DESCENDER),
+            x_height: Some(X_HEIGHT),
+            cap_height: Some(CAP_HEIGHT),
+            italic_angle: None,
+        },
+        open_type: super::model::font_info::CanonicalOpenTypeInfo {
+            weight_class: Some(weight_class.max(1)),
+            ..super::model::font_info::CanonicalOpenTypeInfo::default()
+        },
+        ..CanonicalFontInfo::default()
+    };
+    font_info.validate().map_err(|error| error.to_string())?;
+    let glyphs = template_glyphs()
+        .iter()
+        .map(|entry| {
+            let codepoint = entry
+                .unicode
+                .as_deref()
+                .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                .and_then(char::from_u32);
+            if entry.unicode.is_some() && codepoint.is_none() {
+                return Err(format!("{} has an invalid Unicode scalar", entry.name));
+            }
+            Ok(NewFontGlyph {
+                name: entry.name.clone(),
+                width: if entry.name == "space" {
+                    SPACE_WIDTH
+                } else {
+                    DEFAULT_WIDTH
+                },
+                codepoint,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(NewFontSpecification { font_info, glyphs })
+}
+
+/// Materialize the compatibility UFO projection of a canonically constructed new font.
+///
+/// Application code should prefer [`super::project::Project::new_canonical_font`].
+pub fn new_font(family: &str, style: &str, weight_class: i32) -> norad::Font {
+    let project = super::project::Project::new_canonical_font(
+        std::path::PathBuf::from("Untitled.ufo"),
+        family,
+        style,
+        weight_class.max(1) as u32,
+    )
+    .expect("the checked-in new-font template is valid");
+    project
+        .source_snapshot(super::variable::SourceId(0))
+        .expect("a new canonical font has its default source")
 }
 
 #[cfg(test)]
@@ -81,20 +132,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_font_carries_the_template() {
-        let font = new_font("Untitled", "Regular", 400);
-        assert_eq!(font.default_layer().len(), 324);
-        assert!(font.get_glyph(".notdef").is_some());
-        let space = font.get_glyph("space").unwrap();
-        assert_eq!(space.width, SPACE_WIDTH);
-        assert_eq!(space.codepoints.iter().next(), Some(' '));
-        let a = font.get_glyph("A").unwrap();
-        assert_eq!(a.width, DEFAULT_WIDTH);
-        assert_eq!(a.codepoints.iter().next(), Some('A'));
-        assert_eq!(font.font_info.family_name.as_deref(), Some("Untitled"));
-        assert_eq!(
-            font.font_info.units_per_em.map(|v| v.as_f64()),
-            Some(1000.0)
+    fn canonical_specification_carries_the_template() {
+        let specification = specification("Untitled", "Regular", 400).unwrap();
+        assert_eq!(specification.glyphs.len(), 324);
+        assert!(
+            specification
+                .glyphs
+                .iter()
+                .any(|glyph| glyph.name == ".notdef")
         );
+        let space = specification
+            .glyphs
+            .iter()
+            .find(|glyph| glyph.name == "space")
+            .unwrap();
+        assert_eq!(space.width, SPACE_WIDTH);
+        assert_eq!(space.codepoint, Some(' '));
+        let a = specification
+            .glyphs
+            .iter()
+            .find(|glyph| glyph.name == "A")
+            .unwrap();
+        assert_eq!(a.width, DEFAULT_WIDTH);
+        assert_eq!(a.codepoint, Some('A'));
+        assert_eq!(
+            specification.font_info.names.family_name.as_deref(),
+            Some("Untitled")
+        );
+        assert_eq!(specification.font_info.metrics.units_per_em, Some(1000.0));
     }
 }
