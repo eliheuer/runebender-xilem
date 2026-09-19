@@ -611,6 +611,37 @@ fn canonical_component_resolution_matches_legacy_and_reports_broken_graphs() {
 }
 
 #[test]
+fn canonical_measurement_inputs_match_legacy_geometry() {
+    let (_scratch, project, _fonts) = adversarial_fixture();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project.document_layer("A", &layer_id).unwrap();
+    let glyph = project.glyph_layer("A", &layer_id).unwrap();
+    let paths: Vec<_> = glyph
+        .contours
+        .iter()
+        .map(|contour| {
+            runebender::outline::path::Path::from_contour(
+                &runebender::outline::path::hyper_model::Contour::from_norad(contour),
+            )
+        })
+        .collect();
+
+    assert_eq!(
+        runebender::analysis::measure::ordinary_layer_measurements(layer),
+        runebender::analysis::measure::glyph_measurements(&paths),
+        "canonical measurement inputs changed results"
+    );
+    assert_eq!(
+        runebender::analysis::measure::ordinary_layer_side_bearings(layer),
+        runebender::analysis::measure::side_bearings(&paths, glyph.width),
+        "canonical side-bearing inputs changed results"
+    );
+}
+
+#[test]
 fn canonical_point_roles_keep_contour_closure_coherent() {
     let scratch = Scratch::new();
     let point = |x, y, typ| ContourPoint::new(x, y, typ, false, None, None);

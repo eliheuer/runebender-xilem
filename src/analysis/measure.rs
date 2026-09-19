@@ -18,6 +18,10 @@ use kurbo::{BezPath, Line, ParamCurve, PathEl, PathSeg, Point, Shape};
 
 use crate::outline::glyph_paths::round_units;
 use crate::outline::path::Path;
+use crate::{
+    document::{ContourView, LayerPointType, LayerView},
+    outline::glyph_paths,
+};
 
 /// What a single measurement describes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -37,7 +41,7 @@ pub enum MeasureKind {
 ///
 /// `a` and `b` are the endpoints of the span; for a `Handle`, `a` is the
 /// on-curve anchor. `length` is the rounded design-unit distance to label.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Measurement {
     /// First endpoint of the span, in design units.
     pub a: Point,
@@ -47,6 +51,12 @@ pub struct Measurement {
     pub length: i64,
     /// What the span describes.
     pub kind: MeasureKind,
+}
+
+#[derive(Clone, Copy)]
+struct MeasurementPoint {
+    point: Point,
+    on_curve: bool,
 }
 
 /// Ignore spans, segments, and handles shorter than this: noise, coincident
@@ -78,12 +88,55 @@ struct Edge {
 /// counters, bars, including split walls like the H's. The center scan line
 /// is kept only for curve-bounded gaps, like the `o`.
 pub fn glyph_measurements(paths: &[Path]) -> Vec<Measurement> {
+    let contours: Vec<Vec<_>> = paths
+        .iter()
+        .map(|path| {
+            path.points()
+                .as_slice()
+                .iter()
+                .map(|point| MeasurementPoint {
+                    point: point.point,
+                    on_curve: point.is_on_curve(),
+                })
+                .collect()
+        })
+        .collect();
+    let mut bez = BezPath::new();
+    for path in paths {
+        path.append_to_bezpath(&mut bez);
+    }
+    measurements_from_points(&contours, &bez)
+}
+
+/// Compute live measurements directly from one canonical ordinary layer.
+pub fn ordinary_layer_measurements(layer: LayerView<'_>) -> Vec<Measurement> {
+    let contours: Vec<Vec<_>> = layer.contours().map(canonical_measurement_points).collect();
+    let bez = glyph_paths::ordinary_layer_contours_to_bezpath(layer);
+    measurements_from_points(&contours, &bez)
+}
+
+fn canonical_measurement_points(contour: ContourView<'_>) -> Vec<MeasurementPoint> {
+    let closed = contour.is_closed();
+    let mut points: Vec<_> = contour
+        .points()
+        .map(|point| MeasurementPoint {
+            point: point.position(),
+            on_curve: point.point_type() != LayerPointType::OffCurve,
+        })
+        .collect();
+    // Preserve the established Path representation's closed-contour start convention.
+    if closed && !points.is_empty() {
+        points.rotate_left(1);
+    }
+    points
+}
+
+fn measurements_from_points(contours: &[Vec<MeasurementPoint>], bez: &BezPath) -> Vec<Measurement> {
     let mut out = Vec::new();
     let mut verticals: Vec<Edge> = Vec::new();
     let mut horizontals: Vec<Edge> = Vec::new();
 
-    for path in paths {
-        let pts = path.points().as_slice();
+    for pts in contours {
         let n = pts.len();
         if n < 2 {
             continue;
@@ -94,11 +147,11 @@ pub fn glyph_measurements(paths: &[Path]) -> Vec<Measurement> {
 
             // Handles: an off-curve point paired with its adjacent on-curve
             // anchor. Each off-curve has exactly one on-curve neighbor.
-            if !cur.is_on_curve() {
+            if !cur.on_curve {
                 let prev = &pts[(i + n - 1) % n];
-                let anchor = if prev.is_on_curve() {
+                let anchor = if prev.on_curve {
                     Some(prev)
-                } else if nxt.is_on_curve() {
+                } else if nxt.on_curve {
                     Some(nxt)
                 } else {
                     None
@@ -118,7 +171,7 @@ pub fn glyph_measurements(paths: &[Path]) -> Vec<Measurement> {
 
             // Straight segment: its own length, plus an axis-aligned edge for
             // the facing-span pass.
-            if cur.is_on_curve() && nxt.is_on_curve() {
+            if cur.on_curve && nxt.on_curve {
                 let (a, b) = (cur.point, nxt.point);
                 let seg_len = (b - a).hypot();
                 if seg_len >= MIN_LEN {
@@ -149,7 +202,7 @@ pub fn glyph_measurements(paths: &[Path]) -> Vec<Measurement> {
 
     facing_gaps(&verticals, MeasureKind::Horizontal, &mut out);
     facing_gaps(&horizontals, MeasureKind::Vertical, &mut out);
-    scan_spans(paths, &mut out);
+    scan_spans(bez, &mut out);
     out
 }
 
@@ -193,11 +246,7 @@ fn facing_gaps(edges: &[Edge], kind: MeasureKind, out: &mut Vec<Measurement>) {
 /// Only gaps where a crossing is on a curve are emitted. Straight-bounded
 /// gaps are already covered by `facing_gaps`, so this pass exists to measure
 /// all-curve outlines like the `o`.
-fn scan_spans(paths: &[Path], out: &mut Vec<Measurement>) {
-    let mut bez = BezPath::new();
-    for p in paths {
-        p.append_to_bezpath(&mut bez);
-    }
+fn scan_spans(bez: &BezPath, out: &mut Vec<Measurement>) {
     if bez.elements().is_empty() {
         return;
     }
@@ -365,7 +414,7 @@ pub fn colored_strokes(paths: &[Path]) -> Vec<ColoredStroke> {
 /// The gaps run between the advance margins, at x = 0 and x = advance, and
 /// the glyph's leftmost and rightmost points. The extreme-point positions
 /// come along so the renderer can point at them.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SideBearings {
     /// The glyph's advance width in design units.
     pub advance: f64,
@@ -392,6 +441,32 @@ pub fn side_bearings(paths: &[Path], advance: f64) -> Option<SideBearings> {
     for p in paths {
         p.append_to_bezpath(&mut bez);
     }
+    let points: Vec<_> = paths
+        .iter()
+        .flat_map(|path| path.points().as_slice())
+        .filter(|point| point.is_on_curve())
+        .map(|point| point.point)
+        .collect();
+    side_bearings_from_points(&bez, &points, advance)
+}
+
+/// Compute side bearings directly from one canonical ordinary layer.
+pub fn ordinary_layer_side_bearings(layer: LayerView<'_>) -> Option<SideBearings> {
+    let points: Vec<_> = layer
+        .contours()
+        .flat_map(canonical_measurement_points)
+        .filter(|point| point.on_curve)
+        .map(|point| point.point)
+        .collect();
+    let bez = glyph_paths::ordinary_layer_contours_to_bezpath(layer);
+    side_bearings_from_points(&bez, &points, layer.width())
+}
+
+fn side_bearings_from_points(
+    bez: &BezPath,
+    points: &[Point],
+    advance: f64,
+) -> Option<SideBearings> {
     if bez.elements().is_empty() {
         return None;
     }
@@ -402,21 +477,16 @@ pub fn side_bearings(paths: &[Path], advance: f64) -> Option<SideBearings> {
     let mid_y = (bbox.y0 + bbox.y1) / 2.0;
     let (mut y_left, mut y_right) = (mid_y, mid_y);
     let (mut best_l, mut best_r) = (f64::MAX, f64::MAX);
-    for p in paths {
-        for pt in p.points().as_slice() {
-            if !pt.is_on_curve() {
-                continue;
-            }
-            let dl = (pt.point.x - min_x).abs();
-            if dl < best_l {
-                best_l = dl;
-                y_left = pt.point.y;
-            }
-            let dr = (pt.point.x - max_x).abs();
-            if dr < best_r {
-                best_r = dr;
-                y_right = pt.point.y;
-            }
+    for point in points {
+        let dl = (point.x - min_x).abs();
+        if dl < best_l {
+            best_l = dl;
+            y_left = point.y;
+        }
+        let dr = (point.x - max_x).abs();
+        if dr < best_r {
+            best_r = dr;
+            y_right = point.y;
         }
     }
 

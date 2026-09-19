@@ -582,3 +582,32 @@ git diff --check
 The focused component-resolution regression and all 22 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Canonical measurement-input substep
+
+Evidence commit: `Measure canonical layer geometry directly` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Measure canonical layer geometry directly$' -1`.
+Affected paths: `src/analysis/measure.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md` and this log.
+
+`ordinary_layer_measurements` now reads point positions and on-curve roles from canonical contour views and scans the direct canonical Kurbo path for curve-bounded spans.
+`ordinary_layer_side_bearings` derives exact advance and extreme-point geometry from the same layer without constructing a Norad glyph or the legacy editable contour model.
+The existing compatibility functions share the extracted measurement and side-bearing calculations, retaining their established closed-contour start convention while callers migrate.
+
+The adversarial comparison requires identical ordered measurements and side-bearing geometry from canonical and legacy inputs, including exact layer advance values.
+The originating-task review also independently verified nested reflected and skewed component transforms, repeated shared bases and a singular outer transform against constructed expected paths; no resolver defect was found.
+Application session callers remain on their Norad glyph until M06, and special hyperbezier measurement input remains assigned to M04.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_measurement_inputs_match_legacy_geometry -- --exact --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused measurement comparison and all 23 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
