@@ -325,6 +325,23 @@ fn location(weight: f64, width: f64) -> Location {
     [("Weight".into(), weight), ("Width".into(), width)].into()
 }
 
+fn assert_single_source_metadata(label: &str, project: Project) {
+    let source_ids = project.document_snapshot().source_ids().to_vec();
+    assert_eq!(source_ids.len(), 1, "{label} lost its source identity");
+    let source = project
+        .document_source(source_ids[0])
+        .unwrap_or_else(|| panic!("{label} omitted canonical source metadata"));
+    assert!(
+        source.location().is_empty(),
+        "{label} has a nonempty single-source location"
+    );
+    assert_eq!(
+        project.document_sources().count(),
+        1,
+        "{label} was omitted from the source iterator"
+    );
+}
+
 #[test]
 fn mapped_axes_sources_and_instances_use_the_same_coordinates() {
     let (_scratch, project) = fixture();
@@ -333,6 +350,31 @@ fn mapped_axes_sources_and_instances_use_the_same_coordinates() {
     assert_eq!(project.master_locations[1], location(1.0, 0.0));
     assert_eq!(project.instances[0].1, location(0.5, 0.0));
     assert_eq!(project.axes[0].user.normalized_to_user(0.5), 650.0);
+}
+
+#[test]
+fn single_source_constructors_expose_canonical_source_metadata() {
+    let scratch = Scratch::new();
+    let new_path = scratch.0.join("New.ufo");
+    let new_project = Project::new_font(new_path);
+
+    let mut direct_font = Font::new();
+    direct_font.font_info.style_name = Some("Direct".into());
+    direct_font
+        .default_layer_mut()
+        .insert_glyph(glyph("A", 0.0));
+    let direct_project = Project::from_source(Master::from_font(
+        direct_font.clone(),
+        scratch.0.join("Direct.ufo"),
+    ));
+
+    let loaded_path = scratch.0.join("Loaded.ufo");
+    direct_font.save(&loaded_path).unwrap();
+    let loaded_project = Project::load(&loaded_path).unwrap();
+
+    assert_single_source_metadata("new font", new_project);
+    assert_single_source_metadata("direct source", direct_project);
+    assert_single_source_metadata("loaded UFO", loaded_project);
 }
 
 #[test]
@@ -750,6 +792,107 @@ fn source_undo_refuses_to_overwrite_later_edits_and_layer_operations_preserve_ot
     assert!(project.glyph_layer("A", &from).is_some());
     assert!(project.undo_sources(false).unwrap());
     assert!(project.glyph_layer("A", &layer).is_some());
+}
+
+#[test]
+fn auxiliary_layer_structure_mutates_the_canonical_document_atomically() {
+    let (_scratch, mut project, _fonts) = adversarial_fixture();
+    let from = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let source = project.document_layer("A", &from).unwrap();
+    let source_contours: Vec<_> = source.contours().map(|contour| contour.id()).collect();
+    let source_points: Vec<_> = source
+        .contours()
+        .flat_map(|contour| contour.points().map(|point| point.id()))
+        .collect();
+    let source_components: Vec<_> = source
+        .components()
+        .map(|component| component.id())
+        .collect();
+    let source_anchors: Vec<_> = source.anchors().map(|anchor| anchor.id()).collect();
+    let expected = project.glyph_layer("A", &from).unwrap();
+    let revision = project.document_revision();
+
+    let copied = project.add_glyph_layer("A", &from, "backup").unwrap();
+    assert!(
+        project.document_revision() > revision,
+        "structural commit did not invalidate the document revision"
+    );
+    assert_eq!(
+        project.glyph_layer("A", &copied).unwrap(),
+        expected,
+        "copied source data changed"
+    );
+    let copy = project.document_layer("A", &copied).unwrap();
+    let copied_contours: Vec<_> = copy.contours().map(|contour| contour.id()).collect();
+    let copied_points: Vec<_> = copy
+        .contours()
+        .flat_map(|contour| contour.points().map(|point| point.id()))
+        .collect();
+    let copied_components: Vec<_> = copy.components().map(|component| component.id()).collect();
+    let copied_anchors: Vec<_> = copy.anchors().map(|anchor| anchor.id()).collect();
+    assert_ne!(
+        copied_contours, source_contours,
+        "copied contours reused document identities"
+    );
+    assert_ne!(
+        copied_points, source_points,
+        "copied points reused document identities"
+    );
+    assert_ne!(
+        copied_components, source_components,
+        "copied components reused document identities"
+    );
+    assert_ne!(
+        copied_anchors, source_anchors,
+        "copied anchors reused document identities"
+    );
+
+    let copied_snapshot = project.document_snapshot();
+    let copied_revision = project.document_revision();
+    assert!(
+        project.add_glyph_layer("A", &from, "backup").is_err(),
+        "duplicate copy unexpectedly succeeded"
+    );
+    assert_eq!(project.document_snapshot(), copied_snapshot);
+    assert_eq!(project.document_revision(), copied_revision);
+    assert!(project.undo_sources(false).unwrap());
+    assert!(project.document_layer("A", &copied).is_none());
+    assert!(project.undo_sources(true).unwrap());
+    assert_eq!(
+        project
+            .document_layer("A", &copied)
+            .unwrap()
+            .contours()
+            .map(|contour| contour.id())
+            .collect::<Vec<_>>(),
+        copied_contours,
+        "redo did not restore copied object identities"
+    );
+
+    project.remove_glyph_layer("A", &copied).unwrap();
+    assert!(project.document_layer("A", &copied).is_none());
+    let removed_snapshot = project.document_snapshot();
+    let removed_revision = project.document_revision();
+    assert!(
+        project.remove_glyph_layer("A", &copied).is_err(),
+        "missing-layer removal unexpectedly succeeded"
+    );
+    assert_eq!(project.document_snapshot(), removed_snapshot);
+    assert_eq!(project.document_revision(), removed_revision);
+    assert!(project.undo_sources(false).unwrap());
+    assert_eq!(
+        project
+            .document_layer("A", &copied)
+            .unwrap()
+            .anchors()
+            .map(|anchor| anchor.id())
+            .collect::<Vec<_>>(),
+        copied_anchors,
+        "undo did not restore removed object identities"
+    );
 }
 
 #[test]

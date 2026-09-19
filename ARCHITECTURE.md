@@ -109,6 +109,7 @@ New mutations use `edit_document_layer` and its owned `LayerEditDraft`; a failed
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
 Source-wide feature text has canonical ownership in `VariableData` and changes through `edit_document_source_metadata`; UFO templates no longer retain a second feature-text value.
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.
+Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact extensions first, then refresh only the affected compatibility projection.
 `document/sources.rs` owns structural transactions and their guarded undo history; removing a source never deletes its UFO directory.
 
 `document::source::Master` is a compatibility UFO projection with source-local history and paint caches.

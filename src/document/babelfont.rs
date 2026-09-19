@@ -749,6 +749,52 @@ pub(super) fn layer_from_ufo(
     )
 }
 
+pub(super) fn copy_layer(
+    layer: &Layer,
+    preserved: &LayerPreservation,
+    id: &LayerId,
+) -> (Layer, LayerPreservation) {
+    let mut layer = layer.clone();
+    let mut preserved = preserved.clone();
+    layer.id = Some(layer_key(id));
+    layer.name = Some(id.name.clone());
+    layer.master = babelfont::LayerType::AssociatedWithMaster(id.source.0.to_string());
+
+    for (path, preserved) in layer
+        .shapes
+        .iter_mut()
+        .filter_map(|shape| match shape {
+            Shape::Path(path) => Some(path),
+            Shape::Component(_) => None,
+        })
+        .zip(&mut preserved.contours)
+    {
+        preserved.id = ContourId::next();
+        write_id(&mut path.format_specific, preserved.id.0);
+        for (node, preserved) in path.nodes.iter_mut().zip(&mut preserved.points) {
+            preserved.id = PointId::next();
+            write_id(&mut node.format_specific, preserved.id.0);
+        }
+    }
+    for (component, preserved) in layer
+        .shapes
+        .iter_mut()
+        .filter_map(|shape| match shape {
+            Shape::Component(component) => Some(component),
+            Shape::Path(_) => None,
+        })
+        .zip(&mut preserved.components)
+    {
+        preserved.id = ComponentId::next();
+        write_id(&mut component.format_specific, preserved.id.0);
+    }
+    for (anchor, preserved) in layer.anchors.iter_mut().zip(&mut preserved.anchors) {
+        preserved.id = AnchorId::next();
+        write_id(&mut anchor.format_specific, preserved.id.0);
+    }
+    (layer, preserved)
+}
+
 pub(super) fn reconcile_layer_from_ufo(
     glyph: &norad::Glyph,
     id: &LayerId,

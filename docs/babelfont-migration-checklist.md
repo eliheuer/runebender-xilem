@@ -2,7 +2,7 @@
 
 Audit date: 2026-09-18.
 Audited implementation: `6350cf3`, including the pipeline implementation at `5cbf51b`.
-Status: **IN PROGRESS — M00–M01 complete; migration incomplete**.
+Status: **IN PROGRESS — M00–M02 complete; migration incomplete**.
 This document is the implementation checklist and handoff for the dedicated scheduled task.
 Implementation is paused in the originating task; the scheduled task owns the continuation.
 
@@ -161,7 +161,7 @@ Depends on: M01.
 Start in: `document/project.rs`, `variable.rs`, `source.rs`, `sources.rs`.
 
 - [x] Add document-facing glyph/layer/source readers and edit drafts/transactions backed by Babelfont plus the M01 extensions.
-- [ ] Make geometry, metadata and structural edits atomic with accurate changed/no-change results and revision invalidation.
+- [x] Make geometry, metadata and structural edits atomic with accurate changed/no-change results and revision invalidation.
 - [x] Provide explicit change information for affected layers, dependent components, source metadata and compilation; keep paint caches derived and read-only.
 - [x] Introduce canonical clone/snapshot support needed by history and experimental versions, without cloning a parallel Norad document.
 - [x] Keep temporary compatibility entry points clearly isolated and tracked until their callers are migrated; do not add new ones.

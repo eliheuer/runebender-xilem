@@ -294,6 +294,74 @@ impl VariableData {
         Some(delta)
     }
 
+    pub(super) fn copy_layer(&mut self, name: &str, from: &LayerId, to: &LayerId) -> bool {
+        if self
+            .glyphs
+            .get(name)
+            .is_some_and(|glyph| glyph.layers.contains_key(to))
+        {
+            return false;
+        }
+        let Some((layer, preserved)) = self
+            .glyphs
+            .get(name)
+            .and_then(|glyph| glyph.layers.get(from))
+            .zip(
+                self.font
+                    .glyphs
+                    .get(name)
+                    .and_then(|glyph| glyph.get_layer(&super::babelfont::layer_key(from))),
+            )
+            .map(|(preserved, layer)| super::babelfont::copy_layer(layer, preserved, to))
+        else {
+            return false;
+        };
+        self.glyphs
+            .get_mut(name)
+            .expect("source layer retains its glyph")
+            .layers
+            .insert(to.clone(), preserved);
+        self.font
+            .glyphs
+            .get_mut(name)
+            .expect("source layer retains its geometry")
+            .layers
+            .push(layer);
+        true
+    }
+
+    pub(super) fn remove_layer(&mut self, name: &str, id: &LayerId) -> bool {
+        let key = super::babelfont::layer_key(id);
+        let Some(glyph) = self.glyphs.get(name) else {
+            return false;
+        };
+        if !glyph.layers.contains_key(id)
+            || self
+                .font
+                .glyphs
+                .get(name)
+                .and_then(|glyph| glyph.get_layer(&key))
+                .is_none()
+        {
+            return false;
+        }
+        let glyph = self.glyphs.get_mut(name).expect("validated glyph");
+        glyph.layers.remove(id);
+        let geometry = self
+            .font
+            .glyphs
+            .get_mut(name)
+            .expect("preserved layer retains its geometry");
+        geometry
+            .layers
+            .retain(|layer| layer.id.as_deref() != Some(key.as_str()));
+        if glyph.layers.is_empty() {
+            self.glyphs.remove(name);
+            self.font.glyphs.0.retain(|glyph| glyph.name != name);
+        }
+        true
+    }
+
     pub(super) fn dependent_component_layers(&self, name: &str) -> Vec<GlyphLayerAddress> {
         self.glyphs
             .iter()

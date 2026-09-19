@@ -474,25 +474,44 @@ impl Project {
         name: &str,
     ) -> Result<LayerId, String> {
         let index = self.source_index(from.source).ok_or("unknown source")?;
-        let payload = self
-            .glyph_layer(glyph, from)
-            .ok_or("missing source glyph layer")?;
-        let mut font = self.masters[index].font.clone();
-        let target = font
+        if self.document_layer(glyph, from).is_none() {
+            return Err("missing source glyph layer".into());
+        }
+        let target_id = LayerId {
+            source: from.source,
+            name: name.into(),
+        };
+        if self.document_layer(glyph, &target_id).is_some()
+            || self.masters[index]
+                .font
+                .layers
+                .get(name)
+                .is_some_and(|layer| layer.contains_glyph(glyph))
+        {
+            return Err("the glyph already has that layer".into());
+        }
+        let before = SourceFrame::capture(self);
+        self.masters[index]
+            .font
             .layers
             .get_or_create_layer(name)
             .map_err(|error| error.to_string())?;
-        if target.contains_glyph(glyph) {
-            return Err("the glyph already has that layer".into());
-        }
-        target.insert_glyph(payload);
-        let before = SourceFrame::capture(self);
-        self.masters[index].font = font;
+        assert!(
+            self.variable.copy_layer(glyph, from, &target_id),
+            "validated source layer must remain copyable"
+        );
+        let payload = self
+            .variable
+            .project_layer(glyph, &target_id)
+            .expect("copied layer must be projectable");
+        self.masters[index]
+            .font
+            .layers
+            .get_mut(name)
+            .expect("created compatibility layer")
+            .insert_glyph(payload);
         self.record_source_change(before);
-        Ok(LayerId {
-            source: from.source,
-            name: name.into(),
-        })
+        Ok(target_id)
     }
 
     /// Remove one auxiliary glyph layer, retaining the layer and other glyphs.
@@ -505,6 +524,10 @@ impl Project {
             return Err("missing glyph layer".into());
         }
         let before = SourceFrame::capture(self);
+        assert!(
+            self.variable.remove_layer(glyph, id),
+            "validated canonical layer must remain removable"
+        );
         self.masters[index]
             .font
             .layers

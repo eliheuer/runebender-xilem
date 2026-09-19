@@ -1,8 +1,9 @@
 # Babelfont migration progress
 
-Status: **IN PROGRESS — M00 complete; M01 active**.
+Status: **IN PROGRESS — M00–M02 complete; M03 is dependency-ready**.
 The definition of complete and milestone dependencies remain in [the checklist](babelfont-migration-checklist.md).
-No model ownership has changed yet.
+Canonical queries, layer and source-metadata edits, snapshots and auxiliary-layer structure now operate on Babelfont plus typed extensions.
+The remaining migration milestones still own ordinary topology tools, history replacement, application callers, broader metadata, interpolation, compilation, experiments and removal of compatibility state.
 
 ## Continuation checkout
 
@@ -420,3 +421,43 @@ The unchanged `block v0.1.6` future-incompatibility notice remains a dependency 
 
 M02's canonical snapshot checklist item is complete.
 The remaining M02 item is atomic structural mutation, beginning with direct canonical auxiliary-layer copy and removal while preserving the existing guarded structural undo contract.
+
+### Canonical auxiliary-layer structure substep
+
+Evidence commit: `Make auxiliary layer structure canonical` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Make auxiliary layer structure canonical$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/document/variable.rs`, `src/document/project.rs`, `src/document/sources.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, the checklist and this log.
+
+Auxiliary-layer copy and removal now update canonical Babelfont geometry and typed preservation records directly.
+A copy allocates fresh contour, point, component and anchor document identities while retaining the copied layer's exact values and source metadata.
+Only the affected glyph is projected into the temporary Master layer, so the structural command no longer clones and replaces a complete Norad font as its editing model.
+The existing `SourceFrame` still captures Master compatibility fonts for guarded structural undo; M05 owns replacing those history frames with canonical snapshots and deltas.
+
+Validation happens before mutation.
+A duplicate copy or missing-layer removal returns an error without changing canonical contents, revision or structural history.
+Undo and redo restore the copied canonical identities, and removing one glyph's auxiliary layer retains the layer and its other glyphs.
+
+The source-reader regression review also established the single-source location invariant.
+New-font, direct-source and loaded-UFO constructors now store one empty normalized location for their one stable source, so `document_source` and `document_sources` expose it consistently with canonical snapshot source IDs.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project auxiliary_layer_structure_mutates_the_canonical_document_atomically -- --exact --test-threads=1
+cargo test --locked --test variable_project single_source_constructors_expose_canonical_source_metadata -- --exact --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib document::source::tests:: -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The two focused structural and single-source reader tests passed.
+All 18 variable-project integration tests and all 13 source-model unit tests passed.
+Warning-denied Clippy passed for library and integration-test targets, and public API documentation built successfully.
+Formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+M02 is complete.
+M03 is the next dependency-ready milestone and begins by moving geometry queries and ordinary point operations from Norad projections to the canonical layer API.
