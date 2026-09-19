@@ -6204,6 +6204,45 @@ fn interpolation_is_glyph_local_and_independent_of_selected_source() {
 }
 
 #[test]
+fn interpolation_structure_ignores_legacy_designspace_projections() {
+    let (_scratch, mut project) = fixture();
+    let target = location(0.5, 0.5);
+    let expected_glyph = project.try_interpolated_at("B", &target).unwrap();
+    let expected_kerning = project.interpolated_kerning_at("A", "B", &target).unwrap();
+    let expected_sources = project
+        .glyph_sources("B")
+        .unwrap()
+        .into_iter()
+        .map(|source| (source.layer, source.location))
+        .collect::<Vec<_>>();
+
+    project.axes.clear();
+    project.master_locations.clear();
+    project.brace.clear();
+    project.instances.clear();
+    project.ds_doc = None;
+
+    assert_eq!(
+        project.try_interpolated_at("B", &target).unwrap(),
+        expected_glyph
+    );
+    assert_eq!(
+        project.interpolated_kerning_at("A", "B", &target).unwrap(),
+        expected_kerning
+    );
+    assert_eq!(
+        project
+            .glyph_sources("B")
+            .unwrap()
+            .into_iter()
+            .map(|source| (source.layer, source.location))
+            .collect::<Vec<_>>(),
+        expected_sources
+    );
+    assert!(project.trajectory_samples("B", 4).is_some());
+}
+
+#[test]
 fn interpolation_preserves_precision_and_varies_anchors_and_components() {
     let (_scratch, project) = fixture();
     let glyph = project

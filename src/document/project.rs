@@ -356,9 +356,19 @@ pub fn read_glyphspackage(root: &Path) -> Result<HashMap<String, String>, String
 
 impl Project {
     pub(super) fn default_source_index(&self) -> usize {
-        self.master_locations
-            .iter()
-            .position(|location| location.values().all(|value| *value == 0.0))
+        self.document_designspace()
+            .and_then(|designspace| {
+                designspace.sources().iter().find_map(|source| {
+                    source
+                        .location
+                        .to_normalized(designspace.axes())
+                        .ok()?
+                        .values()
+                        .all(|value| value.abs() < 1e-9)
+                        .then(|| self.source_index(source.id()))
+                        .flatten()
+                })
+            })
             .unwrap_or(0)
     }
 
@@ -390,15 +400,23 @@ impl Project {
     /// master is a master switch, not an interpolation: the web treats
     /// it that way so the outline stays editable.
     pub fn master_at_location(&self) -> Option<usize> {
-        if self.axes.is_empty() {
+        let designspace = self.document_designspace()?;
+        if designspace.axes().is_empty() {
             return None;
         }
-        self.master_locations.iter().position(|there| {
-            self.axes.iter().all(|axis| {
-                let a = there.get(&axis.name).copied().unwrap_or(0.0);
-                let b = self.location.get(&axis.name).copied().unwrap_or(0.0);
-                (a - b).abs() < 1e-6
-            })
+        designspace.sources().iter().find_map(|source| {
+            let there = source.location.to_normalized(designspace.axes()).ok()?;
+            designspace
+                .axes()
+                .iter()
+                .all(|axis| {
+                    let name = &axis.coordinates.name;
+                    let a = there.get(name).copied().unwrap_or(0.0);
+                    let b = self.location.get(name).copied().unwrap_or(0.0);
+                    (a - b).abs() < 1e-6
+                })
+                .then(|| self.source_index(source.id()))
+                .flatten()
         })
     }
 
@@ -406,13 +424,29 @@ impl Project {
     /// shows is an interpolated instance, and nothing there is
     /// editable.
     pub fn showing_instance(&self) -> bool {
-        self.model.is_some() && !self.axes.is_empty() && self.master_at_location().is_none()
+        self.document_designspace().is_some_and(|designspace| {
+            !designspace.axes().is_empty()
+                && designspace.sources().len() > 1
+                && self.master_at_location().is_none()
+        })
     }
 
     /// Put `location` back on a master, for a master switch.
     pub fn snap_location_to_master(&mut self, master: usize) {
-        if let Some(there) = self.master_locations.get(master) {
-            self.location = there.clone();
+        let Some(source) = self.source_id(master) else {
+            return;
+        };
+        let Some(designspace) = self.document_designspace() else {
+            self.location = Location::new();
+            return;
+        };
+        if let Some(there) = designspace
+            .sources()
+            .iter()
+            .find(|candidate| candidate.id() == source)
+            .and_then(|source| source.location.to_normalized(designspace.axes()).ok())
+        {
+            self.location = there;
         }
     }
 
@@ -853,35 +887,20 @@ impl Project {
     /// Rebuild the Instances display rows (name + normalized
     /// location) from the designspace document.
     pub fn refresh_instances_from_doc(&mut self) {
-        let Some(doc) = self.ds_doc.as_ref() else {
+        let Some(designspace) = self.document_designspace() else {
             return;
         };
-        self.instances = doc
-            .instances
+        self.instances = designspace
+            .instances()
             .iter()
-            .map(|inst| {
-                let name: Arc<str> = inst
-                    .stylename
-                    .clone()
-                    .or_else(|| inst.name.clone())
-                    .unwrap_or_else(|| "Instance".into())
-                    .into();
-                let mut location = Location::new();
-                for axis in &self.axes {
-                    let dimension = inst.location.iter().find(|d| d.name == axis.name);
-                    let value = if let Some(user) = dimension.and_then(|d| d.uservalue) {
-                        axis.user.user_to_normalized(f64::from(user))
-                    } else {
-                        axis.user.design_to_normalized(
-                            dimension
-                                .and_then(|d| d.xvalue)
-                                .map(f64::from)
-                                .unwrap_or(axis.default),
-                        )
-                    };
-                    location.insert(axis.name.clone(), value);
-                }
-                (name, location)
+            .map(|instance| {
+                (
+                    Arc::from(instance.display_name()),
+                    instance
+                        .location
+                        .to_normalized(designspace.axes())
+                        .expect("canonical instance location remains valid"),
+                )
             })
             .collect();
     }
@@ -915,8 +934,18 @@ impl Project {
     /// other source it is a straight copy. This is Re-Interpolate in
     /// Glyphs.
     pub fn reinterpolated_from_others(&self, glyph_name: &str) -> Result<norad::Glyph, String> {
-        let (layers, locations) =
-            self.interpolation_layers(glyph_name, self.source_id(self.active))?;
+        let active = self.source_id(self.active).ok_or("missing active source")?;
+        let designspace = self
+            .document_designspace()
+            .ok_or("re-interpolate requires a variable document")?;
+        let target = designspace
+            .sources()
+            .iter()
+            .find(|source| source.id() == active)
+            .ok_or("active source is not in the canonical Designspace")?
+            .location
+            .to_normalized(designspace.axes())?;
+        let (layers, locations) = self.interpolation_layers(glyph_name, Some(active))?;
         if layers.len() == 1 {
             return Ok(layers[0].project());
         }
@@ -928,11 +957,7 @@ impl Project {
             .get(default)
             .copied()
             .ok_or("missing default layer")?;
-        let interpolated = super::interpolation::interpolate_layers(
-            &layers,
-            &locations,
-            &self.master_locations[self.active],
-        )?;
+        let interpolated = super::interpolation::interpolate_layers(&layers, &locations, &target)?;
         super::interpolation::project_interpolated(&interpolated, base)
     }
 
@@ -987,20 +1012,32 @@ impl Project {
         right: &str,
         location: &Location,
     ) -> Result<f64, String> {
-        if location
-            .keys()
-            .any(|name| !self.axes.iter().any(|axis| &axis.name == name))
-            || location.values().any(|value| !value.is_finite())
+        let Some(designspace) = self.document_designspace() else {
+            let source = self
+                .document_sources()
+                .next()
+                .ok_or("document has no source")?;
+            return Ok(self
+                .document_font_metadata(source.id())
+                .expect("source identity retains canonical metadata")
+                .resolved_kerning(left, right)
+                .unwrap_or(0.0));
+        };
+        if location.keys().any(|name| {
+            !designspace
+                .axes()
+                .iter()
+                .any(|axis| &axis.coordinates.name == name)
+        }) || location.values().any(|value| !value.is_finite())
         {
             return Err("invalid kerning interpolation location".into());
         }
-        let values: Vec<_> = self
-            .variable
-            .source_ids
+        let values: Vec<_> = designspace
+            .sources()
             .iter()
             .map(|source| {
                 vec![
-                    self.document_font_metadata(*source)
+                    self.document_font_metadata(source.id())
                         .expect("source identity retains canonical metadata")
                         .resolved_kerning(left, right)
                         .unwrap_or(0.0),
@@ -1013,11 +1050,12 @@ impl Project {
         if values.len() == 1 {
             return Ok(values[0][0]);
         }
-        let model = self
-            .model
-            .as_ref()
-            .ok_or("project has no variation model")?;
-        Ok(model.interpolate(&values, location)?[0])
+        let locations = designspace
+            .sources()
+            .iter()
+            .map(|source| source.location.to_normalized(designspace.axes()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(VariationModel::new(&locations)?.interpolate(&values, location)?[0])
     }
 
     /// The interpolation at the current location as a norad glyph,
@@ -1064,9 +1102,13 @@ impl Project {
         glyph_name: &str,
         location: &Location,
     ) -> Result<super::interpolation::InterpolatedLayer, String> {
+        let axes = self
+            .document_designspace()
+            .map(super::model::designspace::CanonicalDesignspace::axes)
+            .unwrap_or_default();
         if location
             .keys()
-            .any(|name| !self.axes.iter().any(|axis| &axis.name == name))
+            .any(|name| !axes.iter().any(|axis| &axis.coordinates.name == name))
         {
             return Err("interpolation references an unknown axis".into());
         }
@@ -1077,25 +1119,39 @@ impl Project {
         // quadratic, overriding the piecewise answer the baked brace
         // layers gave the model — the bake stays for compilers, the
         // preview is exact.
-        if let (Some(axis), Some((lo, hi))) = (self.axes.first(), self.axis_end_masters()) {
-            let curves = self.masters[lo]
-                .font
-                .get_glyph(glyph_name)
+        if let (Some(axis), Some((lo, hi))) = (axes.first(), self.axis_end_sources()) {
+            let curves = self
+                .document_designspace()
+                .and_then(|designspace| {
+                    designspace
+                        .sources()
+                        .iter()
+                        .find(|source| source.id() == lo)
+                })
+                .and_then(|source| self.glyph_layer(glyph_name, &source.default_layer))
+                .as_ref()
                 .map(read_hoi_intermediates)
                 .unwrap_or_default();
             if !curves.is_empty() {
-                let normalized = location.get(&axis.name).copied().unwrap_or(0.0);
+                let normalized = location.get(&axis.coordinates.name).copied().unwrap_or(0.0);
                 let design = crate::document::var_model::denormalize_value(
                     normalized,
-                    axis.min,
-                    axis.default,
-                    axis.max,
+                    axis.design_minimum(),
+                    axis.design_default(),
+                    axis.design_maximum(),
                 );
-                let t01 = ((design - axis.min) / (axis.max - axis.min)).clamp(0.0, 1.0);
-                let endpoint_layer = |index| {
-                    self.source_id(index)
-                        .and_then(|source| self.document_source(source))
-                        .and_then(|source| self.document_layer(glyph_name, &source.default_layer()))
+                let t01 = ((design - axis.design_minimum())
+                    / (axis.design_maximum() - axis.design_minimum()))
+                .clamp(0.0, 1.0);
+                let endpoint_layer = |id| {
+                    self.document_designspace()
+                        .and_then(|designspace| {
+                            designspace
+                                .sources()
+                                .iter()
+                                .find(|source| source.id() == id)
+                        })
+                        .and_then(|source| self.document_layer(glyph_name, &source.default_layer))
                 };
                 if let (Some(a_layer), Some(b_layer)) = (endpoint_layer(lo), endpoint_layer(hi)) {
                     for (&(ci, pi), &q) in &curves {
@@ -1154,33 +1210,49 @@ impl Project {
         let glyph = self
             .variable_glyph(glyph_name)
             .ok_or_else(|| format!("unknown glyph {glyph_name}"))?;
+        let Some(designspace) = self.document_designspace() else {
+            let source = self
+                .document_sources()
+                .next()
+                .ok_or("document has no source")?;
+            let layer = source.default_layer();
+            return Ok(glyph
+                .has_layer(&layer)
+                .then_some(GlyphSource {
+                    layer,
+                    location: Location::new(),
+                })
+                .into_iter()
+                .collect());
+        };
         let mut sources = Vec::new();
-        for (index, source) in self.masters.iter().enumerate() {
-            let id = LayerId {
-                source: self.source_id(index).expect("source index"),
-                name: source.font.default_layer().name().to_string(),
+        for entry in designspace.source_order() {
+            let (layer, location) = match entry {
+                super::model::designspace::SourceOrderEntry::Full(id) => {
+                    let source = designspace
+                        .sources()
+                        .iter()
+                        .find(|source| source.id() == *id)
+                        .expect("canonical source order retains full sources");
+                    (
+                        source.default_layer.clone(),
+                        source.location.to_normalized(designspace.axes())?,
+                    )
+                }
+                super::model::designspace::SourceOrderEntry::Sparse(id) => {
+                    let source = designspace
+                        .sparse_sources()
+                        .iter()
+                        .find(|source| &source.layer == id)
+                        .expect("canonical source order retains sparse sources");
+                    (
+                        source.layer.clone(),
+                        source.location.to_normalized(designspace.axes())?,
+                    )
+                }
             };
-            if glyph.has_layer(&id) {
-                sources.push(GlyphSource {
-                    layer: id,
-                    location: self
-                        .master_locations
-                        .get(index)
-                        .cloned()
-                        .unwrap_or_default(),
-                });
-            }
-        }
-        for source in &self.brace {
-            let id = LayerId {
-                source: self.source_id(source.master).expect("brace source index"),
-                name: source.layer.clone(),
-            };
-            if glyph.has_layer(&id) {
-                sources.push(GlyphSource {
-                    layer: id,
-                    location: source.location.clone(),
-                });
+            if glyph.has_layer(&layer) {
+                sources.push(GlyphSource { layer, location });
             }
         }
         Ok(sources)
@@ -1189,19 +1261,25 @@ impl Project {
     /// The masters at the low and high end of the first axis (by
     /// normalized location), for HOI endpoints.
     pub fn axis_end_masters(&self) -> Option<(usize, usize)> {
-        let axis = self.axes.first()?;
-        if self.masters.len() < 2 {
+        let (lo, hi) = self.axis_end_sources()?;
+        Some((self.source_index(lo)?, self.source_index(hi)?))
+    }
+
+    fn axis_end_sources(&self) -> Option<(SourceId, SourceId)> {
+        let designspace = self.document_designspace()?;
+        let axis = designspace.axes().first()?;
+        if designspace.sources().len() < 2 {
             return None;
         }
-        let value = |i: usize| {
-            self.master_locations
-                .get(i)
-                .and_then(|l| l.get(&axis.name).copied())
-                .unwrap_or(0.0)
-        };
-        let lo = (0..self.masters.len()).min_by(|&a, &b| value(a).total_cmp(&value(b)))?;
-        let hi = (0..self.masters.len()).max_by(|&a, &b| value(a).total_cmp(&value(b)))?;
-        (lo != hi).then_some((lo, hi))
+        let value = |index: usize| designspace.sources()[index].location.normalized(axis);
+        let lo = (0..designspace.sources().len()).min_by(|&a, &b| value(a).total_cmp(&value(b)))?;
+        let hi = (0..designspace.sources().len()).max_by(|&a, &b| value(a).total_cmp(&value(b)))?;
+        (lo != hi).then(|| {
+            (
+                designspace.sources()[lo].id(),
+                designspace.sources()[hi].id(),
+            )
+        })
     }
 
     /// Sample every point's position at `steps + 1` equal stops
@@ -1216,20 +1294,22 @@ impl Project {
         glyph_name: &str,
         steps: usize,
     ) -> Option<Vec<Vec<kurbo::Point>>> {
-        self.model.as_ref()?;
-        let axis = self.axes.first()?;
+        let designspace = self.document_designspace()?;
+        (designspace.sources().len() > 1).then_some(())?;
+        let axis = designspace.axes().first()?;
         let mut per_point: Vec<Vec<kurbo::Point>> = Vec::new();
         for step in 0..=steps {
             let t = step as f64 / steps as f64;
-            let design = axis.min + (axis.max - axis.min) * t;
+            let design =
+                axis.design_minimum() + (axis.design_maximum() - axis.design_minimum()) * t;
             let mut location = self.location.clone();
             location.insert(
-                axis.name.clone(),
+                axis.coordinates.name.clone(),
                 crate::document::var_model::normalize_value(
                     design,
-                    axis.min,
-                    axis.default,
-                    axis.max,
+                    axis.design_minimum(),
+                    axis.design_default(),
+                    axis.design_maximum(),
                 ),
             );
             let layer = self.try_interpolated_layer_at(glyph_name, &location).ok()?;
@@ -1259,42 +1339,46 @@ impl Project {
     /// A rule applies when every condition of any condition set
     /// holds; an empty condition set always holds.
     pub fn rule_substitute(&self, glyph_name: &str) -> Option<String> {
-        let doc = self.ds_doc.as_ref()?;
+        let designspace = self.document_designspace()?;
         // Current location in design coordinates.
-        let design: HashMap<&str, f64> = self
-            .axes
+        let design: HashMap<_, _> = designspace
+            .axes()
             .iter()
             .map(|axis| {
-                let normalized = self.location.get(&axis.name).copied().unwrap_or(0.0);
+                let normalized = self
+                    .location
+                    .get(&axis.coordinates.name)
+                    .copied()
+                    .unwrap_or(0.0);
                 (
-                    axis.name.as_str(),
+                    axis.id(),
                     crate::document::var_model::denormalize_value(
                         normalized,
-                        axis.min,
-                        axis.default,
-                        axis.max,
+                        axis.design_minimum(),
+                        axis.design_default(),
+                        axis.design_maximum(),
                     ),
                 )
             })
             .collect();
         let mut result = glyph_name.to_owned();
-        for rule in &doc.rules.rules {
+        for rule in designspace.rules() {
             let applies = rule.condition_sets.iter().any(|set| {
-                set.conditions.iter().all(|c| {
-                    let Some(&value) = design.get(c.name.as_str()) else {
+                set.conditions.iter().all(|condition| {
+                    let Some(&value) = design.get(&condition.axis) else {
                         return false;
                     };
-                    c.minimum.is_none_or(|min| value >= f64::from(min))
-                        && c.maximum.is_none_or(|max| value <= f64::from(max))
+                    condition.minimum.is_none_or(|minimum| value >= minimum)
+                        && condition.maximum.is_none_or(|maximum| value <= maximum)
                 })
             });
             if applies
                 && let Some(sub) = rule
                     .substitutions
                     .iter()
-                    .find(|sub| sub.name.as_str() == result)
+                    .find(|substitution| substitution.name == result)
             {
-                result = sub.with.to_string();
+                result.clone_from(&sub.replacement);
             }
         }
         (result != glyph_name).then_some(result)
