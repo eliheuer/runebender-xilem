@@ -8,74 +8,142 @@
 //! overwrite later content edits, which must be undone first.
 
 use super::*;
+use std::collections::BTreeMap;
+
+use crate::document::CanonicalSourceStructureSnapshot;
+use crate::document::history::{
+    HistoryDirection, HistoryReplayError, HistoryReplayOutcome, TransactionHistory,
+};
 
 #[derive(Debug, Clone)]
 struct SourceFrame {
-    masters: Vec<Master>,
-    variable: VariableData,
-    names: Vec<Arc<str>>,
-    locations: Vec<Location>,
-    brace: Vec<BraceSource>,
+    canonical: CanonicalSourceStructureSnapshot,
+    sources: Vec<SourceDescriptor>,
+    brace: Vec<BraceDescriptor>,
     doc: Option<norad::designspace::DesignSpaceDocument>,
-    active: usize,
+    active: Option<SourceId>,
+}
+
+impl PartialEq for SourceFrame {
+    fn eq(&self, other: &Self) -> bool {
+        self.canonical == other.canonical
+            && self.sources == other.sources
+            && self.brace == other.brace
+            && self.doc == other.doc
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct SourceDescriptor {
+    id: SourceId,
+    name: Arc<str>,
+    location: Location,
+    path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct BraceDescriptor {
+    source: SourceId,
+    layer: String,
+    location: Location,
 }
 
 impl SourceFrame {
     fn capture(project: &Project) -> Self {
+        let canonical = project.variable.source_structure_snapshot();
+        let sources = canonical
+            .source_ids()
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(index, id)| SourceDescriptor {
+                id,
+                name: project.master_names[index].clone(),
+                location: project.master_locations[index].clone(),
+                path: project.masters[index].source_path.clone(),
+            })
+            .collect();
+        let brace = project
+            .brace
+            .iter()
+            .map(|source| BraceDescriptor {
+                source: canonical.source_ids()[source.master],
+                layer: source.layer.clone(),
+                location: source.location.clone(),
+            })
+            .collect();
         Self {
-            masters: project.masters.clone(),
-            variable: project.variable.clone(),
-            names: project.master_names.clone(),
-            locations: project.master_locations.clone(),
-            brace: project.brace.clone(),
+            active: canonical.source_ids().get(project.active).copied(),
+            canonical,
+            sources,
+            brace,
             doc: project.ds_doc.clone(),
-            active: project.active,
         }
     }
 
     fn matches(&self, project: &Project) -> bool {
-        self.doc == project.ds_doc
-            && self.names == project.master_names
-            && self.locations == project.master_locations
-            && self.masters.len() == project.masters.len()
-            && self
-                .masters
-                .iter()
-                .zip(&project.masters)
-                .all(|(a, b)| a.font == b.font && a.source_path == b.source_path)
+        self == &Self::capture(project)
     }
 
-    fn restore(self, project: &mut Project) {
-        let revision = project.variable.revision;
-        let next_source = project.variable.next_source.max(self.variable.next_source);
-        project.masters = self.masters;
-        project.variable = self.variable;
-        project.variable.revision = revision;
-        project.variable.next_source = next_source;
-        project.master_names = self.names;
-        project.master_locations = self.locations;
-        project.brace = self.brace;
-        project.ds_doc = self.doc;
-        project.active = self.active;
-        project.finish_source_change();
+    fn restore_if_current(&self, project: &mut Project, expected: &Self) -> Result<(), String> {
+        if !expected.matches(project) {
+            return Err("source structure changed after history capture".into());
+        }
+        let previous_ids = project.variable.source_ids.clone();
+        project
+            .variable
+            .restore_source_structure_if_current(&expected.canonical, self.canonical.clone())
+            .map_err(|_| "canonical source structure changed after history capture")?;
+        let previous_masters = std::mem::take(&mut project.masters);
+        project.master_names = self
+            .sources
+            .iter()
+            .map(|source| source.name.clone())
+            .collect();
+        project.master_locations = self
+            .sources
+            .iter()
+            .map(|source| source.location.clone())
+            .collect();
+        project.ds_doc = self.doc.clone();
+        project.brace = self
+            .brace
+            .iter()
+            .map(|source| {
+                let master = self
+                    .sources
+                    .iter()
+                    .position(|descriptor| descriptor.id == source.source)
+                    .expect("a brace source retains its owning source");
+                BraceSource {
+                    master,
+                    layer: source.layer.clone(),
+                    location: source.location.clone(),
+                }
+            })
+            .collect();
+        project.active = self
+            .active
+            .and_then(|active| self.sources.iter().position(|source| source.id == active))
+            .unwrap_or(0);
+        project.rebuild_source_projections(&self.sources, previous_ids, previous_masters)?;
+        project.finish_source_restore();
+        Ok(())
     }
-}
-
-#[derive(Debug)]
-struct SourceStep {
-    before: SourceFrame,
-    after: SourceFrame,
 }
 
 #[derive(Debug, Default)]
 pub(super) struct SourceHistory {
-    undo: Vec<SourceStep>,
-    redo: Vec<SourceStep>,
+    transactions: TransactionHistory<SourceFrame>,
 }
 
 impl Project {
     fn finish_source_change(&mut self) {
         self.variable.synchronize(&self.masters);
+        self.finish_source_restore();
+    }
+
+    fn finish_source_restore(&mut self) {
         self.model = (!self.axes.is_empty()).then(|| {
             VariationModel::new(&self.master_locations).expect("source locations were validated")
         });
@@ -88,53 +156,83 @@ impl Project {
         self.compute_compat();
     }
 
+    fn rebuild_source_projections(
+        &mut self,
+        descriptors: &[SourceDescriptor],
+        previous_ids: Vec<SourceId>,
+        previous_masters: Vec<Master>,
+    ) -> Result<(), String> {
+        let mut previous = previous_ids
+            .into_iter()
+            .zip(previous_masters)
+            .collect::<BTreeMap<_, _>>();
+        self.masters = self
+            .variable
+            .source_ids
+            .iter()
+            .copied()
+            .map(|id| {
+                let descriptor = descriptors
+                    .iter()
+                    .find(|descriptor| descriptor.id == id)
+                    .ok_or_else(|| format!("missing structural descriptor for source {}", id.0))?;
+                let font = self
+                    .variable
+                    .source_font(id)
+                    .ok_or_else(|| format!("missing canonical source {}", id.0))?;
+                let mut rebuilt = Master::from_font(font, descriptor.path.clone());
+                if let Some(mut old) = previous.remove(&id) {
+                    rebuilt.modified_glyphs = std::mem::take(&mut old.modified_glyphs);
+                    rebuilt.glif_paths = std::mem::take(&mut old.glif_paths);
+                    rebuilt.kerning_dirty = old.kerning_dirty;
+                    rebuilt.revision = old.revision.wrapping_add(1);
+                    rebuilt.history = std::mem::take(&mut old.history);
+                }
+                rebuilt.dirty = true;
+                Ok(rebuilt)
+            })
+            .collect::<Result<_, String>>()?;
+        Ok(())
+    }
+
     fn record_source_change(&mut self, before: SourceFrame) {
         self.finish_source_change();
-        self.source_history.undo.push(SourceStep {
-            before,
-            after: SourceFrame::capture(self),
-        });
-        self.source_history.redo.clear();
+        let after = SourceFrame::capture(self);
+        self.source_history.transactions.record(before, after);
     }
 
     /// Whether a structural source/layer operation is available to undo or redo.
     pub fn has_source_history(&self, redo: bool) -> bool {
-        if redo {
-            !self.source_history.redo.is_empty()
+        let direction = if redo {
+            HistoryDirection::Redo
         } else {
-            !self.source_history.undo.is_empty()
-        }
+            HistoryDirection::Undo
+        };
+        self.source_history.transactions.can_replay(direction)
     }
 
     /// Undo or redo one source/layer transaction, preserving later unrelated edits.
     pub fn undo_sources(&mut self, redo: bool) -> Result<bool, String> {
-        let stack = if redo {
-            &mut self.source_history.redo
+        let direction = if redo {
+            HistoryDirection::Redo
         } else {
-            &mut self.source_history.undo
+            HistoryDirection::Undo
         };
-        let Some(step) = stack.pop() else {
-            return Ok(false);
-        };
-        let expected = if redo { &step.before } else { &step.after };
-        if !expected.matches(self) {
-            if redo {
-                self.source_history.redo.push(step);
-            } else {
-                self.source_history.undo.push(step);
+        let current = SourceFrame::capture(self);
+        let mut history = std::mem::take(&mut self.source_history);
+        let replayed = history
+            .transactions
+            .replay(&current, direction, |expected, replacement| {
+                replacement.restore_if_current(self, expected)
+            });
+        self.source_history = history;
+        match replayed {
+            Ok(HistoryReplayOutcome::Empty) => Ok(false),
+            Ok(HistoryReplayOutcome::Applied) => Ok(true),
+            Err(HistoryReplayError::Stale | HistoryReplayError::Apply(_)) => {
+                Err("Undo later glyph or metadata edits before this source/layer change".into())
             }
-            return Err(
-                "Undo later glyph or metadata edits before this source/layer change".into(),
-            );
         }
-        if redo {
-            step.after.clone().restore(self);
-            self.source_history.undo.push(step);
-        } else {
-            step.before.clone().restore(self);
-            self.source_history.redo.push(step);
-        }
-        Ok(true)
     }
 
     fn source_dimensions(

@@ -310,13 +310,6 @@ impl VariableData {
         self.source_structure_snapshot() == *snapshot
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the source-history lane will consume this guarded structural boundary"
-        )
-    )]
     pub(super) fn restore_source_structure_if_current(
         &mut self,
         expected: &CanonicalSourceStructureSnapshot,
