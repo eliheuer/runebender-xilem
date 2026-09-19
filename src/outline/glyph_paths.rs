@@ -872,31 +872,10 @@ mod canonical_render_tests {
         glyph: &str,
         selected: &LayerId,
     ) -> Result<BezPath, ComponentResolveError> {
-        let default = project
-            .document_source(selected.source)
-            .expect("source")
-            .default_layer();
-        canonical_layer_to_bezpath(
-            project
-                .document_layer(glyph, selected)
-                .expect("selected layer"),
-            |name| {
-                project
-                    .document_layer(name, selected)
-                    .or_else(|| project.document_layer(name, &default))
-            },
-            |name| {
-                let Some(glyph) = project.document_glyph(name) else {
-                    return Vec::new();
-                };
-                let ids: Vec<_> = glyph
-                    .layer_ids()
-                    .filter(|id| id.source == selected.source)
-                    .cloned()
-                    .collect();
-                ids.iter().filter_map(|id| glyph.layer(id)).collect()
-            },
-        )
+        project.document_layer_path(&GlyphLayerAddress {
+            glyph: glyph.into(),
+            layer: selected.clone(),
+        })
     }
 
     fn canonical_full_path(project: &Project, glyph: &str, selected: &LayerId) -> BezPath {
@@ -1161,17 +1140,20 @@ mod canonical_render_tests {
         );
         let mut font = Font::default();
         font.default_layer_mut().insert_glyph(part);
-        font.default_layer_mut().insert_glyph(user);
+        font.layers
+            .get_or_create_layer("proposal.smart")
+            .unwrap()
+            .insert_glyph(user.clone());
         font.layers
             .get_or_create_layer("part.top")
             .unwrap()
             .insert_glyph(wide);
-        let expected = glyph_to_bezpath(font.get_glyph("smartdemo").unwrap(), &font);
+        let expected = glyph_to_bezpath(&user, &font);
         let project = Project::from_source(Master::from_font(font, "SmartOne.ufo".into()));
-        let layer = project
-            .document_source(SourceId(0))
-            .unwrap()
-            .default_layer();
+        let layer = LayerId {
+            source: SourceId(0),
+            name: "proposal.smart".into(),
+        };
 
         assert_path_and_bounds(
             &canonical_full_path(&project, "smartdemo", &layer),
