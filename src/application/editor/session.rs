@@ -112,10 +112,9 @@ pub(crate) struct Session {
     pub viewport: ViewPort,
     pub fitted: bool,
     in_drag: bool,
-    /// The ordinary contour the pen is currently extending, if any.
-    pub active_contour: Option<usize>,
-    /// In-progress pen points (on- and off-curve), materialized into
-    /// `active_contour` on each change.
+    /// The stable canonical contour the ordinary pen is extending.
+    active_contour: Option<ContourId>,
+    /// In-progress ordinary-pen points used to derive the next canonical segment.
     pen: Vec<PenPt>,
     /// The stable canonical contour the hyperbezier pen is extending.
     active_hyper_contour: Option<ContourId>,
@@ -152,7 +151,6 @@ struct CanonicalComponentDrag {
 struct PenPt {
     point: Point,
     off: bool,
-    smooth: bool,
 }
 
 impl Session {
@@ -417,7 +415,33 @@ impl Session {
                 }
             }
         }
+        for (endpoint, handle) in self.pen_handle_previews() {
+            lines.push(kurbo::Line::new(endpoint, handle));
+        }
         lines
+    }
+
+    /// The ordinary pen's transient handles, in design space.
+    ///
+    /// The first incoming handle is committed only on close, and the current
+    /// outgoing handle is committed by the next segment or close. The canvas
+    /// paints both separately from the canonical layer points.
+    pub(crate) fn pen_handle_previews(&self) -> Vec<(Point, Point)> {
+        let mut previews = Vec::with_capacity(2);
+        if let Some(first_on_curve) = self.pen.iter().position(|point| !point.off)
+            && let Some(incoming) = first_on_curve
+                .checked_sub(1)
+                .and_then(|index| self.pen.get(index))
+                .filter(|point| point.off)
+        {
+            previews.push((self.pen[first_on_curve].point, incoming.point));
+        }
+        if let (Some(endpoint), Some(outgoing)) =
+            (Self::pen_endpoint(&self.pen), Self::pen_outgoing(&self.pen))
+        {
+            previews.push((endpoint, outgoing));
+        }
+        previews
     }
 
     pub(crate) fn start_markers(&self) -> Vec<(PointId, Point, Point)> {
@@ -932,6 +956,10 @@ impl Session {
         self.active_anchor_drag = None;
         self.active_metric_drag = None;
         self.active_metaball_drag = None;
+        self.active_contour = self.active_contour.filter(|active| {
+            self.current_layer()
+                .is_some_and(|layer| layer.contours().any(|contour| contour.id() == *active))
+        });
         self.active_hyper_contour = self.active_hyper_contour.filter(|active| {
             self.current_layer()
                 .is_some_and(|layer| layer.contours().any(|contour| contour.id() == *active))
@@ -1079,88 +1107,122 @@ impl Session {
         !self.pen.is_empty()
     }
 
-    pub(crate) fn pen_checkpoint(&self) -> (usize, Option<usize>) {
+    pub(crate) fn pen_checkpoint(&self) -> (usize, Option<ContourId>) {
         (self.pen.len(), self.active_contour)
     }
 
-    pub(crate) fn cancel_pen_gesture(&mut self, point_count: usize, active_contour: Option<usize>) {
+    pub(crate) fn cancel_pen_gesture(
+        &mut self,
+        point_count: usize,
+        active_contour: Option<ContourId>,
+    ) {
         self.pen.truncate(point_count);
         self.active_contour = active_contour;
         self.pending_canonical = None;
         self.pending_canonical_label = None;
     }
 
-    /// Write the pen buffer into `active_contour`, creating it if needed.
-    fn pen_sync(&mut self) {
-        let mut points = Vec::with_capacity(self.pen.len());
-        let mut prev_off = false;
-        for (i, pt) in self.pen.iter().enumerate() {
-            let typ = if i == 0 {
-                norad::PointType::Move
-            } else if pt.off {
-                norad::PointType::OffCurve
-            } else if prev_off {
-                norad::PointType::Curve
-            } else {
-                norad::PointType::Line
-            };
-            points.push(norad::ContourPoint::new(
-                pt.point.x, pt.point.y, typ, pt.smooth, None, None,
-            ));
-            prev_off = pt.off;
-        }
-        let contour_count = self
-            .current_layer()
-            .map(|layer| layer.contours().count())
-            .unwrap_or_default();
-        let contour = self
-            .active_contour
-            .filter(|contour| *contour < contour_count)
-            .unwrap_or(contour_count);
-        let changed = self.compatibility_edit("pen contour", move |glyph| {
-            if contour == glyph.contours.len() {
-                glyph.contours.push(norad::Contour::new(Vec::new(), None));
+    fn pen_endpoint(points: &[PenPt]) -> Option<Point> {
+        points
+            .iter()
+            .rev()
+            .find(|point| !point.off)
+            .map(|point| point.point)
+    }
+
+    fn pen_outgoing(points: &[PenPt]) -> Option<Point> {
+        points
+            .last()
+            .filter(|point| point.off)
+            .map(|point| point.point)
+    }
+
+    fn stage_pen_corner(&mut self, endpoint: Point) -> bool {
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return false;
+        };
+        if let Some(contour) = self.active_contour {
+            if Self::pen_endpoint(&self.pen).is_none() {
+                return false;
             }
-            let Some(target) = glyph.contours.get_mut(contour) else {
+            let controls = Self::pen_outgoing(&self.pen).map(|outgoing| [outgoing, endpoint]);
+            if transaction
+                .draft_mut()
+                .append_contour_segment(contour, controls, endpoint, false)
+                .is_err()
+            {
+                return false;
+            }
+        } else {
+            let Ok((contour, _)) = transaction.draft_mut().start_contour(endpoint) else {
                 return false;
             };
-            target.points = points;
-            true
-        });
-        if changed {
             self.active_contour = Some(contour);
         }
+        self.pending_canonical = Some(transaction);
+        self.pending_canonical_label = Some("pen contour");
+        true
+    }
+
+    fn stage_pen_smooth(&mut self, prior: &[PenPt], origin: Point, outgoing: Point) -> bool {
+        let Some(mut transaction) = self.canonical_base.clone() else {
+            return false;
+        };
+        if prior.is_empty() {
+            let Ok((contour, _)) = transaction.draft_mut().start_contour(origin) else {
+                return false;
+            };
+            self.active_contour = Some(contour);
+        } else {
+            let Some(contour) = self.active_contour else {
+                return false;
+            };
+            let Some(previous) = Self::pen_endpoint(prior) else {
+                return false;
+            };
+            let incoming = Point::new(2.0 * origin.x - outgoing.x, 2.0 * origin.y - outgoing.y);
+            let controls = [Self::pen_outgoing(prior).unwrap_or(previous), incoming];
+            if transaction
+                .draft_mut()
+                .append_contour_segment(contour, Some(controls), origin, true)
+                .is_err()
+            {
+                return false;
+            }
+        }
+        self.pending_canonical = Some(transaction);
+        self.pending_canonical_label = Some("pen contour");
+        true
     }
 
     /// Place a corner on-curve point (a plain click).
     pub(crate) fn pen_corner(&mut self, x: f64, y: f64) {
-        self.pen.push(PenPt {
-            point: Point::new(x, y),
-            off: false,
-            smooth: false,
-        });
-        self.pen_sync();
+        let point = Point::new(x, y);
+        if !self.stage_pen_corner(point) {
+            return;
+        }
+        self.pen.push(PenPt { point, off: false });
     }
 
     /// Begin a smooth point with symmetric handles at `origin`; the outgoing
     /// handle starts at `to`.
     pub(crate) fn pen_smooth_begin(&mut self, origin: Point, to: Point) {
+        let prior = self.pen.clone();
+        if !self.stage_pen_smooth(&prior, origin, to) {
+            return;
+        }
         self.pen.push(PenPt {
-            point: origin,
+            point: Point::new(2.0 * origin.x - to.x, 2.0 * origin.y - to.y),
             off: true,
-            smooth: false,
         });
         self.pen.push(PenPt {
             point: origin,
             off: false,
-            smooth: true,
         });
         self.pen.push(PenPt {
             point: to,
             off: true,
-            smooth: false,
         });
-        self.pen_sync();
     }
 
     /// Update the handles of the smooth point currently being dragged.
@@ -1169,43 +1231,47 @@ impl Session {
         if n < 3 {
             return;
         }
+        let prior = self.pen[..n - 3].to_vec();
         self.pen[n - 1].point = to;
         self.pen[n - 3].point = Point::new(2.0 * origin.x - to.x, 2.0 * origin.y - to.y);
-        self.pen_sync();
+        let _ = self.stage_pen_smooth(&prior, origin, to);
     }
 
     /// Close the active contour.
     pub(crate) fn pen_close(&mut self) {
-        if let Some(c) = self.active_contour.take() {
-            let _ = self.compatibility_edit("close pen contour", move |glyph| {
-                let Some(contour) = glyph.contours.get_mut(c) else {
-                    return false;
-                };
-                if contour.points.first().map(|point| point.typ) != Some(norad::PointType::Move)
-                    || contour.points.len() <= 1
-                {
-                    return false;
-                }
-                let first = contour.points.remove(0);
-                let typ = if contour
-                    .points
-                    .last()
-                    .is_some_and(|point| point.typ == norad::PointType::OffCurve)
-                {
-                    norad::PointType::Curve
-                } else {
-                    norad::PointType::Line
-                };
-                contour.points.push(norad::ContourPoint::new(
-                    first.x,
-                    first.y,
-                    typ,
-                    first.smooth,
-                    None,
-                    None,
-                ));
-                true
-            });
+        let Some(contour) = self.active_contour.take() else {
+            self.pen.clear();
+            return;
+        };
+        let on_curve_count = self.pen.iter().filter(|point| !point.off).count();
+        if on_curve_count > 1 {
+            let first_on = self.pen.iter().position(|point| !point.off).unwrap();
+            let last_on = self.pen.iter().rposition(|point| !point.off).unwrap();
+            let first = self.pen[first_on].point;
+            let last = self.pen[last_on].point;
+            let first_incoming = first_on
+                .checked_sub(1)
+                .and_then(|index| self.pen.get(index))
+                .filter(|point| point.off)
+                .map(|point| point.point);
+            let last_outgoing = self
+                .pen
+                .get(last_on + 1)
+                .filter(|point| point.off)
+                .map(|point| point.point);
+            let controls = (first_incoming.is_some() || last_outgoing.is_some()).then_some([
+                last_outgoing.unwrap_or(last),
+                first_incoming.unwrap_or(first),
+            ]);
+            if let Some(mut transaction) = self.canonical_base.clone()
+                && transaction
+                    .draft_mut()
+                    .close_contour(contour, controls)
+                    .is_ok()
+            {
+                self.pending_canonical = Some(transaction);
+                self.pending_canonical_label = Some("close pen contour");
+            }
         }
         self.pen.clear();
     }
@@ -2744,6 +2810,80 @@ mod tests {
         assert_eq!(projected_glyph(&session).contours[0].points[0].x, 0.0);
         assert!(session.pending_canonical.is_some());
         assert_eq!(session.pending_canonical_label, Some("round coordinates"));
+    }
+
+    #[test]
+    fn ordinary_pen_commits_stable_canonical_segments_and_close() {
+        let path = std::env::temp_dir().join(format!(
+            "runebender-canonical-pen-{}-{}.ufo",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("the system clock is after the Unix epoch")
+                .as_nanos(),
+        ));
+        let mut font = norad::Font::new();
+        font.default_layer_mut()
+            .insert_glyph(norad::Glyph::new("pen"));
+        font.save(&path).expect("the fixture saves");
+        let mut workspace = Workspace::open(&path).expect("the fixture opens");
+        workspace.open_glyph(0);
+        let mut session = (*workspace.session).clone();
+
+        session.pen_smooth_begin(Point::new(20.0, 30.0), Point::new(50.0, 40.0));
+        assert_eq!(
+            session.pen_handle_previews(),
+            vec![
+                (Point::new(20.0, 30.0), Point::new(-10.0, 20.0)),
+                (Point::new(20.0, 30.0), Point::new(50.0, 40.0)),
+            ]
+        );
+        session.cancel_pen_gesture(0, None);
+
+        session.pen_corner(0.0, 0.0);
+        let contour = session
+            .active_contour
+            .expect("the pen has a stable contour");
+        assert_eq!(
+            workspace.sync_session_from(&mut session),
+            SessionSyncOutcome::Changed
+        );
+        assert_eq!(session.active_contour, Some(contour));
+
+        session.pen_corner(100.0, 0.0);
+        assert_eq!(
+            workspace.sync_session_from(&mut session),
+            SessionSyncOutcome::Changed
+        );
+        assert_eq!(session.active_contour, Some(contour));
+
+        session.pen_smooth_begin(Point::new(100.0, 100.0), Point::new(130.0, 120.0));
+        session.pen_smooth_drag(Point::new(100.0, 100.0), Point::new(140.0, 130.0));
+        assert_eq!(
+            session.pen_handle_previews(),
+            vec![(Point::new(100.0, 100.0), Point::new(140.0, 130.0))]
+        );
+        assert_eq!(
+            workspace.sync_session_from(&mut session),
+            SessionSyncOutcome::Changed
+        );
+        assert_eq!(session.active_contour, Some(contour));
+
+        session.pen_close();
+        assert_eq!(
+            workspace.sync_session_from(&mut session),
+            SessionSyncOutcome::Changed
+        );
+        assert_eq!(session.active_contour, None);
+        assert!(session.pen_handle_previews().is_empty());
+        let glyph = projected_glyph(&session);
+        assert_eq!(glyph.contours.len(), 1);
+        assert_eq!(glyph.contours[0].points.len(), 7);
+        assert_ne!(glyph.contours[0].points[0].typ, norad::PointType::Move);
+        assert_eq!(workspace.metadata_undo.len(), 4);
+        assert_eq!(workspace.font.master().undo_depth(0), 0);
+
+        std::fs::remove_dir_all(path).expect("the fixture is removed");
     }
 
     #[test]

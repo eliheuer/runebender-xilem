@@ -48,6 +48,7 @@ No release has been published yet.
 - Moved hyperbezier pen creation, point appending, and closure onto typed canonical contours with stable object identities.
 - Added atomic canonical contour import for SVG append and image-trace replacement without whole-glyph reconciliation.
 - Moved background send, swap and clear into canonical auxiliary-layer transactions with guarded source-history undo and redo.
+- Moved ordinary pen creation, segment appending, and closure onto typed canonical contours with stable object identities.
 - Moved explicit mask baking onto canonical contours and cleared the persisted mask key only after successful subtraction.
 - Moved selected and whole-layer metaball collapse onto staged canonical layer edits that retain live groups until conversion succeeds.
 - Made image placement install validated source resources through Project without mutable UFO-font access.

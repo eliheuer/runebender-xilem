@@ -306,7 +306,7 @@ git diff --check
 - Direct canonical draft operations now own filters, cleanup, transforms, shapes, anchors, images, boolean operations, knife cuts, curve conversion, re-interpolation and mask baking.
 - Place Image installs bytes through a stable-source Project operation and attaches the image through the layer draft; it no longer mutates `FontModel::font_mut().images`.
 - Overview metaball conversion now commits guarded layer transactions and replays Project-owned layer history instead of calling `FontModel::replace_glyph` or recording `Master.history` snapshots.
-- The remaining temporary bridge callers are exact and finite: pen contour materialization and close; mark-label writes; compatibility contour replacement and its test-only paste helper; and background send and swap.
+- The remaining temporary bridge callers are exact and finite: mark-label writes; compatibility contour replacement and its test-only paste helper; and background send and swap.
 - `FontModel` still exposes mutable source/font access for overview marks, Unicode, metrics formulas, local-model workflow boundaries, source retargeting and background layers; those callers remain M06/M13 work rather than completion claims.
 - Pen, Rectangle, Ellipse and Knife Pointer Cancel paths now have real widget-event coverage.
 
@@ -444,6 +444,39 @@ git diff --check
 
 The focused canonical mark-cloud placement regression passed.
 Warning-denied native binary and browser Clippy, formatting and diff checks passed.
+
+## Direct canonical ordinary-pen slice
+
+Implementation commit: `Draw ordinary pen paths canonically`.
+Resolve its exact ID with `git log --format=%H --grep='^Draw ordinary pen paths canonically$' -1`.
+Affected paths: `CHANGELOG.md`, `src/application/editor/session.rs`, `src/application/view/canvas/editor.rs` and this log.
+
+The ordinary Pen now retains a stable `ContourId` across Project commit and reload cycles.
+It calls the canonical start, append and close draft operations directly instead of materializing and reconciling a detached UFO glyph.
+Cubic segments derive their controls from the prior outgoing handle and the new smooth point's mirrored incoming handle.
+Closing a contour likewise uses the final outgoing and initial incoming handles when either is present.
+The outgoing handle remains a session-local preview until the next segment or close commits it, and the canvas paints that transient handle without inventing a canonical point identity.
+
+Pointer Cancel still drops only the current Pen preview.
+Already committed open-contour geometry survives Escape or a tool switch and remains available for continuation.
+The focused regression proves stable contour identity across start, line, curve and close edits, four Project-owned history steps and no legacy Master history.
+
+Executed evidence:
+
+```sh
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender application::editor::session::tests::ordinary_pen_commits_stable_canonical_segments_and_close -- --exact --nocapture
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender pointer_cancel -- --nocapture --test-threads=1
+CARGO_BUILD_JOBS=1 cargo test --locked --bin runebender -- --test-threads=1
+CARGO_BUILD_JOBS=1 cargo clippy --workspace --all-targets --locked -- -D warnings
+CARGO_BUILD_JOBS=1 ./web/build.sh
+CARGO_BUILD_JOBS=1 CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS='-C target-feature=+simd128' cargo clippy --manifest-path web/Cargo.toml --locked --target wasm32-unknown-unknown --no-deps -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused canonical Pen and Pointer Cancel regressions passed.
+The complete binary suite passed 171 tests with four documented model or external-font tests ignored.
+Warning-denied native workspace/all-target Clippy, the release WASM build, warning-denied browser Clippy, formatting and diff checks passed.
 
 ## Next action
 

@@ -18,7 +18,7 @@ use masonry::imaging::Painter;
 use masonry::kurbo;
 use masonry::kurbo::{Affine, Axis, Circle, Line, Point, Rect, Size, Stroke};
 use masonry::layout::{LenReq, Length};
-use runebender::document::{AnchorId, PointId};
+use runebender::document::{AnchorId, ContourId, PointId};
 use xilem::core::{MessageCtx, MessageResult, Mut, View, ViewMarker};
 use xilem::{Pod, ViewCtx};
 
@@ -380,7 +380,7 @@ enum Drag {
         origin: Point,
         dragging: bool,
         point_count: usize,
-        active_contour: Option<usize>,
+        active_contour: Option<ContourId>,
     },
     /// Rubber-band selection in screen space.
     Marquee {
@@ -1426,6 +1426,30 @@ impl Widget for EditorWidget {
                     }
                 }
                 painter.stroke(&shape, &ring, fill).draw();
+            }
+
+            // The ordinary pen's initial incoming and current outgoing
+            // handles remain session-local until close or the next segment
+            // commits them. Paint their nodes separately so smooth points
+            // retain the same visible feedback as committed off-curves.
+            for (_, handle) in self.session.pen_handle_previews() {
+                let hue = pal.role("pointOffcurve");
+                let (fill, interior) = if pal.points_filled {
+                    (pal.point_outline.unwrap_or(pal.text), hue)
+                } else {
+                    (hue, pal.app)
+                };
+                let shape =
+                    point_marker_shape(affine * handle, POINT_CURVE_RADIUS * marker_scale, false);
+                if pal.point_halo {
+                    painter
+                        .stroke(&shape, &Stroke::new(halo_width), pal.app.with_alpha(0.85))
+                        .draw();
+                }
+                painter.fill(&shape, interior).draw();
+                painter
+                    .stroke(&shape, &Stroke::new(ring_width), fill)
+                    .draw();
             }
 
             // Anchors use the same point construction, with solid pink inside
