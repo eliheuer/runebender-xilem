@@ -23,6 +23,7 @@ pub use babelfont::{
     LayerPointType, LayerShapeView, LayerView, PastedContours, PointId, PointView,
     QuadraticSegmentInsertion,
 };
+pub mod canonical_metadata;
 pub mod compile;
 mod compile_metadata;
 pub mod compose;

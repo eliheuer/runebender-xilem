@@ -1760,3 +1760,33 @@ Warning-denied Clippy, public API documentation, formatting and diff checks pass
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
 The history lane can now build its per-address before/after stack while this lane resumes the remaining M04 special tools.
+
+### Canonical source group and kerning ownership
+
+Evidence commit: `Own source groups and kerning canonically` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Own source groups and kerning canonically$' -1`.
+Affected paths: `src/document/canonical_metadata.rs`, `src/document/font_ops.rs`, `src/document/model/glyph_metadata.rs`, `src/document/variable.rs`, `src/document/project.rs`, `src/document/mod.rs`, `tests/canonical_metadata.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md`, supporting migration documentation and this log.
+
+The M07 lane supplied typed `CanonicalFontMetadata` values and UFO adapters, followed by a required correction that preserves legal duplicate group members exactly and adds strict glyph-metadata boundary operations.
+An additional atomic group-rename operation updates every typed pair reference while rejecting kind, side and destination collisions before mutation.
+The integration lane promoted the metadata module to the document boundary and stores one canonical group and exact `f64` kerning value per stable `SourceId` beside canonical feature text.
+UFO preservation templates clear groups and kerning after import and rehydrate them only when producing a source snapshot or compatibility projection.
+`Project::document_font_metadata`, `DocumentSnapshot::font_metadata` and the owned `SourceMetadataEditDraft` provide immutable reads and atomic replacement without exposing a mutable source font.
+A committed metadata edit advances the canonical revision once, refreshes the compatibility source and emits the existing source-metadata and compilation invalidation scope.
+
+Executed evidence:
+
+```sh
+cargo clippy --locked --test variable_project --test canonical_metadata -- -D warnings
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project canonical_source_metadata_edits_are_atomic_and_round_trip_exactly -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project source_authoring_keeps_identity_and_round_trips_the_designspace -- --exact --test-threads=1
+cargo test --locked --test canonical_metadata -- --test-threads=1
+cargo fmt --all --check
+git diff --check
+```
+
+The atomic source-metadata regression, source-reorder regression and all eight canonical metadata tests passed.
+Warning-denied targeted Clippy, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+M07 remains incomplete because canonical glyph metadata, rename/remove transactions, history and application callers have not been integrated.
+The next shared prerequisite is a narrow canonical-layer snapshot rebind operation for explicitly authorized glyph renames; the reviewed M05 integration remains unmerged until its embedded snapshot addresses are updated atomically.

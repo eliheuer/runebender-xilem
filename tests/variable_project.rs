@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use norad::{Anchor, Component, Contour, ContourPoint, Font, Glyph, Name, PointType};
 use runebender::document::LayerPointType;
+use runebender::document::canonical_metadata::{KerningParticipant, KerningSide};
 use runebender::document::font_memory::designspace_from_str;
 use runebender::document::project::{DocumentEditOutcome, DocumentHistoryError, Master, Project};
 use runebender::document::var_model::Location;
@@ -5371,6 +5372,115 @@ fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
 }
 
 #[test]
+fn canonical_source_metadata_edits_are_atomic_and_round_trip_exactly() {
+    let scratch = Scratch::new();
+    let path = scratch.0.join("Metadata.ufo");
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(Glyph::new("A"));
+    font.default_layer_mut().insert_glyph(Glyph::new("V"));
+    font.groups.insert(
+        Name::new("com.example.arbitrary").unwrap(),
+        vec![Name::new("A").unwrap(), Name::new("A").unwrap()],
+    );
+    font.groups.insert(
+        Name::new("public.kern1.A").unwrap(),
+        vec![Name::new("A").unwrap()],
+    );
+    font.kerning
+        .entry(Name::new("A").unwrap())
+        .or_default()
+        .insert(Name::new("V").unwrap(), -81.375);
+    font.save(&path).unwrap();
+
+    let mut project = Project::load(&path).unwrap();
+    let source = SourceId(0);
+    let imported = project.document_font_metadata(source).unwrap();
+    assert_eq!(
+        imported.groups().get("com.example.arbitrary"),
+        Some(&vec!["A".to_string(), "A".to_string()])
+    );
+    assert_eq!(imported.resolved_kerning("A", "V"), Some(-81.375));
+    assert_eq!(
+        project.document_snapshot().font_metadata(source),
+        Some(imported)
+    );
+
+    let mut edited = imported.clone();
+    assert!(
+        edited
+            .set_kerning_pair(
+                KerningParticipant::group(KerningSide::First, "A").unwrap(),
+                KerningParticipant::glyph("V").unwrap(),
+                Some(-63.625),
+            )
+            .unwrap()
+    );
+    assert!(
+        edited
+            .set_group("com.example.extra", vec!["V".into()])
+            .unwrap()
+    );
+    let revision = project.document_revision();
+    let outcome = project
+        .edit_document_source_metadata(source, |draft| {
+            assert!(draft.set_font_metadata(edited.clone()));
+            Ok(())
+        })
+        .unwrap();
+    assert!(matches!(outcome, DocumentEditOutcome::Changed { .. }));
+    assert_eq!(project.document_revision(), revision.wrapping_add(1));
+    assert_eq!(project.document_font_metadata(source), Some(&edited));
+    let projected = project.source_snapshot(source).unwrap();
+    assert_eq!(projected.kerning["public.kern1.A"]["V"], -63.625);
+    assert_eq!(
+        projected.groups["com.example.arbitrary"],
+        [Name::new("A").unwrap(), Name::new("A").unwrap()]
+    );
+
+    let unchanged_revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_source_metadata(source, |draft| {
+                assert!(!draft.set_font_metadata(edited.clone()));
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged {
+            revision: unchanged_revision
+        }
+    );
+    let mut rejected = edited.clone();
+    rejected
+        .set_kerning_pair(
+            KerningParticipant::glyph("A").unwrap(),
+            KerningParticipant::glyph("V").unwrap(),
+            Some(-100.25),
+        )
+        .unwrap();
+    assert_eq!(
+        project.edit_document_source_metadata(source, |draft| {
+            draft.set_font_metadata(rejected);
+            Err(runebender::document::DocumentEditError::Rejected)
+        }),
+        Err(runebender::document::DocumentEditError::Rejected)
+    );
+    assert_eq!(project.document_revision(), unchanged_revision);
+    assert_eq!(project.document_font_metadata(source), Some(&edited));
+
+    project.save().unwrap();
+    let reloaded = Project::load(&path).unwrap();
+    assert_eq!(reloaded.document_font_metadata(source), Some(&edited));
+    assert_eq!(
+        reloaded.source_snapshot(source).unwrap().groups,
+        projected.groups
+    );
+    assert_eq!(
+        reloaded.source_snapshot(source).unwrap().kerning,
+        projected.kerning
+    );
+}
+
+#[test]
 fn canonical_layer_snapshot_restore_is_atomic_and_stale_safe() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let layer = project
@@ -5484,6 +5594,7 @@ fn canonical_layer_snapshot_restore_is_atomic_and_stale_safe() {
 fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
     let (scratch, mut project) = fixture();
     let original = project.source_snapshot(SourceId(1)).unwrap();
+    let original_metadata = project.document_font_metadata(SourceId(1)).unwrap().clone();
     let target = location(0.25, 0.0);
     let expected = project.try_interpolated_at("A", &target).unwrap();
     let added = project
@@ -5495,6 +5606,10 @@ fn source_authoring_keeps_identity_and_round_trips_the_designspace() {
     );
     assert!(project.move_source(SourceId(1), 0).unwrap());
     assert_eq!(project.source_index(SourceId(1)), Some(0));
+    assert_eq!(
+        project.document_font_metadata(SourceId(1)),
+        Some(&original_metadata)
+    );
     assert_eq!(project.source_snapshot(SourceId(1)).unwrap(), original);
     assert_eq!(project.source_index(added), Some(4));
     project.save().unwrap();

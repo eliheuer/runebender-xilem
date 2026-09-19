@@ -61,7 +61,7 @@ Enabling it required the compatible ICU 2.1 normalizer, properties and segmenter
 The added compiler graph passes the RustSec advisory check; this is dependency selection and advisory review, not a claim of a full third-party source audit.
 `document::variable` owns Babelfont glyph geometry and a preserving Norad projection for metadata, exact advances and exact affine coefficients.
 `document::babelfont` reconciles geometry through that boundary without narrowing the saved UFO values.
-Source-wide metadata remains in preservation templates.
+Source-wide feature text, groups and exact fractional kerning have canonical ownership by stable source identity; other source metadata remains in preservation templates while its migration is incomplete.
 This is not yet a complete migration of every editing algorithm and metadata field to Babelfont APIs.
 The [migration checklist](babelfont-migration-checklist.md) defines the remaining work, its order and the evidence required to call that migration complete.
 

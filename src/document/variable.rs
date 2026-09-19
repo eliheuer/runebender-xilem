@@ -40,9 +40,10 @@ pub struct GlyphLayerAddress {
     pub layer: LayerId,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 struct SourceMetadata {
     feature_text: String,
+    font_metadata: super::canonical_metadata::CanonicalFontMetadata,
 }
 
 /// Owned edit draft for source-wide metadata with canonical ownership.
@@ -57,6 +58,11 @@ impl SourceMetadataEditDraft {
         &self.metadata.feature_text
     }
 
+    /// Current canonical group and kerning metadata for this source.
+    pub fn font_metadata(&self) -> &super::canonical_metadata::CanonicalFontMetadata {
+        &self.metadata.font_metadata
+    }
+
     /// Set the source's OpenType feature text.
     ///
     /// Returns whether the value changed.
@@ -65,6 +71,20 @@ impl SourceMetadataEditDraft {
             return false;
         }
         self.metadata.feature_text = text;
+        true
+    }
+
+    /// Replace the source's canonical group and kerning metadata.
+    ///
+    /// Returns whether the value changed.
+    pub fn set_font_metadata(
+        &mut self,
+        metadata: super::canonical_metadata::CanonicalFontMetadata,
+    ) -> bool {
+        if self.metadata.font_metadata == metadata {
+            return false;
+        }
+        self.metadata.font_metadata = metadata;
         true
     }
 }
@@ -121,6 +141,14 @@ impl DocumentSnapshot {
     /// Read snapshotted OpenType feature text for one source.
     pub fn feature_text(&self, source: SourceId) -> Option<&str> {
         Some(&self.source_metadata.get(&source)?.feature_text)
+    }
+
+    /// Read snapshotted canonical group and kerning metadata for one source.
+    pub fn font_metadata(
+        &self,
+        source: SourceId,
+    ) -> Option<&super::canonical_metadata::CanonicalFontMetadata> {
+        Some(&self.source_metadata.get(&source)?.font_metadata)
     }
 }
 
@@ -263,6 +291,13 @@ impl VariableData {
 
     pub(super) fn feature_text(&self, source: SourceId) -> Option<&str> {
         Some(&self.source_metadata.get(&source)?.feature_text)
+    }
+
+    pub(super) fn font_metadata(
+        &self,
+        source: SourceId,
+    ) -> Option<&super::canonical_metadata::CanonicalFontMetadata> {
+        Some(&self.source_metadata.get(&source)?.font_metadata)
     }
 
     pub(super) fn source_metadata_edit_draft(
@@ -438,6 +473,8 @@ impl VariableData {
         let mut changed = false;
         let metadata = SourceMetadata {
             feature_text: font.features.clone(),
+            font_metadata: super::font_ops::canonical_metadata_from_ufo(font)
+                .expect("Norad source metadata must satisfy the canonical metadata contract"),
         };
         changed |= self.source_metadata.get(&source) != Some(&metadata);
         self.source_metadata.insert(source, metadata);
@@ -526,9 +563,8 @@ impl VariableData {
             });
             !glyph.layers.is_empty()
         });
-        // A template contains no glyphs or canonically owned feature text.
-        // Preserve layer ordering, paths, color, libs, images, data, groups,
-        // and all font-info fields.
+        // A template contains no glyphs or canonically owned source metadata.
+        // Preserve layer ordering, paths, color, libs, images, data and all font-info fields.
         let previous = self.templates.get(&source);
         let mut template = previous.cloned().unwrap_or_default();
         let same_layers = template.layers.len() == font.layers.len()
@@ -550,8 +586,8 @@ impl VariableData {
         template.meta.clone_from(&font.meta);
         template.font_info.clone_from(&font.font_info);
         template.lib.clone_from(&font.lib);
-        template.groups.clone_from(&font.groups);
-        template.kerning.clone_from(&font.kerning);
+        template.groups.clear();
+        template.kerning.clear();
         template.features.clear();
         template.data.clone_from(&font.data);
         template.images.clone_from(&font.images);
@@ -567,6 +603,11 @@ impl VariableData {
         let mut font = self.templates.get(&source)?.clone();
         font.features
             .clone_from(&self.source_metadata.get(&source)?.feature_text);
+        super::font_ops::write_canonical_metadata_to_ufo(
+            &mut font,
+            &self.source_metadata.get(&source)?.font_metadata,
+        )
+        .expect("canonical source metadata must remain writable as UFO");
         for (name, glyph) in &self.glyphs {
             for (id, preserved) in &glyph.layers {
                 if id.source == source {

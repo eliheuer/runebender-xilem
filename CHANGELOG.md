@@ -40,6 +40,7 @@ No release has been published yet.
 
 ### Changed
 
+- Moved source groups and exact fractional kerning into stable source-identified canonical metadata with atomic edits and UFO boundary rehydration.
 - Made Project own variable glyphs and their layers, with guarded UFO projections for existing editing tools and shared history.
 - Unified mapped-axis conversion and glyph-local interpolation behind Runebender-owned APIs using pinned Babelfont and fontdrasil adapters.
   Interpolation preserves fractional advances and kerning and varies anchors and component transforms.

@@ -5,10 +5,7 @@
 //! groups, glyph names and unicodes, and the structural signature
 //! interpolation compatibility is judged by.
 
-#[path = "canonical_metadata.rs"]
-pub mod canonical_metadata;
-
-pub use canonical_metadata::{
+pub use super::canonical_metadata::{
     CanonicalFontMetadata, CanonicalMetadataError, KerningParticipant, KerningSide,
 };
 

@@ -1275,6 +1275,14 @@ impl Project {
         self.variable.feature_text(source)
     }
 
+    /// Read one source's canonical group and kerning metadata.
+    pub fn document_font_metadata(
+        &self,
+        source: SourceId,
+    ) -> Option<&super::canonical_metadata::CanonicalFontMetadata> {
+        self.variable.font_metadata(source)
+    }
+
     /// Current canonical document revision used by derived compiler data.
     pub fn document_revision(&self) -> u64 {
         self.variable.revision
@@ -1409,6 +1417,13 @@ impl Project {
             .feature_text(source)
             .expect("committed metadata")
             .to_owned();
+        super::font_ops::write_canonical_metadata_to_ufo(
+            &mut self.masters[index].font,
+            self.variable
+                .font_metadata(source)
+                .expect("committed metadata"),
+        )
+        .expect("canonical source metadata must remain writable as UFO");
         self.masters[index].dirty = true;
         Ok(DocumentEditOutcome::Changed {
             revision: self.variable.revision,

@@ -74,7 +74,7 @@ that Runebender's maintainers have audited every third-party crate.
 
 The Project owns glyph-local layers, but existing Norad tools still use guarded full-source projections and paint caches.
 This duplicates some data and reconciles changes at the end of each scoped edit.
-Font-wide metadata remains in UFO preservation templates.
+Feature text, groups and exact fractional kerning have canonical ownership per source; other font-wide metadata remains in UFO preservation templates.
 Source authoring works inside existing continuous axes; importing another existing UFO, creating axes and extending their bounds still need UI workflows.
 Removal and reordering are guarded while live experiment branches retain source-index references.
 

@@ -133,7 +133,7 @@ Component decomposition resolves nested canonical layer shapes, rounds transform
 Editable hyperbezier kind is an explicit contour-preservation field rather than an inference from the current UFO identifier; copy, duplicate and decomposition assign fresh hyper-marked UFO identifiers without changing the contour kind.
 Stroke expansion, offset, extrusion and roughening consume canonical paths directly; replaced topology receives fresh identities and empty source metadata while untargeted contours, components and anchors retain their exact objects.
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
-Source-wide feature text has canonical ownership in `VariableData` and changes through `edit_document_source_metadata`; UFO templates no longer retain a second feature-text value.
+Source-wide feature text, groups and exact fractional kerning have canonical ownership in `VariableData` by stable `SourceId` and change through `edit_document_source_metadata`; UFO templates no longer retain second editable values for them.
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.
 `CanonicalLayerSnapshot` captures one opaque addressed layer with the same geometry and extensions; guarded restore compares the complete live state before replacing it, advances the revision once and refreshes the compatibility projection without recording legacy history.
 Auxiliary-layer copy and removal mutate canonical Babelfont layers and exact extensions first, then refresh only the affected compatibility projection.
