@@ -38,6 +38,12 @@ impl super::GlyphView<'_> {
 }
 
 impl CanonicalSourceStructureSnapshot {
+    pub(in crate::document) fn has_layer(&self, name: &str, layer: &super::LayerId) -> bool {
+        self.glyphs
+            .get(name)
+            .is_some_and(|glyph| glyph.layers.contains_key(layer))
+    }
+
     pub(in crate::document) fn font_metadata(
         &self,
         source: super::SourceId,

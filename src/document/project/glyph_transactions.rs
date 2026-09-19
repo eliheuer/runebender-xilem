@@ -51,6 +51,20 @@ impl Project {
         unicode: Option<u32>,
     ) -> Result<CanonicalGlyphTransaction, GlyphTransactionError> {
         let name = name.trim();
+        let base = self.variable.source_structure_snapshot();
+        let active_layer = self
+            .document_sources()
+            .nth(self.active)
+            .expect("active source exists")
+            .default_layer();
+        if name.is_empty() || base.has_layer(name, &active_layer) {
+            return Ok(CanonicalGlyphTransaction {
+                replacement: base.clone(),
+                base,
+                affected_layers: Vec::new(),
+                history: HistoryUpdate::None,
+            });
+        }
         let codepoint = match unicode {
             Some(value) => Some(char::from_u32(value).ok_or_else(|| {
                 GlyphTransactionError::Invalid(format!("invalid Unicode scalar U+{value:04X}"))
@@ -59,7 +73,6 @@ impl Project {
                 .then(|| name.chars().next())
                 .flatten(),
         };
-        let base = self.variable.source_structure_snapshot();
         let mut replacement = base.clone();
         let affected_layers = replacement
             .add_empty_glyph(name, width, codepoint)
@@ -77,7 +90,12 @@ impl Project {
         &self,
         source: &str,
     ) -> Result<(String, CanonicalGlyphTransaction), GlyphTransactionError> {
-        if self.document_glyph(source).is_none() {
+        let active_layer = self
+            .document_sources()
+            .nth(self.active)
+            .expect("active source exists")
+            .default_layer();
+        if self.document_layer(source, &active_layer).is_none() {
             return Err(GlyphTransactionError::Invalid(format!(
                 "missing glyph {source:?}"
             )));
@@ -113,10 +131,18 @@ impl Project {
     ) -> Result<(usize, Option<CanonicalGlyphTransaction>), GlyphTransactionError> {
         let base = self.variable.source_structure_snapshot();
         let mut replacement = base.clone();
+        let active_layer = self
+            .document_sources()
+            .nth(self.active)
+            .expect("active source exists")
+            .default_layer();
         let mut affected_layers = Vec::new();
         let mut added = 0;
         for (name, unicode) in targets {
             let name = name.trim();
+            if name.is_empty() || replacement.has_layer(name, &active_layer) {
+                continue;
+            }
             let codepoint = match unicode {
                 Some(value) => Some(char::from_u32(*value).ok_or_else(|| {
                     GlyphTransactionError::Invalid(format!("invalid Unicode scalar U+{value:04X}"))
@@ -490,6 +516,7 @@ mod tests {
             let mut sources = project.edit_sources();
             assert!(sources[1].remove_glyph("A"));
         }
+        project.active = 1;
         assert!(project.sources()[1].font.get_glyph("A").is_none());
         let revision = project.document_revision();
 
