@@ -2175,6 +2175,31 @@ The focused bake regression and all 66 variable-project tests passed established
 Warning-denied library/test Clippy passed, and the unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 Mask storage remains an opaque persisted-key boundary rather than a typed contour-identity extension, so M04's special-source ownership item remains open until that field moves and the M06 command uses this direct draft operation.
 
+### Guarded source image-resource insertion
+
+Evidence commit: `Install source images without mutable fonts` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Install source images without mutable fonts$' -1`.
+Affected paths: `src/document/variable.rs`, `src/document/project.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+`Project::install_document_source_image` validates a stable source, flat relative image path and PNG payload before changing document state.
+It installs or replaces the resource in the source-format preservation store, refreshes the compatibility projection needed during M13, marks the source dirty and advances the document revision exactly once.
+An identical resource is a no-op, while invalid paths and payloads preserve the document snapshot, revision and dirty state.
+The application can pair this operation with `LayerEditDraft::set_image` without obtaining a mutable source font.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project source_image_install_is_validated_and_saved_without_mutable_font_access -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --lib --tests --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused resource regression and all 68 variable-project tests passed valid insert, identical no-op, invalid path and payload rejection, canonical glyph attachment, staged save and reload with exact image bytes.
+Warning-denied library/test Clippy passed, and the unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+The long-lived UFO template remains tracked M13 debt; this operation narrows application mutation now and must be redirected to typed `SourceFormatData` when templates are removed.
+
 ### Imported-format publication safety
 
 Evidence commit: `Make imported font publication explicit` (the commit containing this substep).

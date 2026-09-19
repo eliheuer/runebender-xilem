@@ -523,6 +523,30 @@ impl VariableData {
         self.glyphs.get(name)?.source_metadata.get(&source)
     }
 
+    pub(super) fn install_source_image(
+        &mut self,
+        source: SourceId,
+        path: std::path::PathBuf,
+        bytes: Vec<u8>,
+    ) -> Result<bool, String> {
+        let template = self
+            .templates
+            .get_mut(&source)
+            .ok_or_else(|| "source does not exist".to_owned())?;
+        if let Some(current) = template.images.get(&path) {
+            let current = current.map_err(|error| error.to_string())?;
+            if current.as_ref() == bytes {
+                return Ok(false);
+            }
+        }
+        template
+            .images
+            .insert(path, bytes)
+            .map_err(|error| error.to_string())?;
+        self.revision = self.revision.wrapping_add(1);
+        Ok(true)
+    }
+
     pub(super) fn source_metadata_edit_draft(
         &self,
         source: SourceId,

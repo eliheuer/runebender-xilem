@@ -5900,6 +5900,88 @@ fn canonical_source_metadata_edits_are_atomic_and_round_trip_exactly() {
 }
 
 #[test]
+fn source_image_install_is_validated_and_saved_without_mutable_font_access() {
+    let scratch = Scratch::new();
+    let path = scratch.0.join("PlacedImage.ufo");
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(Glyph::new("A"));
+    font.save(&path).unwrap();
+    let mut project = Project::load(&path).unwrap();
+    let source = SourceId(0);
+    let layer = project.document_source(source).unwrap().default_layer();
+    let image_path = PathBuf::from("placed.png");
+    let bytes = include_bytes!("fixtures/variable/reference.png").to_vec();
+    let revision = project.document_revision();
+
+    assert!(
+        project
+            .install_document_source_image(source, image_path.clone(), bytes.clone())
+            .unwrap()
+    );
+    assert_eq!(project.document_revision(), revision.wrapping_add(1));
+    assert!(
+        !project
+            .install_document_source_image(source, image_path.clone(), bytes.clone())
+            .unwrap()
+    );
+    assert_eq!(project.document_revision(), revision.wrapping_add(1));
+    let snapshot = project.document_snapshot();
+    let dirty = project.sources()[0].dirty;
+    assert!(
+        project
+            .install_document_source_image(source, "nested/image.png".into(), bytes.clone())
+            .is_err()
+    );
+    assert!(
+        project
+            .install_document_source_image(source, "invalid.png".into(), vec![1, 2, 3])
+            .is_err()
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision.wrapping_add(1));
+    assert_eq!(project.sources()[0].dirty, dirty);
+
+    let placed = norad::Image::new(
+        image_path.clone(),
+        None,
+        norad::AffineTransform {
+            x_scale: 0.5,
+            y_scale: 0.5,
+            y_offset: -200.0,
+            ..norad::AffineTransform::default()
+        },
+    )
+    .unwrap();
+    project
+        .edit_document_layer("A", &layer, |draft| {
+            assert!(draft.set_image(Some(placed.clone())));
+            Ok(())
+        })
+        .unwrap();
+    project.save().unwrap();
+    let reloaded = Project::load(&path).unwrap();
+    let reloaded_source = reloaded.document_source(source).unwrap();
+    assert_eq!(
+        reloaded
+            .document_layer("A", &reloaded_source.default_layer())
+            .unwrap()
+            .image(),
+        Some(&placed)
+    );
+    assert_eq!(
+        reloaded
+            .source_snapshot(source)
+            .unwrap()
+            .images
+            .get(&image_path)
+            .unwrap()
+            .unwrap()
+            .as_ref(),
+        bytes
+    );
+}
+
+#[test]
 fn source_glyph_export_and_category_have_canonical_project_queries() {
     let mut font = Font::new();
     font.default_layer_mut().insert_glyph(Glyph::new("A"));

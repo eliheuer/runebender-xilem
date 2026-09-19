@@ -1602,6 +1602,39 @@ impl Project {
         self.variable.source_glyph_metadata(source, name)
     }
 
+    /// Install or replace one PNG resource in a stable source without exposing its UFO font.
+    ///
+    /// Invalid image paths or payloads leave the source-format preservation store, compatibility
+    /// projection, dirty state and document revision unchanged.
+    pub fn install_document_source_image(
+        &mut self,
+        source: SourceId,
+        path: PathBuf,
+        bytes: Vec<u8>,
+    ) -> Result<bool, String> {
+        let index = self
+            .source_index(source)
+            .ok_or_else(|| "source does not exist".to_owned())?;
+        let mut validation = norad::Font::new();
+        validation
+            .images
+            .insert(path.clone(), bytes.clone())
+            .map_err(|error| error.to_string())?;
+        if !self
+            .variable
+            .install_source_image(source, path.clone(), bytes.clone())?
+        {
+            return Ok(false);
+        }
+        self.masters[index]
+            .font
+            .images
+            .insert(path, bytes)
+            .expect("validated image remains valid for the compatibility projection");
+        self.masters[index].dirty = true;
+        Ok(true)
+    }
+
     /// Canonical axes, sources, instances, rules and sparse-source structure.
     pub fn document_designspace(&self) -> Option<&super::model::designspace::CanonicalDesignspace> {
         self.variable.designspace()
