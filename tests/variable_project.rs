@@ -2720,6 +2720,260 @@ fn canonical_quadratic_control_deletion_preserves_neighbor_segments() {
 }
 
 #[test]
+fn canonical_point_deletion_is_atomic_across_contours() {
+    let point = |x, y, typ| ContourPoint::new(x, y, typ, false, None, None);
+    let mut glyph = Glyph::new("atomic-delete");
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move),
+            point(100.0, 0.0, PointType::Line),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(f64::MAX, 100.0, PointType::OffCurve),
+            point(f64::MAX, 200.0, PointType::OffCurve),
+            point(0.0, 100.0, PointType::OffCurve),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project =
+        Project::from_source(Master::from_font(font, PathBuf::from("AtomicDelete.ufo")));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let ids: Vec<Vec<_>> = project
+        .document_layer("atomic-delete", &layer_id)
+        .unwrap()
+        .contours()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+
+    assert_eq!(
+        project
+            .edit_document_layer("atomic-delete", &layer_id, |draft| {
+                assert_eq!(
+                    draft.delete_points(&[ids[0][1], ids[1][0]]),
+                    Err(runebender::document::DocumentEditError::NonFinite)
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
+fn canonical_contour_reversal_preserves_identities_metadata_and_storage() {
+    use kurbo::Shape as _;
+
+    let scratch = Scratch::new();
+    let point = |x, y, typ, label: &str| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            typ,
+            typ == PointType::Curve || typ == PointType::QCurve,
+            Some(Name::new(label).unwrap()),
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        point.replace_lib(object_lib(label));
+        point
+    };
+    let mut first = Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move, "open-start"),
+            point(20.0, 60.0, PointType::OffCurve, "open-cubic-a"),
+            point(60.0, 60.0, PointType::OffCurve, "open-cubic-b"),
+            point(80.0, 0.0, PointType::Curve, "open-cubic-end"),
+            point(100.0, -40.0, PointType::OffCurve, "open-quad"),
+            point(120.0, 0.0, PointType::QCurve, "open-quad-end"),
+            point(160.0, 0.0, PointType::Line, "open-line-end"),
+        ],
+        Some(norad::Identifier::new("open-contour").unwrap()),
+    );
+    first.replace_lib(object_lib("open-contour"));
+    let mut second = Contour::new(
+        vec![
+            point(200.0, 0.0, PointType::Line, "closed-start"),
+            point(240.0, 80.0, PointType::OffCurve, "closed-cubic-a"),
+            point(300.0, 80.0, PointType::OffCurve, "closed-cubic-b"),
+            point(340.0, 0.0, PointType::Curve, "closed-cubic-end"),
+            point(300.0, -60.0, PointType::OffCurve, "closed-quad"),
+            point(240.0, -60.0, PointType::QCurve, "closed-quad-end"),
+        ],
+        Some(norad::Identifier::new("closed-contour").unwrap()),
+    );
+    second.replace_lib(object_lib("closed-contour"));
+    let mut third = Contour::new(
+        vec![
+            point(400.0, 0.0, PointType::OffCurve, "implied-a"),
+            point(450.0, 100.0, PointType::OffCurve, "implied-b"),
+            point(500.0, 0.0, PointType::OffCurve, "implied-c"),
+        ],
+        Some(norad::Identifier::new("implied-contour").unwrap()),
+    );
+    third.replace_lib(object_lib("implied-contour"));
+    let mut glyph = Glyph::new("reverse-contours");
+    glyph.contours = vec![first, second, third];
+    let source = glyph.clone();
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project = Project::from_source(Master::from_font(
+        font,
+        scratch.0.join("ReverseContours.ufo"),
+    ));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let original = project.document_snapshot();
+    let layer = project
+        .document_layer("reverse-contours", &layer_id)
+        .unwrap();
+    let contours: Vec<_> = layer.contours().collect();
+    let contour_ids: Vec<_> = contours.iter().map(|contour| contour.id()).collect();
+    let point_ids: Vec<Vec<_>> = contours
+        .iter()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+    let before_paths: Vec<_> = contours
+        .iter()
+        .map(|contour| runebender::outline::glyph_paths::ordinary_contour_to_bezpath(*contour))
+        .collect();
+
+    project
+        .edit_document_layer("reverse-contours", &layer_id, |draft| {
+            assert!(draft.reverse_contours(&[point_ids[0][2], point_ids[1][1]])?);
+            Ok(())
+        })
+        .unwrap();
+
+    let layer = project
+        .document_layer("reverse-contours", &layer_id)
+        .unwrap();
+    let reversed: Vec<_> = layer.contours().collect();
+    assert_eq!(
+        reversed
+            .iter()
+            .map(|contour| contour.id())
+            .collect::<Vec<_>>(),
+        contour_ids
+    );
+    assert_eq!(
+        reversed[0]
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        point_ids[0].iter().copied().rev().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        reversed[1]
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        std::iter::once(point_ids[1][0])
+            .chain(point_ids[1][1..].iter().copied().rev())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        reversed[2]
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        point_ids[2]
+    );
+    for index in 0..2 {
+        assert_eq!(
+            runebender::outline::glyph_paths::ordinary_contour_to_bezpath(reversed[index]),
+            before_paths[index].reverse_subpaths()
+        );
+    }
+    assert_eq!(
+        runebender::outline::glyph_paths::ordinary_contour_to_bezpath(reversed[2]),
+        before_paths[2]
+    );
+    let projected = project.glyph_layer("reverse-contours", &layer_id).unwrap();
+    for contour in &projected.contours {
+        let source_contour = source
+            .contours
+            .iter()
+            .find(|candidate| candidate.identifier() == contour.identifier())
+            .unwrap();
+        assert_eq!(contour.lib(), source_contour.lib());
+        for point in &contour.points {
+            let source_point = source_contour
+                .points
+                .iter()
+                .find(|candidate| candidate.name == point.name)
+                .unwrap();
+            assert_eq!(point.identifier(), source_point.identifier());
+            assert_eq!(point.lib(), source_point.lib());
+        }
+    }
+
+    project
+        .edit_document_layer("reverse-contours", &layer_id, |draft| {
+            assert!(draft.reverse_contours(&[point_ids[0][2], point_ids[1][1]])?);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(project.document_snapshot(), original);
+
+    project
+        .edit_document_layer("reverse-contours", &layer_id, |draft| {
+            assert!(draft.reverse_contours(&[])?);
+            Ok(())
+        })
+        .unwrap();
+    let reversed_all: Vec<_> = project
+        .document_layer("reverse-contours", &layer_id)
+        .unwrap()
+        .contours()
+        .collect();
+    for index in 0..2 {
+        assert_eq!(
+            runebender::outline::glyph_paths::ordinary_contour_to_bezpath(reversed_all[index]),
+            before_paths[index].reverse_subpaths()
+        );
+    }
+    let implied = runebender::outline::glyph_paths::ordinary_contour_to_bezpath(reversed_all[2]);
+    assert!((implied.area() + before_paths[2].area()).abs() < 1e-9);
+
+    project
+        .edit_document_layer("reverse-contours", &layer_id, |draft| {
+            assert!(draft.delete_points(&point_ids[2])?);
+            Ok(())
+        })
+        .unwrap();
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("reverse-contours", &layer_id, |draft| {
+                assert_eq!(
+                    draft.reverse_contours(&[point_ids[2][0]]),
+                    Err(runebender::document::DocumentEditError::MissingPoint(
+                        point_ids[2][0],
+                    ))
+                );
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);

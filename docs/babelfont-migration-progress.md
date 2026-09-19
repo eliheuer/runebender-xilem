@@ -1274,4 +1274,50 @@ The focused repository regressions, both independent-review tests and all 37 var
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
-The next M04 substep moves contour reversal onto canonical topology.
+### Multi-contour deletion atomicity correction
+
+Evidence commit: `Reverse contours in canonical layers` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Reverse contours in canonical layers$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+Independent review found that deletion could mutate an earlier contour before rejecting a nonfinite implied midpoint in a later contour.
+If the caller caught that method error inside the draft closure, the earlier mutation could commit.
+
+`LayerEditDraft::delete_points` now applies the complete deletion to a staged draft and replaces the caller's draft only after every affected contour succeeds.
+The repository regression and the independent review's exact reproducer select points in two contours, force midpoint overflow in the second and require the caught error to leave the snapshot, revision and identities unchanged.
+The review's exhaustive companion coverage also passes all 28 nonempty control-selection subsets across an open three-control chain and every rotation of a three-control all-off-curve contour.
+
+### Canonical contour-reversal substep
+
+Evidence commit: `Reverse contours in canonical layers` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Reverse contours in canonical layers$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+`LayerEditDraft::reverse_contours` now reverses selected or all contours directly in canonical Babelfont geometry.
+It reorders existing point objects and transfers each incoming segment role to the correct reversed endpoint without changing point, contour or metadata ownership.
+Open contours move the `Move` role to the new start, while closed contours retain their first stored point and restore the exact original storage after a second reversal.
+Closed all-off-curve contours reverse without being expanded into explicit endpoints or cubic segments.
+
+The integration oracle covers selected open and closed mixed-segment contours, an unselected all-off-curve contour, empty-selection reversal, stable selection identities, exact source metadata and caught missing-point rejection.
+It requires reversed Kurbo geometry for stored-endpoint contours, opposite signed area for the all-off-curve contour and exact canonical snapshot restoration after a second reversal.
+Contour reversal is complete within M04's first checklist item.
+Split/join and copy/paste remain, so the item stays open.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_point_deletion_is_atomic_across_contours -- --exact --test-threads=1
+cargo test --locked --test variable_project canonical_contour_reversal_preserves_identities_metadata_and_storage -- --exact --test-threads=1
+/private/tmp/runebender-migration-review.porJgX/deletion_transaction_review_fixed --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused repository regressions, both independent-review tests and all 39 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep moves split and join operations onto canonical topology.

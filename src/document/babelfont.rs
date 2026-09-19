@@ -1130,6 +1130,15 @@ impl LayerEditDraft {
     /// implied endpoints and replaces only its segment with a line. Contours without a surviving
     /// segment are removed. Returns whether any topology changed.
     pub fn delete_points(&mut self, selected: &[PointId]) -> Result<bool, DocumentEditError> {
+        let mut staged = self.clone();
+        let changed = staged.delete_points_in_place(selected)?;
+        if changed {
+            *self = staged;
+        }
+        Ok(changed)
+    }
+
+    fn delete_points_in_place(&mut self, selected: &[PointId]) -> Result<bool, DocumentEditError> {
         if selected.is_empty() {
             return Ok(false);
         }
@@ -1299,6 +1308,46 @@ impl LayerEditDraft {
             path.nodes = nodes;
             preserved.points = points;
             shape_index += 1;
+        }
+        Ok(changed)
+    }
+
+    /// Reverse every contour containing a selected point while retaining object identities.
+    ///
+    /// An empty selection reverses every nonempty contour. Closed contours retain their first
+    /// stored point so two reversals restore the exact canonical storage order. Returns whether
+    /// any topology changed.
+    pub fn reverse_contours(&mut self, selected: &[PointId]) -> Result<bool, DocumentEditError> {
+        for id in selected {
+            if self.node(*id).is_none() {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+        }
+        let selected: HashSet<_> = selected.iter().map(|id| id.0).collect();
+        let reverse_all = selected.is_empty();
+        let mut changed = false;
+        for shape in &mut self.layer.shapes {
+            let Shape::Path(path) = shape else {
+                continue;
+            };
+            if path.nodes.is_empty()
+                || (!reverse_all
+                    && !path.nodes.iter().any(|node| {
+                        read_id(&node.format_specific).is_some_and(|id| selected.contains(&id))
+                    }))
+            {
+                continue;
+            }
+            let contour_id =
+                ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+            let preserved = self
+                .preserved
+                .contours
+                .iter_mut()
+                .find(|candidate| candidate.id == contour_id)
+                .expect("canonical contour preservation");
+            reverse_contour(path, preserved);
+            changed |= path.nodes.len() > 1;
         }
         Ok(changed)
     }
@@ -2090,6 +2139,46 @@ fn new_document_point(
             },
         },
     )
+}
+
+fn reverse_contour(path: &mut babelfont::Path, preserved: &mut PreservedContour) {
+    debug_assert_eq!(
+        path.nodes.len(),
+        preserved.points.len(),
+        "canonical nodes and preserved point records stay aligned"
+    );
+    let first_id = path
+        .closed
+        .then(|| read_id(&path.nodes[0].format_specific).expect("canonical point identity"));
+    path.nodes.reverse();
+    preserved.points.reverse();
+    if let Some(first_id) = first_id {
+        let offset = path
+            .nodes
+            .iter()
+            .position(|node| read_id(&node.format_specific) == Some(first_id))
+            .expect("closed contour retained its first point");
+        path.nodes.rotate_left(offset);
+        preserved.points.rotate_left(offset);
+    }
+
+    let on_curve: Vec<_> = path
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| (node.nodetype != NodeType::OffCurve).then_some(index))
+        .collect();
+    let old_types: Vec<_> = on_curve
+        .iter()
+        .map(|index| path.nodes[*index].nodetype)
+        .collect();
+    for (position, index) in on_curve.into_iter().enumerate() {
+        path.nodes[index].nodetype = if !path.closed && position == 0 {
+            NodeType::Move
+        } else {
+            old_types[(position + old_types.len() - 1) % old_types.len()]
+        };
+    }
 }
 
 fn materialize_deleted_quadratic_controls(
