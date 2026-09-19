@@ -1,7 +1,12 @@
 # Design
 
-Runebender is a dense working tool. Its interface should keep the glyph primary,
-make state legible without decoration, and remain stable while values change.
+Runebender's goal is to be the best possible font editor for Eli's tastes and type-design work.
+Features, interactions and architecture should earn their place by improving that experience.
+Counterpunch, Fontra and other editors provide useful references to evaluate; matching their feature lists or copying their designs is not the product goal.
+A Rust implementation and first-class UFO/Designspace support are deliberate choices in service of that goal.
+
+Runebender is a dense working tool.
+Its interface should keep the glyph primary, make state legible without decoration, and remain stable while values change.
 
 ## Name the role
 

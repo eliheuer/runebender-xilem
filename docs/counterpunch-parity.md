@@ -1,8 +1,10 @@
-# Counterpunch capability target
+# Counterpunch and Fontra capability comparison
 
-Runebender's target is Counterpunch's font-editing capability with a Rust implementation and first-class UFO/Designspace source editing.
-Counterpunch is the primary reference for the computational pipeline; Fontra remains a useful reference for glyph-local sources and layers.
-This target is not a claim that every feature already has parity.
+Runebender's goal is to be the best possible font editor for Eli's tastes and type-design work, as described in [Design](../DESIGN.md).
+This comparison helps evaluate useful capabilities and identify limitations that could affect that work.
+Counterpunch provides references for live compilation and source authoring; Fontra provides references for glyph-local sources and layers.
+Each idea needs an independent reason to belong in Runebender, based on workflow, correctness, responsiveness and source preservation.
+Differences listed here are evidence for product decisions, not an automatic requirement to reproduce another editor's features or architecture.
 
 ## Current scope
 

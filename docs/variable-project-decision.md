@@ -46,9 +46,12 @@ The selected core disables defaults and enables `types`, `glyphs` and `fontir`: 
 These are blockers to using that converter as authoritative editable storage.
 `cargo test --test babelfont_contract --locked` reproduces precision and fractional-kerning limitations against the actual pinned dependency.
 
-Use Counterpunch as the primary capability benchmark: Babelfont geometry, live compilation, shaped variable previews and interpolated source creation.
+Evaluate these choices against Runebender's goal of being the best possible font editor for Eli's tastes and type-design work.
+Counterpunch and Fontra provide technical references, while Runebender's workflow and source-preservation needs determine the design.
+Live compilation makes previews reflect the font being edited, shaped variable previews expose positioning and substitution behavior, and interpolated source creation supports further design work.
+Those benefits justify the capabilities independently of their presence in another editor.
 Runebender keeps those operations in Rust and treats UFO/Designspace as editable source formats.
-The difference in persistence must not be used to justify a weaker computational pipeline.
+Babelfont geometry and the preserving Norad adapter are implementation choices to assess on correctness, fidelity and maintainability, not requirements to match Counterpunch's architecture.
 
 ## Implemented boundary
 
