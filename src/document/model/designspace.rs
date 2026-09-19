@@ -926,21 +926,17 @@ impl CanonicalDesignspace {
         if current == display_index {
             return Ok(false);
         }
-        let current_order_index = self
+        let mut reordered = current_order;
+        let moved = reordered.remove(current);
+        reordered.insert(display_index, moved);
+        for (entry, source) in self
             .source_order
-            .iter()
-            .position(|entry| *entry == SourceOrderEntry::Full(id))
-            .expect("full source order contains live source");
-        let target_order_index = self
-            .source_order
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| matches!(entry, SourceOrderEntry::Full(_)))
-            .nth(display_index)
-            .map(|(index, _)| index)
-            .expect("validated display index");
-        self.source_order
-            .swap(current_order_index, target_order_index);
+            .iter_mut()
+            .filter(|entry| matches!(entry, SourceOrderEntry::Full(_)))
+            .zip(reordered)
+        {
+            *entry = SourceOrderEntry::Full(source);
+        }
         self.reorder_source_storage();
         Ok(true)
     }

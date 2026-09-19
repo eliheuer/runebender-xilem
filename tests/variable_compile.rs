@@ -434,6 +434,97 @@ fn canonical_source_metadata_transaction_is_atomic_and_invalidates_compile() {
 }
 
 #[test]
+fn source_structure_history_invalidates_compiled_preview() {
+    let mut project = project();
+    let initial = project.compiled_preview().unwrap();
+    let original_order: Vec<_> = project
+        .compiler_structure()
+        .unwrap()
+        .sources
+        .iter()
+        .map(|source| source.id())
+        .collect();
+    assert_eq!(original_order, vec![SourceId(0), SourceId(1)]);
+
+    let location = std::collections::HashMap::from([("Weight".into(), 0.5)]);
+    let added = project
+        .add_interpolated_source("Medium", "M09Medium.ufo", &location)
+        .unwrap();
+    let after_add = project.compiled_preview().unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&initial, &after_add));
+    assert_eq!(
+        project
+            .compiler_structure()
+            .unwrap()
+            .sources
+            .iter()
+            .map(|source| source.id())
+            .collect::<Vec<_>>(),
+        vec![SourceId(0), SourceId(1), added]
+    );
+
+    assert!(project.move_source(added, 0).unwrap());
+    let after_move = project.compiled_preview().unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&after_add, &after_move));
+    assert_eq!(
+        project
+            .compiler_structure()
+            .unwrap()
+            .sources
+            .iter()
+            .map(|source| source.id())
+            .collect::<Vec<_>>(),
+        vec![added, SourceId(0), SourceId(1)]
+    );
+
+    assert!(project.undo_sources(false).unwrap());
+    let after_move_undo = project.compiled_preview().unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&after_move, &after_move_undo));
+    assert_eq!(
+        project
+            .compiler_structure()
+            .unwrap()
+            .sources
+            .iter()
+            .map(|source| source.id())
+            .collect::<Vec<_>>(),
+        vec![SourceId(0), SourceId(1), added]
+    );
+
+    assert!(project.undo_sources(false).unwrap());
+    let after_add_undo = project.compiled_preview().unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&after_move_undo, &after_add_undo));
+    assert_eq!(
+        project
+            .compiler_structure()
+            .unwrap()
+            .sources
+            .iter()
+            .map(|source| source.id())
+            .collect::<Vec<_>>(),
+        original_order
+    );
+    assert_eq!(after_add_undo.bytes, initial.bytes);
+
+    assert!(project.undo_sources(true).unwrap());
+    let after_add_redo = project.compiled_preview().unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&after_add_undo, &after_add_redo));
+    assert!(project.undo_sources(true).unwrap());
+    let after_move_redo = project.compiled_preview().unwrap();
+    assert!(!std::sync::Arc::ptr_eq(&after_add_redo, &after_move_redo));
+    assert_eq!(
+        project
+            .compiler_structure()
+            .unwrap()
+            .sources
+            .iter()
+            .map(|source| source.id())
+            .collect::<Vec<_>>(),
+        vec![added, SourceId(0), SourceId(1)]
+    );
+}
+
+#[test]
 fn shared_feature_edits_and_variable_drafts_do_not_depend_on_selected_master() {
     let mut project = project();
     let other_features = project.sources()[1].font.features.clone();
