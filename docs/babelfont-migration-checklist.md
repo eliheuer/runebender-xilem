@@ -2,7 +2,7 @@
 
 Audit date: 2026-09-18.
 Audited implementation: `6350cf3`, including the pipeline implementation at `5cbf51b`.
-Status: **IN PROGRESS — M00–M03 complete; M04 active**.
+Status: **IN PROGRESS — M00–M03 complete; M04 and later cutovers active**.
 This document is the implementation checklist and handoff for the active integration task and its bounded parallel lanes.
 The active integration checkout is `/Users/eli/.codex/worktrees/f236/runebender-xilem` on branch `codex/babelfont-integration`.
 The earlier continuation worktree and branch remain preserved for review.
@@ -137,7 +137,10 @@ M10 may add a narrow explicit boundary codec when the external proposal contract
 M10 is specifically authorized to add `document/babelfont/proposal_edit.rs` and the single `mod proposal_edit;` declaration needed to compile it; no other shared-parent edits are transferred.
 The M11 document/headless lane reuses task `01a0ba27-44fc-7243-a672-aacc3e5b05de` and owns `document/nodes_run.rs`, `analysis/`, dedicated tests and `docs/babelfont-headless-progress.md`.
 It retains `history.rs` and `sources.rs` only for review or integration corrections to its completed M05 cutover; M06 continues to own all application CLI adapters.
+M11 is narrowly authorized to add `document/variable/source_builder.rs`, optional `document/project/source_builder.rs`, their parent declarations and the existing `sources.rs` caller needed to replace the legacy new-source clone path.
 The integration lane retains M04 special-source extensions and alone integrates returned commits.
+M07 is narrowly authorized to add `document/project/glyph_transactions.rs`, `document/variable/glyph_transactions.rs` and `document/babelfont/glyph_transactions.rs`, their parent module declarations, and the directly required stable `GlyphId` field, import and initialization sites in `variable.rs`.
+That exception covers only the atomic whole-glyph lifecycle and its canonical constructors, identity propagation and tests.
 Worker lanes request narrow shared-model APIs from this lane and return exact reviewed commits for integration.
 No lane edits another lane's owned files, merges into main, pushes or weakens the acceptance criteria.
 Shared Clippy, documentation and broader suites run at coherent integration checkpoints after focused lane checks.
@@ -146,13 +149,14 @@ Shared Clippy, documentation and broader suites run at coherent integration chec
 
 | Work | Current state | Next concrete dependency |
 |---|---|---|
+| M01 glyph identity | Complete through `15f065b` and `b2498c8`: stable glyph identity now joins the accepted source, layer, contour, point, component and anchor identities. | Keep the stable identity APIs intact while later caller cutovers remove compatibility projections. |
 | M04 canonical topology and cleanup | Direct curve conversion and handle cleanup are integrated through `2b15baa`; the independent quadratic-chain correction passes. | Finish special editable-source preservation and the remaining selection/metadata acceptance before checking M04 complete. |
 | M05 history and structural replay | Canonical layer/source snapshots and Project-owned history foundations exist; the lane is validating interleaved source operations. | Return a reviewed commit that passes both Project-level and host-command replay regressions. |
 | M06 application cutover | Canonical font-info, source-comparison geometry, production session metrics and stable top-level component resolution are integrated. | Consume the component resolver, then move Session mutation/history and remaining view readers off Norad. |
-| M07 metadata | Typed source, layer and component metadata foundations are integrated. | Continue composition, alignment and feature algorithms while the integration lane supplies the atomic whole-glyph Project transaction. |
-| M08/M09 pipeline | Canonical interpolation, compiler metadata and Designspace structure foundations are integrated. | Correct compiler feature-include rooting to the resolved source path, then remove the final interpolation output adapter and execute invalidation/export acceptance. |
-| M10 proposals and versions | Newly assigned to the former curve lane with one bounded canonical proposal-edit child authorized. | Use stable IDs, opaque layer snapshots and guarded Project commits; its current experiment design does not require a whole-Project clone. |
-| M11 headless and analysis | Assigned to the completed history/source lane for actual `nodes_run` and analysis caller migration. | Preserve schemas, source choice and errors while routing operations through canonical Project APIs; M06 retains application CLI. |
+| M07 metadata | Composition, alignment, feature planning, smart-component codecs and atomic whole-glyph lifecycle are integrated; `5cfe3a9` also stabilizes component identity on the first alignment edit. | Finish the remaining metadata callers and validate source save/reload without unrelated changes. |
+| M08/M09 pipeline | Canonical interpolation, compiler metadata, Designspace structure and the complete typed special-outline renderer are integrated through `3a44690`. | Finish interpolated-source installation, compiler/export acceptance and the remaining mapped/sparse source matrix. |
+| M10 proposals and versions | Canonical proposal batches and isolated versions are integrated through `9ae2bc4`; the last proposal layer is removed across save/reopen and live nodes refuse missing stable source bindings. | Replace the remaining internal canonical-to-Norad proposal replacement round trip with direct canonical selective installation, then remove superseded compatibility callers during M13. |
+| M11 headless and analysis | Canonical feature generation, proposal installation and source comparison are integrated through `d5ece36`; the headless Nodes suite passes six tests. | Finish proof/analysis callers once the full special-source renderer is integrated; M06 retains application CLI. |
 | M12 adapters and constructors | Not yet complete. | Reassign a finished lane after its current acceptance is integrated; keep constructor work behind the same canonical Project APIs. |
 | M13/M14 removal and final proof | Blocked by remaining caller cutovers. | Remove compatibility state only after callers land, then reserve one coherent final native/browser/preservation/clean-checkout proof. |
 
@@ -185,7 +189,7 @@ Start in: `document/variable.rs`, `document/babelfont.rs`, `document/model/entit
 
 - [x] Write the field-ownership contract for geometry, width/height, raw affine matrices, fractional kerning/metrics, Unicode, names, categories, guides, images, notes, libs, source/instance metadata and format-specific extensions.
 - [x] Introduce typed exact-value/metadata extensions without complete Norad glyph/font copies; maintain one authoritative editable value for each field.
-- [x] Define identity and mapping rules for sources, layers, glyphs, contours, points, components and anchors, including rename, copy/paste, deletion, reorder and undo.
+- [x] Implement the defined identity and mapping rules for sources, layers, glyphs, contours, points, components and anchors, including rename, copy/paste, deletion, reorder and undo.
 - [x] Replace index-based preservation matching with the identity-aware design before enabling direct topology edits.
 - [x] Add round-trip fixtures for two widths that narrow to the same `f32`, fractional kerning, six-coefficient transforms, identifiers, per-object libs, guides, images and unknown metadata.
 

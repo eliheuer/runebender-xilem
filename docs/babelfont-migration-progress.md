@@ -1,6 +1,6 @@
 # Babelfont migration progress
 
-Status: **IN PROGRESS — M00–M03 complete; M04 active**.
+Status: **IN PROGRESS — M00–M03 complete; M04 and later cutovers active**.
 The definition of complete and milestone dependencies remain in [the checklist](babelfont-migration-checklist.md).
 Canonical queries, layer and source-metadata edits, snapshots and auxiliary-layer structure now operate on Babelfont plus typed extensions.
 The remaining migration milestones still own ordinary topology tools, history replacement, application callers, broader metadata, interpolation, compilation, experiments and removal of compatibility state.
@@ -20,7 +20,7 @@ The earlier worktree and its branch remain preserved for review.
 
 ### Active integration checkpoint
 
-The current integration series owns canonical Designspace structure, guarded Designspace source transactions, direct font-information and source-comparison reads, direct curve conversion and handle cleanup, typed component alignment and typed glyph-layer metadata.
+The current integration series owns canonical Designspace structure, guarded Designspace source transactions, direct font-information and source-comparison reads, direct curve conversion and handle cleanup, typed component alignment, typed glyph-layer metadata and canonical proposal/version state.
 It also preserves auxiliary history across source restore and invalidates metric-dependent application state when metadata history replays.
 Component alignment, mark color, metrics keys and formulas, metaball payloads and related source metadata now have typed canonical ownership while UFO keys are rehydrated only at projection boundaries.
 
@@ -30,6 +30,42 @@ The dedicated canonical handle-cleanup suite passes 11 tests, and the complete v
 
 M04 remains active because the central checklist still includes special editable-source preservation and complete selection and metadata acceptance.
 M05 remains active in its owned history lane; the Project-level Designspace transaction hooks are foundations rather than a completion claim.
+
+The 2026-09-19 identity audit reopened one M01 substep because `VariableGlyph` did not yet store the stable `GlyphId` promised by the field-ownership contract.
+Evidence commits `15f065b`, `b2498c8`, `f8a31da`, `6f2ddce` and `14accbe` close that gap with stable glyph identity, atomic whole-glyph add, duplicate, rename and removal transactions, fresh copied object identities and typed smart-metadata initialization.
+The follow-up proof covers filling a missing source layer without replacing `GlyphId`, preserves active-source command eligibility and retains the established invalid-Unicode fallback for one-character glyph names.
+All 10 focused lifecycle tests, the smart-component identity regression and warning-denied library/test Clippy pass on the integrated branch.
+
+### Canonical smart metadata, rendering and re-interpolation checkpoint
+
+Evidence commit: `0e6b147` (`Own smart metadata and reinterpolation canonically`).
+
+Smart-component axes, stable-`ComponentId` values and pole selections now have one typed owner outside the opaque glyph lib.
+Import removes each valid known key from the residual lib, projection writes it once in current component order, component removal drops its values, and copied or reconciled layers rebind entries to their fresh or retained stable identities.
+The focused storage regression and all seven codec tests pass.
+
+Canonical re-interpolation now installs contours and exact width as one guarded layer transaction, preserves other layer fields, records one Project-owned history step, and constructs no UFO glyph.
+The focused Virtua Grotesk re-interpolation and undo regression passes.
+
+Hyperbezier rendering is integrated through `e7fbedc`, exact accumulated component-affine rendering through `656a434`, and the integration correction plus selected-layer to same-source-default fallback are included in `0e6b147`.
+Evidence commits `8713aa0`, `7d34a07` and `3a44690` add typed metaball and one-axis or two-axis smart-component rendering, route `Project::document_layer_path` through it with same-source pole collection and apply the same explicit recursion bound to ordinary and smart paths.
+All 10 focused renderer tests and all five matched component-graph integration tests pass, including nested metaballs, bilinear smart poles, full affine accumulation, selected-layer fallback, nonfinite rejection and the generated depth-limit chain.
+
+### Canonical proposals, versions and headless callers
+
+Evidence commits: `42850df`, `8f300a2`, `7d4bd9b`, `d5ece36` and `9ae2bc4`.
+
+Proposal batches, review layers, installation, isolated experimental versions, live tools and Nodes-live routing now use canonical layer snapshots and stable source/layer identities.
+Invalid task names and invalid later glyphs reject before publication or revision changes.
+Installing or discarding the final proposal glyph now removes its empty auxiliary-layer container from canonical storage and the compatibility projection, with save/reopen proof.
+Live Nodes refuse an absent source binding and never silently retarget after source removal.
+Focused evidence passes 10 proposal-batch tests, seven experiment tests, five live tests and five Nodes-live tests.
+
+Headless proposal installation and source comparison now call the same canonical Project operations as the editor.
+The headless Nodes suite passes six tests, including exact shifted-geometry comparison behavior.
+
+The internal selective proposal replacement still round-trips through a Norad glyph before canonical reconciliation.
+M10 owns replacing that internal editing path with a direct canonical replacement while retaining the explicit external proposal serialization contract and revision-token meaning.
 
 ### Stable canonical component-resolution boundary
 
