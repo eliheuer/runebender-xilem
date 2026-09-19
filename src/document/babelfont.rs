@@ -22,6 +22,7 @@ use super::model::glyph_metadata::{
     COMPOSITION_RECIPE_KEY, ComponentAlignment, LEFT_METRICS_KEY, MARK_COLOR_KEY, METABALLS_KEY,
     MarkColor, Metaballs, MetricsFormula, RIGHT_METRICS_KEY, parse_metrics_key,
 };
+use super::model::hoi::HoiIntermediates;
 use super::model::smart_components::{
     SmartComponentAxes, SmartComponentPole, SmartComponentValues,
 };
@@ -126,6 +127,7 @@ pub(super) struct LayerPreservation {
     smart_component_axes: Option<SmartComponentAxes>,
     smart_component_values: Option<SmartComponentValues<ComponentId>>,
     smart_component_pole: Option<SmartComponentPole>,
+    hoi_intermediates: Option<HoiIntermediates>,
     contours: Vec<PreservedContour>,
     components: Vec<PreservedComponent>,
     anchors: Vec<PreservedAnchor>,
@@ -393,6 +395,11 @@ impl<'a> LayerView<'a> {
     /// Pole selection metadata attached to this source layer.
     pub fn smart_component_pole(self) -> Option<&'a SmartComponentPole> {
         self.preserved.smart_component_pole.as_ref()
+    }
+
+    /// Typed HOI intermediate points attached to this source layer.
+    pub fn hoi_intermediates(self) -> Option<&'a HoiIntermediates> {
+        self.preserved.hoi_intermediates.as_ref()
     }
 
     /// Unicode scalar values attached to this glyph layer.
@@ -753,6 +760,7 @@ impl LayerEditDraft {
             || self.preserved.smart_component_axes != preserved.smart_component_axes
             || self.preserved.smart_component_values != preserved.smart_component_values
             || self.preserved.smart_component_pole != preserved.smart_component_pole
+            || self.preserved.hoi_intermediates != preserved.hoi_intermediates
             || self.preserved.contours != preserved.contours
             || self
                 .preserved
@@ -3796,6 +3804,16 @@ impl LayerEditDraft {
         Ok(true)
     }
 
+    /// Replace typed HOI intermediate points without materializing a UFO glyph.
+    pub fn set_hoi_intermediates(&mut self, points: HoiIntermediates) -> bool {
+        let replacement = (!points.is_empty()).then_some(points);
+        if self.preserved.hoi_intermediates == replacement {
+            return false;
+        }
+        self.preserved.hoi_intermediates = replacement;
+        true
+    }
+
     fn node_mut(&mut self, id: PointId) -> Option<&mut Node> {
         self.layer
             .shapes
@@ -4265,6 +4283,7 @@ pub(super) fn layer_from_ufo(
         .expect("UFO smart-component values must satisfy the canonical metadata contract");
     let smart_component_pole = SmartComponentPole::take_from_lib(&mut lib)
         .expect("UFO smart-component poles must satisfy the canonical metadata contract");
+    let hoi_intermediates = HoiIntermediates::take_from_lib(&mut lib);
     (
         layer,
         LayerPreservation {
@@ -4284,6 +4303,7 @@ pub(super) fn layer_from_ufo(
             smart_component_axes,
             smart_component_values,
             smart_component_pole,
+            hoi_intermediates,
             contours,
             components,
             anchors,
@@ -4603,6 +4623,9 @@ pub(super) fn project_layer(layer: &Layer, preserved: &LayerPreservation) -> nor
     }
     if let Some(pole) = &preserved.smart_component_pole {
         pole.write_to_lib(&mut glyph.lib);
+    }
+    if let Some(points) = &preserved.hoi_intermediates {
+        points.write_to_lib(&mut glyph.lib);
     }
     if layer.width != preserved.width as f32 {
         glyph.width = f64::from(layer.width);

@@ -318,7 +318,7 @@ pub fn write_annotations(glyph: &mut norad::Glyph, notes: &[Annotation]) {
 /// design coordinates, keyed `"contour,point"`. The key is the
 /// source of truth for re-editing; compilers consume the baked
 /// brace layers.
-pub const HOI_INTERMEDIATE_KEY: &str = "com.runebender.hoiIntermediate";
+pub use crate::document::model::hoi::HOI_INTERMEDIATE_KEY;
 
 /// Reads HOI intermediate points from the glyph lib, keyed by `(contour, point)` index, as absolute design coordinates.
 pub fn read_hoi_intermediates(
@@ -327,18 +327,8 @@ pub fn read_hoi_intermediates(
     glyph
         .lib
         .get(HOI_INTERMEDIATE_KEY)
-        .and_then(|v| v.as_dictionary())
-        .map(|dict| {
-            dict.iter()
-                .filter_map(|(key, value)| {
-                    let (c, p) = key.split_once(',')?;
-                    let arr = value.as_array()?;
-                    let x = arr.first()?.as_real()?;
-                    let y = arr.get(1)?.as_real()?;
-                    Some(((c.parse().ok()?, p.parse().ok()?), (x, y)))
-                })
-                .collect()
-        })
+        .and_then(|value| crate::document::model::hoi::HoiIntermediates::from_plist(value).ok())
+        .map(|value| value.points().collect())
         .unwrap_or_default()
 }
 
@@ -347,20 +337,11 @@ pub fn write_hoi_intermediates(
     glyph: &mut norad::Glyph,
     map: &std::collections::HashMap<(usize, usize), (f64, f64)>,
 ) {
-    if map.is_empty() {
-        glyph.lib.remove(HOI_INTERMEDIATE_KEY);
-        return;
-    }
-    let mut dict = plist::Dictionary::new();
-    for ((c, p), (x, y)) in map {
-        dict.insert(
-            format!("{c},{p}"),
-            plist::Value::Array(vec![plist::Value::Real(*x), plist::Value::Real(*y)]),
-        );
-    }
-    glyph
-        .lib
-        .insert(HOI_INTERMEDIATE_KEY.into(), plist::Value::Dictionary(dict));
+    crate::document::model::hoi::HoiIntermediates::from_points(
+        map.iter().map(|(index, point)| (*index, *point)),
+    )
+    .expect("HOI source points must be finite")
+    .write_to_lib(&mut glyph.lib);
 }
 
 /// Quadratic through Q at the middle: position at `t` between `a`

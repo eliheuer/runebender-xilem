@@ -23,7 +23,7 @@ use super::variable::{
 };
 use crate::document::var_model::{Location, VariationModel};
 use crate::formats::binary_import::import_binary_font;
-use crate::formats::lib_keys::{hoi_quad_at, read_hoi_intermediates};
+use crate::formats::lib_keys::hoi_quad_at;
 
 #[path = "project/glyph_transactions.rs"]
 mod glyph_transactions;
@@ -1181,11 +1181,9 @@ impl Project {
                         .iter()
                         .find(|source| source.id() == lo)
                 })
-                .and_then(|source| self.glyph_layer(glyph_name, &source.default_layer))
-                .as_ref()
-                .map(read_hoi_intermediates)
-                .unwrap_or_default();
-            if !curves.is_empty() {
+                .and_then(|source| self.document_layer(glyph_name, &source.default_layer))
+                .and_then(super::LayerView::hoi_intermediates);
+            if let Some(curves) = curves.filter(|curves| !curves.is_empty()) {
                 let normalized = location.get(&axis.coordinates.name).copied().unwrap_or(0.0);
                 let design = crate::document::var_model::denormalize_value(
                     normalized,
@@ -1207,7 +1205,7 @@ impl Project {
                         .and_then(|source| self.document_layer(glyph_name, &source.default_layer))
                 };
                 if let (Some(a_layer), Some(b_layer)) = (endpoint_layer(lo), endpoint_layer(hi)) {
-                    for (&(ci, pi), &q) in &curves {
+                    for ((ci, pi), q) in curves.points() {
                         let (Some(pa), Some(pb)) = (
                             a_layer
                                 .contours()
@@ -2332,7 +2330,7 @@ impl Project {
 mod tests {
     use super::*;
     use crate::analysis::measure::joining_band;
-    use crate::formats::lib_keys::write_hoi_intermediates;
+    use crate::document::model::hoi::HoiIntermediates;
     use crate::formats::metrics_keys::{read_metrics_key, write_metrics_key};
     use crate::testing::fonts;
 
@@ -2581,13 +2579,14 @@ mod tests {
             (p.x, p.y)
         };
         let q = ((a.0 + b.0) / 2.0 + 80.0, (a.1 + b.1) / 2.0 + 40.0);
-        {
-            let mut sources = project.edit_sources();
-            let g = sources[lo].font.get_glyph_mut(name).unwrap();
-            let mut map = HashMap::new();
-            map.insert((0_usize, 0_usize), q);
-            write_hoi_intermediates(g, &map);
-        }
+        let source = project.source_id(lo).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        project
+            .edit_document_layer(name, &layer, |draft| {
+                draft.set_hoi_intermediates(HoiIntermediates::from_points([((0, 0), q)]).unwrap());
+                Ok(())
+            })
+            .unwrap();
         let at = |project: &Project, design: f64| {
             let mut location = Location::new();
             location.insert(
