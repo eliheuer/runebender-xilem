@@ -3,9 +3,36 @@
 
 //! Regression coverage for exact canonical font-info values and their UFO boundary.
 
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use runebender::document::model::font_info::{
     CanonicalFontInfo, CanonicalFontInfoError, OpenTypeWidthClass, clear_canonical_font_info_fields,
 };
+use runebender::document::project::{DocumentEditOutcome, Project};
+use runebender::document::variable::SourceId;
+
+static SCRATCH_ID: AtomicUsize = AtomicUsize::new(0);
+
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new() -> Self {
+        let id = SCRATCH_ID.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "runebender-canonical-font-info-{}-{id}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 fn populated_font_info() -> norad::FontInfo {
     let mut info = norad::FontInfo {
@@ -141,4 +168,78 @@ fn editor_metric_defaults_are_resolved_without_becoming_stored_values() {
     );
     assert_eq!(metrics.units_per_em, None);
     assert_eq!(metrics.ascender, None);
+}
+
+#[test]
+fn project_owns_font_info_and_preserves_unowned_fields_through_save() {
+    let scratch = Scratch::new();
+    let path = scratch.0.join("FontInfo.ufo");
+    let mut source = norad::Font::new();
+    source.font_info = populated_font_info();
+    source.save(&path).unwrap();
+
+    let mut project = Project::load(&path).unwrap();
+    let source_id = SourceId(0);
+    let original = CanonicalFontInfo::from_ufo(&source.font_info).unwrap();
+    assert_eq!(project.document_font_info(source_id), Some(&original));
+    assert_eq!(
+        project.source_snapshot(source_id).unwrap().font_info,
+        source.font_info
+    );
+
+    let mut edited = original.clone();
+    edited.names.family_name = Some("Canonical Edited Family".into());
+    edited.metrics.units_per_em = Some(2_048.25);
+    edited.open_type_metrics.win_ascent = Some(2_100);
+    let revision = project.document_revision();
+    let DocumentEditOutcome::Changed {
+        revision: changed_revision,
+        change,
+    } = project
+        .edit_document_source_metadata(source_id, |draft| {
+            assert!(draft.set_font_info(edited.clone()));
+            Ok(())
+        })
+        .unwrap()
+    else {
+        panic!("canonical font-info edit reported no change")
+    };
+    assert_eq!(changed_revision, revision.wrapping_add(1));
+    assert_eq!(change.source_metadata(), &[source_id]);
+    assert!(change.metadata_changed());
+    assert!(change.requires_compilation());
+    assert_eq!(project.document_font_info(source_id), Some(&edited));
+
+    let mut expected = source.font_info.clone();
+    edited.write_to_ufo(&mut expected).unwrap();
+    assert_eq!(
+        project.source_snapshot(source_id).unwrap().font_info,
+        expected
+    );
+    assert_eq!(
+        expected.open_type_name_compatible_full_name.as_deref(),
+        Some("unowned compatible name")
+    );
+    assert_eq!(expected.postscript_blue_scale, Some(0.039_625));
+
+    let unchanged_revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_source_metadata(source_id, |draft| {
+                assert!(!draft.set_font_info(edited.clone()));
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged {
+            revision: unchanged_revision,
+        }
+    );
+
+    project.save().unwrap();
+    let reloaded = Project::load(&path).unwrap();
+    assert_eq!(reloaded.document_font_info(source_id), Some(&edited));
+    assert_eq!(
+        reloaded.source_snapshot(source_id).unwrap().font_info,
+        expected
+    );
 }
