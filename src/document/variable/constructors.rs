@@ -82,23 +82,40 @@ impl VariableData {
 
     /// Decode one validated UFO boundary into canonical ownership without a Master intermediary.
     pub(in crate::document) fn from_ufo_boundary(font: &norad::Font) -> Result<Self, String> {
-        crate::document::font_ops::canonical_metadata_from_ufo(font)
-            .map_err(|error| error.to_string())?;
-        crate::document::model::font_info::CanonicalFontInfo::from_ufo(&font.font_info)
-            .map_err(|error| error.to_string())?;
-        for name in font
-            .default_layer()
-            .iter()
-            .map(|glyph| glyph.name().as_str())
-        {
-            crate::document::model::glyph_metadata::canonical_glyph_metadata_from_ufo(font, name)
-                .map_err(|error| error.to_string())?;
-        }
-        let source = SourceId(0);
+        Self::from_ufo_boundaries([font])
+    }
+
+    /// Decode validated UFO sources into one canonical document before making projections.
+    pub(in crate::document) fn from_ufo_boundaries<'a>(
+        fonts: impl IntoIterator<Item = &'a norad::Font>,
+    ) -> Result<Self, String> {
         let mut data = Self::default();
-        data.source_ids.push(source);
-        data.next_source = 1;
-        data.update_source(source, font);
+        for font in fonts {
+            validate_ufo_boundary(font)?;
+            let source = SourceId(data.source_ids.len());
+            data.source_ids.push(source);
+            data.update_source(source, font);
+        }
+        if data.source_ids.is_empty() {
+            return Err("canonical import needs at least one UFO source".into());
+        }
+        data.next_source = data.source_ids.len();
         Ok(data)
     }
+}
+
+fn validate_ufo_boundary(font: &norad::Font) -> Result<(), String> {
+    crate::document::font_ops::canonical_metadata_from_ufo(font)
+        .map_err(|error| error.to_string())?;
+    crate::document::model::font_info::CanonicalFontInfo::from_ufo(&font.font_info)
+        .map_err(|error| error.to_string())?;
+    for name in font
+        .default_layer()
+        .iter()
+        .map(|glyph| glyph.name().as_str())
+    {
+        crate::document::model::glyph_metadata::canonical_glyph_metadata_from_ufo(font, name)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }

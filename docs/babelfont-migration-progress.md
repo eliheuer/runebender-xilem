@@ -2218,3 +2218,19 @@ It resolves existing path aliases without requiring the final destinations to ex
 The focused filesystem suite passed eight tests and the binary constructor regression passed.
 The remaining Python Babelfont multi-source construction path still assembles compatibility masters at its format boundary.
 Save As feature-include relocation also remains open and is not claimed by this substep.
+
+### Canonical Python Babelfont construction
+
+Evidence commit: `Construct Python Babelfont imports canonically` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Construct Python Babelfont imports canonically$' -1`.
+
+The Python Babelfont adapter still decodes its documented package fields into transient UFO boundary values and retains its explicit rejection rules.
+Single-source imports now use the common canonical UFO constructor.
+Multi-source imports validate every decoded UFO and install all source and auxiliary layers into one canonical document before compatibility Masters are derived for transitional callers.
+The canonical Designspace is then installed with the same mapped axes, full and intermediate sources and instances as before.
+
+The direct constructor regression verifies that malformed standard glyph metadata returns an error before compatibility projection.
+The existing package tests continue to cover exact fractional layer widths, interpolation, auxiliary and intermediate layers, mapped axes, instances, save and reload, unsupported metadata and byte-for-byte preservation of the original package.
+
+This substep does not expand the Python package format contract or add Rust Babelfont JSON support.
+Save As feature-include relocation remains a separate open M12 gap.

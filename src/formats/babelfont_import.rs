@@ -135,7 +135,7 @@ fn validate_localized(value: &Value) -> Result<(), String> {
 /// Import a Python Babelfont package as a variable project without writing its source.
 /// Sources and intermediate layers receive new UFO/Designspace save destinations.
 pub fn import_project(path: &Path) -> Result<crate::document::project::Project, String> {
-    use crate::document::project::{Master, Project};
+    use crate::document::project::Project;
     use norad::designspace::{Axis, AxisMapping, DesignSpaceDocument, Dimension, Instance, Source};
 
     if !path.is_dir() {
@@ -272,23 +272,18 @@ pub fn import_project(path: &Path) -> Result<crate::document::project::Project, 
         index += 1;
     }
     let mut project = if single {
-        let mut source = Master::from_font(sources.remove(0), destination.clone());
-        source.dirty = true;
-        Project::from_source(source)
+        Project::from_imported_ufo_boundary(destination.clone(), &sources.remove(0))?
     } else {
-        let mut fonts: BTreeMap<_, _> = sources
+        let sources = sources
             .into_iter()
             .enumerate()
-            .map(|(index, font)| (format!("source-{index}.ufo"), font))
+            .map(|(index, font)| {
+                let filename = format!("source-{index}.ufo");
+                let source_path = destination.join(&filename);
+                (filename, font, source_path)
+            })
             .collect();
-        Project::from_designspace(doc, |filename| {
-            let mut source = Master::from_font(
-                fonts.remove(filename).ok_or("missing imported source")?,
-                destination.join(filename),
-            );
-            source.dirty = true;
-            Ok(source)
-        })?
+        Project::from_imported_designspace_boundary(doc, sources)?
     };
     project.export_source = Some(if single {
         destination

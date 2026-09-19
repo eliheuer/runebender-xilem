@@ -627,7 +627,15 @@ impl Project {
     /// filename to its font model (filesystem or in-memory host).
     pub fn from_designspace(
         doc: norad::designspace::DesignSpaceDocument,
+        load_master: impl FnMut(&str) -> Result<Master, String>,
+    ) -> Result<Self, String> {
+        Self::from_designspace_with_variable(doc, load_master, None)
+    }
+
+    fn from_designspace_with_variable(
+        doc: norad::designspace::DesignSpaceDocument,
         mut load_master: impl FnMut(&str) -> Result<Master, String>,
+        canonical_variable: Option<VariableData>,
     ) -> Result<Self, String> {
         if doc
             .axis_mappings
@@ -774,7 +782,11 @@ impl Project {
                 location: normalize(&source.location)?,
             });
         }
-        let mut variable = VariableData::from_sources(&masters);
+        let mut variable =
+            canonical_variable.unwrap_or_else(|| VariableData::from_sources(&masters));
+        if variable.source_ids.len() != masters.len() {
+            return Err("canonical source count does not match Designspace sources".into());
+        }
         let source_identities = variable
             .source_ids
             .iter()

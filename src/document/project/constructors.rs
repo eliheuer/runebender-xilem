@@ -1,9 +1,9 @@
 // Copyright 2026 the Runebender Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Project assembly around already canonical single-source documents.
+//! Project assembly around already canonical source documents.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::*;
 
@@ -31,12 +31,70 @@ impl Project {
     }
 
     /// Finish an imported single-source document whose first save must create a new UFO.
-    pub(in crate::document) fn from_imported_ufo_boundary(
+    pub(crate) fn from_imported_ufo_boundary(
         path: PathBuf,
         font: &norad::Font,
     ) -> Result<Self, String> {
         let variable = VariableData::from_ufo_boundary(font)?;
         Self::from_canonical_single_source(variable, path, true, HashMap::new())
+    }
+
+    /// Decode imported Designspace sources into canonical ownership before projections exist.
+    pub(crate) fn from_imported_designspace_boundary(
+        document: norad::designspace::DesignSpaceDocument,
+        sources: Vec<(String, norad::Font, PathBuf)>,
+    ) -> Result<Self, String> {
+        let mut source_map = BTreeMap::new();
+        for (filename, font, path) in sources {
+            if source_map.insert(filename.clone(), (font, path)).is_some() {
+                return Err(format!("duplicate imported source {filename}"));
+            }
+        }
+        let mut seen = HashSet::new();
+        let filenames = document
+            .sources
+            .iter()
+            .filter(|source| source.layer.is_none())
+            .map(|source| {
+                if !seen.insert(source.filename.clone()) {
+                    return Err(format!(
+                        "duplicate full source file {} is not editable independently",
+                        source.filename
+                    ));
+                }
+                if !source_map.contains_key(&source.filename) {
+                    return Err(format!("missing imported source {}", source.filename));
+                }
+                Ok(source.filename.clone())
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        if filenames.len() != source_map.len() {
+            return Err("imported sources do not match Designspace sources".into());
+        }
+        let variable = VariableData::from_ufo_boundaries(
+            filenames
+                .iter()
+                .map(|filename| &source_map.get(filename).expect("checked source").0),
+        )?;
+        let mut masters = BTreeMap::new();
+        for (index, filename) in filenames.into_iter().enumerate() {
+            let (_, path) = source_map.remove(&filename).expect("checked source");
+            let font = variable
+                .source_font(SourceId(index))
+                .ok_or_else(|| format!("missing canonical source {filename}"))?;
+            let mut master = Master::from_font(font, path);
+            master.dirty = true;
+            masters.insert(filename, master);
+        }
+        Self::from_designspace_with_variable(
+            document,
+            |filename| {
+                masters
+                    .remove(filename)
+                    .ok_or("missing imported source".into())
+            },
+            Some(variable),
+        )
     }
 
     fn from_canonical_single_source(
@@ -220,5 +278,73 @@ mod tests {
         assert!(project.document_source(source).is_some());
         assert_eq!(std::fs::read(occupied.join("sentinel")).unwrap(), b"keep");
         assert!(!destination.exists());
+    }
+
+    #[test]
+    fn imported_designspace_validates_canonical_sources_before_projection() {
+        let document = crate::document::font_memory::designspace_from_str(
+            r#"<designspace format="5.0">
+  <axes><axis tag="wght" name="Weight" minimum="0" default="0" maximum="1"/></axes>
+  <sources>
+    <source filename="Regular.ufo" stylename="Regular"><location><dimension name="Weight" xvalue="0"/></location></source>
+    <source filename="Bold.ufo" stylename="Bold"><location><dimension name="Weight" xvalue="1"/></location></source>
+  </sources>
+</designspace>"#,
+        )
+        .unwrap();
+        let regular = imported_font("Regular", 500.0);
+        let mut bold = imported_font("Bold", 700.0);
+        bold.lib.insert(
+            "public.skipExportGlyphs".into(),
+            plist::Value::String("A".into()),
+        );
+        let inputs = |bold| {
+            vec![
+                (
+                    "Regular.ufo".into(),
+                    regular.clone(),
+                    PathBuf::from("Import/Regular.ufo"),
+                ),
+                ("Bold.ufo".into(), bold, PathBuf::from("Import/Bold.ufo")),
+            ]
+        };
+
+        let error =
+            Project::from_imported_designspace_boundary(document.clone(), inputs(bold.clone()))
+                .unwrap_err();
+        assert!(error.contains("public.skipExportGlyphs"), "{error}");
+
+        bold.lib.insert(
+            "public.skipExportGlyphs".into(),
+            plist::Value::Array(Vec::new()),
+        );
+        let project = Project::from_imported_designspace_boundary(document, inputs(bold)).unwrap();
+        let bold_source = SourceId(1);
+        let bold_layer = LayerId {
+            source: bold_source,
+            name: "public.default".into(),
+        };
+        assert_eq!(project.sources().len(), 2);
+        assert!(project.sources().iter().all(|source| source.dirty));
+        assert_eq!(
+            project.document_source_path(bold_source),
+            Some(Path::new("Import/Bold.ufo"))
+        );
+        assert_eq!(
+            project.document_layer("A", &bold_layer).unwrap().width(),
+            700.0
+        );
+        assert!(project.document_designspace().is_some());
+    }
+
+    fn imported_font(style: &str, width: f64) -> norad::Font {
+        let mut font = norad::Font::new();
+        font.font_info.family_name = Some("Imported Family".into());
+        font.font_info.style_name = Some(style.into());
+        let mut glyph = norad::Glyph::new("A");
+        glyph.width = width;
+        glyph.codepoints.insert('A');
+        font.default_layer_mut().insert_glyph(glyph);
+        font
     }
 }
