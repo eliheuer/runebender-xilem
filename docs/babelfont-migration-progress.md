@@ -2120,3 +2120,30 @@ cargo test --locked document::filesystem::tests:: -- --test-threads=1
 
 Both focused tests passed: one preserves custom GLIF paths and opaque payloads across a canonical edit/save, and one proves an invalid later source prevents replacement of every destination.
 M12 remains active for CLI and imported-format construction, native New Font and Save As, feature-include relocation, watched-source acceptance and the final serialization allowlist.
+
+### Direct canonical hyperbezier conversion
+
+Evidence commit: `Convert canonical hyperbeziers directly` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Convert canonical hyperbeziers directly$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md` and this log.
+
+`LayerEditDraft::convert_hyper_to_cubic` now solves selected editable hyperbezier contours from their canonical views and installs explicit cubic topology without a UFO glyph projection.
+An empty selection converts every hyperbezier contour.
+Converted contours and points receive fresh stable identities and empty source metadata, matching the existing topology-replacement contract, while ordinary and unselected hyperbezier contours remain exact.
+The outline-path construction shared with the canonical knife replacement was factored into one checked helper so cubic, quadratic and hyperbezier output retain the same finite-coordinate and point-role validation.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_hyper_conversion_replaces_only_selected_topology -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib outline::knife -- --test-threads=1
+cargo test --locked --test variable_project canonical_knife_replaces_only_cut_contours_and_preserves_quadratics -- --exact --test-threads=1
+cargo clippy --lib --tests --locked -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The focused hyperbezier conversion regression passed selected-only conversion, fresh replacement identities and metadata, exact retention of the unselected contour, invalid-selection atomicity, convert-all behavior and save/reopen persistence.
+All 12 knife tests and the canonical knife integration regression passed after sharing the replacement helper.
+Warning-denied library/test Clippy passed, and the unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+The M06 caller still needs to invoke this direct draft operation before M04's explicit-conversion checkbox can close.

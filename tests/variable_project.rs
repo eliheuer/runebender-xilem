@@ -3828,6 +3828,146 @@ fn canonical_hyper_copy_duplicate_and_decomposition_retain_editable_kind() {
 }
 
 #[test]
+fn canonical_hyper_conversion_replaces_only_selected_topology() {
+    let scratch = Scratch::new();
+    let hyper = |offset: f64, label: &str| {
+        let mut contour = Contour::new(
+            [
+                (offset, 0.0),
+                (offset + 100.0, 0.0),
+                (offset + 100.0, 100.0),
+                (offset, 100.0),
+            ]
+            .into_iter()
+            .map(|(x, y)| {
+                ContourPoint::new(
+                    x,
+                    y,
+                    PointType::Curve,
+                    true,
+                    Some(Name::new(label).unwrap()),
+                    None,
+                )
+            })
+            .collect(),
+            Some(norad::Identifier::new(&format!("{label}-hyperbezier")).unwrap()),
+        );
+        contour.replace_lib(object_lib(label));
+        contour
+    };
+    let mut glyph = Glyph::new("hyper-conversion");
+    glyph.contours = vec![hyper(0.0, "selected"), hyper(300.0, "untouched")];
+    let mut expected = glyph.clone();
+    assert!(runebender::outline::glyph_ops::convert_hyper_to_cubic(
+        &mut expected,
+        &[(0, 0)].into()
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut foreign = Glyph::new("foreign");
+    foreign.contours.push(hyper(600.0, "foreign"));
+    font.default_layer_mut().insert_glyph(foreign);
+    let source_path = scratch.0.join("HyperConversion.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let before = project
+        .document_layer("hyper-conversion", &layer_id)
+        .unwrap();
+    let contours: Vec<_> = before.contours().collect();
+    let selected = contours[0].points().next().unwrap().id();
+    let selected_contour = contours[0].id();
+    let untouched_contour = contours[1].id();
+    let untouched_points: Vec<_> = contours[1].points().map(|point| point.id()).collect();
+
+    project
+        .edit_document_layer("hyper-conversion", &layer_id, |draft| {
+            assert!(draft.convert_hyper_to_cubic(&[selected])?);
+            Ok(())
+        })
+        .unwrap();
+    let converted = project
+        .document_layer("hyper-conversion", &layer_id)
+        .unwrap();
+    let contours: Vec<_> = converted.contours().collect();
+    assert!(!contours[0].is_hyper());
+    assert_ne!(contours[0].id(), selected_contour);
+    assert_eq!(contours[1].id(), untouched_contour);
+    assert_eq!(
+        contours[1]
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        untouched_points
+    );
+    let projected = project.glyph_layer("hyper-conversion", &layer_id).unwrap();
+    assert_eq!(
+        runebender::outline::glyph_paths::contours_to_bezpath(&projected),
+        runebender::outline::glyph_paths::contours_to_bezpath(&expected)
+    );
+    assert!(
+        projected.contours[0].identifier().is_none()
+            && projected.contours[0].lib().is_none()
+            && projected.contours[0].points.iter().all(|point| {
+                point.name.is_none() && point.identifier().is_none() && point.lib().is_none()
+            })
+    );
+    assert_eq!(projected.contours[1], expected.contours[1]);
+
+    let snapshot = project.document_snapshot();
+    let foreign = project
+        .document_layer("foreign", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .next()
+        .unwrap()
+        .id();
+    assert_eq!(
+        project.edit_document_layer("hyper-conversion", &layer_id, |draft| {
+            draft.convert_hyper_to_cubic(&[foreign])?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::MissingPoint(
+            foreign
+        ))
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+
+    project
+        .edit_document_layer("hyper-conversion", &layer_id, |draft| {
+            assert!(draft.convert_hyper_to_cubic(&[])?);
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        project
+            .document_layer("hyper-conversion", &layer_id)
+            .unwrap()
+            .contours()
+            .all(|contour| !contour.is_hyper())
+    );
+    let projected = project.glyph_layer("hyper-conversion", &layer_id).unwrap();
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    assert_eq!(
+        reloaded
+            .glyph_layer("hyper-conversion", &reloaded_layer)
+            .unwrap(),
+        projected
+    );
+}
+
+#[test]
 fn canonical_filter_effects_replace_only_targeted_topology() {
     let scratch = Scratch::new();
     let cyclic_paths_equal = |first: &kurbo::BezPath, second: &kurbo::BezPath| {

@@ -1834,6 +1834,145 @@ impl LayerEditDraft {
         self.replace_contours_after_knife(&sliced, &originals)
     }
 
+    /// Convert selected editable hyperbezier contours to explicit cubic topology.
+    ///
+    /// An empty selection converts every hyperbezier contour. Converted topology receives fresh
+    /// identities and empty source metadata, while ordinary and unselected contours remain exact.
+    pub fn convert_hyper_to_cubic(
+        &mut self,
+        selected: &[PointId],
+    ) -> Result<bool, DocumentEditError> {
+        for id in selected {
+            if !self.layer.paths().flat_map(|path| &path.nodes).any(|node| {
+                read_id(&node.format_specific).is_some_and(|candidate| candidate == id.0)
+            }) {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+        }
+        let selected: HashSet<_> = selected.iter().copied().collect();
+        let convert_all = selected.is_empty();
+        let replacement_paths = self
+            .view()
+            .contours()
+            .filter(|contour| {
+                contour.is_hyper()
+                    && (convert_all || contour.points().any(|point| selected.contains(&point.id())))
+            })
+            .map(|contour| {
+                let path = crate::outline::path::Path::from_document_contour(contour);
+                let crate::outline::path::Path::Hyper(hyper) = path else {
+                    unreachable!("canonical hyperbezier contour produces a hyper path")
+                };
+                (
+                    contour.id(),
+                    crate::outline::path::Path::Cubic(hyper.to_cubic()),
+                )
+            })
+            .collect::<Vec<_>>();
+        if replacement_paths.is_empty() {
+            return Ok(false);
+        }
+        let replacements = replacement_paths
+            .iter()
+            .map(|(id, path)| Ok((*id, Self::replacement_contour_from_outline_path(path)?)))
+            .collect::<Result<HashMap<_, _>, DocumentEditError>>()?;
+        let mut shapes = Vec::with_capacity(self.layer.shapes.len());
+        let mut preserved = Vec::with_capacity(self.preserved.contours.len());
+        for shape in &self.layer.shapes {
+            let Shape::Path(path) = shape else {
+                shapes.push(shape.clone());
+                continue;
+            };
+            let contour_id =
+                ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+            if let Some((replacement, metadata)) = replacements.get(&contour_id) {
+                shapes.push(replacement.clone());
+                preserved.push(metadata.clone());
+            } else {
+                shapes.push(shape.clone());
+                preserved.push(
+                    self.preserved
+                        .contours
+                        .iter()
+                        .find(|candidate| candidate.id == contour_id)
+                        .expect("canonical contour preservation")
+                        .clone(),
+                );
+            }
+        }
+        self.layer.shapes = shapes;
+        self.preserved.contours = preserved;
+        Ok(true)
+    }
+
+    fn replacement_contour_from_outline_path(
+        path: &crate::outline::path::Path,
+    ) -> Result<(Shape, PreservedContour), DocumentEditError> {
+        let contour = path.to_contour();
+        ensure_finite(
+            &contour
+                .points
+                .iter()
+                .flat_map(|point| [point.x, point.y])
+                .collect::<Vec<_>>(),
+        )?;
+        let contour_id = ContourId::next();
+        let mut output = babelfont::Path {
+            closed: path.is_closed(),
+            ..babelfont::Path::default()
+        };
+        write_id(&mut output.format_specific, contour_id.0);
+        let mut points = Vec::with_capacity(contour.points.len());
+        output.nodes = contour
+            .points
+            .iter()
+            .map(|point| {
+                let point_id = PointId::next();
+                points.push(PreservedPoint {
+                    id: point_id,
+                    name: None,
+                    metadata: ObjectMetadata {
+                        identifier: None,
+                        lib: None,
+                    },
+                });
+                let mut node = Node {
+                    x: point.x,
+                    y: point.y,
+                    nodetype: match point.point_type {
+                        crate::outline::path::hyper_model::PointType::Move => NodeType::Move,
+                        crate::outline::path::hyper_model::PointType::Line
+                        | crate::outline::path::hyper_model::PointType::HyperCorner => {
+                            NodeType::Line
+                        }
+                        crate::outline::path::hyper_model::PointType::OffCurve => {
+                            NodeType::OffCurve
+                        }
+                        crate::outline::path::hyper_model::PointType::Curve
+                        | crate::outline::path::hyper_model::PointType::Hyper => NodeType::Curve,
+                        crate::outline::path::hyper_model::PointType::QCurve => NodeType::QCurve,
+                    },
+                    smooth: point.smooth,
+                    ..Node::default()
+                };
+                write_id(&mut node.format_specific, point_id.0);
+                node
+            })
+            .collect();
+        Ok((
+            Shape::Path(output),
+            PreservedContour {
+                id: contour_id,
+                hyper: false,
+                metadata: ObjectMetadata {
+                    identifier: None,
+                    lib: None,
+                },
+                points,
+            },
+        ))
+    }
+
     fn replace_contours_after_knife(
         &mut self,
         paths: &[crate::outline::path::Path],
@@ -1871,71 +2010,9 @@ impl LayerEditDraft {
                 continue;
             }
 
-            let contour = path.to_contour();
-            ensure_finite(
-                &contour
-                    .points
-                    .iter()
-                    .flat_map(|point| [point.x, point.y])
-                    .collect::<Vec<_>>(),
-            )?;
-            let contour_id = ContourId::next();
-            let mut output = babelfont::Path {
-                closed: path.is_closed(),
-                ..babelfont::Path::default()
-            };
-            write_id(&mut output.format_specific, contour_id.0);
-            let mut points = Vec::with_capacity(contour.points.len());
-            output.nodes = contour
-                .points
-                .iter()
-                .map(|point| {
-                    let point_id = PointId::next();
-                    points.push(PreservedPoint {
-                        id: point_id,
-                        name: None,
-                        metadata: ObjectMetadata {
-                            identifier: None,
-                            lib: None,
-                        },
-                    });
-                    let mut node = Node {
-                        x: point.x,
-                        y: point.y,
-                        nodetype: match point.point_type {
-                            crate::outline::path::hyper_model::PointType::Move => NodeType::Move,
-                            crate::outline::path::hyper_model::PointType::Line
-                            | crate::outline::path::hyper_model::PointType::HyperCorner => {
-                                NodeType::Line
-                            }
-                            crate::outline::path::hyper_model::PointType::OffCurve => {
-                                NodeType::OffCurve
-                            }
-                            crate::outline::path::hyper_model::PointType::Curve
-                            | crate::outline::path::hyper_model::PointType::Hyper => {
-                                NodeType::Curve
-                            }
-                            crate::outline::path::hyper_model::PointType::QCurve => {
-                                NodeType::QCurve
-                            }
-                        },
-                        smooth: point.smooth,
-                        ..Node::default()
-                    };
-                    write_id(&mut node.format_specific, point_id.0);
-                    node
-                })
-                .collect();
-            replacements.push(Shape::Path(output));
-            preserved.push(PreservedContour {
-                id: contour_id,
-                hyper: false,
-                metadata: ObjectMetadata {
-                    identifier: None,
-                    lib: None,
-                },
-                points,
-            });
+            let (shape, metadata) = Self::replacement_contour_from_outline_path(path)?;
+            replacements.push(shape);
+            preserved.push(metadata);
         }
 
         let insert_at = self
