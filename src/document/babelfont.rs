@@ -312,6 +312,11 @@ impl<'a> LayerView<'a> {
         self.preserved.note.as_deref()
     }
 
+    /// Optional source image attached to this glyph layer.
+    pub fn image(self) -> Option<&'a norad::Image> {
+        self.preserved.image.as_ref()
+    }
+
     /// Unicode scalar values attached to this glyph layer.
     pub fn codepoints(self) -> impl Iterator<Item = char> + 'a {
         self.preserved.codepoints.iter()
@@ -3284,6 +3289,66 @@ impl LayerEditDraft {
         Ok(true)
     }
 
+    /// Append a component with a fresh stable identity and exact affine transform.
+    ///
+    /// The Project or application boundary is responsible for validating that `reference` names
+    /// a glyph in the current document.
+    pub fn add_component(
+        &mut self,
+        reference: String,
+        transform: kurbo::Affine,
+    ) -> Result<ComponentId, DocumentEditError> {
+        let coefficients = transform.as_coeffs();
+        ensure_finite(&coefficients)?;
+        let id = ComponentId::next();
+        let mut component = Component {
+            reference: reference.into(),
+            transform: transform.into(),
+            location: std::iter::empty().collect(),
+            format_specific: babelfont::FormatSpecific::default(),
+        };
+        write_id(&mut component.format_specific, id.0);
+        self.layer.shapes.push(Shape::Component(component));
+        self.preserved.components.push(PreservedComponent {
+            id,
+            transform: norad::AffineTransform {
+                x_scale: coefficients[0],
+                xy_scale: coefficients[1],
+                yx_scale: coefficients[2],
+                y_scale: coefficients[3],
+                x_offset: coefficients[4],
+                y_offset: coefficients[5],
+            },
+            metadata: ObjectMetadata {
+                identifier: None,
+                lib: None,
+            },
+        });
+        Ok(id)
+    }
+
+    /// Remove one component by stable identity.
+    pub fn remove_component(&mut self, id: ComponentId) -> Result<bool, DocumentEditError> {
+        let shape_index = self
+            .layer
+            .shapes
+            .iter()
+            .position(|shape| match shape {
+                Shape::Component(component) => read_id(&component.format_specific) == Some(id.0),
+                Shape::Path(_) => false,
+            })
+            .ok_or(DocumentEditError::MissingComponent(id))?;
+        let preserved_index = self
+            .preserved
+            .components
+            .iter()
+            .position(|component| component.id == id)
+            .expect("canonical component has preservation metadata");
+        self.layer.shapes.remove(shape_index);
+        self.preserved.components.remove(preserved_index);
+        Ok(true)
+    }
+
     /// Set one anchor's position by stable identity.
     ///
     /// Returns whether the value changed.
@@ -3305,6 +3370,61 @@ impl LayerEditDraft {
         anchor.x = position.x;
         anchor.y = position.y;
         Ok(true)
+    }
+
+    /// Append an anchor with a fresh stable identity.
+    pub fn add_anchor(
+        &mut self,
+        name: String,
+        position: kurbo::Point,
+    ) -> Result<AnchorId, DocumentEditError> {
+        ensure_finite(&[position.x, position.y])?;
+        let id = AnchorId::next();
+        let mut anchor = Anchor {
+            x: position.x,
+            y: position.y,
+            name,
+            ..Anchor::default()
+        };
+        write_id(&mut anchor.format_specific, id.0);
+        self.layer.anchors.push(anchor);
+        self.preserved.anchors.push(PreservedAnchor {
+            id,
+            color: None,
+            metadata: ObjectMetadata {
+                identifier: None,
+                lib: None,
+            },
+        });
+        Ok(id)
+    }
+
+    /// Remove one anchor by stable identity.
+    pub fn remove_anchor(&mut self, id: AnchorId) -> Result<bool, DocumentEditError> {
+        let anchor_index = self
+            .layer
+            .anchors
+            .iter()
+            .position(|anchor| read_id(&anchor.format_specific) == Some(id.0))
+            .ok_or(DocumentEditError::MissingAnchor(id))?;
+        let preserved_index = self
+            .preserved
+            .anchors
+            .iter()
+            .position(|anchor| anchor.id == id)
+            .expect("canonical anchor has preservation metadata");
+        self.layer.anchors.remove(anchor_index);
+        self.preserved.anchors.remove(preserved_index);
+        Ok(true)
+    }
+
+    /// Set or remove the source image attached to this layer.
+    pub fn set_image(&mut self, image: Option<norad::Image>) -> bool {
+        if self.preserved.image == image {
+            return false;
+        }
+        self.preserved.image = image;
+        true
     }
 
     fn node_mut(&mut self, id: PointId) -> Option<&mut Node> {

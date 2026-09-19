@@ -5697,20 +5697,42 @@ fn owned_layer_transactions_commit_guardedly_and_replay_project_history() {
     let original_width = project.document_layer("A", &address.layer).unwrap().width();
 
     let mut transaction = project.begin_document_layer_transaction(&address).unwrap();
-    transaction
-        .draft_mut()
-        .set_width(original_width + 31.25)
+    let draft = transaction.draft_mut();
+    draft.set_width(original_width + 31.25).unwrap();
+    let component = draft
+        .add_component("B".into(), kurbo::Affine::translate((12.5, -3.25)))
         .unwrap();
+    let anchor = draft
+        .add_anchor("transaction-anchor".into(), kurbo::Point::new(25.5, 700.25))
+        .unwrap();
+    assert!(draft.set_image(None));
     let DocumentEditOutcome::Changed { change, .. } = project
         .commit_document_layer_transaction(transaction)
         .unwrap()
     else {
         panic!("changed transaction did not commit")
     };
+    let committed = project.document_layer("A", &address.layer).unwrap();
+    assert!(committed.components().any(|item| item.id() == component));
+    assert!(committed.anchors().any(|item| item.id() == anchor));
+    assert!(committed.image().is_none());
     assert!(change.metrics_changed());
+    assert!(change.geometry_changed());
+    assert!(change.metadata_changed());
+
+    let mut removal = project.begin_document_layer_transaction(&address).unwrap();
+    assert!(removal.draft_mut().remove_component(component).unwrap());
+    assert!(removal.draft_mut().remove_anchor(anchor).unwrap());
+    assert!(matches!(
+        project.commit_document_layer_transaction(removal).unwrap(),
+        DocumentEditOutcome::Changed { .. }
+    ));
+    let removed = project.document_layer("A", &address.layer).unwrap();
+    assert!(removed.components().all(|item| item.id() != component));
+    assert!(removed.anchors().all(|item| item.id() != anchor));
     assert_eq!(
         project.document_layer_history_depth(&address, HistoryDirection::Undo),
-        1
+        2
     );
 
     let DocumentHistoryReplayOutcome::Changed { change, .. } = project
@@ -5718,6 +5740,22 @@ fn owned_layer_transactions_commit_guardedly_and_replay_project_history() {
         .unwrap()
     else {
         panic!("undo did not replay")
+    };
+    assert!(change.geometry_changed());
+    assert!(change.metadata_changed());
+    let restored_objects = project.document_layer("A", &address.layer).unwrap();
+    assert!(
+        restored_objects
+            .components()
+            .any(|item| item.id() == component)
+    );
+    assert!(restored_objects.anchors().any(|item| item.id() == anchor));
+
+    let DocumentHistoryReplayOutcome::Changed { change, .. } = project
+        .replay_document_layer_history(&address, HistoryDirection::Undo)
+        .unwrap()
+    else {
+        panic!("second undo did not replay")
     };
     assert!(change.metrics_changed());
     assert_eq!(
@@ -5747,7 +5785,7 @@ fn owned_layer_transactions_commit_guardedly_and_replay_project_history() {
     );
     assert_eq!(
         project.document_layer_history_depth(&address, HistoryDirection::Redo),
-        1
+        2
     );
 }
 
