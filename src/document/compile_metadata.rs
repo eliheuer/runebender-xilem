@@ -141,25 +141,19 @@ pub(super) fn glyph_category_from_values<'a>(
     })
 }
 
-pub(super) fn glyph_category(
-    font: &norad::Font,
-    glyph: &norad::Glyph,
-) -> Result<babelfont::GlyphCategory, String> {
-    let explicit = font
-        .lib
+/// Read the temporary UFO encoding of an explicit glyph category.
+///
+/// Canonical source-glyph ownership replaces this narrow boundary read when its Project query
+/// lands; codepoints, anchors and inferred categories already come from canonical layers.
+pub(super) fn explicit_glyph_category<'a>(
+    font: &'a norad::Font,
+    glyph_name: &str,
+) -> Option<&'a str> {
+    font.lib
         .get(OPEN_TYPE_CATEGORIES)
         .and_then(plist::Value::as_dictionary)
-        .and_then(|categories| categories.get(glyph.name().as_str()))
-        .and_then(plist::Value::as_string);
-    glyph_category_from_values(
-        glyph.name().as_str(),
-        explicit,
-        glyph.codepoints.iter(),
-        glyph
-            .anchors
-            .iter()
-            .filter_map(|anchor| anchor.name.as_ref().map(norad::Name::as_str)),
-    )
+        .and_then(|categories| categories.get(glyph_name))
+        .and_then(plist::Value::as_string)
 }
 
 pub(super) fn apply(font: &mut babelfont::Font, info: &norad::FontInfo) -> Result<(), String> {
