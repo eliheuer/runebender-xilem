@@ -3,8 +3,9 @@
 Audit date: 2026-09-18.
 Audited implementation: `6350cf3`, including the pipeline implementation at `5cbf51b`.
 Status: **IN PROGRESS — M00–M03 complete; M04 active**.
-This document is the implementation checklist and handoff for the dedicated scheduled task.
-Implementation is paused in the originating task; the scheduled task owns the continuation.
+This document is the implementation checklist and handoff for the active integration task and its bounded parallel lanes.
+The active integration checkout is `/Users/eli/.codex/worktrees/f236/runebender-xilem` on branch `codex/babelfont-integration`.
+The earlier continuation worktree and branch remain preserved for review.
 
 ## Product goal and scope
 
@@ -88,16 +89,15 @@ The audit followed the runtime paths below rather than classifying every mention
 
 ## Execution and evidence rules
 
-Work in the dedicated task's isolated continuation worktree.
-The implementation baseline must include `6350cf3` and this checklist; do not start again from the older main branch.
+Work in the assigned isolated lane worktree and return exact reviewed commits to the integration checkout.
+The integration baseline is `3f209776d35dbc7e88e35facb3a48e9f7edd68e0`; do not start again from an older main branch.
 Read `AGENTS.md`, `ARCHITECTURE.md`, `DESIGN.md`, the [format decision](variable-project-decision.md), and this checklist before changing the model.
 The worker must update `AGENTS.md` and architecture guidance when its changes make their old compatibility rules obsolete.
 
-Use one scheduled task, retaining its history and worktree between wakeups.
-Choose the first unblocked incomplete milestone in dependency order and finish a coherent substep with focused verification.
-The ten-minute schedule is a continuation cadence, not a requirement to abort a build or split an atomic edit at ten minutes.
+Each assigned lane retains its history and worktree between runs.
+Choose the first unblocked item inside that lane's explicit ownership and finish a coherent substep with focused verification.
 Continue a running build using its session rather than launching another copy.
-Do not create another worker, task, worktree or automation for each wakeup.
+The integration lane reviews and incorporates exact returned commits; lanes do not merge one another or create additional worktrees without a new explicit assignment.
 
 Keep each milestone's evidence in `docs/babelfont-migration-progress.md` with:
 
@@ -126,15 +126,35 @@ The automation must not claim completion merely because it reached a time or usa
 ### Parallel lane ownership
 
 The user authorized parallel scheduled lanes on 2026-09-19 without changing any completion or preservation requirement.
-This integration lane owns M04, `project.rs`, `variable.rs`, `babelfont.rs`, `source.rs`, `sources.rs`, module wiring, shared architecture/checklist/progress documents and cross-lane integration tests.
+The integration lane owns `project.rs`, `variable.rs`, `babelfont.rs`, `source.rs`, document parent wiring, narrow cross-lane model hooks, shared architecture/checklist/progress documents and cross-lane integration tests.
 The M05 history lane, task `01a0ba27-44fc-7243-a672-aacc3e5b05de`, owns `history.rs`, `sources.rs`, optional new history modules, `tests/canonical_history.rs` and `docs/babelfont-history-progress.md`.
-The M07 metadata lane, task `01a0ba27-8ba1-71c0-bc43-69eae82b773a`, owns its new typed metadata module, metadata algorithms, dedicated tests and its lane progress document.
-The M08/M09 pipeline lane, task `01a0ba2a-5670-7451-b05a-bd71293b2229`, owns `interpolation.rs`, `compile.rs`, `compile_metadata.rs`, dedicated pipeline tests and its lane progress document.
-The M06 application lane owns `src/application/`, editor sessions and commands, `FontModel`, workspace and view/platform synchronization after its coordinating task supplies the task identity.
-This integration lane reserves `project.rs`, `variable.rs`, `babelfont.rs`, `source.rs`, M04 special outline tools and extensions, module wiring, shared tests and central documentation; it alone integrates returned commits.
+The M06 application lane, task `01a0ba61-b1cf-7541-853c-6558bae092d5`, owns all of `src/application/`, including editor sessions and commands, `FontModel`, workspace, local AI, Nodes, CLI adapters and view/platform synchronization.
+The M07 metadata lane, task `01a0ba27-8ba1-71c0-bc43-69eae82b773a`, owns `document/font_ops.rs`, `document/model/glyph_metadata.rs`, `document/compose.rs`, `document/composites.rs`, `text/features.rs`, dedicated metadata tests and `docs/babelfont-metadata-progress.md`.
+M07 owns the canonical document algorithms in those files; M06 retains their application callers, and the integration lane supplies required Project-level whole-font transactions.
+The M08/M09 pipeline lane, task `01a0ba2a-5670-7451-b05a-bd71293b2229`, owns `interpolation.rs`, `compile.rs`, `compile_metadata.rs`, dedicated pipeline tests and `docs/babelfont-pipeline-progress.md`.
+The M10 lane, task `01a0ba89-8a9f-7c81-b89c-f37805ff39c6`, owns `proposal.rs`, `edit_batch.rs`, `experiments.rs`, `live.rs`, `nodes_live.rs`, dedicated tests and its lane progress document.
+M10 may add a narrow explicit boundary codec when the external proposal contract requires one, but it does not edit shared Project/VariableData files or application-owned callers.
+The integration lane retains M04 special-source extensions and alone integrates returned commits.
 Worker lanes request narrow shared-model APIs from this lane and return exact reviewed commits for integration.
 No lane edits another lane's owned files, merges into main, pushes or weakens the acceptance criteria.
 Shared Clippy, documentation and broader suites run at coherent integration checkpoints after focused lane checks.
+
+### Current critical path
+
+| Work | Current state | Next concrete dependency |
+|---|---|---|
+| M04 canonical topology and cleanup | Direct curve conversion and handle cleanup are integrated through `2b15baa`; the independent quadratic-chain correction passes. | Finish special editable-source preservation and the remaining selection/metadata acceptance before checking M04 complete. |
+| M05 history and structural replay | Canonical layer/source snapshots and Project-owned history foundations exist; the lane is validating interleaved source operations. | Return a reviewed commit that passes both Project-level and host-command replay regressions. |
+| M06 application cutover | Canonical font-info, source-comparison geometry and production session metrics are integrated. | Consume a stable top-level component resolver, then move Session mutation/history and remaining view readers off Norad. |
+| M07 metadata | Typed source, layer and component metadata foundations are integrated. | Use the transferred document algorithms and request only narrow Project whole-font transaction hooks. |
+| M08/M09 pipeline | Canonical interpolation, compiler metadata and Designspace structure foundations are integrated. | Remove the remaining source-structure and output presentation adapters, then execute direct invalidation/export acceptance. |
+| M10 proposals and versions | Newly assigned to the former curve lane. | Use stable IDs, opaque layer snapshots and guarded Project commits; request a canonical version wrapper if whole-document mutation cannot be expressed without a mirror. |
+| M11/M12 audit and adapters | Not yet complete. | Reassign a finished lane only after its current acceptance is integrated; keep headless and constructor work behind the same canonical Project APIs. |
+| M13/M14 removal and final proof | Blocked by remaining caller cutovers. | Remove compatibility state only after callers land, then reserve one coherent final native/browser/preservation/clean-checkout proof. |
+
+Today's target is completion without changing the definition of complete.
+The immediate feasibility risk is the number of production Session, proposal/version, headless and constructor callers still using Norad, followed by the required M13 removal and M14 clean-checkout proof.
+Focused checks belong with each coherent change; unchanged broad gates are deferred until an integration boundary or the final proof.
 
 ## Ordered implementation checklist
 
