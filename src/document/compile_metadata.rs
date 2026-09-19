@@ -3,6 +3,7 @@
 
 //! UFO metadata and Designspace rules supplied to the live compiler.
 
+use super::model::font_info::{CanonicalFontInfo, OpenTypeWidthClass};
 use super::model::glyph_metadata::OpenTypeGlyphCategory;
 use super::project::Project;
 
@@ -141,20 +142,17 @@ pub(super) fn glyph_category_from_values<'a>(
     })
 }
 
-pub(super) fn apply(font: &mut babelfont::Font, info: &norad::FontInfo) -> Result<(), String> {
-    macro_rules! names { ($($target:ident => $source:ident),* $(,)?) => { $(if let Some(value) = &info.$source { font.names.$target = value.as_str().into(); })* }; }
+pub(super) fn apply(font: &mut babelfont::Font, info: &CanonicalFontInfo) -> Result<(), String> {
+    macro_rules! names { ($($target:ident => $source:ident),* $(,)?) => { $(if let Some(value) = &info.names.$source { font.names.$target = value.as_str().into(); })* }; }
     names! {
-        copyright => copyright, trademark => trademark,
-        designer => open_type_name_designer, designer_url => open_type_name_designer_url,
-        manufacturer => open_type_name_manufacturer, manufacturer_url => open_type_name_manufacturer_url,
-        description => open_type_name_description, license => open_type_name_license,
-        license_url => open_type_name_license_url, version => open_type_name_version,
-        unique_id => open_type_name_unique_id, sample_text => open_type_name_sample_text,
-        full_name => postscript_full_name, postscript_name => postscript_font_name,
-        typographic_family => open_type_name_preferred_family_name,
-        typographic_subfamily => open_type_name_preferred_subfamily_name,
-        wws_family_name => open_type_name_wws_family_name,
-        wws_subfamily_name => open_type_name_wws_subfamily_name,
+        copyright => copyright, trademark => trademark, designer => designer,
+        designer_url => designer_url, manufacturer => manufacturer,
+        manufacturer_url => manufacturer_url, description => description,
+        license => license, license_url => license_url, version => version,
+        unique_id => unique_id, sample_text => sample_text, full_name => full_name,
+        postscript_name => postscript_name, typographic_family => typographic_family,
+        typographic_subfamily => typographic_subfamily, wws_family_name => wws_family_name,
+        wws_subfamily_name => wws_subfamily_name,
     }
     font.note.clone_from(&info.note);
     font.version = (
@@ -168,17 +166,28 @@ pub(super) fn apply(font: &mut babelfont::Font, info: &norad::FontInfo) -> Resul
                 .fold(0, |value, bit| value | (1 << bit))
         })
     };
-    font.custom_ot_values.head_flags = bits(&info.open_type_head_flags);
-    font.custom_ot_values.os2_fs_type = bits(&info.open_type_os2_type);
-    font.custom_ot_values.os2_fs_selection = bits(&info.open_type_os2_selection);
+    font.custom_ot_values.head_flags = bits(&info.open_type.head_flags);
+    font.custom_ot_values.os2_fs_type = bits(&info.open_type.fs_type);
+    font.custom_ot_values.os2_fs_selection = bits(&info.open_type.fs_selection);
     font.custom_ot_values.os2_us_weight_class = info
-        .open_type_os2_weight_class
+        .open_type
+        .weight_class
         .map(u16::try_from)
         .transpose()
         .map_err(|_| "weight class outside OpenType range")?;
     font.custom_ot_values.os2_us_width_class =
-        info.open_type_os2_width_class.map(|value| value as u16);
-    if let Some(vendor) = &info.open_type_os2_vendor_id {
+        info.open_type.width_class.map(|value| match value {
+            OpenTypeWidthClass::UltraCondensed => 1,
+            OpenTypeWidthClass::ExtraCondensed => 2,
+            OpenTypeWidthClass::Condensed => 3,
+            OpenTypeWidthClass::SemiCondensed => 4,
+            OpenTypeWidthClass::Normal => 5,
+            OpenTypeWidthClass::SemiExpanded => 6,
+            OpenTypeWidthClass::Expanded => 7,
+            OpenTypeWidthClass::ExtraExpanded => 8,
+            OpenTypeWidthClass::UltraExpanded => 9,
+        });
+    if let Some(vendor) = &info.open_type.vendor_id {
         font.custom_ot_values.os2_vendor_id = Some(babelfont::Tag::new(
             vendor
                 .as_bytes()
@@ -191,29 +200,29 @@ pub(super) fn apply(font: &mut babelfont::Font, info: &norad::FontInfo) -> Resul
 
 pub(super) fn metrics(
     master: &mut babelfont::Master,
-    info: &norad::FontInfo,
+    info: &CanonicalFontInfo,
 ) -> Result<(), String> {
-    macro_rules! metrics { ($($target:ident => $source:ident),* $(,)?) => { $(if let Some(value) = info.$source { master.metrics.insert(babelfont::MetricType::$target, value); })* }; }
+    macro_rules! metrics { ($($target:ident => $source:ident),* $(,)?) => { $(if let Some(value) = info.open_type_metrics.$source { master.metrics.insert(babelfont::MetricType::$target, value); })* }; }
     metrics! {
-        HheaAscender => open_type_hhea_ascender, HheaDescender => open_type_hhea_descender,
-        HheaLineGap => open_type_hhea_line_gap, HheaCaretSlopeRise => open_type_hhea_caret_slope_rise,
-        HheaCaretSlopeRun => open_type_hhea_caret_slope_run, HheaCaretOffset => open_type_hhea_caret_offset,
-        TypoAscender => open_type_os2_typo_ascender, TypoDescender => open_type_os2_typo_descender,
-        TypoLineGap => open_type_os2_typo_line_gap,
-        SubscriptXSize => open_type_os2_subscript_x_size, SubscriptYSize => open_type_os2_subscript_y_size,
-        SubscriptXOffset => open_type_os2_subscript_x_offset, SubscriptYOffset => open_type_os2_subscript_y_offset,
-        SuperscriptXSize => open_type_os2_superscript_x_size, SuperscriptYSize => open_type_os2_superscript_y_size,
-        SuperscriptXOffset => open_type_os2_superscript_x_offset, SuperscriptYOffset => open_type_os2_superscript_y_offset,
-        StrikeoutSize => open_type_os2_strikeout_size, StrikeoutPosition => open_type_os2_strikeout_position,
+        HheaAscender => hhea_ascender, HheaDescender => hhea_descender,
+        HheaLineGap => hhea_line_gap, HheaCaretSlopeRise => hhea_caret_slope_rise,
+        HheaCaretSlopeRun => hhea_caret_slope_run, HheaCaretOffset => hhea_caret_offset,
+        TypoAscender => typo_ascender, TypoDescender => typo_descender,
+        TypoLineGap => typo_line_gap, SubscriptXSize => subscript_x_size,
+        SubscriptYSize => subscript_y_size, SubscriptXOffset => subscript_x_offset,
+        SubscriptYOffset => subscript_y_offset, SuperscriptXSize => superscript_x_size,
+        SuperscriptYSize => superscript_y_size, SuperscriptXOffset => superscript_x_offset,
+        SuperscriptYOffset => superscript_y_offset, StrikeoutSize => strikeout_size,
+        StrikeoutPosition => strikeout_position,
     }
     for (key, value) in [
         (
             babelfont::MetricType::WinAscent,
-            info.open_type_os2_win_ascent,
+            info.open_type_metrics.win_ascent,
         ),
         (
             babelfont::MetricType::WinDescent,
-            info.open_type_os2_win_descent,
+            info.open_type_metrics.win_descent,
         ),
     ] {
         if let Some(value) = value {

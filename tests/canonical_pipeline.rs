@@ -123,7 +123,9 @@ fn compiler_snapshot_reads_canonical_source_glyph_metadata() {
     let mut font = Font::new();
     font.font_info.family_name = Some("Canonical Metadata".into());
     font.font_info.style_name = Some("Regular".into());
-    font.font_info.units_per_em = Some(1000_u32.into());
+    font.font_info.units_per_em = Some(1000.25_f64.try_into().unwrap());
+    font.font_info.ascender = Some(812.75);
+    font.font_info.open_type_hhea_ascender = Some(813);
     font.default_layer_mut().insert_glyph(Glyph::new(".notdef"));
     font.default_layer_mut().insert_glyph(Glyph::new("A"));
     font.lib.insert(
@@ -146,6 +148,23 @@ fn compiler_snapshot_reads_canonical_source_glyph_metadata() {
     assert_eq!(metadata.category(), Some(&OpenTypeGlyphCategory::Mark));
 
     let snapshot = project.babelfont_snapshot().unwrap();
+    assert_eq!(snapshot.upm, 1000);
+    assert_eq!(
+        snapshot.names.family_name.get_default().map(String::as_str),
+        Some("Canonical Metadata")
+    );
+    assert_eq!(
+        snapshot.masters[0]
+            .metrics
+            .get(&babelfont::MetricType::Ascender),
+        Some(&813)
+    );
+    assert_eq!(
+        snapshot.masters[0]
+            .metrics
+            .get(&babelfont::MetricType::HheaAscender),
+        Some(&813)
+    );
     let glyph = snapshot.glyphs.get("A").unwrap();
     assert!(!glyph.exported);
     assert_eq!(glyph.category, babelfont::GlyphCategory::Mark);

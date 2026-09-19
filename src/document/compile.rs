@@ -11,6 +11,7 @@ use std::sync::Arc;
 use babelfont::convertors::fontir::{BabelfontIrSource, CompilationOptions};
 use fontdrasil::coords::{DesignCoord, DesignLocation};
 
+use super::model::font_info::CanonicalFontInfo;
 use super::project::Project;
 use super::var_model::Location;
 use super::variable::LayerId;
@@ -250,15 +251,18 @@ impl Project {
         let default = self.default_source_index();
         let default_id = self.source_id(default).expect("default source identity");
         let source = &self.sources()[default].font;
-        let info = &source.font_info;
-        font.upm = super::compile_metadata::units_per_em(
-            info.units_per_em
-                .map(|value| value.as_f64())
-                .unwrap_or(1000.0),
-        )?;
-        font.names.family_name = info.family_name.as_deref().unwrap_or("Untitled").into();
+        let info =
+            CanonicalFontInfo::from_ufo(&source.font_info).map_err(|error| error.to_string())?;
+        font.upm =
+            super::compile_metadata::units_per_em(info.metrics.units_per_em.unwrap_or(1000.0))?;
+        font.names.family_name = info
+            .names
+            .family_name
+            .as_deref()
+            .unwrap_or("Untitled")
+            .into();
         font.names.preferred_subfamily_name =
-            info.style_name.as_deref().unwrap_or("Regular").into();
+            info.names.style_name.as_deref().unwrap_or("Regular").into();
         let features = feature_text
             .unwrap_or(
                 self.document_feature_text(default_id)
@@ -269,7 +273,7 @@ impl Project {
             .collect::<Vec<_>>()
             .join("\n");
         font.features = babelfont::Features::from_fea(&features);
-        super::compile_metadata::apply(&mut font, info)?;
+        super::compile_metadata::apply(&mut font, &info)?;
         super::compile_metadata::rules(self, &mut font)?;
         font.source = Some(self.sources()[default].source_path.join("features.fea"));
         font.masters.clear();
@@ -290,14 +294,18 @@ impl Project {
                 source_id.0.to_string(),
                 self.design_location(self.master_locations.get(index).unwrap_or(&Location::new()))?,
             );
-            let info = &source.font.font_info;
-            super::compile_metadata::metrics(&mut master, info)?;
+            let info = CanonicalFontInfo::from_ufo(&source.font.font_info)
+                .map_err(|error| error.to_string())?;
+            super::compile_metadata::metrics(&mut master, &info)?;
             for (key, value) in [
-                (babelfont::MetricType::Ascender, info.ascender),
-                (babelfont::MetricType::Descender, info.descender),
-                (babelfont::MetricType::XHeight, info.x_height),
-                (babelfont::MetricType::CapHeight, info.cap_height),
-                (babelfont::MetricType::ItalicAngle, info.italic_angle),
+                (babelfont::MetricType::Ascender, info.metrics.ascender),
+                (babelfont::MetricType::Descender, info.metrics.descender),
+                (babelfont::MetricType::XHeight, info.metrics.x_height),
+                (babelfont::MetricType::CapHeight, info.metrics.cap_height),
+                (
+                    babelfont::MetricType::ItalicAngle,
+                    info.metrics.italic_angle,
+                ),
             ] {
                 if let Some(value) = value {
                     let name = format!("{key:?}");
