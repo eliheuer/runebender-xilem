@@ -46,6 +46,21 @@ M06 owns consuming this API and removing the session's Norad component cache.
 The direct compiler-structure cutover is integrated, but independent review found that its source filename did not retain the resolved on-disk directory used by feature includes.
 Pipeline acceptance remains pending the lane-owned correction and the four focused compiler regressions.
 
+### Guarded cross-lane Project hooks
+
+Evidence commit: `9e2f519` (`Add guarded canonical integration hooks`).
+
+`Project::commit_document_layer_replacement` installs an opaque canonical snapshot only when its stable address and expected live value still match, then records exactly one Project-owned history step for a real change.
+Unchanged, stale and address-mismatched replacements preserve document state and history.
+This is the selective proposal and isolated-version installation boundary requested by M10.
+
+`Project::document_layer_path` resolves one `GlyphLayerAddress` into its component-inclusive canonical `BezPath` without constructing a UFO glyph or Master.
+Missing root glyphs, missing component bases, cycles, excessive depth and nonfinite component geometry remain explicit errors.
+This is the component-inclusive bounds and proof input requested by M11.
+
+Both focused regressions and warning-denied library plus variable-project Clippy pass.
+The Project whole-glyph lifecycle transaction required by M07 remains the next shared-model dependency.
+
 ## M00 — Establish the continuation and measurable baseline
 
 Run date: 2026-09-18 America/Los_Angeles (2026-09-19 UTC).
