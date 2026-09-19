@@ -110,6 +110,9 @@ fn push_document_segment(
 pub fn ordinary_layer_segments(layer: LayerView<'_>) -> Vec<DocumentSegmentHit> {
     let mut output = Vec::new();
     for contour in layer.contours() {
+        if contour.is_hyper() {
+            continue;
+        }
         let points: Vec<_> = contour
             .points()
             .map(|point| DocumentSegmentPoint {

@@ -126,6 +126,7 @@ Opening a contour removes the chosen endpoint's incoming controls, rotates the s
 Contour copy carries canonical geometry and source metadata without a UFO projection; paste and duplicate assign fresh document identities plus fresh UFO identifiers for copied objects that carry identifiers or libraries.
 Boolean and overlap operations consume canonical paths and replace the affected topology with fresh contour and point identities, empty source metadata and restored smooth flags at retained on-curve positions; a successful empty result removes the contour block while components retain their identities and relative order.
 Knife preview and slicing consume canonical cubic, quadratic and hyperbezier contours directly; missed contours retain their identities and exact metadata, while sliced contours receive fresh identities and empty source metadata.
+Cleanup, coordinate rounding, path-direction correction, cubic-handle fitting and extrema insertion mutate canonical contours while retaining every surviving object's identity and source metadata.
 The committed `DocumentChange` identifies direct and component-dependent layers and whether geometry, metrics, metadata or compilation became stale.
 Source-wide feature text has canonical ownership in `VariableData` and changes through `edit_document_source_metadata`; UFO templates no longer retain a second feature-text value.
 `document_snapshot` clones Babelfont glyph geometry, exact extensions, typed source metadata and stable source order without cloning UFO templates or Master projections.

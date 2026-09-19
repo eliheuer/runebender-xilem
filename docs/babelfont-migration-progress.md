@@ -1575,3 +1575,40 @@ The first knife unit run omitted `RUNEBENDER_TEST_FONTS`, so its only failure wa
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
 The next M04 substep moves cleanup and fit/simplify operations onto canonical geometry and replacement policy.
+
+### Canonical cleanup and curve fitting
+
+Evidence commit: `Clean and fit canonical contours` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Clean and fit canonical contours$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/outline/segment_ops.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+`LayerEditDraft` now performs duplicate-line cleanup, coordinate rounding, path-direction correction, cubic-handle fitting and cubic-extrema insertion directly on canonical contours.
+Tidy removes preservation records only for the points it removes.
+Rounding, direction correction and fitting retain every contour and point identity plus exact source metadata.
+Extrema insertion keeps existing endpoint and control identities and metadata while assigning fresh identities and empty metadata to the new topology.
+The insertion sequence is staged on an owned draft so a later failure cannot commit earlier extrema.
+
+Canonical segment enumeration now skips editable hyperbezier contours, matching the existing extrema operation's source-preservation boundary.
+Direction correction continues to reverse editable hyperbezier source points without converting them, and the other non-topology cleanup operations retain their source metadata.
+
+The regressions compare ordinary geometry with the existing cleanup algorithms while requiring the stronger canonical metadata contract.
+They cover duplicate removal, rounding, nested contour winding, no-op reruns, selection-scoped handle fitting, extrema insertion, stable old identities, fresh new identities and save-reopen persistence.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_cleanup_preserves_surviving_identities_and_metadata -- --exact --test-threads=1
+cargo test --locked --test variable_project canonical_fit_and_extremes_match_existing_geometry_with_stable_objects -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --lib outline::cleanup -- --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The two focused canonical regressions, all four cleanup unit tests and all 49 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+The next M04 substep moves embolden, outline effects and component decomposition onto canonical geometry.

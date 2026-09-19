@@ -4049,6 +4049,274 @@ fn canonical_knife_replaces_only_cut_contours_and_preserves_quadratics() {
 }
 
 #[test]
+fn canonical_cleanup_preserves_surviving_identities_and_metadata() {
+    let scratch = Scratch::new();
+    let point = |x, y, label: &str| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            PointType::Line,
+            false,
+            Some(Name::new(label).unwrap()),
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        point.replace_lib(object_lib(label));
+        point
+    };
+    let mut outer = Contour::new(
+        vec![
+            point(0.4, 0.0, "outer-a"),
+            point(0.0, 400.0, "outer-b"),
+            point(0.0, 400.0, "duplicate"),
+            point(400.0, 400.0, "outer-c"),
+            point(400.0, 0.0, "outer-d"),
+        ],
+        Some(norad::Identifier::new("outer").unwrap()),
+    );
+    outer.replace_lib(object_lib("outer"));
+    let mut hole = Contour::new(
+        vec![
+            point(100.0, 100.0, "hole-a"),
+            point(300.0, 100.0, "hole-b"),
+            point(300.0, 300.0, "hole-c"),
+            point(100.0, 300.0, "hole-d"),
+        ],
+        Some(norad::Identifier::new("hole").unwrap()),
+    );
+    hole.replace_lib(object_lib("hole"));
+    let mut glyph = Glyph::new("cleanup-contours");
+    glyph.contours = vec![outer, hole];
+    let mut expected = glyph.clone();
+    assert_eq!(
+        runebender::outline::cleanup::tidy_contours(&mut expected),
+        1
+    );
+    assert_eq!(
+        runebender::outline::cleanup::round_glyph_coordinates(&mut expected),
+        1
+    );
+    assert_eq!(
+        runebender::outline::cleanup::correct_path_directions(&mut expected),
+        2
+    );
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let source_path = scratch.0.join("CleanupContours.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project
+        .document_layer("cleanup-contours", &layer_id)
+        .unwrap();
+    let original_ids: HashSet<_> = layer
+        .contours()
+        .flat_map(|contour| contour.points().map(|point| point.id()))
+        .collect();
+    let duplicate_id = layer
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .nth(2)
+        .unwrap()
+        .id();
+    project
+        .edit_document_layer("cleanup-contours", &layer_id, |draft| {
+            assert_eq!(draft.tidy_contours(), 1);
+            assert_eq!(draft.round_coordinates(), 1);
+            assert_eq!(draft.correct_path_directions()?, 2);
+            Ok(())
+        })
+        .unwrap();
+    let layer = project
+        .document_layer("cleanup-contours", &layer_id)
+        .unwrap();
+    let surviving_ids: HashSet<_> = layer
+        .contours()
+        .flat_map(|contour| contour.points().map(|point| point.id()))
+        .collect();
+    assert_eq!(surviving_ids.len(), original_ids.len() - 1);
+    assert!(!surviving_ids.contains(&duplicate_id));
+    assert!(surviving_ids.iter().all(|id| original_ids.contains(id)));
+    let projected = project.glyph_layer("cleanup-contours", &layer_id).unwrap();
+    assert_eq!(
+        runebender::outline::glyph_paths::contours_to_bezpath(&projected),
+        runebender::outline::glyph_paths::contours_to_bezpath(&expected)
+    );
+    assert!(projected.contours.iter().all(|contour| {
+        contour.identifier().is_some()
+            && contour.lib().is_some()
+            && contour.points.iter().all(|point| {
+                point
+                    .name
+                    .as_ref()
+                    .is_some_and(|name| name.as_str() != "duplicate")
+                    && point.identifier().is_some()
+                    && point.lib().is_some()
+            })
+    }));
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("cleanup-contours", &layer_id, |draft| {
+                assert_eq!(draft.tidy_contours(), 0);
+                assert_eq!(draft.round_coordinates(), 0);
+                assert_eq!(draft.correct_path_directions()?, 0);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    assert_eq!(
+        reloaded
+            .glyph_layer("cleanup-contours", &reloaded_layer)
+            .unwrap(),
+        projected
+    );
+}
+
+#[test]
+fn canonical_fit_and_extremes_match_existing_geometry_with_stable_objects() {
+    let scratch = Scratch::new();
+    let point = |x, y, point_type, label: &str| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            point_type,
+            false,
+            Some(Name::new(label).unwrap()),
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        point.replace_lib(object_lib(label));
+        point
+    };
+    let mut contour = Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move, "start"),
+            point(0.0, -10.0, PointType::OffCurve, "first-control"),
+            point(150.0, -50.0, PointType::OffCurve, "second-control"),
+            point(200.0, 0.0, PointType::Curve, "end"),
+        ],
+        Some(norad::Identifier::new("fit-contour").unwrap()),
+    );
+    contour.replace_lib(object_lib("fit-contour"));
+    let mut glyph = Glyph::new("fit-extremes");
+    glyph.contours.push(contour);
+    let mut expected = glyph.clone();
+    let mut selection = HashSet::new();
+    selection.insert((0, 0));
+    assert!(runebender::outline::cleanup::fit_curve_handles(
+        &mut expected,
+        &selection,
+        0.5
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let source_path = scratch.0.join("FitExtremes.ufo");
+    font.save(&source_path).unwrap();
+    let mut project = Project::load(&source_path).unwrap();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project.document_layer("fit-extremes", &layer_id).unwrap();
+    let original_ids: Vec<_> = layer
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.id())
+        .collect();
+    project
+        .edit_document_layer("fit-extremes", &layer_id, |draft| {
+            assert!(draft.fit_curve_handles(&[original_ids[0]], 0.5)?);
+            assert!(!draft.fit_curve_handles(&[original_ids[0]], 0.5)?);
+            assert!(!draft.fit_curve_handles(&[], 0.0)?);
+            Ok(())
+        })
+        .unwrap();
+    let layer = project.document_layer("fit-extremes", &layer_id).unwrap();
+    assert_eq!(
+        layer
+            .contours()
+            .next()
+            .unwrap()
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        original_ids
+    );
+    assert_eq!(
+        project.glyph_layer("fit-extremes", &layer_id).unwrap(),
+        expected
+    );
+
+    assert!(runebender::outline::cleanup::add_extreme_points(
+        &mut expected,
+        &HashSet::new()
+    ));
+    project
+        .edit_document_layer("fit-extremes", &layer_id, |draft| {
+            assert!(draft.add_extreme_points(&[])?);
+            assert!(!draft.add_extreme_points(&[])?);
+            Ok(())
+        })
+        .unwrap();
+    let layer = project.document_layer("fit-extremes", &layer_id).unwrap();
+    let final_ids: HashSet<_> = layer
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .map(|point| point.id())
+        .collect();
+    assert!(original_ids.iter().all(|id| final_ids.contains(id)));
+    assert!(final_ids.len() > original_ids.len());
+    let projected = project.glyph_layer("fit-extremes", &layer_id).unwrap();
+    assert_eq!(
+        runebender::outline::glyph_paths::contours_to_bezpath(&projected),
+        runebender::outline::glyph_paths::contours_to_bezpath(&expected)
+    );
+    for label in ["start", "first-control", "second-control", "end"] {
+        let point = projected.contours[0]
+            .points
+            .iter()
+            .find(|point| {
+                point
+                    .name
+                    .as_ref()
+                    .is_some_and(|name| name.as_str() == label)
+            })
+            .unwrap();
+        assert!(point.identifier().is_some());
+        assert!(point.lib().is_some());
+    }
+    project.save().unwrap();
+    let reloaded = Project::load(&source_path).unwrap();
+    let reloaded_layer = reloaded
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    assert_eq!(
+        reloaded
+            .glyph_layer("fit-extremes", &reloaded_layer)
+            .unwrap(),
+        projected
+    );
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);

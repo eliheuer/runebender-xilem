@@ -970,6 +970,289 @@ impl LayerEditDraft {
         self.paste_contours(&copied)
     }
 
+    /// Remove duplicate zero-length line endpoints while retaining every surviving object.
+    ///
+    /// Returns the number of removed points.
+    pub fn tidy_contours(&mut self) -> usize {
+        let mut removed = 0_usize;
+        for shape in &mut self.layer.shapes {
+            let Shape::Path(path) = shape else {
+                continue;
+            };
+            let contour_id =
+                ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+            let preserved = self
+                .preserved
+                .contours
+                .iter_mut()
+                .find(|candidate| candidate.id == contour_id)
+                .expect("canonical contour preservation");
+            let mut index = 1;
+            while index < path.nodes.len() {
+                let previous = &path.nodes[index - 1];
+                let point = &path.nodes[index];
+                let duplicate = point.nodetype == NodeType::Line
+                    && previous.nodetype != NodeType::OffCurve
+                    && (point.x - previous.x).abs() < 0.01
+                    && (point.y - previous.y).abs() < 0.01;
+                if duplicate {
+                    path.nodes.remove(index);
+                    preserved.points.remove(index);
+                    removed += 1;
+                } else {
+                    index += 1;
+                }
+            }
+            if path.closed && path.nodes.len() > 2 {
+                let first = &path.nodes[0];
+                let last = path.nodes.last().expect("closed contour has nodes");
+                if last.nodetype == NodeType::Line
+                    && first.nodetype != NodeType::OffCurve
+                    && (last.x - first.x).abs() < 0.01
+                    && (last.y - first.y).abs() < 0.01
+                {
+                    path.nodes.pop();
+                    preserved.points.pop();
+                    removed += 1;
+                }
+            }
+        }
+        removed
+    }
+
+    /// Round every canonical contour point to integer coordinates.
+    ///
+    /// Stable identities and source metadata remain attached to their points. Returns the number
+    /// of points that moved.
+    pub fn round_coordinates(&mut self) -> usize {
+        let mut moved = 0_usize;
+        for node in self
+            .layer
+            .shapes
+            .iter_mut()
+            .filter_map(|shape| match shape {
+                Shape::Path(path) => Some(path),
+                Shape::Component(_) => None,
+            })
+            .flat_map(|path| &mut path.nodes)
+        {
+            let rounded = (node.x.round(), node.y.round());
+            if (node.x, node.y) != rounded {
+                node.x = rounded.0;
+                node.y = rounded.1;
+                moved += 1;
+            }
+        }
+        moved
+    }
+
+    /// Rewind canonical contours to counterclockwise outers and clockwise holes.
+    ///
+    /// Contours and points retain their stable identities and source metadata. Returns the number
+    /// of contours reversed.
+    pub fn correct_path_directions(&mut self) -> Result<usize, DocumentEditError> {
+        use kurbo::Shape as _;
+
+        let layer = self.view();
+        let contours: Vec<_> = layer.contours().collect();
+        let paths: Vec<_> = contours
+            .iter()
+            .map(|contour| crate::outline::glyph_paths::ordinary_contour_to_bezpath(*contour))
+            .collect();
+        let mut selected = Vec::new();
+        for (index, contour) in contours.iter().enumerate() {
+            let Some(probe) = contour
+                .points()
+                .find(|point| point.point_type() != LayerPointType::OffCurve)
+            else {
+                continue;
+            };
+            let depth = paths
+                .iter()
+                .enumerate()
+                .filter(|(other, path)| *other != index && path.contains(probe.position()))
+                .count();
+            let area = paths[index].area();
+            let wants_counterclockwise = depth % 2 == 0;
+            if (wants_counterclockwise && area < 0.0) || (!wants_counterclockwise && area > 0.0) {
+                selected.push(probe.id());
+            }
+        }
+        if selected.is_empty() {
+            return Ok(0);
+        }
+        self.reverse_contours(&selected)?;
+        Ok(selected.len())
+    }
+
+    /// Scale selected cubic handles to a fraction of their tangent-intersection maximum.
+    ///
+    /// An empty selection fits every cubic segment. Existing point identities and source metadata
+    /// remain attached to moved controls. Returns whether any control moved.
+    pub fn fit_curve_handles(
+        &mut self,
+        selected: &[PointId],
+        fraction: f64,
+    ) -> Result<bool, DocumentEditError> {
+        if !(0.01..=1.5).contains(&fraction) {
+            return Ok(false);
+        }
+        for id in selected {
+            if self.node(*id).is_none() {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+        }
+        let selected: HashSet<_> = selected.iter().map(|id| id.0).collect();
+        let fit_all = selected.is_empty();
+        let cross =
+            |first: kurbo::Vec2, second: kurbo::Vec2| first.x * second.y - first.y * second.x;
+        let mut replacements = HashMap::new();
+        for path in self.layer.paths() {
+            let count = path.nodes.len();
+            if count < 4 {
+                continue;
+            }
+            for end in 0..count {
+                if path.nodes[end].nodetype != NodeType::Curve {
+                    continue;
+                }
+                let second_control = (end + count - 1) % count;
+                let first_control = (end + count - 2) % count;
+                let start = (end + count - 3) % count;
+                if path.nodes[first_control].nodetype != NodeType::OffCurve
+                    || path.nodes[second_control].nodetype != NodeType::OffCurve
+                    || path.nodes[start].nodetype == NodeType::OffCurve
+                {
+                    continue;
+                }
+                if !fit_all
+                    && ![start, first_control, second_control, end]
+                        .iter()
+                        .any(|index| {
+                            read_id(&path.nodes[*index].format_specific)
+                                .is_some_and(|id| selected.contains(&id))
+                        })
+                {
+                    continue;
+                }
+                let start_point = kurbo::Point::new(path.nodes[start].x, path.nodes[start].y);
+                let first_point =
+                    kurbo::Point::new(path.nodes[first_control].x, path.nodes[first_control].y);
+                let second_point =
+                    kurbo::Point::new(path.nodes[second_control].x, path.nodes[second_control].y);
+                let end_point = kurbo::Point::new(path.nodes[end].x, path.nodes[end].y);
+                let first_direction = first_point - start_point;
+                let second_direction = second_point - end_point;
+                if first_direction.hypot() < 1e-9 || second_direction.hypot() < 1e-9 {
+                    continue;
+                }
+                let first_direction = first_direction / first_direction.hypot();
+                let second_direction = second_direction / second_direction.hypot();
+                let denominator = cross(first_direction, second_direction);
+                if denominator.abs() < 1e-9 {
+                    continue;
+                }
+                let between = end_point - start_point;
+                let first_maximum = cross(between, second_direction) / denominator;
+                let second_maximum = cross(between, first_direction) / denominator;
+                if first_maximum <= 0.0 || second_maximum <= 0.0 {
+                    continue;
+                }
+                let first = start_point + first_direction * (first_maximum * fraction);
+                let second = end_point + second_direction * (second_maximum * fraction);
+                let first = kurbo::Point::new(first.x.round(), first.y.round());
+                let second = kurbo::Point::new(second.x.round(), second.y.round());
+                ensure_finite(&[first.x, first.y, second.x, second.y])?;
+                if first != first_point {
+                    replacements.insert(
+                        read_id(&path.nodes[first_control].format_specific)
+                            .expect("canonical point identity"),
+                        first,
+                    );
+                }
+                if second != second_point {
+                    replacements.insert(
+                        read_id(&path.nodes[second_control].format_specific)
+                            .expect("canonical point identity"),
+                        second,
+                    );
+                }
+            }
+        }
+        if replacements.is_empty() {
+            return Ok(false);
+        }
+        for node in self
+            .layer
+            .shapes
+            .iter_mut()
+            .filter_map(|shape| match shape {
+                Shape::Path(path) => Some(path),
+                Shape::Component(_) => None,
+            })
+            .flat_map(|path| &mut path.nodes)
+        {
+            let id = read_id(&node.format_specific).expect("canonical point identity");
+            if let Some(position) = replacements.get(&id) {
+                node.x = position.x;
+                node.y = position.y;
+            }
+        }
+        Ok(true)
+    }
+
+    /// Insert on-curve points at selected cubic extrema.
+    ///
+    /// An empty selection considers every ordinary cubic segment. Hyperbezier contours remain on
+    /// their editable source path. Returns whether any point was inserted.
+    pub fn add_extreme_points(&mut self, selected: &[PointId]) -> Result<bool, DocumentEditError> {
+        use kurbo::ParamCurveExtrema as _;
+
+        for id in selected {
+            if self.node(*id).is_none() {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+        }
+        let selected: HashSet<_> = selected.iter().copied().collect();
+        let mut staged = self.clone();
+        let mut changed = false;
+        for _ in 0..300 {
+            let candidate = crate::outline::segment_ops::ordinary_layer_segments(staged.view())
+                .into_iter()
+                .find_map(|segment| {
+                    let kurbo::PathSeg::Cubic(cubic) = segment.seg else {
+                        return None;
+                    };
+                    if !selected.is_empty()
+                        && !segment.point_ids().iter().any(|id| selected.contains(id))
+                    {
+                        return None;
+                    }
+                    let parameter = cubic
+                        .extrema()
+                        .into_iter()
+                        .find(|parameter| (0.02..=0.98).contains(parameter))?;
+                    let (
+                        DocumentSegmentEndpoint::Point(start),
+                        DocumentSegmentEndpoint::Point(end),
+                    ) = (segment.start, segment.end)
+                    else {
+                        return None;
+                    };
+                    Some((start, end, parameter))
+                });
+            let Some((start, end, parameter)) = candidate else {
+                break;
+            };
+            staged.insert_point_on_segment(start, end, parameter)?;
+            changed = true;
+        }
+        if changed {
+            *self = staged;
+        }
+        Ok(changed)
+    }
+
     /// Apply a boolean operation to canonical contours and replace their topology.
     ///
     /// Union combines every contour. Other operations use the first contour as the left operand
