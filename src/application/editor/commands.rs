@@ -614,106 +614,23 @@ impl Workspace {
 
     /// Copy this document into a new directory and make that copy current.
     pub(crate) fn save_as_to(&mut self, directory: &std::path::Path) -> bool {
-        let targets = self
-            .font
-            .project
-            .sources()
-            .iter()
-            .map(|master| {
-                master
-                    .source_path
-                    .file_name()
-                    .map(|name| directory.join(name))
-                    .ok_or_else(|| format!("invalid master path {}", master.source_path.display()))
-            })
-            .collect::<Result<Vec<_>, _>>();
-        let targets = match targets {
-            Ok(targets) => targets,
-            Err(error) => {
-                self.note = format!("Save As refused: {error}");
-                return false;
-            }
-        };
-        let designspace_target = self.font.project.ds_doc.as_ref().map(|_| {
-            let name = self
-                .font
-                .document_source()
-                .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new("Untitled.designspace"));
-            directory.join(name)
-        });
-        let unique: std::collections::HashSet<_> = targets.iter().collect();
-        if unique.len() != targets.len()
-            || targets.iter().any(|target| target.exists())
-            || designspace_target.as_ref().is_some_and(|target| {
-                target.exists() || targets.iter().any(|master| master == target)
-            })
-        {
-            self.note =
-                "Save As refused: every generated master destination must be new and unique".into();
+        if self.features_edited {
+            self.note = "Apply or Revert feature edits before saving".into();
             return false;
         }
-
-        let rewritten_sources = if let Some(doc) = self.font.project.ds_doc.as_ref() {
-            let source_parent = self
-                .font
-                .project
-                .export_source
-                .as_deref()
-                .and_then(std::path::Path::parent)
-                .unwrap_or_else(|| std::path::Path::new("."));
-            let names = doc
-                .sources
-                .iter()
-                .map(|source| {
-                    let old_path = std::fs::canonicalize(source_parent.join(&source.filename))
-                        .map_err(|error| format!("{}: {error}", source.filename))?;
-                    self.font
-                        .project
-                        .sources()
-                        .iter()
-                        .zip(&targets)
-                        .find(|(master, _)| {
-                            std::fs::canonicalize(&master.source_path).ok().as_ref()
-                                == Some(&old_path)
-                        })
-                        .and_then(|(_, target)| target.file_name())
-                        .map(|name| name.to_string_lossy().into_owned())
-                        .ok_or_else(|| format!("source {} has no master", source.filename))
-                })
-                .collect::<Result<Vec<_>, String>>();
-            match names {
-                Ok(names) => Some(names),
-                Err(error) => {
-                    self.note = format!("Save As refused: {error}");
-                    return false;
-                }
-            }
-        } else {
-            None
-        };
-
-        if let (Some(doc), Some(document_target)) =
-            (self.font.project.ds_doc.as_mut(), designspace_target)
-        {
-            for (source, filename) in doc
-                .sources
-                .iter_mut()
-                .zip(rewritten_sources.expect("a designspace has rewritten source paths"))
-            {
-                source.filename = filename;
-            }
-            self.font.project.export_source = Some(document_target);
-            self.font.project.ds_dirty = true;
-        } else if let Some(target) = targets.first() {
-            self.font.project.export_source = Some(target.clone());
-        }
-        for (master, target) in self.font.project.edit_sources().iter_mut().zip(targets) {
-            master.source_path = target;
-            master.dirty = true;
+        if let Err(error) = self.font.project.save_as(directory) {
+            self.note = format!("Save As refused: {error}");
+            return false;
         }
         self.prepare_save_as();
-        self.save()
+        self.modified = false;
+        let source = self.font.source();
+        let label = source
+            .file_name()
+            .map(|name| name.to_string_lossy())
+            .unwrap_or_else(|| source.as_os_str().to_string_lossy());
+        self.note = format!("Saved {label}");
+        true
     }
 
     /// Pick and open a nodes graph.

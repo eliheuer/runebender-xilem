@@ -2286,3 +2286,44 @@ The focused regression matches the established hyper-pen point semantics, verifi
 The full variable-project suite and warning-denied library/test Clippy passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 The M06 caller still needs to consume these draft operations before the corresponding temporary bridge paths can be deleted.
+
+### Project-owned Save As retargeting
+
+Evidence commit: `Retarget Save As through Project` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Retarget Save As through Project$' -1`.
+
+`Project::save_as` now plans a complete copy from canonical source snapshots, stages every UFO, optional Designspace and external relative feature include, and publishes the set before changing any live source path.
+The native command no longer rewrites Designspace metadata or source destinations through `SourcesEdit`.
+Successful publication installs the checked canonical Designspace filenames and retargets the Project; any validation or publication error leaves the original Project and source tree unchanged.
+
+Save As preserves relative include spelling while relocating recursively resolved include files within the selected copy directory.
+Shared dependencies deduplicate only when their resolved source and bytes agree.
+Existing destinations, normalized aliases, overlapping outputs, collisions and include paths that would escape the selected directory are refused before Project mutation.
+
+The focused Project tests cover a single UFO with a nested relative include, an occupied dependency destination, unchanged originals, a two-source Designspace sharing one include and reopening the published copies.
+The native regressions cover Save As and reopen for both single-UFO and Designspace workspaces with relative includes.
+
+Executed evidence:
+
+```sh
+cargo test --locked --lib document::project::save_as::tests -- --test-threads=1
+cargo test --locked --lib document::filesystem::tests -- --test-threads=1
+cargo test --locked --test compiler_include_path -- --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo test --locked --bin runebender -- --test-threads=1
+cargo clippy --locked --lib --tests -- -D warnings
+cargo fmt --all --check
+bash .github/copyright.sh
+git diff --check
+```
+
+The three Project Save As tests, eight filesystem tests, two compiler-include tests and all 65 variable-project tests passed.
+The complete native binary suite passed 168 tests with its four documented model or fixture ignores.
+Warning-denied library/test Clippy, formatting, copyright and whitespace checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+M12 still has four explicit close-out gaps.
+The native New Font paths still serialize a temporary Norad font before reopening it instead of constructing and publishing the common canonical Project directly.
+The legacy CLI `open_master` and `save_master` boundary still loads and saves `Master` directly for UFO editing commands.
+External include files copied by Save As are not yet inputs to the native watcher fingerprint, so the existing watched-source conflict coverage remains limited to UFO and Designspace roots.
+The exact codec and preservation allowlist must be consolidated before M13 removes the compatibility adapters.

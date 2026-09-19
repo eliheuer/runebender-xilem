@@ -73,6 +73,7 @@ No release has been published yet.
 
 ### Fixed
 
+- Made Save As publish and retarget complete UFO/Designspace copies atomically, including external relative feature includes, without replacing original or pre-existing destination files.
 - Made Glyphs conversion warnings fail explicitly and publish validated generated sources without replacing an existing output directory.
 - Prevented compiled-font imports from selecting an existing UFO destination and rejected aliased save destinations before staging.
 - Made UFO and Designspace saves validate every staged source before replacing live files, while retaining metainfo, layer order and directories, exact GLIF paths, images, data and unrecognized filesystem payloads.

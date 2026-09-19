@@ -213,11 +213,20 @@ pub(crate) struct SourceExport {
     pub(crate) preserved: PreservedFiles,
 }
 
+/// One non-UFO file that must publish atomically with a Save As copy.
+#[derive(Debug)]
+pub(crate) struct FileExport {
+    pub(crate) destination: PathBuf,
+    pub(crate) bytes: Vec<u8>,
+}
+
 /// A complete immutable save plan for all UFOs and optional Designspace metadata.
 #[derive(Debug)]
 pub(crate) struct ExportPlan {
     sources: Vec<SourceExport>,
     designspace: Option<(PathBuf, norad::designspace::DesignSpaceDocument)>,
+    files: Vec<FileExport>,
+    replace_existing: bool,
 }
 
 impl ExportPlan {
@@ -228,13 +237,52 @@ impl ExportPlan {
         if sources.is_empty() {
             return Err("a filesystem export needs at least one UFO source".into());
         }
-        let mut destinations = sources
+        let plan = Self {
+            sources,
+            designspace,
+            files: Vec::new(),
+            replace_existing: true,
+        };
+        plan.validate_destinations()?;
+        Ok(plan)
+    }
+
+    /// Add ordinary files that must stage and publish with the font sources.
+    pub(crate) fn with_files(mut self, files: Vec<FileExport>) -> Result<Self, String> {
+        self.files = files;
+        self.validate_destinations()?;
+        Ok(self)
+    }
+
+    /// Require every destination to remain absent through publication.
+    pub(crate) fn require_new_destinations(mut self) -> Result<Self, String> {
+        for destination in self.destinations() {
+            if path_entry_exists(destination)? {
+                return Err(format!(
+                    "filesystem export destination already exists: {}",
+                    destination.display()
+                ));
+            }
+        }
+        self.replace_existing = false;
+        Ok(self)
+    }
+
+    fn destinations(&self) -> Vec<&Path> {
+        let mut destinations = self
+            .sources
             .iter()
             .map(|source| source.destination.as_path())
             .collect::<Vec<_>>();
-        if let Some((path, _)) = &designspace {
+        if let Some((path, _)) = &self.designspace {
             destinations.push(path);
         }
+        destinations.extend(self.files.iter().map(|file| file.destination.as_path()));
+        destinations
+    }
+
+    fn validate_destinations(&self) -> Result<(), String> {
+        let destinations = self.destinations();
         let mut destination_keys: Vec<PathBuf> = Vec::with_capacity(destinations.len());
         for destination in destinations {
             if destination.as_os_str().is_empty() {
@@ -252,10 +300,7 @@ impl ExportPlan {
             }
             destination_keys.push(key);
         }
-        Ok(Self {
-            sources,
-            designspace,
-        })
+        Ok(())
     }
 
     pub(crate) fn execute(self) -> Result<(), String> {
@@ -269,6 +314,7 @@ impl ExportPlan {
             staged.push(StagedArtifact {
                 destination: source.destination,
                 stage,
+                created_parents: Vec::new(),
             });
         }
         if let Some((destination, document)) = self.designspace {
@@ -295,9 +341,32 @@ impl ExportPlan {
                     destination.display()
                 ));
             }
-            staged.push(StagedArtifact { destination, stage });
+            staged.push(StagedArtifact {
+                destination,
+                stage,
+                created_parents: Vec::new(),
+            });
         }
-        publish(staged)
+        for file in self.files {
+            let stage = fresh_sibling(&file.destination, "stage")?;
+            let artifact = StagedArtifact {
+                destination: file.destination,
+                created_parents: create_parent_directories(&stage)?,
+                stage,
+            };
+            fs::write(&artifact.stage, &file.bytes)
+                .map_err(|error| format!("{}: {error}", artifact.destination.display()))?;
+            let staged_bytes = fs::read(&artifact.stage)
+                .map_err(|error| format!("staged {}: {error}", artifact.destination.display()))?;
+            if staged_bytes != file.bytes {
+                return Err(format!(
+                    "staged {} changed file data",
+                    artifact.destination.display()
+                ));
+            }
+            staged.push(artifact);
+        }
+        publish(staged, self.replace_existing)
     }
 }
 
@@ -324,6 +393,7 @@ pub(crate) fn publish_glyphs_import(
     let staged = StagedArtifact {
         destination: destination.clone(),
         stage,
+        created_parents: Vec::new(),
     };
     let open_relative = stage_generated_files(&staged.stage, result)?;
     ImportPlan::read(&staged.stage.join(&open_relative))
@@ -456,11 +526,15 @@ fn stage_ufo(source: &SourceExport, stage: &Path) -> Result<(), String> {
 struct StagedArtifact {
     destination: PathBuf,
     stage: PathBuf,
+    created_parents: Vec<PathBuf>,
 }
 
 impl Drop for StagedArtifact {
     fn drop(&mut self) {
         remove_any(&self.stage);
+        for directory in self.created_parents.iter().rev() {
+            let _ = fs::remove_dir(directory);
+        }
     }
 }
 
@@ -470,19 +544,37 @@ struct PublishedArtifact {
     backup: Option<PathBuf>,
 }
 
-fn publish(staged: Vec<StagedArtifact>) -> Result<(), String> {
+fn publish(staged: Vec<StagedArtifact>, replace_existing: bool) -> Result<(), String> {
     let mut published: Vec<PublishedArtifact> = Vec::new();
     for artifact in &staged {
-        let backup = if artifact.destination.exists() {
+        let destination_exists = match path_entry_exists(&artifact.destination) {
+            Ok(exists) => exists,
+            Err(error) => {
+                rollback(&published);
+                cleanup_staged(&staged);
+                return Err(error);
+            }
+        };
+        if destination_exists && !replace_existing {
+            rollback(&published);
+            cleanup_staged(&staged);
+            return Err(format!(
+                "filesystem export destination appeared during staging: {}",
+                artifact.destination.display()
+            ));
+        }
+        let backup = if destination_exists {
             let backup = match fresh_sibling(&artifact.destination, "backup") {
                 Ok(backup) => backup,
                 Err(error) => {
                     rollback(&published);
+                    cleanup_staged(&staged);
                     return Err(error);
                 }
             };
             if let Err(error) = fs::rename(&artifact.destination, &backup) {
                 rollback(&published);
+                cleanup_staged(&staged);
                 return Err(format!(
                     "could not stage existing {} for replacement: {error}",
                     artifact.destination.display()
@@ -497,6 +589,7 @@ fn publish(staged: Vec<StagedArtifact>) -> Result<(), String> {
                 let _ = fs::rename(backup, &artifact.destination);
             }
             rollback(&published);
+            cleanup_staged(&staged);
             return Err(format!(
                 "could not publish {}: {error}",
                 artifact.destination.display()
@@ -515,6 +608,21 @@ fn publish(staged: Vec<StagedArtifact>) -> Result<(), String> {
     Ok(())
 }
 
+fn cleanup_staged(staged: &[StagedArtifact]) {
+    for artifact in staged {
+        remove_any(&artifact.stage);
+    }
+    let mut directories = staged
+        .iter()
+        .flat_map(|artifact| artifact.created_parents.iter().cloned())
+        .collect::<Vec<_>>();
+    directories.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
+    directories.dedup();
+    for directory in directories {
+        let _ = fs::remove_dir(directory);
+    }
+}
+
 fn rollback(published: &[PublishedArtifact]) {
     for artifact in published.iter().rev() {
         remove_any(&artifact.destination);
@@ -522,6 +630,31 @@ fn rollback(published: &[PublishedArtifact]) {
             let _ = fs::rename(backup, &artifact.destination);
         }
     }
+}
+
+fn create_parent_directories(path: &Path) -> Result<Vec<PathBuf>, String> {
+    let Some(parent) = path.parent().filter(|path| !path.as_os_str().is_empty()) else {
+        return Ok(Vec::new());
+    };
+    let mut missing = Vec::new();
+    let mut current = parent;
+    while !path_entry_exists(current)? {
+        missing.push(current.to_path_buf());
+        current = current
+            .parent()
+            .ok_or_else(|| format!("invalid filesystem destination {}", path.display()))?;
+    }
+    let mut created = Vec::new();
+    for directory in missing.into_iter().rev() {
+        if let Err(error) = fs::create_dir(&directory) {
+            for created in created.iter().rev() {
+                let _ = fs::remove_dir(created);
+            }
+            return Err(format!("{}: {error}", directory.display()));
+        }
+        created.push(directory);
+    }
+    Ok(created)
 }
 
 fn fresh_sibling(path: &Path, purpose: &str) -> Result<PathBuf, String> {
@@ -551,7 +684,7 @@ fn paths_overlap(left: &Path, right: &Path) -> bool {
     left == right || left.starts_with(right) || right.starts_with(left)
 }
 
-fn path_entry_exists(path: &Path) -> Result<bool, String> {
+pub(super) fn path_entry_exists(path: &Path) -> Result<bool, String> {
     match fs::symlink_metadata(path) {
         Ok(_) => Ok(true),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -559,7 +692,7 @@ fn path_entry_exists(path: &Path) -> Result<bool, String> {
     }
 }
 
-fn destination_key(path: &Path) -> Result<PathBuf, String> {
+pub(super) fn destination_key(path: &Path) -> Result<PathBuf, String> {
     let mut key = if path.is_absolute() {
         PathBuf::new()
     } else {

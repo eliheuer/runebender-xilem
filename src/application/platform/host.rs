@@ -552,8 +552,7 @@ impl Workspace {
         self.reload_from_disk_inner(true);
     }
 
-    /// Establish the non-existent destinations chosen by Save As as the new
-    /// baseline before their first write.
+    /// Establish the newly published Save As destinations as the conflict baseline.
     pub(crate) fn prepare_save_as(&mut self) {
         self.source_roots = source_roots(&self.font);
         self.source_fingerprint = source_fingerprint(&self.source_roots);
@@ -1460,14 +1459,20 @@ mod tests {
         let (dir, designspace) = two_master_designspace("designspace-save-as");
         let original_designspace = std::fs::read(&designspace).expect("the source is readable");
         for ufo in ["Regular.ufo", "Bold.ufo"] {
+            let source = dir.join(ufo);
+            let mut font = norad::Font::load(&source).expect("the source UFO loads");
+            font.features = "include(../shared.fea);".into();
+            font.save(&source).expect("the source features save");
             std::fs::write(
-                dir.join(ufo).join("lib.plist"),
+                source.join("lib.plist"),
                 r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>com.runebender.roundtrip</key><string>kept</string></dict></plist>"#,
             )
             .expect("the fixture lib is written");
         }
+        std::fs::write(dir.join("shared.fea"), "# shared Save As include\n")
+            .expect("the shared feature include is written");
         let mut workspace = Workspace::open(&designspace).expect("the designspace opens");
         for master in workspace.font.project.edit_sources().iter_mut() {
             let layer = master
@@ -1508,9 +1513,14 @@ mod tests {
             !std::path::Path::new(&source.filename).is_absolute()
                 && copy.join(&source.filename).exists()
         }));
+        assert_eq!(
+            std::fs::read_to_string(copy.join("shared.fea")).unwrap(),
+            "# shared Save As include\n"
+        );
 
         let reopened = Workspace::open(&copied_designspace).expect("the copied project reopens");
         assert_eq!(reopened.font.master_names(), ["Regular", "Bold"]);
+        assert_eq!(reopened.font.feature_text(), "include(../shared.fea);");
         for master in reopened.font.project.sources() {
             assert_eq!(
                 master
@@ -1554,9 +1564,11 @@ mod tests {
         ));
         std::fs::create_dir(&dir).expect("the fixture directory is created");
         let original = dir.join("Source.ufo");
-        norad::Font::new()
-            .save(&original)
-            .expect("the original UFO saves");
+        let mut font = norad::Font::new();
+        font.features = "include(../shared.fea);".into();
+        font.save(&original).expect("the original UFO saves");
+        std::fs::write(dir.join("shared.fea"), "# shared Save As include\n")
+            .expect("the shared feature include is written");
         let mut workspace = Workspace::open(&original).expect("the original UFO opens");
         workspace.filter = "A".into();
         workspace.new_glyph();
@@ -1576,6 +1588,11 @@ mod tests {
         );
         let reopened = Workspace::open(&target).expect("the copied UFO reopens");
         assert_eq!(reopened.font.font().get_glyph("A").unwrap().width, 543.0);
+        assert_eq!(reopened.font.feature_text(), "include(../shared.fea);");
+        assert_eq!(
+            std::fs::read_to_string(copy.join("shared.fea")).unwrap(),
+            "# shared Save As include\n"
+        );
 
         std::fs::remove_dir_all(dir).expect("the fixture is removed");
     }
