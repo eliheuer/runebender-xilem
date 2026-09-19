@@ -2974,6 +2974,127 @@ fn canonical_contour_reversal_preserves_identities_metadata_and_storage() {
 }
 
 #[test]
+fn canonical_contour_start_reorders_without_replacing_points() {
+    let scratch = Scratch::new();
+    let point = |x, y, typ, label: &str| {
+        let mut point = ContourPoint::new(
+            x,
+            y,
+            typ,
+            typ == PointType::Curve,
+            Some(Name::new(label).unwrap()),
+            Some(norad::Identifier::new(label).unwrap()),
+        );
+        point.replace_lib(object_lib(label));
+        point
+    };
+    let mut closed = Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Line, "closed-a"),
+            point(30.0, 80.0, PointType::OffCurve, "closed-control-a"),
+            point(90.0, 80.0, PointType::OffCurve, "closed-control-b"),
+            point(120.0, 0.0, PointType::Curve, "closed-b"),
+            point(60.0, -60.0, PointType::Line, "closed-c"),
+        ],
+        Some(norad::Identifier::new("closed-source").unwrap()),
+    );
+    closed.replace_lib(object_lib("closed-source"));
+    let open = Contour::new(
+        vec![
+            point(200.0, 0.0, PointType::Move, "open-a"),
+            point(300.0, 0.0, PointType::Line, "open-b"),
+        ],
+        None,
+    );
+    let source = closed.clone();
+    let mut glyph = Glyph::new("set-contour-start");
+    glyph.contours = vec![closed, open];
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project = Project::from_source(Master::from_font(
+        font,
+        scratch.0.join("SetContourStart.ufo"),
+    ));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project
+        .document_layer("set-contour-start", &layer_id)
+        .unwrap();
+    let contours: Vec<_> = layer.contours().collect();
+    let contour_id = contours[0].id();
+    let ids: Vec<Vec<_>> = contours
+        .iter()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+    let before_segments: Vec<_> =
+        runebender::outline::glyph_paths::ordinary_contour_to_bezpath(contours[0])
+            .segments()
+            .collect();
+
+    project
+        .edit_document_layer("set-contour-start", &layer_id, |draft| {
+            assert!(draft.set_contour_start(ids[0][3])?);
+            Ok(())
+        })
+        .unwrap();
+
+    let layer = project
+        .document_layer("set-contour-start", &layer_id)
+        .unwrap();
+    let reordered = layer.contours().next().unwrap();
+    assert_eq!(reordered.id(), contour_id);
+    assert_eq!(
+        reordered
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>(),
+        [ids[0][3], ids[0][4], ids[0][0], ids[0][1], ids[0][2]]
+    );
+    let mut after_segments: Vec<_> =
+        runebender::outline::glyph_paths::ordinary_contour_to_bezpath(reordered)
+            .segments()
+            .collect();
+    assert_eq!(after_segments.len(), before_segments.len());
+    for segment in before_segments {
+        let index = after_segments
+            .iter()
+            .position(|candidate| *candidate == segment)
+            .expect("reordering retained every segment");
+        after_segments.remove(index);
+    }
+    let projected = project.glyph_layer("set-contour-start", &layer_id).unwrap();
+    for (point, source_index) in projected.contours[0]
+        .points
+        .iter()
+        .zip([3_usize, 4, 0, 1, 2])
+    {
+        let source_point = &source.points[source_index];
+        assert_eq!(point.name, source_point.name);
+        assert_eq!(point.identifier(), source_point.identifier());
+        assert_eq!(point.lib(), source_point.lib());
+    }
+    assert_eq!(projected.contours[0].identifier(), source.identifier());
+    assert_eq!(projected.contours[0].lib(), source.lib());
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project
+            .edit_document_layer("set-contour-start", &layer_id, |draft| {
+                assert!(!draft.set_contour_start(ids[0][3])?);
+                assert!(!draft.set_contour_start(ids[0][1])?);
+                assert!(!draft.set_contour_start(ids[1][1])?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision }
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);

@@ -1320,4 +1320,33 @@ The focused repository regressions, both independent-review tests and all 39 var
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+### Canonical contour-start reordering substep
+
+Evidence commit: `Reorder canonical contour starts` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Reorder canonical contour starts$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md`, `CHANGELOG.md` and this log.
+
+`LayerEditDraft::set_contour_start` now rotates a closed contour directly around a selected canonical on-curve point.
+Canonical nodes and their preservation records rotate together, so the contour and every point retain identity, names, identifiers and object libraries.
+Open contours, off-curve controls and a point that is already first are explicit no-ops.
+
+The integration oracle requires stable contour and point identities, unchanged line and cubic segments, exact source metadata and an unchanged revision for every rejected target kind.
+This completes M04's direct contour-reordering path.
+Split/join and copy/paste remain, so the first checklist item stays open.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_contour_start_reorders_without_replacing_points -- --exact --test-threads=1
+RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused reorder regression and all 40 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
 The next M04 substep moves split and join operations onto canonical topology.

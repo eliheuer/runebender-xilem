@@ -66,6 +66,7 @@ No release has been published yet.
 - Preserved neighboring quadratic segments and control metadata when deleting one control.
 - Made multi-contour point deletion atomic when a later contour cannot be edited.
 - Preserved point identities and metadata when reversing open, closed and implied contours.
+- Preserved point and contour identities when changing a closed contour's start point.
 - Reject unsupported Designspace fields, invalid mappings, missing sources and incompatible glyph structures before they can be silently dropped or misinterpreted.
 - Prevented external reloads, stale model results, or stale proposals from overwriting
   unsaved or subsequently edited document state.

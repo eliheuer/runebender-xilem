@@ -1352,6 +1352,52 @@ impl LayerEditDraft {
         Ok(changed)
     }
 
+    /// Make an on-curve point the first stored point of its closed contour.
+    ///
+    /// The contour and every point retain their stable identities and source metadata. Returns
+    /// whether the canonical storage order changed.
+    pub fn set_contour_start(&mut self, point: PointId) -> Result<bool, DocumentEditError> {
+        let (shape_index, point_index) = self
+            .layer
+            .shapes
+            .iter()
+            .enumerate()
+            .find_map(|(shape_index, shape)| {
+                let Shape::Path(path) = shape else {
+                    return None;
+                };
+                let point_index = path
+                    .nodes
+                    .iter()
+                    .position(|node| read_id(&node.format_specific) == Some(point.0))?;
+                Some((shape_index, point_index))
+            })
+            .ok_or(DocumentEditError::MissingPoint(point))?;
+        let Shape::Path(path) = &self.layer.shapes[shape_index] else {
+            unreachable!("located contour is a path");
+        };
+        if !path.closed
+            || point_index == 0
+            || path.nodes[point_index].nodetype == NodeType::OffCurve
+        {
+            return Ok(false);
+        }
+        let contour_id =
+            ContourId(read_id(&path.format_specific).expect("canonical contour identity"));
+        let Shape::Path(path) = &mut self.layer.shapes[shape_index] else {
+            unreachable!("located contour remains a path");
+        };
+        path.nodes.rotate_left(point_index);
+        self.preserved
+            .contours
+            .iter_mut()
+            .find(|candidate| candidate.id == contour_id)
+            .expect("canonical contour preservation")
+            .points
+            .rotate_left(point_index);
+        Ok(true)
+    }
+
     /// Shift every contour point and anchor horizontally.
     ///
     /// Component transforms and the advance remain unchanged, matching a left-sidebearing edit.
