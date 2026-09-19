@@ -2,7 +2,7 @@
 
 Audit date: 2026-09-18.
 Audited implementation: `6350cf3`, including the pipeline implementation at `5cbf51b`.
-Status: **IN PROGRESS — M00–M02 complete; migration incomplete**.
+Status: **IN PROGRESS — M00–M03 complete; M04 active**.
 This document is the implementation checklist and handoff for the dedicated scheduled task.
 Implementation is paused in the originating task; the scheduled task owns the continuation.
 

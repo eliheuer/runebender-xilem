@@ -1075,4 +1075,14 @@ The focused shape-creation comparison and all 32 variable-project integration te
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 
+Independent review additionally exercised pen extension, closure and shape creation on an imported glyph containing contour, point, anchor, component and glyph metadata.
+It verified existing live identities, uniqueness of fresh identities, empty metadata on new points, exact metrics and reflected/skewed component transforms, and complete glyph equality after saving and reopening a disposable UFO.
+Its rollback case confirmed that a later topology error discards earlier edits in the same draft and that caught ellipse-coordinate overflow leaves no partial contour or revision change.
+
+```sh
+/private/tmp/runebender-migration-review.porJgX/topology_preservation --test-threads=1
+```
+
+Both independent preservation tests passed against `dec7966` without repository changes.
+
 The next M04 substep continues direct canonical topology edits with point insertion and deletion.
