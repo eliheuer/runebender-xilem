@@ -896,6 +896,53 @@ fn auxiliary_layer_structure_mutates_the_canonical_document_atomically() {
 }
 
 #[test]
+fn structural_undo_and_redo_advance_the_live_document_revision() {
+    let (_scratch, mut project) = fixture();
+    let from = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let copied = project.add_glyph_layer("B", &from, "backup").unwrap();
+    let after_first_copy = project.document_revision();
+    assert_eq!(
+        project.add_glyph_layer("A", &from, "backup").unwrap(),
+        copied
+    );
+    let after_second_copy = project.document_revision();
+    assert!(after_second_copy > after_first_copy);
+
+    assert!(project.undo_sources(false).unwrap());
+    let after_undo = project.document_revision();
+    assert!(
+        after_undo > after_second_copy,
+        "structural undo reused an earlier document revision"
+    );
+    assert!(project.document_layer("A", &copied).is_none());
+    assert!(project.document_layer("B", &copied).is_some());
+
+    assert!(project.undo_sources(true).unwrap());
+    let after_redo = project.document_revision();
+    assert!(
+        after_redo > after_undo,
+        "structural redo reused an earlier document revision"
+    );
+    assert!(project.document_layer("A", &copied).is_some());
+    assert!(project.document_layer("B", &copied).is_some());
+
+    let width = project.document_layer("A", &copied).unwrap().width();
+    let changed = project
+        .edit_document_layer("A", &copied, |draft| {
+            draft.set_width(width + 1.0)?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(matches!(
+        changed,
+        DocumentEditOutcome::Changed { revision, .. } if revision == after_redo + 1
+    ));
+}
+
+#[test]
 fn interpolation_is_glyph_local_and_independent_of_selected_source() {
     let (_scratch, mut project) = fixture();
     let a = project

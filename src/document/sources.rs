@@ -46,9 +46,11 @@ impl SourceFrame {
     }
 
     fn restore(self, project: &mut Project) {
+        let revision = project.variable.revision;
         let next_source = project.variable.next_source.max(self.variable.next_source);
         project.masters = self.masters;
         project.variable = self.variable;
+        project.variable.revision = revision;
         project.variable.next_source = next_source;
         project.master_names = self.names;
         project.master_locations = self.locations;

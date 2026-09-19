@@ -461,3 +461,31 @@ The unchanged `block v0.1.6` future-incompatibility notice remains a dependency 
 
 M02 is complete.
 M03 is the next dependency-ready milestone and begins by moving geometry queries and ordinary point operations from Norad projections to the canonical layer API.
+
+### Structural revision review correction
+
+Evidence commit: `Keep structural history revisions monotonic` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Keep structural history revisions monotonic$' -1`.
+Affected paths: `src/document/sources.rs`, `tests/variable_project.rs` and this log.
+
+Review found that structural undo restored the historical `VariableData::revision` before synchronizing the restored content.
+That could reuse the current public revision or move it backward even though canonical contents changed.
+`SourceFrame::restore` now preserves the live revision generation while restoring historical document contents, then lets structural synchronization advance it.
+
+The regression test copies two glyphs into one auxiliary layer, verifies undo removes only the second glyph, verifies redo restores it, and requires each changed state to receive a newer revision.
+It then performs a canonical layer edit and verifies the normal one-step revision contract continues from the restored generation.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project structural_undo_and_redo_advance_the_live_document_revision -- --exact --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused revision regression and all 19 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
