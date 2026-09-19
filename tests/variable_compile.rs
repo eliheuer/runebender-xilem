@@ -106,6 +106,60 @@ fn unsaved_variable_document_compiles_outlines_advances_kerning_and_ligatures() 
 }
 
 #[test]
+fn compiler_quantizes_exact_editable_metrics_only_in_its_snapshot() {
+    let mut project = project();
+    {
+        let mut source = project.edit_source(SourceId(0)).unwrap();
+        source
+            .font
+            .default_layer_mut()
+            .get_glyph_mut("A")
+            .unwrap()
+            .width = 500.6;
+        *source
+            .font
+            .kerning
+            .get_mut(&Name::new("A").unwrap())
+            .unwrap()
+            .get_mut(&Name::new("V").unwrap())
+            .unwrap() = -50.5;
+    }
+    let exact = project.source_snapshot(SourceId(0)).unwrap();
+    assert_eq!(
+        exact.get_glyph("A").unwrap().width,
+        500.6,
+        "editable advance must remain exact"
+    );
+    assert_eq!(
+        exact.kerning[&Name::new("A").unwrap()][&Name::new("V").unwrap()],
+        -50.5,
+        "editable kerning must remain exact"
+    );
+
+    let compiled = project.compile().unwrap();
+    let shaped = ShapingFont::from_bytes((*compiled.bytes).clone())
+        .unwrap()
+        .at_normalized(vec![0.0])
+        .shape_with_features("AV", false, &[("liga".into(), false)])
+        .unwrap();
+    assert_eq!(
+        shaped[0].x_advance, 450.0,
+        "compiled advance and kerning must use rounded OpenType values"
+    );
+    let still_exact = project.source_snapshot(SourceId(0)).unwrap();
+    assert_eq!(
+        still_exact.get_glyph("A").unwrap().width,
+        500.6,
+        "compilation must not rewrite the editable advance"
+    );
+    assert_eq!(
+        still_exact.kerning[&Name::new("A").unwrap()][&Name::new("V").unwrap()],
+        -50.5,
+        "compilation must not rewrite editable kerning"
+    );
+}
+
+#[test]
 fn text_buffer_applies_variable_kerning_once_and_reuses_compilation_across_locations() {
     use runebender::text::buffer::{TextBuffer, TextGlyphInventory, TextKerningModel};
     let project = project();

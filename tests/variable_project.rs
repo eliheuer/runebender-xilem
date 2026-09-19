@@ -3,6 +3,7 @@
 
 //! End-to-end contracts for canonical glyph layers and UFO/Designspace projections.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -138,6 +139,180 @@ fn fixture() -> (Scratch, Project) {
     project.export_source = Some(scratch.0.join("Font.designspace"));
     project.ds_dirty = true;
     (scratch, project)
+}
+
+fn object_lib(owner: &str) -> plist::Dictionary {
+    let mut lib = plist::Dictionary::new();
+    lib.insert("com.example.unknown".into(), owner.into());
+    lib
+}
+
+fn adversarial_glyph(name: &str, width: f64, offset: f64) -> Glyph {
+    let identifier = |kind: &str, index: usize| {
+        norad::Identifier::new(&format!("{name}.{kind}.{index}")).unwrap()
+    };
+    let mut glyph = Glyph::new(name);
+    glyph.width = width;
+    glyph.height = 1_000.123_456_789 + offset;
+    glyph.note = Some(format!("exact payload {name}"));
+    glyph.lib.insert(
+        "com.example.unknownGlyphData".into(),
+        plist::Value::Array(vec![1_i64.into(), 2_i64.into(), 3_i64.into()]),
+    );
+    glyph.image = Some(
+        norad::Image::new(
+            "reference.png".into(),
+            Some(norad::Color::new(0.1, 0.2, 0.3, 0.4).unwrap()),
+            norad::AffineTransform {
+                x_scale: 0.987_654_321,
+                xy_scale: 0.123_456_789,
+                yx_scale: -0.234_567_891,
+                y_scale: 1.012_345_678,
+                x_offset: 12.345_678_9 + offset,
+                y_offset: -98.765_432_1,
+            },
+        )
+        .unwrap(),
+    );
+    let mut guideline = norad::Guideline::new(
+        norad::Line::Angle {
+            x: 20.123_456_789 + offset,
+            y: 30.987_654_321,
+            degrees: 12.345_678_9,
+        },
+        Some(Name::new("slant reference").unwrap()),
+        Some(norad::Color::new(0.8, 0.1, 0.2, 0.7).unwrap()),
+        Some(identifier("guideline", 0)),
+    );
+    guideline.replace_lib(object_lib("guideline"));
+    glyph.guidelines.push(guideline);
+
+    for contour_index in 0..2 {
+        let mut points = Vec::new();
+        for point_index in 0..2 {
+            let mut point = ContourPoint::new(
+                offset + contour_index as f64 * 100.0 + point_index as f64 * 40.0,
+                50.0 + point_index as f64 * 80.0,
+                PointType::Line,
+                point_index == 1,
+                Some(Name::new(&format!("point {contour_index} {point_index}")).unwrap()),
+                Some(identifier("point", contour_index * 2 + point_index)),
+            );
+            point.replace_lib(object_lib(&format!("point {contour_index} {point_index}")));
+            points.push(point);
+        }
+        let mut contour = Contour::new(points, Some(identifier("contour", contour_index)));
+        contour.replace_lib(object_lib(&format!("contour {contour_index}")));
+        glyph.contours.push(contour);
+    }
+    for component_index in 0..2 {
+        let mut component = Component::new(
+            Name::new("base").unwrap(),
+            norad::AffineTransform {
+                x_scale: 1.0 + component_index as f64 * 0.125,
+                xy_scale: 0.125 + component_index as f64 * 0.25,
+                yx_scale: -0.25 - component_index as f64 * 0.125,
+                y_scale: 0.875 + component_index as f64 * 0.0625,
+                x_offset: offset + component_index as f64 * 25.123_456_789,
+                y_offset: -12.987_654_321 - component_index as f64,
+            },
+            Some(identifier("component", component_index)),
+        );
+        component.replace_lib(object_lib(&format!("component {component_index}")));
+        glyph.components.push(component);
+    }
+    for anchor_index in 0..2 {
+        let mut anchor = Anchor::new(
+            offset + anchor_index as f64 * 50.123_456_789,
+            700.987_654_321 - anchor_index as f64,
+            Some(Name::new(&format!("anchor {anchor_index}")).unwrap()),
+            Some(norad::Color::new(0.1, 0.2, 0.3, 0.4).unwrap()),
+            Some(identifier("anchor", anchor_index)),
+        );
+        anchor.replace_lib(object_lib(&format!("anchor {anchor_index}")));
+        glyph.anchors.push(anchor);
+    }
+    glyph
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the fixture intentionally constructs distinct f64 widths with one f32 value"
+)]
+fn adversarial_fixture() -> (Scratch, Project, BTreeMap<String, Font>) {
+    let scratch = Scratch::new();
+    let doc = designspace_from_str(DESIGNSPACE).unwrap();
+    let exact_width = 600.123_456_789_f64;
+    let colliding_width = exact_width + 0.000_000_001;
+    assert_ne!(
+        exact_width, colliding_width,
+        "source widths must be distinct"
+    );
+    assert_eq!(
+        exact_width as f32, colliding_width as f32,
+        "source widths must collide after Babelfont narrowing"
+    );
+    let mut fonts = BTreeMap::new();
+    for (filename, offset) in [
+        ("Regular.ufo", 0.0),
+        ("Heavy.ufo", 100.0),
+        ("Wide.ufo", 50.0),
+        ("HeavyWide.ufo", 200.0),
+    ] {
+        let mut font = Font::new();
+        font.font_info.family_name = Some("Adversarial Fixture".into());
+        font.lib.insert(
+            "com.example.unknownFontData".into(),
+            plist::Value::Array(vec![0_i64.into(), 1_i64.into(), 255_i64.into()]),
+        );
+        font.kerning
+            .entry(Name::new("A").unwrap())
+            .or_default()
+            .insert(Name::new("B").unwrap(), -80.5 - offset / 10.0);
+        font.images
+            .insert(
+                "reference.png".into(),
+                include_bytes!("fixtures/variable/reference.png").to_vec(),
+            )
+            .unwrap();
+        font.default_layer_mut()
+            .insert_glyph(adversarial_glyph("A", exact_width + offset, offset));
+        font.default_layer_mut().insert_glyph(adversarial_glyph(
+            "B",
+            colliding_width + offset,
+            offset,
+        ));
+        font.default_layer_mut().insert_glyph(Glyph::new("base"));
+        if filename == "Regular.ufo" {
+            font.layers
+                .new_layer("intermediate")
+                .unwrap()
+                .insert_glyph(adversarial_glyph("A", exact_width + 75.0, offset + 75.0));
+        }
+        fonts.insert(filename.into(), font);
+    }
+    let project = Project::from_designspace(doc, |filename| {
+        Ok(Master::from_font(
+            fonts.get(filename).unwrap().clone(),
+            scratch.0.join(filename),
+        ))
+    })
+    .unwrap();
+    (scratch, project, fonts)
+}
+
+fn assert_adversarial_source(actual: &Font, expected: &Font) {
+    assert_eq!(actual.font_info, expected.font_info, "font info changed");
+    assert_eq!(actual.lib, expected.lib, "font lib changed");
+    assert_eq!(actual.kerning, expected.kerning, "kerning changed");
+    assert_eq!(actual.images, expected.images, "image data changed");
+    for name in ["A", "B", "base"] {
+        assert_eq!(
+            actual.get_glyph(name),
+            expected.get_glyph(name),
+            "glyph {name} changed"
+        );
+    }
 }
 
 fn location(weight: f64, width: f64) -> Location {
@@ -383,6 +558,69 @@ fn layer_edits_and_history_round_trip_all_source_data() {
             }
         }
     }
+}
+
+#[test]
+fn exact_values_and_object_metadata_survive_import_edit_undo_and_save() {
+    let (scratch, mut project, fonts) = adversarial_fixture();
+    let original = fonts.get("Regular.ufo").unwrap();
+    assert_adversarial_source(&project.source_snapshot(SourceId(0)).unwrap(), original);
+
+    project.export_source = Some(scratch.0.join("Font.designspace"));
+    project.ds_dirty = true;
+    project.save().unwrap();
+    let mut reloaded = Project::load(&scratch.0.join("Font.designspace")).unwrap();
+    assert_adversarial_source(&reloaded.source_snapshot(SourceId(0)).unwrap(), original);
+
+    let layer = LayerId {
+        source: SourceId(0),
+        name: "public.default".into(),
+    };
+    let original_a = original.get_glyph("A").unwrap().clone();
+    let mut edited_a = original_a.clone();
+    edited_a.width = original.get_glyph("B").unwrap().width;
+    edited_a.contours.swap(0, 1);
+    edited_a.contours[0].points.swap(0, 1);
+    edited_a.contours[0].points[0].x += 0.123_456_789;
+    edited_a.components.swap(0, 1);
+    edited_a.components[0].transform.xy_scale += 0.000_000_001;
+    edited_a.anchors.swap(0, 1);
+    edited_a.anchors[0].y += 0.987_654_321;
+    assert!(
+        reloaded.edit_layer("A", &layer, |glyph| {
+            *glyph = edited_a.clone();
+        }),
+        "adversarial edit must change the layer"
+    );
+    assert_eq!(
+        reloaded.glyph_layer("A", &layer),
+        Some(edited_a.clone()),
+        "edit must retain every exact field"
+    );
+    assert!(
+        reloaded.undo_layer("A", &layer, false),
+        "edit must be undoable"
+    );
+    assert_eq!(
+        reloaded.glyph_layer("A", &layer),
+        Some(original_a),
+        "undo must restore every exact field"
+    );
+    assert!(
+        reloaded.undo_layer("A", &layer, true),
+        "edit must be redoable"
+    );
+    assert_eq!(
+        reloaded.glyph_layer("A", &layer),
+        Some(edited_a.clone()),
+        "redo must restore every exact edited field"
+    );
+
+    reloaded.save().unwrap();
+    let saved = Project::load(&scratch.0.join("Font.designspace")).unwrap();
+    let mut expected = original.clone();
+    expected.default_layer_mut().insert_glyph(edited_a);
+    assert_adversarial_source(&saved.source_snapshot(SourceId(0)).unwrap(), &expected);
 }
 
 #[test]

@@ -104,7 +104,7 @@ There is no known external blocker.
 
 ## M01 — Define exact values, identities and preservation ownership
 
-Status: active.
+Status: complete.
 Evidence commit: `Define Babelfont document field and identity ownership` (the commit adding the contract).
 Resolve its exact ID with `git log --diff-filter=A --format=%H -- docs/babelfont-field-ownership.md`; this avoids a self-referential commit hash.
 Affected paths: `docs/babelfont-field-ownership.md`, this log and the checklist.
@@ -219,3 +219,35 @@ Warning-denied library Clippy and formatting passed after simplifying one redund
 The existing `block v0.1.6` future-incompatibility notice remains unchanged.
 
 Remaining M01 work: add the adversarial no-op/edit/undo/save fixture with colliding `f32` widths, fractional metadata and every object kind, then execute the full M01 acceptance checks.
+
+### Adversarial round-trip and M01 acceptance substep
+
+Evidence commit: `Complete Babelfont preservation contracts` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Complete Babelfont preservation contracts$' -1`.
+Affected paths: `tests/variable_project.rs`, `tests/variable_compile.rs`, the checklist and this log.
+
+The adversarial project fixture contains distinct `f64` advances that narrow to the same Babelfont `f32`, fractional kerning, exact six-coefficient component and image transforms, object identifiers and libs, glyph and font unknown-data entries, guides and image data.
+It verifies initial import without loss, no-op save and reload, an exact-value and topology edit, undo, redo, a second save and a second reload.
+The expected source projection remains byte-value exact at the editable data level, including values Babelfont or OpenType cannot represent directly.
+
+A separate compilation regression sets a `500.6` advance and `-50.5` kerning pair, checks those editable values before and after compilation, and verifies that the compiled shaped advance uses the expected rounded OpenType values.
+This establishes the boundary between source fidelity and compiler quantization without making quantized values authoritative.
+
+Executed evidence:
+
+```sh
+cargo test --locked --lib document::babelfont::tests:: -- --test-threads=1
+cargo test --locked --test babelfont_contract --test variable_project --test variable_compile -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo fmt --all --check
+git diff --check
+```
+
+The two identity-aware Babelfont unit tests passed.
+The two upstream contract tests, seven variable-compiler tests and 13 variable-project tests passed with zero failures or ignored tests.
+Warning-denied Clippy for the library and integration tests passed after adding explanatory assertion messages and documenting the fixture's intentional narrowing casts.
+Formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+M01 is complete: field ownership, typed preservation, identity rules, identity-aware projection and reconciliation, adversarial source fidelity and compiler quantization are all covered by executed evidence.
+The next dependency-ready milestone is M02, beginning with direct document-facing glyph, layer and source readers plus transactional mutations over Babelfont and the typed extensions.

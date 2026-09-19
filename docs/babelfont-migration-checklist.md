@@ -2,7 +2,7 @@
 
 Audit date: 2026-09-18.
 Audited implementation: `6350cf3`, including the pipeline implementation at `5cbf51b`.
-Status: **IN PROGRESS — M00 complete; migration incomplete**.
+Status: **IN PROGRESS — M00–M01 complete; migration incomplete**.
 This document is the implementation checklist and handoff for the dedicated scheduled task.
 Implementation is paused in the originating task; the scheduled task owns the continuation.
 
@@ -150,7 +150,7 @@ Start in: `document/variable.rs`, `document/babelfont.rs`, `document/model/entit
 - [x] Introduce typed exact-value/metadata extensions without complete Norad glyph/font copies; maintain one authoritative editable value for each field.
 - [x] Define identity and mapping rules for sources, layers, glyphs, contours, points, components and anchors, including rename, copy/paste, deletion, reorder and undo.
 - [x] Replace index-based preservation matching with the identity-aware design before enabling direct topology edits.
-- [ ] Add round-trip fixtures for two widths that narrow to the same `f32`, fractional kerning, six-coefficient transforms, identifiers, per-object libs, guides, images and unknown metadata.
+- [x] Add round-trip fixtures for two widths that narrow to the same `f32`, fractional kerning, six-coefficient transforms, identifiers, per-object libs, guides, images and unknown metadata.
 
 Acceptance: no-op import/save and edit/undo/save preserve exact supported values; inserting or reordering an object cannot attach another object's metadata to it.
 Normal compiler quantization is tested separately from editable-source fidelity.
