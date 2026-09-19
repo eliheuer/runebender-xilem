@@ -28,7 +28,11 @@ Baseline: `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
 - `62e4a6b` (`Compile canonical font info directly`) removes the temporary boundary decode and reads canonical names, UPM, metrics and OpenType values by stable `SourceId`.
   Its regression proves exact unsaved UPM retention, one compiler-only quantization, one revision, invalidation, changed output bytes and fresh compiled-cache publication.
 - `cbb4c2b` (`Add canonical Designspace structure model`) adds stable axis, source, instance and rule identities; exact mapped locations; full and sparse source descriptors; checked structural edits; immutable compiler inputs; and an explicit checked Norad import/export boundary.
-  The model accepts Project-assigned source and layer identities, preserves supported source ordering and metadata, rejects unsupported cross-axis, discrete and anisotropic data, and is not yet installed as Project's authoritative structural owner.
+  The model accepts Project-assigned source and layer identities, preserves supported source ordering and metadata, and rejects unsupported cross-axis, discrete and anisotropic data.
+- `1aeee24` (`Own canonical Designspace in Project`) installs that model in variable `Project` data and exposes `Project::document_designspace` plus an owned immutable `Project::compiler_structure` snapshot.
+- `cf0f1a6` (`Test Project-owned canonical Designspace`) proves the Project-owned snapshot preserves mapped axes, interleaved sparse-source order, stable identities, instances and rules.
+- `09de268` (`Compile canonical Designspace structure directly`) makes compilation consume canonical axes, full sources, sparse sources, instances and rules without reading the mutable legacy Designspace projections.
+  The preview cache key is now the document revision plus the typed immutable `CanonicalCompilerStructure`, and a regression proves compilation still works after deliberately clearing the legacy structural projections while slider-only location changes reuse the compiled result.
 
 ## Executed checks
 
@@ -40,7 +44,7 @@ Baseline: `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
 - `cargo test --locked --test canonical_metadata -- --test-threads=1`: 8 passed.
 - `cargo test --locked --test canonical_font_info -- --test-threads=1`: 3 passed.
 - `cargo test --locked --test canonical_pipeline -- --test-threads=1`: 2 passed.
-- `cargo test --locked --test canonical_designspace -- --test-threads=1`: 4 passed.
+- `cargo test --locked --test canonical_designspace -- --test-threads=1`: 5 passed.
 - `cargo clippy --locked --lib --tests -- -D warnings`: passed.
 - `cargo fmt --all --check`: passed.
 - `git diff --check`: passed.
@@ -59,23 +63,18 @@ The focused HOI fixture test could not run through interpolation with the curren
 - Canonical layer-glyph metadata owns codepoints and notes, and compiler codepoints plus inferred categories read its `LayerView` projection directly.
   Canonical source-glyph metadata owns export and explicit category values, and compilation now reads them directly through the immutable Project query.
 - Canonical font names, units per em, per-source metrics and current OpenType values now feed compilation directly through `Project::document_font_info`.
-  Snapshot construction also uses `SourceView` for source names, locations, paths and default-layer addresses.
-- Axes, instances, rules and brace-source structure still use the current Project fields or Designspace preservation document.
-  They remain M08 ownership prerequisites for the final M09 architecture.
+  Snapshot construction uses canonical Designspace source descriptors for names, locations and default-layer addresses.
+- Axes, full sources, sparse sources, instances and rules now reach compilation through one owned immutable `CanonicalCompilerStructure` snapshot.
+  The compiler cache no longer builds a debug-string fingerprint from `axes`, `master_locations`, `master_names`, `instances` and `ds_doc`.
 
-## Pending canonical structural query contract
+## Remaining ownership and integration gap
 
-The compiler lane has requested one Project-owned immutable boundary for the remaining structural inputs.
-It must expose ordered canonical axes with names, tags, user/design bounds and mappings; ordered instances with stable identity, names and locations; canonical substitution rules independent of the mutable Designspace preservation document; and sparse/intermediate source descriptors that map layer addresses to their compile locations.
-The same boundary must provide a canonical structural revision or fingerprint that is guaranteed to change when any of those inputs changes.
-That value will replace the compiler cache's debug-string fingerprint of `axes`, `master_locations`, `master_names`, `instances` and `ds_doc`.
-
-The typed value and codec boundary now exist in `document::model::designspace`, but Project does not own or query that value yet.
-Core must install it as the single structural owner and route existing source transactions through it before the compiler consumes `CanonicalCompilerStructure`.
-The compiler lane will not add a second structural store or read editable compatibility projections to simulate that integration.
+The Project-owned compiler query and typed cache key are implemented.
+M08 and M09 are still not complete because every source-authoring command, undo and redo path must mutate or restore that same canonical owner before compatibility projections can be considered non-authoritative.
+The existing interpolation API also still projects canonical results back to Norad for application callers that have not yet accepted the canonical result type.
+Those remaining caller cutovers require implementation and focused round-trip, invalidation and preservation proof; the presence of the canonical model and compiler query is not sufficient completion evidence.
 
 ## Next concrete step
 
-Add source-glyph compilation invalidation coverage once its canonical edit transaction lands.
-Consume canonical axes, instances, rules and brace-source structure as their M08 Project queries land.
+Route source-authoring transactions and their undo/redo snapshots through the Project-owned canonical Designspace and prove that compiler invalidation follows those edits.
 Retire the interpolation output projection when its remaining application and source-authoring callers consume canonical results directly.
