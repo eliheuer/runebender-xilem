@@ -1,6 +1,6 @@
 # Babelfont canonical history lane
 
-Status: **ACTIVE — reusable and Project-integrated per-layer history implemented; document-owned storage and caller migration remain**.
+Status: **ACTIVE — canonical layer and source-metadata history implemented; document-owned storage, structural history and caller migration remain**.
 
 This lane owns `src/document/history.rs`, focused canonical-history tests and this progress record.
 The lead task retains canonical model storage, Project/source/application wiring and the central migration documents.
@@ -9,7 +9,7 @@ Parallel authorization supersedes only the checklist's single-writer rule; M05 a
 ## Baseline
 
 The clean isolated checkout was fast-forwarded from `314aa3235c372ed8d5fef7a2cddb8be3a07ad1da` to the shared migration commit `fa6caca673fb28827d29e69fff8f7cf4e5b70183`.
-Work is on `codex/babelfont-history-c903`.
+The metadata continuation branch `codex/babelfont-history-metadata` starts from lead commit `bae2bb19665ad0c48e537e5a984c46050768bcba`, which includes the atomic source-metadata boundary from `bfdc4a5`.
 
 ## Completed slice
 
@@ -68,16 +68,43 @@ CARGO_BUILD_JOBS=2 cargo doc --locked --no-deps
 The expanded canonical suite passed 9 tests and the legacy history suite passed 6 tests.
 Warning-denied Clippy passed across test targets and public API documentation built successfully.
 
-## Integration dependency
+## Source-metadata transaction slice
+
+Implementation commit: `95ccc5e` (`Add canonical source metadata history`).
+
+`SourceMetadataHistory` specializes `TransactionHistory` for the complete `CanonicalSourceMetadataSnapshot`.
+Capture and replay use the lead's stable-`SourceId`, display-order-independent Project boundary, so one transaction may cover several sources without serial application or partial restoration.
+Completed edits record exact before-and-after metadata sets, no-op edits retain redo, coalescing retains the original before-state and stale or rejected replay leaves both document and stack unchanged.
+Successful undo and redo refresh compatibility projections through Project and advance the canonical revision exactly once.
+
+Two focused Project regressions cover exact feature-text undo and redo, one revision advance per replay, no-op redo retention and rejection of a later metadata edit without stack movement.
+The boundary's existing Project regression covers multi-source atomic restoration, source reordering with the same stable identities, stale values and source-set conflicts.
+
+Executed checks:
+
+```sh
+cargo fmt --all --check
+git diff --check
+CARGO_BUILD_JOBS=2 cargo test --locked --test canonical_history -- --test-threads=1
+CARGO_BUILD_JOBS=2 cargo test --locked --lib document::history:: -- --test-threads=1
+CARGO_BUILD_JOBS=2 cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+```
+
+The canonical suite passed 13 tests and the history unit suite passed 8 tests.
+Warning-denied Clippy and public API documentation passed.
+The existing `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+## Remaining integration dependency
 
 The lead supplied and integrated the requested layer capture/restore API in `d840ec5`.
 The lead still owns placement of `DocumentHistory` in canonical Project storage and migration of shared Project/source/application call sites.
-M07 supplied canonical metadata value commits `b814d6c` and `709c6f2`; metadata history still needs the lead's source-metadata storage hooks before it can snapshot source identities with those values and reject source-set conflicts atomically.
+The lead supplied the atomic whole-source metadata boundary in `bfdc4a5`; `95ccc5e` now supplies its concrete history wrapper.
+Source-structural history still needs an exact canonical structural snapshot/restore boundary coordinated with the lead.
 
 ## Next concrete step
 
-Hand `169ccc3` to the lead for integration after its existing `d840ec5`; do not cherry-pick local prerequisite `a978f9f` into a branch that already contains the lead commit.
-Coordinate document-owned history storage, source-structural history and application call sites with the lead rather than editing its owned files here.
-When the metadata storage hooks land, add canonical metadata history over stable source IDs and the M07 owned values without serializing through UFO or duplicating groups and kerning.
+Integrate `95ccc5e` after `bfdc4a5` and add the document-owned history fields and caller migration in lead-owned files.
+Coordinate source-structural history and application call sites with the lead rather than editing its owned files here.
 The legacy Norad `EditHistory` remains intentionally compiling for staged callers and is not counted as migrated or complete.
 M05 remains open until integrated acceptance passes and the temporary history is removed from migrated callers.
