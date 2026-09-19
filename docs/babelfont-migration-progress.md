@@ -2340,21 +2340,42 @@ Features, groups, kerning, canonical font information, glyph metadata and geomet
 Source image insertion, auxiliary-layer structure, proposals, interpolated-source construction and structural restore now update the explicit record.
 A transient glyph-free UFO codec value is reconstructed only when an existing source-snapshot boundary requests it, then populated from canonical layers and metadata.
 
+### Enforced source-format preservation allowlist
+
+Evidence commit: `Enforce source-format preservation allowlist` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Enforce source-format preservation allowlist$' -1`.
+
+The reviewed [source-format allowlist](source-format-allowlist.md) now assigns every supported UFO and Designspace field family to canonical data, layer preservation, the M13 `SourceFormatData` target or opaque filesystem preservation.
+It also records the inputs rejected before Project construction rather than silently dropped, including unknown Designspace structure, unsupported mappings, lossy coordinates, malformed canonical UFO metadata and unsafe filesystem payloads.
+
+The standalone UFO regression fills every non-exhaustively covered Norad storage family, performs one canonical layer edit, saves and reopens the source, and compares the complete supported font value.
+It also checks an opaque filesystem payload, while the existing focused filesystem test checks custom GLIF filenames and auxiliary layer paths.
+The existing canonical Designspace suite remains the executable contract for all accepted XML structure and explicit rejection cases.
+
+The inventory exposed an M13 ordering requirement for `public.skipExportGlyphs`.
+Canonical glyph flags own the semantics, but a no-op round trip must retain unknown-name entries and source list order; replacing the temporary Norad template therefore requires residual entries plus an ordering skeleton rather than only a set of known values.
+
 Executed evidence:
 
 ```sh
 cargo test --locked --lib document::source_format::tests::record_is_glyph_free_and_preserves_exact_format_structure -- --exact --test-threads=1
 RUNEBENDER_TEST_FONTS=/Users/eli/GH/repos/virtua-grotesk/sources cargo test --locked --test variable_project -- --test-threads=1
 cargo test --locked --lib document::filesystem::tests -- --test-threads=1
+cargo test --locked --test source_format_allowlist -- --test-threads=1
+cargo test --locked --test canonical_designspace -- --test-threads=1
 cargo clippy --lib --tests --locked -- -D warnings
 cargo fmt --all --check
+bash .github/copyright.sh
 git diff --check
 ```
 
-The focused source-format invariant test, all 70 variable-project tests and all eight staged-filesystem tests passed, including exact layer structure, metadata/resource persistence, source image insertion, auxiliary layers, interpolated sources, custom GLIF paths and opaque filesystem payloads.
+The focused source-format invariant and allowlist tests, all 74 variable-project tests, all eight staged-filesystem tests and the canonical Designspace suite passed, including exact layer structure, metadata/resource persistence, source image insertion, auxiliary layers, interpolated sources, custom GLIF paths and opaque filesystem payloads.
 Warning-denied library/test Clippy, formatting and whitespace checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
 M13 still must replace the `Master` projection with a source shell, eliminate mutable source guards and delete remaining source-snapshot consumers before the Norad boundary can be restricted to codecs.
+
+The exact codec and preservation allowlist gap is closed.
+The remaining M12 caller and watcher gaps stay tracked separately from the completed `SourceFormatData` replacement.
 
 ### Atomic semantic glyph marks
 

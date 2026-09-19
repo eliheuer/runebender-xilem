@@ -182,6 +182,7 @@ Application source controls live in `application/editor/sources.rs`; views dispa
 
 The [dependency and format decision](docs/variable-project-decision.md) records the upstream precision blocker, exact references, preservation policy and supported boundaries.
 The [migration checklist](docs/babelfont-migration-checklist.md) tracks removal of the remaining Norad editing model while retaining source-format preservation.
+The [source-format allowlist](docs/source-format-allowlist.md) assigns every supported UFO and Designspace field family to canonical, layer-preservation, source-format or filesystem ownership and records the explicit rejection boundary.
 
 ## Adding a tool
 
