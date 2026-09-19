@@ -44,18 +44,20 @@ pub struct GlyphSource {
 /// One glyph across all sources, including sparse and auxiliary layers.
 #[derive(Clone, Debug, Default)]
 pub struct VariableGlyph {
-    layers: BTreeMap<LayerId, norad::Glyph>,
+    layers: BTreeMap<LayerId, super::babelfont::LayerPreservation>,
 }
 
 impl VariableGlyph {
     /// All of this glyph's layers, with stable addresses.
     pub fn layers(&self) -> impl Iterator<Item = (&LayerId, &norad::Glyph)> {
-        self.layers.iter()
+        self.layers.iter().map(|(id, layer)| (id, layer.glyph()))
     }
 
     /// The exact editable payload at a layer address.
     pub fn layer(&self, id: &LayerId) -> Option<&norad::Glyph> {
-        self.layers.get(id)
+        self.layers
+            .get(id)
+            .map(super::babelfont::LayerPreservation::glyph)
     }
 }
 
@@ -135,18 +137,23 @@ impl VariableData {
             };
             for payload in layer.iter() {
                 let glyph = self.glyphs.entry(payload.name().to_string()).or_default();
-                if glyph.layers.get(&id) != Some(payload) {
-                    glyph.layers.insert(id.clone(), payload.clone());
+                if glyph
+                    .layers
+                    .get(&id)
+                    .map(super::babelfont::LayerPreservation::glyph)
+                    != Some(payload)
+                {
+                    let (layer, preserved) = super::babelfont::layer_from_ufo(
+                        payload,
+                        &id,
+                        layer.name() == font.default_layer().name(),
+                    );
+                    glyph.layers.insert(id.clone(), preserved);
                     let name = payload.name().as_str();
                     if self.font.glyphs.get(name).is_none() {
                         self.font.glyphs.0.push(babelfont::Glyph::new(name));
                     }
                     let target = self.font.glyphs.get_mut(name).expect("inserted glyph");
-                    let layer = super::babelfont::layer_from_ufo(
-                        payload,
-                        &id,
-                        layer.name() == font.default_layer().name(),
-                    );
                     if let Some(existing) =
                         target.get_layer_mut(layer.id.as_deref().expect("layer identity"))
                     {
@@ -210,7 +217,7 @@ impl VariableData {
     pub(super) fn source_font(&self, source: SourceId) -> Option<norad::Font> {
         let mut font = self.templates.get(&source)?.clone();
         for (name, glyph) in &self.glyphs {
-            for (id, payload) in &glyph.layers {
+            for (id, preserved) in &glyph.layers {
                 if id.source == source {
                     font.layers
                         .get_mut(&id.name)
@@ -220,7 +227,7 @@ impl VariableData {
                                 .glyphs
                                 .get(name)?
                                 .get_layer(&super::babelfont::layer_key(id))?,
-                            payload,
+                            preserved,
                         ));
                 }
             }

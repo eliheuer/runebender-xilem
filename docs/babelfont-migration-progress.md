@@ -120,4 +120,34 @@ Evidence:
 - Inspected Norad 0.13.0 object identifiers, object libs, image placement and the current Runebender projection code.
 - `git diff --check` and the documentation one-sentence-per-line check run before commit.
 
-Remaining M01 work: typed extensions, identity-aware mapping, adversarial round-trip fixtures and full acceptance tests.
+At that point, M01 still required typed extensions, identity-aware mapping, adversarial round-trip fixtures and full acceptance tests.
+
+### Identity-aware projection substep
+
+Evidence commit: `Preserve Babelfont object metadata by identity` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Preserve Babelfont object metadata by identity$' -1`.
+Affected paths: `src/document/babelfont.rs`, `src/document/variable.rs`, the checklist and this log.
+
+The Babelfont adapter now assigns distinct typed session identities to contours, points, components and anchors and carries those identities in a private Babelfont format-specific token.
+Projection resolves the preserving UFO object by identity rather than by current array index.
+Reordering points, components or anchors therefore moves their identifiers, libs, names, colors and exact component matrices with the intended object.
+An inserted object without an identity starts without another object's metadata.
+
+`VariableGlyph` stores a transitional `LayerPreservation` beside Babelfont geometry and keeps its existing read API for unmigrated callers.
+That preservation structure still contains a complete Norad glyph, so this substep does not complete the typed-extension checkbox or satisfy M01 acceptance by itself.
+Direct Babelfont topology mutation remains intentionally unavailable until the remaining exact fields move into typed extensions and the import/reconciliation path can retain identities across edits.
+
+Executed evidence:
+
+```sh
+cargo test --locked --lib document::babelfont::tests:: -- --test-threads=1
+cargo test --locked --test babelfont_contract --test variable_project -- --test-threads=1
+cargo clippy --locked --lib -- -D warnings
+```
+
+The identity test passed and covers point insertion plus point, component and anchor reorder.
+It verifies that UFO identifiers and per-object libs remain attached to their objects, a new point receives no inherited metadata, and a six-coefficient component matrix remains exact through Babelfont's decomposed representation.
+The two Babelfont contract and 12 variable-project tests passed with zero failures or ignored tests.
+The existing `block v0.1.6` future-incompatibility notice remains a dependency notice, not a test failure.
+
+Remaining M01 work: replace the complete preserving glyph with typed exact-value and metadata extensions, retain identity through compatibility reconciliation, add the full adversarial no-op/edit/undo/save fixture, and execute M01 acceptance.
