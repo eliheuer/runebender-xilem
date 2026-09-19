@@ -13,7 +13,6 @@ use crate::document::babelfont::{LayerEditDraft, LayerPointType, LayerView};
 use crate::document::project::Project;
 use crate::document::proposal::{self, ProposalSummary};
 use crate::document::variable::{LayerId, SourceId};
-use crate::formats::lib_keys::write_proposal_base;
 
 /// Opaque SHA-256 revision of a canonical layer encoded through the external GLIF contract.
 ///
@@ -317,7 +316,7 @@ pub(super) fn proposal_draft(
             edit.glyph
         ));
     }
-    let projected = foreground.view().project();
+    let original = foreground.clone();
     let (foreground_layer, foreground_preserved) = foreground.into_parts();
     let (layer, preserved) = crate::document::babelfont::copy_layer(
         &foreground_layer,
@@ -329,21 +328,18 @@ pub(super) fn proposal_draft(
         apply_canonical_operation(&mut draft, proposal_layer, operation)
             .map_err(|error| format!("{}: {error}", edit.glyph))?;
     }
-    if draft.view().project() == projected {
+    if crate::document::babelfont::glyph_transactions::proposal_payload_eq(
+        original.view(),
+        draft.view(),
+    ) {
         return Err(format!("{}: operations make no change", edit.glyph));
     }
-
-    let mut proposal = draft.view().project();
-    write_proposal_base(&mut proposal, &edit.expected_revision, reason);
-    let (previous_layer, previous_preserved) = draft.clone().into_parts();
-    let (layer, preserved) = crate::document::babelfont::reconcile_layer_from_ufo(
-        &proposal,
-        proposal_layer,
-        false,
-        &previous_layer,
-        &previous_preserved,
+    crate::document::babelfont::glyph_transactions::set_proposal_base(
+        &mut draft,
+        &edit.expected_revision,
+        reason,
     );
-    Ok(LayerEditDraft::new(layer, preserved))
+    Ok(draft)
 }
 
 fn apply(glyph: &mut Glyph, operation: &Operation) -> Result<(), String> {
@@ -473,7 +469,11 @@ pub fn propose(font: &mut Font, batch: &EditBatch) -> Result<ProposalSummary, St
         if glyph == *original {
             return Err(format!("{}: operations make no change", edit.glyph));
         }
-        write_proposal_base(&mut glyph, &edit.expected_revision, &batch.reason);
+        crate::formats::lib_keys::write_proposal_base(
+            &mut glyph,
+            &edit.expected_revision,
+            &batch.reason,
+        );
         proposed.push(glyph);
     }
     proposal::write(font, &batch.task, proposed).map_err(|e| e.to_string())
@@ -1015,6 +1015,122 @@ mod tests {
         assert!(installed.installed.is_empty());
         assert!(installed.skipped[0].1.contains("stale"));
         assert_eq!(font.get_glyph("n").unwrap().width, 20.0);
+    }
+
+    #[test]
+    fn canonical_install_preserves_object_identity_metadata_and_undo() {
+        let mut font = Font::new();
+        font.default_layer_mut().insert_glyph(Glyph::new("base"));
+        let mut glyph = Glyph::new("A");
+        glyph.width = 500.125;
+        glyph.codepoints.insert('A');
+        glyph.note = Some("retain note".into());
+        glyph
+            .lib
+            .insert("future.key".into(), plist::Value::String("exact".into()));
+        glyph.contours.push(norad::Contour::new(
+            vec![
+                norad::ContourPoint::new(0.0, 0.0, norad::PointType::Line, false, None, None),
+                norad::ContourPoint::new(100.0, 0.0, norad::PointType::Line, false, None, None),
+            ],
+            None,
+        ));
+        glyph.components.push(norad::Component::new(
+            norad::Name::new("base").unwrap(),
+            norad::AffineTransform::default(),
+            None,
+        ));
+        glyph.anchors.push(norad::Anchor::new(
+            50.0,
+            100.0,
+            Some(norad::Name::new("top").unwrap()),
+            None,
+            None,
+        ));
+        font.default_layer_mut().insert_glyph(glyph);
+        let mut project = Project::from_source(crate::document::project::Master::from_font(
+            font,
+            PathBuf::from("IdentityProposal.ufo"),
+        ));
+        let source = project.source_id(0).unwrap();
+        let layer = project.document_source(source).unwrap().default_layer();
+        let address = GlyphLayerAddress {
+            glyph: "A".into(),
+            layer: layer.clone(),
+        };
+        let before = project.document_layer("A", &layer).unwrap();
+        let contour_id = before.contours().next().unwrap().id();
+        let point_ids = before
+            .contours()
+            .next()
+            .unwrap()
+            .points()
+            .map(|point| point.id())
+            .collect::<Vec<_>>();
+        let component_id = before.components().next().unwrap().id();
+        let anchor_id = before.anchors().next().unwrap().id();
+        let batch = EditBatch {
+            task: "identity".into(),
+            reason: "preserve canonical identities".into(),
+            edits: vec![GlyphEdit {
+                glyph: "A".into(),
+                expected_revision: canonical_glyph_revision(before).unwrap(),
+                operations: vec![Operation::Translate { dx: 12.0, dy: 3.0 }],
+            }],
+        };
+        propose_project(&mut project, source, &batch).unwrap();
+        proposal::install_project(&mut project, source, &batch.task, None, true).unwrap();
+
+        let installed = project.document_layer("A", &layer).unwrap();
+        assert_eq!(installed.contours().next().unwrap().id(), contour_id);
+        assert_eq!(
+            installed
+                .contours()
+                .next()
+                .unwrap()
+                .points()
+                .map(|point| point.id())
+                .collect::<Vec<_>>(),
+            point_ids
+        );
+        assert_eq!(installed.components().next().unwrap().id(), component_id);
+        assert_eq!(installed.anchors().next().unwrap().id(), anchor_id);
+        assert_eq!(
+            installed
+                .contours()
+                .next()
+                .unwrap()
+                .points()
+                .next()
+                .unwrap()
+                .position(),
+            kurbo::Point::new(12.0, 3.0)
+        );
+        let projected = project.source_snapshot(source).unwrap();
+        let projected = projected.get_glyph("A").unwrap();
+        assert_eq!(projected.note.as_deref(), Some("retain note"));
+        assert_eq!(
+            projected.lib.get("future.key"),
+            Some(&plist::Value::String("exact".into()))
+        );
+        assert_eq!(projected.codepoints.iter().collect::<Vec<_>>(), ['A']);
+
+        project
+            .replay_document_layer_history(&address, HistoryDirection::Undo)
+            .unwrap();
+        assert_eq!(
+            project
+                .document_layer("A", &layer)
+                .unwrap()
+                .contours()
+                .next()
+                .unwrap()
+                .points()
+                .next()
+                .unwrap()
+                .position(),
+            kurbo::Point::ZERO
+        );
     }
 
     #[test]

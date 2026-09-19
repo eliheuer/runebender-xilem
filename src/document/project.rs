@@ -28,6 +28,8 @@ use crate::formats::lib_keys::hoi_quad_at;
 #[path = "project/glyph_transactions.rs"]
 mod glyph_transactions;
 pub use glyph_transactions::{CanonicalGlyphTransaction, GlyphTransactionError};
+#[path = "project/proposal_transactions.rs"]
+mod proposal_transactions;
 #[path = "sources.rs"]
 mod sources;
 

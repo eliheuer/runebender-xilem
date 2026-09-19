@@ -358,8 +358,8 @@ impl Experiment {
                 .working
                 .view(&proposal_address)
                 .expect("summarized proposal layer");
-            let proposed_contract = proposed.project();
-            let Some(base) = crate::formats::lib_keys::read_proposal_base(&proposed_contract)
+            let Some(base) =
+                crate::document::babelfont::glyph_transactions::proposal_base(proposed)
             else {
                 skipped.push((
                     name.clone(),
@@ -388,8 +388,7 @@ impl Experiment {
                 .working
                 .snapshot(&foreground_address)
                 .expect("foreground snapshot");
-            let replacement =
-                install_replacement(&foreground_address, foreground, proposed, &before);
+            let replacement = install_replacement(&foreground_address, proposed, &before);
             staged.push((foreground_address, proposal_address, replacement));
         }
 

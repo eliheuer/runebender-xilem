@@ -5,9 +5,13 @@
 
 use babelfont::{Layer, LayerType, Shape};
 
-use super::{LayerPreservation, ObjectMetadata, layer_key};
+use super::{
+    LayerEditDraft, LayerPreservation, LayerView, ObjectMetadata, PreservedAnchor,
+    PreservedComponent, PreservedContour, layer_key, write_id,
+};
 use crate::document::model::glyph_metadata::parse_metrics_key;
-use crate::document::variable::LayerId;
+use crate::document::variable::{GlyphLayerAddress, LayerId};
+use crate::formats::lib_keys::PROPOSAL_BASE_KEY;
 
 /// Explicit semantic differences between layer cloning workflows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -142,6 +146,327 @@ pub(in crate::document) fn clone_layer(
         preserved.metadata = copied_metadata(&preserved.metadata, false);
     }
     (layer, preserved)
+}
+
+/// Build one empty proposal layer from canonical foreground metadata.
+///
+/// The editable geometry payload is cleared without constructing a UFO glyph.
+/// Unicode values and all non-proposal metadata remain available for previews, while installation
+/// still copies only contours, components, anchors and advance width.
+pub(in crate::document) fn composition_proposal_layer(
+    foreground: LayerView<'_>,
+    id: &LayerId,
+    width: f64,
+    components: &[(String, f64, f64)],
+    anchors: &[(String, f64, f64)],
+    revision: &str,
+    reason: &str,
+) -> Result<LayerEditDraft, String> {
+    if !width.is_finite()
+        || components
+            .iter()
+            .any(|(_, x, y)| !x.is_finite() || !y.is_finite())
+        || anchors
+            .iter()
+            .any(|(_, x, y)| !x.is_finite() || !y.is_finite())
+    {
+        return Err("composition geometry must be finite".into());
+    }
+    let (mut layer, mut preserved) = clone_layer(
+        foreground.layer,
+        foreground.preserved,
+        id,
+        foreground.glyph_name(),
+        LayerCloneOptions {
+            default: false,
+            clear_codepoints: false,
+        },
+    );
+    layer.shapes.clear();
+    layer.anchors.clear();
+    preserved.contours.clear();
+    preserved.components.clear();
+    preserved.anchors.clear();
+    let mut draft = LayerEditDraft::new(layer, preserved);
+    draft.set_width(width).map_err(|error| error.to_string())?;
+    for (reference, x, y) in components {
+        draft
+            .add_component(
+                reference.clone(),
+                kurbo::Affine::translate(kurbo::Vec2::new(*x, *y)),
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    for (name, x, y) in anchors {
+        draft
+            .add_anchor(name.clone(), kurbo::Point::new(*x, *y))
+            .map_err(|error| error.to_string())?;
+    }
+    set_proposal_base(&mut draft, revision, reason);
+    Ok(draft)
+}
+
+/// Read the external foreground revision record directly from canonical layer metadata.
+///
+/// A malformed record returns an empty revision so callers fail closed, matching the UFO codec.
+pub(in crate::document) fn proposal_base(layer: LayerView<'_>) -> Option<&str> {
+    layer.preserved.lib.get(PROPOSAL_BASE_KEY).map(|value| {
+        value
+            .as_dictionary()
+            .and_then(|dictionary| dictionary.get("revision"))
+            .and_then(plist::Value::as_string)
+            .unwrap_or("")
+    })
+}
+
+/// Record the external foreground revision and design intent in canonical layer metadata.
+pub(in crate::document) fn set_proposal_base(
+    draft: &mut LayerEditDraft,
+    revision: &str,
+    reason: &str,
+) {
+    let mut record = plist::Dictionary::new();
+    record.insert("revision".into(), revision.into());
+    record.insert("reason".into(), reason.into());
+    draft
+        .preserved
+        .lib
+        .insert(PROPOSAL_BASE_KEY.into(), record.into());
+}
+
+/// Whether an owned draft carries the exact requested canonical address.
+pub(in crate::document) fn draft_matches_address(
+    draft: &LayerEditDraft,
+    address: &GlyphLayerAddress,
+) -> bool {
+    draft.preserved.name == address.glyph
+        && draft.layer.id.as_deref() == Some(layer_key(&address.layer).as_str())
+        && draft.layer.name.as_deref() == Some(address.layer.name.as_str())
+        && matches!(
+            &draft.layer.master,
+            LayerType::AssociatedWithMaster(master) if master == &address.layer.source.0.to_string()
+        )
+}
+
+/// Compare only the payload that proposal installation copies to the foreground.
+pub(in crate::document) fn proposal_payload_eq(left: LayerView<'_>, right: LayerView<'_>) -> bool {
+    left.width() == right.width()
+        && left
+            .contours()
+            .map(|contour| {
+                (
+                    contour.is_closed(),
+                    contour.is_hyper(),
+                    contour
+                        .points()
+                        .map(|point| {
+                            (
+                                point.position(),
+                                point.point_type(),
+                                point.is_smooth(),
+                                point.name().map(ToOwned::to_owned),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .eq(right.contours().map(|contour| {
+                (
+                    contour.is_closed(),
+                    contour.is_hyper(),
+                    contour
+                        .points()
+                        .map(|point| {
+                            (
+                                point.position(),
+                                point.point_type(),
+                                point.is_smooth(),
+                                point.name().map(ToOwned::to_owned),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            }))
+        && left
+            .components()
+            .map(|component| (component.reference(), component.transform()))
+            .eq(right
+                .components()
+                .map(|component| (component.reference(), component.transform())))
+        && left
+            .anchors()
+            .map(|anchor| (anchor.name(), anchor.position()))
+            .eq(right
+                .anchors()
+                .map(|anchor| (anchor.name(), anchor.position())))
+}
+
+/// Copy a proposal's editable payload onto a canonical foreground draft.
+///
+/// Foreground glyph metadata remains authoritative. Stable object identities are retained by
+/// contour and point position when structure permits, by component reference, and by anchor name.
+/// New or structurally replaced objects keep their already unique proposal identities.
+pub(in crate::document) fn install_proposal_payload(
+    foreground: LayerEditDraft,
+    proposed: LayerView<'_>,
+) -> LayerEditDraft {
+    let (mut layer, mut preserved) = foreground.into_parts();
+    let old_layer = layer.clone();
+    let old_preserved = preserved.clone();
+
+    let proposed_paths = proposed
+        .layer
+        .shapes
+        .iter()
+        .filter_map(|shape| match shape {
+            Shape::Path(path) => Some(path.clone()),
+            Shape::Component(_) => None,
+        })
+        .collect::<Vec<_>>();
+    let proposed_components = proposed
+        .layer
+        .shapes
+        .iter()
+        .filter_map(|shape| match shape {
+            Shape::Component(component) => Some(component.clone()),
+            Shape::Path(_) => None,
+        })
+        .collect::<Vec<_>>();
+    let old_paths = old_layer
+        .shapes
+        .iter()
+        .filter_map(|shape| match shape {
+            Shape::Path(path) => Some(path),
+            Shape::Component(_) => None,
+        })
+        .collect::<Vec<_>>();
+    let old_components = old_layer
+        .shapes
+        .iter()
+        .filter_map(|shape| match shape {
+            Shape::Component(component) => Some(component),
+            Shape::Path(_) => None,
+        })
+        .collect::<Vec<_>>();
+
+    let mut contours = proposed.preserved.contours.clone();
+    let mut paths = proposed_paths;
+    retain_contour_identities(
+        &old_paths,
+        &old_preserved.contours,
+        &mut paths,
+        &mut contours,
+    );
+
+    let mut components = proposed.preserved.components.clone();
+    let mut component_shapes = proposed_components;
+    retain_component_identities(
+        &old_components,
+        &old_preserved.components,
+        &mut component_shapes,
+        &mut components,
+    );
+
+    let mut anchors = proposed.layer.anchors.clone();
+    let mut anchor_metadata = proposed.preserved.anchors.clone();
+    retain_anchor_identities(
+        &old_layer.anchors,
+        &old_preserved.anchors,
+        &mut anchors,
+        &mut anchor_metadata,
+    );
+
+    layer.shapes = paths
+        .into_iter()
+        .map(Shape::Path)
+        .chain(component_shapes.into_iter().map(Shape::Component))
+        .collect();
+    layer.anchors = anchors;
+    layer.width = proposed.layer.width;
+    preserved.width = proposed.preserved.width;
+    preserved.contours = contours;
+    preserved.components = components;
+    preserved.anchors = anchor_metadata;
+    LayerEditDraft::new(layer, preserved)
+}
+
+fn retain_contour_identities(
+    old_paths: &[&babelfont::Path],
+    old: &[PreservedContour],
+    new_paths: &mut [babelfont::Path],
+    new: &mut [PreservedContour],
+) {
+    for (index, (path, preserved)) in new_paths.iter_mut().zip(new).enumerate() {
+        let Some((old_path, old_preserved)) = old_paths.get(index).zip(old.get(index)) else {
+            continue;
+        };
+        if old_path.closed != path.closed || old_path.nodes.len() != path.nodes.len() {
+            continue;
+        }
+        let same_structure = old_path
+            .nodes
+            .iter()
+            .zip(&path.nodes)
+            .all(|(left, right)| left.nodetype == right.nodetype);
+        if !same_structure {
+            continue;
+        }
+        preserved.id = old_preserved.id;
+        write_id(&mut path.format_specific, preserved.id.0);
+        for ((node, point), old_point) in path
+            .nodes
+            .iter_mut()
+            .zip(&mut preserved.points)
+            .zip(&old_preserved.points)
+        {
+            point.id = old_point.id;
+            write_id(&mut node.format_specific, point.id.0);
+        }
+    }
+}
+
+fn retain_component_identities(
+    old_shapes: &[&babelfont::Component],
+    old: &[PreservedComponent],
+    new_shapes: &mut [babelfont::Component],
+    new: &mut [PreservedComponent],
+) {
+    let mut used = vec![false; old_shapes.len()];
+    for (shape, preserved) in new_shapes.iter_mut().zip(new) {
+        let candidate = old_shapes
+            .iter()
+            .enumerate()
+            .find(|(index, old)| !used[*index] && old.reference == shape.reference)
+            .map(|(index, _)| index);
+        let Some(index) = candidate else {
+            continue;
+        };
+        used[index] = true;
+        preserved.id = old[index].id;
+        write_id(&mut shape.format_specific, preserved.id.0);
+    }
+}
+
+fn retain_anchor_identities(
+    old_anchors: &[babelfont::Anchor],
+    old: &[PreservedAnchor],
+    new_anchors: &mut [babelfont::Anchor],
+    new: &mut [PreservedAnchor],
+) {
+    let mut used = vec![false; old_anchors.len()];
+    for (anchor, preserved) in new_anchors.iter_mut().zip(new) {
+        let candidate = old_anchors
+            .iter()
+            .enumerate()
+            .find(|(index, old)| !used[*index] && old.name == anchor.name)
+            .map(|(index, _)| index);
+        let Some(index) = candidate else {
+            continue;
+        };
+        used[index] = true;
+        preserved.id = old[index].id;
+        write_id(&mut anchor.format_specific, preserved.id.0);
+    }
 }
 
 /// Change only the glyph name carried by one layer's preservation payload.

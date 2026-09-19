@@ -12,6 +12,7 @@
 //! through the preserving adapter rather than its lossy UFO converter.
 
 mod glyph_transactions;
+mod proposal_transactions;
 pub(super) mod source_builder;
 
 pub use glyph_transactions::GlyphId;

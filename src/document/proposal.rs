@@ -292,28 +292,113 @@ pub fn preview_project<'a>(
         })
 }
 
+/// Atomically write one canonical composition plan as a guarded proposal layer.
+///
+/// Every glyph, layer identity, component reference and foreground revision is validated before
+/// the complete proposal layer commits in one document revision. The foreground and its histories
+/// remain unchanged; composition becomes editable state only after [`install_project`].
+pub fn write_composition_project(
+    project: &mut Project,
+    source: SourceId,
+    mut plan: crate::document::compose::CompositionPlan,
+) -> Result<crate::document::compose::Report, ProposalError> {
+    let task = crate::document::compose::TASK;
+    validate_task(task)?;
+    if plan.report.proposal.is_some() {
+        return Err(project_error("composition plan already records a proposal"));
+    }
+    if plan.replacements.is_empty() {
+        return Err(project_error("composition plan has no replacements"));
+    }
+    let foreground = project
+        .document_source(source)
+        .ok_or_else(|| project_error("unknown source"))?
+        .default_layer();
+    let target = proposal_layer(source, task);
+    let report_names = plan
+        .report
+        .derived
+        .iter()
+        .filter(|derived| !derived.up_to_date)
+        .map(|derived| derived.glyph.as_str())
+        .collect::<HashSet<_>>();
+    let mut seen = HashSet::new();
+    let mut staged = Vec::with_capacity(plan.replacements.len());
+    for replacement in &plan.replacements {
+        let name = replacement.derived.glyph.as_str();
+        if replacement.derived.up_to_date || !report_names.contains(name) || !seen.insert(name) {
+            return Err(project_error(format!(
+                "{name}: inconsistent or duplicate composition payload"
+            )));
+        }
+        let current = project.document_layer(name, &foreground).ok_or_else(|| {
+            ProposalError::NoSuchGlyph {
+                task: task.into(),
+                glyph: name.into(),
+            }
+        })?;
+        if replacement.codepoints != current.codepoints().collect::<Vec<_>>() {
+            return Err(project_error(format!(
+                "{name}: foreground encoding changed after composition planning"
+            )));
+        }
+        if replacement.expected_revision.is_empty()
+            || crate::document::edit_batch::canonical_glyph_revision(current)
+                .ok()
+                .as_deref()
+                != Some(replacement.expected_revision.as_str())
+        {
+            return Err(project_error(format!(
+                "{name}: stale composition plan; derive again"
+            )));
+        }
+        for (reference, _, _) in &replacement.derived.components {
+            if project.document_layer(reference, &foreground).is_none() {
+                return Err(project_error(format!(
+                    "{name}: component references missing glyph {reference:?}"
+                )));
+            }
+        }
+        let draft = super::babelfont::glyph_transactions::composition_proposal_layer(
+            current,
+            &target,
+            replacement.derived.advance,
+            &replacement.derived.components,
+            &replacement.anchors,
+            &replacement.expected_revision,
+            "Compose from canonical anchors",
+        )
+        .map_err(project_error)?;
+        staged.push((name.to_owned(), draft));
+    }
+    if seen.len() != report_names.len() {
+        return Err(project_error(
+            "composition report and replacement payloads disagree",
+        ));
+    }
+
+    let transaction = project
+        .begin_proposal_transaction(source, &foreground, &target, staged)
+        .map_err(project_error)?;
+    project
+        .commit_proposal_transaction(transaction)
+        .map_err(project_error)?;
+    let summary = find_project(project, source, task)?;
+    plan.report.proposal = Some(summary);
+    Ok(plan.report)
+}
+
 pub(super) fn install_replacement(
     address: &GlyphLayerAddress,
-    foreground: LayerView<'_>,
     proposed: LayerView<'_>,
     before: &CanonicalLayerSnapshot,
 ) -> CanonicalLayerSnapshot {
-    // The proposal format is deliberately UFO-compatible. Materialization here is the explicit
-    // codec boundary: canonical state before and after this function remains Babelfont-backed.
-    let mut glyph = foreground.project();
-    apply(&mut glyph, &proposed.project());
-    let (previous_layer, previous_preserved) = before.clone().into_parts();
-    let default = matches!(
-        previous_layer.master,
-        babelfont::LayerType::DefaultForMaster(_)
+    let (layer, preserved) = before.clone().into_parts();
+    let replacement = super::babelfont::glyph_transactions::install_proposal_payload(
+        LayerEditDraft::new(layer, preserved),
+        proposed,
     );
-    let (layer, preserved) = super::babelfont::reconcile_layer_from_ufo(
-        &glyph,
-        &address.layer,
-        default,
-        &previous_layer,
-        &previous_preserved,
-    );
+    let (layer, preserved) = replacement.into_parts();
     CanonicalLayerSnapshot::new(address.clone(), layer, preserved)
 }
 
@@ -367,8 +452,7 @@ pub fn install_project(
         let proposed = project
             .document_layer(name, &proposal_layer)
             .ok_or_else(|| project_error("proposal layer disappeared during validation"))?;
-        let proposed_contract = proposed.project();
-        let Some(base) = crate::formats::lib_keys::read_proposal_base(&proposed_contract) else {
+        let Some(base) = super::babelfont::glyph_transactions::proposal_base(proposed) else {
             skipped.push((
                 name.clone(),
                 "unguarded proposal: missing foreground revision; propose again".into(),
@@ -393,7 +477,7 @@ pub fn install_project(
         let before = project
             .capture_document_layer(&address)
             .ok_or_else(|| project_error("foreground disappeared during validation"))?;
-        let replacement = install_replacement(&address, foreground, proposed, &before);
+        let replacement = install_replacement(&address, proposed, &before);
         staged.push((address, proposal_address, before, replacement));
     }
 
@@ -704,7 +788,13 @@ pub(crate) fn apply(foreground: &mut Glyph, proposed: &Glyph) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use norad::{Contour, ContourPoint, PointType};
+    use std::path::PathBuf;
+
+    use norad::{Anchor, Contour, ContourPoint, Name, PointType};
+
+    use crate::document::history::HistoryDirection;
+    use crate::document::project::{Master, Project};
+    use crate::document::variable::GlyphLayerAddress;
 
     fn glyph(name: &str, points: &[(f64, f64)], width: f64) -> Glyph {
         let mut g = Glyph::new(name);
@@ -729,6 +819,35 @@ mod tests {
         font.default_layer_mut()
             .insert_glyph(glyph("b", &[(0.0, 0.0), (10.0, 0.0)], 100.0));
         font
+    }
+
+    fn composition_project() -> (Project, SourceId) {
+        let mut font = Font::new();
+        let anchor =
+            |name: &str, x, y| Anchor::new(x, y, Some(Name::new(name).unwrap()), None, None);
+        let mut base = Glyph::new("A");
+        base.width = 700.0;
+        base.codepoints.insert('A');
+        base.anchors.push(anchor("top", 350.0, 700.0));
+        font.default_layer_mut().insert_glyph(base);
+        for (name, codepoint) in [("acute", '\u{00B4}'), ("grave", '`')] {
+            let mut mark = Glyph::new(name);
+            mark.codepoints.insert(codepoint);
+            mark.anchors.push(anchor("_top", 150.0, 560.0));
+            mark.anchors.push(anchor("top", 150.0, 760.0));
+            font.default_layer_mut().insert_glyph(mark);
+        }
+        for (name, codepoint) in [("Aacute", '\u{00C1}'), ("Agrave", '\u{00C0}')] {
+            let mut target = Glyph::new(name);
+            target.codepoints.insert(codepoint);
+            target.note = Some(format!("retain {name}"));
+            font.default_layer_mut().insert_glyph(target);
+        }
+        let project = Project::from_source(Master::from_font(
+            font,
+            PathBuf::from("CompositionProposal.ufo"),
+        ));
+        (project, SourceId(0))
     }
 
     #[test]
@@ -831,5 +950,145 @@ mod tests {
         let rest = install(&mut font, "bolden", None, true, &mut |_, _| {}).unwrap();
         assert_eq!(rest.installed, vec!["B".to_string()]);
         assert!(rest.layer_removed);
+    }
+
+    #[test]
+    fn canonical_composition_stays_proposed_until_explicit_install() {
+        let (mut project, source) = composition_project();
+        let foreground = project.document_source(source).unwrap().default_layer();
+        let address = GlyphLayerAddress {
+            glyph: "Aacute".into(),
+            layer: foreground.clone(),
+        };
+        let revision = project.document_revision();
+        let plan =
+            crate::document::compose::plan_project(&project, source, Some(&["Aacute".into()]))
+                .unwrap();
+        let report = write_composition_project(&mut project, source, plan).unwrap();
+        let summary = report.proposal.unwrap();
+        assert_eq!(summary.glyphs, ["Aacute"]);
+        assert_eq!(project.document_revision(), revision + 1);
+        assert_eq!(
+            project
+                .document_layer("Aacute", &foreground)
+                .unwrap()
+                .components()
+                .count(),
+            0
+        );
+        let proposal =
+            preview_project(&project, source, crate::document::compose::TASK, "Aacute").unwrap();
+        assert_eq!(
+            proposal
+                .components()
+                .map(|component| component.reference())
+                .collect::<Vec<_>>(),
+            ["A", "acute"]
+        );
+        assert!(
+            super::super::babelfont::glyph_transactions::proposal_base(proposal)
+                .unwrap()
+                .starts_with("glif-sha256:")
+        );
+
+        let installed = install_project(
+            &mut project,
+            source,
+            crate::document::compose::TASK,
+            None,
+            false,
+        )
+        .unwrap();
+        assert_eq!(installed.installed.installed, ["Aacute"]);
+        assert_eq!(
+            project
+                .document_layer("Aacute", &foreground)
+                .unwrap()
+                .components()
+                .count(),
+            2
+        );
+        assert_eq!(
+            project
+                .source_snapshot(source)
+                .unwrap()
+                .get_glyph("Aacute")
+                .unwrap()
+                .note
+                .as_deref(),
+            Some("retain Aacute")
+        );
+        project
+            .replay_document_layer_history(&address, HistoryDirection::Undo)
+            .unwrap();
+        assert_eq!(
+            project
+                .document_layer("Aacute", &foreground)
+                .unwrap()
+                .components()
+                .count(),
+            0
+        );
+    }
+
+    #[test]
+    fn invalid_stale_empty_and_conflicting_composition_plans_are_atomic() {
+        let (mut project, source) = composition_project();
+        let names = ["Aacute".to_owned(), "Agrave".to_owned()];
+        let mut invalid =
+            crate::document::compose::plan_project(&project, source, Some(&names)).unwrap();
+        invalid.replacements[1].expected_revision = "stale".into();
+        let before = project.document_snapshot();
+        let revision = project.document_revision();
+        assert!(write_composition_project(&mut project, source, invalid).is_err());
+        assert_eq!(project.document_snapshot(), before);
+        assert_eq!(project.document_revision(), revision);
+        assert!(find_project(&project, source, crate::document::compose::TASK).is_err());
+
+        let mut empty =
+            crate::document::compose::plan_project(&project, source, Some(&["Aacute".into()]))
+                .unwrap();
+        empty.replacements.clear();
+        assert!(write_composition_project(&mut project, source, empty).is_err());
+        assert_eq!(project.document_snapshot(), before);
+
+        let plan =
+            crate::document::compose::plan_project(&project, source, Some(&["Aacute".into()]))
+                .unwrap();
+        write_composition_project(&mut project, source, plan.clone()).unwrap();
+        let proposed = project.document_snapshot();
+        let proposed_revision = project.document_revision();
+        assert!(write_composition_project(&mut project, source, plan).is_err());
+        assert_eq!(project.document_snapshot(), proposed);
+        assert_eq!(project.document_revision(), proposed_revision);
+    }
+
+    #[test]
+    fn foreground_change_rejects_a_stale_composition_plan_without_history_noise() {
+        let (mut project, source) = composition_project();
+        let foreground = project.document_source(source).unwrap().default_layer();
+        let address = GlyphLayerAddress {
+            glyph: "Aacute".into(),
+            layer: foreground.clone(),
+        };
+        let plan =
+            crate::document::compose::plan_project(&project, source, Some(&["Aacute".into()]))
+                .unwrap();
+        project
+            .edit_document_layer("Aacute", &foreground, |draft| {
+                draft.set_width(1.0)?;
+                Ok(())
+            })
+            .unwrap();
+        let before = project.document_snapshot();
+        let revision = project.document_revision();
+        let history = project.document_layer_history_depth(&address, HistoryDirection::Undo);
+        assert!(write_composition_project(&mut project, source, plan).is_err());
+        assert_eq!(project.document_snapshot(), before);
+        assert_eq!(project.document_revision(), revision);
+        assert_eq!(
+            project.document_layer_history_depth(&address, HistoryDirection::Undo),
+            history
+        );
     }
 }

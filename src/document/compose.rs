@@ -111,6 +111,8 @@ pub struct CompositionGlyph {
     pub codepoints: Vec<char>,
     /// Outgoing anchors offered by the completed component stack.
     pub anchors: Vec<(String, f64, f64)>,
+    /// Opaque foreground revision captured while this payload was planned.
+    pub expected_revision: String,
 }
 
 /// A read-only canonical composition pass ready for a guarded proposal-layer transaction.
@@ -603,6 +605,7 @@ fn derive_document_with_map(
     let current = layers
         .get(name)
         .ok_or_else(|| format!("no glyph named {name}"))?;
+    let expected_revision = crate::document::edit_batch::canonical_glyph_revision(*current)?;
     let recipe = document_recipe(layers, codepoints, name, explicit)
         .ok_or_else(|| "no recipe: no decomposition, lib key, or positional stem".to_string())?;
     if recipe.base == name || recipe.marks.iter().any(|mark| mark == name) {
@@ -644,6 +647,7 @@ fn derive_document_with_map(
             .into_iter()
             .map(|(name, point)| (name, point.x, point.y))
             .collect(),
+        expected_revision,
     })
 }
 
@@ -843,7 +847,10 @@ mod tests {
             plan
         );
         assert!(plan.report.skipped.is_empty());
-        assert_eq!(plan.report.derived, std::slice::from_ref(&expected));
+        assert_eq!(
+            plan.report.derived.as_slice(),
+            std::slice::from_ref(&expected)
+        );
         assert_eq!(plan.replacements.len(), 1);
         assert_eq!(plan.replacements[0].derived, expected);
         assert_eq!(
@@ -894,7 +901,10 @@ mod tests {
                 Some(&["Aacute".into()]),
                 |_| None,
             );
-            assert_eq!(plan.report.derived, std::slice::from_ref(&expected));
+            assert_eq!(
+                plan.report.derived.as_slice(),
+                std::slice::from_ref(&expected)
+            );
         }
     }
 
