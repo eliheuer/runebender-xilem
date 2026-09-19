@@ -440,9 +440,12 @@ impl LayerEditDraft {
         id: PointId,
         point_type: LayerPointType,
     ) -> Result<bool, DocumentEditError> {
-        let node = self
-            .node_mut(id)
+        let (path, index) = self
+            .path_and_node_index_mut(id)
             .ok_or(DocumentEditError::MissingPoint(id))?;
+        if point_type == LayerPointType::Move && index != 0 {
+            return Err(DocumentEditError::NonInitialMove(id));
+        }
         let node_type = match point_type {
             LayerPointType::Move => NodeType::Move,
             LayerPointType::Line => NodeType::Line,
@@ -450,10 +453,16 @@ impl LayerEditDraft {
             LayerPointType::Curve => NodeType::Curve,
             LayerPointType::QCurve => NodeType::QCurve,
         };
-        if node.nodetype == node_type {
+        let closed = point_type != LayerPointType::Move;
+        let changed =
+            path.nodes[index].nodetype != node_type || (index == 0 && path.closed != closed);
+        if !changed {
             return Ok(false);
         }
-        node.nodetype = node_type;
+        path.nodes[index].nodetype = node_type;
+        if index == 0 {
+            path.closed = closed;
+        }
         Ok(true)
     }
 
@@ -554,6 +563,19 @@ impl LayerEditDraft {
             .flat_map(|path| &mut path.nodes)
             .find(|node| read_id(&node.format_specific) == Some(id.0))
     }
+
+    fn path_and_node_index_mut(&mut self, id: PointId) -> Option<(&mut babelfont::Path, usize)> {
+        self.layer.shapes.iter_mut().find_map(|shape| {
+            let Shape::Path(path) = shape else {
+                return None;
+            };
+            let index = path
+                .nodes
+                .iter()
+                .position(|node| read_id(&node.format_specific) == Some(id.0))?;
+            Some((path, index))
+        })
+    }
 }
 
 /// Why a canonical document edit could not be applied.
@@ -565,6 +587,8 @@ pub enum DocumentEditError {
     MissingSource,
     /// The requested point identity does not exist in the layer.
     MissingPoint(PointId),
+    /// A move point was requested anywhere except the start of an open contour.
+    NonInitialMove(PointId),
     /// The requested component identity does not exist in the layer.
     MissingComponent(ComponentId),
     /// The requested anchor identity does not exist in the layer.
@@ -581,6 +605,9 @@ impl std::fmt::Display for DocumentEditError {
             Self::MissingLayer => formatter.write_str("glyph layer does not exist"),
             Self::MissingSource => formatter.write_str("source does not exist"),
             Self::MissingPoint(id) => write!(formatter, "point {id:?} does not exist"),
+            Self::NonInitialMove(id) => {
+                write!(formatter, "point {id:?} cannot be a noninitial move point")
+            }
             Self::MissingComponent(id) => write!(formatter, "component {id:?} does not exist"),
             Self::MissingAnchor(id) => write!(formatter, "anchor {id:?} does not exist"),
             Self::NonFinite => {

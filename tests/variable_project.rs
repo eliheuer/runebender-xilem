@@ -538,6 +538,112 @@ fn canonical_contour_paths_match_legacy_conversion_and_keep_implied_quadratics()
 }
 
 #[test]
+fn canonical_point_roles_keep_contour_closure_coherent() {
+    let scratch = Scratch::new();
+    let point = |x, y, typ| ContourPoint::new(x, y, typ, false, None, None);
+    let mut glyph = Glyph::new("closure");
+    glyph.contours.push(Contour::new(
+        vec![
+            point(0.0, 0.0, PointType::Move),
+            point(100.0, 0.0, PointType::Line),
+            point(100.0, 100.0, PointType::Line),
+        ],
+        None,
+    ));
+    glyph.contours.push(Contour::new(
+        vec![
+            point(200.0, 0.0, PointType::Line),
+            point(300.0, 0.0, PointType::Line),
+            point(300.0, 100.0, PointType::Line),
+        ],
+        None,
+    ));
+    let mut font = Font::new();
+    font.default_layer_mut().insert_glyph(glyph);
+    let mut project = Project::from_source(Master::from_font(
+        font,
+        scratch.0.join("ContourClosure.ufo"),
+    ));
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project.document_layer("closure", &layer_id).unwrap();
+    let contours: Vec<_> = layer.contours().collect();
+    let open_first = contours[0].points().next().unwrap().id();
+    let open_second = contours[0].points().nth(1).unwrap().id();
+    let closed_first = contours[1].points().next().unwrap().id();
+
+    project
+        .edit_document_layer("closure", &layer_id, |draft| {
+            assert!(draft.set_point_type(open_first, LayerPointType::Line)?);
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        project
+            .document_layer("closure", &layer_id)
+            .unwrap()
+            .contours()
+            .next()
+            .unwrap()
+            .is_closed(),
+        "removing the initial move did not close the canonical contour"
+    );
+
+    project
+        .edit_document_layer("closure", &layer_id, |draft| {
+            assert!(draft.set_point_type(closed_first, LayerPointType::Move)?);
+            Ok(())
+        })
+        .unwrap();
+    assert!(
+        !project
+            .document_layer("closure", &layer_id)
+            .unwrap()
+            .contours()
+            .nth(1)
+            .unwrap()
+            .is_closed(),
+        "setting the initial move did not open the canonical contour"
+    );
+    let projected = project.glyph_layer("closure", &layer_id).unwrap();
+    assert_eq!(
+        runebender::outline::glyph_paths::ordinary_layer_contours_to_bezpath(
+            project.document_layer("closure", &layer_id).unwrap(),
+        ),
+        runebender::outline::glyph_paths::contours_to_bezpath(&projected),
+        "canonical and projected closure semantics diverged"
+    );
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    assert_eq!(
+        project.edit_document_layer("closure", &layer_id, |draft| {
+            draft.set_point_type(open_second, LayerPointType::Move)?;
+            Ok(())
+        }),
+        Err(runebender::document::DocumentEditError::NonInitialMove(
+            open_second
+        ))
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+
+    assert_eq!(
+        project
+            .edit_document_layer("closure", &layer_id, |draft| {
+                assert!(draft.set_point_type(open_first, LayerPointType::Move)?);
+                assert!(draft.set_point_type(open_first, LayerPointType::Line)?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision },
+        "change-then-restore closure edit unexpectedly committed"
+    );
+}
+
+#[test]
 fn canonical_layer_transactions_commit_atomically_and_skip_noops() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let layer_id = project

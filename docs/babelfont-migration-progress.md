@@ -524,3 +524,31 @@ git diff --check
 The focused canonical path test, both smart-component compatibility tests and all 20 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Contour-closure transaction correction
+
+Evidence commit: `Keep point roles and contour closure coherent` (the commit containing this correction).
+Resolve its exact ID with `git log --format=%H --grep='^Keep point roles and contour closure coherent$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs` and this log.
+
+Review found that changing the first point between `Move` and another segment role changed UFO closure semantics without updating the canonical Babelfont path's `closed` flag.
+`LayerEditDraft::set_point_type` now changes the first point role and contour closure together.
+It rejects a `Move` role on any noninitial point with `DocumentEditError::NonInitialMove`, leaving the complete draft available for atomic rollback.
+A change followed by restoration in the same draft remains a no-op and does not advance the document revision.
+
+The regression test covers open-to-closed and closed-to-open edits, exact canonical-versus-projected path equality, rejected noninitial moves, unchanged snapshots and revisions after failure, and change-then-restore no-op detection.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_point_roles_keep_contour_closure_coherent -- --exact --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused closure regression and all 21 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
