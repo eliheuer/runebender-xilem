@@ -696,6 +696,79 @@ impl LayerEditDraft {
         Ok(true)
     }
 
+    /// Toggle smooth/corner state on selected on-curve points.
+    ///
+    /// Selected off-curve points are left unchanged.
+    /// Returns whether any point changed.
+    pub fn toggle_smooth_points(
+        &mut self,
+        selected: &[PointId],
+    ) -> Result<bool, DocumentEditError> {
+        for id in selected {
+            if self.node(*id).is_none() {
+                return Err(DocumentEditError::MissingPoint(*id));
+            }
+        }
+        let selected: HashSet<_> = selected.iter().map(|id| id.0).collect();
+        let mut changed = false;
+        for node in self
+            .layer
+            .shapes
+            .iter_mut()
+            .filter_map(|shape| match shape {
+                Shape::Path(path) => Some(path),
+                Shape::Component(_) => None,
+            })
+            .flat_map(|path| &mut path.nodes)
+        {
+            let id = read_id(&node.format_specific).expect("canonical point identity");
+            if selected.contains(&id) && node.nodetype != NodeType::OffCurve {
+                node.smooth = !node.smooth;
+                changed = true;
+            }
+        }
+        Ok(changed)
+    }
+
+    /// Shift every contour point and anchor horizontally.
+    ///
+    /// Component transforms and the advance remain unchanged, matching a left-sidebearing edit.
+    /// Returns whether any geometry moved.
+    pub fn shift_points_and_anchors_x(&mut self, delta: f64) -> Result<bool, DocumentEditError> {
+        ensure_finite(&[delta])?;
+        if delta == 0.0 {
+            return Ok(false);
+        }
+        let mut has_geometry = false;
+        for node in self.layer.paths().flat_map(|path| &path.nodes) {
+            ensure_finite(&[node.x + delta])?;
+            has_geometry = true;
+        }
+        for anchor in &self.layer.anchors {
+            ensure_finite(&[anchor.x + delta])?;
+            has_geometry = true;
+        }
+        if !has_geometry {
+            return Ok(false);
+        }
+        for node in self
+            .layer
+            .shapes
+            .iter_mut()
+            .filter_map(|shape| match shape {
+                Shape::Path(path) => Some(path),
+                Shape::Component(_) => None,
+            })
+            .flat_map(|path| &mut path.nodes)
+        {
+            node.x += delta;
+        }
+        for anchor in &mut self.layer.anchors {
+            anchor.x += delta;
+        }
+        Ok(true)
+    }
+
     /// Set one component's exact affine transform by stable identity.
     ///
     /// Returns whether the value changed.

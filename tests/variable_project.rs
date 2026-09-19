@@ -1264,6 +1264,120 @@ fn canonical_point_drag_matches_legacy_handle_behavior_atomically() {
 }
 
 #[test]
+fn canonical_smoothing_and_sidebearing_shift_match_legacy_geometry_atomically() {
+    let (_scratch, mut project, _fonts) = adversarial_fixture();
+    let layer_id = project
+        .document_source(SourceId(0))
+        .unwrap()
+        .default_layer();
+    let layer = project.document_layer("A", &layer_id).unwrap();
+    let point_ids: Vec<Vec<_>> = layer
+        .contours()
+        .map(|contour| contour.points().map(|point| point.id()).collect())
+        .collect();
+    let selected = [point_ids[0][0], point_ids[1][1]];
+    let selected_indices: HashSet<_> = [(0, 0), (1, 1)].into_iter().collect();
+    let mut expected = project.glyph_layer("A", &layer_id).unwrap();
+    assert!(runebender::outline::glyph_ops::toggle_smooth(
+        &mut expected,
+        &selected_indices,
+    ));
+    project
+        .edit_document_layer("A", &layer_id, |draft| {
+            assert!(draft.toggle_smooth_points(&selected)?);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        project.glyph_layer("A", &layer_id).unwrap(),
+        expected,
+        "canonical smooth toggles diverged from the existing editor operation"
+    );
+
+    let width = expected.width;
+    let components = expected.components.clone();
+    for contour in &mut expected.contours {
+        for point in &mut contour.points {
+            point.x += 17.25;
+        }
+    }
+    for anchor in &mut expected.anchors {
+        anchor.x += 17.25;
+    }
+    project
+        .edit_document_layer("A", &layer_id, |draft| {
+            assert!(draft.shift_points_and_anchors_x(17.25)?);
+            Ok(())
+        })
+        .unwrap();
+    let projected = project.glyph_layer("A", &layer_id).unwrap();
+    assert_eq!(
+        projected, expected,
+        "canonical left-sidebearing shift changed the wrong geometry"
+    );
+    assert_eq!(projected.width, width, "sidebearing shift changed advance");
+    assert_eq!(
+        projected.components, components,
+        "sidebearing shift changed component transforms"
+    );
+
+    let snapshot = project.document_snapshot();
+    let revision = project.document_revision();
+    let missing = project
+        .document_layer("B", &layer_id)
+        .unwrap()
+        .contours()
+        .next()
+        .unwrap()
+        .points()
+        .next()
+        .unwrap()
+        .id();
+    let last = point_ids[1][1];
+    let last_position = project
+        .document_layer("A", &layer_id)
+        .unwrap()
+        .contours()
+        .nth(1)
+        .unwrap()
+        .points()
+        .nth(1)
+        .unwrap()
+        .position();
+    assert_eq!(
+        project
+            .edit_document_layer("A", &layer_id, |draft| {
+                assert_eq!(
+                    draft.toggle_smooth_points(&[selected[0], missing]),
+                    Err(runebender::document::DocumentEditError::MissingPoint(
+                        missing
+                    ))
+                );
+                assert!(
+                    draft.set_point_position(last, kurbo::Point::new(f64::MAX, last_position.y),)?
+                );
+                assert_eq!(
+                    draft.shift_points_and_anchors_x(f64::MAX),
+                    Err(runebender::document::DocumentEditError::NonFinite)
+                );
+                assert!(draft.set_point_position(last, last_position)?);
+                assert_eq!(
+                    draft.shift_points_and_anchors_x(f64::NAN),
+                    Err(runebender::document::DocumentEditError::NonFinite)
+                );
+                assert!(!draft.toggle_smooth_points(&[])?);
+                assert!(!draft.shift_points_and_anchors_x(0.0)?);
+                Ok(())
+            })
+            .unwrap(),
+        DocumentEditOutcome::Unchanged { revision },
+        "caught smoothing or sidebearing errors leaked a partial mutation"
+    );
+    assert_eq!(project.document_snapshot(), snapshot);
+    assert_eq!(project.document_revision(), revision);
+}
+
+#[test]
 fn canonical_snapshot_isolated_from_later_edits_and_format_projections() {
     let (_scratch, mut project, _fonts) = adversarial_fixture();
     let source = SourceId(0);

@@ -789,3 +789,34 @@ git diff --check
 All 13 canonical-filtered and all 26 variable-project integration tests passed.
 Warning-denied Clippy, public API documentation, formatting and diff checks passed.
 The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
+
+### Canonical smoothing and sidebearing-shift substep
+
+Evidence commit: `Edit canonical smoothing and sidebearings` (the commit containing this substep).
+Resolve its exact ID with `git log --format=%H --grep='^Edit canonical smoothing and sidebearings$' -1`.
+Affected paths: `src/document/babelfont.rs`, `tests/variable_project.rs`, `ARCHITECTURE.md` and this log.
+
+`LayerEditDraft::toggle_smooth_points` now applies the editor's bulk smooth/corner toggle directly to stable canonical point identities while leaving selected off-curve controls unchanged.
+`LayerEditDraft::shift_points_and_anchors_x` now performs the geometry half of a left-sidebearing edit directly in Babelfont, moving contour points and anchors while preserving component transforms and exact advance width.
+
+Both operations validate their complete input before mutation.
+The sidebearing shift also validates every derived coordinate, so a finite delta that overflows one later point cannot leave earlier geometry partially shifted when the caller catches the error.
+
+The integration comparison matches the existing smooth-toggle result, checks the exact projected glyph after a fractional sidebearing shift and verifies that advance and component transforms stay fixed.
+It also catches missing-point, nonfinite and derived-overflow failures inside a transaction and requires the canonical snapshot and revision to remain unchanged.
+Segment conversion remains before the second M03 checklist item can close.
+
+Executed evidence:
+
+```sh
+cargo test --locked --test variable_project canonical_smoothing_and_sidebearing_shift_match_legacy_geometry_atomically -- --exact --test-threads=1
+cargo test --locked --test variable_project -- --test-threads=1
+cargo clippy --locked --tests -- -D warnings
+cargo doc --locked --no-deps
+cargo fmt --all --check
+git diff --check
+```
+
+The focused canonical comparison and all 27 variable-project integration tests passed.
+Warning-denied Clippy, public API documentation, formatting and diff checks passed.
+The unchanged `block v0.1.6` future-incompatibility notice remains a dependency notice.
